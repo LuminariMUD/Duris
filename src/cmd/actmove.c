@@ -33,6 +33,11 @@
 #include "kingdom/kingdom.h"
 #include "persistence/persistence_checkpoint.h"
 #include "player/player_revision_state.h"
+#include "abilities/abilities.h"
+
+extern int calming_delay();
+extern int calming_level_gap();
+extern int calming_gap_roll(const Rolls &rolls);
 
 /*
  * external variables
@@ -51,6 +56,8 @@ extern const char *short_dirs[];
 extern const char *dirs2[];
 extern const struct stat_data stat_factor[];
 extern const int innate_abilities[];
+extern int delirium_wander_roll(const Rolls &rolls);
+extern int sound_suppression_noise_limit();
 extern const int class_innates[][5];
 extern const int movement_loss[];
 extern const int rev_dir[];
@@ -1300,6 +1307,12 @@ void blow_char_somewhere_else(P_char ch, int dir)
 	act("$n is suddenly blown in from elsewhere.", FALSE, ch, 0, 0, TO_ROOM);
 }
 
+// What a crippled character pays in extra vitality to move.
+int crippled_move_cost()
+{
+	return 5;
+}
+
 /*
  * This function is meant to be called from procs and do_simple_move only
  */
@@ -1540,12 +1553,13 @@ revalidate_movement:
 
 	if (affected_by_spell(moving, SPELL_BLOODTOSTONE))
 	{
-		need_movement += number(1, 4);
+		extern int blood_to_stone_move_cost(const Rolls &rolls);
+		need_movement += blood_to_stone_move_cost(live_rolls);
 	}
 
 	if (affected_by_spell(moving, TAG_CRIPPLED))
 	{
-		need_movement += 5;
+		need_movement += crippled_move_cost();
 	}
 
 	if (sprung_traps.empty() && IS_PC(ch) && GET_CHAR_SKILL(ch, SKILL_SNEAK) > 0 &&
@@ -1786,10 +1800,11 @@ revalidate_movement:
 
 			calming = 0;
 			if (!IS_ELITE(tch) && !IS_INVADER(ch) &&
-			    (((GET_LEVEL(tch) - GET_LEVEL(ch)) <= 5) || !number(0, 3)) &&
+			    (((GET_LEVEL(tch) - GET_LEVEL(ch)) <= calming_level_gap()) ||
+			     !calming_gap_roll(live_rolls)) &&
 			    has_innate(ch, INNATE_CALMING))
 			{
-				calming = (int)get_property("innate.calming.delay", 10);
+				calming = calming_delay();
 			}
 
 			// A little randomness.
@@ -2078,7 +2093,8 @@ revalidate_movement:
 				 {
 				   act("You can't follow $N!", FALSE, k->follower, 0, ch, TO_CHAR);
 				 }*/
-				if (affected_by_spell(ch, SPELL_DELIRIUM) && !number(0, 2))
+				if (affected_by_spell(ch, SPELL_DELIRIUM) &&
+				    !delirium_wander_roll(live_rolls))
 				{
 					int attempts = 0;
 					cmd2 = number(1, 6);
@@ -2147,7 +2163,8 @@ revalidate_movement:
 			noise_var = noise_var + number(-1, 1);
 
 			// Sounds suppression threshold is 13.
-			if (affected_by_spell(ch, SPELL_SUPPRESSION) && noise_var <= 13)
+			if (affected_by_spell(ch, SPELL_SUPPRESSION) &&
+			    noise_var <= sound_suppression_noise_limit())
 			{ // Just a placeholder.
 			}
 			else
@@ -2336,7 +2353,8 @@ void do_move(P_char ch, char *argument, int cmd)
 	cmd = cmd_to_exitnumb(cmd);
 	const bool completing = completing_water_crossing(ch, cmd);
 
-	if (!completing && affected_by_spell(ch, SPELL_DELIRIUM) && !number(0, 2))
+	if (!completing && affected_by_spell(ch, SPELL_DELIRIUM) &&
+	    !delirium_wander_roll(live_rolls))
 	{
 		cmd2 = number(1, 6);
 
@@ -3190,6 +3208,28 @@ void do_unlock(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
+// How long, in pulses, an attempt keeps the picker from another.
+static int pick_lock_rest()
+{
+	return get_property("timer.secs.pickLock", 5);
+}
+
+// The lag, in pulses, after an attempt.
+static int pick_lock_lag()
+{
+	return 8;
+}
+
+std::string pick_lock_facts(P_char ch)
+{
+	return fact("Chance", std::to_string(GET_CHAR_SKILL(ch, SKILL_PICK_LOCK)) +
+				      " in 100, plus your pick's bonus") +
+	       fact("Before you can try again", seconds(pick_lock_rest())) +
+	       fact("Your lag", seconds(pick_lock_lag())) +
+	       "  You need a lock pick. Pickproof locks always fail, and a failure can break\n"
+	       "  the pick.\n";
+}
+
 void do_pick(P_char ch, char *argument, int /*cmd*/)
 {
 	int percent, door, other_room, chance, retval;
@@ -3235,7 +3275,7 @@ void do_pick(P_char ch, char *argument, int /*cmd*/)
 		send_to_char("Using what?  Your teeth?\n", ch);
 		return;
 	}
-	if (!affect_timer(ch, get_property("timer.secs.pickLock", 5), SKILL_PICK_LOCK))
+	if (!affect_timer(ch, pick_lock_rest(), SKILL_PICK_LOCK))
 	{
 		send_to_char("Your hands are still shaking from that last attempt, rest a bit.\n",
 			     ch);
@@ -3281,7 +3321,7 @@ void do_pick(P_char ch, char *argument, int /*cmd*/)
 		{
 			send_to_char("You failed to pick the lock.\n", ch);
 			notch_skill(ch, SKILL_PICK_LOCK, 25);
-			CharWait(ch, 8);
+			CharWait(ch, pick_lock_lag());
 			percent = percent - chance + pick->value[1] -
 						  IS_SET(obj->value[1], CONT_HARDPICK) ?
 					  15 :
@@ -3308,7 +3348,7 @@ void do_pick(P_char ch, char *argument, int /*cmd*/)
 			REMOVE_BIT(obj->value[1], CONT_LOCKED);
 			send_to_char("*Click*\n", ch);
 			act("$n fiddles with $p.", FALSE, ch, obj, 0, TO_ROOM);
-			CharWait(ch, 8);
+			CharWait(ch, pick_lock_lag());
 		}
 	else if ((door = find_door(ch, Gbuf2, Gbuf3)) >= 0)
 		if (IS_RIDING(ch))
@@ -3337,7 +3377,7 @@ void do_pick(P_char ch, char *argument, int /*cmd*/)
 		{
 			send_to_char("You failed to pick the lock.\n", ch);
 			notch_skill(ch, SKILL_PICK_LOCK, 25);
-			CharWait(ch, 8);
+			CharWait(ch, pick_lock_lag());
 			percent = percent - chance + pick->value[1];
 			if (IS_SET(EXIT(ch, door)->exit_info, EX_PICKPROOF))
 				percent -= 20; /*
@@ -3373,7 +3413,7 @@ void do_pick(P_char ch, char *argument, int /*cmd*/)
 			else
 				act("$n picks the lock of the door.", TRUE, ch, 0, 0, TO_ROOM);
 			send_to_char("The lock quickly yields to your skills.\n", ch);
-			CharWait(ch, 8);
+			CharWait(ch, pick_lock_lag());
 
 			if (IS_SET(EXIT(ch, door)->exit_info, EX_PICKABLE))
 				pick->value[1] += 20; /*

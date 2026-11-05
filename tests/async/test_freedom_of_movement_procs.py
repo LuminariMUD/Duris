@@ -23,6 +23,7 @@ PRELUDE = r'''
 #include "core/profile.h"
 #include "cmd/interp.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "net/comm.h"
 #include "world/events.h"
 #include "world/specs.prototypes.h"
@@ -45,6 +46,8 @@ bool do_profile = false;
 PROFILE_DEFINE(short_affect_liveness)
 
 int number(int low, int high) { return roll >= low && roll <= high ? roll : low; }
+int dice(int count, int size) { int total = 0; while (count-- > 0) total += number(1, size); return total; }
+const Rolls live_rolls = { dice, number };
 bool NewSaves(P_char, int, int) { return saved; }
 bool saves_spell(P_char, int) { return saved; }
 bool resists_spell(P_char, P_char) { return false; }
@@ -131,7 +134,12 @@ def production():
         ("affects.c", "void clear_all_links("),
         ("affects.c", "void linked_affect_to_char("),
         ("magic.c", "bool check_freedom_of_movement("),
+        ("magic.c", "static int freedom_of_movement_roll("),
+        ("magic.c", "static int freedom_of_movement_duration("),
         ("magic.c", "void spell_freedom_of_movement("),
+        ("magic.c", "static int entangle_bind_chance("),
+        ("magic.c", "static int entangle_bind_roll("),
+        ("magic.c", "static int entangle_duration("),
         ("magic.c", "void spell_entangle("),
         ("beh_magic.c", "void spell_beholder_paralyze("),
         ("specs.object.c", "int imprison_armor("),
@@ -151,6 +159,7 @@ def production():
     wall = extract_function("specs.object.c", "int wall_generic(")
     start = wall.index("\tcase WEB:")
     end = wall.index("\tcase LIFE_WARD:", start)
+    code += "\n" + extract_function("magic/spells.c", "int web_paralysis(")
     code += "\nint web_wall(P_obj obj, P_char ch) { int dircmd = 0; char buffer[MAX_STRING_LENGTH]; affected_type af; bool drag_followers = false; switch (WEB) {\n"
     code += wall[start:end] + "} return drag_followers; }\n"
     damage = extract_function("fight.c", "int raw_damage(")

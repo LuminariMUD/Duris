@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import extract_function
+from _innate_numbers import with_innate_numbers
 
 ROOT = Path(__file__).resolve().parents[2]
 text = (ROOT / "src/net/sparser.c").read_text()
@@ -113,7 +114,7 @@ with tempfile.TemporaryDirectory(prefix="duris-issue-252-") as temporary:
     path = Path(temporary)
     source = path / "cast_time.cpp"
     binary = path / "cast_time"
-    source.write_text(harness)
+    source.write_text(with_innate_numbers(harness))
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                     "-D__NO_MYSQL__", "-Isrc", str(source), "-o", str(binary)],
                    cwd=ROOT, check=True)

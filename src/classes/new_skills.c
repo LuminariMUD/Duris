@@ -26,6 +26,7 @@
 #include "item/item_movement_transaction.h"
 #include "magic/spells.h"
 #include "world/weather.h"
+#include "abilities/abilities.h"
 /*
    external variables
  */
@@ -418,6 +419,31 @@ int CountNumGreaterElementalFollowersInSameRoom(P_char ch)
 
 /* Awareness skill for assassins and rangers.   --TAM 7-8-94 */
 
+// The most ticks awareness can last at this rating, before its roll.
+static int awareness_max_duration(P_char ch, int skl_lvl)
+{
+	int duration = (int)((1 + (GET_LEVEL(ch) >> 3) * skl_lvl / 75));
+	duration *= STAT_INDEX(GET_C_INT(ch)) / 9;
+	return duration;
+}
+
+// The roll that picks awareness's duration, given a positive maximum.
+static int awareness_rolled_duration(const Rolls &rolls, int duration)
+{
+	return rolls.number(1, duration);
+}
+
+std::string awareness_facts(P_char ch)
+{
+	const int most = awareness_max_duration(ch, GET_CHAR_SKILL(ch, SKILL_AWARENESS));
+	return fact("Duration",
+		    most > 0 ?
+			    game_hours_range({ awareness_rolled_duration(lowest_rolls, most),
+					       awareness_rolled_duration(highest_rolls, most) }) :
+			    game_hours(most)) +
+	       "  It always works. It lasts longer with intelligence, level and rating.\n";
+}
+
 void do_awareness(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	struct affected_type af, *af_ptr;
@@ -440,15 +466,14 @@ void do_awareness(P_char ch, char * /*argument*/, int /*cmd*/)
 	{
 		lev_aware = number((lev_aware >> 1), lev_aware);
 	}
-	duration = (int)((1 + (GET_LEVEL(ch) >> 3) * skl_lvl / 75));
-	duration *= STAT_INDEX(GET_C_INT(ch)) / 9; /*
+	duration = awareness_max_duration(ch, skl_lvl); /*
 	                                              lower than 13 and player
 	                                              suffers 'lack of attn span'
 	                                              penalty
 	                                            */
 	if (duration > 0)
 	{
-		duration = number(1, duration);
+		duration = awareness_rolled_duration(live_rolls, duration);
 	}
 	bzero(&af, sizeof(af));
 	af.type = SKILL_AWARENESS;
@@ -622,6 +647,12 @@ void MonkSetSpecialDie(P_char ch)
 	}
 }
 
+// What a player's martial arts adds to a monk's bare-hand damage.
+static int monk_damage_bonus(int skl_lvl)
+{
+	return skl_lvl / 11;
+}
+
 int MonkDamage(P_char ch)
 {
 	int dam;
@@ -635,7 +666,7 @@ int MonkDamage(P_char ch)
 		MonkSetSpecialDie(ch);
 	}
 	dam = dice(ch->points.damnodice, ch->points.damsizedice);
-	dam += skl_lvl / 11;
+	dam += monk_damage_bonus(skl_lvl);
 
 	if (GET_CLASS(ch, CLASS_MONK))
 	{
@@ -645,6 +676,32 @@ int MonkDamage(P_char ch)
 		dam = BOUNDED(1, dam - weight, dam);
 	}
 	return dam;
+}
+
+// How many of a monk's attack rolls each round: more for a low roll.
+static int monk_attack_rolls(const Rolls &rolls, P_char ch)
+{
+	return ((4 * GET_LEVEL(ch)) / rolls.number(25, 38));
+}
+
+// A monk's attacks from how many of those rolls hit.
+static int monk_attack_count(P_char ch, int a)
+{
+	if (GET_LEVEL(ch) >= 51)
+	{
+		if (GET_LEVEL(ch) >= 56)
+			return BOUNDED(1, a + 2, 7);
+		else
+			return BOUNDED(1, a + 1, 6);
+	}
+
+	return BOUNDED(1, a, 5); /* 1 to 4 */
+}
+
+// The most of those rolls that count.
+static int monk_attack_roll_limit()
+{
+	return 6;
 }
 
 int MonkNumberOfAttacks(P_char ch)
@@ -676,18 +733,100 @@ int MonkNumberOfAttacks(P_char ch)
 	else
 		skl_lvl = BOUNDED(5, GET_LEVEL(ch) * 2, 100);
 
-	for (a = 0, l = ((4 * GET_LEVEL(ch)) / number(25, 38)); (a < 6) && (l > 0); l--)
+	for (a = 0, l = monk_attack_rolls(live_rolls, ch);
+	     (a < monk_attack_roll_limit()) && (l > 0); l--)
 		if (number(1, 100) < skl_lvl)
 			a++;
-	if (GET_LEVEL(ch) >= 51)
-	{
-		if (GET_LEVEL(ch) >= 56)
-			return BOUNDED(1, a + 2, 7);
-		else
-			return BOUNDED(1, a + 1, 6);
-	}
+	return monk_attack_count(ch, a);
+}
 
-	return BOUNDED(1, a, 5); /* 1 to 4 */
+extern int monk_riposte_chance(int learned, int percent);
+extern int monk_rise_rest();
+
+std::string martial_arts_facts(P_char ch)
+{
+	if (!GET_CLASS(ch, CLASS_MONK))
+		return "  Only monks fight with martial arts.\n";
+	const int rating = GET_CHAR_SKILL(ch, SKILL_MARTIAL_ARTS);
+	const int rolled = MIN(monk_attack_roll_limit(), monk_attack_rolls(lowest_rolls, ch));
+	std::string text =
+		fact("Armor class", std::to_string(MonkAcBonus(ch))) +
+		"    (from your level and rating, less a penalty for worn weight)\n" +
+		fact("Bare-hand damage added", std::to_string(monk_damage_bonus(rating))) +
+		fact("Attacks each round",
+		     show({ monk_attack_count(ch, 0),
+			    monk_attack_count(ch, rating > 1 ? rolled : 0) })) +
+		"    (1 with anything wielded or held; carrying too much weight costs attacks)\n";
+	if (rating)
+		text += fact("Chance to counter a blow",
+			     show({ monk_riposte_chance(rating, -100000),
+				    monk_riposte_chance(rating, 100000) }) +
+				     " in 150") +
+			"    (half that against an elite or greater race)\n" +
+			fact("Chance a knockdown lets you roll back up",
+			     chance_under(GET_C_AGI(ch), 1, 1000) + ", then " +
+				     chance_under(rating, 1, 100)) +
+			fact("Before you can roll back up again", seconds(monk_rise_rest()));
+	return text + "  It also feeds your kick.\n";
+}
+
+// What chanting takes first.
+static std::string chant_note()
+{
+	return "  Your chant skill has its own roll first, and chanting adds its lag.\n";
+}
+
+// A roll of 1-101 below this fools the attackers, and again for each one it fools.
+static int feign_death_threshold(const Rolls &rolls, int skl_lvl)
+{
+	return skl_lvl * rolls.number(2, 5) / 2;
+}
+
+static int feign_death_rest(P_char ch)
+{
+	int duration = WAIT_SEC * get_property("timer.secs.feignDeath", 60);
+	if (GET_CLASS(ch, CLASS_NECROMANCER))
+	{
+		duration /= 3;
+	}
+	return duration;
+}
+
+// Above this level, a necromancer or theurgist who fools an attacker is forgotten too.
+static int feign_death_forget_level()
+{
+	return 40;
+}
+
+static int feign_death_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+static int feign_death_failed_lag()
+{
+	return PULSE_VIOLENCE * 3;
+}
+
+std::string feign_death_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_FEIGN_DEATH);
+	if (!rating)
+		return "  You have not learned feign death.\n";
+	std::string text =
+		fact("Chance it stops the fight",
+		     chance_under(feign_death_threshold(lowest_rolls, rating), 1, 101) + " to " +
+			     chance_under(feign_death_threshold(highest_rolls, rating), 1, 101)) +
+		"  Each attacker then rolls the same chance: it stops casting, and you hide.\n" +
+		fact("Your lag if it works", seconds(feign_death_lag())) +
+		fact("Your lag if it fails", seconds(feign_death_failed_lag())) +
+		"  You end up prone if it fails, or if it works while anyone attacks you.\n" +
+		fact("Before you can try again, even after a failure",
+		     real_time(feign_death_rest(ch)));
+	if (GET_CLASS(ch, CLASS_NECROMANCER) || GET_CLASS(ch, CLASS_THEURGIST))
+		text += "  Above level " + std::to_string(feign_death_forget_level()) +
+			", NPCs in the room also forget you when it works.\n";
+	return text + "  Only while fighting, and not while riding.\n";
 }
 
 void do_feign_death(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -734,11 +873,7 @@ void do_feign_death(P_char ch, char * /*arg*/, int /*cmd*/)
 		memset(&af, 0, sizeof(af));
 		af.type = SKILL_FEIGN_DEATH;
 		af.flags = AFFTYPE_STORE | AFFTYPE_SHORT;
-		af.duration = WAIT_SEC * get_property("timer.secs.feignDeath", 60);
-		if (GET_CLASS(ch, CLASS_NECROMANCER))
-		{
-			af.duration /= 3;
-		}
+		af.duration = feign_death_rest(ch);
 		af.modifier = 0;
 		affect_to_char(ch, &af);
 	}
@@ -746,7 +881,7 @@ void do_feign_death(P_char ch, char * /*arg*/, int /*cmd*/)
 	send_to_char("You try to fake your own demise..\r\n", ch);
 	death_cry(ch);
 	act("$n is dead! R.I.P.", FALSE, ch, 0, 0, TO_ROOM);
-	if (number(1, 101) < (skl_lvl * number(2, 5) / 2))
+	if (number(1, 101) < feign_death_threshold(live_rolls, skl_lvl))
 	{
 		stop_fighting(ch);
 		for (t = world[ch->in_room].people; t; t = t_next)
@@ -757,7 +892,7 @@ void do_feign_death(P_char ch, char * /*arg*/, int /*cmd*/)
 				stop_fighting(t);
 				if ((GET_CLASS(ch, CLASS_NECROMANCER) ||
 				     GET_CLASS(ch, CLASS_THEURGIST)) &&
-				    GET_LEVEL(ch) > 40)
+				    GET_LEVEL(ch) > feign_death_forget_level())
 				{
 					LOOP_THRU_PEOPLE(tch, ch)
 					{
@@ -771,7 +906,7 @@ void do_feign_death(P_char ch, char * /*arg*/, int /*cmd*/)
 						}
 					}
 				}
-				if (number(1, 101) < (skl_lvl * number(2, 5) / 2))
+				if (number(1, 101) < feign_death_threshold(live_rolls, skl_lvl))
 				{
 					if (IS_CASTING(t))
 						StopCasting(t);
@@ -780,7 +915,7 @@ void do_feign_death(P_char ch, char * /*arg*/, int /*cmd*/)
 				SET_POS(ch, POS_PRONE + STAT_RESTING); // was SLEEPING..
 			}
 		}
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, feign_death_lag());
 		notch_skill(ch, SKILL_FEIGN_DEATH, 40);
 		return;
 	}
@@ -788,7 +923,7 @@ void do_feign_death(P_char ch, char * /*arg*/, int /*cmd*/)
 	{
 		SET_POS(ch, POS_PRONE + STAT_RESTING); // ditto
 		notch_skill(ch, SKILL_FEIGN_DEATH, 40);
-		CharWait(ch, PULSE_VIOLENCE * 3);
+		CharWait(ch, feign_death_failed_lag());
 	}
 }
 
@@ -838,6 +973,24 @@ void do_first_aid(P_char ch, char * /*arg*/, int /*cmd*/)
 	affect_to_char(ch, &af);
 }
 
+static int calm_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string calm_facts(P_char ch)
+{
+	if (!GET_CLASS(ch, CLASS_MONK) && !IS_TRUSTED(ch))
+		return "  Only monks can chant calm.\n";
+	const int rating = GET_CHAR_SKILL(ch, SKILL_CALM);
+	if (rating < 1)
+		return "  You need this skill to chant calm.\n";
+	return fact("Chance for each fighter in the room", chance_under(rating, 1, 130)) +
+	       "  A calmed fighter, you included, stops fighting and forgets its grudges.\n"
+	       "  Not on elites or greater races.\n" +
+	       fact("Your lag", seconds(calm_lag())) + chant_note();
+}
+
 void chant_calm(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	P_char d = NULL;
@@ -871,7 +1024,50 @@ void chant_calm(P_char ch, char * /*argument*/, int /*cmd*/)
 			}
 		}
 	}
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, calm_lag());
+}
+
+static int diamond_soul_duration(P_char ch)
+{
+	return MAX(2, (GET_LEVEL(ch) / 16) + 2);
+}
+
+static int diamond_soul_rest()
+{
+	return WAIT_SEC * get_property("timer.secs.monkDiamond", 120);
+}
+
+static int diamond_soul_failed_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int diamond_soul_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int diamond_soul_save(P_char ch)
+{
+	return -(MAX(2, (int)(GET_LEVEL(ch) / 8)));
+}
+
+std::string diamond_soul_facts(P_char ch)
+{
+	if (!GET_CLASS(ch, CLASS_MONK) && !IS_TRUSTED(ch))
+		return "  Only monks can chant diamond soul.\n";
+	const int rating = GET_CHAR_SKILL(ch, SKILL_DIAMOND_SOUL);
+	if (rating < 1)
+		return "  You need this skill to chant diamond soul.\n";
+	return fact("Chance", chance_under(rating + 1, 1, 105)) +
+	       fact("Duration", game_hours(diamond_soul_duration(ch))) +
+	       fact("Saving throws against spells and paralysis",
+		    std::to_string(diamond_soul_save(ch)) + " (lower is better)") +
+	       fact("Before you can chant it again, even after a failure",
+		    IS_TRUSTED(ch) ? "no wait, as an immortal" : seconds(diamond_soul_rest())) +
+	       fact("Your lag", seconds(diamond_soul_lag())) +
+	       fact("Your lag if you fail", seconds(diamond_soul_failed_lag())) +
+	       "  Not under heroism.\n" + chant_note();
 }
 
 void chant_diamond_soul(P_char ch, char * /*argument*/, int /*cmd*/)
@@ -879,7 +1075,7 @@ void chant_diamond_soul(P_char ch, char * /*argument*/, int /*cmd*/)
 	struct affected_type af;
 	char buf[100];
 	int skl_lvl = 0;
-	int duration = MAX(2, (GET_LEVEL(ch) / 16) + 2);
+	int duration = diamond_soul_duration(ch);
 
 	if (!GET_CLASS(ch, CLASS_MONK) && !IS_TRUSTED(ch))
 	{
@@ -887,8 +1083,7 @@ void chant_diamond_soul(P_char ch, char * /*argument*/, int /*cmd*/)
 		return;
 	}
 
-	if (!affect_timer(ch, WAIT_SEC * get_property("timer.secs.monkDiamond", 120),
-			  SKILL_DIAMOND_SOUL))
+	if (!affect_timer(ch, diamond_soul_rest(), SKILL_DIAMOND_SOUL))
 	{
 		send_to_char("Your mind needs rest...\r\n", ch);
 		return;
@@ -917,7 +1112,7 @@ void chant_diamond_soul(P_char ch, char * /*argument*/, int /*cmd*/)
 	    number(1, 105) > skl_lvl) // 5 percent chance to fail at max pc skill.
 	{
 		send_to_char("Your inner thoughts are in turmoil.\r\n", ch);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, diamond_soul_failed_lag());
 		return;
 	}
 
@@ -927,18 +1122,82 @@ void chant_diamond_soul(P_char ch, char * /*argument*/, int /*cmd*/)
 	af.flags = AFFTYPE_NODISPEL;
 	af.duration = duration;
 
-	af.modifier = -(MAX(2, (int)(GET_LEVEL(ch) / 8)));
+	af.modifier = diamond_soul_save(ch);
 	af.location = APPLY_SAVING_SPELL;
 	affect_to_char(ch, &af);
 
-	af.modifier = -(MAX(2, (int)(GET_LEVEL(ch) / 8)));
+	af.modifier = diamond_soul_save(ch);
 	af.location = APPLY_SAVING_PARA;
 	af.wear_off_message_index = 1;
 	affect_to_char(ch, &af);
 
 	send_to_char(buf, ch);
 
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, diamond_soul_lag());
+}
+
+static int heroism_duration(P_char ch)
+{
+	return MAX(5, (GET_LEVEL(ch) / 4) + 2);
+}
+
+static int heroism_rest()
+{
+	return WAIT_SEC * get_property("timer.secs.monkHeroism", 120);
+}
+
+static int heroism_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int heroism_hitroll(P_char ch)
+{
+	return MAX(2, (int)(GET_LEVEL(ch) / 8));
+}
+
+static int heroism_damroll(P_char ch)
+{
+	return MAX(2, GET_LEVEL(ch) / 8);
+}
+
+// The levels a monk's heroism adds a dazzling glow (way of the snake), haste, and blur.
+static int heroism_dazzle_level()
+{
+	return 36;
+}
+
+static int heroism_haste_level()
+{
+	return 51;
+}
+
+static int heroism_blur_level()
+{
+	return 56;
+}
+
+std::string heroism_facts(P_char ch)
+{
+	if (!GET_CLASS(ch, CLASS_MONK) && !IS_TRUSTED(ch))
+		return "  Only monks can chant heroism.\n";
+	std::string text =
+		fact("Chance", chance_under(GET_CHAR_SKILL(ch, SKILL_HEROISM) + 1, 1, 105)) +
+		fact("Duration", game_hours(heroism_duration(ch))) +
+		fact("Hitroll", "+" + std::to_string(heroism_hitroll(ch))) +
+		fact("Damroll", "+" + std::to_string(heroism_damroll(ch))) +
+		fact("Before you can chant it again, even after a failure",
+		     seconds(heroism_rest())) +
+		fact("Your lag", seconds(heroism_lag()));
+	if (GET_SPEC(ch, CLASS_MONK, SPEC_WAYOFDRAGON))
+		text += "  It also gives you indomitability, if you lack it.\n";
+	if (GET_LEVEL(ch) >= heroism_dazzle_level() && GET_SPEC(ch, CLASS_MONK, SPEC_WAYOFSNAKE))
+		text += "  It also makes you dazzle, if you don't already.\n";
+	if (GET_LEVEL(ch) >= heroism_haste_level())
+		text += "  It also hastes you, if you aren't already.\n";
+	if (GET_LEVEL(ch) >= heroism_blur_level())
+		text += "  It also blurs you, if you aren't already.\n";
+	return text + "  Not under diamond soul.\n" + chant_note();
 }
 
 void chant_heroism(P_char ch, char * /*argument*/, int /*cmd*/)
@@ -946,7 +1205,7 @@ void chant_heroism(P_char ch, char * /*argument*/, int /*cmd*/)
 	struct affected_type af, af1;
 	char buf[100];
 	int skl_lvl = 0;
-	int duration = MAX(5, (GET_LEVEL(ch) / 4) + 2);
+	int duration = heroism_duration(ch);
 
 	if (!GET_CLASS(ch, CLASS_MONK) && !IS_TRUSTED(ch))
 	{
@@ -954,8 +1213,7 @@ void chant_heroism(P_char ch, char * /*argument*/, int /*cmd*/)
 		return;
 	}
 
-	if (!affect_timer(ch, WAIT_SEC * get_property("timer.secs.monkHeroism", 120),
-			  SKILL_HEROISM))
+	if (!affect_timer(ch, heroism_rest(), SKILL_HEROISM))
 	{
 		send_to_char("Your mind needs rest...\r\n", ch);
 		return;
@@ -984,7 +1242,7 @@ void chant_heroism(P_char ch, char * /*argument*/, int /*cmd*/)
 	if (!notch_skill(ch, SKILL_HEROISM, 30) && number(1, 105) > skl_lvl)
 	{
 		send_to_char("Your inner thoughts are in turmoil.\r\n", ch);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, heroism_lag());
 		return;
 	}
 
@@ -995,11 +1253,11 @@ void chant_heroism(P_char ch, char * /*argument*/, int /*cmd*/)
 	af.flags = AFFTYPE_NODISPEL;
 	af.duration = duration;
 
-	af.modifier = MAX(2, (int)(GET_LEVEL(ch) / 8));
+	af.modifier = heroism_hitroll(ch);
 	af.location = APPLY_HITROLL;
 	affect_to_char(ch, &af);
 
-	af.modifier = MAX(2, GET_LEVEL(ch) / 8);
+	af.modifier = heroism_damroll(ch);
 	af.location = APPLY_DAMROLL;
 	affect_to_char(ch, &af);
 
@@ -1021,27 +1279,70 @@ void chant_heroism(P_char ch, char * /*argument*/, int /*cmd*/)
 
 	send_to_char(buf, ch);
 
-	if (GET_LEVEL(ch) >= 36 && GET_SPEC(ch, CLASS_MONK, SPEC_WAYOFSNAKE) &&
+	if (GET_LEVEL(ch) >= heroism_dazzle_level() && GET_SPEC(ch, CLASS_MONK, SPEC_WAYOFSNAKE) &&
 	    !IS_AFFECTED4(ch, AFF4_DAZZLER))
 	{
 		af.bitvector4 += AFF4_DAZZLER;
 		send_to_char("Your body begins to glow with disorienting colors... \r\n", ch);
 	}
 
-	if (GET_LEVEL(ch) >= 51 && !IS_AFFECTED(ch, AFF_HASTE))
+	if (GET_LEVEL(ch) >= heroism_haste_level() && !IS_AFFECTED(ch, AFF_HASTE))
 	{
 		af.bitvector += AFF_HASTE;
 		send_to_char("Your body begins to speed up!\r\n", ch);
 	}
 
-	if (GET_LEVEL(ch) >= 56 && !IS_AFFECTED3(ch, AFF3_BLUR))
+	if (GET_LEVEL(ch) >= heroism_blur_level() && !IS_AFFECTED3(ch, AFF3_BLUR))
 	{
 		af.bitvector3 += AFF3_BLUR;
 		send_to_char("Your body begins to blur!\r\n", ch);
 	}
 
 	affect_to_char(ch, &af);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, heroism_lag());
+}
+
+static int buddha_palm_rest()
+{
+	return WAIT_SEC * get_property("timer.secs.monkBuddha", 30);
+}
+
+static int buddha_palm_failed_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static int buddha_palm_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+// Targets it can burn; the first always burns once.
+static int buddha_palm_targets(P_char ch)
+{
+	return GET_LEVEL(ch) / 10;
+}
+
+static int buddha_palm_damage(const Rolls &rolls, P_char ch)
+{
+	return rolls.dice(GET_LEVEL(ch) / 2, 8);
+}
+
+std::string buddha_palm_facts(P_char ch)
+{
+	if (!GET_CLASS(ch, CLASS_MONK) && !IS_TRUSTED(ch))
+		return "  Only monks can chant buddha palm.\n";
+	return fact("Chance", chance_under(GET_CHAR_SKILL(ch, SKILL_BUDDHA_PALM) + 1, 1, 101)) +
+	       fact("Holy damage to each target", show({ buddha_palm_damage(lowest_rolls, ch),
+							 buddha_palm_damage(highest_rolls, ch) }) +
+							  ", one roll for all") +
+	       fact("Most targets in the room", std::to_string(MAX(1, buddha_palm_targets(ch)))) +
+	       fact("Before you can chant it again, even after a failure",
+		    seconds(buddha_palm_rest())) +
+	       fact("Your lag", seconds(buddha_palm_lag())) +
+	       fact("Your lag if you fail", seconds(buddha_palm_failed_lag())) +
+	       "  Not in a safe room. Spell damage modifiers and defenses apply after.\n" +
+	       chant_note();
 }
 
 void chant_buddha_palm(P_char ch, char * /*argument*/, int /*cmd*/)
@@ -1064,8 +1365,7 @@ void chant_buddha_palm(P_char ch, char * /*argument*/, int /*cmd*/)
 		return;
 	}
 
-	if (!affect_timer(ch, WAIT_SEC * get_property("timer.secs.monkBuddha", 30),
-			  SKILL_BUDDHA_PALM))
+	if (!affect_timer(ch, buddha_palm_rest(), SKILL_BUDDHA_PALM))
 	{
 		send_to_char("You are not in the proper mood for that right now!\r\n", ch);
 		return;
@@ -1080,7 +1380,7 @@ void chant_buddha_palm(P_char ch, char * /*argument*/, int /*cmd*/)
 	    number(1, 101) > skl_lvl)
 	{
 		send_to_char("You forgot the words for the chant.\r\n", ch);
-		CharWait(ch, 2 * PULSE_VIOLENCE);
+		CharWait(ch, buddha_palm_failed_lag());
 		return;
 	}
 	if (CHAR_IN_SAFE_ROOM(ch))
@@ -1106,8 +1406,8 @@ void chant_buddha_palm(P_char ch, char * /*argument*/, int /*cmd*/)
 		    0, TO_ROOM);
 	}
 
-	num_tar = GET_LEVEL(ch) / 10;
-	dam = dice(GET_LEVEL(ch) / 2, 8);
+	num_tar = buddha_palm_targets(ch);
+	dam = buddha_palm_damage(live_rolls, ch);
 	for (vict = world[ch->in_room].people; vict; vict = hold)
 	{
 		hold = vict->next_in_room;
@@ -1139,7 +1439,58 @@ void chant_buddha_palm(P_char ch, char * /*argument*/, int /*cmd*/)
 				break;
 		}
 	}
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, buddha_palm_lag());
+}
+
+static int quivering_palm_rest()
+{
+	return WAIT_SEC * get_property("timer.secs.monkQuivering", 30);
+}
+
+static int quivering_palm_failed_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static int quivering_palm_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int quivering_palm_damage(P_char ch)
+{
+	return GET_C_DEX(ch) * 2 + GET_CHAR_SKILL(ch, SKILL_QUIVERING_PALM);
+}
+
+// The chance threshold, rolled 0-100, of anatomy raising it.
+static int quivering_palm_anatomy_threshold(P_char ch)
+{
+	return 5 + GET_CHAR_SKILL(ch, SKILL_ANATOMY) / 10;
+}
+
+static int quivering_palm_anatomy_damage(int dam)
+{
+	return (int)(dam * 1.5);
+}
+
+std::string quivering_palm_facts(P_char ch)
+{
+	if (!GET_CLASS(ch, CLASS_MONK) && !IS_TRUSTED(ch))
+		return "  Only monks can chant quivering palm.\n";
+	std::string text =
+		fact("Chance", chance_under(GET_CHAR_SKILL(ch, SKILL_QUIVERING_PALM) + 1, 1, 100)) +
+		fact("Damage",
+		     std::to_string(quivering_palm_damage(ch)) + ", before the target's defenses");
+	if (GET_CHAR_SKILL(ch, SKILL_ANATOMY))
+		text += fact("With anatomy, chance of more damage",
+			     chance_under(quivering_palm_anatomy_threshold(ch), 0, 100) + ", for " +
+				     std::to_string(quivering_palm_anatomy_damage(
+					     quivering_palm_damage(ch))));
+	return text + fact("Before you can chant it again", seconds(quivering_palm_rest())) +
+	       fact("Your lag", seconds(quivering_palm_lag())) +
+	       fact("Your lag if you fail", seconds(quivering_palm_failed_lag())) +
+	       "  Not in a safe room, or past the next in line in a single-file room.\n" +
+	       chant_note();
 }
 
 void chant_quivering_palm(P_char ch, char *argument, int /*cmd*/)
@@ -1187,8 +1538,7 @@ void chant_quivering_palm(P_char ch, char *argument, int /*cmd*/)
 		send_to_char("You hum to yourself.\r\n", ch);
 		return;
 	}
-	if (!affect_timer(ch, WAIT_SEC * get_property("timer.secs.monkQuivering", 30),
-			  SKILL_QUIVERING_PALM))
+	if (!affect_timer(ch, quivering_palm_rest(), SKILL_QUIVERING_PALM))
 	{
 		send_to_char("You are not in the proper mood for that right now!\r\n", ch);
 		return;
@@ -1209,15 +1559,15 @@ void chant_quivering_palm(P_char ch, char *argument, int /*cmd*/)
 	    number(1, 100) > skl_lvl)
 	{
 		send_to_char("You forgot the words for the chant.\r\n", ch);
-		CharWait(ch, 2 * PULSE_VIOLENCE);
+		CharWait(ch, quivering_palm_failed_lag());
 		return;
 	}
-	dam = GET_C_DEX(ch) * 2 + GET_CHAR_SKILL(ch, SKILL_QUIVERING_PALM);
+	dam = quivering_palm_damage(ch);
 
 	if (GET_CHAR_SKILL(ch, SKILL_ANATOMY) &&
-	    5 + GET_CHAR_SKILL(ch, SKILL_ANATOMY) / 10 > number(0, 100))
+	    quivering_palm_anatomy_threshold(ch) > number(0, 100))
 	{
-		dam = (int)(dam * 1.5);
+		dam = quivering_palm_anatomy_damage(dam);
 	}
 
 	/*  can't for the life of me figure out why we need 2 messages for this skill...
@@ -1233,7 +1583,83 @@ void chant_quivering_palm(P_char ch, char *argument, int /*cmd*/)
 	melee_damage(ch, vict, dam, PHSDAM_TOUCH, &messages);
 	if (!char_in_list(ch))
 		return;
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, quivering_palm_lag());
+}
+
+static int jin_touch_rest()
+{
+	return WAIT_SEC * get_property("timer.secs.monkJintouch", 30);
+}
+
+static int jin_touch_failed_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int jin_touch_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static int jin_touch_damage(const Rolls &rolls, P_char ch)
+{
+	return (int)(rolls.dice(GET_C_DEX(ch), 3) + rolls.dice(GET_C_AGI(ch), 3) +
+		     rolls.dice(GET_C_WIS(ch), 3)) /
+	       4;
+}
+
+// Its damage after your rating.
+static int jin_touch_rated_damage(int dam, int skl_lvl)
+{
+	if (skl_lvl <= 80)
+		dam = (int)(0.4 * dam);
+	else if (skl_lvl <= 90)
+		dam = (int)(0.6 * dam);
+
+	dam /= 2;
+	return dam;
+}
+
+// The rating that can weaken the target's armor, for how long, and by how much.
+static int jin_touch_weaken_rating()
+{
+	return 100;
+}
+
+static int jin_touch_weaken_duration()
+{
+	return 1;
+}
+
+static int jin_touch_weaken(const Rolls &rolls, P_char ch)
+{
+	return GET_LEVEL(ch) * rolls.number(2, 3);
+}
+
+std::string jin_touch_facts(P_char ch)
+{
+	if (!GET_CLASS(ch, CLASS_MONK))
+		return "  Only monks can chant jin touch.\n";
+	const int rating = GET_CHAR_SKILL(ch, SKILL_JIN_TOUCH);
+	if (rating < 1)
+		return "  You need this skill to chant jin touch.\n";
+	std::string text =
+		fact("Chance", chance_under(rating + 1, 1, 50)) +
+		fact("Damage",
+		     show({ jin_touch_rated_damage(jin_touch_damage(lowest_rolls, ch), rating),
+			    jin_touch_rated_damage(jin_touch_damage(highest_rolls, ch), rating) })) +
+		"    (past the target's armor and skin spells)\n" +
+		fact("Before you can chant it again", seconds(jin_touch_rest())) +
+		fact("Your lag", seconds(jin_touch_lag()) + ", even if it's still resting") +
+		fact("Your lag if you fail", seconds(jin_touch_failed_lag()));
+	if (rating >= jin_touch_weaken_rating())
+		text += fact("Target's armor class, on a further roll",
+			     "+" + show({ jin_touch_weaken(lowest_rolls, ch),
+					  jin_touch_weaken(highest_rolls, ch) })) +
+			fact("  For", game_hours(jin_touch_weaken_duration())) +
+			"    (not on soulless targets, elites or greater races)\n";
+	return text + "  Not in a safe room, or past the next in line in a single-file room.\n" +
+	       chant_note();
 }
 
 void chant_jin_touch(P_char ch, char *argument, int /*cmd*/)
@@ -1280,7 +1706,7 @@ void chant_jin_touch(P_char ch, char *argument, int /*cmd*/)
 	{
 		send_to_char("You forgot the words for the chant.\r\n", ch);
 
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, jin_touch_failed_lag());
 
 		if (IS_NPC(vict) && CAN_SEE(vict, ch) && number(0, 1))
 		{
@@ -1294,10 +1720,9 @@ void chant_jin_touch(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	CharWait(ch, jin_touch_lag());
 
-	if (!affect_timer(ch, WAIT_SEC * get_property("timer.secs.monkJintouch", 30),
-			  SKILL_JIN_TOUCH))
+	if (!affect_timer(ch, jin_touch_rest(), SKILL_JIN_TOUCH))
 	{
 		send_to_char("&+GYour inner force has not realigned...\r\n", ch);
 		return;
@@ -1330,14 +1755,9 @@ void chant_jin_touch(P_char ch, char *argument, int /*cmd*/)
 			MobStartFight(vict, ch);
 	}
 
-	dam = (int)(dice(GET_C_DEX(ch), 3) + dice(GET_C_AGI(ch), 3) + dice(GET_C_WIS(ch), 3)) / 4;
+	dam = jin_touch_damage(live_rolls, ch);
 
-	if (skl_lvl <= 80)
-		dam = (int)(0.4 * dam);
-	else if (skl_lvl <= 90)
-		dam = (int)(0.6 * dam);
-
-	dam /= 2;
+	dam = jin_touch_rated_damage(dam, skl_lvl);
 
 	act("&+CYou harness your full Jin, and deliver a powerful strike to&n $N!&n", FALSE, ch, 0,
 	    vict, TO_CHAR);
@@ -1361,7 +1781,8 @@ void chant_jin_touch(P_char ch, char *argument, int /*cmd*/)
 		percent += (int)(GET_CHAR_SKILL(ch, SKILL_ANATOMY) / 10);
 
 	if (!affected_by_spell(vict, SKILL_JIN_TOUCH) && (percent > number(0, 19)) &&
-	    skl_lvl >= 100 && !IS_SOULLESS(vict) && !IS_GREATER_RACE(vict) && !IS_ELITE(vict))
+	    skl_lvl >= jin_touch_weaken_rating() && !IS_SOULLESS(vict) && !IS_GREATER_RACE(vict) &&
+	    !IS_ELITE(vict))
 	{
 		act("&+cYou harness the full, harmonius energy of your Jin, directing it at&n $N!",
 		    FALSE, ch, 0, vict, TO_CHAR);
@@ -1372,12 +1793,79 @@ void chant_jin_touch(P_char ch, char *argument, int /*cmd*/)
 		struct affected_type af;
 		memset(&af, 0, sizeof(af));
 		af.type = SKILL_JIN_TOUCH;
-		af.duration = 1;
+		af.duration = jin_touch_weaken_duration();
 
-		af.modifier = GET_LEVEL(ch) * number(2, 3);
+		af.modifier = jin_touch_weaken(live_rolls, ch);
 		af.location = APPLY_AC;
 		affect_to_char(vict, &af);
 	}
+}
+
+static int ki_strike_rest()
+{
+	return WAIT_SEC * get_property("timer.secs.monkKistrike", 45);
+}
+
+static int ki_strike_failed_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static int ki_strike_fall_lag()
+{
+	return (int)(PULSE_VIOLENCE);
+}
+
+static int ki_strike_lag()
+{
+	return (int)(2.5 * PULSE_VIOLENCE);
+}
+
+static int ki_strike_target_lag()
+{
+	return (int)(1.5 * PULSE_VIOLENCE);
+}
+
+// Added to your level above the target's; the sum must beat a roll of 1-30 to slow it.
+static int ki_strike_slow_roll(const Rolls &rolls)
+{
+	return rolls.number(-5, 20);
+}
+
+static int ki_strike_anatomy_bonus(P_char ch)
+{
+	return (int)(GET_CHAR_SKILL(ch, SKILL_ANATOMY) / 10);
+}
+
+static int ki_strike_slow_duration()
+{
+	return 1;
+}
+
+std::string ki_strike_facts(P_char ch)
+{
+	if (!GET_CLASS(ch, CLASS_MONK))
+		return "  Only monks can chant ki strike.\n";
+	const int rating = GET_CHAR_SKILL(ch, SKILL_KI_STRIKE);
+	if (rating < 1)
+		return "  You need this skill to chant ki strike.\n";
+	return fact("Chance", chance_under(rating + 1, 1, 100)) +
+	       fact("Your lag", seconds(ki_strike_lag())) +
+	       fact("Target's lag", seconds(ki_strike_target_lag())) +
+	       fact("Your lag if you fail", seconds(ki_strike_failed_lag())) +
+	       fact("Your lag if the target isn't standing",
+		    seconds(ki_strike_fall_lag()) + ", and you fall over") +
+	       fact("Before you can chant it again, even after a failure",
+		    IS_TRUSTED(ch) ? "no wait, as an immortal" : seconds(ki_strike_rest())) +
+	       fact("A further roll slows the target for", game_hours(ki_strike_slow_duration())) +
+	       "    (your level above its, capped at 100, " +
+	       show_signed(
+		       { ki_strike_slow_roll(lowest_rolls), ki_strike_slow_roll(highest_rolls) }) +
+	       " more,\n    and " + std::to_string(ki_strike_anatomy_bonus(ch)) +
+	       " from anatomy, against 1-30)\n"
+	       "    (not on elites, greater races or a target it already slowed)\n"
+	       "  Not in a safe room, or past the next in line in a single-file room.\n" +
+	       chant_note();
 }
 
 void chant_ki_strike(P_char ch, char *argument, int /*cmd*/)
@@ -1416,8 +1904,7 @@ void chant_ki_strike(P_char ch, char *argument, int /*cmd*/)
 		send_to_char("You hum to yourself.\r\n", ch);
 		return;
 	}
-	if (!affect_timer(ch, WAIT_SEC * get_property("timer.secs.monkKistrike", 45),
-			  SKILL_KI_STRIKE))
+	if (!affect_timer(ch, ki_strike_rest(), SKILL_KI_STRIKE))
 	{
 		send_to_char("Yer not in proper mood for that right now!\r\n", ch);
 		return;
@@ -1438,7 +1925,7 @@ void chant_ki_strike(P_char ch, char *argument, int /*cmd*/)
 	{
 		appear(ch);
 		send_to_char("You forgot the words for the chant.\r\n", ch);
-		CharWait(ch, 2 * PULSE_VIOLENCE);
+		CharWait(ch, ki_strike_failed_lag());
 
 		if (IS_NPC(vict) && CAN_SEE(vict, ch) && number(0, 1))
 		{
@@ -1494,7 +1981,7 @@ void chant_ki_strike(P_char ch, char *argument, int /*cmd*/)
 		act("&+B$n&+B lunges at you, misses his strike and falls over!&n", FALSE, ch, 0,
 		    vict, TO_VICT);
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
-		CharWait(ch, (int)(PULSE_VIOLENCE));
+		CharWait(ch, ki_strike_fall_lag());
 		return;
 	}
 
@@ -1505,14 +1992,14 @@ void chant_ki_strike(P_char ch, char *argument, int /*cmd*/)
 	act("&+B$n&+B lunges at you, and before you can react, you feel somewhat dazed!&n", FALSE,
 	    ch, 0, vict, TO_VICT);
 
-	CharWait(ch, (int)(2.5 * PULSE_VIOLENCE));
-	CharWait(vict, (int)(1.5 * PULSE_VIOLENCE));
+	CharWait(ch, ki_strike_lag());
+	CharWait(vict, ki_strike_target_lag());
 
 	percent = (BOUNDED(0, (GET_LEVEL(ch) - GET_LEVEL(vict)), 100));
-	percent += number(-5, 20);
+	percent += ki_strike_slow_roll(live_rolls);
 
 	if (GET_CHAR_SKILL(ch, SKILL_ANATOMY))
-		percent += (int)(GET_CHAR_SKILL(ch, SKILL_ANATOMY) / 10);
+		percent += ki_strike_anatomy_bonus(ch);
 
 	if (!affected_by_spell(vict, SKILL_KI_STRIKE) && (percent > number(1, 30)) &&
 	    !IS_GREATER_RACE(vict) && !IS_ELITE(vict))
@@ -1526,12 +2013,51 @@ void chant_ki_strike(P_char ch, char *argument, int /*cmd*/)
 		struct affected_type af;
 		memset(&af, 0, sizeof(af));
 		af.type = SKILL_KI_STRIKE;
-		af.duration = 1;
+		af.duration = ki_strike_slow_duration();
 		af.bitvector2 = AFF2_SLOW;
 		affect_to_char(vict, &af);
 
 		CharWait(ch, (int)(0.2 * PULSE_VIOLENCE));
 	}
+}
+
+static int regenerate_rest()
+{
+	return WAIT_SEC * get_property("timer.secs.monkRegenerate", 120);
+}
+
+static int regenerate_failed_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static int regenerate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int regenerate_duration(P_char ch)
+{
+	return GET_LEVEL(ch) / 7;
+}
+
+static int regenerate_hit_regen(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_REGENERATE) * GET_LEVEL(ch);
+}
+
+std::string regenerate_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_REGENERATE))
+		return "  You need this skill to chant regenerate.\n";
+	return fact("Chance", chance_under(GET_CHAR_SKILL(ch, SKILL_REGENERATE) + 1, 1, 100)) +
+	       fact("Duration", game_hours(regenerate_duration(ch))) +
+	       fact("Hit point regeneration", "+" + std::to_string(regenerate_hit_regen(ch))) +
+	       fact("Before you can chant it again, even after a failure",
+		    seconds(regenerate_rest())) +
+	       fact("Your lag", seconds(regenerate_lag())) +
+	       fact("Your lag if you fail", seconds(regenerate_failed_lag())) +
+	       "  Not while fighting, regenerating or under accelerated healing.\n" + chant_note();
 }
 
 void chant_regenerate(P_char ch, char * /*argument*/, int /*cmd*/)
@@ -1552,8 +2078,7 @@ void chant_regenerate(P_char ch, char * /*argument*/, int /*cmd*/)
 		return;
 	}
 
-	if (!affect_timer(ch, WAIT_SEC * get_property("timer.secs.monkRegenerate", 120),
-			  SKILL_REGENERATE))
+	if (!affect_timer(ch, regenerate_rest(), SKILL_REGENERATE))
 	{
 		send_to_char("Yer not in proper mood for that right now!\r\n", ch);
 		return;
@@ -1570,20 +2095,51 @@ void chant_regenerate(P_char ch, char * /*argument*/, int /*cmd*/)
 	    number(1, 100) > GET_CHAR_SKILL(ch, SKILL_REGENERATE))
 	{
 		send_to_char("You forgot the words for the chant.\r\n", ch);
-		CharWait(ch, 2 * PULSE_VIOLENCE);
+		CharWait(ch, regenerate_failed_lag());
 		return;
 	}
 
 	send_to_char("You feel your body healing faster.\r\n", ch);
 	bzero(&af, sizeof(af));
 	af.type = SKILL_REGENERATE;
-	af.duration = GET_LEVEL(ch) / 7;
+	af.duration = regenerate_duration(ch);
 	af.location = APPLY_HIT_REG;
-	af.modifier = GET_CHAR_SKILL(ch, SKILL_REGENERATE) * GET_LEVEL(ch);
+	af.modifier = regenerate_hit_regen(ch);
 	affect_to_char(ch, &af);
 
 	notch_skill(ch, SKILL_REGENERATE, 35);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, regenerate_lag());
+}
+
+static int tiger_palm_rest()
+{
+	return WAIT_SEC * get_property("timer.secs.monkTigerPalm", 30);
+}
+
+// The chance threshold, rolled 1-101.
+static int tiger_palm_threshold(P_char ch)
+{
+	return (IS_PC(ch) ? (1 + GET_CHAR_SKILL(ch, SKILL_TIGER_PALM)) :
+			    (MIN(100, GET_LEVEL(ch) * 2)));
+}
+
+static int tiger_palm_duration(P_char ch)
+{
+	return WAIT_SEC * (BOUNDED(4, (GET_CHAR_SKILL(ch, SKILL_TIGER_PALM) / 2), 55));
+}
+
+std::string tiger_palm_facts(P_char ch)
+{
+	extern float dam_factor[LAST_DF + 1];
+	if (!GET_CHAR_SKILL(ch, SKILL_TIGER_PALM) && !IS_TRUSTED(ch))
+		return "  You need this skill to chant tiger palm.\n";
+	return fact("Chance", chance_under(tiger_palm_threshold(ch) + 1, 1, 101)) +
+	       fact("Duration", seconds(tiger_palm_duration(ch))) +
+	       fact("Psionic spell damage you take", share_percent(dam_factor[DF_TIGERPALM]) +
+							     " of normal, added to other factors") +
+	       fact("Before you can chant it again, even after a failure",
+		    seconds(tiger_palm_rest())) +
+	       chant_note();
 }
 
 void chant_tiger_palm(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -1594,27 +2150,50 @@ void chant_tiger_palm(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 
-	if (!affect_timer(ch, WAIT_SEC * get_property("timer.secs.monkTigerPalm", 30),
-			  SKILL_TIGER_PALM))
+	if (!affect_timer(ch, tiger_palm_rest(), SKILL_TIGER_PALM))
 	{
 		send_to_char("Yer not in proper mood for that right now!\r\n", ch);
 		return;
 	}
 
 	if (!notch_skill(ch, SKILL_TIGER_PALM, get_property("skill.notch.chants", 20)) &&
-	    (number(1, 101) > (IS_PC(ch) ? (1 + GET_CHAR_SKILL(ch, SKILL_TIGER_PALM)) :
-					   (MIN(100, GET_LEVEL(ch) * 2)))))
+	    (number(1, 101) > tiger_palm_threshold(ch)))
 	{
 		send_to_char("You fail to embrace the tiger palm concentration&n!\r\n", ch);
 		return;
 	}
 
-	set_short_affected_by(ch, SKILL_TIGER_PALM,
-			      WAIT_SEC *
-				      (BOUNDED(4, (GET_CHAR_SKILL(ch, SKILL_TIGER_PALM) / 2), 55)));
+	set_short_affected_by(ch, SKILL_TIGER_PALM, tiger_palm_duration(ch));
 	send_to_char("&+rYou invoke the power of the tiger palm concentration.\r\n", ch);
 	act("&+r$n&+r's concentration grows as $e summons $s inner chi-powers.&n", FALSE, ch, 0, 0,
 	    TO_ROOM);
+}
+
+static int fist_of_dragon_rest()
+{
+	return WAIT_SEC * get_property("timer.secs.monkFistOfDragon", 30);
+}
+
+static int fist_of_dragon_duration(P_char ch, int skl_lvl)
+{
+	return WAIT_SEC * (MAX(4, (GET_LEVEL(ch) * skl_lvl / 100)));
+}
+
+extern int fist_of_dragon_roll(const Rolls &rolls);
+
+std::string fist_of_dragon_facts(P_char ch)
+{
+	const int rating = IS_TRUSTED(ch) ? 100 : GET_CHAR_SKILL(ch, SKILL_FIST_OF_DRAGON);
+	if (!rating)
+		return "  You need this skill to chant fist of dragon.\n";
+	return fact("Chance", chance_under(rating + 1, 1, 101)) +
+	       fact("Duration", seconds(fist_of_dragon_duration(ch, rating))) +
+	       fact("Chance a melee hit ignores armor that helps the target",
+		    one_in(fist_of_dragon_roll)) +
+	       "    (and goes through stoneskin and the like)\n" +
+	       fact("Before you can chant it again, even after a failure",
+		    seconds(fist_of_dragon_rest())) +
+	       chant_note();
 }
 
 void chant_fist_of_dragon(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -1629,8 +2208,7 @@ void chant_fist_of_dragon(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 
-	if (!affect_timer(ch, WAIT_SEC * get_property("timer.secs.monkFistOfDragon", 30),
-			  SKILL_FIST_OF_DRAGON))
+	if (!affect_timer(ch, fist_of_dragon_rest(), SKILL_FIST_OF_DRAGON))
 	{
 		send_to_char("Yer not in proper mood for that right now!\r\n", ch);
 		return;
@@ -1643,11 +2221,32 @@ void chant_fist_of_dragon(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 
-	set_short_affected_by(ch, SKILL_FIST_OF_DRAGON,
-			      WAIT_SEC * (MAX(4, (GET_LEVEL(ch) * skl_lvl / 100))));
+	set_short_affected_by(ch, SKILL_FIST_OF_DRAGON, fist_of_dragon_duration(ch, skl_lvl));
 	send_to_char("&+rThe strength of the &+Rred dragon &+rflows strong in your veins.\r\n", ch);
 	act("&+r$n&+r's hands harden as $e summons $s inner chi-powers.&n", FALSE, ch, 0, 0,
 	    TO_ROOM);
+}
+
+static int chant_roll_top(P_char ch)
+{
+	return 85 + GET_LEVEL(ch) / 2;
+}
+
+static int chant_lag()
+{
+	return PULSE_SPELLCAST;
+}
+
+std::string chant_facts(P_char ch)
+{
+	if (!GET_CLASS(ch, CLASS_MONK) && !IS_TRUSTED(ch))
+		return "  Only monks can chant.\n";
+	const int rating = IS_TRUSTED(ch) ? 100 : GET_CHAR_SKILL(ch, SKILL_CHANT);
+	if (rating < 1)
+		return "  You have not learned to chant.\n";
+	return fact("Chance", chance_under(rating + GET_LEVEL(ch) + 1, 1, chant_roll_top(ch))) +
+	       fact("Your lag, even if you fail", seconds(chant_lag())) +
+	       "  Each chant adds its own roll and lag after this one.\n";
 }
 
 void do_chant(P_char ch, char *argument, int cmd)
@@ -1712,11 +2311,11 @@ void do_chant(P_char ch, char *argument, int cmd)
 		send_to_char("You hum to yourself.\r\n", ch);
 		return;
 	}
-	CharWait(ch, PULSE_SPELLCAST);
+	CharWait(ch, chant_lag());
 	/*
 	   let them succeeed all the time if practed well
 	 */
-	if (number(1, (85 + GET_LEVEL(ch) / 2)) > (skl_lvl + GET_LEVEL(ch)))
+	if (number(1, chant_roll_top(ch)) > (skl_lvl + GET_LEVEL(ch)))
 	{
 		send_to_char("Your throat suddenly becomes dry.\r\n", ch);
 		act("$n tries to say something, but $s voice is garbled.", FALSE, ch, 0, 0,
@@ -1805,6 +2404,44 @@ int GetConditionModifier(P_char victim)
 	return 0;
 }
 
+// The target may be this many sizes from yours.
+static int dragon_punch_size_gap()
+{
+	return 1;
+}
+
+static int dragon_punch_roll(const Rolls &rolls)
+{
+	return rolls.dice(60, 8);
+}
+
+static int dragon_punch_damage(int dam, int skl_lvl)
+{
+	return dam * MAX(30, skl_lvl) / 100;
+}
+
+static int dragon_punch_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+std::string dragon_punch_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_DRAGON_PUNCH);
+	if (!rating)
+		return "  You have not learned dragon punch.\n";
+	const int skl_lvl = BOUNDED(0, rating, 100);
+	return fact("Damage",
+		    show({ dragon_punch_damage(dragon_punch_roll(lowest_rolls), skl_lvl),
+			   dragon_punch_damage(dragon_punch_roll(highest_rolls), skl_lvl) }) +
+			    " at your rating") +
+	       "    (a helpless target, such as a stunned or sleeping one, counts it higher)\n"
+	       "  It always lands. The target's defenses apply to the damage after.\n" +
+	       fact("Your lag", seconds(dragon_punch_lag())) +
+	       fact("Sizes the target may differ from yours",
+		    std::to_string(dragon_punch_size_gap()));
+}
+
 void do_dragon_punch(P_char ch, char *argument, int /*cmd*/)
 {
 	P_char vict = NULL;
@@ -1837,8 +2474,8 @@ void do_dragon_punch(P_char ch, char *argument, int /*cmd*/)
 	if (!CanDoFightMove(ch, vict))
 		return;
 
-	if ((GET_ALT_SIZE(vict) < (GET_ALT_SIZE(ch) - 1)) ||
-	    (GET_ALT_SIZE(vict) > (GET_ALT_SIZE(ch) + 1)))
+	if ((GET_ALT_SIZE(vict) < (GET_ALT_SIZE(ch) - dragon_punch_size_gap())) ||
+	    (GET_ALT_SIZE(vict) > (GET_ALT_SIZE(ch) + dragon_punch_size_gap())))
 	{
 		send_to_char("Your punch would not be very effective on an opponent that size.\n\r",
 			     ch);
@@ -1847,8 +2484,8 @@ void do_dragon_punch(P_char ch, char *argument, int /*cmd*/)
 
 	skl_lvl = BOUNDED(0, skl_lvl + GetConditionModifier(vict), 100);
 
-	dam = dice(60, 8);
-	dam = dam * MAX(30, skl_lvl) / 100;
+	dam = dragon_punch_roll(live_rolls);
+	dam = dragon_punch_damage(dam, skl_lvl);
 
 	notch_skill(ch, SKILL_DRAGON_PUNCH, get_property("skill.notch.offensive", 15));
 	// Gona try making them always land, but have damage based on skill.
@@ -1867,7 +2504,7 @@ void do_dragon_punch(P_char ch, char *argument, int /*cmd*/)
 	*/
 	melee_damage(ch, vict, dam, PHSDAM_TOUCH, &messages);
 
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	CharWait(ch, dragon_punch_lag());
 }
 
 void do_OLD_bandage(P_char ch, char *arg, int /*cmd*/)
@@ -2038,10 +2675,31 @@ void event_summon_book(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*dat
 	submit_summoned_replacement(ch, book, summoned_replacement_kind::book);
 }
 
+static int summon_book_delay()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string summon_book_innate_facts(P_char /*ch*/)
+{
+	return fact("Your spellbook arrives after", seconds(summon_book_delay())) +
+	       "  It needs no rest, has no lag, and comes on its own when you enter the game.\n";
+}
+
 void do_summon_book(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	send_to_char("You utter a magical formula summoning your spellbook..\r\n", ch);
-	add_event(event_summon_book, PULSE_VIOLENCE, ch, 0, 0, 0, 0, 0);
+	add_event(event_summon_book, summon_book_delay(), ch, 0, 0, 0, 0, 0);
+}
+
+static int summon_totem_hit_points()
+{
+	return 10;
+}
+
+static int summon_totem_pulse()
+{
+	return -1;
 }
 
 void event_summon_totem(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
@@ -2067,12 +2725,12 @@ void event_summon_totem(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 	if (GET_LEVEL(ch) >= 56)
 	{
 		totem->affected[2].location = APPLY_SPELL_PULSE;
-		totem->affected[2].modifier = -1;
+		totem->affected[2].modifier = summon_totem_pulse();
 	}
 	if (GET_LEVEL(ch) >= 51)
 	{
 		totem->affected[1].location = APPLY_HIT;
-		totem->affected[1].modifier = 10;
+		totem->affected[1].modifier = summon_totem_hit_points();
 	}
 	if (GET_LEVEL(ch) >= 41)
 	{
@@ -2090,12 +2748,61 @@ void event_summon_totem(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 	submit_summoned_replacement(ch, totem, summoned_replacement_kind::totem);
 }
 
+static int summon_totem_delay()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string summon_totem_innate_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	std::string text = fact("Your totem arrives after", seconds(summon_totem_delay()));
+	if (level >= 31)
+		text += "  It grants farsee.\n";
+	if (level >= 36)
+		text += "  It grants sense life.\n";
+	if (level >= 41)
+		text += "  It grants soulshield.\n";
+	if (level >= 51)
+		text += fact("Hit points", "+" + std::to_string(summon_totem_hit_points()));
+	if (level >= 56)
+		text += fact("Spell pulse", std::to_string(summon_totem_pulse()));
+	if (level < 56)
+		text += "  More powers come with level: 31, 36, 41, 51 and 56.\n";
+	return text + "  It replaces your last totem, with no rest and no lag.\n";
+}
+
 void do_summon_totem(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	send_to_char(
 		"You thrust your arms skyward, uttering an incantation to &+GMaglubiyet&n.\r\n",
 		ch);
-	add_event(event_summon_totem, PULSE_VIOLENCE, ch, 0, 0, 0, 0, 0);
+	add_event(event_summon_totem, summon_totem_delay(), ch, 0, 0, 0, 0, 0);
+}
+
+static int summoned_mount_factor(const Rolls &rolls, P_char ch)
+{
+	if (GET_LEVEL(ch) < 6) // TODO: hack for level 1 dragoon mounts dying
+		return (int)(GET_LEVEL(ch) * get_property("mount.summoned.FactorMod", 0.750) +
+			     rolls.number(1, 5));
+	else
+		return (int)(GET_LEVEL(ch) * get_property("mount.summoned.FactorMod", 0.750) +
+			     rolls.number(-5, 5));
+}
+
+static int summoned_mount_level(int factor)
+{
+	return 10 + factor;
+}
+
+static int summoned_mount_hit_points(P_char ch, int factor)
+{
+	return factor * (IS_SKELETON(ch) ? 15 : 50);
+}
+
+static int summoned_mount_skeleton_vitality(const Rolls &rolls)
+{
+	return 100 + rolls.number(-25, 25);
 }
 
 void mount_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
@@ -2295,23 +3002,16 @@ void mount_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /
 		// Level 30 mount factor average = 22.5 based on 0.750 mod.
 		// Level 56 mount factor average = 42 based on 0.750 mod. Nov08 -Lucrot
 
-		if (GET_LEVEL(ch) < 6) // TODO: hack for level 1 dragoon mounts dying
-			factor = (int)(GET_LEVEL(ch) *
-					       get_property("mount.summoned.FactorMod", 0.750) +
-				       number(1, 5));
-		else
-			factor = (int)(GET_LEVEL(ch) *
-					       get_property("mount.summoned.FactorMod", 0.750) +
-				       number(-5, 5));
+		factor = summoned_mount_factor(live_rolls, ch);
 
 		mount->base_stats.Str = BOUNDED(75, mount->base_stats.Str, 75 + factor);
 		mount->base_stats.Agi = BOUNDED(75, mount->base_stats.Agi, 75 + factor);
 		mount->base_stats.Con = BOUNDED(75, mount->base_stats.Con, 75 + factor);
 		mount->base_stats.Cha = 100;
-		mount->player.level = 10 + factor;
+		mount->player.level = summoned_mount_level(factor);
 		mount->points.base_hit = factor * (IS_SKELETON(ch) ? 25 : 50);
-		GET_HIT(mount) = factor * (IS_SKELETON(ch) ? 15 : 50);
-		GET_MAX_HIT(mount) = factor * (IS_SKELETON(ch) ? 15 : 50);
+		GET_HIT(mount) = summoned_mount_hit_points(ch, factor);
+		GET_MAX_HIT(mount) = summoned_mount_hit_points(ch, factor);
 		mount->player.m_class = CLASS_NONE;
 		MonkSetSpecialDie(mount);
 		SET_BIT(mount->specials.act, ACT_MOUNT);
@@ -2320,7 +3020,8 @@ void mount_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /
 		{
 			// 100 - 25 + 50 (for being a mount) is a minimum of 125 moves, and max 175.
 			mount->points.vitality = mount->points.base_vitality =
-				mount->points.max_vitality = 100 + number(-25, 25);
+				mount->points.max_vitality =
+					summoned_mount_skeleton_vitality(live_rolls);
 		}
 
 		if (IS_SET(mount->specials.act, ACT_MEMORY))
@@ -2332,6 +3033,40 @@ void mount_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /
 	}
 	send_to_char("A mount didn't load. Please report this with the bug command.\r\n", ch);
 	return;
+}
+
+// How long a call for a mount or warg takes, in pulses.
+static int summon_mount_delay(const Rolls &rolls, P_char ch)
+{
+	return rolls.number(70 - GET_LEVEL(ch), 100 + rolls.number(1, 200 - 2 * GET_LEVEL(ch)));
+}
+
+// What answers a call: the numbers the mount and warg pages share.
+static std::string summoned_mount_facts(P_char ch)
+{
+	const Range factor = { summoned_mount_factor(lowest_rolls, ch),
+			       summoned_mount_factor(highest_rolls, ch) };
+	std::string text =
+		fact("It arrives after", seconds(summon_mount_delay(lowest_rolls, ch)) + " to " +
+						 seconds(summon_mount_delay(highest_rolls, ch))) +
+		fact("Its level", show({ summoned_mount_level(factor.low),
+					 summoned_mount_level(factor.high) })) +
+		fact("Its hit points", show({ summoned_mount_hit_points(ch, factor.low),
+					      summoned_mount_hit_points(ch, factor.high) }));
+	if (IS_SKELETON(ch))
+		text += fact("Its vitality",
+			     show({ summoned_mount_skeleton_vitality(lowest_rolls),
+				    summoned_mount_skeleton_vitality(highest_rolls) }));
+	return text;
+}
+
+std::string summon_mount_innate_facts(P_char ch)
+{
+	return summoned_mount_facts(ch) + innate_rest_facts(INNATE_SUMMON_MOUNT, 0) +
+	       "  One mount at a time, and none in dragon form.\n"
+	       "  Paladins must be good and antipaladins evil.\n"
+	       "  Not in a locker, single-file room or ocean. A dragoon may call from\n"
+	       "  anywhere else; others need the outdoors or underworld on the prime plane.\n";
 }
 
 void do_summon_mount(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -2420,8 +3155,15 @@ void do_summon_mount(P_char ch, char * /*arg*/, int /*cmd*/)
 	else
 		send_to_char("You begin calling for a mount..\r\n", ch);
 
-	sumtime = number(70 - GET_LEVEL(ch), 100 + number(1, 200 - 2 * GET_LEVEL(ch)));
+	sumtime = summon_mount_delay(live_rolls, ch);
 	add_event(mount_summoning_thing, sumtime, ch, 0, 0, 0, 0, 0);
+}
+
+std::string summon_warg_innate_facts(P_char ch)
+{
+	return summoned_mount_facts(ch) + innate_rest_facts(INNATE_SUMMON_WARG, 0) +
+	       "  One at a time. It needs the outdoors or underworld on the prime plane,\n"
+	       "  and arrives nowhere that is a locker, single-file room or ocean.\n";
 }
 
 void do_summon_warg(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -2453,8 +3195,23 @@ void do_summon_warg(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 	send_to_char("You begin calling for a warg..\r\n", ch);
-	sumtime = number(70 - GET_LEVEL(ch), 100 + number(1, 200 - 2 * GET_LEVEL(ch)));
+	sumtime = summon_mount_delay(live_rolls, ch);
 	add_event(mount_summoning_thing, sumtime, ch, 0, 0, 0, 0, 0);
+}
+
+static int summon_horde_most(P_char ch)
+{
+	return BOUNDED(1, (int)(GET_LEVEL(ch) / 10), 20);
+}
+
+static int summon_horde_orc_level()
+{
+	return 1;
+}
+
+static int summon_horde_orc_hit_points()
+{
+	return 1;
 }
 
 void orc_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
@@ -2484,7 +3241,7 @@ void orc_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*d
 		return;
 	}
 
-	max_respond = BOUNDED(1, (int)(GET_LEVEL(ch) / 10), 20);
+	max_respond = summon_horde_most(ch);
 
 	for (cld = ch->linked; cld; cld = cld->next_linked)
 		if (GET_RACE(cld->linking) == RACE_ORC && IS_NPC(cld->linking))
@@ -2512,8 +3269,8 @@ void orc_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*d
 		char_to_room(orc, ch->in_room, -2);
 
 		//      GET_LEVEL(orc) = 5;
-		orc->player.level = 1;
-		GET_MAX_HIT(orc) = GET_HIT(orc) = 1;
+		orc->player.level = summon_horde_orc_level();
+		GET_MAX_HIT(orc) = GET_HIT(orc) = summon_horde_orc_hit_points();
 
 		orc->only.npc->aggro_flags = 0;
 		setup_pet(orc, ch, -1, PET_NOCASH);
@@ -2522,6 +3279,24 @@ void orc_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*d
 
 	send_to_char("Your brethren answer your call for help!\r\n", ch);
 	act("A horde of orcs appear, charging in from every direction!", TRUE, ch, 0, 0, TO_ROOM);
+}
+
+static int summon_horde_delay(const Rolls &rolls, P_char ch)
+{
+	return rolls.number(70 - GET_LEVEL(ch), 70);
+}
+
+std::string summon_horde_innate_facts(P_char ch)
+{
+	return fact("Orcs", "up to " + std::to_string(summon_horde_most(ch)) +
+				    " at your level, counting those you have") +
+	       fact("Each orc's level", std::to_string(summon_horde_orc_level())) +
+	       fact("Each orc's hit points", std::to_string(summon_horde_orc_hit_points())) +
+	       fact("They arrive after", seconds(summon_horde_delay(lowest_rolls, ch)) + " to " +
+						 seconds(summon_horde_delay(highest_rolls, ch))) +
+	       innate_rest_facts(INNATE_SUMMON_HORDE, 0) +
+	       "  Only an orc may call. Off the prime plane or on the ocean none come,\n"
+	       "  and the use is still spent; nor do they reach single-file rooms or lockers.\n";
 }
 
 void do_summon_orc(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -2560,8 +3335,88 @@ void do_summon_orc(P_char ch, char * /*arg*/, int /*cmd*/)
 			     ch);
 	}
 
-	sumtime = number(70 - GET_LEVEL(ch), 70);
+	sumtime = summon_horde_delay(live_rolls, ch);
 	add_event(orc_summoning_thing, sumtime, ch, 0, 0, 0, 0, 0);
+}
+
+static int ogre_roar_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 101);
+}
+
+static int ogre_roar_worst_duration(int temp)
+{
+	return 10 + (temp / 7);
+}
+
+static int ogre_roar_best_duration(int temp)
+{
+	return 20 - (temp / 7);
+}
+
+static int ogre_roar_duration(int temp)
+{
+	return 15 - (temp / 7);
+}
+
+static int ogre_roar_best_ac(P_char ch)
+{
+	return GET_LEVEL(ch) + 10;
+}
+
+static int ogre_roar_ac(P_char ch)
+{
+	return GET_LEVEL(ch);
+}
+
+// How much of a hitroll each outcome takes, as hitroll * level / this.
+static int ogre_roar_hitroll_divisor()
+{
+	return 90;
+}
+
+static int ogre_roar_best_hitroll_divisor()
+{
+	return 60;
+}
+
+static int ogre_roar_worst_hitroll_divisor()
+{
+	return 100;
+}
+
+// The ogre's outcome: below this the target is scared, and 1 is the best roar.
+static int ogre_roar_threshold()
+{
+	return 68;
+}
+
+std::string ogre_roar_innate_facts(P_char ch)
+{
+	const int threshold = ogre_roar_threshold();
+	return fact("Normal roar, with no modifiers",
+		    chance_under(threshold - 1, ogre_roar_roll(lowest_rolls),
+				 ogre_roar_roll(highest_rolls))) +
+	       fact("Target's armor class", "+" + std::to_string(ogre_roar_ac(ch))) +
+	       fact("Its hitroll loss", "its hitroll * " + std::to_string(GET_LEVEL(ch)) + " / " +
+						std::to_string(ogre_roar_hitroll_divisor())) +
+	       fact("For", game_hours_range(
+				   { ogre_roar_duration(threshold - 1), ogre_roar_duration(2) })) +
+	       fact("Best roar, " + one_in(ogre_roar_roll) + ": armor class",
+		    "+" + std::to_string(ogre_roar_best_ac(ch))) +
+	       fact("Its hitroll loss", "its hitroll * " + std::to_string(GET_LEVEL(ch)) + " / " +
+						std::to_string(ogre_roar_best_hitroll_divisor())) +
+	       fact("For", game_hours(ogre_roar_best_duration(1))) +
+	       fact("Worst roar, " + one_in(ogre_roar_roll) + ": your hitroll loss",
+		    "your hitroll * its level / " +
+			    std::to_string(ogre_roar_worst_hitroll_divisor())) +
+	       fact("And the target's armor class", "+1 + its level / 2") +
+	       fact("For", game_hours(ogre_roar_worst_duration(101))) +
+	       innate_rest_facts(INNATE_OGREROAR, 0) +
+	       "  Only a plain ogre may roar. Level, power and wisdom shift the roll,\n"
+	       "  and a fearful or meditating target favors you. Not while prone.\n"
+	       "  Bigger targets and illithids ignore it, as do those who can't hear,\n"
+	       "  are already roared at, or stand in a silent room. It has no lag.\n";
 }
 
 /* Ogre roar: Ogre scares the wits out of enemy. Assumed to be innate2 */
@@ -2652,7 +3507,7 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 	/* chance modifier now bounded by -31 to +26 */
 
 	/* do random 1-101, add chance modifier */
-	temp = BOUNDED(1, number(1, 101) + temp, 101);
+	temp = BOUNDED(1, ogre_roar_roll(live_rolls) + temp, 101);
 
 	/* worst case for ogre */
 	if (temp == 101)
@@ -2665,11 +3520,12 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 		/* apply a downgraded AC/HITROLL hurt to char instead of victim */
 		bzero(&af, sizeof(af));
 		af.type = SKILL_OGRE_ROAR;
-		af.duration = 10 + (temp / 7);
+		af.duration = ogre_roar_worst_duration(temp);
 		af.modifier = 1 + GET_LEVEL(vict) / 2;
 		af.location = APPLY_AC;
 		affect_to_char(vict, &af);
-		af.modifier = -(GET_HITROLL(ch) * GET_LEVEL(vict) / 100);
+		af.modifier =
+			-(GET_HITROLL(ch) * GET_LEVEL(vict) / ogre_roar_worst_hitroll_divisor());
 		af.location = APPLY_HITROLL;
 		affect_to_char(ch, &af);
 
@@ -2694,11 +3550,12 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 		/* this really messes the victim up... worse than normal roar */
 		bzero(&af, sizeof(af));
 		af.type = SKILL_OGRE_ROAR;
-		af.duration = 20 - (temp / 7);
-		af.modifier = GET_LEVEL(ch) + 10;
+		af.duration = ogre_roar_best_duration(temp);
+		af.modifier = ogre_roar_best_ac(ch);
 		af.location = APPLY_AC;
 		affect_to_char(vict, &af);
-		af.modifier = -(GET_HITROLL(vict) * GET_LEVEL(ch) / 60);
+		af.modifier =
+			-(GET_HITROLL(vict) * GET_LEVEL(ch) / ogre_roar_best_hitroll_divisor());
 		af.location = APPLY_HITROLL;
 		affect_to_char(vict, &af);
 		return;
@@ -2706,7 +3563,7 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 	else
 		/* now the usual, ogres has a 2/3 chance to succeed against a
 		   enemy with modifiers=0 */
-		if (temp < 68)
+		if (temp < ogre_roar_threshold())
 		{
 			act("$n roars loudly at $N, who is visibly shaken.", FALSE, ch, 0, vict,
 			    TO_ROOM);
@@ -2717,11 +3574,12 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 			/* standard hurt to AC/HITROLL */
 			bzero(&af, sizeof(af));
 			af.type = SKILL_OGRE_ROAR;
-			af.duration = 15 - (temp / 7);
-			af.modifier = GET_LEVEL(ch);
+			af.duration = ogre_roar_duration(temp);
+			af.modifier = ogre_roar_ac(ch);
 			af.location = APPLY_AC;
 			affect_to_char(vict, &af);
-			af.modifier = -(GET_HITROLL(vict) * GET_LEVEL(ch) / 90);
+			af.modifier =
+				-(GET_HITROLL(vict) * GET_LEVEL(ch) / ogre_roar_hitroll_divisor());
 			af.location = APPLY_HITROLL;
 			affect_to_char(vict, &af);
 			return;
@@ -2747,6 +3605,23 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 /* Krov: carving procedure. checks in value[3] of a corpse which body
    parts are missing and then puts a (named) body part in corpse
    if the carve was successful */
+
+// 101 ruins every part of the corpse; otherwise a roll up to your rating cuts cleanly.
+static int carve_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 101);
+}
+
+std::string carve_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_CARVE);
+	if (rating < 1)
+		return "  You have not learned to carve.\n";
+	return fact("Chance of a clean cut", chance_under(rating + 1, 1, 101)) +
+	       fact("Chance you ruin every part", one_in(carve_roll)) +
+	       "  A failed cut still costs that part.\n"
+	       "  It takes a humanoid corpse, and a wielded blade, dagger or knife.\n";
+}
 
 void do_carve(struct char_data *ch, char *argument, int /*cmd*/)
 {
@@ -2844,7 +3719,7 @@ void do_carve(struct char_data *ch, char *argument, int /*cmd*/)
 		return;
 	}
 	/* throw a number */
-	percent = number(1, 101); /* 101 is a complete failure */
+	percent = carve_roll(live_rolls); /* 101 is a complete failure */
 
 	/* if it is a complete failure, then then all parts are destroyed */
 	if (percent == 101)
@@ -3442,6 +4317,78 @@ void do_capture(P_char ch, char *argument, int /*cmd*/)
 	capture(ch, victim);
 }
 
+// 101 makes a wild estimate; otherwise a roll up to your rating makes a close one.
+static int appraise_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 101);
+}
+
+// A wild estimate reads high unless this rolls 0.
+static int appraise_wild_side_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+static int appraise_wild_multiple(const Rolls &rolls)
+{
+	return rolls.number(1, 3);
+}
+
+static int appraise_wild_divisor(const Rolls &rolls)
+{
+	return rolls.number(2, 4);
+}
+
+// A miss reads high unless this comes out zero.
+static int appraise_miss_side_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+static int appraise_miss_high_divisor(const Rolls &rolls)
+{
+	return rolls.number(1, 15);
+}
+
+static int appraise_miss_low_divisor(const Rolls &rolls)
+{
+	return rolls.number(2, 15);
+}
+
+static int appraise_close_divisor(const Rolls &rolls)
+{
+	return rolls.number(80, 120);
+}
+
+static int appraise_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+std::string appraise_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_APPRAISE);
+	const int high_sides = appraise_miss_side_roll(highest_rolls);
+	return fact("Chance of a close estimate", chance_under(rating + 1, 1, 101)) +
+	       "  A close estimate is off by 1/" +
+	       std::to_string(appraise_close_divisor(highest_rolls)) + " to 1/" +
+	       std::to_string(appraise_close_divisor(lowest_rolls)) +
+	       " of the value, either way.\n" +
+	       fact("A miss reads high",
+		    std::to_string(high_sides) + " in " + std::to_string(high_sides + 1) +
+			    ", by up to 1/" +
+			    std::to_string(appraise_miss_high_divisor(lowest_rolls)) +
+			    " of the value") +
+	       fact("Otherwise it reads low",
+		    "by up to 1/" + std::to_string(appraise_miss_low_divisor(lowest_rolls))) +
+	       fact("Chance of a wild estimate", one_in(appraise_roll)) + "    (" +
+	       one_in(appraise_wild_side_roll) + " high by up to " +
+	       std::to_string(appraise_wild_multiple(highest_rolls)) +
+	       " times the value, else low by up to 1/" +
+	       std::to_string(appraise_wild_divisor(lowest_rolls)) + ")\n" +
+	       fact("Your lag", seconds(appraise_lag()));
+}
+
 void do_appraise(P_char ch, char *argument, int /*cmd*/)
 {
 	P_obj temp = NULL;
@@ -3473,32 +4420,36 @@ void do_appraise(P_char ch, char *argument, int /*cmd*/)
 	estimate_value = temp->cost;
 
 	/* throw a number */
-	percent = number(1, 101); /* 101 is a complete failure */
+	percent = appraise_roll(live_rolls); /* 101 is a complete failure */
 
 	/* if it is a complete failure, then the appraise is way off */
 	if (percent == 101)
 	{
-		if ((number(0, 1)))
-			estimate_value += (estimate_value * (number(1, 3)));
+		if ((appraise_wild_side_roll(live_rolls)))
+			estimate_value += (estimate_value * (appraise_wild_multiple(live_rolls)));
 		else
-			estimate_value -= (estimate_value / (number(2, 4)));
+			estimate_value -= (estimate_value / (appraise_wild_divisor(live_rolls)));
 	}
 	else
 	{
 		if (percent > GET_CHAR_SKILL(ch, SKILL_APPRAISE))
 		{
 			notch_skill(ch, SKILL_APPRAISE, 5);
-			if ((number(0, 2)))
-				estimate_value += (estimate_value / (number(1, 15)));
+			if ((appraise_miss_side_roll(live_rolls)))
+				estimate_value +=
+					(estimate_value / (appraise_miss_high_divisor(live_rolls)));
 			else
-				estimate_value -= (estimate_value / (number(2, 15)));
+				estimate_value -=
+					(estimate_value / (appraise_miss_low_divisor(live_rolls)));
 		}
 		else
 		{
 			if ((number(0, 1)))
-				estimate_value += (estimate_value / (number(80, 120)));
+				estimate_value +=
+					(estimate_value / (appraise_close_divisor(live_rolls)));
 			else
-				estimate_value -= (estimate_value / (number(80, 120)));
+				estimate_value -=
+					(estimate_value / (appraise_close_divisor(live_rolls)));
 		}
 	}
 
@@ -3508,7 +4459,7 @@ void do_appraise(P_char ch, char *argument, int /*cmd*/)
 		snprintf(buf, MAX_STRING_LENGTH, "You estimate its value to: %s\r\n",
 			 coin_stringv(estimate_value));
 	send_to_char(buf, ch);
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	CharWait(ch, appraise_lag());
 
 	return;
 }
@@ -3897,6 +4848,73 @@ void do_true_strike(P_char ch, char *argument, int /*cmd*/)
 	CharWait(ch, 2 * PULSE_VIOLENCE);
 }
 
+// Above each level, chi purge cures one more thing.
+static int chi_purge_poison_level()
+{
+	return 2;
+}
+
+static int chi_purge_curse_level()
+{
+	return 9;
+}
+
+static int chi_purge_blind_level()
+{
+	return 29;
+}
+
+static int chi_purge_wither_level()
+{
+	return 50;
+}
+
+static int chi_purge_disease_level()
+{
+	return 55;
+}
+
+static int chi_purge_failed_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static int chi_purge_rest()
+{
+	return WAIT_SEC * get_property("timer.secs.monkChipurge", 25);
+}
+
+std::string chi_purge_facts(P_char ch)
+{
+	if (!GET_CLASS(ch, CLASS_MONK) && !IS_TRUSTED(ch))
+		return "  Only monks can chant chi purge.\n";
+	const int rating = GET_CHAR_SKILL(ch, SKILL_CHI_PURGE);
+	if (rating < 1)
+		return "  You need this skill to chant chi purge.\n";
+	const struct
+	{
+		int level;
+		const char *name;
+	} cures[] = { { chi_purge_poison_level(), "poison" },
+		      { chi_purge_curse_level(), "curses" },
+		      { chi_purge_blind_level(), "blindness" },
+		      { chi_purge_wither_level(), "withering" },
+		      { chi_purge_disease_level(), "disease" } };
+	std::string known, later;
+	for (const auto &cure : cures)
+	{
+		if (GET_LEVEL(ch) > cure.level)
+			known += (known.empty() ? "" : ", ") + std::string(cure.name);
+		else
+			later += fact("Above level " + std::to_string(cure.level), cure.name);
+	}
+	return fact("Chance", chance_under(rating + 1, 1, 100)) +
+	       fact("Cures on you", known.empty() ? "nothing yet" : known) + later +
+	       fact("Before you can chant it again, if it works",
+		    IS_TRUSTED(ch) ? "no wait, as an immortal" : seconds(chi_purge_rest())) +
+	       fact("Your lag if you fail", seconds(chi_purge_failed_lag())) + chant_note();
+}
+
 void chant_chi_purge(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		     P_obj /*obj*/)
 {
@@ -3908,15 +4926,15 @@ void chant_chi_purge(int level, P_char ch, char * /*arg*/, int /*type*/, P_char 
 	disease = FALSE;
 	blind = FALSE;
 
-	if (GET_LEVEL(ch) > 2)
+	if (GET_LEVEL(ch) > chi_purge_poison_level())
 		poison = TRUE;
-	if (GET_LEVEL(ch) > 9)
+	if (GET_LEVEL(ch) > chi_purge_curse_level())
 		curse = TRUE;
-	if (GET_LEVEL(ch) > 29)
+	if (GET_LEVEL(ch) > chi_purge_blind_level())
 		blind = TRUE;
-	if (GET_LEVEL(ch) > 50)
+	if (GET_LEVEL(ch) > chi_purge_wither_level())
 		wither = TRUE;
-	if (GET_LEVEL(ch) > 55)
+	if (GET_LEVEL(ch) > chi_purge_disease_level())
 		disease = TRUE;
 
 	if (number(1, 100) > GET_CHAR_SKILL(ch, SKILL_CHI_PURGE) &&
@@ -3924,12 +4942,11 @@ void chant_chi_purge(int level, P_char ch, char * /*arg*/, int /*type*/, P_char 
 	{
 		send_to_char("You forgot the words for the chant.\r\n", ch);
 		notch_skill(ch, SKILL_CHI_PURGE, 15);
-		CharWait(ch, 2 * PULSE_VIOLENCE);
+		CharWait(ch, chi_purge_failed_lag());
 		return;
 	}
 
-	if (!affect_timer(ch, WAIT_SEC * get_property("timer.secs.monkChipurge", 25),
-			  SKILL_CHI_PURGE))
+	if (!affect_timer(ch, chi_purge_rest(), SKILL_CHI_PURGE))
 	{
 		send_to_char("Yer not in proper mood for that right now!\r\n", ch);
 		return;

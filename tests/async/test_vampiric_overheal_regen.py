@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, SRC, extract_function
+from _innate_numbers import with_innate_numbers
 from _source_contract import function_body
 from _paths import HARNESS_STUBS
 
@@ -145,7 +146,7 @@ with tempfile.TemporaryDirectory(prefix="duris-vampiric-overheal-") as directory
     directory_path = Path(directory)
     harness = directory_path / "harness.cpp"
     binary = directory_path / "harness"
-    harness.write_text(PRELUDE + HELPERS + DRIVER, encoding="utf-8")
+    harness.write_text(with_innate_numbers(PRELUDE + HELPERS + DRIVER), encoding="utf-8")
     subprocess.run(
         [
             "g++",

@@ -285,14 +285,18 @@ int main() {
 }
 '''
 
-functions = [extract_function("magic.c", "static void set_protection_duration(")]
+functions = [extract_function("magic.c", "static void set_protection_duration("),
+             extract_function("magic.c", "static int protection_spell_duration(")]
+functions += [extract_function("magic.c", "static int protection_from_" + name + "_duration(")
+             for name in ("good", "evil")]
 functions += [extract_function("magic.c", "void spell_protection_from_" + name + "(")
              for name in ("fire", "cold", "acid", "gas", "lightning", "good", "evil")]
 functions += [extract_function("affects.c", "void event_short_affect(").replace(
     "PROFILE_START(short_affect_liveness);", "").replace("PROFILE_END(short_affect_liveness);", "")]
 functions += [extract_function("handler.c", "int poison_common_remove(")]
 functions += [extract_function("magic.c", signature) for signature in (
-    "void spell_cure_blind(", "void spell_cure_disease(", "void spell_divine_warding(",
+    "void spell_cure_blind(", "void spell_cure_disease(", "static int divine_warding_duration(",
+    "void spell_divine_warding(",
     "static void purify_group_member(", "void spell_mass_purification(")]
 output = ROOT / "bin/tests/cleric-utilities"
 output.mkdir(parents=True, exist_ok=True)

@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
+from _innate_numbers import with_innate_numbers
 
 
 PRELUDE = r'''
@@ -197,6 +198,7 @@ def production():
     parser = source("sparser.c").read_text()
     start = parser.index("typedef struct\n{\n\tconst char *name;")
     code += parser[start:parser.index("/*", start)]
+    code += extract_function("utility.c", "int dice(int num, int size)") + '\n#include "abilities/abilities.h"\nconst Rolls live_rolls = { dice, number };\n'
     return code + "\n".join(extract_function(file, signature) for file, signature in [
         ("utility.c", "int flag2idx("),
         ("utility.c", "int IS_MORPH("),
@@ -218,7 +220,22 @@ def production():
           ("lifeleak", "moveleak", "heart_toxin", "neurotoxin", "weakness", "slowness", "madness")],
         ("magic.c", "void spell_remove_poison("),
         ("magic.c", "static void purify_group_member("),
+        ("magic.c", "static int slow_duration("),
         ("magic.c", "void spell_slow("),
+        ("actoff.c", "static int backstab_skill("),
+        ("actoff.c", "static int backstab_luck_bonus("),
+        ("actoff.c", "static int backstab_damage("),
+        ("actoff.c", "static int backstab_noticed_damage("),
+        ("actoff.c", "static int backstab_helpless_damage("),
+        ("actoff.c", "static int backstab_incapacitated_damage("),
+        ("actoff.c", "static int backstab_repeat_window("),
+        ("actoff.c", "static int backstab_lag("),
+        ("actoff.c", "static int backstab_air_aura_roll("),
+        ("actoff.c", "static int backstab_air_aura_below("),
+        ("actoff.c", "static float critical_stab_threshold("),
+        ("actoff.c", "static float spinal_tap_threshold("),
+        ("actoff.c", "static int critical_stab_damage("),
+        ("actoff.c", "static int spinal_tap_damage("),
         ("actoff.c", "bool single_stab("),
         ("actoff.c", "bool backstab(P_char ch, P_char victim)"),
     ])
@@ -647,7 +664,7 @@ def main():
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="poison-lifecycle-", dir=build) as directory:
         cpp, binary = Path(directory) / "harness.cpp", Path(directory) / "harness"
-        cpp.write_text(PRELUDE + production() + DRIVER)
+        cpp.write_text(with_innate_numbers(PRELUDE + production() + DRIVER))
         subprocess.run([
             "g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
             "-Wno-unused-parameter", "-fsanitize=address,undefined",

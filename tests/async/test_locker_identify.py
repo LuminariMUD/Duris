@@ -14,7 +14,8 @@ assert 'locker_identify_receipt(ch)' in stat and 'locker_identify_replay' not in
 assert 'CharWait' not in stat and 'do_lore' not in stat and 'SUB_MONEY' not in stat
 lore = (ROOT / 'src/cmd/actnew.c').read_text()
 normal = lore.split('void do_lore(',1)[1].split('static void render_item_lore(',1)[0]
-assert 'lore_item(ch, obj);\n\tCharWait(ch, 3);' in normal
+assert 'lore_item(ch, obj);\n\tCharWait(ch, lore_lag());' in normal
+assert 'static int lore_lag()\n{\n\treturn 3;\n}' in lore
 captured = lore.split('std::string item_lore_description(',1)[1].split('const char *MAKE_FORMAT',1)[0]
 assert 'CharWait' not in captured and 'send_to_char' not in captured
 
@@ -76,7 +77,7 @@ int main() {
  std::cout << "actual lore capture matches ordinary rendering for weapon, armor, totem, potion and wand\n";
 }
 '''
-    cpp.write_text(render_prefix + lore[render_start:render_end] + render_main)
+    cpp.write_text(render_prefix + lore[lore.index('static int lore_unidentified_level()'):lore.index('std::string lore_facts(')] + lore[render_start:render_end] + render_main)
     subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-Isrc',
                     str(cpp),'-o',str(binary)],cwd=ROOT,check=True)
     subprocess.run([str(binary)],check=True)

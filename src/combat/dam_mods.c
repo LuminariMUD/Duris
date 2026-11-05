@@ -26,10 +26,269 @@
 #include "classes/paladins.h"
 #include "magic/spells.h"
 #include "core/utils.h"
+#include "abilities/abilities.h"
+
+// The percent dreadnaught takes off the spell damage its user takes.
+double dreadnaught_spell_defense(const Rolls &rolls, const struct affected_type *paf)
+{
+	return BOUNDED(5, paf->level / 5, 20) +
+	       (paf->level > 95 ? rolls.number(0, paf->level - 95) : 0);
+}
+
+// What holy sword adds to damage against the opposite alignment.
+int holy_sword_alignment_damage(const Rolls &rolls)
+{
+	return rolls.dice(2, 6);
+}
+
+// The percent of its damage a spell that burst through magic resistance loses.
+int spell_penetration_damage_cut(const Rolls &rolls)
+{
+	return rolls.number(20, 70);
+}
+
+// What the properties file adds to that percent.
+float spell_penetration_damage_cut_bonus()
+{
+	return get_property("skill.spellPenetration.damageReductionMod", 1.00);
+}
 
 extern float dam_factor[LAST_DF + 1];
+
+// A spell damage modifier as a page shows it, such as +35% or -15%.
+static std::string spell_mod_text(double mod)
+{
+	return (mod > 0 ? "+" : "") + share_percent((float)mod);
+}
+
+// The level elemental power's damage starts at.
+static int elemental_power_level()
+{
+	return 35;
+}
+
+std::string elemental_power_innate_facts(P_char ch)
+{
+	extern int elemental_power_save_change(int level);
+	extern float elemental_power_area_factor();
+	const int level = GET_LEVEL(ch);
+	return fact("Your elemental spell damage from level " +
+			    std::to_string(elemental_power_level()),
+		    spell_mod_text(dam_factor[DF_ELEMENTALIST] - 1.0)) +
+	       "  It counts fire, cold, lightning, gas, acid and earth damage.\n" +
+	       fact("A target's save against your scathing wind",
+		    std::to_string(elemental_power_save_change(level)) + " harder at your level, " +
+			    std::to_string(level)) +
+	       fact("Your earthen rain's damage",
+		    share_percent(elemental_power_area_factor()) + " of normal") +
+	       fact("Your earthen grasp's damage level",
+		    share_percent(elemental_power_area_factor()) + " of your level");
+}
+
+static double magical_reduction_mod()
+{
+	return -0.2;
+}
+
+std::string magical_reduction_innate_facts(P_char /*ch*/)
+{
+	return fact("Generic spell damage you take", spell_mod_text(magical_reduction_mod())) +
+	       "  Only damage with no element counts, multiplied with other modifiers.\n";
+}
+
+static double magic_vulnerability_mod()
+{
+	return 0.1;
+}
+
+std::string magic_vulnerability_innate_facts(P_char /*ch*/)
+{
+	return fact("Ogre or firbolg: spell damage you take, of its base",
+		    spell_mod_text(magic_vulnerability_mod())) +
+	       "  It adds to the other modifiers of that kind before multipliers apply.\n";
+}
+
+// How long fire keeps a troll's regeneration down, in pulses.
+int troll_burn_duration()
+{
+	return WAIT_SEC * 30;
+}
+
+std::string vuln_fire_innate_facts(P_char /*ch*/)
+{
+	extern int troll_burned_regeneration();
+	return fact("Fire spell damage you take", spell_mod_text(dam_factor[DF_VULNFIRE] - 1.0)) +
+	       fact("With a fire shield, added to that",
+		    spell_mod_text(dam_factor[DF_ELSHIELDRED_TROLL] - 1.0)) +
+	       fact("Or with protection from fire",
+		    spell_mod_text(dam_factor[DF_PROTECTION_TROLL] - 1.0)) +
+	       "  Other fire modifiers add to these.\n"
+	       "  A troll's regeneration also falls to " +
+	       std::to_string(troll_burned_regeneration()) + " for " +
+	       seconds(troll_burn_duration()) + " after each one.\n";
+}
+
+// What cold does to a fire elemental or efreet.
+static double fire_race_cold_mod(bool efreet)
+{
+	return (efreet ? (.75 * dam_factor[DF_VULNCOLD]) : (dam_factor[DF_VULNCOLD])) - 1.0;
+}
+
+std::string fire_aura_innate_facts(P_char ch)
+{
+	extern double aura_absorb_healing(double dam);
+	extern double aura_absorb_cap(P_char victim);
+	return fact("Fire elemental: cold spell damage you take",
+		    spell_mod_text(fire_race_cold_mod(false))) +
+	       fact("Efreet: cold spell damage you take",
+		    spell_mod_text(fire_race_cold_mod(true))) +
+	       fact("Fire spells absorbed heal",
+		    share_percent(aura_absorb_healing(1.0)) + " of their damage") +
+	       fact("Up to", std::to_string((int)aura_absorb_cap(ch)) + " hit points") +
+	       "  A fire elemental absorbs them always, others under a fire shield.\n";
+}
+
+std::string ice_aura_innate_facts(P_char ch)
+{
+	extern double aura_absorb_healing(double dam);
+	extern double aura_absorb_cap(P_char victim);
+	return fact("Fire spell damage you take", spell_mod_text(dam_factor[DF_VULNFIRE] - 1.0)) +
+	       fact("Under a cold shield, cold spells absorbed heal",
+		    share_percent(aura_absorb_healing(1.0)) + " of their damage") +
+	       fact("Up to", std::to_string((int)aura_absorb_cap(ch)) + " hit points");
+}
+
+std::string prot_fire_innate_facts(P_char /*ch*/)
+{
+	extern int wall_of_flames_protected(int dam);
+	return fact("Fire spell damage you take", spell_mod_text(dam_factor[DF_PROTECTION] - 1.0)) +
+	       "  A fire shield's reduction replaces it, and vulnerability to fire changes\n"
+	       "  it; other fire modifiers add to it.\n" +
+	       fact("A wall of flames' burn",
+		    std::to_string(wall_of_flames_protected(100)) + "% of normal");
+}
+
+std::string prot_cold_innate_facts(P_char /*ch*/)
+{
+	extern int wall_of_ice_protected(int dam);
+	return fact("Cold spell damage you take", spell_mod_text(dam_factor[DF_PROTECTION] - 1.0)) +
+	       "  A cold shield's reduction replaces it, and other cold modifiers add to it.\n" +
+	       fact("Damage from a wall of ice",
+		    std::to_string(wall_of_ice_protected(100)) + "% of normal");
+}
+
+// Sacrilegious power cuts holy damage to undead by level.
+static double sacrilegious_holy_factor(int level)
+{
+	double levelmod = 1.0;
+	if (level >= 46)
+		levelmod = 0.75;
+	if (level >= 51)
+		levelmod = 0.5;
+	if (level >= 56)
+		levelmod = 0.25;
+	return levelmod;
+}
+
+std::string sacrilegious_power_innate_facts(P_char ch)
+{
+	const auto line = [](int level)
+	{
+		return fact("Holy spell damage you take from level " + std::to_string(level),
+			    share_percent(sacrilegious_holy_factor(level)) + " of normal");
+	};
+	return line(46) + line(51) + line(56) +
+	       fact("At your level",
+		    share_percent(sacrilegious_holy_factor(GET_LEVEL(ch))) + " of normal") +
+	       "  Only if you are of an undead race. Other holy modifiers add to it.\n";
+}
+
+static int vuln_cold_slow_save()
+{
+	return 2;
+}
+
+static int vuln_cold_slow_duration()
+{
+	return 60;
+}
+
+std::string vuln_cold_innate_facts(P_char /*ch*/)
+{
+	return fact("Cold spell damage you take, of its base",
+		    spell_mod_text(dam_factor[DF_VULNCOLD] - 1.0)) +
+	       "  It adds to the other modifiers of that kind before multipliers apply.\n" +
+	       fact("You are slowed if you fail a paralysis save, " +
+			    std::to_string(vuln_cold_slow_save()) + " harder",
+		    seconds(vuln_cold_slow_duration()));
+}
+
+// Warcaller's fury: the damage bonus for the target's group and your level, and what
+// each other holder in your group and room adds.
+static double warcallers_fury_bonus(int group_size, int level)
+{
+	return BOUNDEDF(.02, (group_size / 100.0) + (level / 1120.0), (double).15);
+}
+
+static int warcallers_fury_max_steps()
+{
+	return (int)get_property("innate.warcallersfury.maxSteps", 3);
+}
+
+static double warcallers_fury_step(int count)
+{
+	return (count / 30.0);
+}
+
+std::string warcallers_fury_innate_facts(P_char ch)
+{
+	char step[320];
+	snprintf(step, sizeof(step), "+%.1f%%", warcallers_fury_step(1) * 100);
+	return fact("Damage you deal to a lone target",
+		    "+" + share_percent(warcallers_fury_bonus(0, GET_LEVEL(ch))) +
+			    " at your level") +
+	       fact("Most for a target's group",
+		    "+" + share_percent(warcallers_fury_bonus(100, 1))) +
+	       "  Each player in the target's group here adds " +
+	       share_percent((float)(warcallers_fury_bonus(1, 56) - warcallers_fury_bonus(0, 56))) +
+	       ".\n" + fact("Each other holder grouped with you here", step) +
+	       fact("Holders counted, at most", std::to_string(warcallers_fury_max_steps()));
+}
+
+// The chance threshold, rolled 1-250, of an arcane block on a spell.
+static int arcane_block_threshold(P_char victim)
+{
+	return (GET_LEVEL(victim) + GET_C_LUK(victim) / 10 +
+		GET_CHAR_SKILL(victim, SKILL_ARCANE_BLOCK));
+}
+
+// The percent of a spell's damage an arcane block disperses.
+static int arcane_block_reduction(const Rolls &rolls, P_char victim)
+{
+	return rolls.number(1, get_property("skill.arcane.block.dam.reduction", .4) *
+				       GET_CHAR_SKILL(victim, SKILL_ARCANE_BLOCK));
+}
+
+std::string arcane_block_facts(P_char ch)
+{
+	if (GET_CHAR_SKILL(ch, SKILL_ARCANE_BLOCK) <= 0)
+		return "  You need this skill to block spells.\n";
+	return fact("Chance to block a spell of more than 15 damage",
+		    chance_under(arcane_block_threshold(ch) + 1, 1, 250)) +
+	       fact("Less spell damage you take",
+		    show({ arcane_block_reduction(lowest_rolls, ch),
+			   arcane_block_reduction(highest_rolls, ch) }) +
+			    "%") +
+	       "    (added with your other spell damage modifiers)\n"
+	       "  Not while stunned or unable to move.\n";
+}
 extern float racial_spldam_offensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE];
 extern float racial_spldam_defensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE];
+
+float aura_battlelust_mod()
+{
+	return get_property("innate.paladin_aura.battlelust_mod", 0.2);
+}
 
 dam_mod_predicate spell_damage_modifiers[] = {
 	{ MAKE_DAM_MOD_PRED(){ if (get_linked_char(victim, LNK_PET) && IS_PC(caster)){
@@ -61,7 +320,8 @@ dam_mod->type = dam_mod_type::More;
 }
 , { MAKE_DAM_MOD_PRED(){
 	  if (ELEMENTAL_DAM(damageType) && has_innate(caster, INNATE_ELEMENTAL_POWER) &&
-	      GET_LEVEL(caster) >= 35){ dam_mod->mod += dam_factor[DF_ELEMENTALIST] - 1.0;
+	      GET_LEVEL(caster) >= elemental_power_level()){ dam_mod->mod +=
+							     dam_factor[DF_ELEMENTALIST] - 1.0;
 dam_mod->type = dam_mod_type::More;
 }
 }
@@ -70,12 +330,9 @@ dam_mod->type = dam_mod_type::More;
 			     !IS_TRUSTED(victim) && !IS_STUNNED(victim) && !IS_IMMOBILE(victim)){
 	  if (damage > 15 &&
 	      (notch_skill(victim, SKILL_ARCANE_BLOCK, get_property("skill.notch.arcane", 10)) ||
-	       number(1, 250) <= (GET_LEVEL(victim) + GET_C_LUK(victim) / 10 +
-				  GET_CHAR_SKILL(victim, SKILL_ARCANE_BLOCK)) ||
+	       number(1, 250) <= arcane_block_threshold(victim) ||
 	       ((IS_ELITE(victim) || IS_GREATER_RACE(victim)) && !number(0, 4)))){
-		  dam_mod->mod = -(number(1, get_property("skill.arcane.block.dam.reduction", .4) *
-						     GET_CHAR_SKILL(victim, SKILL_ARCANE_BLOCK))) /
-				 100.0;
+		  dam_mod->mod = -(arcane_block_reduction(live_rolls, victim)) / 100.0;
 dam_mod->type = dam_mod_type::More;
 
 act("$N raises hands performing an &+Marcane gesture&n and some of $n's &+mspell energy&n is dispersed.",
@@ -88,8 +345,8 @@ act("You perform an &+Marcane gesture&n dispersing some of $n's &+mspell energy.
 }
 }
 }
-, { MAKE_DAM_MOD_PRED(){ if (damageType == SPLDAM_GENERIC &&
-			     has_innate(victim, MAGICAL_REDUCTION)){ dam_mod->mod += -0.2;
+, { MAKE_DAM_MOD_PRED(){ if (damageType == SPLDAM_GENERIC && has_innate(victim, MAGICAL_REDUCTION)){
+	  dam_mod->mod += magical_reduction_mod();
 dam_mod->type = dam_mod_type::More;
 }
 }
@@ -136,7 +393,7 @@ if (has_innate(victim, INNATE_VULN_FIRE))
 		bzero(&af, sizeof(af));
 		af.type = TAG_TROLL_BURN;
 		af.flags = AFFTYPE_SHORT | AFFTYPE_NOSHOW | AFFTYPE_NODISPEL;
-		af.duration = WAIT_SEC * 30;
+		af.duration = troll_burn_duration();
 		affect_to_char(victim, &af);
 	}
 	else
@@ -146,7 +403,7 @@ if (has_innate(victim, INNATE_VULN_FIRE))
 		{
 			if (af1->type == TAG_TROLL_BURN)
 			{
-				af1->duration = WAIT_SEC * 30;
+				af1->duration = troll_burn_duration();
 				break;
 			}
 		}
@@ -199,9 +456,7 @@ if (IS_AFFECTED5(victim, AFF5_WET))
 if (GET_RACE(victim) == RACE_F_ELEMENTAL || IS_EFREET(victim))
 {
 	dam_mod->type = dam_mod_type::More;
-	dam_mod->mod +=
-		(IS_EFREET(victim) ? (.75 * dam_factor[DF_VULNCOLD]) : (dam_factor[DF_VULNCOLD])) -
-		1.0;
+	dam_mod->mod += fire_race_cold_mod(IS_EFREET(victim));
 	act("&+BYour icy spell makes&n $N &+Bwrithe in agony!&n", TRUE, caster, 0, victim, TO_CHAR);
 	act("$n's &+Bicy spell causes you to writhe in agony!&n", TRUE, caster, 0, victim, TO_VICT);
 	act("$n's &+Bicy spell causes&n $N to writhe in agony!&n", TRUE, caster, 0, victim,
@@ -299,14 +554,7 @@ if (victim && IS_UNDEADRACE(victim))
 {
 	double levelmod = 1.0;
 	if (has_innate(victim, INNATE_SACRILEGIOUS_POWER))
-	{
-		if (GET_LEVEL(victim) >= 46)
-			levelmod = 0.75;
-		if (GET_LEVEL(victim) >= 51)
-			levelmod = 0.5;
-		if (GET_LEVEL(victim) >= 56)
-			levelmod = 0.25;
-	}
+		levelmod = sacrilegious_holy_factor(GET_LEVEL(victim));
 	dam_mod->mod += levelmod - 1.0;
 	dam_mod->type = dam_mod_type::More;
 
@@ -383,12 +631,12 @@ dam_mod->type = dam_mod_type::More;
 
 if (GET_RACE(victim) == RACE_OGRE)
 {
-	dam_mod->mod += 0.1;
+	dam_mod->mod += magic_vulnerability_mod();
 	dam_mod->type = dam_mod_type::Increased;
 }
 else if (GET_RACE(victim) == RACE_FIRBOLG)
 {
-	dam_mod->mod += 0.1;
+	dam_mod->mod += magic_vulnerability_mod();
 	dam_mod->type = dam_mod_type::Increased;
 }
 }
@@ -485,7 +733,7 @@ dam_mod->type = dam_mod_type::Increased;
 send_to_char("&+CThe freezing cold causes you intense pain!\n", victim);
 act("&+CThe freezing cold causes&n $n&+C intense pain!&n", FALSE, victim, 0, 0, TO_ROOM);
 
-if (!NewSaves(victim, SAVING_PARA, 2))
+if (!NewSaves(victim, SAVING_PARA, vuln_cold_slow_save()))
 {
 	struct affected_type af;
 
@@ -496,7 +744,7 @@ if (!NewSaves(victim, SAVING_PARA, 2))
 	bzero(&af, sizeof(af));
 	af.type = SPELL_SLOW;
 	af.flags = AFFTYPE_SHORT;
-	af.duration = 60;
+	af.duration = vuln_cold_slow_duration();
 	af.bitvector2 = AFF2_SLOW;
 	affect_to_char(victim, &af);
 }
@@ -510,11 +758,11 @@ dam_mod->type = dam_mod_type::More;
 }
 }
 , { MAKE_DAM_MOD_PRED(){ if (affected_by_spell(victim, SKILL_SPELL_PENETRATION)){
-	  int damageReductionMod = number(20, 70);
+	  int damageReductionMod = spell_penetration_damage_cut(live_rolls);
 dam_mod->type = dam_mod_type::More;
 dam_mod->mod = -(damageReductionMod / 100.0);
 // Use this properties file to make fine adjustments to this from now on.
-dam_mod->mod += -(get_property("skill.spellPenetration.damageReductionMod", 1.00) / 100.0);
+dam_mod->mod += -(spell_penetration_damage_cut_bonus() / 100.0);
 affect_from_char(victim, SKILL_SPELL_PENETRATION);
 }
 }
@@ -581,7 +829,9 @@ else if (get_linking_char(victim, LNK_ETHEREAL))
 
 if (IS_ALIVE(eth_ch))
 {
-	double localDam = damage * 0.5;
+	extern double ethereal_alliance_partner_damage(double damage);
+	extern double ethereal_alliance_damage_mod();
+	double localDam = ethereal_alliance_partner_damage(damage);
 
 	send_to_char(
 		"&+cThe damage passes through the &+Wether&+c being absorbed by your alliance!\n",
@@ -592,7 +842,7 @@ if (IS_ALIVE(eth_ch))
 	raw_damage(caster, eth_ch, localDam, RAWDAM_DEFAULT ^ flags, messages);
 
 	dam_mod->type = dam_mod_type::More;
-	dam_mod->mod += -0.5;
+	dam_mod->mod += ethereal_alliance_damage_mod();
 }
 }
 }
@@ -600,7 +850,7 @@ if (IS_ALIVE(eth_ch))
 , { MAKE_DAM_MOD_PRED(){ if (affected_by_spell(victim, SKILL_DREADNAUGHT)){
 	  struct affected_type *paf = get_spell_from_char(victim, SKILL_DREADNAUGHT);
 // 5% to 20% reduction based on skill level (with a chance for a few extra percent when skill is 95+)
-double skill = BOUNDED(5, paf->level / 5, 20) + (paf->level > 95 ? number(0, paf->level - 95) : 0);
+double skill = dreadnaught_spell_defense(live_rolls, paf);
 double reduction = (100.0 - skill) / 100.0;
 dam_mod->type = dam_mod_type::Increased;
 dam_mod->mod = reduction - 1.0;
@@ -694,7 +944,7 @@ if (IS_HARDCORE(victim))
 , { MAKE_DAM_MOD_PRED(){
 	  if ((IS_GOOD(caster) && affected_by_spell(caster, SPELL_HOLY_SWORD) && IS_EVIL(victim)) ||
 	      (IS_EVIL(caster) && affected_by_spell(caster, SPELL_HOLY_SWORD) && IS_GOOD(victim))){
-		  dam_mod->mod += dice(2, 6);
+		  dam_mod->mod += holy_sword_alignment_damage(live_rolls);
 dam_mod->type = dam_mod_type::Added;
 }
 }
@@ -738,9 +988,7 @@ dam_mod->type = dam_mod_type::More;
 }
 , { MAKE_DAM_MOD_PRED(){ if (IS_AFFECTED3(caster, AFF3_PALADIN_AURA) &&
 			     has_aura(caster, AURA_BATTLELUST) && !(flags & PHSDAM_NOREDUCE)){
-	  dam_mod->mod += ((get_property("innate.paladin_aura.battlelust_mod", 0.2) *
-			    aura_mod(caster, AURA_BATTLELUST)) /
-			   100.0);
+	  dam_mod->mod += ((aura_battlelust_mod() * aura_mod(caster, AURA_BATTLELUST)) / 100.0);
 dam_mod->type = dam_mod_type::More;
 }
 }
@@ -753,7 +1001,7 @@ dam_mod->type = dam_mod_type::More;
 }
 , { MAKE_DAM_MOD_PRED(){ if (has_innate(caster, INNATE_WARCALLERS_FURY)){
 	  int group_size = num_group_members_in_room(victim);
-double bonus = BOUNDEDF(.02, (group_size / 100.0) + (GET_LEVEL(caster) / 1120.0), (double).15);
+double bonus = warcallers_fury_bonus(group_size, GET_LEVEL(caster));
 
 dam_mod->mod += bonus;
 dam_mod->type = dam_mod_type::More;
@@ -770,8 +1018,8 @@ if (caster->group)
 	}
 	if (count > 0)
 	{
-		count = MIN(count, (int)get_property("innate.warcallersfury.maxSteps", 3));
-		dam_mod->mod += (count / 30.0);
+		count = MIN(count, warcallers_fury_max_steps());
+		dam_mod->mod += warcallers_fury_step(count);
 	}
 }
 }

@@ -111,7 +111,8 @@ if shutil.which("g++"):
         directory_path = Path(directory)
         harness = directory_path / "harness.cpp"
         binary = directory_path / "harness"
-        func_code = extract_function("classes/memorize.c", "void add_scribe_data(int spl,")
+        func_code = (extract_function("classes/memorize.c", "static int scribe_first_page_wait(") + "\n" +
+                     extract_function("classes/memorize.c", "void add_scribe_data(int spl,"))
         harness.write_text(PRELUDE + func_code + DRIVER, encoding="utf-8")
         subprocess.run(
             [

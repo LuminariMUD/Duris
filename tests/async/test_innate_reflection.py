@@ -19,13 +19,16 @@ prelude = r'''
 #include "cmd/interp.h"
 #include "magic/spells.h"
 #include "classes/necromancy.h"
+#include "abilities/abilities.h"
+#include "world/events.h"
 #include <cassert>
 #include <cstring>
+#include <regex>
 #include <string>
 Skill skills[MAX_SKILLS];
 index_data indexes[1]{};
 P_index mob_index = indexes;
-static int casts, lag, timer_seconds = 300;
+static int casts, lag, timer_seconds = 300, uses = 1, rest_left = 0;
 static std::string output;
 bool SanityCheck(P_char ch, const char *) { return ch != nullptr; }
 int fill_word(char *) { return false; }
@@ -37,8 +40,14 @@ void do_innate_reflection(P_char, char *, int);
 void send_to_char(const char *text, P_char) { output += text; }
 void CharWait(P_char, int pulses) { lag += pulses; }
 int get_property(const char *key, int fallback) {
+    if (strcmp(key, "innate.uses.reflection") == 0) return uses;
     return strcmp(key, "innate.timer.secs.reflection") == 0 ? timer_seconds : fallback;
 }
+int ne_event_time(P_nevent) { return rest_left; }
+static std::string reflection_spell_facts(P_char) { return "  Spell line\n"; }
+AbilityFacts ability_facts(int skill) { return skill == SPELL_REFLECTION ? reflection_spell_facts : nullptr; }
+std::string reflection_innate_facts(P_char);
+AbilityFacts innate_facts(int innate) { return innate == INNATE_REFLECTION ? reflection_innate_facts : nullptr; }
 affected_type *affect_to_char(P_char ch, affected_type *af) {
     auto *copy = new affected_type(*af);
     copy->next = ch->affected; ch->affected = copy; return copy;
@@ -56,7 +65,7 @@ static void clear(P_char ch) {
 }
 '''
 functions = [
-    ('utility.c', 'int flag2idx('),
+    ('utility.c', 'int flag2idx('), ('utility.c', 'string strip_ansi('),
     ('interp.c', 'void argument_interpreter('), ('interp.c', 'char *one_argument('),
     ('interp.c', 'bool is_abbrev('),
     ('utility.c', 'int strn_cmp('), ('sparser.c', 'char *skip_spaces('),
@@ -65,12 +74,31 @@ functions = [
     ('innates.c', 'void get_property_format('), ('innates.c', 'int get_innate_property('),
     ('innates.c', 'static int innate_char_race('), ('innates.c', 'static int innate_unlock_level('),
     ('innates.c', 'bool has_innate('), ('innates.c', 'void assign_innates('),
+    ('innates.c', 'static struct affected_type *find_innate_timer('), ('innates.c', 'static int innate_rest_seconds('), ('innates.c', 'static int innate_uses('), 
     ('innates.c', 'bool can_use_innate('), ('innates.c', 'bool check_innate_time('),
-    ('innates.c', 'void do_innate_reflection(P_char ch'), ('innates.c', 'void do_innate(P_char ch,'),
+    ('innates.c', 'static int reflection_innate_lag('), ('innates.c', 'void do_innate_reflection(P_char ch'), ('innates.c', 'void do_innate(P_char ch,'),
+    ('abilities.c', 'std::string fact('), ('abilities.c', 'std::string seconds('),
+    ('abilities.c', 'std::string real_time('), ('abilities.c', 'std::string info_field('),
+    ('abilities.c', 'static std::string bright_numbers('), ('abilities.c', 'std::string mechanics_section('),
+    ('innates.c', 'std::string innate_rest_facts('), ('innates.c', 'static std::string innate_status('),
+    ('innates.c', 'void innate_info(P_char ch'), ('innates.c', 'std::string reflection_innate_facts('),
 ]
 production = '\n'.join(extract_function(file, signature) for file, signature in functions)
 driver = r'''
 static void reflect(P_char ch) { char args[] = "reflection someone_else"; do_innate(ch, args, CMD_INNATE); }
+static std::string info(P_char ch, const char *name) {
+    output.clear();
+    std::string args = std::string("info ") + name;
+    do_innate(ch, args.data(), CMD_INNATE);
+    return strip_ansi(output.c_str());
+}
+static bool has(const std::string &text, const char *part) { return text.find(part) != std::string::npos; }
+static std::string innate_list(P_char ch) {
+    output.clear();
+    char args[] = "";
+    do_innate(ch, args, CMD_INNATE);
+    return strip_ansi(output.c_str());
+}
 int main() {
     assign_innates();
     assert(INNATE_WEB_SPRAY == 178 && INNATE_REFLECTION == 179);
@@ -107,6 +135,44 @@ int main() {
     link.type = LNK_PET; indexes[0].virtual_number = IMAGE_REFLECTION_VNUM;
     timer_seconds = 17; reflect(&ch);
     assert(casts == 1 && ch.affected->duration == 17 * WAIT_SEC); clear(&ch);
+    // innate info: access, a read-only status, and the shared mechanics.
+    clear(&ch); ch.linked = nullptr; ch.player.race = RACE_GNOME; ch.player.level = 30;
+    timer_seconds = 300;
+    std::string page = info(&ch, "refl");
+    assert(has(page, "reflection : INNATE INFO") && has(page, "Type: Active"));
+    assert(has(page, "Unlocks for you at level 31.") && !has(page, "Status:"));
+    assert(has(page, "  Effect: casts your reflection spell on you at your level\n  Spell line\n"));
+    assert(has(page, "  Uses: 1 before it rests\n"));
+    assert(has(page, "  Rest: all uses return 5 minutes after the first\n"));
+    assert(has(page, "  Your lag: 4 seconds\n"));
+    ch.player.level = 31;
+    assert(has(info(&ch, "reflection"), "You have it (from level 31).\n  Status: ready\n"));
+    reflect(&ch);
+    nevent_data rest{}; event_short_affect_data rest_data{};
+    rest.func = event_short_affect; rest_data.af = ch.affected; rest.data = &rest_data;
+    ch.nevents = &rest; rest_left = 75 * WAIT_SEC;
+    const affected_type before = *ch.affected;
+    assert(has(info(&ch, "reflection"), "Status: resting; ready in 1 minute 15 seconds\n"));
+    assert(ch.affected->modifier == before.modifier && ch.affected->duration == before.duration);
+    clear(&ch); ch.nevents = nullptr; uses = 3; reflect(&ch); ch.nevents = &rest;
+    rest_data.af = ch.affected; rest_left = 30 * WAIT_SEC;
+    page = info(&ch, "reflection");
+    assert(has(page, "Status: 2 uses left; all uses return in 30 seconds\n"));
+    assert(has(page, "  Uses: 3 before it rests\n"));
+    clear(&ch); ch.nevents = nullptr; uses = 1;
+    ch.player.race = RACE_HUMAN;
+    assert(has(info(&ch, "reflection"), "Not available to your race, class or specialization."));
+    assert(has(info(&ch, "nothing such"), "Provide a known innate name"));
+    // The plain list ends with its subcommands, their descriptions in one column.
+    assert(has(innate_list(&ch), "\n  Use:  innate <name> [arguments]\n"
+                                 "  Info: innate info <name>        access, status and mechanics\n"
+                                 "  List: innate list [all|player]  every innate and who gets it\n"));
+    // Names that share a first word resolve by the whole name.
+    assert(has(info(&ch, "protection from cold"), "protection from cold : INNATE INFO"));
+    assert(has(info(&ch, "summon warg  "), "summon warg : INNATE INFO"));
+    // The harness table keeps only Reflection's handler; the others read as always active.
+    page = info(&ch, "infravision");
+    assert(has(page, "infravision : INNATE INFO") && has(page, "Type: Always active") && !has(page, "Mechanics"));
     puts("Reflection: real dispatch, race/level grants, self targeting, configurable cooldown and titan rejection passed.");
 }
 '''

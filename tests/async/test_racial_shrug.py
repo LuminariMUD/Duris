@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
+from _innate_numbers import with_innate_numbers
 
 innates = source("classes/innates.c").read_text()
 macros = innates[innates.index("#define ADD_RACIAL_INNATE"):innates.index("float regen_factor")]
@@ -86,7 +87,7 @@ build = ROOT / "bin/tests"
 build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="racial-shrug-", dir=build) as directory:
     cpp, binary = Path(directory) / "harness.cpp", Path(directory) / "harness"
-    cpp.write_text(prelude + macros + arrays + race_table + production + driver)
+    cpp.write_text(with_innate_numbers(prelude + macros + arrays + race_table + production + driver))
     subprocess.run([os.environ.get("CXX", "g++"), "-std=c++20", "-g", "-ffunction-sections",
                     "-fdata-sections", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
                     "-fno-pie", "-no-pie", "-I" + str(ROOT / "src"),

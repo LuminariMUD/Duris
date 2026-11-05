@@ -3,6 +3,7 @@
 from pathlib import Path
 import subprocess
 from _paths import ROOT, extract_function
+from _innate_numbers import with_innate_numbers
 from _paths import HARNESS_STUBS
 
 PRELUDE = r'''
@@ -245,13 +246,16 @@ int main() {
 output = ROOT / 'bin' / 'tests' / 'healing-spell-precedence'
 output.mkdir(parents=True, exist_ok=True)
 harness = output / 'harness.cpp'
-harness.write_text(PRELUDE + '\n'.join([
+harness.write_text(with_innate_numbers(PRELUDE + '\n'.join([
     extract_function('specs.eth2.c', 'static affected_type *find_aramus_crown_regeneration('),
+    extract_function('magic.c', 'static int regeneration_duration('),
     extract_function('magic.c', 'void spell_regeneration('),
+    extract_function('magic.c', 'static int accel_healing_duration('),
+    extract_function('magic.c', 'static int accel_healing_regen('),
     extract_function('magic.c', 'void spell_accel_healing('),
     extract_function('limits.c', 'int hit_regen('),
     extract_function('specs.eth2.c', 'void event_aramus_crown_sleep_check('),
-]) + DRIVER)
+]) + DRIVER))
 binary = output / 'harness'
 subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
                 '-fsanitize=address,undefined', '-I' + str(ROOT / 'src'),

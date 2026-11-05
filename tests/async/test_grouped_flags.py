@@ -63,12 +63,14 @@ harness = r'''
 #include "core/structs.h"
 #include "core/utils.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include <cassert>
 #include <cstdio>
 
 room_data rooms[1]{};
 P_room world = rooms;
 int number(int low, int) { return low; }
+const Rolls live_rolls = { nullptr, number };
 int IS_MORPH(P_char) { return false; }
 bool AdjacentInRoom(P_char, P_char) { return true; }
 affected_type *get_spell_from_char(P_char, int, void *, int) { return nullptr; }
@@ -79,6 +81,7 @@ P_char get_linking_char(P_char, ush_int) { return nullptr; }
 for line in (SRC / "bard.c").read_text(encoding="utf-8").splitlines():
     if line.startswith(("#define SONG_AGGRESSIVE ", "#define SONG_ALLIES ")):
         harness += line + "\n"
+harness += extract_function("bard.c", "static int song_area_roll(") + "\n"
 harness += extract_function("utility.c", "bool grouped(P_char ch,") + "\n"
 harness += extract_function("utility.c", "bool should_area_hit(P_char ch,") + "\n"
 harness += "\n".join(wrappers)

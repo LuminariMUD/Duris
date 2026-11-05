@@ -484,6 +484,13 @@ int main() {
 
 functions = [extract_function("paladins.c", signature) for signature in (
     "bool has_aura(",
+    "static float blood_tithe_decay(",
+    "static float blood_tithe_hit_cap(",
+    "static float blood_tithe_max_bonus(",
+    "static float blood_tithe_reference_size(",
+    "static float blood_tithe_pvp_mod(",
+    "static int blood_tithe_duration(",
+    "static int blood_tithe_interval(",
     "static double blood_tithe_full_malice(",
     "static P_char blood_tithe_body(",
     "void spell_blood_tithe(",

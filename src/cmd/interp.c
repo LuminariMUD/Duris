@@ -66,6 +66,10 @@
 #include "net/unicode.h"
 #include "world/vnum.room.h"
 #include "world/weather.h"
+#include "abilities/abilities.h"
+
+extern int calming_command_roll(const Rolls &rolls);
+extern int calming_chance_bonus();
 
 /*
  * external variables
@@ -2518,7 +2522,7 @@ void command_interpreter(P_char ch, char *argument)
 					    !number(0, 19))
 						// 5% chance for calming to work.
 						if (!has_innate(ch, INNATE_CALMING) ||
-						    !number(0, 19))
+						    !calming_command_roll(live_rolls))
 							// And the charisma calm chance.
 							if (number(1, 100) > CALMCHANCE(exec_char))
 								check_aggro_from_command(exec_char);
@@ -3953,7 +3957,7 @@ void check_aggro_from_command(P_char exec_char)
 	// Innate calming is +10% chance for this type of aggro check.
 	if (has_innate(exec_char, INNATE_CALMING))
 	{
-		calming_chance += 10;
+		calming_chance += calming_chance_bonus();
 	}
 
 	// Check for a PC master (controller of exec_char) that's in the same room.
@@ -4031,9 +4035,10 @@ void check_aggro_from_command(P_char exec_char)
 				if (IS_ALIVE(exec_master) && exec_master->in_room == room)
 				{
 					exec_char = exec_master;
-					calming_chance =
-						CALMCHANCE(exec_char) +
-						(has_innate(exec_char, INNATE_CALMING) ? 10 : 0);
+					calming_chance = CALMCHANCE(exec_char) +
+							 (has_innate(exec_char, INNATE_CALMING) ?
+								  calming_chance_bonus() :
+								  0);
 					exec_master = NULL;
 				}
 				else

@@ -12,9 +12,12 @@ HARNESS = r'''
 #include "core/utils.h"
 #include "cmd/wikihelp.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include <cassert>
 #include <cstdarg>
 #include <cstdio>
+#include <regex>
+#include <sstream>
 #include <string>
 extern const struct class_names class_names_table[];
 extern const char *specdata[][MAX_SPEC];
@@ -40,6 +43,26 @@ P_obj SpellInSpellBook(P_char target, int spell, int mode) {
     return spell == SPELL_FIREBALL ? reinterpret_cast<P_obj>(1) : nullptr;
 }
 std::string wiki_help_single(std::string name) { help_name = name; return help_result; }
+static std::string fireball_mechanics(P_char) { return "  Fire damage: 1-2\n"; }
+AbilityFacts ability_facts(int spell) { return spell == SPELL_FIREBALL ? fireball_mechanics : nullptr; }
+// Every availability row's circle starts in the same column; returns the rows checked.
+static int circles_line_up(const std::string &text) {
+    const size_t start = text.find("Class / specialization availability\n");
+    std::istringstream rows(text.substr(start, text.find("Unlisted specializations") - start));
+    std::string row;
+    size_t column = std::string::npos;
+    int count = 0;
+    std::getline(rows, row);
+    while (std::getline(rows, row)) {
+        size_t at = row.find("Circle ");
+        if (at == std::string::npos) at = row.find("Unavailable");
+        if (at == std::string::npos) continue;
+        if (column == std::string::npos) column = at;
+        assert(at == column);
+        ++count;
+    }
+    return count;
+}
 static std::string run(P_char ch, std::string args) {
     output.clear(); help_name.clear(); lookups = book_checks = 0;
     do_spells(ch, args.data(), 0);
@@ -135,6 +158,9 @@ int main() {
     assert(run(&ch, "info Undefined").find("Provide a known") != std::string::npos);
     text = run(&ch, " info   FiReBaLl  ");
     assert(help_name == "fireball" && text.find("cast 'fireball'") != std::string::npos);
+    assert(circles_line_up(text) == 3); // the conjurer row and its two changed specializations
+    assert(text.find("\n    Fire Magus (Conjurer)") != std::string::npos);
+    assert(text.find("readiness to cast.\n\n  Mechanics\n  Fire damage: 1-2\n\n  Helpfile details") != std::string::npos);
     assert(text.find("Registered aggression: Yes") != std::string::npos);
     assert(text.find("Circle 2 (changed)") != std::string::npos);
     assert(text.find("Unavailable (lost from base class)") != std::string::npos);
@@ -146,11 +172,17 @@ int main() {
     assert(run(&ch, "info fireball").find("Not available through") != std::string::npos);
     ch.player.spec = SPEC_FIRE;
     assert(run(&ch, "info fire form").find("Circle 10 (added)") != std::string::npos);
+    // A specialization whose class has no row of its own is not indented under another.
+    text = run(&ch, "info fire form");
+    assert(text.find("\n  Water Magus (Conjurer) Circle 1 (added)\n"
+                     "  Fire Magus (Conjurer)  Circle 10 (added)\n") != std::string::npos);
+    assert(circles_line_up(text) == 2);
     assert(run(&ch, "info fireball").find("Your required Circle: 2") != std::string::npos);
     ch.player.secondary_class = CLASS_CLERIC;
     assert(run(&ch, "").starts_with(">====[ Scholar | Conjurer / Fire Magus + Cleric | Max Circle 3 ]====<\n"));
     ch.player.spec = 0;
     assert(run(&ch, "info heal").find("Your required Circle: 7") != std::string::npos);
+    assert(run(&ch, "info heal").find("readiness to cast.\n\n  Helpfile details") != std::string::npos);
     // A primary grant takes precedence even if a secondary grant is earlier.
     skills[SPELL_FIREBALL].m_class[flag2idx(CLASS_CLERIC)-1].rlevel[0] = 1;
     assert(run(&ch, "info fireball").find("Your required Circle: 3") != std::string::npos);
@@ -263,6 +295,9 @@ def main():
         ("memorize.c", "static bool can_assimilate("),
         ("memorize.c", "const char *spell_interface_command("),
         ("memorize.c", "const char *default_spell_interface_command("),
+        ("abilities.c", "std::string info_field("),
+        ("abilities.c", "static std::string bright_numbers("),
+        ("abilities.c", "std::string mechanics_section("),
         ("wikihelp.c", "string trim("),
     )]
     build = ROOT / "bin/tests"

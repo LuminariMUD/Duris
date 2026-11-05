@@ -85,6 +85,7 @@ using namespace std;
 #include "world/weather.h"
 #include "cmd/wikihelp.h"
 #include "core/safe_format.h"
+#include "abilities/abilities.h"
 
 /* * external variables */
 
@@ -166,6 +167,33 @@ extern void show_world_events(P_char ch, const char *arg);
 extern struct quest_data quest_index[];
 extern struct epic_bonus_data ebd[];
 extern long ne_event_counter;
+// Ophidian eyes: above these levels a dragoon gets farsee and sees invisible.
+int ophidian_farsee_level()
+{
+	return 40;
+}
+
+int ophidian_invisible_level()
+{
+	return 45;
+}
+
+std::string ophidian_eyes_innate_facts(P_char ch)
+{
+	extern int ophidian_track_penalty();
+	extern int track_sense_chance(int level);
+	return "  You see heat, as infravision does.\n" +
+	       fact("Farsee above level", std::to_string(ophidian_farsee_level())) +
+	       fact("Sees invisible above level", std::to_string(ophidian_invisible_level())) +
+	       "  Dragon priest: you see illusions and magic.\n"
+	       "  Dragon lancer: you see good and evil.\n"
+	       "  Dragon hunter: you sense life and traces beyond the veil.\n" +
+	       fact("Dragon hunter: chance to sense a trace",
+		    chance_under(track_sense_chance(GET_LEVEL(ch)), 1, 100)) +
+	       fact("Dragon hunter: improved tracking roll",
+		    std::to_string(ophidian_track_penalty()) + " harder");
+}
+
 extern int map_normal_modifier;
 extern int map_ultra_modifier;
 extern int map_dayblind_modifier;
@@ -710,6 +738,18 @@ char *find_ex_description(char *word, struct extra_descr_data *list)
 	return (0);
 }
 
+// How far off, in percent of its true age, a corpse's age can be guessed.
+static int age_corpse_error_percent(P_char ch)
+{
+	return 100 - GET_CHAR_SKILL(ch, SKILL_AGE_CORPSE);
+}
+
+std::string age_corpse_facts(P_char ch)
+{
+	return fact("How far your guess can be off",
+		    std::to_string(age_corpse_error_percent(ch)) + "% of the corpse's age");
+}
+
 int ageCorpse(P_char ch, P_obj obj, char *s)
 {
 	int maxErrorPercent, maxError, error;
@@ -735,7 +775,7 @@ int ageCorpse(P_char ch, P_obj obj, char *s)
 
 	realAge = obj_affect_time(obj, af) / PULSES_IN_TICK;
 
-	maxErrorPercent = 100 - GET_CHAR_SKILL(ch, SKILL_AGE_CORPSE);
+	maxErrorPercent = age_corpse_error_percent(ch);
 	maxError = (realAge * maxErrorPercent) / 100;
 	error = number(0, maxError);
 	if (number(0, 1))
@@ -2238,6 +2278,13 @@ void do_do(P_char /*ch*/, char * /*argument*/, int /*cmd*/)
 	return;
 }
 
+// A spell knowledge rating against the 1-100 roll to name a spell in a book of another
+// class; a lower rating does better.
+bool spell_book_recognizes(int rating, int roll)
+{
+	return rating <= roll;
+}
+
 // func assumes only PCs get in here
 
 void ShowCharSpellBookSpells(P_char ch, P_obj obj, char *short_desc)
@@ -2301,7 +2348,7 @@ void ShowCharSpellBookSpells(P_char ch, P_obj obj, char *short_desc)
 		}
 		if (!((GET_CLASS(ch, obj->value[1]) &&
 		       get_spell_circle(ch, j) <= get_max_circle(ch)) ||
-		      (GET_CHAR_SKILL(ch, k) <= number(1, 100) &&
+		      (spell_book_recognizes(GET_CHAR_SKILL(ch, k), number(1, 100)) &&
 		       (GET_CHAR_SKILL(ch, k) && number(1, 70) <= GET_LEVEL(ch)))))
 		{
 			continue;
@@ -2678,7 +2725,8 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 			}
 
 			if (IS_AFFECTED(ch, AFF_FARSEE) ||
-			    (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > 40))
+			    (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
+			     GET_LEVEL(ch) > ophidian_farsee_level()))
 			{
 				if (!IS_TRUSTED(ch) &&
 				    IS_SET(EXIT(ch, keyword_no)->exit_info, EX_CLOSED))
@@ -2712,7 +2760,8 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 				send_to_char("Looks like an exit.\n", ch);
 			}
 			if (!IS_TRUSTED(ch) && !IS_AFFECTED(ch, AFF_FARSEE) &&
-			    !(has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > 40))
+			    !(has_innate(ch, INNATE_OPHIDIAN_EYES) &&
+			      GET_LEVEL(ch) > ophidian_farsee_level()))
 			{
 				return;
 			}
@@ -2727,8 +2776,8 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 		/* real room we are peering into */
 		temp = world[room_no].dir_option[keyword_no]->to_room;
 
-		if (IS_AFFECTED(ch, AFF_FARSEE) ||
-		    (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > 40))
+		if (IS_AFFECTED(ch, AFF_FARSEE) || (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
+						    GET_LEVEL(ch) > ophidian_farsee_level()))
 		{
 			snprintf(buffer, MAX_STRING_LENGTH, "You extend your sights %sward.\n",
 				 dirs[keyword_no]);
@@ -2754,8 +2803,8 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 			return;
 		}
 		if ((vis_mode == 1) &&
-		    (IS_AFFECTED(ch, AFF_FARSEE) ||
-		     (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > 40)))
+		    (IS_AFFECTED(ch, AFF_FARSEE) || (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
+						     GET_LEVEL(ch) > ophidian_farsee_level())))
 		{
 			vis_mode = 2;
 		}
@@ -3705,6 +3754,20 @@ void do_read(P_char ch, char *argument, int /*cmd*/)
 	do_look(ch, buf, -4);
 }
 
+// The lag, in pulses, after legend lore names an item.
+static int legend_lore_lag()
+{
+	return (int)(PULSE_VIOLENCE * 1.5);
+}
+
+std::string legend_lore_facts(P_char ch)
+{
+	return fact("Chance when you examine an item",
+		    std::to_string(GET_CHAR_SKILL(ch, SKILL_LEGEND_LORE)) + " in 111") +
+	       fact("Your lag when it works", seconds(legend_lore_lag())) +
+	       "  It identifies the item at your level. Not containers or corpses.\n";
+}
+
 void do_examine(P_char ch, char *argument, int /*cmd*/)
 {
 	char name[MAX_INPUT_LENGTH], buf[MAX_INPUT_LENGTH + 4], buf2[MAX_INPUT_LENGTH];
@@ -3759,7 +3822,7 @@ void do_examine(P_char ch, char *argument, int /*cmd*/)
 	{
 		notch_skill(ch, SKILL_LEGEND_LORE, 5);
 		spell_identify(GET_LEVEL(ch), ch, 0, 0, 0, tmp_object);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 1.5));
+		CharWait(ch, legend_lore_lag());
 		return;
 	}
 
@@ -6385,7 +6448,7 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 		strcat(buf, " &+MI&+Ll&+ml&+Mu&+Ls&+mi&+Mo&+Ln&+ms&n");
 	}
 	if (IS_AFFECTED(ch, AFF_DETECT_INVISIBLE) ||
-	    (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > 45))
+	    (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > ophidian_invisible_level()))
 		strcat(buf, " &+CI&+cn&+Cv&+ci&+Cs&+ci&+Cb&+cl&+Ce&n");
 	if (IS_AFFECTED2(ch, AFF2_DETECT_EVIL) || (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
 						   GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_LANCER)))
@@ -6479,7 +6542,7 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 		strcat(buf, " &+MUltravision&n");
 	}
 	if (IS_AFFECTED(ch, AFF_FARSEE) ||
-	    (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > 40))
+	    (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > ophidian_farsee_level()))
 	{
 		strcat(buf, " &+YFarsee&n");
 	}

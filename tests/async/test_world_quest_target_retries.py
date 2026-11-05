@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source as repo_source
+from _innate_numbers import with_innate_numbers
 
 
 (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
@@ -43,7 +44,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
     identity_stubs = "\n".join(
         f"int {name}(P_obj, P_char, int, char *) {{ std::abort(); }}"
         for name in safe_procs if name not in linked_procs)
-    adapters.write_text(
+    adapters.write_text(with_innate_numbers(
         '#include "core/prototypes.h"\n#include "core/utils.h"\n'
         '#include "magic/spells.h"\n#include "world/map.h"\n'
         '#include "world/weather.h"\n#include "combat/justice.h"\n'
@@ -137,7 +138,7 @@ void run_map_payment(P_char player, int fee)
         reinterpret_cast<const uint8_t *>(&payment), sizeof(payment));
 }
 '''
-    )
+    ))
     binary = work / "targets"
     compile_command = [
         "g++", "-std=c++20", "-g", "-O1", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
@@ -215,7 +216,7 @@ void run_map_payment(P_char player, int fee)
     finish = sql[sql.index("bool sql_world_quest_finish_async("):]
     history += "\n#undef __NO_MYSQL__\n" + publication + finish + "\n#define __NO_MYSQL__\n"
     sql_adapters = work / "sql_history_adapters.cpp"
-    sql_adapters.write_text(adapters.read_text() + r'''
+    sql_adapters.write_text(with_innate_numbers(adapters.read_text() + r'''
 #include "sql/sql_async.h"
 #include "net/unicode.h"
 #include "player/player_snapshot_capture.h"
@@ -383,7 +384,7 @@ void quest_test_history_publish(int seconds, bool ok)
     history_clock += seconds;
     publish_history(ok);
 }
-''')
+'''))
     sql_binary = work / "sql-history-targets"
     subprocess.run([*compile_command, "-DWORLD_QUEST_SQL_HISTORY", str(sql_adapters),
                     "-o", str(sql_binary)], cwd=ROOT, check=True)

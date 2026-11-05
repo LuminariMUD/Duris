@@ -12,6 +12,7 @@
 	} while (0)
 #include "core/utils.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "combat/damage.h"
 #include "combat/trap.h"
 #include "world/vnum.obj.h"
@@ -348,6 +349,7 @@ int dice(int, int)
 {
 	return 10;
 }
+const Rolls live_rolls = { dice, number };
 int get_property(const char *, int fallback)
 {
 	return fallback;

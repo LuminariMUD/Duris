@@ -20,6 +20,7 @@
 #include "world/graph.h"
 #include "world/map.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 
 extern P_desc descriptor_list;
 extern P_index mob_index;
@@ -286,6 +287,36 @@ void do_track_not_in_use(P_char ch, char *arg, int /*cmd*/)
 	return;
 }
 
+int MaxTrackDist(P_char ch);
+
+// The tracker's lag, in pulses.
+static int track_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+// The tracker's lag, in pulses, after abandoning the hunt.
+static int track_abandon_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// The tracker's lag, in pulses, after track scan on the world map.
+static int track_scan_lag()
+{
+	return (int)(PULSE_VIOLENCE * (float)get_property("track.scan.lag", 1));
+}
+
+std::string track_facts(P_char ch)
+{
+	const int distance = MaxTrackDist(ch);
+	return fact("Farthest you can track",
+		    distance >= MAX_ROOMS ? "no limit" : std::to_string(distance) + " rooms") +
+	       fact("Your lag", seconds(track_lag())) +
+	       fact("Your lag if you abandon the hunt (track stop)", seconds(track_abandon_lag())) +
+	       fact("Your lag after track scan on the map", seconds(track_scan_lag()));
+}
+
 void do_track(P_char ch, char *arg, int /*cmd*/) // do_track_not_in_use
 {
 	P_char victim;
@@ -322,8 +353,7 @@ void do_track(P_char ch, char *arg, int /*cmd*/) // do_track_not_in_use
 		if (IS_MAP_ROOM(ch->in_room))
 		{
 			show_tracking_map(ch);
-			CharWait(ch,
-				 (int)(PULSE_VIOLENCE * (float)get_property("track.scan.lag", 1)));
+			CharWait(ch, track_scan_lag());
 			return;
 		}
 		else
@@ -338,7 +368,7 @@ void do_track(P_char ch, char *arg, int /*cmd*/) // do_track_not_in_use
 		send_to_char("You abandon the hunt.\r\n", ch);
 		ch->specials.tracking = 0;
 		REMOVE_BIT(ch->specials.affected_by3, AFF3_TRACKING);
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, track_abandon_lag());
 		return;
 	}
 	if (IS_AFFECTED3(ch, AFF3_TRACKING))
@@ -390,7 +420,7 @@ void do_track(P_char ch, char *arg, int /*cmd*/) // do_track_not_in_use
 			ch->specials.tracking = 0; // Mark as invalid target
 			send_to_char("You attempt your skills at tracking.\r\n", ch);
 			add_event(event_track_move, 5, ch, NULL, 0, 0, 0, 0);
-			CharWait(ch, PULSE_VIOLENCE);
+			CharWait(ch, track_lag());
 			notch_skill(ch, SKILL_TRACK, 20);
 			return;
 		}
@@ -401,7 +431,7 @@ void do_track(P_char ch, char *arg, int /*cmd*/) // do_track_not_in_use
 	ch->specials.was_fighting = victim;
 	send_to_char("You attempt your skills at tracking.\r\n", ch);
 	add_event(event_track_move, 5, ch, victim, 0, 0, 0, 0);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, track_lag());
 	notch_skill(ch, SKILL_TRACK, 20);
 
 	return;
@@ -680,6 +710,43 @@ char *sickprocess(const char *arg)
 	return hmm;
 }
 
+// Changes to the improved tracking contest: rating against a roll that must come out lower.
+static int perception_track_bonus()
+{
+	return 30;
+}
+
+static int farsee_track_bonus()
+{
+	return 10;
+}
+
+int ophidian_track_penalty()
+{
+	return 5;
+}
+
+// The chance threshold, rolled 1-100, of the special senses that find tracks.
+int track_sense_chance(int level)
+{
+	return 10 + ((level > 46) ? (2 * (level - 46)) : 0);
+}
+
+std::string perception_innate_facts(P_char /*ch*/)
+{
+	extern int perception_map_bonus();
+	return fact("Your map sight range", "+" + std::to_string(perception_map_bonus())) +
+	       fact("Your improved tracking rating, if you have that skill",
+		    "+" + std::to_string(perception_track_bonus()));
+}
+
+std::string farsee_innate_facts(P_char /*ch*/)
+{
+	return "  You can look into the next rooms, unless a closed door blocks the view.\n" +
+	       fact("Your improved tracking roll, if you have that skill",
+		    std::to_string(farsee_track_bonus()) + " easier");
+}
+
 // Shows tracks / messages when appropriate to ch for tracks in room room.
 void show_tracks(P_char ch, int room)
 {
@@ -724,7 +791,7 @@ void show_tracks(P_char ch, int room)
 
 	if (has_innate(ch, INNATE_PERCEPTION))
 	{
-		skill += 30;
+		skill += perception_track_bonus();
 	}
 
 	if (IS_AFFECTED(ch, AFF_FLY))
@@ -755,7 +822,7 @@ void show_tracks(P_char ch, int room)
 
 	if (IS_AFFECTED(ch, AFF_FARSEE))
 	{
-		percent -= 10;
+		percent -= farsee_track_bonus();
 	}
 	if (IS_AFFECTED4(ch, AFF4_HAWKVISION))
 	{
@@ -769,7 +836,7 @@ void show_tracks(P_char ch, int room)
 
 	if (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_HUNTER))
 	{
-		percent += 5;
+		percent += ophidian_track_penalty();
 	}
 
 	switch (world[room].sector_type)
@@ -867,7 +934,7 @@ void show_tracks(P_char ch, int room)
 	 *   Special cases get a a 10% chance up to 46 and a 30% chance at 56 for detecting the track (as per below).
 	 * Now we have a skill, percent, & chance...
 	 */
-	chance = 10 + ((GET_LEVEL(ch) > 46) ? (2 * (GET_LEVEL(ch) - 46)) : 0);
+	chance = track_sense_chance(GET_LEVEL(ch));
 
 	for (obj = world[room].contents; obj; obj = next_obj)
 	{
@@ -994,6 +1061,29 @@ void show_tracks(P_char ch, int room)
 	*/
 
 	return;
+}
+
+// How far on the map a track scan shows tracks and blood.
+int improved_track_map_range(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_IMPROVED_TRACK) / 20);
+}
+
+std::string improved_track_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_IMPROVED_TRACK);
+	if (rating < 1)
+		return "  You have not learned improved track.\n";
+	return fact("Rooms a track scan shows on the map",
+		    std::to_string(improved_track_map_range(ch))) +
+	       fact("Chance the map shows fresh blood", chance_under(rating, 50, 80)) +
+	       fact("Chance the map shows old blood", chance_under(rating + 1, 80, 100)) +
+	       fact("Chance a scan shows blood here", chance_under(rating + 1, 50, 70)) +
+	       fact("  If it has dried", chance_under(rating + 1, 90, 100)) +
+	       fact("Base chance you notice tracks on entering a room",
+		    chance_under(rating, 1, 100)) +
+	       "    (terrain, race, class, position and sight change the roll)\n"
+	       "  A track scan needs the track skill.\n";
 }
 
 void show_tracking_map(P_char ch)

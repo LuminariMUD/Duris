@@ -9,11 +9,13 @@ import re
 import subprocess
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
+from _innate_numbers import with_innate_numbers
 
 prelude = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "classes/necromancy.h"
 #include "combat/damage.h"
 #include "combat/dam_mods.h"
@@ -53,6 +55,7 @@ int GET_CHAR_SKILL_P(P_char,int id) { return id==SKILL_INFUSE_LIFE?infuse:0; }
 bool has_innate(P_char ch,int id) { return id==INNATE_FIRE_AURA && GET_RACE(ch)==RACE_F_ELEMENTAL; }
 int number(int low,int high) { ++draws; rng=rng*1664525+1013904223; return low==0&&high==2?variant:low+int(rng%unsigned(high-low+1)); }
 int dice(int count,int sides) { int result=0; while(count--) result+=number(1,sides); return result; }
+const Rolls live_rolls = { dice, number };
 int BOUNDED(int low,int value,int high) { return std::max(low,std::min(value,high)); }
 int STAT_INDEX(int) { return 10; }
 float get_property(const char *,double fallback) { return fallback; }
@@ -121,6 +124,8 @@ functions = [
     ('affects.c','bool affected_by_spell('),
     ('magic.c','const char *elemental_summon_failure_message('),
     ('magic.c','const char *elemental_form_failure_message('),
+    *(('magic.c', f'static int fire_form_{number}(')
+      for number in ('duration', 'armor_class', 'strength', 'dexterity', 'agility', 'constitution')),
     ('magic.c','void spell_fire_form('),
     ('magic.c','static void make_fire_mephit('),
     ('magic.c','bool can_conjure_lesser_elem('),
@@ -137,10 +142,32 @@ functions = [
     ('pet_restore_runtime.c','bool summoned_pet_apply('),
     ('pet_restore_runtime.c','void summoned_pet_restore_lifetime('),
     ('magic.c','static void schedule_elemental_death('),
+    ('magic.c','static int conjure_elemental_charisma('),
+    ('magic.c','static bool conjure_refused_to_summoner('),
+    ('magic.c','static int conjure_elemental_stronger_level('),
+    ('magic.c','static int conjure_elemental_weaker_level('),
+    ('magic.c','static int conjure_elemental_level('),
+    ('magic.c','static int conjure_elemental_hit_points('),
+    ('magic.c','static int conjure_elemental_roll_bonus('),
+    ('magic.c','static int conjure_elemental_home_hit_points('),
+    ('magic.c','static int conjure_elemental_home_roll_bonus('),
     ('magic.c','void spell_conjour_elemental('),
     ('magic.c','void conjure_specialized('),
+    ('magic.c','static int conjure_greater_elemental_level('),
+    ('magic.c','static int conjure_greater_elemental_hit_points('),
+    ('magic.c','static int conjure_greater_elemental_hitroll('),
+    ('magic.c','static int conjure_greater_elemental_damroll('),
     ('magic.c','void spell_conjour_greater_elemental('),
+    ('magic.c','static int fireball_damage('),
+    ('magic.c','static int fireball_failed_save('),
+    ('magic.c','static bool fireball_passes_globes('),
     ('magic.c','void spell_fireball('),
+    ('magic.c','static int solar_flare_damage('),
+    ('magic.c','static bool solar_flare_boosted('),
+    ('magic.c','static int solar_flare_boost('),
+    ('magic.c','static int solar_flare_blindness('),
+    ('magic.c','static int solar_flare_blind_roll('),
+    ('magic.c','static int solar_flare_immolate_roll('),
     ('magic.c','void spell_solar_flare('),
 ]
 damage_source = extract_function('fight.c','int spell_damage(')
@@ -178,7 +205,7 @@ start=mods.index('MAKE_DAM_MOD_PRED(){ if (damageType != SPLDAM_COLD) return;')
 opening=mods.index('{',start); depth=1; end=opening+1
 while depth:
     depth+=(mods[end]=='{')-(mods[end]=='}'); end+=1
-cold='dam_mod_predicate cold_response = '+mods[start:end]+';\n'
+cold=extract_function('dam_mods.c','static double fire_race_cold_mod(')+'\ndam_mod_predicate cold_response = '+mods[start:end]+';\n'
 
 driver = r'''
 static void clear(P_char ch) {
@@ -315,7 +342,7 @@ int main() {
 
 build=ROOT/'bin/tests/conjurer-fire'; build.mkdir(parents=True,exist_ok=True)
 cpp,binary=build/'harness.cpp',build/'harness'
-cpp.write_text(prelude+'\n'.join(extract_function(file,sig) for file,sig in functions)+damage_path+retaliation+recalc+cold+driver)
+cpp.write_text(with_innate_numbers(prelude+'\n'.join(extract_function(file,sig) for file,sig in functions)+damage_path+retaliation+recalc+cold+driver))
 subprocess.run(['g++','-std=c++20','-g','-ffunction-sections','-fdata-sections','-fsanitize=address,undefined',
                 '-fno-omit-frame-pointer','-fno-pie','-no-pie','-I'+str(ROOT/'src'),str(cpp),str(HARNESS_STUBS),
                 str(ROOT/'src/player/pet_restore_state.c'),

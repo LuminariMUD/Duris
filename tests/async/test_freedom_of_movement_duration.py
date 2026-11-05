@@ -17,13 +17,24 @@ from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
 
 FREEDOM_CHECK = extract_function("magic.c", "bool check_freedom_of_movement(P_char ch)")
+FREEDOM_ROLLS = "\n".join(extract_function("magic.c", signature) for signature in (
+    "static int freedom_of_movement_roll(", "static int freedom_of_movement_duration("))
 FREEDOM_SPELL = extract_function("magic.c", "void spell_freedom_of_movement(int level")
-GUARDIAN_SPELL = extract_function("smagic.c", "void spell_guardian_spirits(int level")
+GUARDIAN_SPELL = "\n".join(
+    extract_function("smagic.c", signature)
+    for signature in (
+        "static int guardian_spirits_renewal(",
+        "static int guardian_spirits_duration(",
+        "static int guardian_spirits_ac(",
+        "void spell_guardian_spirits(int level",
+    )
+)
 
 PRELUDE = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "net/comm.h"
 
 #include <algorithm>
@@ -35,6 +46,8 @@ static bool has_freedom;    // affected_by_spell(SPELL_FREEDOM_OF_MOVEMENT)
 static int applied_type, applied_duration, freedom_removals;
 
 int number(int low, int high) { return high_roll ? high : low; }
+int dice(int, int) { std::abort(); } // neither spell rolls dice
+const Rolls live_rolls = { dice, number };
 void act(const char *, int, P_char, P_obj, void *, int) {}
 void send_to_char(const char *, P_char) {}
 int GET_CLASS(P_char, uint) { return 1; } // a shaman, so guardian spirits casts
@@ -140,7 +153,7 @@ with tempfile.TemporaryDirectory(prefix="duris-fom-duration-") as directory:
     harness = temporary / "harness.cpp"
     binary = temporary / "harness"
     harness.write_text(
-        "\n".join((PRELUDE, FREEDOM_CHECK, FREEDOM_SPELL, GUARDIAN_SPELL, DRIVER)),
+        "\n".join((PRELUDE, FREEDOM_CHECK, FREEDOM_ROLLS, FREEDOM_SPELL, GUARDIAN_SPELL, DRIVER)),
         encoding="utf-8",
     )
     subprocess.run(

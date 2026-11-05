@@ -7,6 +7,7 @@
  ***************************************************************************
  */
 
+#include "abilities/abilities.h"
 #include <algorithm>
 #include <ctype.h>
 #include <list>
@@ -17,6 +18,7 @@
 ;
 
 #include "core/prototypes.h"
+#include "abilities/abilities.h"
 #include "item/forced_weapon_drop.h"
 #include "item/native_artifact_actions.h"
 #include "core/structs.h"
@@ -58,6 +60,9 @@ extern const char *race_types[];
 // extern const char rev_dir[];
 extern const struct stat_data stat_factor[];
 extern int innate_abilities[];
+extern int watching_wall_vision_roll(const Rolls &rolls);
+extern int watching_wall_vision_gap();
+extern int illusionary_wall_block_roll(const Rolls &rolls);
 extern int planes_room_num[];
 extern const int top_of_world;
 extern int top_of_zone_table;
@@ -6743,6 +6748,30 @@ void prepare_wall_messages(const char *color_string, char *ch_buffer, char *room
  * 4 - wall's level, used for dispelling
  * 5 - number of wall's owner
  */
+// Numbers wall_generic() shares with the wall spells' info pages, defined in spells.c.
+extern int wall_climb_roll(const Rolls &rolls);
+extern int wall_climb_above();
+extern int wall_hit_lag();
+extern int wall_of_flames_protected(int dam);
+extern int wall_of_flames_margin();
+extern int wall_of_ice_protected(int dam);
+extern int wall_of_ice_bump(int dam);
+extern int wall_of_ice_climb(int dam);
+extern int lightning_curtain_protected(int dam);
+extern int lightning_curtain_margin();
+extern int prismatic_wall_pass_roll(const Rolls &rolls);
+extern int prismatic_wall_pass_cost();
+extern int prismatic_wall_colour_roll(const Rolls &rolls);
+extern int prismatic_wall_red();
+extern int prismatic_wall_orange();
+extern int prismatic_wall_yellow();
+extern int prismatic_wall_effect_level();
+extern int prismatic_wall_saved(int dam);
+extern int web_paralysis(const Rolls &rolls);
+extern int life_ward_pass_roll(const Rolls &rolls);
+extern int life_ward_climb_drain(const Rolls &rolls);
+extern int life_ward_bump_drain(const Rolls &rolls);
+
 int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	int dam, type, dircmd, spl;
@@ -6840,7 +6869,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 	if (type == WATCHING_WALL && cmd >= 1 && cmd < 1000)
 	{
 		if (obj->loc_p == LOC_ROOM && ch && !IS_TRUSTED(ch) &&
-		    (time(NULL) - obj->value[6]) > 10)
+		    (time(NULL) - obj->value[6]) > watching_wall_vision_gap())
 		{
 			obj->value[6] = time(NULL);
 
@@ -6850,7 +6879,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 					break;
 
 			if (illusionist != NULL && ch->in_room != illusionist->in_room &&
-			    !number(0, 2))
+			    !watching_wall_vision_roll(live_rolls))
 			{
 				send_to_char("&=LWYou receive a vision from elsewhere.&n&n\n",
 					     illusionist);
@@ -6924,7 +6953,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		if (type == WALL_OUTPOST)
 			CharWait(ch, PULSE_VIOLENCE);
 		else
-			CharWait(ch, PULSE_VIOLENCE * 4);
+			CharWait(ch, wall_hit_lag());
 		return TRUE;
 	}
 
@@ -6984,12 +7013,12 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 			send_to_char("&+RYou enter into a wall of flames...OUCH!&n\n", ch);
 
 			if (IS_AFFECTED(ch, AFF_PROT_FIRE))
-				dam /= 3;
+				dam = wall_of_flames_protected(dam);
 
 			if (IS_NPC(ch) && !IS_MORPH(ch) && !IS_PC_PET(ch))
 				dam = 1;
 
-			if (((GET_HIT(ch) - 8) < dam))
+			if (((GET_HIT(ch) - wall_of_flames_margin()) < dam))
 			{
 				send_to_char(
 					"&+RYou are overwhelmed by the heat and&n&+L fall into darkness...\n",
@@ -7022,7 +7051,8 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		/* XXX */
 
 	case WALL_OF_ICE:
-		if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING) && number(1, 100) > 60)
+		if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING) &&
+		    wall_climb_roll(live_rolls) > wall_climb_above())
 		{
 			act("&+L$n&+L slams up against the wall, slinks into a shadow, and quickly darts over the wall.",
 			    TRUE, ch, obj, 0, TO_ROOM);
@@ -7030,8 +7060,8 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 			    TRUE, ch, obj, 0, TO_CHAR);
 			do_simple_move_skipping_procs(ch, dircmd, 0);
 			if (IS_AFFECTED2(ch, AFF2_PROT_COLD))
-				dam -= dam / 3;
-			GET_HIT(ch) = MAX(GET_HIT(ch) - MAX(dam, 20), 1);
+				dam = wall_of_ice_protected(dam);
+			GET_HIT(ch) = MAX(GET_HIT(ch) - wall_of_ice_climb(dam), 1);
 			update_pos(ch);
 			return TRUE;
 		}
@@ -7040,11 +7070,11 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		act("Oof! $n bumps into $p...", TRUE, ch, obj, 0, TO_NOTVICT);
 
 		if (IS_AFFECTED2(ch, AFF2_PROT_COLD))
-			dam -= dam / 3;
+			dam = wall_of_ice_protected(dam);
 
 		send_to_char("&+WYou shiver from the &+bfreezing cold &+Wof the &+Cice&+W!&n\n",
 			     ch);
-		GET_HIT(ch) = MAX(GET_HIT(ch) - MAX(dam / 2, 20), 1);
+		GET_HIT(ch) = MAX(GET_HIT(ch) - wall_of_ice_bump(dam), 1);
 		update_pos(ch);
 		StartRegen(ch, regen_resource::vitality);
 
@@ -7055,12 +7085,12 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		act(buffer, TRUE, ch, obj, NULL, TO_ROOM);
 
 		if (IS_AFFECTED2(ch, AFF2_PROT_LIGHTNING))
-			dam -= dam / 3;
+			dam = lightning_curtain_protected(dam);
 
 		if (IS_NPC(ch) && !IS_MORPH(ch))
 			dam = 1;
 
-		if (((GET_HIT(ch) - 10) < dam))
+		if (((GET_HIT(ch) - lightning_curtain_margin()) < dam))
 		{
 			send_to_char("&+BYou are shocked to death!&n\n", ch);
 			do_simple_move_skipping_procs(ch, dircmd, 0);
@@ -7093,7 +7123,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 
 		// let them walk through the wall 33% of the time
-		if (!number(0, 2) && IS_PC(ch))
+		if (!prismatic_wall_pass_roll(live_rolls) && IS_PC(ch))
 		{
 			act("$p fades to shards of magic, and blows away...&n", TRUE, ch, obj, NULL,
 			    TO_ROOM);
@@ -7103,10 +7133,11 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 			act("$n steps through the wall.", TRUE, ch, obj, NULL, TO_ROOM);
 			do_simple_move_skipping_procs(ch, dircmd, 0);
 			act("$n steps through the wall.", TRUE, ch, obj, NULL, TO_ROOM);
-			GET_HIT(ch) = MAX(1, GET_HIT(ch) - 75);
+			GET_HIT(ch) = MAX(1, GET_HIT(ch) - prismatic_wall_pass_cost());
 			return TRUE;
 		}
-		else if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING) && number(1, 100) > 60)
+		else if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING) &&
+			 wall_climb_roll(live_rolls) > wall_climb_above())
 		{
 			act("&+L$n&+L slams up against the wall, slinks into a shadow, and quickly darts over the wall.",
 			    TRUE, ch, obj, 0, TO_ROOM);
@@ -7115,13 +7146,13 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 			do_simple_move_skipping_procs(ch, dircmd, 0);
 			return TRUE;
 		}
-		else if (!number(0, 2) && IS_PC_PET(ch))
+		else if (!prismatic_wall_pass_roll(live_rolls) && IS_PC_PET(ch))
 		{
 			act("You walk through the wall.", TRUE, ch, obj, NULL, TO_CHAR);
 			act("$n steps through the wall.", TRUE, ch, obj, NULL, TO_ROOM);
 			do_simple_move_skipping_procs(ch, dircmd, 0);
 			act("$n steps through the wall.", TRUE, ch, obj, NULL, TO_ROOM);
-			GET_HIT(ch) = MAX(1, GET_HIT(ch) - 75);
+			GET_HIT(ch) = MAX(1, GET_HIT(ch) - prismatic_wall_pass_cost());
 
 			return TRUE;
 		}
@@ -7134,22 +7165,22 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		dam = 0;
 		spl = 0;
 
-		switch (number(0, 6))
+		switch (prismatic_wall_colour_roll(live_rolls))
 		{
 		case 0:
 			prepare_wall_messages("&+rred", char_message, room_message,
 					      sizeof char_message);
-			dam = 100;
+			dam = prismatic_wall_red();
 			break;
 		case 1:
 			prepare_wall_messages("&+Rorange", char_message, room_message,
 					      sizeof char_message);
-			dam = 70;
+			dam = prismatic_wall_orange();
 			break;
 		case 2:
 			prepare_wall_messages("&+Yyellow", char_message, room_message,
 					      sizeof char_message);
-			dam = 40;
+			dam = prismatic_wall_yellow();
 			break;
 		case 3:
 			prepare_wall_messages("&+Bblue", char_message, room_message,
@@ -7177,12 +7208,13 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		{
 			act(char_message, TRUE, ch, obj, 0, TO_CHAR);
 			act(room_message, TRUE, ch, obj, 0, TO_NOTVICT);
-			skills[spl].spell_pointer(50, ch, 0, 0, ch, NULL);
+			skills[spl].spell_pointer(prismatic_wall_effect_level(), ch, 0, 0, ch,
+						  NULL);
 		}
 		else if (dam > 0)
 		{
 			if (NewSaves(ch, SAVING_SPELL, 0))
-				dam >>= 1;
+				dam = prismatic_wall_saved(dam);
 			if (IS_NPC(ch) && !IS_MORPH(ch))
 				dam = 1;
 			spell_damage(ch, ch, dam, SPLDAM_FIRE, 0, &messages);
@@ -7205,7 +7237,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 				bzero(&af, sizeof(af));
 				af.type = SPELL_MINOR_PARALYSIS;
 				af.flags = AFFTYPE_SHORT;
-				af.duration = number(4, 15) * WAIT_SEC;
+				af.duration = web_paralysis(live_rolls);
 				af.bitvector2 = AFF2_MINOR_PARALYSIS;
 				affect_to_char(ch, &af);
 			}
@@ -7218,7 +7250,8 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 
 	case LIFE_WARD:
 		if ((IS_PC(ch) && GET_PID(ch) == obj->value[5]) ||
-		    (IS_NPC(ch) && obj->value[5] == GET_RNUM(ch)) || !number(0, 3))
+		    (IS_NPC(ch) && obj->value[5] == GET_RNUM(ch)) ||
+		    !life_ward_pass_roll(live_rolls))
 		{
 			act("&+L$n&+L passes right through $p&+L unharmed.", TRUE, ch, obj, 0,
 			    TO_ROOM);
@@ -7226,14 +7259,15 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 			do_simple_move_skipping_procs(ch, dircmd, 0);
 			return TRUE;
 		}
-		else if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING) && number(1, 100) > 60)
+		else if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING) &&
+			 wall_climb_roll(live_rolls) > wall_climb_above())
 		{
 			act("&+L$n&+L slams up against the wall, slinks into a shadow, and quickly darts over the wall.",
 			    TRUE, ch, obj, 0, TO_ROOM);
 			act("&+LYou thrust yourself up against the wall and slip into a nearby shadow, quickly darting over the top of the wall and away.",
 			    TRUE, ch, obj, 0, TO_CHAR);
 			do_simple_move_skipping_procs(ch, dircmd, 0);
-			dam = number(10, 28);
+			dam = life_ward_climb_drain(live_rolls);
 			GET_VITALITY(ch) = MAX(GET_VITALITY(ch) - dam, 1);
 			update_pos(ch);
 			StartRegen(ch, regen_resource::vitality);
@@ -7242,7 +7276,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		act("Oof! You bump into $p...", TRUE, ch, obj, 0, TO_CHAR);
 		act("Oof! $n bumps into $p...", TRUE, ch, obj, 0, TO_NOTVICT);
 
-		dam = number(8, 22);
+		dam = life_ward_bump_drain(live_rolls);
 
 		send_to_char(
 			"&+LYour limbs go numb as you try to pass through the &n&+bnegative energy.&n\n",
@@ -7261,7 +7295,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 			spell_dispel_magic(60, ch, NULL, SPELL_TYPE_SPELL, 0, obj);
 			return FALSE;
 		}
-		if (number(0, 5))
+		if (illusionary_wall_block_roll(live_rolls))
 		{
 			send_to_char("Alas, you cannot go that way. . . .\n", ch);
 			return TRUE;
@@ -7292,8 +7326,8 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		else if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING))
 		{
-			int rand1 = number(1, 100);
-			if (rand1 > 60)
+			int rand1 = wall_climb_roll(live_rolls);
+			if (rand1 > wall_climb_above())
 			{
 				act("&+L$n&+L slams up against the wall, slinks into a shadow, and quickly darts over the wall.",
 				    TRUE, ch, obj, 0, TO_ROOM);
@@ -7318,7 +7352,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 	case WALL_OF_IRON:
 		if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING))
 		{
-			if (number(1, 100) > 60)
+			if (wall_climb_roll(live_rolls) > wall_climb_above())
 			{
 				act("&+L$n&+L slams up against the wall, slinks into a shadow, and quickly darts over the wall.",
 				    TRUE, ch, obj, 0, TO_ROOM);
@@ -7341,7 +7375,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 	case WALL_OF_STONE:
 		if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING))
 		{
-			if (number(1, 100) > 60)
+			if (wall_climb_roll(live_rolls) > wall_climb_above())
 			{
 				act("&+L$n&+L slams up against the wall, slinks into a shadow, and quickly darts over the wall.",
 				    TRUE, ch, obj, 0, TO_ROOM);
@@ -7375,7 +7409,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 				spell_dispel_magic(70, ch, NULL, SPELL_TYPE_SPELL, 0, obj);
 			}
 			else if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING) &&
-				 number(1, 100) > 60)
+				 wall_climb_roll(live_rolls) > wall_climb_above())
 			{
 				act("&+L$n&+L slams up against the wall, slinks into a shadow, and quickly darts over the wall.",
 				    TRUE, ch, obj, 0, TO_ROOM);
@@ -7394,7 +7428,8 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 					obj->value[2] -= 1;
 			}
 		}
-		else if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING) && number(1, 100) > 60)
+		else if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING) &&
+			 wall_climb_roll(live_rolls) > wall_climb_above())
 		{
 			act("&+L$n&+L slams up against the wall, slinks into a shadow, and quickly darts over the wall.",
 			    TRUE, ch, obj, 0, TO_ROOM);
@@ -7410,41 +7445,16 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 	case WALL_OF_AIR:
 		int chance, fall_chance;
-
-		switch (GET_SIZE(ch))
-		{
-		case SIZE_NONE:
-		case SIZE_TINY:
-		case SIZE_SMALL:
-			chance = 15;
-			fall_chance = 20;
-			break;
-		case SIZE_MEDIUM:
-			chance = 25;
-			fall_chance = 15;
-			break;
-		case SIZE_LARGE:
-		case SIZE_HUGE:
-			chance = 50;
-			fall_chance = 10;
-			break;
-		case SIZE_GIANT:
-		case SIZE_GARGANTUAN:
-			chance = 70;
-			fall_chance = 0;
-			break;
-		case SIZE_DEFAULT:
-		default:
-			chance = 0;
-			fall_chance = 100;
-			break;
-		}
+		extern void wall_of_air_chances(int size, int &chance, int &fall_chance);
+		wall_of_air_chances(GET_SIZE(ch), chance, fall_chance);
 
 		// Let stats play a minor role.
-		chance += (GET_C_AGI(ch) + GET_C_STR(ch)) / 50;
-		fall_chance -= (GET_C_AGI(ch) + GET_C_STR(ch)) / 50;
+		extern int wall_of_air_stat_bonus(P_char ch);
+		extern int wall_of_air_roll(const Rolls &rolls);
+		chance += wall_of_air_stat_bonus(ch);
+		fall_chance -= wall_of_air_stat_bonus(ch);
 
-		if (chance >= number(1, 100))
+		if (chance >= wall_of_air_roll(live_rolls))
 		{
 			act("$n steps through $p!", TRUE, ch, obj, NULL, TO_ROOM);
 			act("&+cYou manage to break through the high winds on to the other side!&n",
@@ -7453,7 +7463,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 			update_pos(ch);
 			drag_followers = TRUE;
 		}
-		else if (fall_chance >= number(1, 100))
+		else if (fall_chance >= wall_of_air_roll(live_rolls))
 		{
 			// They got knocked down.
 			act("&+WThe &+CHIGH winds &+Wsend you flying back into the room, crashing to the ground &+RH&+rA&+RR&+rD&+W!&n",
@@ -8496,6 +8506,11 @@ int divine_font(P_obj obj, P_char ch, int cmd, char *arg)
 	return FALSE;
 }
 
+// Numbers blighter_pond() shares with create pond's info page, defined in blispells.c.
+extern int create_pond_drain_level();
+extern int create_pond_regeneration_level();
+extern int create_pond_lag();
+
 int blighter_pond(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	if (cmd == CMD_SET_PERIODIC)
@@ -8508,7 +8523,7 @@ int blighter_pond(P_obj obj, P_char ch, int cmd, char *arg)
 		arg = skip_spaces(arg);
 		if (*arg && !strcmp(arg, "pond"))
 		{
-			if (obj->value[0] < 31)
+			if (obj->value[0] < create_pond_drain_level())
 			{
 				CharWait(ch, WAIT_SEC);
 				return FALSE;
@@ -8517,13 +8532,13 @@ int blighter_pond(P_obj obj, P_char ch, int cmd, char *arg)
 			act("You drink from $p.", FALSE, ch, obj, 0, TO_CHAR);
 			act("$n drinks from $p.", FALSE, ch, obj, 0, TO_ROOM);
 
-			if (obj->value[0] >= 31)
+			if (obj->value[0] >= create_pond_drain_level())
 			{
 				spell_drain_nature(obj->value[0], ch, 0, SPELL_TYPE_SPELL, ch, 0);
 			}
 			//      if (obj->value[0] >= 41)
 			//        spell_sap_nature(obj->value[0], ch, 0, SPELL_TYPE_SPELL, ch, 0);
-			if (obj->value[0] >= 51)
+			if (obj->value[0] >= create_pond_regeneration_level())
 			{
 				spell_regeneration(obj->value[0], ch, 0, SPELL_TYPE_SPELL, ch, 0);
 			}
@@ -8531,7 +8546,7 @@ int blighter_pond(P_obj obj, P_char ch, int cmd, char *arg)
 			{
 				spell_invigorate(obj->value[0], ch, 0, SPELL_TYPE_SPELL, ch, 0);
 			}
-			CharWait(ch, PULSE_VIOLENCE);
+			CharWait(ch, create_pond_lag());
 			return TRUE;
 		}
 	}
@@ -11809,8 +11824,9 @@ int frost_beacon(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 	if (!ch || (ch->specials.z_cord != 0))
 		return FALSE;
 
-	if (number(0, 2) && IS_SET(obj->extra_flags, ITEM_SECRET) && cmd_to_exitnumb(cmd) != -1 &&
-	    obj->value[0] && obj->loc_p == LOC_ROOM &&
+	extern int frost_beacon_alert_roll(const Rolls &rolls);
+	if (frost_beacon_alert_roll(live_rolls) && IS_SET(obj->extra_flags, ITEM_SECRET) &&
+	    cmd_to_exitnumb(cmd) != -1 && obj->value[0] && obj->loc_p == LOC_ROOM &&
 	    (IS_PC(ch) && obj->value[0] != GET_PID(ch)) && !IS_TRUSTED(ch))
 	{
 		for (tch = character_list; tch; tch = tch->next)
@@ -12664,6 +12680,69 @@ int cutting_dagger(P_obj obj, P_char ch, int cmd, char *arg)
 	return FALSE;
 }
 
+static int trap_arm_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int trap_arm_lifetime()
+{
+	return 1800 * WAIT_SEC;
+}
+
+// An armed trap springs when this is nonzero.
+static int trap_spring_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+static int trap_dart_damage(const Rolls &rolls)
+{
+	return rolls.dice(5, 5);
+}
+
+static int trap_poison_level()
+{
+	return 56;
+}
+
+static int trap_cripple_duration()
+{
+	return 40;
+}
+
+static int trap_bleed_count(const Rolls &rolls)
+{
+	return rolls.number(3, 7);
+}
+
+std::string trap_facts(P_char /*ch*/)
+{
+	extern int crippled_move_cost();
+	extern int sneaky_strike_bleed_damage(const Rolls &rolls);
+	return fact("Your lag when you hide and arm a trap", seconds(trap_arm_lag())) +
+	       fact("How long it stays armed", real_time(trap_arm_lifetime())) +
+	       fact("Chance it springs as someone tries to leave",
+		    std::to_string(trap_spring_roll(highest_rolls)) + " in " +
+			    std::to_string(trap_spring_roll(highest_rolls) -
+					   trap_spring_roll(lowest_rolls) + 1)) +
+	       "  It takes a player outside your group, not a god, with you online elsewhere.\n"
+	       "  A ward just tells you who passed.\n" +
+	       fact("Dart trap damage, with no reductions",
+		    show({ trap_dart_damage(lowest_rolls), trap_dart_damage(highest_rolls) })) +
+	       fact("Poison trap's level", std::to_string(trap_poison_level())) +
+	       fact("Crippling trap's limp", seconds(trap_cripple_duration()) + ", " +
+						     std::to_string(crippled_move_cost()) +
+						     " more vitality per move") +
+	       fact("Its bleeding",
+		    show({ trap_bleed_count(lowest_rolls), trap_bleed_count(highest_rolls) }) +
+			    " rounds and 2 more, each " +
+			    show({ sneaky_strike_bleed_damage(lowest_rolls),
+				   sneaky_strike_bleed_damage(highest_rolls) })) +
+	       "  Wards and crippling traps have a thin string their victim's intelligence\n"
+	       "  may spot, against 0-120, as it snaps.\n";
+}
+
 int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 {
 	P_char tch;
@@ -12684,8 +12763,8 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 			act("$n arms $p and hides it from the eyes of any trespassers.", FALSE, ch,
 			    obj, NULL, TO_ROOM);
 			set_obj_extra_flags(obj, obj->extra_flags | (ITEM_SECRET));
-			set_obj_affected(obj, 1800 * WAIT_SEC, TAG_OBJ_DECAY, 0);
-			CharWait(ch, PULSE_VIOLENCE);
+			set_obj_affected(obj, trap_arm_lifetime(), TAG_OBJ_DECAY, 0);
+			CharWait(ch, trap_arm_lag());
 			if (IS_PC(ch))
 			{
 				obj->value[0] = GET_PID(ch);
@@ -12706,9 +12785,9 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 		return TRUE;
 	}
 
-	if (number(0, 2) && IS_SET(obj->extra_flags, ITEM_SECRET) && cmd_to_exitnumb(cmd) != -1 &&
-	    obj->value[0] && OBJ_ROOM(obj) && (IS_PC(ch) && obj->value[0] != GET_PID(ch)) &&
-	    !IS_TRUSTED(ch))
+	if (trap_spring_roll(live_rolls) && IS_SET(obj->extra_flags, ITEM_SECRET) &&
+	    cmd_to_exitnumb(cmd) != -1 && obj->value[0] && OBJ_ROOM(obj) &&
+	    (IS_PC(ch) && obj->value[0] != GET_PID(ch)) && !IS_TRUSTED(ch))
 	{
 		for (tch = character_list; tch; tch = tch->next)
 		{
@@ -12749,7 +12828,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 				disarm_obj_nevents(obj, NULL);
 
 				// PHSDAM_NOREDUCE -> 5d5 damage total.
-				dam = dice(5, 5);
+				dam = trap_dart_damage(live_rolls);
 
 				act("Without warning, a hidden trap sends a flurry of tiny &+Lblack&n darts piercing $n's &+rflesh&n.",
 				    FALSE, ch, obj, 0, TO_NOTVICT);
@@ -12789,7 +12868,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 
 				af.type = TAG_CRIPPLED;
 				af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL;
-				af.duration = 40;
+				af.duration = trap_cripple_duration();
 				affect_to_char(ch, &af);
 				act("&+ROUCH!!&+y Without warning, a &+rrusty &+yclamp suddenly tears at your legs!&n",
 				    FALSE, ch, 0, 0, TO_CHAR);
@@ -12797,7 +12876,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 				    FALSE, ch, 0, 0, TO_ROOM);
 
 				// 3-7 * ~5 damage = 15-35 damage total.
-				int numb = number(3, 7);
+				int numb = trap_bleed_count(live_rolls);
 				add_event(event_bleedproc, PULSE_VIOLENCE, tch, ch, 0, 0, &numb,
 					  sizeof(numb));
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
@@ -12817,7 +12896,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 				act("Without warning, a hidden trap injects a large dose of &+gpoison&n into your &+rflesh&n.",
 				    FALSE, ch, obj, 0, TO_CHAR);
 
-				spell_poison(56, ch, 0, 0, ch, NULL);
+				spell_poison(trap_poison_level(), ch, 0, 0, ch, NULL);
 
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
 			}
@@ -13076,6 +13155,22 @@ int disarm_pick_gloves(P_obj obj, P_char ch, int cmd, char *arg)
 	return FALSE;
 }
 
+// A doom blade's cloud forms when this roll comes up 0.
+int doom_blade_proc_roll(const Rolls &rolls, P_char ch)
+{
+	return rolls.number(0, MAX(8, 56 - GET_LEVEL(ch)));
+}
+
+int doom_blade_proc_level(P_char ch)
+{
+	return MIN(40, GET_LEVEL(ch));
+}
+
+int doom_blade_effect_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 4);
+}
+
 int doom_blade_Proc(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	int rand, dam = cmd / 1000, lvl = 1;
@@ -13092,10 +13187,10 @@ int doom_blade_Proc(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	lvl = MIN(40, GET_LEVEL(ch));
+	lvl = doom_blade_proc_level(ch);
 
 	// Max 1/9 chance.
-	if (number(0, MAX(8, 56 - GET_LEVEL(ch))))
+	if (doom_blade_proc_roll(live_rolls, ch))
 	{
 		return FALSE;
 	}
@@ -13114,7 +13209,7 @@ int doom_blade_Proc(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 	else
 	{
-		rand = number(0, 4);
+		rand = doom_blade_effect_roll(live_rolls);
 		switch (rand)
 		{
 		case 0:

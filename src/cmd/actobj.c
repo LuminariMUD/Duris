@@ -8,6 +8,7 @@
  * ***************************************************************************
  */
 
+#include "abilities/abilities.h"
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -190,6 +191,12 @@ static bool can_equip_soulbound_item(P_char actor, P_obj object, bool show_rejec
 		if (get_trace_enabled())               \
 			logit(LOG_DEBUG, __VA_ARGS__); \
 	} while (0)
+
+// A roll of 0-100 below this gets something from a container unseen.
+int slip_get_threshold(P_char ch)
+{
+	return BOUNDED(5, (GET_CHAR_SKILL(ch, SKILL_SLIP) + (GET_C_DEX(ch) / 10)), 95);
+}
 
 namespace
 {
@@ -527,8 +534,7 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 
 	if (GET_CHAR_SKILL(ch, SKILL_SLIP))
 	{
-		if (number(0, 100) <
-		    BOUNDED(5, (GET_CHAR_SKILL(ch, SKILL_SLIP) + (GET_C_DEX(ch) / 10)), 95))
+		if (number(0, 100) < slip_get_threshold(ch))
 		{
 			slip = TRUE;
 		}
@@ -7439,7 +7445,8 @@ bool find_chance(P_char ch)
 	if (IS_TRUSTED(ch))
 		return TRUE;
 
-	if (has_innate(ch, INNATE_DRAGONMIND) && number(0, 1))
+	extern int dragonmind_roll(const Rolls &rolls);
+	if (has_innate(ch, INNATE_DRAGONMIND) && dragonmind_roll(live_rolls))
 		return TRUE;
 
 	if (((GET_C_INT(ch) + GET_C_WIS(ch) + GET_C_LUK(ch)) / 3) > number(1, 101))

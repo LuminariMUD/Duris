@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, SRC, extract_function
+from _innate_numbers import with_innate_numbers
 from _paths import HARNESS_STUBS
 
 PRELUDE = r'''
@@ -19,6 +20,7 @@ PRELUDE = r'''
 #include "net/gmcp.h"
 #include "world/events.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "combat/damage.h"
 #include "combat/dam_mods.h"
 #include "combat/grapple.h"
@@ -95,6 +97,7 @@ bool divine_blessing_check(P_char, P_char, int) { return false; }
 int devotion_skill_check(P_char) { return 0; }
 void __free(void *p, const char *, int) { free(p); }
 int number(int low, int high) { return std::uniform_int_distribution<int>(low, high)(rng); }
+const Rolls live_rolls = { dice, number };
 float get_property(const char *name, double fallback)
 {
     if (!strcmp(name, "spell.area.minChance.deathField")) return minimum;
@@ -344,16 +347,32 @@ def main():
         ('utility.c', 'int cast_as_damage_area(P_char ch, void (*spell_func)(int, P_char, char *, int, P_char, P_obj),\n\t\t\tint level, P_char victim, float min_chance, float /*chance_step*/,\n\t\t\tbool (*select_func)(P_char, P_char))'),
         ('utility.c', 'int cast_as_damage_area(P_char ch, void (*spell_func)(int, P_char, char *, int, P_char, P_obj),\n\t\t\tint level, P_char victim, float min_chance, float chance_step)'),
         ('fight.c', 'int check_damage_ward(P_char attacker,'),
+        ('fight.c', 'static int arcane_riposte_threshold('),
+        ('fight.c', 'static double arcane_riposte_damage('),
+        ('fight.c', 'static int disperse_flames_roll('),
+        ('fight.c', 'static int disperse_flames_level_roll('),
+        ('fight.c', 'static int flame_mastery_roll('),
+        ('fight.c', 'static int flame_mastery_level_roll('),
+        ('fight.c', 'static double flame_mastery_damage('),
         ('fight.c', 'int spell_damage(P_char ch,'),
+        ('utility.c', 'int dice(int num, int size)'),
+        ('psionics.c', 'static int death_field_damage('),
+        ('psionics.c', 'static int death_field_enslaver_damage('),
+        ('psionics.c', 'static int death_field_player_damage('),
+        ('psionics.c', 'static int death_field_stack_seconds('),
+        ('psionics.c', 'static int death_field_stacked_level('),
+        ('psionics.c', 'static int death_field_lag('),
         ('psionics.c', 'void spell_single_death_field('),
         ('psionics.c', 'void spell_death_field('),
+        ('sparser.c', 'static int casting_progress_skill('),
+        ('sparser.c', 'static int spellweave_duration('),
         ('sparser.c', 'static bool schedule_spellcast('),
         ('sparser.c', 'void event_spellcast(P_char ch,'),
         ('mobact.c', 'bool MobCastSpell(P_char ch,'),
     ]
     with tempfile.TemporaryDirectory(prefix='death-field-', dir=build) as directory:
         source, binary = Path(directory) / 'harness.cpp', Path(directory) / 'harness'
-        source.write_text('\n'.join([PRELUDE, *[extract_function(*f) for f in functions], DRIVER]))
+        source.write_text(with_innate_numbers('\n'.join([PRELUDE, *[extract_function(*f) for f in functions], DRIVER])))
         subprocess.run(['g++', '-std=c++20', '-g', '-O1', '-fsanitize=address,undefined',
                         '-Isrc', '-D__NO_MYSQL__', '-Isrc/no_mysql', str(source), str(HARNESS_STUBS), '-o', str(binary)], cwd=ROOT, check=True, timeout=120)
         subprocess.run([str(binary)], check=True, timeout=30)

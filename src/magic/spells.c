@@ -27,6 +27,7 @@
 #include "world/vnum.obj.h"
 #include "world/weather.h"
 #include "persistence/persistence_checkpoint.h"
+#include "abilities/abilities.h"
 
 /*
    external variables
@@ -399,6 +400,40 @@ int planes_room_num[] = { 23801, 23201, 12401, 24401, 19701, 25401, SURFACE_MAP_
 const char *planes_name[] = { "earth", "water", "ethereal", "air",	"astral",
 			      "fire",  "prime", "hell",	    "negative", "\n" };
 
+// How many may pass a gate or nether gate. Zero or below means no limit.
+static int gate_throughput()
+{
+	return get_property("portals.gate.maxToPass", -1);
+}
+
+// A gate or nether gate stays open this many pulses.
+static int gate_decay()
+{
+	return get_property("portals.gate.decayTimeout", 240);
+}
+
+static std::string gate_common_facts()
+{
+	const int throughput = gate_throughput();
+	return fact("People who can pass",
+		    throughput > 0 ? std::to_string(throughput) : "no limit") +
+	       fact("Stays open", real_time(gate_decay())) +
+	       "  You and any target must be raidable.\n";
+}
+
+std::string gate_facts(P_char /*ch*/)
+{
+	return gate_common_facts() +
+	       "  It fails from or to a hometown, castle or no-gate room.\n"
+	       "  It fails going to a no-magic room.\n"
+	       "  It cannot run from prime to prime except from a map room.\n";
+}
+
+std::string nether_gate_facts(P_char /*ch*/)
+{
+	return gate_common_facts() + "  It fails from or to a hometown, castle or no-gate room.\n";
+}
+
 void cast_gate(int level, P_char ch, char *arg, int type, P_char tar_ch, P_obj /*tar_obj*/)
 {
 	struct portal_settings set = {
@@ -518,11 +553,11 @@ void cast_gate(int level, P_char ch, char *arg, int type, P_char tar_ch, P_obj /
 		}
 
 		set.to_room = to_room;
-		set.throughput = get_property("portals.gate.maxToPass", -1);
+		set.throughput = gate_throughput();
 		set.init_timeout = get_property("portals.gate.initTimeout", 0);
 		set.post_enter_timeout = get_property("portals.gate.postEnterTimeout", 0);
 		set.post_enter_lag = get_property("portals.gate.postEnterLag", 0);
-		set.decay_timer = get_property("portals.gate.decayTimeout", 240);
+		set.decay_timer = gate_decay();
 
 		if (spell_general_portal(level, ch, 0, &set, &msg))
 		{
@@ -638,11 +673,11 @@ void cast_nether_gate(int level, P_char ch, char *arg, int type, P_char tar_ch, 
 		}
 
 		set.to_room = to_room;
-		set.throughput = get_property("portals.gate.maxToPass", -1);
+		set.throughput = gate_throughput();
 		set.init_timeout = get_property("portals.gate.initTimeout", 0);
 		set.post_enter_timeout = get_property("portals.gate.postEnterTimeout", 0);
 		set.post_enter_lag = get_property("portals.gate.postEnterLag", 0);
-		set.decay_timer = get_property("portals.gate.decayTimeout", 240);
+		set.decay_timer = gate_decay();
 
 		if (spell_general_portal(level, ch, 0, &set, &msg))
 		{
@@ -681,6 +716,20 @@ int char_is_on_plane(P_char ch)
 	return FALSE;
 }
 
+// A druid must reach this level to plane shift.
+static int plane_shift_druid_level()
+{
+	return 41;
+}
+
+std::string plane_shift_facts(P_char /*ch*/)
+{
+	return fact("Level a druid needs", std::to_string(plane_shift_druid_level())) +
+	       "  You and any target must be raidable.\n"
+	       "  It fails from or to a hometown or no-gate room, or to a no-magic room.\n"
+	       "  To reach prime you must be on the water, fire or air plane.\n";
+}
+
 void cast_plane_shift(int /*level*/, P_char ch, char *arg, int type, P_char tar_ch,
 		      P_obj /*tar_obj*/)
 {
@@ -707,7 +756,7 @@ void cast_plane_shift(int /*level*/, P_char ch, char *arg, int type, P_char tar_
 
 		if ((GET_CLASS(ch, CLASS_DRUID) ||
 		     (IS_MULTICLASS_PC(ch) && GET_SECONDARY_CLASS(ch, CLASS_DRUID))) &&
-		    GET_LEVEL(ch) < 41)
+		    GET_LEVEL(ch) < plane_shift_druid_level())
 		{
 			send_to_char("You must reach level 41 to use this ability.\r\n", ch);
 			return;
@@ -838,6 +887,35 @@ void cast_plane_shift(int /*level*/, P_char ch, char *arg, int type, P_char tar_
 	}
 }
 
+// Aura of rebirth leaves its caster this many hit points after raising `raised` corpses.
+static int aura_of_rebirth_hit_points(int raised)
+{
+	return (20 - raised);
+}
+
+// Raising more corpses than this kills the caster.
+static int aura_of_rebirth_fatal_above()
+{
+	return 19;
+}
+
+static int aura_of_rebirth_lag(int raised)
+{
+	return raised * PULSE_VIOLENCE;
+}
+
+std::string aura_of_rebirth_facts(P_char ch)
+{
+	return fact("Your hit points after",
+		    std::to_string(aura_of_rebirth_hit_points(0)) + ", less 1 per corpse raised") +
+	       fact("Corpses that kill you", std::to_string(aura_of_rebirth_fatal_above() + 1)) +
+	       fact("Afterwards, lag per corpse", seconds(aura_of_rebirth_lag(1))) +
+	       "  Each raise also lags you as resurrect does.\n" + resurrect_facts(ch) +
+	       "  It raises every player corpse in the room.\n"
+	       "  It sets your hit points even with no corpse to raise.\n"
+	       "  It is refused while anyone in the room is fighting.\n";
+}
+
 void cast_area_resurrect(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			 P_char /*tar_ch*/, P_obj /*tar_obj*/)
 {
@@ -871,10 +949,10 @@ void cast_area_resurrect(int level, P_char ch, char * /*arg*/, [[maybe_unused]] 
 	if (IS_TRUSTED(ch))
 		return;
 
-	GET_HIT(ch) = (20 - i);
+	GET_HIT(ch) = aura_of_rebirth_hit_points(i);
 	update_pos(ch);
 
-	if (i > 19)
+	if (i > aura_of_rebirth_fatal_above())
 	{
 		send_to_char(
 			"&+rThe strain on your body is too much, and the &+Ccold &+rembrace of &+Ldeath&+r welcomes you.&n\r\n",
@@ -886,8 +964,189 @@ void cast_area_resurrect(int level, P_char ch, char * /*arg*/, [[maybe_unused]] 
 		send_to_char(
 			"&+LThe strain of returning your comrade's souls to their bodies is almost too much...&n\r\n",
 			ch);
-		CharWait(ch, i * PULSE_VIOLENCE);
+		CharWait(ch, aura_of_rebirth_lag(i));
 	}
+}
+
+// Every wall stays this many pulses.
+static int wall_decay()
+{
+	return 1800;
+}
+
+// A stone, iron or force wall's strength: what hits must wear away.
+static int wall_strength(int level)
+{
+	return level;
+}
+
+// wall_generic() reads the numbers below when someone meets a wall.
+
+// A wall climber goes over a wall when this roll beats wall_climb_above().
+int wall_climb_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+int wall_climb_above()
+{
+	return 60;
+}
+
+// Hitting a breakable wall lags the hitter this many pulses.
+int wall_hit_lag()
+{
+	return PULSE_VIOLENCE * 4;
+}
+
+// Protection from fire leaves this much of a wall of flames' burn.
+int wall_of_flames_protected(int dam)
+{
+	return dam / 3;
+}
+
+// A wall of flames kills whoever it would leave under this many hit points.
+int wall_of_flames_margin()
+{
+	return 8;
+}
+
+// Protection from cold leaves this much of a wall of ice's chill.
+int wall_of_ice_protected(int dam)
+{
+	return dam - dam / 3;
+}
+
+int wall_of_ice_bump(int dam)
+{
+	return MAX(dam / 2, 20);
+}
+
+int wall_of_ice_climb(int dam)
+{
+	return MAX(dam, 20);
+}
+
+// Protection from lightning leaves this much of a lightning curtain's shock.
+int lightning_curtain_protected(int dam)
+{
+	return dam - dam / 3;
+}
+
+// A lightning curtain kills whoever it would leave under this many hit points.
+int lightning_curtain_margin()
+{
+	return 10;
+}
+
+// A roll of 0 lets someone through a prismatic wall, for this many hit points.
+int prismatic_wall_pass_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+int prismatic_wall_pass_cost()
+{
+	return 75;
+}
+
+// The colour a bump into a prismatic wall lands on.
+int prismatic_wall_colour_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 6);
+}
+
+int prismatic_wall_red()
+{
+	return 100;
+}
+
+int prismatic_wall_orange()
+{
+	return 70;
+}
+
+int prismatic_wall_yellow()
+{
+	return 40;
+}
+
+// The level a prismatic wall casts its other colours at.
+int prismatic_wall_effect_level()
+{
+	return 50;
+}
+
+int prismatic_wall_saved(int dam)
+{
+	return dam >> 1;
+}
+
+// A web's paralysis, in pulses.
+int web_paralysis(const Rolls &rolls)
+{
+	return rolls.number(4, 15) * WAIT_SEC;
+}
+
+// A roll of 0 lets someone through a life ward unharmed.
+int life_ward_pass_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 3);
+}
+
+int life_ward_climb_drain(const Rolls &rolls)
+{
+	return rolls.number(10, 28);
+}
+
+int life_ward_bump_drain(const Rolls &rolls)
+{
+	return rolls.number(8, 22);
+}
+
+static std::string wall_climb_text()
+{
+	return std::to_string(wall_climb_roll(highest_rolls) - wall_climb_above()) + "%";
+}
+
+std::string wall_climbing_innate_facts(P_char /*ch*/)
+{
+	return fact("Chance to get over a wall", wall_climb_text()) +
+	       "  It works on walls of ice, force, iron, stone and bones, and on prismatic\n"
+	       "  walls, life wards and watching walls. Ice and a life ward still hurt.\n";
+}
+
+static std::string wall_breakable_facts()
+{
+	return fact("Lag from hitting it", seconds(wall_hit_lag())) +
+	       "  Your own hit destroys it.\n";
+}
+
+static std::string wall_exit_facts()
+{
+	return fact("Stays", real_time(wall_decay())) +
+	       "  It blocks the exit you name. Doors and exits with a wall refuse it.\n";
+}
+
+// A wall of flames' or lightning curtain's damage to those who cross it.
+static int wall_of_flames_power(const Rolls &rolls, int level)
+{
+	return rolls.dice(level / 4, 10);
+}
+
+std::string wall_of_flames_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range burn = { wall_of_flames_power(lowest_rolls, level),
+			     wall_of_flames_power(highest_rolls, level) };
+	return fact("Burn when crossing", show(burn) + " at your level, " + std::to_string(level)) +
+	       fact("With protection from fire", show({ wall_of_flames_protected(burn.low),
+							wall_of_flames_protected(burn.high) })) +
+	       fact("It kills anyone it would leave under",
+		    std::to_string(wall_of_flames_margin()) + " hit points") +
+	       "  Crossing also tries to blind them. Those who enjoy fire heal by it instead.\n"
+	       "  An NPC that is not a pet or morph takes 1.\n" +
+	       wall_exit_facts() + "  It will not stay lit underwater.\n";
 }
 
 void spell_wall_of_flames(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_ch*/,
@@ -910,7 +1169,8 @@ void spell_wall_of_flames(int level, P_char ch, char *arg, int /*type*/, P_char 
 		return;
 	}
 
-	if (create_walls(ch->in_room, var, ch, level, WALL_OF_FLAMES, dice(level / 4, 10), 1800,
+	if (create_walls(ch->in_room, var, ch, level, WALL_OF_FLAMES,
+			 wall_of_flames_power(live_rolls, level), wall_decay(),
 			 "&+Ra billowing wall of flames&n",
 			 "&+RA towering wall of flames is here to the %s.&n", 0))
 	{
@@ -928,6 +1188,25 @@ void spell_wall_of_flames(int level, P_char ch, char *arg, int /*type*/, P_char 
 	}
 }
 
+static int wall_of_ice_power()
+{
+	return 40;
+}
+
+std::string wall_of_ice_facts(P_char /*ch*/)
+{
+	const int power = wall_of_ice_power();
+	return fact("Strength", std::to_string(power)) +
+	       fact("Bumping it takes",
+		    std::to_string(wall_of_ice_bump(power)) + " hit points, never below 1") +
+	       fact("A wall climber gets over", wall_climb_text()) +
+	       fact("Going over takes", "up to " + std::to_string(wall_of_ice_climb(power)) +
+						" hit points, never below 1") +
+	       fact("With protection from cold",
+		    "up to " + std::to_string(wall_of_ice_climb(wall_of_ice_protected(power)))) +
+	       wall_breakable_facts() + wall_exit_facts();
+}
+
 void spell_wall_of_ice(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_ch*/,
 		       P_obj /*tar_obj*/)
 {
@@ -942,7 +1221,8 @@ void spell_wall_of_ice(int level, P_char ch, char *arg, int /*type*/, P_char /*t
 		return;
 	}
 
-	if (create_walls(ch->in_room, var, ch, level, WALL_OF_ICE, 40, 1800, "&+Wa wall of ice&N",
+	if (create_walls(ch->in_room, var, ch, level, WALL_OF_ICE, wall_of_ice_power(),
+			 wall_decay(), "&+Wa wall of ice&N",
 			 "&+WA huge block of solid ice is here to the %s.&n", 0))
 	{
 		SET_BIT(EXIT(ch, var)->exit_info, EX_BREAKABLE);
@@ -962,6 +1242,20 @@ void spell_wall_of_ice(int level, P_char ch, char *arg, int /*type*/, P_char /*t
 	}
 }
 
+std::string life_ward_facts(P_char /*ch*/)
+{
+	const int pass = life_ward_pass_roll(highest_rolls) - life_ward_pass_roll(lowest_rolls) + 1;
+	return "  You pass your own ward.\n" +
+	       fact("Anyone else passes unharmed", "1 in " + std::to_string(pass)) +
+	       fact("Vitality lost bumping it", show({ life_ward_bump_drain(lowest_rolls),
+						       life_ward_bump_drain(highest_rolls) }) +
+							", never below 1") +
+	       fact("A wall climber gets over", wall_climb_text()) +
+	       fact("Vitality lost going over", show({ life_ward_climb_drain(lowest_rolls),
+						       life_ward_climb_drain(highest_rolls) })) +
+	       wall_exit_facts();
+}
+
 void cast_life_ward(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_ch*/,
 		    P_obj /*tar_obj*/)
 {
@@ -976,7 +1270,7 @@ void cast_life_ward(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_
 		return;
 	}
 
-	if (create_walls(ch->in_room, var, ch, level, LIFE_WARD, 40, 1800,
+	if (create_walls(ch->in_room, var, ch, level, LIFE_WARD, 40, wall_decay(),
 			 "&+La wall of &n&+bnegative energy&n",
 			 "&+LA strange blackness cloaks the %s exit here.&n", 0))
 	{
@@ -989,6 +1283,13 @@ void cast_life_ward(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_
 		send_to_room(buf1, ch->in_room);
 		send_to_room(buf2, (world[ch->in_room].dir_option[var])->to_room);
 	}
+}
+
+std::string wall_of_stone_facts(P_char ch)
+{
+	return fact("Strength", std::to_string(wall_strength(GET_LEVEL(ch))) + " at your level") +
+	       fact("A wall climber gets over", wall_climb_text()) + wall_breakable_facts() +
+	       wall_exit_facts();
 }
 
 void spell_wall_of_stone(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_ch*/,
@@ -1005,8 +1306,8 @@ void spell_wall_of_stone(int level, P_char ch, char *arg, int /*type*/, P_char /
 		return;
 	}
 
-	if (create_walls(ch->in_room, var, ch, level, WALL_OF_STONE, level, 1800,
-			 "&+La greyish stone wall&N",
+	if (create_walls(ch->in_room, var, ch, level, WALL_OF_STONE, wall_strength(level),
+			 wall_decay(), "&+La greyish stone wall&N",
 			 "&+LA greyish stone wall is here to the %s.&n", 0))
 	{
 		SET_BIT(EXIT(ch, var)->exit_info, EX_BREAKABLE);
@@ -1023,6 +1324,13 @@ void spell_wall_of_stone(int level, P_char ch, char *arg, int /*type*/, P_char /
 	}
 }
 
+std::string wall_of_iron_facts(P_char ch)
+{
+	return fact("Strength", std::to_string(wall_strength(GET_LEVEL(ch))) + " at your level") +
+	       fact("A wall climber gets over", wall_climb_text()) + wall_breakable_facts() +
+	       wall_exit_facts();
+}
+
 void spell_wall_of_iron(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_ch*/,
 			P_obj /*tar_obj*/)
 {
@@ -1037,8 +1345,8 @@ void spell_wall_of_iron(int level, P_char ch, char *arg, int /*type*/, P_char /*
 		return;
 	}
 
-	if (create_walls(ch->in_room, var, ch, level, WALL_OF_IRON, level, 1800,
-			 "&+ya massive wall of iron&N",
+	if (create_walls(ch->in_room, var, ch, level, WALL_OF_IRON, wall_strength(level),
+			 wall_decay(), "&+ya massive wall of iron&N",
 			 "&+yA massive wall of iron is here to the %s.&n", 0))
 	{
 		SET_BIT(EXIT(ch, var)->exit_info, EX_BREAKABLE);
@@ -1056,6 +1364,13 @@ void spell_wall_of_iron(int level, P_char ch, char *arg, int /*type*/, P_char /*
 	}
 }
 
+std::string wall_of_force_facts(P_char ch)
+{
+	return fact("Strength", std::to_string(wall_strength(GET_LEVEL(ch))) + " at your level") +
+	       "  It is invisible. Players walk through it; it stops NPCs.\n" +
+	       wall_breakable_facts() + wall_exit_facts();
+}
+
 void spell_wall_of_force(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_ch*/,
 			 P_obj /*tar_obj*/)
 {
@@ -1070,9 +1385,9 @@ void spell_wall_of_force(int level, P_char ch, char *arg, int /*type*/, P_char /
 		return;
 	}
 
-	if (create_walls(ch->in_room, var, ch, level, WALL_OF_FORCE, level, 1800,
-			 "&+Wa wall of force&n", "&+WThe outline of some wall is here to the %s.&n",
-			 ITEM_INVISIBLE))
+	if (create_walls(ch->in_room, var, ch, level, WALL_OF_FORCE, wall_strength(level),
+			 wall_decay(), "&+Wa wall of force&n",
+			 "&+WThe outline of some wall is here to the %s.&n", ITEM_INVISIBLE))
 	{
 		SET_BIT(EXIT(ch, var)->exit_info, EX_BREAKABLE);
 		SET_BIT(VIRTUAL_EXIT((world[ch->in_room].dir_option[var])->to_room, rev_dir[var])
@@ -1089,6 +1404,26 @@ void spell_wall_of_force(int level, P_char ch, char *arg, int /*type*/, P_char /
 	}
 }
 
+static int lightning_curtain_power(const Rolls &rolls, int level)
+{
+	return rolls.dice(level / 4, 10);
+}
+
+std::string lightning_curtain_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range shock = { lightning_curtain_power(lowest_rolls, level),
+			      lightning_curtain_power(highest_rolls, level) };
+	return fact("Shock when crossing",
+		    show(shock) + " at your level, " + std::to_string(level)) +
+	       fact("With protection from lightning",
+		    show({ lightning_curtain_protected(shock.low),
+			   lightning_curtain_protected(shock.high) })) +
+	       fact("It kills anyone it would leave under",
+		    std::to_string(lightning_curtain_margin()) + " hit points") +
+	       "  An NPC that is not a morph takes 1.\n" + wall_exit_facts();
+}
+
 void cast_lightning_curtain(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_ch*/,
 			    P_obj /*tar_obj*/)
 {
@@ -1103,7 +1438,8 @@ void cast_lightning_curtain(int level, P_char ch, char *arg, int /*type*/, P_cha
 		return;
 	}
 
-	if (create_walls(ch->in_room, var, ch, level, LIGHTNING_CURTAIN, dice(level / 4, 10), 1800,
+	if (create_walls(ch->in_room, var, ch, level, LIGHTNING_CURTAIN,
+			 lightning_curtain_power(live_rolls, level), wall_decay(),
 			 "&+Ya crackling curtain of lightning&n",
 			 "&+BA rippling curtain of lightning crackles to the %s.&n", 0))
 	{
@@ -1115,6 +1451,16 @@ void cast_lightning_curtain(int level, P_char ch, char *arg, int /*type*/, P_cha
 		send_to_room(buf1, ch->in_room);
 		send_to_room(buf2, (world[ch->in_room].dir_option[var])->to_room);
 	}
+}
+
+std::string web_facts(P_char /*ch*/)
+{
+	return fact("Paralysis if a crosser fails a paralysis save",
+		    seconds(web_paralysis(lowest_rolls)) + " to " +
+			    seconds(web_paralysis(highest_rolls))) +
+	       "  Freedom of movement prevents it.\n"
+	       "  The first to cross tears the web down.\n" +
+	       wall_exit_facts();
 }
 
 void cast_web(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_ch*/, P_obj /*tar_obj*/)
@@ -1130,7 +1476,7 @@ void cast_web(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_ch*/, 
 		return;
 	}
 
-	if (create_walls(ch->in_room, var, ch, level, WEB, 0, 1800, "&+Wa sticky web&n",
+	if (create_walls(ch->in_room, var, ch, level, WEB, 0, wall_decay(), "&+Wa sticky web&n",
 			 "A large web appears %s!", 0))
 	{
 		snprintf(buf1, MAX_STRING_LENGTH, "A large web appears %s!\r\n", dirs[var]);
@@ -1140,6 +1486,30 @@ void cast_web(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_ch*/, 
 		send_to_room(buf1, ch->in_room);
 		send_to_room(buf2, (world[ch->in_room].dir_option[var])->to_room);
 	}
+}
+
+std::string prismatic_cube_facts(P_char /*ch*/)
+{
+	const int pass = prismatic_wall_pass_roll(highest_rolls) -
+			 prismatic_wall_pass_roll(lowest_rolls) + 1;
+	const int colours = prismatic_wall_colour_roll(highest_rolls) -
+			    prismatic_wall_colour_roll(lowest_rolls) + 1;
+	return fact("Stays", real_time(wall_decay())) +
+	       "  A wall rises on every exit that can take one. You walk through them.\n" +
+	       fact("A player or pet gets through",
+		    "1 in " + std::to_string(pass) + " for " +
+			    std::to_string(prismatic_wall_pass_cost()) +
+			    " hit points, never below 1") +
+	       "  A player who gets through destroys that wall.\n" +
+	       fact("A wall climber gets over", wall_climb_text() + ", unharmed") +
+	       fact("Bumping it lands on", "1 of " + std::to_string(colours) + " colours") +
+	       fact("Fire damage, halved on a save",
+		    "red " + std::to_string(prismatic_wall_red()) + ", orange " +
+			    std::to_string(prismatic_wall_orange()) + ", yellow " +
+			    std::to_string(prismatic_wall_yellow())) +
+	       fact("Cast at level " + std::to_string(prismatic_wall_effect_level()),
+		    "minor paralysis, feeblemind, poison, blindness") +
+	       "  An NPC that is not a morph takes 1 from the fire.\n";
 }
 
 void cast_prismatic_cube(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*tar_ch*/,
@@ -1159,7 +1529,8 @@ void cast_prismatic_cube(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 		}
 
 		if (create_walls(
-			    room, dir, ch, level, PRISMATIC_WALL, level, 1800, "a prismatic wall",
+			    room, dir, ch, level, PRISMATIC_WALL, level, wall_decay(),
+			    "a prismatic wall",
 			    "A &+rw&N&+ca&N&+bl&N&+yl&N of &+gs&N&+Rh&N&+Ci&N&+Bf&N&+Yt&N&+Gi&N&+rn&N&+Cg&N &+bc&N&+yo&N&+Gl&N&+Ro&N&+cr&N is here to the %s.",
 			    0))
 		{
@@ -1178,6 +1549,57 @@ void cast_prismatic_cube(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 	}
 }
 
+// A roll below earthen_tomb_quake_below() only shakes the ground.
+static int earthen_tomb_quake_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 10);
+}
+
+static int earthen_tomb_quake_below()
+{
+	return 5;
+}
+
+// The next try comes after this many pulses, or longer if no exit can take a wall.
+static int earthen_tomb_interval()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int earthen_tomb_blocked_interval()
+{
+	return (int)(PULSE_VIOLENCE * 1.5);
+}
+
+// An earthen wall's level and strength.
+static int earthen_tomb_wall_level()
+{
+	return 50;
+}
+
+// The ground shakes this many pulses.
+static int earthen_tomb_duration(const Rolls &rolls)
+{
+	return rolls.number(8, 10) * PULSE_VIOLENCE;
+}
+
+std::string earthen_tomb_facts(P_char /*ch*/)
+{
+	const int low = earthen_tomb_quake_roll(lowest_rolls);
+	const int outcomes = earthen_tomb_quake_roll(highest_rolls) - low + 1;
+	return fact("The ground shakes for",
+		    seconds(earthen_tomb_duration(lowest_rolls)) + " to " +
+			    seconds(earthen_tomb_duration(highest_rolls))) +
+	       fact("Chance of a wall every " + seconds(earthen_tomb_interval()),
+		    std::to_string(outcomes - (earthen_tomb_quake_below() - low)) + " in " +
+			    std::to_string(outcomes)) +
+	       fact("With no exit to wall, it waits", seconds(earthen_tomb_blocked_interval())) +
+	       fact("Walls stay", real_time(wall_decay())) +
+	       fact("Wall level", std::to_string(earthen_tomb_wall_level())) +
+	       "  Walls rise on side exits only, not up or down. They cannot be hit down.\n"
+	       "  It needs ground to raise.\n";
+}
+
 void event_earthen_tomb(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void *data)
 {
 	char buf1[MAX_STRING_LENGTH], buf2[MAX_STRING_LENGTH];
@@ -1191,12 +1613,13 @@ void event_earthen_tomb(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void *d
 		return;
 	}
 
-	if (number(1, 10) < 5)
+	if (earthen_tomb_quake_roll(live_rolls) < earthen_tomb_quake_below())
 	{
 		send_to_room(
 			"&+yThe ground &+Lr&+yu&+Lm&+ybl&+ye&+Ls &+yand quivers under your feet.&n\r\n",
 			room);
-		add_event(event_earthen_tomb, PULSE_VIOLENCE, 0, 0, 0, 0, &room, sizeof(room));
+		add_event(event_earthen_tomb, earthen_tomb_interval(), 0, 0, 0, 0, &room,
+			  sizeof(room));
 		return;
 	}
 
@@ -1215,7 +1638,7 @@ void event_earthen_tomb(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void *d
 		send_to_room(
 			"&+yThe ground &+Lr&+yu&+Lm&+ybl&+ye&+Ls &+yand quivers under your feet.&n\r\n",
 			room);
-		add_event(event_earthen_tomb, (int)(PULSE_VIOLENCE * 1.5), 0, 0, 0, 0, &room,
+		add_event(event_earthen_tomb, earthen_tomb_blocked_interval(), 0, 0, 0, 0, &room,
 			  sizeof(room));
 		return;
 	}
@@ -1240,7 +1663,8 @@ void event_earthen_tomb(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void *d
 		return;
 	}
 
-	if (create_walls(room, exit, NULL, 50, WALL_OF_STONE, 50, 1800, "&+yAn earthen wall&n",
+	if (create_walls(room, exit, NULL, earthen_tomb_wall_level(), WALL_OF_STONE,
+			 earthen_tomb_wall_level(), wall_decay(), "&+yAn earthen wall&n",
 			 "&+yAn earthen wall blocks the exit to the %s.&n", 0))
 	{
 		snprintf(
@@ -1255,7 +1679,7 @@ void event_earthen_tomb(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void *d
 		send_to_room(buf1, room);
 		send_to_room(buf2, (world[room].dir_option[exit])->to_room);
 	}
-	add_event(event_earthen_tomb, PULSE_VIOLENCE, 0, 0, 0, 0, &room, sizeof(room));
+	add_event(event_earthen_tomb, earthen_tomb_interval(), 0, 0, 0, 0, &room, sizeof(room));
 }
 
 void cast_earthen_tomb(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -1280,9 +1704,9 @@ void cast_earthen_tomb(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]
 		ch->in_room);
 	memset(&af, 0, sizeof(struct room_affect));
 	af.type = SPELL_EARTHEN_TOMB;
-	af.duration = number(8, 10) * PULSE_VIOLENCE;
+	af.duration = earthen_tomb_duration(live_rolls);
 	affect_to_room(ch->in_room, &af);
-	add_event(event_earthen_tomb, PULSE_VIOLENCE, 0, 0, 0, 0, &ch->in_room,
+	add_event(event_earthen_tomb, earthen_tomb_interval(), 0, 0, 0, 0, &ch->in_room,
 		  sizeof(ch->in_room));
 }
 
@@ -1404,6 +1828,33 @@ void finish_room_transmute(P_char ch, struct grow_data *data)
 }
 //-------------------------------------------------------------------------------
 
+// A transmutation's roll before it takes hold.
+static int transmute_seconds(const Rolls &rolls)
+{
+	return 5 + rolls.dice(2, 5);
+}
+
+// It takes hold after this many pulses.
+static int transmute_delay(int secs)
+{
+	return 4 * secs;
+}
+
+// It then lasts this many pulses.
+static int transmute_lasts()
+{
+	return 4 * 60;
+}
+
+static std::string transmute_facts()
+{
+	return fact("Takes hold after",
+		    seconds(transmute_delay(transmute_seconds(lowest_rolls))) + " to " +
+			    seconds(transmute_delay(transmute_seconds(highest_rolls)))) +
+	       fact("Lasts", real_time(transmute_lasts())) +
+	       "  Another transmutation under way in the room blocks it.\n";
+}
+
 //--------- SPELL_ETHEREAL_GROUNDS ------------
 void event_ethereal_grounds_bye(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void *data)
 {
@@ -1430,6 +1881,12 @@ void event_ethereal_grounds(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *d
 	REMOVE_BIT(world[g_data->room].room_flags, ROOM_INDOORS);
 }
 
+std::string ethereal_grounds_facts(P_char /*ch*/)
+{
+	return transmute_facts() +
+	       "  It turns any room that is not already ethereal into ethereal ground.\n";
+}
+
 void spell_ethereal_grounds(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
 			    P_char /*victim*/, P_obj /*obj*/)
 {
@@ -1438,7 +1895,7 @@ void spell_ethereal_grounds(int /*level*/, P_char ch, char * /*arg*/, int /*type
 	if (!require_char(ch, "spell_ethereal_grounds", "called with no ch"))
 		return;
 
-	seconds = 5 + dice(2, 5);
+	seconds = transmute_seconds(live_rolls);
 	terrain_type = world[ch->in_room].sector_type;
 
 	switch (terrain_type)
@@ -1456,8 +1913,9 @@ void spell_ethereal_grounds(int /*level*/, P_char ch, char * /*arg*/, int /*type
 		return;
 	}
 
-	if (!prepare_room_transmute(ch, ch->in_room, SPELL_ETHEREAL_GROUNDS, 4 * 60, 4 * seconds,
-				    event_ethereal_grounds, event_ethereal_grounds_bye))
+	if (!prepare_room_transmute(ch, ch->in_room, SPELL_ETHEREAL_GROUNDS, transmute_lasts(),
+				    transmute_delay(seconds), event_ethereal_grounds,
+				    event_ethereal_grounds_bye))
 		return;
 
 	send_to_room("&+cThe ground starts to swirl together...&n\n", ch->in_room);
@@ -1540,12 +1998,18 @@ void event_trans_rock_mud(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *dat
 	REMOVE_BIT(world[g_data->room].room_flags, ROOM_INDOORS);
 }
 
+std::string trans_rock_mud_facts(P_char /*ch*/)
+{
+	return transmute_facts() +
+	       "  It turns rocky or wooded ground, on the surface or below, into swamp.\n";
+}
+
 void cast_transmute_rock_mud(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
 			     P_char /*tar_ch*/, P_obj /*tar_obj*/)
 {
 	int terrain_type, seconds;
 
-	seconds = 5 + dice(2, 5);
+	seconds = transmute_seconds(live_rolls);
 	terrain_type = world[ch->in_room].sector_type;
 
 	switch (terrain_type)
@@ -1575,8 +2039,9 @@ void cast_transmute_rock_mud(int /*level*/, P_char ch, char * /*arg*/, int /*typ
 		return;
 	}
 
-	if (!prepare_room_transmute(ch, ch->in_room, SPELL_TRANS_ROCK_MUD, 4 * 60, 4 * seconds,
-				    event_trans_rock_mud, event_rock_mud_bye))
+	if (!prepare_room_transmute(ch, ch->in_room, SPELL_TRANS_ROCK_MUD, transmute_lasts(),
+				    transmute_delay(seconds), event_trans_rock_mud,
+				    event_rock_mud_bye))
 		return;
 
 	send_to_room("&+yThe ground starts to &+Bswirl together...&n\n", ch->in_room);
@@ -1605,12 +2070,17 @@ void event_trans_mud_water(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *da
 	REMOVE_BIT(world[g_data->room].room_flags, ROOM_INDOORS);
 }
 
+std::string trans_mud_water_facts(P_char /*ch*/)
+{
+	return transmute_facts() + "  It turns forest, field or swamp into water.\n";
+}
+
 void cast_transmute_mud_water(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
 			      P_char /*tar_ch*/, P_obj /*tar_obj*/)
 {
 	int terrain_type, seconds;
 
-	seconds = 5 + dice(2, 5);
+	seconds = transmute_seconds(live_rolls);
 	terrain_type = world[ch->in_room].sector_type;
 
 	switch (terrain_type)
@@ -1631,8 +2101,9 @@ void cast_transmute_mud_water(int /*level*/, P_char ch, char * /*arg*/, int /*ty
 		return;
 	}
 
-	if (!prepare_room_transmute(ch, ch->in_room, SPELL_TRANS_MUD_WATER, 4 * 60, 4 * seconds,
-				    event_trans_mud_water, event_mud_water_bye))
+	if (!prepare_room_transmute(ch, ch->in_room, SPELL_TRANS_MUD_WATER, transmute_lasts(),
+				    transmute_delay(seconds), event_trans_mud_water,
+				    event_mud_water_bye))
 		return;
 
 	send_to_room("&+BThe area starts to flood...&n\n", ch->in_room);
@@ -1721,12 +2192,17 @@ void event_trans_water_air(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *da
 	REMOVE_BIT(world[g_data->room].room_flags, ROOM_INDOORS);
 }
 
+std::string trans_water_air_facts(P_char /*ch*/)
+{
+	return transmute_facts() + "  It turns water into open air.\n";
+}
+
 void cast_transmute_water_air(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
 			      P_char /*tar_ch*/, P_obj /*tar_obj*/)
 {
 	int terrain_type, seconds;
 
-	seconds = 5 + dice(2, 5);
+	seconds = transmute_seconds(live_rolls);
 	terrain_type = world[ch->in_room].sector_type;
 
 	switch (terrain_type)
@@ -1751,8 +2227,9 @@ void cast_transmute_water_air(int /*level*/, P_char ch, char * /*arg*/, int /*ty
 		return;
 	}
 
-	if (!prepare_room_transmute(ch, ch->in_room, SPELL_TRANS_WATER_AIR, 4 * 60, 4 * seconds,
-				    event_trans_water_air, event_water_air_bye))
+	if (!prepare_room_transmute(ch, ch->in_room, SPELL_TRANS_WATER_AIR, transmute_lasts(),
+				    transmute_delay(seconds), event_trans_water_air,
+				    event_water_air_bye))
 		return;
 
 	send_to_room("&+BThe water starts to &+Cevaporate...&n\n", ch->in_room);
@@ -1834,6 +2311,12 @@ void event_trans_rock_lava(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *da
 	REMOVE_BIT(world[g_data->room].room_flags, ROOM_INDOORS);
 }
 
+std::string trans_rock_lava_facts(P_char /*ch*/)
+{
+	return transmute_facts() +
+	       "  It turns rock, forest, field or city ground into lava. Not in town.\n";
+}
+
 void cast_transmute_rock_lava(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
 			      P_char /*tar_ch*/, P_obj /*tar_obj*/)
 {
@@ -1845,7 +2328,7 @@ void cast_transmute_rock_lava(int /*level*/, P_char ch, char * /*arg*/, int /*ty
 		return;
 	}
 
-	seconds = 5 + dice(2, 5);
+	seconds = transmute_seconds(live_rolls);
 	terrain_type = world[ch->in_room].sector_type;
 
 	switch (terrain_type)
@@ -1871,8 +2354,9 @@ void cast_transmute_rock_lava(int /*level*/, P_char ch, char * /*arg*/, int /*ty
 		return;
 	}
 
-	if (!prepare_room_transmute(ch, ch->in_room, SPELL_TRANS_ROCK_LAVA, 4 * 60, 4 * seconds,
-				    event_trans_rock_lava, event_rock_lava_bye))
+	if (!prepare_room_transmute(ch, ch->in_room, SPELL_TRANS_ROCK_LAVA, transmute_lasts(),
+				    transmute_delay(seconds), event_trans_rock_lava,
+				    event_rock_lava_bye))
 		return;
 
 	send_to_room("&+LThe rocky ground &+Rstarts to melt before your eyes...&n\n", ch->in_room);
@@ -1956,12 +2440,17 @@ void event_depressed_earth(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *da
 	REMOVE_BIT(world[g_data->room].room_flags, ROOM_INDOORS);
 }
 
+std::string depressed_earth_facts(P_char /*ch*/)
+{
+	return transmute_facts() + "  It turns forest, hills, field, road or city into swamp.\n";
+}
+
 void cast_depressed_earth(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char /*tar_ch*/,
 			  P_obj /*tar_obj*/)
 {
 	int terrain_type, seconds;
 
-	seconds = 5 + dice(2, 5);
+	seconds = transmute_seconds(live_rolls);
 	terrain_type = world[ch->in_room].sector_type;
 
 	switch (terrain_type)
@@ -1986,8 +2475,9 @@ void cast_depressed_earth(int /*level*/, P_char ch, char * /*arg*/, int /*type*/
 		return;
 	}
 
-	if (!prepare_room_transmute(ch, ch->in_room, SPELL_DEPRESSED_EARTH, 4 * 60, 4 * seconds,
-				    event_depressed_earth, event_depressed_earth_bye))
+	if (!prepare_room_transmute(ch, ch->in_room, SPELL_DEPRESSED_EARTH, transmute_lasts(),
+				    transmute_delay(seconds), event_depressed_earth,
+				    event_depressed_earth_bye))
 		return;
 
 	send_to_room("&+LA wave of depression sweeps through these &+ylands...&n\n", ch->in_room);
@@ -2031,12 +2521,18 @@ void event_grow(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 	REMOVE_BIT(world[g_data->room].room_flags, ROOM_INDOORS);
 }
 
+std::string grow_facts(P_char /*ch*/)
+{
+	return transmute_facts() +
+	       "  It grows a forest on most open ground. Not on water or in a guild room.\n";
+}
+
 void cast_grow(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char /*tar_ch*/,
 	       P_obj /*tar_obj*/)
 {
 	int terrain_type, seconds;
 
-	seconds = 5 + dice(2, 5);
+	seconds = transmute_seconds(live_rolls);
 
 	terrain_type = world[ch->in_room].sector_type;
 
@@ -2082,11 +2578,39 @@ void cast_grow(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char /*
 		return;
 	}
 
-	if (!prepare_room_transmute(ch, ch->in_room, SPELL_GROW, 4 * 60, 4 * seconds, event_grow,
-				    event_grow_bye))
+	if (!prepare_room_transmute(ch, ch->in_room, SPELL_GROW, transmute_lasts(),
+				    transmute_delay(seconds), event_grow, event_grow_bye))
 		return;
 
 	send_to_room("&+GThe ground starts to glow with a soft green light.&n\n", ch->in_room);
+}
+
+// Vines take at most this many herbs.
+static int vines_most_herbs()
+{
+	return 4;
+}
+
+static int vines_duration(int level)
+{
+	return level / 2;
+}
+
+// The damage the vines absorb from `count` herbs.
+static int vines_absorb(int count)
+{
+	return 40 * count;
+}
+
+std::string vines_facts(P_char ch)
+{
+	return fact("Damage absorbed", std::to_string(vines_absorb(1)) + " per green herb, up to " +
+					       std::to_string(vines_most_herbs()) + " herbs") +
+	       fact("Duration", game_hours(vines_duration(GET_LEVEL(ch))) + " at your level") +
+	       "  You need at least one green herb; it uses up to the most it takes.\n"
+	       "  Damage is absorbed whole, even the last hit. Moving crumbles them.\n"
+	       "  A backstab that lands breaks them and deals 1.\n"
+	       "  Fist of dragon does not get through them.\n";
 }
 
 void cast_vines(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char /*tar_ch*/,
@@ -2117,7 +2641,7 @@ void cast_vines(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			if (obj_index[t_obj->R_num].virtual_number == VOBJ_FORAGE_GREEN_HERB)
 			{
 				used_obj[count] = t_obj;
-				if (++count == 4)
+				if (++count == vines_most_herbs())
 				{
 					break;
 				}
@@ -2147,8 +2671,8 @@ void cast_vines(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 	af.type = SPELL_VINES;
 	af.flags = AFFTYPE_NOSHOW | AFFTYPE_NODISPEL;
 	af.bitvector5 = AFF5_VINES;
-	af.duration = level / 2;
-	af.modifier = 40 * count;
+	af.duration = vines_duration(level);
+	af.modifier = vines_absorb(count);
 	affect_to_char(ch, &af);
 }
 
@@ -2163,6 +2687,80 @@ struct awaken_forest_data
 	int room;
 	int iter;
 };
+
+// Spike growth starts this many pulses after the cast and then works every interval.
+static int spike_growth_start()
+{
+	return WAIT_SEC;
+}
+
+static int spike_growth_interval()
+{
+	return WAIT_SEC * 2;
+}
+
+// The room stays affected this many pulses.
+static int spike_growth_duration(const Rolls &rolls)
+{
+	return WAIT_SEC * (10 + rolls.dice(3, 2));
+}
+
+static int spike_growth_affect_chance()
+{
+	return (int)get_property("spell.spikeGrowth.affectChance", 10.00);
+}
+
+// A target is passed over when this is below 100 - spike_growth_affect_chance().
+static int spike_growth_affect_roll(const Rolls &rolls)
+{
+	return rolls.dice(1, 100);
+}
+
+static int spike_growth_technique(const Rolls &rolls)
+{
+	return rolls.dice(1, 3);
+}
+
+static int spike_growth_foot_damage(const Rolls &rolls, P_char ch)
+{
+	return GET_LEVEL(ch) * rolls.number(1, 3);
+}
+
+static int spike_growth_foot_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int spike_growth_bone_damage(const Rolls &rolls, P_char ch)
+{
+	return rolls.dice(1, GET_LEVEL(ch)) + 160;
+}
+
+std::string spike_growth_facts(P_char ch)
+{
+	const int chance =
+		spike_growth_affect_roll(highest_rolls) - (100 - spike_growth_affect_chance()) + 1;
+	const int kinds =
+		spike_growth_technique(highest_rolls) - spike_growth_technique(lowest_rolls) + 1;
+	return fact("Lasts", seconds(spike_growth_duration(lowest_rolls)) + " to " +
+				     seconds(spike_growth_duration(highest_rolls))) +
+	       fact("Works every",
+		    seconds(spike_growth_interval()) + ", first " +
+			    seconds(spike_growth_start() + 2 * spike_growth_interval()) +
+			    " after the cast") +
+	       fact("Chance per target each time", std::to_string(chance) + "%") +
+	       fact("A hit is one of", std::to_string(kinds) + " equally likely effects") +
+	       "  Grow spike, cast at your level.\n" +
+	       fact("Spike in the foot", show({ spike_growth_foot_damage(lowest_rolls, ch),
+						spike_growth_foot_damage(highest_rolls, ch) }) +
+						 ", knocks down, lags " +
+						 seconds(spike_growth_foot_lag())) +
+	       fact("Snapped bones", show({ spike_growth_bone_damage(lowest_rolls, ch),
+					    spike_growth_bone_damage(highest_rolls, ch) })) +
+	       "  Globes and spirit wards do not stop this damage.\n"
+	       "  Leaving the room can end it early.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
 
 void event_spike_growth(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 {
@@ -2190,7 +2788,7 @@ void event_spike_growth(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 			ch->in_room);
 		sgd->iter++;
 
-		duration = WAIT_SEC * (10 + dice(3, 2));
+		duration = spike_growth_duration(live_rolls);
 
 		memset(&af, 0, sizeof(struct room_affect));
 		af.type = SPELL_SPIKE_GROWTH;
@@ -2214,7 +2812,7 @@ void event_spike_growth(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 
 	tch = world[sgd->room].people;
 
-	chance = (int)get_property("spell.spikeGrowth.affectChance", 10.00);
+	chance = spike_growth_affect_chance();
 
 	for (tch = world[sgd->room].people; tch; tch = tch->next_in_room)
 	{
@@ -2229,10 +2827,10 @@ void event_spike_growth(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 			if (!should_area_hit(ch, tch))
 				continue;
 
-		if (dice(1, 100) < 100 - chance)
+		if (spike_growth_affect_roll(live_rolls) < 100 - chance)
 			continue;
 
-		technique = dice(1, 3);
+		technique = spike_growth_technique(live_rolls);
 		switch (technique)
 		{
 		case 1:
@@ -2243,13 +2841,13 @@ void event_spike_growth(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 			    FALSE, tch, 0, 0, TO_CHAR);
 			act("A &+yHUGE SPIKE&n bursts from the &+yground&n piercing&n $n's &+yfoot!&n",
 			    FALSE, tch, 0, 0, TO_NOTVICT);
-			spell_damage(ch, tch, GET_LEVEL(ch) * number(1, 3), SPLDAM_GENERIC, 0,
-				     &message);
+			spell_damage(ch, tch, spike_growth_foot_damage(live_rolls, ch),
+				     SPLDAM_GENERIC, 0, &message);
 			SET_POS(tch, POS_SITTING + GET_STAT(tch));
-			CharWait(tch, PULSE_VIOLENCE);
+			CharWait(tch, spike_growth_foot_lag());
 			break;
 		case 3:
-			dam = dice(1, GET_LEVEL(ch)) + 160;
+			dam = spike_growth_bone_damage(live_rolls, ch);
 			spell_damage(ch, tch, dam, SPLDAM_GENERIC, 0, &message);
 			break;
 		}
@@ -2264,8 +2862,97 @@ void event_spike_growth(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 	}
 
 spike_grow_next:
-	add_event(event_spike_growth, WAIT_SEC * 2, ch, NULL, NULL, 0, sgd,
+	add_event(event_spike_growth, spike_growth_interval(), ch, NULL, NULL, 0, sgd,
 		  sizeof(struct spike_growth_data));
+}
+
+// Awaken forest starts this many pulses after the cast and then works every interval.
+static int awaken_forest_start()
+{
+	return WAIT_SEC;
+}
+
+static int awaken_forest_interval()
+{
+	return WAIT_SEC * 3 / 2;
+}
+
+// The room stays affected this many pulses.
+static int awaken_forest_duration(const Rolls &rolls)
+{
+	return WAIT_SEC * (5 + rolls.dice(3, 2));
+}
+
+// A target is passed over when this is above awaken_forest_pass_above().
+static int awaken_forest_affect_roll(const Rolls &rolls, int nCnt)
+{
+	return rolls.number(0, MAX(2, nCnt));
+}
+
+static int awaken_forest_pass_above()
+{
+	return 2;
+}
+
+static int awaken_forest_technique(const Rolls &rolls)
+{
+	return rolls.dice(1, 3);
+}
+
+// The level its entangle is cast at.
+static int awaken_forest_entangle_level()
+{
+	return 60;
+}
+
+// Roots topple a standing target whose agility is below this.
+static int awaken_forest_root_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 125);
+}
+
+// Toppled targets save at this modifier or take the lag.
+static int awaken_forest_root_save()
+{
+	return 3;
+}
+
+static int awaken_forest_root_lag()
+{
+	return (int)(PULSE_VIOLENCE * 1.5);
+}
+
+static int awaken_forest_branch_damage(const Rolls &rolls)
+{
+	return rolls.dice(1, 40) + 160;
+}
+
+std::string awaken_forest_facts(P_char /*ch*/)
+{
+	const int kinds =
+		awaken_forest_technique(highest_rolls) - awaken_forest_technique(lowest_rolls) + 1;
+	return fact("Lasts", seconds(awaken_forest_duration(lowest_rolls)) + " to " +
+				     seconds(awaken_forest_duration(highest_rolls))) +
+	       fact("Works every",
+		    seconds(awaken_forest_interval()) + ", first " +
+			    seconds(awaken_forest_start() + 2 * awaken_forest_interval()) +
+			    " after the cast") +
+	       fact("Chance per target with more than " +
+			    std::to_string(awaken_forest_pass_above()) + " targets",
+		    std::to_string(awaken_forest_pass_above() + 1) + " in (targets + 1)") +
+	       fact("A hit is one of", std::to_string(kinds) + " equally likely effects") +
+	       fact("Entangle", "cast at level " + std::to_string(awaken_forest_entangle_level())) +
+	       fact("Roots", "topple a standing target with agility below a roll of " +
+				     show({ awaken_forest_root_roll(lowest_rolls),
+					    awaken_forest_root_roll(highest_rolls) })) +
+	       fact("If it then fails a save, " + std::to_string(awaken_forest_root_save()) +
+			    " harder, lag",
+		    seconds(awaken_forest_root_lag())) +
+	       fact("Crushing branches", show({ awaken_forest_branch_damage(lowest_rolls),
+						awaken_forest_branch_damage(highest_rolls) })) +
+	       "  Globes and spirit wards do not stop this damage.\n"
+	       "  It needs a forest, or grow under way, and waits for the room to be forest.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
@@ -2298,7 +2985,7 @@ void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 			ch->in_room);
 		awd->iter++;
 
-		duration = WAIT_SEC * (5 + dice(3, 2));
+		duration = awaken_forest_duration(live_rolls);
 
 		memset(&af, 0, sizeof(struct room_affect));
 		af.type = SPELL_AWAKEN_FOREST;
@@ -2341,31 +3028,32 @@ void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 			if (!should_area_hit(ch, tch))
 				continue;
 
-		if (number(0, MAX(2, nCnt)) > 2)
+		if (awaken_forest_affect_roll(live_rolls, nCnt) > awaken_forest_pass_above())
 			continue;
 
-		technique = dice(1, 3);
+		technique = awaken_forest_technique(live_rolls);
 		switch (technique)
 		{
 		case 1:
-			spell_entangle(60, ch, 0, 0, tch, obj);
+			spell_entangle(awaken_forest_entangle_level(), ch, 0, 0, tch, obj);
 			break;
 		case 2:
 
-			if (GET_POS(tch) == POS_STANDING && (GET_C_AGI(tch) < number(0, 125)))
+			if (GET_POS(tch) == POS_STANDING &&
+			    (GET_C_AGI(tch) < awaken_forest_root_roll(live_rolls)))
 			{
 				act("Thick &+groots&n burst from the &+yground&n knocking you off balance.",
 				    FALSE, tch, 0, 0, TO_CHAR);
 				act("Thick &+groots&n burst from the &+yground&n knocking&n $n &+yoff balance.&n",
 				    FALSE, tch, 0, 0, TO_NOTVICT);
 				SET_POS(tch, POS_SITTING + GET_STAT(tch));
-				if (!NewSaves(tch, SAVING_SPELL, 3))
+				if (!NewSaves(tch, SAVING_SPELL, awaken_forest_root_save()))
 				{
 					act(" .. the &+groots&n hit you really hard!", FALSE, tch,
 					    0, 0, TO_CHAR);
 					act(" .. the &+groots&n hit $n really hard!", FALSE, tch, 0,
 					    0, TO_NOTVICT);
-					CharWait(tch, (int)(PULSE_VIOLENCE * 1.5));
+					CharWait(tch, awaken_forest_root_lag());
 				}
 			}
 			else
@@ -2377,7 +3065,7 @@ void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 			}
 			break;
 		case 3:
-			dam = dice(1, 40) + 160;
+			dam = awaken_forest_branch_damage(live_rolls);
 			spell_damage(ch, tch, dam, SPLDAM_GENERIC, 0, &messages);
 
 			break;
@@ -2393,7 +3081,7 @@ void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 	}
 
 awaken_next:
-	add_event(event_awaken_forest, WAIT_SEC * 3 / 2, ch, NULL, NULL, 0, awd,
+	add_event(event_awaken_forest, awaken_forest_interval(), ch, NULL, NULL, 0, awd,
 		  sizeof(struct awaken_forest_data));
 }
 
@@ -2433,7 +3121,7 @@ void cast_spike_growth(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P
 	sgd.room = ch->in_room;
 	sgd.iter = 0;
 
-	add_event(event_spike_growth, WAIT_SEC, ch, NULL, NULL, 0, &sgd, sizeof(sgd));
+	add_event(event_spike_growth, spike_growth_start(), ch, NULL, NULL, 0, &sgd, sizeof(sgd));
 }
 
 void cast_awaken_forest(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char /*tar_ch*/,
@@ -2461,10 +3149,69 @@ void cast_awaken_forest(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, 
 	awd.room = ch->in_room;
 	awd.iter = 0;
 
-	add_event(event_awaken_forest, WAIT_SEC, ch, NULL, NULL, 0, &awd, sizeof(awd));
+	add_event(event_awaken_forest, awaken_forest_start(), ch, NULL, NULL, 0, &awd, sizeof(awd));
 }
 
 /*** STORM DRUID ***/
+
+// One roll sets the damage for the whole cast.
+static int hurricane_damage(const Rolls &rolls, int level)
+{
+	return 40 + level * 6 + rolls.number(1, 30);
+}
+
+// A target escapes when this is below hurricane_miss_below().
+static int hurricane_miss_roll(const Rolls &rolls)
+{
+	return rolls.dice(1, 100);
+}
+
+static int hurricane_miss_below()
+{
+	return 30;
+}
+
+// A target is knocked down outdoors when hurricane_knockdown_roll() is below this.
+static int hurricane_knockdown_chance(bool flying, int caster_level)
+{
+	int chance;
+
+	if (flying)
+		chance = 5;
+	else
+		chance = 1;
+
+	if (caster_level >= 51)
+		chance *= 2;
+
+	return chance;
+}
+
+static int hurricane_knockdown_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+std::string hurricane_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const int first = hurricane_knockdown_roll(lowest_rolls);
+	const int flying = hurricane_knockdown_chance(true, level) - first;
+	const int grounded = hurricane_knockdown_chance(false, level) - first;
+	return fact("Damage to everyone it hits", show({ hurricane_damage(lowest_rolls, level),
+							 hurricane_damage(highest_rolls, level) }) +
+							  " at your level, " +
+							  std::to_string(level)) +
+	       fact("Chance a target escapes",
+		    std::to_string(hurricane_miss_below() - hurricane_miss_roll(lowest_rolls)) +
+			    "%") +
+	       fact("Knockdown outdoors, if flying", std::to_string(flying) + "%") +
+	       fact("Knockdown outdoors, otherwise",
+		    grounded > 0 ? std::to_string(grounded) + "%" : "never") +
+	       "  One roll sets the damage for the whole cast.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
 
 void cast_hurricane(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*tar_ch*/,
 		    P_obj /*tar_obj*/)
@@ -2483,7 +3230,7 @@ void cast_hurricane(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /
 
 	// dam = 40 << 2;
 	//  This new damage below is about 1/2 that of swarm
-	dam = 40 + level * 6 + number(1, 30);
+	dam = hurricane_damage(live_rolls, level);
 
 	tch = world[ch->in_room].people;
 
@@ -2497,18 +3244,12 @@ void cast_hurricane(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /
 		if (!should_area_hit(ch, tch))
 			continue;
 
-		if (dice(1, 100) < 30)
+		if (hurricane_miss_roll(live_rolls) < hurricane_miss_below())
 			continue;
 
-		if (IS_AFFECTED(tch, AFF_FLY))
-			chance = 5;
-		else
-			chance = 1;
+		chance = hurricane_knockdown_chance(IS_AFFECTED(tch, AFF_FLY), GET_LEVEL(ch));
 
-		if (GET_LEVEL(ch) >= 51)
-			chance *= 2;
-
-		affchance = number(1, 100);
+		affchance = hurricane_knockdown_roll(live_rolls);
 		if (OUTSIDE(ch))
 		{
 			if (affchance < chance)
@@ -2524,6 +3265,29 @@ void cast_hurricane(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /
 		}
 		spell_damage(ch, tch, dam, SPLDAM_GENERIC, 0, &messages);
 	}
+}
+
+static int storm_shield_duration(int level)
+{
+	return level / 5;
+}
+
+// fight.c: a roll of 0 makes a blocking storm shield discharge.
+int storm_shield_discharge_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+std::string storm_shield_facts(P_char ch)
+{
+	const int outcomes = storm_shield_discharge_roll(highest_rolls) -
+			     storm_shield_discharge_roll(lowest_rolls) + 1;
+	return fact("Duration",
+		    game_hours(storm_shield_duration(GET_LEVEL(ch))) + " at your level") +
+	       fact("Chance of a lightning bolt when you block",
+		    "1 in " + std::to_string(outcomes)) +
+	       "  The bolt goes at your attacker, at your level.\n" + lightning_bolt_facts(ch) +
+	       "  You must wear a shield to cast it.\n";
 }
 
 void cast_storm_shield(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -2542,7 +3306,7 @@ void cast_storm_shield(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 
 	bzero(&af, sizeof(af));
 	af.type = SPELL_STORMSHIELD;
-	af.duration = level / 5;
+	af.duration = storm_shield_duration(level);
 	affect_to_char(ch, &af);
 
 	act("&+bYour $q &+bstarts to crackle with energy, as small &+Wbolts &+bof &+Wlightning &+brun along its surface.&n",
@@ -2550,6 +3314,48 @@ void cast_storm_shield(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 
 	act("&+b$n&+b's $q &+bstarts to crackle with energy, as small &+Wbolts &+bof &+Wlightning &+brun along its surface.&n",
 	    FALSE, ch, ch->equipment[WEAR_SHIELD], 0, TO_ROOM);
+}
+
+// A positive save modifier makes the save harder.
+static int blood_to_stone_save()
+{
+	return 5;
+}
+
+static int blood_to_stone_saved(int dur)
+{
+	return dur / 2;
+}
+
+static int blood_to_stone_vitality()
+{
+	return 3;
+}
+
+// `dur` seconds of blood to stone, in pulses.
+static int blood_to_stone_duration(int dur)
+{
+	return MAX(WAIT_SEC, dur * WAIT_SEC);
+}
+
+// actmove.c: each step costs a target this many more moves.
+int blood_to_stone_move_cost(const Rolls &rolls)
+{
+	return rolls.number(1, 4);
+}
+
+std::string blood_to_stone_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Lasts", seconds(blood_to_stone_duration(level)) +
+				     ", or its missing health % in seconds if more") +
+	       fact("If it passes a paralysis save, " + std::to_string(blood_to_stone_save()) +
+			    " harder",
+		    "half that") +
+	       fact("Vitality lost", std::to_string(blood_to_stone_vitality())) +
+	       fact("Extra moves per step", show({ blood_to_stone_move_cost(lowest_rolls),
+						   blood_to_stone_move_cost(highest_rolls) })) +
+	       "  It cannot be dispelled. Innate magic resistance can shrug it.\n";
 }
 
 void cast_bloodstone(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
@@ -2581,18 +3387,18 @@ void cast_bloodstone(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 	duration = MAX(level, duration);
 	// Lasts % health missing seconds, or level seconds, whichever is more.
 	int dur = duration;
-	if (NewSaves(victim, SAVING_PARA, 5))
+	if (NewSaves(victim, SAVING_PARA, blood_to_stone_save()))
 	{
-		dur /= 2;
+		dur = blood_to_stone_saved(dur);
 	}
 	debug("blood to stone: duration: %f, dur: %d", duration, dur);
 
-	GET_VITALITY(victim) -= 3;
+	GET_VITALITY(victim) -= blood_to_stone_vitality();
 	StartRegen(victim, regen_resource::vitality);
 
 	bzero(&af, sizeof(af));
 	af.type = SPELL_BLOODTOSTONE;
-	af.duration = MAX(WAIT_SEC, dur * WAIT_SEC);
+	af.duration = blood_to_stone_duration(dur);
 	af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL;
 	affect_to_char(victim, &af);
 
@@ -2770,6 +3576,19 @@ bool exit_wallable(int room, int dir, P_char ch)
 	return TRUE;
 }
 
+static int mirage_duration()
+{
+	return 3;
+}
+
+std::string mirage_facts(P_char /*ch*/)
+{
+	return fact("Duration", game_hours(mirage_duration())) +
+	       "  It disguises each player in your group here as a random race of their side.\n"
+	       "  It ends when they leave the room or take damage.\n"
+	       "  It needs a group and is refused while anyone here is fighting.\n";
+}
+
 void spell_mirage([[maybe_unused]] int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		  P_char /*victim*/, P_obj /*obj*/)
 {
@@ -2816,7 +3635,7 @@ void spell_mirage([[maybe_unused]] int level, P_char ch, char * /*arg*/, [[maybe
 
 	memset(&af, 0, sizeof(af));
 	af.type = SPELL_MIRAGE;
-	af.duration = 3;
+	af.duration = mirage_duration();
 	af.modifier = ch->in_room;
 
 	for (gl = ch->group; gl; gl = gl->next)

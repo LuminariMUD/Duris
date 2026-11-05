@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
+from _innate_numbers import with_innate_numbers
 
 
 PRELUDE = r'''
@@ -497,7 +498,7 @@ void do_group(P_char ch, char *, int) {
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="terminal-modes-", dir=build) as directory:
         cpp, binary = Path(directory) / "harness.cpp", Path(directory) / "harness"
-        cpp.write_text("\n".join(bodies))
+        cpp.write_text(with_innate_numbers("\n".join(bodies)))
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Og", "-g",
                         "-fsanitize=address,undefined", "-fno-pie", "-no-pie", "-Isrc",
                         str(cpp), "src/net/ansi.c", "src/net/unicode.c", "src/core/safe_format.c",

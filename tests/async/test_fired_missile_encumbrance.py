@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, HARNESS_STUBS, extract_function
+from _innate_numbers import with_innate_numbers
 
 
 handler = "\n".join(extract_function("world/handler.c", signature) for signature in (
@@ -31,7 +32,14 @@ handler = "\n".join(extract_function("world/handler.c", signature) for signature
 materialize = extract_function("account/nanny.c", "static P_obj materialize_legacy_newbie_item(")
 decay_callback = extract_function("magic/affects.c", "void event_obj_affect(")
 commands = "\n".join(extract_function("combat/range.c", signature) for signature in (
-    "void event_enchant_arrow(", "int enchant_arrows(", "void do_fire(", "void do_gather(",
+    "void event_enchant_arrow(", "static int enchant_arrows_mark_duration(",
+    "static int enchant_arrows_effect_top(", "int enchant_arrows(", "static int point_blank_shot_threshold(",
+    "static int point_blank_shot_lag(", "static int archery_speed_limit(", "static int archery_hit_skill(",
+    "static int archery_range_hit_skill(", "static int archery_speed_per_shot(",
+    "static int archery_skill_damage(", "static int archery_fumble_roll(", "static int archery_fumble_tenths(",
+    "static int indirect_shot_threshold(", "static int cursed_arrows_threshold(",
+    "static int critical_shot_threshold(", "static float critical_shot_factor(",
+    "static int shadow_archery_threshold(", "int arrow_block_chance(", "void do_fire(", "void do_gather(",
 ))
 strings = "\n".join(extract_function("classes/salchemist.c", signature) for signature in (
     "void set_keywords(", "void set_short_description(",
@@ -55,6 +63,7 @@ harness = r'''
 #include "world/vnum.obj.h"
 #include <algorithm>
 #include <cassert>
+#include "abilities/abilities.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -95,6 +104,7 @@ int number(int, int high) {
     return high;
 }
 int dice(int, int) { return 1; }
+const Rolls live_rolls = { dice, number };
 int get_property(const char *, int fallback) { return fallback; }
 float get_property(const char *, double fallback) { return fallback; }
 int chance_to_hit(P_char, P_char, int, P_obj) { return force_hit ? 100 : 0; }
@@ -517,7 +527,7 @@ build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="fired-missile-weight-", dir=build) as temporary:
     source = Path(temporary) / "harness.cpp"
     binary = Path(temporary) / "harness"
-    source.write_text(harness)
+    source.write_text(with_innate_numbers(harness))
     subprocess.run([
         "g++", "-std=c++20", "-g", "-fsanitize=address,undefined",
         "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",

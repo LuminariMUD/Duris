@@ -8,6 +8,7 @@ from _paths import ROOT, extract_function
 source = (ROOT / 'src/world/graph.c').read_text()
 queue = source[source.index('int bfs_cur_marker;'):source.index('// some very specialized versions')]
 fixture = r'''
+#include "abilities/abilities.h"
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "world/graph.h"
@@ -48,9 +49,22 @@ void stop_fighting(P_char ch) { ++stopped; ch->specials.fighting = nullptr; }
 void char_from_room(P_char ch) { ch->in_room = NOWHERE; }
 bool char_to_room(P_char ch, int room, int) { ++moved; ch->in_room = room; return true; }
 void CharWait(P_char, int ticks) { waited += ticks; }
+const Rolls live_rolls = { dice, number };
 ''' + '\n'.join(extract_function(path, signature) for path, signature in [
+    ('magic.c', 'static int teleport_range('),
     ('magic.c', 'void spell_teleport('),
+    ('psionics.c', 'static int depart_range('),
+    ('psionics.c', 'static int depart_free_level('),
+    ('psionics.c', 'static int depart_lag('),
+    ('psionics.c', 'static int depart_limited_range('),
     ('psionics.c', 'void spell_depart('),
+    ('utility.c', 'int dice(int num, int size)'),
+    ('ethermancer.c', 'static int etheric_gust_direction_roll('),
+    ('ethermancer.c', 'static int etheric_gust_zone_room_roll('),
+    ('ethermancer.c', 'static int etheric_gust_range('),
+    ('ethermancer.c', 'static int etheric_gust_limited_range('),
+    ('ethermancer.c', 'static int etheric_gust_lag('),
+    ('ethermancer.c', 'static bool etheric_gust_room_limited('),
     ('ethermancer.c', 'void spell_etheric_gust('),
 ]) + r'''
 static void check_teleports() {

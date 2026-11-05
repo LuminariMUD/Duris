@@ -4,6 +4,7 @@
 #include "core/utils.h"
 #include "cmd/wikihelp.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 
 #include <algorithm>
 #include <cctype>
@@ -251,56 +252,63 @@ void catalog(P_char ch, int cls, int spec)
 
 void spell_info(P_char ch, int spell)
 {
+	const auto white = [](int value) { return "&+W" + std::to_string(value) + "&n"; };
 	std::ostringstream out;
-	out << heading(string(skills[spell].name) + " : SPELL INFO")
-	    << "  Registered aggression: " << (IS_AGG_SPELL(spell) ? "Yes" : "No") << "\n"
+	out << heading("&+W" + string(skills[spell].name) + "&+C : SPELL INFO")
+	    << info_field("Registered aggression", IS_AGG_SPELL(spell) ? "&+RYes&n" : "No")
 	    << "\n&+W  Class / specialization availability&n\n";
-	bool any = false;
+	// Every class and specialization row is padded to the widest label so the circles
+	// line up. A specialization is indented under its class only when that class has
+	// a row of its own.
+	std::vector<std::pair<string, string>> rows;
 	for (int cls = 1; cls <= CLASS_COUNT; ++cls)
 	{
 		const int base = reference_circle(spell, cls, 0);
 		if (base)
-		{
-			out << "  " << pad_ansi(class_names_table[cls].ansi, 27) << " Circle "
-			    << base << "\n";
-			any = true;
-		}
+			rows.push_back({ string("  ") + class_names_table[cls].ansi,
+					 "&+cCircle&n " + white(base) });
 		for (int spec = 1; spec <= MAX_SPEC; ++spec)
 		{
 			const int circle = reference_circle(spell, cls, spec);
 			if (!named_spec(cls, spec) || circle == base)
 				continue;
-			out << "    " << specdata[cls][spec - 1] << "&n ("
-			    << class_names_table[cls].normal << "): ";
-			if (circle)
-				out << "Circle " << circle << (base ? " (changed)" : " (added)");
-			else
-				out << "Unavailable (lost from base class)";
-			out << "\n";
-			any = true;
+			rows.push_back({ string(base ? "    " : "  ") + specdata[cls][spec - 1] +
+						 "&n (" + class_names_table[cls].normal + ")",
+					 circle ?
+						 "&+cCircle&n " + white(circle) + "&+L" +
+							 (base ? " (changed)" : " (added)") + "&n" :
+						 "&+rUnavailable&n&+L (lost from base class)&n" });
 		}
 	}
-	if (!any)
-		out << "  No ordinary class/specialization grants.\n";
-	out << "  Unlisted specializations inherit the listed base-class behavior.\n"
+	size_t width = 0;
+	for (const auto &row : rows)
+		width = std::max(width, strip_ansi(row.first.c_str()).size());
+	for (const auto &row : rows)
+		out << pad_ansi(row.first.c_str(), static_cast<int>(width)) << " " << row.second
+		    << "\n";
+	if (rows.empty())
+		out << "&+L  No ordinary class/specialization grants.&n\n";
+	out << "&+L  Unlisted specializations inherit the listed base-class behavior.&n\n"
 	       "\n&+W  Your access&n\n";
 	const int circle = personal_circle(ch, spell);
 	const int maximum = get_max_circle(ch);
-	out << "  Current maximum Circle: " << maximum << "\n";
+	out << info_field("Current maximum Circle", white(maximum));
 	if (circle)
 	{
-		out << "  Your required Circle: " << circle << "\n"
-		    << "  Circle requirement: " << (circle <= maximum ? "met" : "not yet met")
-		    << "\n";
+		out << info_field("Your required Circle", white(circle))
+		    << info_field("Circle requirement",
+				  circle <= maximum ? "&+Gmet&n" : "&+Ynot yet met&n");
 		if (shows_book(ch))
-			out << "  Spellbook (inventory, hands, belt): "
-			    << (in_book(ch, spell) ? "present" : "not found") << "\n";
+			out << info_field("Spellbook (inventory, hands, belt)",
+					  in_book(ch, spell) ? "&+Gpresent&n" : "&+Ynot found&n");
 	}
 	else
-		out << "  Not available through your current classes/specialization.\n";
-	out << "  Class/circle access and book presence do not establish readiness to cast.\n"
-	       "\n&+W  Helpfile details&n\n"
-	    << wiki_help_single(skills[spell].name) << "\n";
+		out << "&+L  Not available through your current classes/specialization.&n\n";
+	out << "&+L  Class/circle access and book presence do not establish readiness to "
+	       "cast.&n\n";
+	if (AbilityFacts facts = ability_facts(spell))
+		out << mechanics_section(facts(ch));
+	out << "\n&+W  Helpfile details&n\n" << wiki_help_single(skills[spell].name) << "\n";
 	send_to_char(out.str().c_str(), ch);
 }
 

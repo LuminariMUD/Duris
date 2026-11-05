@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import HARNESS_STUBS, ROOT, extract_function
+from _innate_numbers import with_innate_numbers
 
 
 prelude = r'''
@@ -206,7 +207,12 @@ production = "\n".join([
     extract_function("affects.c", "P_char get_linked_char("),
     extract_function("necromancy.c", "int setup_pet("),
     extract_function("necromancy.c", "int count_pets("),
+    '#include "abilities/abilities.h"\nconst Rolls live_rolls = { dice, number };',
+    *(extract_function("sillusionist.c", f"static int reflection_{name}(")
+      for name in ("images", "image_hit_points", "image_control")),
     extract_function("sillusionist.c", "void spell_reflection("),
+    *(extract_function("blispells.c", f"static int shambler_{name}(")
+      for name in ("pet_limit", "count_poor", "count_open", "count_rich", "charm", "life")),
     extract_function("blispells.c", "void spell_shambler("),
 ])
 
@@ -526,7 +532,7 @@ build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="reflection-ownership-", dir=build) as directory:
     cpp = Path(directory) / "harness.cpp"
     binary = Path(directory) / "harness"
-    cpp.write_text(prelude + production + driver)
+    cpp.write_text(with_innate_numbers(prelude + production + driver))
     subprocess.run([
         *shlex.split(os.environ.get("CXX", "g++")), "-std=c++20", "-g",
         "-ffunction-sections", "-fdata-sections",

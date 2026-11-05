@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
+from _innate_numbers import with_innate_numbers
 
 
 PRELUDE = r'''
@@ -119,6 +120,10 @@ def production():
     return "#define DRAGONSLAYER_VNUM 80569\n" + "\n".join(
         extract_function(file, signature) for file, signature in [
             ("utility.c", "int strn_cmp("),
+            ("actoff.c", "int mounted_combat_calm_threshold("),
+            ("actoff.c", "static int control_flee_threshold("),
+            ("actoff.c", "static int expeditious_retreat_threshold("),
+            ("actoff.c", "static int expeditious_retreat_duration("),
             ("utility.c", "int char_in_list(const P_char ch)"),
             ("interp.c", "int search_block("),
             ("interp.c", "int fill_word("),
@@ -130,6 +135,7 @@ def production():
             ("actmove.c", "int do_simple_move("),
             ("actoff.c", "bool bad_flee_dir("),
             ("actoff.c", "static bool restore_equipment_sneak_after_flee("),
+            ("actoff.c", "int advanced_meditation_stun_flee_bonus("),
             ("actoff.c", "void do_flee("),
         ])
 
@@ -260,7 +266,7 @@ def main():
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="control-flee-", dir=build) as directory:
         cpp, binary = Path(directory) / "harness.cpp", Path(directory) / "harness"
-        cpp.write_text(PRELUDE + production() + DRIVER)
+        cpp.write_text(with_innate_numbers(PRELUDE + production() + DRIVER))
         subprocess.run([
             "g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
             "-Wno-unused-parameter", "-fsanitize=address,undefined",

@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, extract_function
+from _innate_numbers import with_innate_numbers
 from _paths import HARNESS_STUBS
 
 PREFIX = r'''
@@ -17,6 +18,7 @@ PREFIX = r'''
 #include "net/comm.h"
 #include "combat/damage.h"
 #include "combat/attack_continuation.h"
+#include "abilities/abilities.h"
 #include <cassert>
 #include <cstdio>
 
@@ -86,6 +88,7 @@ bool hit(P_char ch, P_char victim, P_obj, int *) {
     return false; // This boolean deliberately does not promise participant survival.
 }
 int dice(int, int) { return 1; }
+const Rolls live_rolls = { dice, number };
 bool damage(P_char ch, P_char victim, double, int) {
     assert(IS_ALIVE(ch) && IS_ALIVE(victim));
     ++damages;
@@ -158,7 +161,11 @@ int main() {
 }
 '''
 
-body = extract_function('fight.c', 'int try_riposte(P_char ch, P_char victim, P_obj wpn)')
+body = ''.join(extract_function('fight.c', signature) for signature in (
+    'static double riposte_specialist_score(', 'static double riposte_lucky_share(',
+    'static double riposte_unlucky_share(', 'static double followup_riposte_threshold(',
+    'static double followup_riposte_blow(', 'static int followup_riposte_second_blow(',
+    'int try_riposte(P_char ch, P_char victim, P_obj wpn)'))
 # Also execute the unchanged production hit entry through its initial guards.
 # This narrowly probes ordering before the first gameplay effect, not the full
 # hit implementation; the full server is built and tested separately.
@@ -168,7 +175,7 @@ entry = entry.replace('bool hit(', 'bool hit_entry(', 1)
 with tempfile.TemporaryDirectory(prefix='duris-riposte-lifetime-') as temporary:
     source = Path(temporary) / 'riposte.cpp'
     binary = Path(temporary) / 'riposte'
-    source.write_text(PREFIX + body + entry + SUFFIX)
+    source.write_text(with_innate_numbers(PREFIX + body + entry + SUFFIX))
     subprocess.run(['g++', '-std=c++20', '-g', '-Og', '-D__NO_MYSQL__',
                     '-Isrc', '-Isrc/no_mysql', '-I/usr/include/libxml2',
                     '-fsanitize=address,undefined', '-fno-omit-frame-pointer',

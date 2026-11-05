@@ -221,8 +221,17 @@ production = "\n".join([
     "void do_innate(P_char, char *, int) {}",
     extract_function("utility.c", "int BOUNDED("),
     extract_function("utility.c", "int char_in_list("),
+    extract_function("innates.c", "static struct affected_type *find_innate_timer("),
+    extract_function("innates.c", "static int innate_rest_seconds("),
+    extract_function("innates.c", "static int innate_uses("),
     extract_function("innates.c", "bool check_innate_time("),
     extract_function("affects.c", "void Stun("),
+    '#include "abilities/abilities.h"\nconst Rolls live_rolls = { dice, number };\n',
+    extract_function("actnew.c", "static int stampede_innate_rest("),
+    extract_function("actnew.c", "static int stampede_hit_limit("),
+    extract_function("actnew.c", "static int stampede_sure_hit_roll("),
+    extract_function("actnew.c", "static int stampede_stun("),
+    extract_function("actnew.c", "static int stampede_lag("),
     extract_function("actnew.c", "void do_stampede("),
 ])
 driver = DRIVER.replace("REGISTRATIONS", registrations).replace("COMBAT_GATE", gate)

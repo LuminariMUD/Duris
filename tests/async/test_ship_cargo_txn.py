@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, extract_function
+from _innate_numbers import with_innate_numbers
 
 HARNESS = r'''#include <array>
 #include <cassert>
@@ -212,7 +213,7 @@ output = ROOT / "bin/tests"
 output.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="cargo-producers-", dir=output) as directory:
     source = Path(directory) / "cargo.cpp"
-    source.write_text(HARNESS.replace("// REAL_FUNCTIONS", functions))
+    source.write_text(with_innate_numbers(HARNESS.replace("// REAL_FUNCTIONS", functions)))
     binary = str(Path(directory) / "cargo")
     subprocess.run(["g++", "-std=c++20", "-g", "-Og", "-Wall", "-Wextra", "-Werror",
                     "-fsanitize=address,undefined,float-cast-overflow", "-fno-omit-frame-pointer",

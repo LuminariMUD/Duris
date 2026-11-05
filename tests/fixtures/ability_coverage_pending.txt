@@ -1,0 +1,1 @@
+# Abilities not yet converted to shared numbers. Remove a line when its ability converts.

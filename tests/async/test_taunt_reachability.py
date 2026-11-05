@@ -252,6 +252,11 @@ functions = [
     extract_function("affects.c", "bool affected_by_spell("),
     extract_function("fight.c", "bool AdjacentInRoom("),
     extract_function("actoff.c", "P_char ParseTarget("),
+    extract_function("actoff.c", "static int taunt_save_modifier("),
+    extract_function("actoff.c", "static int taunt_threshold("),
+    extract_function("actoff.c", "static int taunt_duration("),
+    extract_function("actoff.c", "static int taunt_target_lag("),
+    extract_function("actoff.c", "static int taunt_lag("),
     extract_function("actoff.c", "void do_taunt("),
 ]
 link_functions = [extract_function("affects.c", signature) for signature in (

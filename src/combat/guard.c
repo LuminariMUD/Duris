@@ -18,6 +18,7 @@
 #include "world/events.h"
 #include "core/utils.h"
 #include "combat/guard.h"
+#include "abilities/abilities.h"
 #include "core/defines.h"
 #include "magic/spells.h"
 
@@ -113,6 +114,54 @@ void drop_one_guard(P_char ch)
 	return;
 }
 
+// How many people you can guard at once, with and without a guardian's training.
+static int guard_multi_limit()
+{
+	return (int)get_property("skill.guard.max.multi", 2);
+}
+
+static int guard_single_limit()
+{
+	return (int)get_property("skill.guard.max", 1);
+}
+
+// The most the agility gap can move a guard's chance.
+static int guard_agility_limit()
+{
+	return get_property("skill.guard.agiDiffMaxBonus", 5);
+}
+
+// The chance threshold, rolled 0-100, that always leaves a chance to fail or succeed.
+static int guard_chance_bound(int chance)
+{
+	return BOUNDED(5, chance, 95);
+}
+
+// How long after stepping in you can't step in again.
+static int guard_rest()
+{
+	return 1 * PULSE_VIOLENCE;
+}
+
+std::string guard_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_GUARD);
+	if (!rating)
+		return "  You need this skill to guard someone.\n";
+	return fact("Chance to step in",
+		    chance_under(guard_chance_bound(rating) + 1, 0, 100) + " at equal agility") +
+	       "    (the attacker's agility and sneaking, and luck, move it; it stays " +
+	       std::to_string(guard_chance_bound(0)) + "-" +
+	       std::to_string(guard_chance_bound(1000)) + ")\n" +
+	       fact("Most agility can move it", std::to_string(guard_agility_limit())) +
+	       fact("Before you can step in again", seconds(guard_rest())) +
+	       fact("People you can guard at once",
+		    std::to_string(CAN_MULTI_GUARD(ch) ? guard_multi_limit() :
+							 guard_single_limit())) +
+	       "  Only players without this skill. Not while blind, not standing or asleep,\n"
+	       "  or in a single-file room.\n";
+}
+
 void do_guard(P_char ch, char *argument, int /*cmd*/)
 {
 	P_char target;
@@ -175,14 +224,12 @@ void do_guard(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	if ((CAN_MULTI_GUARD(ch)) &&
-	    (number_guarding(ch) >= (int)get_property("skill.guard.max.multi", 2)))
+	if ((CAN_MULTI_GUARD(ch)) && (number_guarding(ch) >= guard_multi_limit()))
 	{
 		send_to_char("You're guarding too many people, so you drop one.\n", ch);
 		drop_one_guard(ch);
 	}
-	else if (!CAN_MULTI_GUARD(ch) &&
-		 number_guarding(ch) >= (int)get_property("skill.guard.max", 1))
+	else if (!CAN_MULTI_GUARD(ch) && number_guarding(ch) >= guard_single_limit())
 	{
 		clear_links(ch, LNK_GUARDING);
 	}
@@ -284,9 +331,8 @@ P_char guard_check(P_char attacker, P_char victim)
 	// debug("attacker agi: %d, guard agi: %d", GET_C_AGI(attacker), GET_C_AGI(guard));
 
 	// agi mod
-	chance += BOUNDED(-get_property("skill.guard.agiDiffMaxBonus", 5),
-			  (GET_C_AGI(guard) - GET_C_AGI(attacker)),
-			  get_property("skill.guard.agiDiffMaxBonus", 5));
+	chance += BOUNDED(-guard_agility_limit(), (GET_C_AGI(guard) - GET_C_AGI(attacker)),
+			  guard_agility_limit());
 
 	// penalty if the guard is already engaged
 	// if( GET_OPPONENT(guard) )
@@ -303,7 +349,7 @@ P_char guard_check(P_char attacker, P_char victim)
 		chance += 10;
 
 	// always a chance to fail or succeed
-	chance = BOUNDED(5, chance, 95);
+	chance = guard_chance_bound(chance);
 
 	// Lets solve pets guarding too well?
 	if (IS_NPC(guard) && IS_PC_PET(guard))
@@ -333,7 +379,7 @@ P_char guard_check(P_char attacker, P_char victim)
 		// debug("guard succeeded");
 
 		// success!
-		set_short_affected_by(guard, SKILL_GUARD, 1 * PULSE_VIOLENCE);
+		set_short_affected_by(guard, SKILL_GUARD, guard_rest());
 
 		act("You bravely step in front of $N, shielding $M from harm!", FALSE, guard, 0,
 		    victim, TO_CHAR);

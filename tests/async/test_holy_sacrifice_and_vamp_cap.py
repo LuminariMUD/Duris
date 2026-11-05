@@ -67,6 +67,7 @@ property_rows = ",\n".join(f'    {{"{key}", {value!r}}}' for key, value in SHIPP
 
 PRELUDE = r"""
 #include "core/prototypes.h"
+#include "abilities/abilities.h"
 #include "core/utils.h"
 #include "magic/spells.h"
 #include "classes/paladins.h"
@@ -113,6 +114,8 @@ void affect_remove(P_char ch, affected_type *af) {
     *current = af->next;
 }
 int number(int low, int) { return low; } // deterministic healing-reduction rolls
+int dice(int, int) { std::abort(); } // vamp() rolls only number()
+const Rolls live_rolls = { dice, number };
 static int vamp_calls = 0;
 void gmcp_char_vitals(P_char) { ++vamp_calls; }
 static std::map<P_char, P_char> masters;
@@ -537,6 +540,8 @@ int main() {
 functions = [
     extract_function("paladins.c", "bool has_aura("),
     extract_function("paladins.c", "int aura_mod("),
+    extract_function("fight.c", "int plague_heal_block_percent("),
+    extract_function("fight.c", "float aura_healing_mod("),
     extract_function("fight.c", "int vamp("),
     extract_function("utility.c", "int IS_MORPH("),
     extract_function("utility.c", "float BOUNDEDF("),

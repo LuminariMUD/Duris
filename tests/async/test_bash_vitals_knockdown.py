@@ -55,6 +55,7 @@ def test_native_bash_vitals_runtime() -> None:
 #include "combat/damage.h"
 #include "combat/forced_movement.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "net/comm.h"
 #include "net/gmcp.h"
 #include "core/json_utils.h"
@@ -394,6 +395,33 @@ int main()
                 gmcp_char_vitals_fn,
                 gmcp_send_group_status_fn,
                 update_pos_fn,
+                "const Rolls live_rolls = { dice, number };",
+                extract_function("actoff.c", "static float shieldless_bash_modifier("),
+                extract_function("actoff.c", "static int skewer_off_target_rating("),
+                extract_function("actoff.c", "static int skewer_down_threshold("),
+                extract_function("actoff.c", "static int skewer_down_damage("),
+                extract_function("actoff.c", "static int skewer_down_lag("),
+                extract_function("actoff.c", "static int skewer_down_target_lag("),
+                extract_function("actoff.c", "static int skewer_bash_threshold("),
+                extract_function("actoff.c", "static int skewer_bash_damage("),
+                extract_function("actoff.c", "static int skewer_bash_lag("),
+                extract_function("actoff.c", "static int tackle_body_lag("),
+                extract_function("actoff.c", "static int tackle_size_lag("),
+                extract_function("actoff.c", "static int tackle_lag("),
+                extract_function("actoff.c", "static int tackle_prone_lag("),
+                extract_function("actoff.c", "static int tackle_rest("),
+                extract_function("actoff.c", "static int tackle_combat_pulse("),
+                extract_function("actoff.c", "static int tackle_combat_pulse_duration("),
+                extract_function("actoff.c", "static int tackle_self_stun("),
+                extract_function("actoff.c", "static int tackle_carry_roll("),
+                extract_function("actoff.c", "static int bash_damage("),
+                extract_function("actoff.c", "static int bash_rest("),
+                extract_function("actoff.c", "static int bash_hit_lag("),
+                extract_function("actoff.c", "static int bash_miss_lag("),
+                extract_function("actoff.c", "static int bash_target_down_lag("),
+                extract_function("actoff.c", "static int bash_size_lag("),
+                extract_function("actoff.c", "static int bash_takedown_penalty_lag("),
+                extract_function("actoff.c", "static int bash_target_lag("),
                 bash_fn,
                 tackle_fn,
                 driver,

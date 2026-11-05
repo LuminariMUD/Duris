@@ -193,11 +193,24 @@ def run(binary, backend):
                 lost_info = command(player, "spells info solbeeps missile barrage")
                 assert "Wizard" in lost_info and "Unavailable (lost from base class)" in lost_info
                 assert "Circle 8 (changed)" in command(player, "spells info haste")
+                # Nothing numeric to show: today's page unchanged.
+                fear = command(player, "spells info fear")
+                assert "fear : SPELL INFO" in fear and "Your access" in fear and "Mechanics" not in fear, fear
+                blade = command(player, "spells info flame blade")
+                assert "Below level 21 the blade casts no spell." in blade, blade
                 assert "Your required Circle:" in info and "Current maximum Circle: 1" in info
                 assert "Circle requirement: not yet met" in info and "Spellbook" in info
-                assert info.index("Class / specialization") < info.index("Your access") < info.index("Helpfile details")
+                assert info.index("Class / specialization") < info.index("Your access") < info.index("Mechanics") < info.index("Helpfile details")
+                assert "Fire damage: 20-120 at your level, 1" in info, info
+                assert "If the target fails its save:" in info
+                sanctuary = command(player, "spells info sanctuary")
+                assert "Duration: 15-16 game hours (18.75-20 minutes)" in sanctuary, sanctuary
                 redirected = command(player, "spells info magic missile")
                 assert "Redirected spell details for the disposable journey" in redirected
+                # Converted in batch 1: its numbers come before the redirected help.
+                assert "Missiles: 1 at your level, 1" in redirected, redirected
+                assert "Damage per missile: 5-17, the same for every missile" in redirected
+                assert redirected.index("Mechanics") < redirected.index("Redirected spell details")
                 missing = command(player, "spells info fire form")
                 assert "Circle 10 (added)" in missing and "Your access" in missing
                 assert "Help topic not found" in missing
@@ -214,6 +227,23 @@ def run(binary, backend):
                 for alias in ("cleric", "all", "s"):
                     assert ">====[ raoul cleric all s | None | Max Circle 1 ]====<" in command(
                         god, f"spells target {alias}")
+                # Batch 4 spells show their shared numbers and still play through their handlers.
+                doom = command(player, "spells info creeping doom")
+                assert "Damage per wave: 41-61 at your level, 1" in doom and "Waves: 4-5" in doom, doom
+                god.send("cast 'true seeing'")
+                god.expect("Your vision sharpens considerably", timeout=30)
+                # The converted fireball still plays through its real handler.
+                god.send("cast 'fireball' raoul")
+                god.expect_any(("You throw a fireball", "Your fireball hits"), timeout=30)
+                # Batch 2: heal shows its shared numbers and still plays through its handler.
+                heal_info = command(player, "spells info heal")
+                assert "Healing: 101-105 at your level, 1" in heal_info, heal_info
+                god.send("cast 'heal' " + GOD)
+                god.expect("A warm feeling fills your body", timeout=30)
+                # So does batch 1's magic missile, on a fresh target.
+                command(god, "load mob 11")
+                god.send("cast 'magic missile' raoul")
+                god.expect_any(("the magic missile hits", "magic missile tears away"), timeout=30)
                 command(god, "toggle paging yes")
                 god.send("spells all")
                 god.expect("BASE-CLASS CIRCLE REFERENCE")
@@ -222,7 +252,8 @@ def run(binary, backend):
                 god.expect(">", timeout=20)
                 command(god, "toggle paging no")
                 assert b"\x1b[" in player.raw_transcript
-                for name, text in (("info", info), ("all", table), ("personal", own), ("fire", fire)):
+                for name, text in (("info", info), ("all", table), ("personal", own), ("fire", fire),
+                                   ("heal", heal_info)):
                     (ROOT / "bin/tests" / ("spells-" + name + "-" + backend + ".txt")).write_text(text)
                     # Browser-generated sections, excluding authored help and the score fence.
                     generated = text.split("Helpfile details", 1)[0].split("Score information", 1)[0]

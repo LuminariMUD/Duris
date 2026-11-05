@@ -30,6 +30,7 @@ assert re.search(
 
 rescue = extract_function("actoff.c", "void rescue(P_char ch, P_char rescuee, bool rescue_all)")
 lag = re.findall(r"CharWait\(ch, ([^;]*)\);", rescue)
+assert lag == ["rescue_lag(rescue_all)"], lag
 assert len(lag) == 1, lag
 
 LAG_HARNESS = r"""
@@ -37,7 +38,7 @@ LAG_HARNESS = r"""
 #include <cassert>
 #include <cstdio>
 
-static int rescue_lag(bool rescue_all) { return """ + lag[0] + r"""; }
+""" + extract_function("actoff.c", "static int rescue_lag(") + r"""
 
 int main() {
     assert(rescue_lag(true) == 6 * WAIT_SEC);
@@ -49,6 +50,8 @@ int main() {
 GUARD_FUNCTIONS = "\n".join(
     extract_function("guard.c", signature)
     for signature in (
+        "static int guard_multi_limit()",
+        "static int guard_single_limit()",
         "P_char guarding2(P_char ch, int n)",
         "P_char guarded_by(P_char ch)",
         "int number_guarding(P_char ch)",

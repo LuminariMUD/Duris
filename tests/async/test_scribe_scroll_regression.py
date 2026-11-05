@@ -47,7 +47,8 @@ nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int,
     return {};
 }
 '''
-    production = extract_function("memorize.c", "void add_scribe_data(")
+    production = (extract_function("memorize.c", "static int scribe_first_page_wait(") + "\n" +
+                  extract_function("memorize.c", "void add_scribe_data("))
     driver = r'''
 int main()
 {

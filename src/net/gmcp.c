@@ -1958,12 +1958,15 @@ static bool gmcp_item_magic_visible(P_char ch)
 		GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_PRIEST));
 }
 
+extern int ophidian_invisible_level();
+
 static uint32_t gmcp_items_filter(P_char ch)
 {
 	return static_cast<uint32_t>(GET_STAT(ch)) << 16 |
 	       (IS_AFFECTED(ch, AFF_WRAITHFORM) ? 1U : 0U) | (IS_BLIND(ch) ? 2U : 0U) |
 	       (IS_AFFECTED(ch, AFF_DETECT_INVISIBLE) ? 4U : 0U) |
-	       (has_innate(ch, INNATE_OPHIDIAN_EYES) ? 8U : 0U) | (GET_LEVEL(ch) > 45 ? 16U : 0U) |
+	       (has_innate(ch, INNATE_OPHIDIAN_EYES) ? 8U : 0U) |
+	       (GET_LEVEL(ch) > ophidian_invisible_level() ? 16U : 0U) |
 	       (IS_TRUSTED(ch) ? 32U : 0U) | (IS_PC(ch) ? 64U : 0U) |
 	       (IS_AFFECTED2(ch, AFF2_DETECT_MAGIC) ? 128U : 0U) |
 	       (IS_AFFECTED(ch, AFF_KNOCKED_OUT) ? 256U : 0U);

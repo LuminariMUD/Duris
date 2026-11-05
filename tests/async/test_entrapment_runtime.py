@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
+from _innate_numbers import with_innate_numbers
 
 
 innates = source("innates.c").read_text(encoding="utf-8")
@@ -132,7 +133,7 @@ build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="entrapment-", dir=build) as directory:
     source_file = Path(directory) / "entrapment.cpp"
     executable = Path(directory) / "entrapment"
-    source_file.write_text(prelude + production + driver, encoding="utf-8")
+    source_file.write_text(with_innate_numbers(prelude + production + driver), encoding="utf-8")
     subprocess.run(
         [
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",

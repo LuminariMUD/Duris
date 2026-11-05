@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, HARNESS_STUBS, extract_function
+from _innate_numbers import with_innate_numbers
 
 
 PRELUDE = r'''
@@ -121,6 +122,7 @@ def production():
     int get_property(const char *key, int fallback) {
         return static_cast<int>(get_property(key, static_cast<double>(fallback)));
     }\n'''
+    code += extract_function("utility.c", "int dice(int num, int size)") + '\n#include "abilities/abilities.h"\nconst Rolls live_rolls = { dice, number };\n'
     code += "\n".join(extract_function(file, signature) for file, signature in [
         ("utility.c", "int STAT_INDEX(int v)\n{\n\t"),
         ("affects.c", "bool affected_by_spell("),
@@ -129,7 +131,23 @@ def production():
         ("affects.c", "void affect_remove("),
         ("affects.c", "void affect_from_char("),
         ("affects.c", "void set_short_affected_by("),
+        ("new_skills.c", "static int awareness_max_duration("),
+        ("new_skills.c", "static int awareness_rolled_duration("),
         ("new_skills.c", "void do_awareness("),
+        ("actoff.c", "static int backstab_skill("),
+        ("actoff.c", "static int backstab_luck_bonus("),
+        ("actoff.c", "static int backstab_damage("),
+        ("actoff.c", "static int backstab_noticed_damage("),
+        ("actoff.c", "static int backstab_helpless_damage("),
+        ("actoff.c", "static int backstab_incapacitated_damage("),
+        ("actoff.c", "static int backstab_repeat_window("),
+        ("actoff.c", "static int backstab_lag("),
+        ("actoff.c", "static int backstab_air_aura_roll("),
+        ("actoff.c", "static int backstab_air_aura_below("),
+        ("actoff.c", "static float critical_stab_threshold("),
+        ("actoff.c", "static float spinal_tap_threshold("),
+        ("actoff.c", "static int critical_stab_damage("),
+        ("actoff.c", "static int spinal_tap_damage("),
         ("actoff.c", "bool single_stab("),
         ("actoff.c", "bool backstab(P_char ch, P_char victim)"),
     ])
@@ -276,7 +294,7 @@ def main():
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="assassin-mechanics-", dir=build) as directory:
         cpp, binary = Path(directory) / "harness.cpp", Path(directory) / "harness"
-        cpp.write_text(PRELUDE + production() + DRIVER)
+        cpp.write_text(with_innate_numbers(PRELUDE + production() + DRIVER))
         subprocess.run([
             "g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
             "-Wno-unused-parameter", "-ftrivial-auto-var-init=pattern",

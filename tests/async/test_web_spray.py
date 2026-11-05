@@ -167,6 +167,7 @@ void telemetry_gameplay_movement(P_char) {}
 '''
 
 DRIVER = r'''
+void innate_info(P_char, const char *) {}
 static void clear(P_char ch) {
     while (ch->affected) affect_remove(ch, ch->affected);
     assert(!ch->nevents);
@@ -300,17 +301,21 @@ table = re.sub(r'(\{ "[^"]+", )(\w+)( \})',
                lambda m: m[1] + (m[2] if m[2] == 'do_web_spray' else 'NULL') + m[3], table)
 assert 'ADD_RACIAL_INNATE(INNATE_WEB_SPRAY, RACE_DRIDER, 31);' in innates
 
-production = '\n'.join(extract_function(file, signature) for file, signature in [
+production = '#include "abilities/abilities.h"\n' + extract_function('utility.c', 'int dice(int num, int size)') + '\nconst Rolls live_rolls = { dice, number };\n'
+production += '\n'.join(extract_function(file, signature) for file, signature in [
     ('utility.c', 'int BOUNDED('),
     ('interp.c', 'void argument_interpreter('), ('interp.c', 'char *one_argument('),
     ('interp.c', 'bool is_abbrev('),
     ('utility.c', 'int strn_cmp('), ('sparser.c', 'char *skip_spaces('),
-    ('innates.c', 'bool has_innate('), ('innates.c', 'bool can_use_innate('),
+    ('innates.c', 'bool has_innate('), ('innates.c', 'static struct affected_type *find_innate_timer('), ('innates.c', 'static int innate_rest_seconds('), ('innates.c', 'static int innate_uses('), ('innates.c', 'bool can_use_innate('),
     ('innates.c', 'P_char parse_victim('), ('innates.c', 'bool check_innate_time('),
     ('affects.c', 'struct affected_type *get_spell_from_char('),
     ('affects.c', 'bool affected_by_spell('), ('affects.c', 'void event_short_affect('),
     ('affects.c', 'struct affected_type *affect_to_char('),
     ('affects.c', 'void affect_remove('), ('affects.c', 'void affect_from_char('),
+    ('innates.c', 'static int web_spray_interval('), ('innates.c', 'static int web_spray_rest('), ('innates.c', 'static int web_spray_lag('),
+    ('innates.c', 'static float web_spray_chance('), ('innates.c', 'static int web_spray_duration('), ('innates.c', 'static int web_spray_drain('),
+    ('innates.c', 'static int web_spray_roll('), ('innates.c', 'static int web_spray_tear_roll('), ('innates.c', 'static int web_spray_tear_threshold('),
     ('innates.c', 'void event_web_spray('), ('innates.c', 'void do_web_spray(P_char ch,'),
     ('innates.c', 'void web_spray_move_check('),
     ('files.c', 'ush_int getShort('), ('files.c', 'uint getInt('), ('files.c', 'long getLong('),

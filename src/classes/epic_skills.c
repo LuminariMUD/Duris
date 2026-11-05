@@ -26,6 +26,7 @@
 #include "world/epic.h"
 #include "world/epic_transaction.h"
 #include "classes/skills.h"
+#include "abilities/abilities.h"
 #include "magic/spells.h"
 
 extern P_index mob_index;
@@ -670,6 +671,48 @@ int epic_teacher(P_char ch, P_char pl, int cmd, char *arg)
 	return TRUE;
 }
 
+static int summon_blizzard_damage(const Rolls &rolls)
+{
+	return 70 + rolls.dice(4, 6);
+}
+
+// Pulses between strikes: `count` is 1 plus everyone else here outside your group.
+static int summon_blizzard_interval(const Rolls &rolls, int count)
+{
+	return rolls.number(20, 30) / count;
+}
+
+static int summon_blizzard_rest()
+{
+	return get_property("timer.mins.summonBlizzard", 3) * WAIT_MIN;
+}
+
+static int summon_blizzard_duration(int rating)
+{
+	return 3 * PULSE_VIOLENCE + (rating * PULSE_VIOLENCE) / 30;
+}
+
+std::string summon_blizzard_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_SUMMON_BLIZZARD);
+	if (!rating)
+		return "  You have not learned to summon a blizzard.\n";
+	return fact("Cold damage on a random target outside your group",
+		    show({ summon_blizzard_damage(lowest_rolls),
+			   summon_blizzard_damage(highest_rolls) })) +
+	       "    (it can't be shrugged off or deflected; other defenses apply)\n" +
+	       fact("Time between strikes",
+		    seconds(summon_blizzard_interval(lowest_rolls, 1)) + " to " +
+			    seconds(summon_blizzard_interval(highest_rolls, 1))) +
+	       "    (divided by 1 plus the others in the room outside your group)\n" +
+	       fact("Duration", real_time(summon_blizzard_duration(rating))) +
+	       fact("Before you can summon another", IS_TRUSTED(ch) ?
+							     "no wait, as an immortal" :
+							     real_time(summon_blizzard_rest())) +
+	       "  A firestorm, scathing wind or incendiary cloud here melts it to water.\n"
+	       "  Only one can rage in a room.\n";
+}
+
 void event_blizzard(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 {
 	int count;
@@ -755,7 +798,7 @@ void event_blizzard(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 		else if ((victim = get_random_char_in_room(ch->in_room, ch,
 							   DISALLOW_SELF | DISALLOW_GROUPED)))
 		{
-			spell_damage(ch, victim, 70 + dice(4, 6), SPLDAM_COLD,
+			spell_damage(ch, victim, summon_blizzard_damage(live_rolls), SPLDAM_COLD,
 				     SPLDAM_NOSHRUG | SPLDAM_NODEFLECT,
 				     (number(0, 2) &&
 				      GET_CHAR_SKILL(ch, SKILL_SUMMON_BLIZZARD) > 30) ?
@@ -763,7 +806,8 @@ void event_blizzard(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 					     &messages2);
 		}
 
-		add_event(event_blizzard, number(20, 30) / count, ch, 0, 0, 0, &step, sizeof(step));
+		add_event(event_blizzard, summon_blizzard_interval(live_rolls, count), ch, 0, 0, 0,
+			  &step, sizeof(step));
 	}
 }
 
@@ -779,8 +823,7 @@ void do_summon_blizzard(P_char ch, char * /*argument*/, int /*cmd*/)
 		return;
 	}
 
-	if (!affect_timer(ch, get_property("timer.mins.summonBlizzard", 3) * WAIT_MIN,
-			  SKILL_SUMMON_BLIZZARD))
+	if (!affect_timer(ch, summon_blizzard_rest(), SKILL_SUMMON_BLIZZARD))
 	{
 		send_to_char("You are too tired to summon another blizzard.\n", ch);
 		return;
@@ -790,12 +833,93 @@ void do_summon_blizzard(P_char ch, char * /*argument*/, int /*cmd*/)
 		     ch);
 	memset(&raf, 0, sizeof(raf));
 	raf.type = SKILL_SUMMON_BLIZZARD;
-	raf.duration = 3 * PULSE_VIOLENCE +
-		       (GET_CHAR_SKILL(ch, SKILL_SUMMON_BLIZZARD) * PULSE_VIOLENCE) / 30;
+	raf.duration = summon_blizzard_duration(GET_CHAR_SKILL(ch, SKILL_SUMMON_BLIZZARD));
 
 	affect_to_room(room, &raf);
 
 	add_event(event_blizzard, 2, ch, 0, 0, 0, &step, sizeof(step));
+}
+
+typedef struct
+{
+	int vnum;
+	int skill;
+	const char *name;
+} familiar_data;
+
+static const familiar_data familiars[] = { { EPIC_CAT_VNUM, 5, "cat" },
+					   { EPIC_BAT_VNUM, 30, "bat" },
+					   { EPIC_IGUANA_VNUM, 50, "iguana" },
+					   { EPIC_RAVEN_VNUM, 70, "raven" },
+					   { EPIC_OWL_VNUM, 90, "owl" },
+					   { EPIC_IMP_VNUM, 100, "imp" },
+					   {} };
+
+static int summon_familiar_rest(int ch_skill_level)
+{
+	return (get_property("timer.mins.summonFamiliar", 10) + 10 - 2 * (ch_skill_level / 20)) *
+	       WAIT_MIN;
+}
+
+static int summon_familiar_hit_points(int ch_skill_level)
+{
+	return (2 * ch_skill_level);
+}
+
+static int summon_familiar_duration()
+{
+	return 1000;
+}
+
+// A bat's roll of 0 dives at a takedown on its master. Then the attacker's agility below the
+// next roll, and a 0 on the last, lag the attacker.
+static int bat_dive_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+static int bat_agility_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 150);
+}
+
+static int bat_lag_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+static int bat_attacker_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string summon_familiar_facts(P_char ch)
+{
+	const int rating = IS_TRUSTED(ch) ? 100 : GET_CHAR_SKILL(ch, SKILL_SUMMON_FAMILIAR);
+	if (!rating)
+		return "  You have not learned to summon a familiar.\n";
+	std::string known, later;
+	for (int i = 0; familiars[i].vnum; i++)
+	{
+		if (familiars[i].skill <= rating)
+			known += (known.empty() ? "" : ", ") + std::string(familiars[i].name);
+		else
+			later += fact("At rating " + std::to_string(familiars[i].skill),
+				      familiars[i].name);
+	}
+	return fact("Familiars you can summon", known.empty() ? "none yet" : known) + later +
+	       fact("Extra hit points", std::to_string(summon_familiar_hit_points(rating))) +
+	       fact("It stays for", game_hours(summon_familiar_duration())) +
+	       fact("Before you can call again", IS_TRUSTED(ch) ?
+							 "no wait, as an immortal" :
+							 real_time(summon_familiar_rest(rating))) +
+	       "    (even for a kind you can't summon)\n" + "  A bat dives " +
+	       one_in(bat_dive_roll) + " times to stop a takedown on you; " + one_in(bat_lag_roll) +
+	       " of those, if the\n  attacker's agility loses a roll of " +
+	       show({ bat_agility_roll(lowest_rolls), bat_agility_roll(highest_rolls) }) +
+	       ", lags it " + seconds(bat_attacker_lag()) +
+	       ".\n"
+	       "  You can have one at a time.\n";
 }
 
 void do_summon_familiar(P_char ch, char *argument, int /*cmd*/)
@@ -803,21 +927,6 @@ void do_summon_familiar(P_char ch, char *argument, int /*cmd*/)
 	P_char mob;
 	char buffer[256];
 	struct char_link_data *cld;
-
-	typedef struct
-	{
-		int vnum;
-		int skill;
-		const char *name;
-	} familiar_data;
-
-	familiar_data familiars[] = { { EPIC_CAT_VNUM, 5, "cat" },
-				      { EPIC_BAT_VNUM, 30, "bat" },
-				      { EPIC_IGUANA_VNUM, 50, "iguana" },
-				      { EPIC_RAVEN_VNUM, 70, "raven" },
-				      { EPIC_OWL_VNUM, 90, "owl" },
-				      { EPIC_IMP_VNUM, 100, "imp" },
-				      {} };
 
 	int i;
 
@@ -855,11 +964,7 @@ void do_summon_familiar(P_char ch, char *argument, int /*cmd*/)
 		}
 	}
 
-	if (!affect_timer(ch,
-			  (get_property("timer.mins.summonFamiliar", 10) + 10 -
-			   2 * (ch_skill_level / 20)) *
-				  WAIT_MIN,
-			  SKILL_SUMMON_FAMILIAR))
+	if (!affect_timer(ch, summon_familiar_rest(ch_skill_level), SKILL_SUMMON_FAMILIAR))
 	{
 		send_to_char("You call for a familiar but no creature responds.\n", ch);
 		return;
@@ -877,13 +982,13 @@ void do_summon_familiar(P_char ch, char *argument, int /*cmd*/)
 				return;
 			}
 
-			int hits = GET_HIT(mob) + (2 * ch_skill_level);
+			int hits = GET_HIT(mob) + summon_familiar_hit_points(ch_skill_level);
 			GET_HIT(mob) = GET_MAX_HIT(mob) = mob->points.base_hit = hits;
 
 			char_to_room(mob, ch->in_room, 0);
 			act("$n announces $s arrival with a quiet squeak.", FALSE, mob, 0, 0,
 			    TO_ROOM);
-			setup_pet(mob, ch, 1000, PET_NOCASH);
+			setup_pet(mob, ch, summon_familiar_duration(), PET_NOCASH);
 			add_follower(mob, ch);
 			return;
 		}
@@ -933,20 +1038,20 @@ int epic_familiar(P_char ch, P_char pl, int cmd, char *arg)
 	if (GET_VNUM(ch) == EPIC_BAT_VNUM &&
 	    (cmd == CMD_BASH || cmd == CMD_TRIP || cmd == CMD_SPRINGLEAP || cmd == CMD_TACKLE ||
 	     cmd == CMD_BODYSLAM || cmd == CMD_MAUL) &&
-	    get_char_vis(pl, arg) == master && !number(0, 2))
+	    get_char_vis(pl, arg) == master && !bat_dive_roll(live_rolls))
 	{
 		act("$n notices $N's maneuver and dives towards $S head to protect the master!",
 		    FALSE, ch, 0, pl, TO_NOTVICT);
 		act("$n notices your maneuver and dives towards your head to protect $s master!",
 		    FALSE, ch, 0, pl, TO_VICT);
 
-		if (GET_C_AGI(pl) < number(0, 150) && !number(0, 2))
+		if (GET_C_AGI(pl) < bat_agility_roll(live_rolls) && !bat_lag_roll(live_rolls))
 		{
 			act("$n's unexpected attack caused you to get lost in your tracks..", FALSE,
 			    ch, 0, pl, TO_VICT);
 			act("$n's vicious assault disturbed $N's move.", FALSE, ch, 0, pl,
 			    TO_NOTVICT);
-			CharWait(pl, PULSE_VIOLENCE);
+			CharWait(pl, bat_attacker_lag());
 			return TRUE;
 		}
 		else
@@ -1074,9 +1179,25 @@ int spell_penetration_check(P_char caster, P_char victim)
 // 7    1    2
 // 8    2    2
 
+// The devotion score an extra cast rolls against, its roll, and the extra cast's level.
+int devotion_power_score(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_DEVOTION) - 40) / 10;
+}
+
+int devotion_power_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 50);
+}
+
+int devotion_power_level(int dev_power)
+{
+	return 10 * dev_power;
+}
+
 int devotion_skill_check(P_char ch)
 {
-	int dev_power = (GET_CHAR_SKILL(ch, SKILL_DEVOTION) - 40) / 10 - number(0, 50);
+	int dev_power = devotion_power_score(ch) - devotion_power_roll(live_rolls);
 
 	if (dev_power <= 0)
 		return 0;
@@ -1098,7 +1219,7 @@ int devotion_skill_check(P_char ch)
 
 	send_to_char(buf, ch);
 
-	return 10 * dev_power;
+	return devotion_power_level(dev_power);
 }
 
 int devotion_spell_check(int spell)
@@ -1127,14 +1248,85 @@ int devotion_spell_check(int spell)
 	return FALSE;
 }
 
+static int chant_mastery_threshold(P_char ch)
+{
+	return 5 + GET_CHAR_SKILL(ch, SKILL_CHANT_MASTERY) / 10;
+}
+
+// How well a chant goes when it fires, 0-3.
+static int chant_mastery_result(const Rolls &rolls, P_char ch)
+{
+	return MAX(0, GET_CHAR_SKILL(ch, SKILL_CHANT_MASTERY) / 40 + rolls.number(-1, 1));
+}
+
+// What each result leaves of a cast time of dura pulses: the lag and the cast time.
+static int chant_mastery_top_lag()
+{
+	return 1;
+}
+
+static int chant_mastery_top_time()
+{
+	return 1;
+}
+
+static int chant_mastery_good_lag(int dura)
+{
+	return dura >> 1;
+}
+
+static int chant_mastery_good_time()
+{
+	return 1;
+}
+
+static int chant_mastery_fair_lag(int dura)
+{
+	return dura * 0.8;
+}
+
+static int chant_mastery_fair_time(int dura)
+{
+	return (int)(dura * 0.6);
+}
+
+static int chant_mastery_low_time(int dura)
+{
+	return (int)(dura * 0.8);
+}
+
+std::string chant_mastery_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_CHANT_MASTERY))
+		return "  You have not learned it, so it does nothing for you.\n";
+	const int low = chant_mastery_result(lowest_rolls, ch),
+		  high = chant_mastery_result(highest_rolls, ch);
+	const auto share = [](int percent) { return std::to_string(percent) + "%"; };
+	std::string facts =
+		fact("Chance on each cast", chance_under(chant_mastery_threshold(ch), 0, 100));
+	if (low <= 3 && high >= 3)
+		facts += fact("Best result", "cast time " + seconds(chant_mastery_top_time()) +
+						     ", lag " + seconds(chant_mastery_top_lag()));
+	if (low <= 2 && high >= 2)
+		facts += fact("Good result", "cast time " + seconds(chant_mastery_good_time()) +
+						     ", lag " + share(chant_mastery_good_lag(100)));
+	if (low <= 1 && high >= 1)
+		facts += fact("Fair result", "cast time " + share(chant_mastery_fair_time(100)) +
+						     ", lag " + share(chant_mastery_fair_lag(100)));
+	if (low <= 0 && high >= 0)
+		facts += fact("Low result",
+			      "cast time " + share(chant_mastery_low_time(100)) + ", full lag");
+	return facts;
+}
+
 int chant_mastery_bonus(P_char ch, int dura)
 {
 	int chant_bonus;
 	char buffer[256];
 
-	if (5 + GET_CHAR_SKILL(ch, SKILL_CHANT_MASTERY) / 10 > number(0, 100))
+	if (chant_mastery_threshold(ch) > number(0, 100))
 	{
-		chant_bonus = MAX(0, GET_CHAR_SKILL(ch, SKILL_CHANT_MASTERY) / 40 + number(-1, 1));
+		chant_bonus = chant_mastery_result(live_rolls, ch);
 		snprintf(buffer, 256, "%s magic surrounds you as you begin your chant.&n",
 			 chant_bonus == 0 ? "&+WSparkling&n" :
 			 chant_bonus == 1 ? "&+WSparkling" :
@@ -1154,24 +1346,42 @@ int chant_mastery_bonus(P_char ch, int dura)
 
 	if (chant_bonus == 3)
 	{
-		CharWait(ch, 1);
-		return 1;
+		CharWait(ch, chant_mastery_top_lag());
+		return chant_mastery_top_time();
 	}
 	else if (chant_bonus == 2)
 	{
-		CharWait(ch, dura >> 1);
-		return 1;
+		CharWait(ch, chant_mastery_good_lag(dura));
+		return chant_mastery_good_time();
 	}
 	else if (chant_bonus == 1)
 	{
-		CharWait(ch, dura * 0.8);
-		return (int)(dura * 0.6);
+		CharWait(ch, chant_mastery_fair_lag(dura));
+		return chant_mastery_fair_time(dura);
 	}
 	else
 	{
 		CharWait(ch, dura);
-		return (int)(dura * 0.8);
+		return chant_mastery_low_time(dura);
 	}
+}
+
+// The chance threshold, rolled 0-100, to cast with your hands in silence.
+static int silent_spell_threshold(int skill)
+{
+	return BOUNDED(25, skill, 100);
+}
+
+std::string silent_spell_facts(P_char ch)
+{
+	extern int silent_spell_failed_lag();
+	const int rating = GET_CHAR_SKILL(ch, SKILL_SILENT_SPELL);
+	if (!rating)
+		return "  You have not learned it, so it does nothing for you.\n";
+	return fact("Chance to start a spell where you can't speak",
+		    chance_under(silent_spell_threshold(rating), 0, 100)) +
+	       fact("Your lag if your hands fail you", seconds(silent_spell_failed_lag())) +
+	       "  It gets you past a silenced room, silence and a crushed throat.\n";
 }
 
 bool silent_spell_check(P_char ch)
@@ -1181,7 +1391,7 @@ bool silent_spell_check(P_char ch)
 	if (skill <= 0)
 		return FALSE;
 
-	skill = BOUNDED(25, skill, 100);
+	skill = silent_spell_threshold(skill);
 
 	if (number(0, 100) < skill)
 	{
@@ -1205,6 +1415,45 @@ void say_silent_spell(P_char ch, int /*spell*/)
 	    FALSE, ch, 0, 0, TO_ROOM);
 }
 
+// What two weapons add to hitroll and damroll.
+static int two_weapon_bonus(int twoskl)
+{
+	if (twoskl > 0 && twoskl < 20)
+	{
+		return 1;
+	}
+	else if (twoskl >= 20 && twoskl < 40)
+	{
+		return 2;
+	}
+	else if (twoskl >= 40 && twoskl < 60)
+	{
+		return 3;
+	}
+	else if (twoskl >= 60 && twoskl < 80)
+	{
+		return 4;
+	}
+	else if (twoskl >= 80 && twoskl < 100)
+	{
+		return 5;
+	}
+	else if (twoskl == 100)
+	{
+		return 6;
+	}
+	return 0;
+}
+
+std::string two_weapon_facts(P_char ch)
+{
+	const int twoskl = GET_CHAR_SKILL(ch, SKILL_TWOWEAPON);
+	if (!twoskl)
+		return "  You have not learned two weapon fighting.\n";
+	return fact("Hitroll and damroll while you wield a second weapon",
+		    "+" + std::to_string(two_weapon_bonus(twoskl)));
+}
+
 int two_weapon_check(P_char ch)
 {
 	int twoskl;
@@ -1216,38 +1465,51 @@ int two_weapon_check(P_char ch)
 	     ch->equipment[FOURTH_WEAPON]) &&
 	    twoskl)
 	{
-		if (twoskl > 0 && twoskl < 20)
-		{
-			ch->points.hitroll += 1;
-			ch->points.damroll += 1;
-		}
-		else if (twoskl >= 20 && twoskl < 40)
-		{
-			ch->points.hitroll += 2;
-			ch->points.damroll += 2;
-		}
-		else if (twoskl >= 40 && twoskl < 60)
-		{
-			ch->points.hitroll += 3;
-			ch->points.damroll += 3;
-		}
-		else if (twoskl >= 60 && twoskl < 80)
-		{
-			ch->points.hitroll += 4;
-			ch->points.damroll += 4;
-		}
-		else if (twoskl >= 80 && twoskl < 100)
-		{
-			ch->points.hitroll += 5;
-			ch->points.damroll += 5;
-		}
-		else if (twoskl == 100)
-		{
-			ch->points.hitroll += 6;
-			ch->points.damroll += 6;
-		}
+		const int bonus = two_weapon_bonus(twoskl);
+		ch->points.hitroll += bonus;
+		ch->points.damroll += bonus;
 	}
 	return twoskl;
+}
+
+// After each charge, a roll of 0-100 below this stops the infusion.
+static int infuse_stop_threshold(int check, int skill)
+{
+	return ((check) - (skill / 2));
+}
+
+static int infuse_rest()
+{
+	return 24;
+}
+
+static int infuse_lag()
+{
+	return (PULSE_VIOLENCE * 5);
+}
+
+static int infuse_wear(int skill)
+{
+	if (skill >= 70)
+	{
+		return 1;
+	}
+	return 2;
+}
+
+std::string infuse_magical_device_facts(P_char ch)
+{
+	const int skill = GET_CHAR_SKILL(ch, SKILL_INFUSE_MAGICAL_DEVICE);
+	if (!skill)
+		return "  You have not learned to infuse magical devices.\n";
+	return fact("Chance it stops after the first charge",
+		    chance_under(infuse_stop_threshold(10, skill), 0, 100)) +
+	       "    (10 worse after each further charge; it never adds more than 10)\n" +
+	       fact("Wear each infusion adds to the device",
+		    std::to_string(infuse_wear(skill)) + ", and it takes no more at 2") +
+	       fact("Before you can infuse again", game_hours(infuse_rest())) +
+	       fact("Your lag", seconds(infuse_lag())) +
+	       "  It uses up an encrusting jewel on a held wand, or a staff at rating 40.\n";
 }
 
 void do_infuse(P_char ch, char *arg, int /*cmd*/)
@@ -1355,7 +1617,7 @@ void do_infuse(P_char ch, char *arg, int /*cmd*/)
 		}
 
 		check += 10;
-		if ((number(0, 100) < ((check) - (skill / 2))) || (check == 100))
+		if ((number(0, 100) < infuse_stop_threshold(check, skill)) || (check == 100))
 		{
 			send_to_char("&+LYou can't infuse this anymore today.&n\r\n", ch);
 			break;
@@ -1364,18 +1626,11 @@ void do_infuse(P_char ch, char *arg, int /*cmd*/)
 
 	memset(&af, 0, sizeof(af));
 	af.type = SKILL_INFUSE_MAGICAL_DEVICE;
-	af.duration = 24;
+	af.duration = infuse_rest();
 	af.flags = AFFTYPE_NOSHOW | AFFTYPE_NODISPEL;
 	affect_to_char(ch, &af);
 
-	if (skill >= 70)
-	{
-		device->value[7]++;
-	}
-	else
-	{
-		device->value[7] += 2;
-	}
+	device->value[7] += infuse_wear(skill);
 
-	CharWait(ch, (PULSE_VIOLENCE * 5));
+	CharWait(ch, infuse_lag());
 }
