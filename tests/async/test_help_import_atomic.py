@@ -150,6 +150,29 @@ class AtomicImport(ImportFixture):
                 for rule in ('Self only', 'circle-10', '8 affect-duration units', 'Ice Aura'):
                     self.assertIn(rule, body)
 
+    def test_blighter_specialization_bonuses_publish(self):
+        self.index.write_bytes((ROOT / 'lib/information/help_index').read_bytes())
+        (self.root / 'help/duris_help_parsed.hlp').write_bytes(
+            (ROOT / 'help/duris_help_parsed.hlp').read_bytes())
+        published = self.run_import('--local')
+        self.assertEqual(published.returncode, 0, published.stdout + published.stderr)
+        for title, rules in (
+            ('Scourge', ('Blight', '12%', 'plants and slimes', 'adds 50', '96 to 196',
+                         '+5 movement regeneration', '+5 ticks', "caster's duration")),
+            ('Ruiner', ('Flame sphere', 'Blight', 'Horrid wilting', 'Implosion',
+                        'Firelance', '12%', 'round down', 'Other damage spells do not')),
+        ):
+            with self.subTest(topic=title):
+                self.assertEqual(self.query(f"SELECT COUNT(*) FROM pages WHERE title='{title}'"), '1')
+                self.assertEqual(self.query(f"SELECT category_id FROM pages WHERE title='{title}'"), '0')
+                body = self.query(f"SELECT text FROM pages WHERE title='{title}'")
+                self.assertIn('==Specialization bonuses==', body)
+                for rule in rules:
+                    self.assertIn(rule, body)
+        drain = self.query("SELECT text FROM pages WHERE title='DRAIN NATURE'")
+        self.assertIn('Scourge adds 50', drain)
+        self.assertNotIn('half again', drain)
+
     def test_news_only_preserves_bytes_and_other_content(self):
         pages = self.query('SELECT * FROM pages ORDER BY title')
         other_info = self.query("SELECT name, HEX(content) FROM mud_info WHERE name<>'news' ORDER BY name")

@@ -28240,9 +28240,25 @@ Requirements are registration values, not automatic learning or preparation. Bas
 #0
 
 Scourge
-Scourge - Last Edited: 2026-10-18
+Scourge - Last Edited: 2026-11-05
 ============================================================
 Scourge is a Blighter specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
+==Specialization bonuses==
+
+* Blight: 12% more damage, rounded down before the saving throw and later
+  damage modifiers. It only works on plants and slimes.
+* Drain nature: adds 50 to the first healing wave before terrain adjustments.
+  Each later wave halves the previous wave's base amount, rounding down. Waves
+  continue while the next wave exceeds 1. Each wave uses the recipient's terrain
+  and cannot heal beyond maximum hit points. At casting level 56 on ordinary
+  terrain, the total rises from 96 to 196 before other healing modifiers and
+  the missing-health limit.
+  This is not a flat +50 total or a fixed percentage bonus to all healing.
+* Sap nature: a fresh effect gains +5 movement regeneration and +5 ticks of
+  duration. If the caster already has Sap nature, recasting only renews that
+  caster's duration; it neither recalculates the movement bonus nor applies
+  a fresh effect to another recipient. The spell's normal restrictions apply.
 
 ==Allowed races==
 
@@ -28274,9 +28290,19 @@ Requirements are registration values, not automatic learning or preparation. Bas
 #0
 
 Ruiner
-Ruiner - Last Edited: 2026-10-18
+Ruiner - Last Edited: 2026-11-05
 ============================================================
 Ruiner is a Blighter specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+
+==Specialization bonuses==
+
+Flame sphere, Blight, Horrid wilting, Implosion and Firelance gain a 12% damage
+step: multiply damage by 112, divide by 100 and round down. This step comes
+before the saving throw for Blight and Firelance, and after it for Flame sphere,
+Horrid wilting and Implosion. Blight only works on plants and slimes. Each
+spell keeps its normal target rules, saves and subsequent damage modifiers;
+the final hit need not be exactly 12% larger. Other damage spells do not
+receive this specialization bonus.
 
 ==Allowed races==
 

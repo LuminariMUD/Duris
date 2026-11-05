@@ -24332,7 +24332,7 @@ Cumulative:     No
 Duration:       Instantaneous
 Type of spell:  Healing 
 
-"Drain nature" sucks the life out of the surrounding land and pours it into the chosen recipient, knitting wounds; in the hands of a true blighter it also clears blinded eyes. Wild country gives freely - forests most generous, cities most grudging - and a second, weaker surge of stolen health follows the first. A Scourge coaxes half again more vigor from the land than ordinary blighters.
+"Drain nature" sucks the life out of the surrounding land and pours it into the chosen recipient, knitting wounds; in the hands of a true blighter it also clears blinded eyes. Each healing wave uses the recipient's current terrain, with forests most generous and cities most grudging. Scourge adds 50 to the first wave before terrain adjustments. Each later wave is half the previous wave's base amount, rounded down, and waves continue while the next wave exceeds 1. Other healing modifiers still apply, and healing cannot exceed the recipient's maximum hit points. This is not a fixed percentage or a flat +50 total; see 'help scourge' for an example.
 ===========================================================================
 See also: natures touch, create pond, contagion
 #
