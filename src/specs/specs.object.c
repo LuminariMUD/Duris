@@ -13291,6 +13291,25 @@ void event_random_set_proc(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *da
 #define SETMSG_PROTECT 1
 #define SETMSG_STRENGTH 2
 
+// The wearer's own grant lasts longer than a member's ordinary song, so while it holds, members who
+// have lost theirs (only_missing) are granted it again rather than going without.
+static void grant_dragons_to_group(P_char ch, int count, int zone, bool only_missing)
+{
+	P_char next = NULL;
+	for (P_char tch = world[ch->in_room].people; tch; tch = next)
+	{
+		next = tch->next_in_room;
+
+		if ((ch != tch) && !grouped(ch, tch))
+			continue;
+		if (only_missing && affected_by_spell(tch, SONG_DRAGONS))
+			continue;
+
+		named_set_grant group_grant(ch, tch, zone, SONG_DRAGONS);
+		bard_dragons(MIN(56, count * 10), ch, tch, SONG_DRAGONS);
+	}
+}
+
 void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_obj obj, int spell)
 {
 	if (!named_set_effect_supported(spell))
@@ -13299,7 +13318,11 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 	{
 		if ((affect->flags & AFFTYPE_SET_AFFECT) && affect->set_owner == ch->runtime_id &&
 		    affect->set_spell == spell)
+		{
+			if (spell == SONG_DRAGONS)
+				grant_dragons_to_group(ch, count, zone, true);
 			return;
+		}
 		// Registered aliases can create a different native affect ID. Do not
 		// refresh an ordinary cast or a surviving multipart grant through its alias.
 		if (spell != SPELL_CONJURE_ELEMENTAL && spell != SPELL_INVIGORATE &&
@@ -13332,7 +13355,7 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 		if (!has_skin_spell(ch) &&
 		    obj->timer[0] + get_property("timer.stoneskin.generic", 60) < time(NULL))
 		{
-			spell_stone_skin(count * 5, ch, 0, 0, ch, 0);
+			spell_stone_skin(MIN(56, count * 5), ch, 0, 0, ch, 0);
 			obj->timer[0] = time(NULL);
 			message = SETMSG_PROTECT;
 		}
@@ -13377,7 +13400,8 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 	case SPELL_CONJURE_ELEMENTAL:
 		if (obj->timer[0] + get_property("timer.conjureElement.generic", 300) < time(NULL))
 		{
-			(skills[spell].spell_pointer)(MAX(30, count * 10), ch, 0, 0, ch, 0);
+			(skills[spell].spell_pointer)(MIN(56, MAX(30, count * 10)), ch, 0, 0, ch,
+						      0);
 			obj->timer[0] = time(NULL);
 			message = SETMSG_STRENGTH;
 		}
@@ -13386,7 +13410,8 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 		if (obj->timer[0] + get_property("timer.invigorate.generic", 60) < time(NULL) &&
 		    GET_VITALITY(ch) < GET_MAX_VITALITY(ch))
 		{
-			(skills[spell].spell_pointer)(MAX(30, count * 10), ch, 0, 0, ch, 0);
+			(skills[spell].spell_pointer)(MIN(56, MAX(30, count * 10)), ch, 0, 0, ch,
+						      0);
 			obj->timer[0] = time(NULL);
 			message = SETMSG_STRENGTH;
 		}
@@ -13394,27 +13419,14 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 	case SPELL_ENDURANCE:
 		if (!affected_by_spell(ch, SPELL_MIELIKKI_VITALITY))
 		{
-			(skills[spell].spell_pointer)(MAX(30, count * 10), ch, 0, 0, ch, 0);
+			(skills[spell].spell_pointer)(MIN(56, MAX(30, count * 10)), ch, 0, 0, ch,
+						      0);
 			message = SETMSG_STRENGTH;
 		}
 		break;
 	case SONG_DRAGONS:
-	{
-		P_char tch = NULL, next = NULL;
-		for (tch = world[ch->in_room].people; tch; tch = next)
-		{
-			next = tch->next_in_room;
-
-			if ((ch != tch) && !grouped(ch, tch))
-			{
-				continue;
-			}
-
-			named_set_grant group_grant(ch, tch, zone, spell);
-			bard_dragons(MIN(56, count * 10), ch, tch, spell);
-		}
+		grant_dragons_to_group(ch, count, zone, false);
 		break;
-	}
 	case SKILL_EPIC_STRENGTH:
 	case SKILL_EPIC_POWER:
 	case SKILL_EPIC_AGILITY:
@@ -13647,8 +13659,6 @@ int set_proc(P_obj obj, P_char ch, int cmd, char *arg)
 			disarm_obj_nevents(obj, event_object_proc);
 			return FALSE;
 		}
-		if (identity.zone > 0)
-			set_named_set_origin(obj, identity.zone);
 	}
 
 	// No proc if not worn.

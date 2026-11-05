@@ -158,6 +158,7 @@ for signature in ("static int song_dragons_duration(", "static int song_dragons_
     harness += extract_function("bard.c", signature) + "\n"
 
 harness += "\n#define SETMSG_NONE 0\n#define SETMSG_PROTECT 1\n#define SETMSG_STRENGTH 2\n"
+harness += extract_function("specs.object.c", "static void grant_dragons_to_group(")
 harness += extract_function("specs.object.c", "void apply_zone_spell(")
 harness += extract_function("fight.c", "bool decrease_skin_counter(")
 # Run the production character-dispel traversal with a deterministic self-cast
@@ -423,6 +424,22 @@ int main() {
     assert(reconcile_named_set_spell(&wearer,SONG_DRAGONS));
     assert(!get_spell_from_char(&wearer,SONG_DRAGONS) && get_spell_from_char(&wearer,SPELL_PROTECT_FROM_FIRE));
     assert(get_spell_from_char(&companion,SONG_DRAGONS)==old_song);
+    // A member whose short ordinary song lapses is not left bare by the wearer's longer grant.
+    reset();
+    affected_type short_song{}; short_song.type=SONG_DRAGONS; short_song.duration=1;
+    auto *lapsing=affect_to_char(&companion,&short_song);
+    apply_zone_spell(&wearer,9,"Dragonnia",68,&gear[0],SONG_DRAGONS);
+    auto *wearer_song=get_spell_from_char(&wearer,SONG_DRAGONS);
+    assert(wearer_song && lapsing->duration==1 && !(lapsing->flags&AFFTYPE_SET_AFFECT));
+    // While the ordinary song lasts, the periodic grant leaves it alone.
+    apply_zone_spell(&wearer,9,"Dragonnia",68,&gear[0],SONG_DRAGONS);
+    assert(get_spell_from_char(&companion,SONG_DRAGONS)==lapsing && lapsing->duration==1);
+    affect_remove(&companion,lapsing);
+    wearer_song->duration=5;
+    apply_zone_spell(&wearer,9,"Dragonnia",68,&gear[0],SONG_DRAGONS);
+    auto *regranted=get_spell_from_char(&companion,SONG_DRAGONS);
+    assert(regranted && regranted->set_owner==1 && regranted->duration==56/3);
+    assert(get_spell_from_char(&wearer,SONG_DRAGONS)==wearer_song && wearer_song->duration==5);
     // A recipient's gear cleanup must not remove another wearer's timed linked song.
     reset(); apply_zone_spell(&wearer,9,"Dragonnia",68,&gear[0],SONG_DRAGONS);
     auto *received=get_spell_from_char(&companion,SONG_DRAGONS);
