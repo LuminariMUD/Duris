@@ -123,7 +123,9 @@ def run(binary, backend):
                 assert info.index("Your progress") < info.index("Mechanics") < info.index("Helpfile details")
                 assert "with your strength and no shield" in info, info
                 assert "Your lag on a miss: 8 seconds, or 12 seconds if you fall prone" in info, info
-                assert "Target's lag: 8 seconds, or 4 seconds if the target was already down" in info, info
+                assert "Your lag if the target is 2 or more sizes bigger or smaller: 2 seconds" in info, info
+                assert "Your lag if the target evades: 2 seconds" in info, info
+                assert "Target's lag: 8 seconds\n" in info.replace("\r\n", "\n"), info
                 assert "Mechanics" not in command(player, "skills info parry")
                 innate = command(player, "innate info reflection")
                 assert "reflection : INNATE INFO" in innate and "Type: Active" in innate, innate

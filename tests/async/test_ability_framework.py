@@ -155,10 +155,24 @@ int main() {
     assert(contains(text, "Damage on a hit: 14-22 with your strength and shield\n"));
     assert(contains(text, "Your lag on a hit: 8 seconds\n"));
     assert(contains(text, "Your lag on a miss: 8 seconds, or 12 seconds if you fall prone\n"));
-    assert(contains(text, "Target's lag: 8 seconds, or 4 seconds if the target was already down\n"));
+    assert(contains(text, "Your lag if the target is already down: 8 seconds\n"));
+    assert(contains(text, "Your lag if the target is asleep: 4 seconds (you attack it instead)\n"));
+    assert(contains(text, "Your lag if the target evades: 2 seconds\n"));
+    assert(contains(text, "Your lag if the target is 2 or more sizes bigger or smaller: 2 seconds\n"
+                          "    (also a centaur or drider at least your size)\n"));
+    assert(contains(text, "Your lag if the target foils the takedown: 8 seconds\n    (grapple,"));
+    assert(contains(text, "Target's lag: 8 seconds\n"));
+    assert(!contains(text, "was already down")); // the unreachable down-target lag is not shown
+    for (size_t start = 0, end; start < text.size(); start = end + 1) {
+        end = text.find('\n', start);
+        assert(end != std::string::npos && end - start <= 79);
+    }
+    ch.player.race = RACE_QUADRUPED;
+    assert(contains(bash_facts(&ch), "    (also any target at least your size)\n"));
+    ch.player.race = 0;
     ch.player.m_class = CLASS_WARRIOR;
     ch.player.spec = SPEC_GUARDIAN;
-    assert(contains(bash_facts(&ch), "Target's lag: 10 seconds, or 4 seconds"));
+    assert(contains(bash_facts(&ch), "Target's lag: 10 seconds\n"));
     puts("PASS: shared rolls match the old code, ranges are exact, facts never roll");
 }
 '''
@@ -170,8 +184,24 @@ def check_handlers_use_shared_numbers():
     for call in ("dmg = bash_damage(live_rolls, ch);", "CharWait(ch, bash_hit_lag());",
                  "CharWait(ch, bash_miss_lag(true));", "CharWait(ch, bash_miss_lag(false));",
                  "CharWait(victim, bash_target_lag(ch, GET_POS(victim) == POS_STANDING));",
+                 "CharWait(ch, bash_target_down_lag());", "CharWait(ch, bash_takedown_penalty_lag());",
                  "melee_damage(ch, victim, dmg, PHSDAM_TOUCH, 0)"):
         assert call in bash, call
+
+    # Each lag helper sits in its own branch: from the branch's message to its return.
+    def branch(body, marker):
+        start = body.index(marker)
+        return body[start:body.index("return", start)]
+    takedown = function_bodies(strip_comments(source("actoff.c").read_text()),
+                               r"\bfloat\s+takedown_check\s*\(")[0]
+    for body, marker, call in (
+            (bash, "As $N avoids your bash, you topple over", "CharWait(ch, bash_target_down_lag());"),
+            (bash, "simply too huge for you to move", "CharWait(ch, bash_size_lag());"),
+            (bash, "just too small", "CharWait(ch, bash_size_lag());"),
+            (bash, "percent_chance == TAKEDOWN_PENALTY", "CharWait(ch, bash_takedown_penalty_lag());"),
+            (takedown, "cannot respond to your attack", "CharWait(ch, takedown_sleeping_target_lag());"),
+            (takedown, "TAKEDOWN_EVADE);", "CharWait(ch, takedown_evade_lag());")):
+        assert call in branch(body, marker), (marker, call)
     fireball = function_bodies(strip_comments(source("magic.c").read_text()),
                                r"\bvoid\s+spell_fireball\s*\(")[0]
     for call in ("int dam = fireball_damage(live_rolls, level);", "dam = fireball_failed_save(dam);",
@@ -190,6 +220,11 @@ def main():
                  extract_function("actoff.c", "static int bash_damage("),
                  extract_function("actoff.c", "static int bash_hit_lag("),
                  extract_function("actoff.c", "static int bash_miss_lag("),
+                 extract_function("actoff.c", "static int takedown_sleeping_target_lag("),
+                 extract_function("actoff.c", "static int takedown_evade_lag("),
+                 extract_function("actoff.c", "static int bash_target_down_lag("),
+                 extract_function("actoff.c", "static int bash_size_lag("),
+                 extract_function("actoff.c", "static int bash_takedown_penalty_lag("),
                  extract_function("actoff.c", "static int bash_target_lag("),
                  extract_function("actoff.c", "std::string bash_facts(")]
     build = ROOT / "bin/tests"
