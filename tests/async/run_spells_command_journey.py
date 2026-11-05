@@ -193,9 +193,11 @@ def run(binary, backend):
                 lost_info = command(player, "spells info solbeeps missile barrage")
                 assert "Wizard" in lost_info and "Unavailable (lost from base class)" in lost_info
                 assert "Circle 8 (changed)" in command(player, "spells info haste")
-                # Not converted yet: today's page unchanged.
+                # Nothing numeric to show: today's page unchanged.
+                fear = command(player, "spells info fear")
+                assert "fear : SPELL INFO" in fear and "Your access" in fear and "Mechanics" not in fear, fear
                 blade = command(player, "spells info flame blade")
-                assert "Your access" in blade and "Mechanics" not in blade, blade
+                assert "Below level 21 the blade casts no spell." in blade, blade
                 assert "Your required Circle:" in info and "Current maximum Circle: 1" in info
                 assert "Circle requirement: not yet met" in info and "Spellbook" in info
                 assert info.index("Class / specialization") < info.index("Your access") < info.index("Mechanics") < info.index("Helpfile details")

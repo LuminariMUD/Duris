@@ -448,6 +448,28 @@ void essence_broken(struct char_link_data *cld)
 	    TO_VICT);
 }
 
+std::string essence_of_wolf_facts(P_char /*ch*/)
+{
+	extern int essence_of_wolf_attacks(const Rolls &rolls);
+	extern int essence_of_wolf_attack_cap(int level);
+	extern int essence_of_wolf_offhand_roll(const Rolls &rolls);
+	return fact("Target's extra attacks each round",
+		    show({ essence_of_wolf_attacks(lowest_rolls),
+			   essence_of_wolf_attacks(highest_rolls) })) +
+	       fact("Most at target's level 10, 20, 30",
+		    std::to_string(essence_of_wolf_attack_cap(10)) + ", " +
+			    std::to_string(essence_of_wolf_attack_cap(20)) + ", " +
+			    std::to_string(essence_of_wolf_attack_cap(30)) + "; none below 10") +
+	       fact("With an off-hand weapon",
+		    "1 off-hand attack more; 1 in " +
+			    std::to_string(essence_of_wolf_offhand_roll(highest_rolls) + 1) +
+			    " rounds another") +
+	       "  That other one uses up an extra attack if any are left.\n"
+	       "  An NPC target is refused.\n"
+	       "  Nothing happens if you already share it or the target already has it.\n"
+	       "  It ends when you use a command, or when the target walks 2 rooms away.\n";
+}
+
 void spell_essence_of_the_wolf(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
 			       P_char victim, P_obj /*obj*/)
 {

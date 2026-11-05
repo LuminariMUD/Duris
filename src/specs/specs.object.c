@@ -13091,6 +13091,22 @@ int disarm_pick_gloves(P_obj obj, P_char ch, int cmd, char *arg)
 	return FALSE;
 }
 
+// A doom blade's cloud forms when this roll comes up 0.
+int doom_blade_proc_roll(const Rolls &rolls, P_char ch)
+{
+	return rolls.number(0, MAX(8, 56 - GET_LEVEL(ch)));
+}
+
+int doom_blade_proc_level(P_char ch)
+{
+	return MIN(40, GET_LEVEL(ch));
+}
+
+int doom_blade_effect_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 4);
+}
+
 int doom_blade_Proc(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	int rand, dam = cmd / 1000, lvl = 1;
@@ -13107,10 +13123,10 @@ int doom_blade_Proc(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	lvl = MIN(40, GET_LEVEL(ch));
+	lvl = doom_blade_proc_level(ch);
 
 	// Max 1/9 chance.
-	if (number(0, MAX(8, 56 - GET_LEVEL(ch))))
+	if (doom_blade_proc_roll(live_rolls, ch))
 	{
 		return FALSE;
 	}
@@ -13129,7 +13145,7 @@ int doom_blade_Proc(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 	else
 	{
-		rand = number(0, 4);
+		rand = doom_blade_effect_roll(live_rolls);
 		switch (rand)
 		{
 		case 0:
