@@ -1008,28 +1008,20 @@ static P_char blood_tithe_body(P_char player)
 	return IS_PC(player) && player->only.pc->switched ? player->only.pc->switched : player;
 }
 
-// A fraction as a page shows it, such as 12%.
-static std::string blood_tithe_percent(double fraction)
-{
-	char text[32];
-	snprintf(text, sizeof(text), "%g%%", fraction * 100);
-	return text;
-}
-
 std::string blood_tithe_facts(P_char ch)
 {
 	char reference[32];
 	snprintf(reference, sizeof(reference), "%g", blood_tithe_reference_size());
 	return fact("Duration", game_hours(blood_tithe_duration(ch)) + " with your devotion") +
 	       fact("Your groupmates' damage bonus",
-		    "up to " + blood_tithe_percent(blood_tithe_max_bonus())) +
-	       fact("Against players", blood_tithe_percent(blood_tithe_pvp_mod()) + " of that") +
+		    "up to " + share_percent(blood_tithe_max_bonus())) +
+	       fact("Against players", share_percent(blood_tithe_pvp_mod()) + " of that") +
 	       "  The bonus follows your malice meter, filled by enemies hitting you.\n" +
 	       fact("Full meter", std::to_string((int)blood_tithe_full_malice(ch)) +
 					  " malice with your maximum hit points") +
 	       fact("Most malice from one hit",
-		    blood_tithe_percent(blood_tithe_hit_cap()) + " of your maximum hit points") +
-	       fact("The meter decays by", blood_tithe_percent(blood_tithe_decay()) + " every " +
+		    share_percent(blood_tithe_hit_cap()) + " of your maximum hit points") +
+	       fact("The meter decays by", share_percent(blood_tithe_decay()) + " every " +
 						   seconds(blood_tithe_interval())) +
 	       "  More than " + reference +
 	       " player groupmates here share a smaller bonus.\n"

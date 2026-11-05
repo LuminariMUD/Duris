@@ -84,7 +84,7 @@ PREFIXES = {
                   "arcane_whirlwind_", "purge_", "induce_tupor_", "tempest_", "wind_rage_", "comet_",
                   "cosmic_", "supernova_", "planetary_alignment_", "polar_vortex_", "static_discharge_",
                   "razor_wind_", "iceflow_armor_", "negative_feedback_barrier_", "etheric_gust_",
-                  "antimatter_collision_", "arctic_blast_", "ice_spikes_", "wall_of_air_", "damage_change", "melee_share_percent"),
+                  "antimatter_collision_", "arctic_blast_", "ice_spikes_", "wall_of_air_", "damage_change"),
     PALADINS: ("vortex_of_fear_", "righteous_aura_", "bleak_foeman_", "dread_blade_", "blood_tithe_"),
     ALCHEMIST: ("napalm_", "strong_acid_", "glass_bomb_", "nitrogen_", "grease_"),
 }

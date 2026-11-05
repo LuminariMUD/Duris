@@ -126,7 +126,7 @@ life_bolt_damage life_bolt_unopposed mielikki_vitality_duration mielikki_vitalit
 mielikki_vitality_moves mielikki_vitality_regen repair_one_item_condition
 contain_being_duration dragoon_spell_cost dragoon_cost_fact animae_cicatrix_duration
 animae_cicatrix_bonus animae_cicatrix_max_bonus stigmata_draconica_duration
-drakescale_aegis_absorb drakescale_aegis_hits drakescale_aegis_duration
+skin_melee_facts drakescale_aegis_absorb drakescale_aegis_hits drakescale_aegis_duration
 judicium_fidei_duration igneus_vitae_heal sanguinis_ignis_duration
 sanctum_draconis_duration vivernae_concordia_duration pactum_serpentis_duration
 edictum_cineris_berserk_lag edictum_cineris_penalty edictum_cineris_duration
@@ -665,6 +665,14 @@ int main() {
     assert(contains(holy_dharma_facts(&ch), "Duration: 25-26 game hours"));
     assert(contains(holy_dharma_facts(&ch), "up to 75 hit points"));
     assert(contains(drakescale_aegis_facts(&ch), "Duration: 30-31 game hours"));
+    assert(contains(drakescale_aegis_facts(&ch), "  Hits it weakens: 10-12 at your level\n"
+                                                 "  Each melee hit on you: 46 less\n"
+                                                 "  Then, if over 10 is left: 75% of that\n"
+                                                 "  It applies before the raw damage modifiers.\n"
+                                                 "  Hits that ignore reductions go through it and use up nothing.\n"
+                                                 "  An attacker's fist of dragon can do the same.\n"
+                                                 "  Stone skin on you applies instead.\n"
+                                                 "  Duration: 30-31 game hours"));
     ch.player.m_class = CLASS_CLERIC;
     ch.player.spec = SPEC_HEALER;
     assert(contains(group_heal_facts(&ch), "Healing: 140-160 "));
@@ -727,9 +735,22 @@ def check_handlers_use_shared_numbers():
             assert call in bodies[0], f"{handler}: {call}"
 
 
+def check_melee_damage_uses_aegis_share():
+    bodies = function_bodies(strip_comments(source("fight.c").read_text()), r"\bint\s+melee_damage\s*\(")
+    assert len(bodies) == 1
+    branch = ("if (affected_by_spell(victim, SPELL_DRAKESCALE_AEGIS) && !(flags & PHSDAM_NOREDUCE)) "
+              "{ reduction = 1. - drakescale_aegis_melee_share(); skin = SPELL_DRAKESCALE_AEGIS; }")
+    # Last in the chain: after neg armor, before the shared deduction.
+    body = " ".join(bodies[0].split())
+    assert body.find("skin = SPELL_NEG_ARMOR;") < body.find(branch) < body.find("dam -= skin_spell_deduct();")
+    read = 'return get_property("damage.reduction.drakescaleAegis", 0.75);'
+    assert read in extract_function("fight.c", "float drakescale_aegis_melee_share(")
+
+
 def main():
     check_facts_table()
     check_handlers_use_shared_numbers()
+    check_melee_damage_uses_aegis_share()
     text = source("magic.c").read_text()
     names = SHARED.split() + [name for line in CONVERTED.strip().splitlines()
                               for name in line.split()[1:]]
@@ -739,7 +760,9 @@ def main():
         assert len(found) == 1, name
         signatures[found[0]] = text.index(found[0])
     functions = [extract_function("utility.c", "int dice(int num, int size)"),
-                 extract_function("utility.c", "int BOUNDED(int a, int b, int c)")]
+                 extract_function("utility.c", "int BOUNDED(int a, int b, int c)"),
+                 extract_function("fight.c", "float drakescale_aegis_melee_share("),
+                 extract_function("fight.c", "int skin_spell_deduct(")]
     functions += [extract_function("magic.c", signature)
                   for signature in sorted(signatures, key=signatures.get)]
     converted = ", ".join(sorted({line.split()[1] for line in CONVERTED.strip().splitlines()}))
