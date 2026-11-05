@@ -1103,6 +1103,7 @@ int run_the_game(int port, int sslport)
 	init_astral_clock(); // fix the map sight distances
 
 	// cache named report, fraglist, and epic zones in redis
+	redis_invalidate_named_report();
 	redis_cache_named_report();
 	redis_cache_fraglist();
 	redis_cache_epic_zones();

@@ -1,10 +1,60 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: ready for implementation; this planning commit contains documentation.
+Status: implementation in progress; catalog/report foundation ready for review.
 Date: 2026-11-05.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
 Working branch: `branch/named-zone-set-expansion`.
 Inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
+
+## Current handoff (2026-11-05)
+
+The first implementation chunk extracts the **115 existing loaded set rows,
+206 tiers, and 64 effect IDs** into `src/item/named_sets.c`. No expansion rows
+have been installed. All **117 historical roaming rows**, their ordering and
+race lists (including empty lists and stale #30/#250), remain in
+`src/world/random.mob.c`; its selection function is unchanged.
+
+Worn spell lookup, `test randomzones`, and the single named-report formatter now
+read that catalog. Reports include virtual zone IDs and grow with their content;
+Redis and fallback output use the same formatter. The staff dump traverses the
+whole catalog and closes its file. Boot invalidates the named report before
+warming it. Full-world boot validates zone IDs, duplicates, nonempty definitions,
+numeric piece bounds, and supported registered handlers; mini-world boots skip
+this full-world check because their fixtures intentionally omit most zones.
+The application entry point also rejects unsupported handlers.
+
+**Ablation:** reuse the current report-cache owner and existing cache lifecycle;
+no second renderer, registry service, schema, effect adapter, or spawn selector
+was added. The extracted catalog retains the existing three-tier layout.
+
+**Validation for this chunk:** `make -C src -j4`,
+`./scripts/format.sh --check`, `git diff --check`, and these direct tests passed:
+
+```sh
+python3 tests/async/test_named_set_catalog.py
+python3 tests/async/test_random_equipment_golden.py
+python3 tests/async/test_random_mob_theme_runtime.py
+python3 tests/async/test_redis_module_boundaries.py
+python3 tests/async/test_redis_admin_nonblocking.py
+python3 tests/async/test_redis_failure_containment.py
+SANITIZE=1 python3 tests/async/test_pager_contract.py
+```
+
+The new ASan/UBSan test freezes the original set and spawn data, checks catalog
+counts and each invalid-definition case, and executes the real formatter and
+command with cold/warm/expired/disabled cache boundary fixtures. Oversized zone
+titles exceed the former total report buffer and still include every row.
+These cache boundaries are fixtures, **not a live Redis lifecycle test**.
+This chunk does not claim gameplay, persistence, or actual effect ownership
+verification. The existing pager test remains the pager integration check.
+
+**Next:** branch from this review chunk for persistent origin and exact legacy
+resolution (section 3), then ownership/cleanup (section 5). Name substring and
+first-room-derived membership, zero-index contexts, ordinary-cast adoption, and
+character-wide event cancellation remain unchanged and must be repaired before
+installing the expansion. Complete the balance and wider area review before
+claiming #706 done. No production operation, release, or release tag is part of
+this foundation chunk.
 
 ## Start here
 
@@ -92,17 +142,17 @@ Owning code: [random.mob.c](../../src/world/random.mob.c),
 [redis_report_cache.c](../../src/redis/redis_report_cache.c), and
 [testcmd.c](../../src/cmd/testcmd.c).
 
-- [ ] Introduce one canonical set catalog keyed by the virtual zone number.
+- [x] Introduce one canonical set catalog keyed by the virtual zone number.
   Move the existing resolved spell definitions into it, preserving their
   values. Route worn-set lookup, both reports, and staff set diagnostics through
   that catalog; remove duplicate spell-data definitions and declarations.
-- [ ] Preserve the existing roaming selector's zone/race rows, order, sampling,
+- [x] Preserve the existing roaming selector's zone/race rows, order, sampling,
   abort behavior, and random-number consumption. `create_random_mob()` must not
   sample newly added set rows. Do not silently remove stale spawn rows while
   separating these responsibilities.
-- [ ] Keep unresolved set IDs #30 and #250 outside the active set catalog,
+- [x] Keep unresolved set IDs #30 and #250 outside the active set catalog,
   documented as stale rather than automatically reassigned to #28 or #254.
-- [ ] Use the catalog's actual extent. The old 200-slot table and the staff
+- [x] Use the catalog's actual extent. The old 200-slot table and the staff
   dump's 100-row cutoff cannot serve the expansion. Validate duplicate IDs,
   missing zones, positive/reachable thresholds, effect IDs, and supported
   handlers. Ordinary skills and songs without explicit support must not reach

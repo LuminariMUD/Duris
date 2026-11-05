@@ -6,7 +6,7 @@ import tempfile
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
 text = source('random.mob.c').read_text()
-prefixes = text[text.index('const char *prefix_name_theme'):text.index('#define MAX_ZONES_RANDOM_DATA')]
+prefixes = text[text.index('const char *prefix_name_theme'):text.index('// This historical spawn pool')]
 harness = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"

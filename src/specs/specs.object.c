@@ -18,6 +18,7 @@
 ;
 
 #include "core/prototypes.h"
+#include "item/named_sets.h"
 #include "abilities/abilities.h"
 #include "item/forced_weapon_drop.h"
 #include "item/native_artifact_actions.h"
@@ -13289,13 +13290,6 @@ void event_random_set_proc(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 	}
 }
 
-extern struct zone_random_data
-{
-	int zone;
-	int races[10];
-	int proc_spells[3][2];
-} zones_random_data[];
-
 #define SETMSG_NONE 0
 #define SETMSG_PROTECT 1
 #define SETMSG_STRENGTH 2
@@ -13303,6 +13297,9 @@ extern struct zone_random_data
 void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone_index, P_obj obj,
 		      int spell)
 {
+	if (!named_set_effect_supported(spell))
+		return;
+
 	int message = SETMSG_NONE;
 	char buffer[512];
 
@@ -13508,9 +13505,9 @@ void check_zone_spells(P_char ch, P_obj obj, int count, const char *zone_name)
 	// This calculates the starting # for the zone as in the DE.
 	zone_room = world[zone_table[i].real_bottom].number / 100;
 	// Walk the list of random eq proc'ing zones.
-	for (i = 0; zones_random_data[i].zone; i++)
+	for (i = 0; i < static_cast<int>(named_set_count); i++)
 	{
-		if (zones_random_data[i].zone == zone_room)
+		if (named_sets[i].zone == zone_room)
 		{
 			zone_idx = i;
 			break;
@@ -13527,24 +13524,24 @@ void check_zone_spells(P_char ch, P_obj obj, int count, const char *zone_name)
 	// For the three possible spellups,
 	for (i = 0; i < 3; i++)
 	{
-		if (zones_random_data[zone_idx].proc_spells[i][0])
+		if (named_sets[zone_idx].proc_spells[i][0])
 		{
 			struct affected_type *paf;
 			// If the required num of eq is met for spell
-			if (zones_random_data[zone_idx].proc_spells[i][0] <= count)
+			if (named_sets[zone_idx].proc_spells[i][0] <= count)
 			{
 				// cast the spell on ch.
 				apply_zone_spell(ch, count, zone_name, zone_idx, obj,
-						 zones_random_data[zone_idx].proc_spells[i][1]);
+						 named_sets[zone_idx].proc_spells[i][1]);
 			}
-			else if ((paf = get_spell_from_char(
-					  ch, zones_random_data[zone_idx].proc_spells[i][1],
-					  reinterpret_cast<void *>(zone_idx),
-					  AFFTYPE_SET_AFFECT)) != NULL)
+			else if ((paf = get_spell_from_char(ch,
+							    named_sets[zone_idx].proc_spells[i][1],
+							    reinterpret_cast<void *>(zone_idx),
+							    AFFTYPE_SET_AFFECT)) != NULL)
 			{
 				// remove the spell from the character
 				wear_off_message(ch, paf);
-				affect_from_char(ch, zones_random_data[zone_idx].proc_spells[i][1]);
+				affect_from_char(ch, named_sets[zone_idx].proc_spells[i][1]);
 				spellsRemoved = true;
 			}
 		}

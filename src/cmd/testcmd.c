@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "world/db.h"
+#include "item/named_sets.h"
 #include "cmd/interp.h"
 #include "core/utility.h"
 #include "cmd/testcmd.h"
@@ -47,12 +48,7 @@ extern long new_exp_table[];
 extern const char *spells[];
 extern float exp_mods[EXPMOD_MAX + 1];
 extern const struct class_names class_names_table[];
-extern struct zone_random_data
-{
-	int zone;
-	int races[10];
-	int proc_spells[3][2];
-} zones_random_data[];
+
 extern const racewar_struct racewar_color[MAX_RACEWAR + 2];
 extern P_char character_list;
 
@@ -1033,55 +1029,27 @@ void do_test(P_char ch, char *arg, int cmd)
 	}
 	else if (isname("randomzones", buff))
 	{
-		int i, j;
-		FILE *pf;
-
-		if (!(pf = fopen("logs/log/randomzones", "w")))
+		FILE *pf = fopen("logs/log/randomzones", "w");
+		if (!pf)
 		{
 			send_to_char("Couldn't open file. :(\n\r", ch);
 			return;
 		}
-		fprintf(pf, "Printing list of zones with their spells:\n");
-		debug("List of zones_random_data:");
-		for (i = 0; i < 100; i++)
+		fprintf(pf, "Named equipment sets (independent of roaming spawns):\n");
+		for (size_t i = 0; i < named_set_count; ++i)
 		{
-			if (zones_random_data[i].zone == 0)
-			{
-				break;
-			}
-			debug("%2d) %4d = %4d rb: %7d zone: '%s'.", i, zones_random_data[i].zone,
-			      zone_table[real_zone0(zones_random_data[i].zone)].number,
-			      zone_table[real_zone0(zones_random_data[i].zone)].real_bottom,
-			      zone_table[real_zone0(zones_random_data[i].zone)].name);
-
-			fprintf(pf, "%2d) '%s'\n", i + 1,
-				strip_ansi(zone_table[real_zone0(zones_random_data[i].zone)].name)
-					.c_str());
-			for (j = 0; j < 3; j++)
-			{
-				if (zones_random_data[i].proc_spells[j][0] > 0)
-				{
-					fprintf(pf, "  With %d pieces: Spell '%s'.\n",
-						zones_random_data[i].proc_spells[j][0],
-						zones_random_data[i].proc_spells[j][1] ==
-								SPELL_STONE_SKIN ?
-							"stone skin" :
-						zones_random_data[i].proc_spells[j][1] ==
-								SPELL_BLESS ?
-							"bless" :
-						zones_random_data[i].proc_spells[j][1] ==
-								SPELL_STRENGTH ?
-							"strength" :
-						zones_random_data[i].proc_spells[j][1] ==
-								SPELL_BARKSKIN ?
-							"barkskin" :
-						zones_random_data[i].proc_spells[j][1] ==
-								SPELL_ARMOR ?
-							"armor" :
-							"unknown");
-				}
-			}
+			const auto &set = named_sets[i];
+			int zone = real_zone(set.zone);
+			if (zone < 0)
+				continue;
+			fprintf(pf, "%zu) #%d '%s'\n", i + 1, set.zone,
+				strip_ansi(zone_table[zone].name).c_str());
+			for (const auto &tier : set.proc_spells)
+				if (tier[0] && named_set_effect_supported(tier[1]))
+					fprintf(pf, "  With %d pieces: Spell '%s'.\n", tier[0],
+						skills[tier[1]].name);
 		}
+		fclose(pf);
 		return;
 	}
 	else if (isname("clearepiczones", buff))

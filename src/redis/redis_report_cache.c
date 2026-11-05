@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "redis/redis_report_cache.h"
+#include "item/named_sets.h"
 
 #include "core/config.h"
 #include "world/db.h"
@@ -41,14 +42,6 @@
 #include <hiredis/hiredis.h>
 #endif
 
-struct zone_random_data
-{
-	int zone;
-	int races[10];
-	int proc_spells[3][2];
-};
-
-extern struct zone_random_data zones_random_data[];
 extern Skill skills[];
 
 namespace
@@ -205,75 +198,6 @@ void prime_artifact_caches(const redis_connection_settings *connection)
 }
 #endif
 
-char *generate_named_report(void)
-{
-	char *output = static_cast<char *>(malloc(MAX_STRING_LENGTH * 4));
-	if (!output)
-		return NULL;
-
-	output[0] = '\0';
-	char buffer[MAX_STRING_LENGTH];
-
-	strcat(output, "&+YCurrent listing of spells granted by named sets by zone.&n\n");
-	strcat(output, "&+Y-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=&n\n\n");
-	strcat(output, "  &+MNotes&n: &+W*&n if a zone isn't listed, sets still grant hitpoints\n");
-	strcat(output,
-	       "         &+W*&n caster level of the spell(s) is based on number of items\n");
-	strcat(output, "           going over set requirements will increase caster level\n");
-	strcat(output, "         &+W*&n &+Gthese&n spells have a cooldown of 1 minute\n");
-	strcat(output, "           &+ythese&n spells have a cooldown of 5 minutes\n\n");
-	strcat(output,
-	       "&+Y ZONE NAME                                        &+W|&+B SPELLS GRANTED &+W(&+Ypieces required&n&+W)&n\n");
-	strcat(output,
-	       "&+W-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=&n\n");
-
-	for (int i = 0; zones_random_data[i].zone; i++)
-	{
-		int zone_id = real_zone(zones_random_data[i].zone);
-		if (zone_id <= 0)
-			continue;
-
-		const char *zone_name = zone_table[zone_id].name;
-		snprintf(buffer, sizeof(buffer), " %s    &+W|&n ",
-			 pad_ansi(zone_name, 45, FALSE).c_str());
-
-		if (zones_random_data[i].proc_spells[0][0] == 0)
-		{
-			strcat(buffer, "&+LNONE&n");
-			strcat(buffer, "\n");
-			strcat(output, buffer);
-			continue;
-		}
-
-		for (int x = 0; x < 3; x++)
-		{
-			if (zones_random_data[i].proc_spells[x][0] != 0 &&
-			    zones_random_data[i].proc_spells[x][1] <= MAX_AFFECT_TYPES)
-			{
-				char buf[256];
-				const char *spell_color = "&+B";
-
-				if (zones_random_data[i].proc_spells[x][1] == SPELL_STONE_SKIN ||
-				    zones_random_data[i].proc_spells[x][1] == SPELL_INVIGORATE)
-					spell_color = "&+G";
-				else if (zones_random_data[i].proc_spells[x][1] ==
-					 SPELL_CONJURE_ELEMENTAL)
-					spell_color = "&+y";
-
-				snprintf(buf, sizeof(buf), "%s%s%s &+W(&+Y%d&+W)&n",
-					 x != 0 ? "&+W,&n " : "", spell_color,
-					 skills[zones_random_data[i].proc_spells[x][1]].name,
-					 zones_random_data[i].proc_spells[x][0]);
-				strcat(buffer, buf);
-			}
-		}
-		strcat(buffer, "\n");
-		strcat(output, buffer);
-	}
-
-	return output;
-}
-
 #ifndef __NO_REDIS__
 /* The cached fraglist, from the leaderboard rows fraglist_leaders() reads. */
 static char *fraglist_cache_payload(const sql_rows &rows)
@@ -337,6 +261,48 @@ static char *fraglist_cache_payload(const sql_rows &rows)
 #endif
 
 } // namespace
+
+char *generate_named_report(void)
+{
+	std::string output =
+		"&+YCurrent listing of spells granted by named sets by zone.&n\n"
+		"&+Y-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=&n\n\n"
+		"  &+MNotes&n: &+W*&n if a zone isn't listed, sets still grant hitpoints\n"
+		"         &+W*&n caster level of the spell(s) is based on number of items\n"
+		"           going over set requirements will increase caster level\n"
+		"         &+W*&n &+Gthese&n spells have a cooldown of 1 minute\n"
+		"           &+ythese&n spells have a cooldown of 5 minutes\n\n"
+		"&+Y ZONE ID / NAME                                       &+W|&+B SPELLS GRANTED &+W(&+Ypieces required&n&+W)&n\n"
+		"&+W-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=&n\n";
+
+	for (size_t i = 0; i < named_set_count; ++i)
+	{
+		const auto &set = named_sets[i];
+		int zone = real_zone(set.zone);
+		if (zone < 0)
+			continue;
+		output += " #" + std::to_string(set.zone) + " " +
+			  pad_ansi(zone_table[zone].name, 45, FALSE) + "    &+W|&n ";
+		bool first = true;
+		for (const auto &tier : set.proc_spells)
+		{
+			if (!tier[0] || !named_set_effect_supported(tier[1]))
+				continue;
+			if (!first)
+				output += "&+W,&n ";
+			first = false;
+			const char *color = "&+B";
+			if (tier[1] == SPELL_STONE_SKIN || tier[1] == SPELL_INVIGORATE)
+				color = "&+G";
+			else if (tier[1] == SPELL_CONJURE_ELEMENTAL)
+				color = "&+y";
+			output += std::string(color) + skills[tier[1]].name + " &+W(&+Y" +
+				  std::to_string(tier[0]) + "&+W)&n";
+		}
+		output += "\n";
+	}
+	return strdup(output.c_str());
+}
 
 bool fraglist_leaders(MYSQL *connection, const char *filter, sql_rows *rows)
 {

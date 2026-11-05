@@ -11,6 +11,7 @@
 
 #include "combat/trap.h"
 #include "core/prototypes.h"
+#include "item/named_sets.h"
 #include "net/gmcp.h"
 #include "player/news.h"
 #include "player/player_save_pipeline.h"
@@ -660,6 +661,8 @@ void boot_db(int mini_mode)
 	fprintf(stderr, "-- Spells.\n");
 	logit(LOG_STATUS, "   Spells.");
 	assign_spell_pointers();
+	if (!mini_mode && !validate_named_sets())
+		fatal_boot_error("named sets", "invalid named equipment set catalog");
 
 	// Parse starter prototypes before any descriptors can request a kit.
 	for (int vnum : newbie_kit_template_vnums())

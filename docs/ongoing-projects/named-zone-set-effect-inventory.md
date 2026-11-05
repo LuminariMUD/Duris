@@ -1,6 +1,6 @@
 # Named zone sets: effect usage and unused candidates
 
-Status: source inventory for [issue #706](https://github.com/LuminariMUD/Duris/issues/706); no gameplay changes or zone assignments made.
+Status: baseline effect inventory for [issue #706](https://github.com/LuminariMUD/Duris/issues/706); the 115 loaded definitions have been extracted unchanged into the canonical catalog. Expansion assignments remain uninstalled.
 Date: 2026-11-05.
 Inspected `master`: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
@@ -42,7 +42,7 @@ King (#87), Crystalspyre Mountains (#370), Taliccicopiid (#676), and The Temple
 of the Sun (#824). They remain in the configured counts. Known zone-name
 collisions and worn-set cleanup issues also remain relevant; see #706.
 
-Sources: [set definitions](../../src/world/random.mob.c),
+Sources: [set definitions](../../src/item/named_sets.c),
 [active area registry](../../areas/AREA),
 [naming eligibility](../../src/item/random_equipment.c), and
 [`random_set()` / `check_zone_spells()` / `apply_zone_spell()`](../../src/specs/specs.object.c).
