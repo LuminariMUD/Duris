@@ -32,6 +32,20 @@ creation-view flag moved into the MUD store; no separate completion state machin
 was needed. Its development guide and unpublished changelog payload are included
 in PR #155.
 
+### Review follow-up
+
+Adversarial review of the new flow found session and deletion gaps around
+pre-entry bodies. WebSocket `login` and `enter` now require a menu or fresh
+socket with no body or load in flight, in-game `logout` is refused, and a
+deletion-fenced account gets no WebSocket session. Deletion refuses a PID held
+by any descriptor, and a temporary load's cleanup no longer ends that holder's
+save session. The Chaos kit and reward intents are decided at first entry, so a
+parked character follows the server's mode when played.
+`test_websocket_session_guard_journey.py` covers these through real sockets.
+
+Rollout: server-side, a browser tab opened before the paired client deploys
+still treats `created` as entry and shows a false in-game state until refreshed.
+
 ### Local verification, 2026-11-05
 
 All checks below passed using disposable storage and synthetic accounts.

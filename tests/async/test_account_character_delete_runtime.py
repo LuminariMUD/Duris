@@ -132,6 +132,7 @@ static int fail_stage=0, frees=0, menus=0, writes=0, audits=0, runtime_ships=0,
     guild_saves=0;
 static bool async_loads=false, durable_active=true, in_game=false, loading=false;
 bool is_pid_online(int, bool) { return in_game; }
+bool account_character_body_held(int, P_desc) { return false; }
 bool player_load_pipeline_pid_pending(int) { return loading; }
 static Guild fixture_guild;
 // Saved again once memory has let go of the member, after the deletion committed.

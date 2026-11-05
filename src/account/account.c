@@ -2301,6 +2301,16 @@ int can_connect(struct acct_chars *c, P_desc d)
 			    .allowed;
 }
 
+bool account_character_body_held(int pid, P_desc except)
+{
+	// A pre-entry body lives only on its descriptor, outside character_list.
+	for (P_desc k = descriptor_list; k; k = k->next)
+		if (k != except && k->character && IS_PC(k->character) &&
+		    GET_PID(k->character) == pid)
+			return true;
+	return false;
+}
+
 int is_char_in_game(struct acct_chars *c, P_desc d)
 {
 	if (!c || !d)
@@ -2960,6 +2970,7 @@ void account_delete_char(P_desc d, char *arg)
 		}
 		// One in the game, linkdead or entering it would go on playing, unsaved.
 		if (is_pid_online(GET_PID(d->character), TRUE) ||
+		    account_character_body_held(GET_PID(d->character), d) ||
 		    player_load_pipeline_pid_pending(GET_PID(d->character)))
 		{
 			SEND_TO_Q(

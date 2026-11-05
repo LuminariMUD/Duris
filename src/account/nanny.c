@@ -1925,8 +1925,10 @@ void enter_game(P_desc d)
 		// Level one is the durable initialization boundary. The kit waits for
 		// the final post-entry snapshot acknowledgment before submitting.
 		SET_BIT(ch->specials.act3, PLR3_STARTER_KIT_PENDING);
-		if (!IS_SET(ch->specials.act3, PLR3_KEPT_CHARACTER) && chaos_mud_enabled())
+		if (chaos_mud_enabled())
 			SET_BIT(ch->specials.act3, PLR3_CHAOS_STARTER_KIT);
+		else
+			REMOVE_BIT(ch->specials.act3, PLR3_CHAOS_STARTER_KIT);
 		do_start_deferred_newbie_kit(ch, 0);
 	}
 
@@ -4117,8 +4119,6 @@ void return_kept_character_to_menu(P_desc d)
 void decide_creation_approval(P_char ch)
 {
 	SET_BIT(ch->specials.act3, PLR3_KEPT_CHARACTER);
-	if (chaos_mud_enabled())
-		SET_BIT(ch->specials.act3, PLR3_CHAOS_STARTER_KIT);
 	if (approve_mode && !IS_TRUSTED(ch) && !pfile_exists("Players/Accepted", GET_NAME(ch)))
 		SET_BIT(ch->specials.act3, PLR3_APPROVAL_PENDING);
 	else
@@ -4337,8 +4337,6 @@ void account_creation_pulse()
 bool keep_new_character(P_desc d)
 {
 	decide_creation_approval(d->character);
-	if (chaos_mud_enabled())
-		mark_chaos_starter_reward_intents(d->character);
 	return save_kept_character(d, kept_save_kind::initial);
 }
 

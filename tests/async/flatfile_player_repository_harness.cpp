@@ -1663,7 +1663,7 @@ int main(int argc, char **argv)
 				flatfile_account_result::ok,
 			"synthetic account lookup: " + error);
 		const int blocked = std::stoi(argv[4]);
-		require(blocked == 0 || blocked == 1, "synthetic block must be 0 or 1");
+		require(blocked >= 0 && blocked <= 2, "synthetic block must be 0, 1 or 2");
 		account.blocked = blocked;
 		uint64_t revision = 0;
 		require(flatfile_account_save(argv[1], account, account.revision, &revision,

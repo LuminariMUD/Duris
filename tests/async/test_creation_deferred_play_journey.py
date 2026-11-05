@@ -10,8 +10,8 @@ import test_account_recovery_journey as account
 import test_creation_prompt_journey as creation
 from test_character_stat_choice_journey import WebSocketClient
 from test_kept_character_journey import (
-    persistence, login, character_choices, websocket_character, websocket_text,
-    saved_character,
+    kept_journey_binary, persistence, login, character_choices, websocket_character,
+    websocket_text, saved_character,
 )
 
 WELLRESTED = 2108
@@ -170,8 +170,10 @@ def run(binary, backend, transport):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("mariadb", "flatfile"), required=True)
-    parser.add_argument("--server", type=Path, required=True)
-    parser.add_argument("--transport", choices=("telnet", "websocket"), required=True)
+    parser.add_argument("--backend", choices=("mariadb", "flatfile"), default="flatfile")
+    parser.add_argument("--server", type=Path)
+    parser.add_argument("--transport", choices=("telnet", "websocket"))
     args = parser.parse_args()
-    run(args.server.resolve(), args.backend, args.transport)
+    with kept_journey_binary(args.server, args.backend) as binary:
+        for transport in (args.transport,) if args.transport else ("telnet", "websocket"):
+            run(binary, args.backend, transport)
