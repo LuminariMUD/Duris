@@ -585,7 +585,9 @@ int race_size(int race);
 
 #define GET_ITEM_TYPE(obj) ((obj)->type)
 
-#define CAN_WEAR(obj, part) (IS_SET((obj)->wear_flags, part))
+#define CAN_WEAR(obj, part)                 \
+	(IS_SET((obj)->wear_flags, part) || \
+	 ((part) == ITEM_ATTACH_BELT && GET_ITEM_TYPE(obj) == ITEM_INSTRUMENT))
 
 #define OBJ_VNUM(obj)                                                                             \
 	(!obj ? panic_corruption_int("utils", "OBJ_VNUM called with NULL obj at %s:%d", __FILE__, \
