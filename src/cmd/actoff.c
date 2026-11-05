@@ -359,6 +359,18 @@ void show_failed_takedown_messages(P_char ch, P_char victim, int skill, int reas
 	}
 }
 
+// The attacker's lag, in pulses, when a takedown's target is asleep and is attacked instead.
+static int takedown_sleeping_target_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+// The attacker's lag, in pulses, when the target evades a takedown.
+static int takedown_evade_lag()
+{
+	return (int)(PULSE_VIOLENCE * 0.5);
+}
+
 // TAKEDOWN_CANCELLED means the victim was able to prevent the full action.
 // TAKEDOWN_PENALTY means ch failed the action for some reason.
 float takedown_check(P_char ch, P_char victim, float chance, int skill, ulong applicable)
@@ -401,7 +413,7 @@ float takedown_check(P_char ch, P_char victim, float chance, int skill, ulong ap
 		else
 			hit(ch, victim, NULL);
 
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, takedown_sleeping_target_lag());
 
 		return TAKEDOWN_CANCELLED;
 	}
@@ -413,7 +425,7 @@ float takedown_check(P_char ch, P_char victim, float chance, int skill, ulong ap
 	{
 		show_failed_takedown_messages(ch, victim, skill, TAKEDOWN_EVADE);
 		set_short_affected_by(victim, SKILL_EVADE, PULSE_VIOLENCE / 2);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 0.5));
+		CharWait(ch, takedown_evade_lag());
 		return TAKEDOWN_CANCELLED;
 	}
 
@@ -6955,7 +6967,31 @@ static int bash_miss_lag(bool prone)
 	return prone ? PULSE_VIOLENCE * 3 : PULSE_VIOLENCE * 2;
 }
 
-// The bashed target's lag, in pulses.
+// The basher's lag, in pulses, when the target is already down and the basher falls instead.
+static int bash_target_down_lag()
+{
+	return (int)(PULSE_VIOLENCE * 2.000);
+}
+
+// The basher's lag, in pulses, when the target is too big or too small to bash: two or more
+// takedown sizes away, or a centaur or drider at least the basher's size (any target, for
+// a quadruped basher).
+static int bash_size_lag()
+{
+	return (int)(PULSE_VIOLENCE * 0.500);
+}
+
+// The basher's lag, in pulses, when takedown_check() foils the bash: a grapple, an immaterial
+// target, displacement, a harpy, air aura, an earth or water elemental, an NPC dragon, or an
+// NPC that can't be bashed.
+static int bash_takedown_penalty_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// The bashed target's lag, in pulses. bash() only reaches a hit on a standing target:
+// a target already down ends the bash first, and guard_check() never swaps in a guard
+// who is down.
 static int bash_target_lag(P_char ch, bool target_standing)
 {
 	if (!target_standing)
@@ -6975,9 +7011,20 @@ std::string bash_facts(P_char ch)
 	       fact("Your lag on a miss", seconds(bash_miss_lag(false)) + ", or " +
 						  seconds(bash_miss_lag(true)) +
 						  " if you fall prone") +
-	       fact("Target's lag", seconds(bash_target_lag(ch, true)) + ", or " +
-					    seconds(bash_target_lag(ch, false)) +
-					    " if the target was already down") +
+	       fact("Your lag if the target is already down", seconds(bash_target_down_lag())) +
+	       fact("Your lag if the target is asleep",
+		    seconds(takedown_sleeping_target_lag()) + " (you attack it instead)") +
+	       fact("Your lag if the target evades", seconds(takedown_evade_lag())) +
+	       fact("Your lag if the target is 2 or more sizes bigger or smaller",
+		    seconds(bash_size_lag())) +
+	       (GET_RACE(ch) == RACE_QUADRUPED ?
+			"    (also any target at least your size)\n" :
+			"    (also a centaur or drider at least your size)\n") +
+	       fact("Your lag if the target foils the takedown",
+		    seconds(bash_takedown_penalty_lag())) +
+	       "    (grapple, displacement, air aura, an immaterial or harpy target, an earth\n"
+	       "    or water elemental, an NPC dragon or an NPC that can't be bashed)\n" +
+	       fact("Target's lag", seconds(bash_target_lag(ch, true))) +
 	       "  The target's defenses apply to the damage after.\n";
 }
 
@@ -7049,7 +7096,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
 		update_group_vitals(ch);
 		gmcp_char_vitals(ch);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 2.000));
+		CharWait(ch, bash_target_down_lag());
 		return;
 	}
 
@@ -7096,7 +7143,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
 		update_group_vitals(ch);
 		gmcp_char_vitals(ch);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 0.500));
+		CharWait(ch, bash_size_lag());
 		return;
 	}
 
@@ -7111,7 +7158,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
 		update_group_vitals(ch);
 		gmcp_char_vitals(ch);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 0.500));
+		CharWait(ch, bash_size_lag());
 		return;
 	}
 
@@ -7278,7 +7325,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
 		update_group_vitals(ch);
 		gmcp_char_vitals(ch);
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, bash_takedown_penalty_lag());
 		return;
 	}
 

@@ -3637,6 +3637,7 @@ void do_innate(P_char ch, char *arg, int cmd)
 			}
 			send_to_char(buf, ch);
 		}
+		send_to_char("  Details: &+Winnate info <innate name>&n\n", ch);
 		return;
 	}
 
