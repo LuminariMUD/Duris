@@ -153,14 +153,6 @@ void spell_vapor_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 	}
 }
 
-// A share of a melee hit as a page shows it, such as 75%.
-static std::string melee_share_percent(float share)
-{
-	char text[32];
-	snprintf(text, sizeof(text), "%g%%", share * 100);
-	return text;
-}
-
 // A damage factor from dam_factor as a page shows it, such as 15% less.
 static std::string damage_change(double factor)
 {
@@ -4342,7 +4334,7 @@ std::string iceflow_armor_facts(P_char ch)
 	       fact("Duration", game_hours(iceflow_armor_duration())) +
 	       fact("Each melee hit on you", std::to_string(skin_spell_deduct()) + " less") +
 	       fact("Then, if over 10 is left",
-		    melee_share_percent(iceflow_armor_melee_share()) + " of that") +
+		    share_percent(iceflow_armor_melee_share()) + " of that") +
 	       "  It applies before the raw damage modifiers.\n"
 	       "  Hits that ignore reductions go through it and use up nothing.\n"
 	       "  An attacker's fist of dragon can do the same.\n" +
@@ -4413,7 +4405,7 @@ std::string negative_feedback_barrier_facts(P_char ch)
 	       fact("Duration", game_hours(negative_feedback_barrier_duration())) +
 	       fact("Each melee hit on you", std::to_string(skin_spell_deduct()) + " less") +
 	       fact("Then, if over 10 is left",
-		    melee_share_percent(negative_feedback_barrier_melee_share()) + " of that") +
+		    share_percent(negative_feedback_barrier_melee_share()) + " of that") +
 	       "  It applies before the raw damage modifiers.\n"
 	       "  Hits that ignore reductions go through it and use up nothing.\n"
 	       "  An attacker's fist of dragon can do the same.\n" +

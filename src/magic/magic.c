@@ -59,6 +59,12 @@
  */
 
 extern const char *command[];
+extern float stone_skin_melee_share();
+extern float ironwood_melee_share();
+extern float barkskin_fire_factor();
+extern float ironwood_fire_factor();
+extern float drakescale_aegis_melee_share();
+extern int skin_spell_deduct();
 extern Skill skills[];
 extern char *spells[];
 extern P_index obj_index;
@@ -11089,6 +11095,16 @@ static int stone_skin_layers()
 	return 3;
 }
 
+// What melee_damage does to a hit on `who`, who has this skin spell and none it ranks below.
+static std::string skin_melee_facts(const std::string &who, float share)
+{
+	return fact("Each melee hit on " + who, std::to_string(skin_spell_deduct()) + " less") +
+	       fact("Then, if over 10 is left", share_percent(share) + " of that") +
+	       "  It applies before the raw damage modifiers.\n"
+	       "  Hits that ignore reductions go through it and use up nothing.\n"
+	       "  An attacker's fist of dragon can do the same.\n";
+}
+
 // Stone skin's facts when `ch` casts it at `level`, which `at` names.
 static std::string stone_skin_facts_at(P_char ch, int level, const std::string &at)
 {
@@ -11103,6 +11119,7 @@ static std::string stone_skin_facts_at(P_char ch, int level, const std::string &
 	return fact("Hits absorbed", show(hits) + at) +
 	       fact("With living stone or the Mace of Earth",
 		    show({ stone_skin_living_stone(low), stone_skin_living_stone(high) })) +
+	       skin_melee_facts("the target", stone_skin_melee_share()) +
 	       fact("Duration", game_hours(stone_skin_duration())) +
 	       fact("Layers on an earth conjurer", "up to " + std::to_string(stone_skin_layers()));
 }
@@ -11207,6 +11224,11 @@ std::string ironwood_facts(P_char ch)
 			    show({ ironwood_absorb(lowest_rolls, level, false),
 				   ironwood_absorb(highest_rolls, level, false) }) +
 			    " over thornskin") +
+	       skin_melee_facts("the target", ironwood_melee_share()) +
+	       "  Stone skin on the target applies instead.\n" +
+	       fact("Fire damage to the target",
+		    share_percent(barkskin_fire_factor() + ironwood_fire_factor() - 1) +
+			    " of normal with its barkskin or thornskin") +
 	       fact("Duration", game_hours(ironwood_duration()));
 }
 
@@ -15845,6 +15867,9 @@ std::string barkskin_facts(P_char ch)
 	return fact("Armor class", std::to_string(barkskin_armor_class(ch, level)) +
 					   " at your level, " + std::to_string(level)) +
 	       fact("Duration", game_hours(barkskin_duration())) +
+	       fact("Fire damage to the target",
+		    share_percent(barkskin_fire_factor()) + " of normal") +
+	       "  Other effects on fire damage, such as ironwood, add to that.\n" +
 	       "  Over another armor spell it changes no armor class.\n"
 	       "  A player on the enemy side of the race war may resist with a paralysis save.\n";
 }
@@ -29321,6 +29346,8 @@ std::string drakescale_aegis_facts(P_char ch)
 		    show({ drakescale_aegis_hits(drakescale_aegis_absorb(lowest_rolls, level)),
 			   drakescale_aegis_hits(drakescale_aegis_absorb(highest_rolls, level)) }) +
 			    " at your level") +
+	       skin_melee_facts("you", drakescale_aegis_melee_share()) +
+	       "  Stone skin on you applies instead.\n" +
 	       fact("Duration",
 		    game_hours(drakescale_aegis_duration(ch)) + " with your knowledge") +
 	       dragoon_cost_fact(dragoon_spell_cost(ch));

@@ -579,6 +579,7 @@ int main() {
            "  Then, if over 10 is left: 45% of that\n"
            "  It applies before the raw damage modifiers.\n"
            "  Hits that ignore reductions go through it and use up nothing.\n"
+           "  An attacker's fist of dragon can do the same.\n"
            "  Duration: 6-7 game hours (7.5-8.75 minutes)\n"
            "  It has no effect while you have any skin spell.\n");
     assert(contains(cannibalize_facts(&ch),
@@ -1077,7 +1078,6 @@ def main():
                  extract_function("utility.c", "int BOUNDED(int a, int b, int c)"),
                  extract_function("utility.c", "int GET_CLASS(P_char ch, uint m_class)")]
     functions += [extract_function(file, signature) for file, signature in SHARED_ELSEWHERE]
-    functions.append(extract_function("psionics.c", "static std::string share_percent("))
     functions += shared_functions("psionics.c", PSIONICS, psionic_prefixes)
     functions += shared_functions("avengers.c", AVENGERS, avenger_prefixes)
     functions += shared_functions("guild.c", GUILD, ("learning_",))

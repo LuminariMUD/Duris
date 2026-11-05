@@ -35,7 +35,7 @@ stornogs_lowered_res_save stornogs_lowered_res_facts protection_from_evil_durati
 protection_from_evil_facts protection_from_good_duration protection_from_good_facts
 group_stone_skin_level group_haste_level stone_skin_absorb stone_skin_living_stone
 stone_skin_conjurer stone_skin_sorcerer stone_skin_other stone_skin_duration stone_skin_layers
-stone_skin_facts_at stone_skin_facts group_stone_skin_facts ironwood_absorb ironwood_duration
+skin_melee_facts stone_skin_facts_at stone_skin_facts group_stone_skin_facts ironwood_absorb ironwood_duration
 ironwood_facts sleep_duration sleep_facts dexterity_duration dexterity_bonus dexterity_facts
 agility_duration agility_bonus agility_facts strength_duration strength_bonus strength_facts
 word_of_recall_weight_limit word_of_recall_fight_roll word_of_recall_facts group_recall_facts
@@ -602,8 +602,32 @@ int main() {
                                                  "  Hits absorbed: 7-9 at level 32\n"
                                                  "  With living stone or the Mace of Earth: 13-18\n"));
     assert(contains(ironwood_facts(&ch), "  Hits absorbed: 11-14 over barkskin, 6-9 over thornskin\n"));
+    const std::string skin_hits_on_target =
+        "  Each melee hit on the target: 46 less\n"
+        "  Then, if over 10 is left: 75% of that\n"
+        "  It applies before the raw damage modifiers.\n"
+        "  Hits that ignore reductions go through it and use up nothing.\n"
+        "  An attacker's fist of dragon can do the same.\n"
+        "  Duration: 4-5 game hours (5-6.25 minutes)\n"
+        "  Layers on an earth conjurer: up to 3\n";
+    assert(stone_skin_facts(&ch) == "  Hits absorbed: 10-12 at your level, 50\n"
+                                    "  With living stone or the Mace of Earth: 19-24\n" + skin_hits_on_target);
+    assert(group_stone_skin_facts(&ch) == "  Stone skin on each group member in the room:\n"
+                                          "  Hits absorbed: 7-9 at level 32\n"
+                                          "  With living stone or the Mace of Earth: 13-18\n" + skin_hits_on_target);
+    assert(ironwood_facts(&ch) == "  Hits absorbed: 11-14 over barkskin, 6-9 over thornskin\n"
+                                  "  Each melee hit on the target: 46 less\n"
+                                  "  Then, if over 10 is left: 80% of that\n"
+                                  "  It applies before the raw damage modifiers.\n"
+                                  "  Hits that ignore reductions go through it and use up nothing.\n"
+                                  "  An attacker's fist of dragon can do the same.\n"
+                                  "  Stone skin on the target applies instead.\n"
+                                  "  Fire damage to the target: 195% of normal with its barkskin or thornskin\n"
+                                  "  Duration: 4-5 game hours (5-6.25 minutes)\n");
     assert(contains(barkskin_facts(&ch), "  Armor class: -50 at your level, 50\n"
-                                         "  Duration: 25-26 game hours (31.25-32.5 minutes)\n"));
+                                         "  Duration: 25-26 game hours (31.25-32.5 minutes)\n"
+                                         "  Fire damage to the target: 115% of normal\n"
+                                         "  Other effects on fire damage, such as ironwood, add to that.\n"));
     assert(contains(barkskin_facts(&ch), "  A player on the enemy side of the race war may resist "
                                          "with a paralysis save.\n"));
     // The mass spells cast the single-target spell at the caster's own level.
@@ -733,9 +757,36 @@ def check_vamp_uses_plague_block():
     assert " ".join(call.split()) in " ".join(bodies[0].split())
 
 
+def check_melee_damage_skin_chain():
+    bodies = function_bodies(strip_comments(source("fight.c").read_text()), r"\bint\s+melee_damage\s*\(")
+    assert len(bodies) == 1
+    body = " ".join(bodies[0].split())
+    # Each branch, in its order of precedence, with the share it reads.
+    position = -1
+    for spell, share in (("STONE_SKIN", "stone_skin_melee_share()"), ("BIOFEEDBACK", "biofeedback_melee_share()"),
+                         ("SHADOW_SHIELD", "stone_skin_melee_share()"), ("IRONWOOD", "ironwood_melee_share()")):
+        branch = (f"if (affected_by_spell(victim, SPELL_{spell}) && !(flags & PHSDAM_NOREDUCE)) "
+                  f"{{ reduction = 1. - {share}; skin = SPELL_{spell}; }}")
+        assert body.find(branch) > position, branch
+        position = body.find(branch)
+    assert body.find("dam -= skin_spell_deduct();") > position
+    for function, key, fallback in (("stone_skin_melee_share", "stoneSkin", "0.75"),
+                                    ("ironwood_melee_share", "ironwood", "0.80")):
+        read = f'return get_property("damage.reduction.{key}", {fallback});'
+        assert read in extract_function("fight.c", f"float {function}("), read
+    # The fire factors the pages show are the ones spell damage adds together.
+    for function, key, fallback, factor in (("barkskin_fire_factor", "barkskin", "1.15", "DF_BARKFIRE"),
+                                            ("ironwood_fire_factor", "ironwood", "1.80", "DF_IRONWOOD")):
+        read = f'return get_property("damage.increase.{key}", {fallback});'
+        assert read in extract_function("fight.c", f"float {function}("), read
+        assert f"dam_factor[{factor}] = {function}();" in source("fight.c").read_text(errors="replace")
+        assert f"dam_mod->mod += dam_factor[{factor}] - 1.0;" in source("dam_mods.c").read_text(errors="replace")
+
+
 def main():
     check_handlers_use_shared_numbers()
     check_vamp_uses_plague_block()
+    check_melee_damage_skin_chain()
     extracted = set(SHARED)
     declared = re.findall(r"^std::string (\w+_facts)\(char_data \*ch\);", source("abilities.h").read_text(), re.M)
     # abilities.c's table names every facts function; the ones outside this batch never run here.
@@ -746,6 +797,11 @@ def main():
                  extract_function("utility.c", "// Example: str_app[STAT_INDEX(GET_C_STR(ch))].todam\nint STAT_INDEX("),
                  extract_function("magic.c", "int KludgeDuration(P_char ch, int baselevel, int baseduration)"),
                  extract_function("fight.c", "int plague_heal_block_percent(const Rolls &rolls)"),
+                 extract_function("fight.c", "float stone_skin_melee_share("),
+                 extract_function("fight.c", "float ironwood_melee_share("),
+                 extract_function("fight.c", "float barkskin_fire_factor("),
+                 extract_function("fight.c", "float ironwood_fire_factor("),
+                 extract_function("fight.c", "int skin_spell_deduct("),
                  stubs] + definitions()
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)

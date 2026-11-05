@@ -12,7 +12,6 @@
 #include "world/events.h"
 #include "cmd/interp.h"
 #include "core/utils.h"
-#include <cmath>
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
@@ -68,12 +67,6 @@ extern double cannibalize_mana(int dam, int level);
 // #define POW_DIFF(att, def) (STAT_INDEX(GET_C_POW(def)) - STAT_INDEX(GET_C_POW(att)))
 
 // already defined: char     buf[MAX_STRING_LENGTH];
-
-// A property's share of something, for an info page.
-static std::string share_percent(float share)
-{
-	return std::to_string(std::lround(share * 100)) + "%";
-}
 
 void event_illithid_feeding(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 {
@@ -911,7 +904,8 @@ std::string biofeedback_facts(P_char ch)
 	       fact("Then, if over 10 is left",
 		    share_percent(biofeedback_melee_share()) + " of that") +
 	       "  It applies before the raw damage modifiers.\n"
-	       "  Hits that ignore reductions go through it and use up nothing.\n" +
+	       "  Hits that ignore reductions go through it and use up nothing.\n"
+	       "  An attacker's fist of dragon can do the same.\n" +
 	       fact("Duration", game_hours(biofeedback_duration())) +
 	       "  It has no effect while you have any skin spell.\n";
 }

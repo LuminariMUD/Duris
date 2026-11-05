@@ -51,6 +51,7 @@ std::string real_time(int pulses);
 std::string game_hours_range(Range ticks);
 std::string show_signed(Range range);
 std::string show_landing(Range range);
+std::string share_percent(float share);
 
 // Info page styling shared by spells info, skills info and innate info: labels in cyan,
 // numbers in bright white. Facts stay plain text; mechanics_section() styles them.

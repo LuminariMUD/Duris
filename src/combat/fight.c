@@ -166,6 +166,36 @@ float biofeedback_melee_share()
 	return get_property("damage.reduction.biofeedback", 0.65);
 }
 
+// The share of what is left of a melee hit that stone skin lets through. Shadow shield shares it.
+float stone_skin_melee_share()
+{
+	return get_property("damage.reduction.stoneSkin", 0.75);
+}
+
+// What barkskin multiplies fire damage by.
+float barkskin_fire_factor()
+{
+	return get_property("damage.increase.barkskin", 1.15);
+}
+
+// What ironwood multiplies fire damage by.
+float ironwood_fire_factor()
+{
+	return get_property("damage.increase.ironwood", 1.80);
+}
+
+// The share of what is left of a melee hit that ironwood lets through.
+float ironwood_melee_share()
+{
+	return get_property("damage.reduction.ironwood", 0.80);
+}
+
+// The share of what is left of a melee hit that drakescale aegis lets through.
+float drakescale_aegis_melee_share()
+{
+	return get_property("damage.reduction.drakescaleAegis", 0.75);
+}
+
 // What a skin spell first takes off each melee hit.
 int skin_spell_deduct()
 {
@@ -378,8 +408,8 @@ void update_dam_factors()
 	dam_factor[DF_TIGERPALM] = get_property("damage.reduction.tigerpalm", 0.65);
 	dam_factor[DF_ELAFFINITY] = get_property("damage.reduction.elementalAffinity", 0.25);
 	dam_factor[DF_COLDWRITHE] = get_property("damage.increase.coldWrithe", 2.0);
-	dam_factor[DF_BARKFIRE] = get_property("damage.increase.barkskin", 1.15);
-	dam_factor[DF_IRONWOOD] = get_property("damage.increase.ironwood", 1.80);
+	dam_factor[DF_BARKFIRE] = barkskin_fire_factor();
+	dam_factor[DF_IRONWOOD] = ironwood_fire_factor();
 	dam_factor[DF_BERSERKSPELL] = get_property("damage.increase.berserk", 1.100);
 	dam_factor[DF_BERSERKEREXTRA] = get_property("damage.increase.berserk.Berserkers", 1.100);
 	dam_factor[DF_ELEMENTALIST] = get_property("damage.increase.elementalist", 1.15);
@@ -5119,7 +5149,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 
 	if (affected_by_spell(victim, SPELL_STONE_SKIN) && !(flags & PHSDAM_NOREDUCE))
 	{
-		reduction = 1. - get_property("damage.reduction.stoneSkin", 0.75);
+		reduction = 1. - stone_skin_melee_share();
 		skin = SPELL_STONE_SKIN;
 	}
 	else if (affected_by_spell(victim, SPELL_BIOFEEDBACK) && !(flags & PHSDAM_NOREDUCE))
@@ -5129,12 +5159,12 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	}
 	else if (affected_by_spell(victim, SPELL_SHADOW_SHIELD) && !(flags & PHSDAM_NOREDUCE))
 	{
-		reduction = 1. - get_property("damage.reduction.stoneSkin", 0.75);
+		reduction = 1. - stone_skin_melee_share();
 		skin = SPELL_SHADOW_SHIELD;
 	}
 	else if (affected_by_spell(victim, SPELL_IRONWOOD) && !(flags & PHSDAM_NOREDUCE))
 	{
-		reduction = 1. - get_property("damage.reduction.ironwood", 0.80);
+		reduction = 1. - ironwood_melee_share();
 		skin = SPELL_IRONWOOD;
 	}
 	else if (affected_by_spell(victim, SPELL_ICE_ARMOR) && !(flags & PHSDAM_NOREDUCE))
@@ -5149,7 +5179,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	}
 	else if (affected_by_spell(victim, SPELL_DRAKESCALE_AEGIS) && !(flags & PHSDAM_NOREDUCE))
 	{
-		reduction = 1. - get_property("damage.reduction.drakescaleAegis", 0.75);
+		reduction = 1. - drakescale_aegis_melee_share();
 		skin = SPELL_DRAKESCALE_AEGIS;
 	}
 	else

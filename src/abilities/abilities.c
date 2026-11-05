@@ -17,6 +17,7 @@
 #include "magic/spells.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <regex>
 
@@ -126,6 +127,11 @@ std::string show_landing(Range range)
 	if (range.low >= 1)
 		return show(range);
 	return show({ 0, std::max(range.high, 0) }) + " (none below 1 lands)";
+}
+
+std::string share_percent(float share)
+{
+	return std::to_string(std::lround(share * 100)) + "%";
 }
 
 std::string info_field(const std::string &label, const std::string &value)
