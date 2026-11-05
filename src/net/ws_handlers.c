@@ -2406,7 +2406,7 @@ void ws_finish_kept_character(P_desc d, bool created)
 	const int actual_hometown = d->chargen_hometown;
 	const bool is_hardcore = IS_SET(ch->specials.act2, PLR2_HARDCORE_CHAR);
 	const bool is_newbie = IS_SET(ch->specials.act2, PLR2_NEWBIE);
-	if (!waiting)
+	if (!created)
 	{
 		account_racewar_admission admission = {};
 		const auto *membership =
@@ -2443,16 +2443,15 @@ void ws_finish_kept_character(P_desc d, bool created)
 
 		/* send full game state via gmcp */
 		ws_send_full_game_state(d);
-	}
-	if (!created)
 		return;
+	}
 	/* Only a matching committed Keep reaches this response. */
 	cJSON *response = cJSON_CreateObject();
 	cJSON_AddStringToObject(response, "type", "create_character");
 	cJSON_AddStringToObject(response, "status", "created");
 	cJSON_AddStringToObject(response, "message",
 				waiting ? "Character saved; waiting for staff approval." :
-					  "Character created successfully!");
+					  "Character saved. Select it when you are ready to play.");
 	cJSON_AddBoolToObject(response, "waitingForApproval", waiting);
 	cJSON_AddStringToObject(response, "name", GET_NAME(ch));
 	cJSON_AddStringToObject(response, "race", race_names_table[race_id].normal);
@@ -3589,9 +3588,10 @@ void ws_cmd_rested_bonus(struct descriptor_data *d, cJSON * /*data*/)
 
 		char_obj = cJSON_CreateObject();
 		cJSON_AddStringToObject(char_obj, "name", name_cap);
-		cJSON_AddNumberToObject(char_obj, "restedPercent", percent);
+		cJSON_AddBoolToObject(char_obj, "availableOnFirstEntry", c->level == 0);
+		cJSON_AddNumberToObject(char_obj, "restedPercent", c->level == 0 ? 100 : percent);
 		cJSON_AddNumberToObject(char_obj, "restedHours",
-					offline_hours > max_hours ? max_hours : offline_hours);
+					c->level == 0 ? 0 : MIN(offline_hours, max_hours));
 		cJSON_AddNumberToObject(char_obj, "maxHours", max_hours);
 		cJSON_AddItemToArray(characters, char_obj);
 	}

@@ -4099,6 +4099,21 @@ std::map<int, kept_save> kept_saves;
 // The login worker reads membership; payload fields remain game-thread owned.
 std::mutex kept_saves_mutex;
 
+void return_kept_character_to_menu(P_desc d)
+{
+	release_preentry_character(d);
+	if (d->websocket)
+	{
+		STATE(d) = CON_ACCT_SELECT_CHAR;
+		ws_send_auth_success(d, d->account->acct_name);
+	}
+	else
+	{
+		STATE(d) = CON_DISPLAY_ACCT_MENU;
+		display_account_menu(d, nullptr);
+	}
+}
+
 void decide_creation_approval(P_char ch)
 {
 	SET_BIT(ch->specials.act3, PLR3_KEPT_CHARACTER);
@@ -4113,19 +4128,7 @@ void decide_creation_approval(P_char ch)
 void kept_save_refused(P_desc d, kept_save_kind kind)
 {
 	if (kind == kept_save_kind::initial)
-	{
-		release_preentry_character(d);
-		if (d->websocket)
-		{
-			STATE(d) = CON_ACCT_SELECT_CHAR;
-			ws_send_auth_success(d, d->account->acct_name);
-		}
-		else
-		{
-			STATE(d) = CON_DISPLAY_ACCT_MENU;
-			display_account_menu(d, nullptr);
-		}
-	}
+		return_kept_character_to_menu(d);
 	else if (kind == kept_save_kind::approval)
 	{
 		SET_BIT(d->character->specials.act3, PLR3_APPROVAL_PENDING);
@@ -4322,7 +4325,11 @@ void account_creation_pulse()
 			continue;
 		}
 		if (saved.kind == kept_save_kind::approval)
+		{
 			SEND_TO_Q("Your character has been approved.\r\n", d);
+			return_kept_character_to_menu(d);
+			continue;
+		}
 		continue_kept_character(d, saved.kind == kept_save_kind::initial);
 	}
 }
@@ -4353,15 +4360,33 @@ void continue_kept_character(P_desc d, bool created)
 			"Your character is saved and is waiting for staff approval. You may reconnect later.\r\n",
 			d);
 		newby_announce(d);
-		if (d->websocket && created)
+		if (d->websocket)
+		{
+			ws_send_system(
+				d, "waiting_for_approval",
+				"Your character is saved and is waiting for staff approval. You may reconnect later.");
+			if (created)
+				ws_finish_kept_character(d, true);
+		}
+		return;
+	}
+	if (created)
+	{
+		if (d->websocket)
 			ws_finish_kept_character(d, true);
+		else
+			SEND_TO_Q(
+				"Your character is saved. Select it from your account when you are ready to play.\r\n",
+				d);
+		return_kept_character_to_menu(d);
 		return;
 	}
 	if (d->websocket)
-		ws_finish_kept_character(d, created);
+		ws_finish_kept_character(d, false);
 	else
 	{
 		STATE(d) = CON_RMOTD;
+		SEND_TO_Q(motd.c_str(), d);
 		SEND_TO_Q("\r\n*** PRESS RETURN:\r\n", d);
 	}
 }
@@ -4721,7 +4746,6 @@ void nanny(P_desc d, char *arg)
 			logit(LOG_NEW, "%s [%s] new player.", GET_NAME(d->character), d->host);
 			statuslog(d->character->player.level, "%s [%s] new player.",
 				  GET_NAME(d->character), d->host);
-			SEND_TO_Q(motd.c_str(), d);
 			(void)keep_new_character(d);
 		}
 		break;

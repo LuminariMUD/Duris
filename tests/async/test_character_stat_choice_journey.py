@@ -179,6 +179,11 @@ def run(binary, inspector, method, *, legacy=False, full_world=False):
             created = client.command("create_character", creation)
             require(created["status"] == "created" and created["hardcore"] is False
                     and created["newbie"] is True, f"creation failed or returned incorrect flags: {created}")
+            client.command("enter", {"character": "Taverek"}, "gmcp")
+            deadline = time.monotonic() + 15
+            while "Your starter kit is ready" not in json.dumps(client.messages):
+                require(time.monotonic() < deadline, "no starter readiness acknowledgement")
+                client.receive()
             if full_world:
                 rooms = [m["data"]["num"] for m in client.messages if m.get("package") == "Room.Info"]
                 require(rooms and rooms[-1] == 22800, f"new character missed the selected tutorial: {rooms}")
@@ -223,7 +228,6 @@ def run(binary, inspector, method, *, legacy=False, full_world=False):
             auth = client.command("login", {"account": "Statjourney", "password": OLD_PASSWORD}, "auth")
             require(auth["status"] == "success" and auth["data"]["characters"][0]["level"] == 1,
                     f"restart login failed or lost new-character projection: {auth}")
-            client.command("enter", {"character": "Taverek"}, "gmcp")
             # The saved-character path must load unchanged stats and bypass method choice.
             save = client.command("game", "save", "text")
             deadline = time.monotonic() + 15
@@ -259,7 +263,8 @@ def run_telnet(binary, inspector, method, *, full_world=False):
         try:
             telnet.reach_race(client)
             telnet.finish_character_choices(client, method="a" if method == "advanced" else "d")
-            telnet.reply(client, "y", "PRESS RETURN")
+            telnet.reply(client, "y", telnet.MENU)
+            telnet.play_saved_character(client)
             telnet.reply(client, "", "Your starter kit is ready")
             client.expect("Pos: standing >")
             telnet.reply(client, "save", "Save complete for Taverek.")

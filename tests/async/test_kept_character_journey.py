@@ -280,7 +280,7 @@ def delayed_disconnect(client, server, sql, inspector, reject=False):
         retry = login(server)
         try:
             character_choices(retry)
-            creation.reply(retry, "y", "PRESS RETURN")
+            creation.reply(retry, "y", creation.MENU)
             if sql:
                 assert int(sql("SELECT pid FROM player_data WHERE name='Taverek'")) > 1
             else:
@@ -335,7 +335,7 @@ def run(binary, backend, *, override=None, delay=False, reject=False):
                     delayed_disconnect(client, server, sql, inspector, reject)
                     print(f"PASS: {backend} delayed Keep {'rollback releases only its attempt' if reject else 'stays responsive/reserved after disconnect, commits and survives restart'}")
                     return
-                creation.reply(client, "y", "PRESS RETURN")
+                creation.reply(client, "y", creation.MENU)
                 if override:
                     # Read the real committed baseline before selecting it from
                     # another session. The first writer may still be draining.

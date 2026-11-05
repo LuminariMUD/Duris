@@ -1789,7 +1789,11 @@ void check_rested_bonus(P_desc d)
 		// Rested status from the time offline (same logic as nanny.c)
 		const int offline_hours = (time(0) - c->last_save) / 3600;
 		char rested[128];
-		if (offline_hours >= 20)
+		if (c->level == 0)
+			snprintf(
+				rested, sizeof rested,
+				"Starting &+Wwell-rested&n bonus: 150 ticks, available when you first enter the game.");
+		else if (offline_hours >= 20)
 			snprintf(rested, sizeof rested,
 				 "&+Wwell-rested&n bonus (&+G%d&n hours offline)", offline_hours);
 		else if (offline_hours >= 9)
