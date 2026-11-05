@@ -14,7 +14,8 @@ bard_start = index(bard, "void bard_sleep(int l,")
 bard_end = index(bard, "void bard_calm(", bard_start)
 bard_sleep = bard[bard_start:bard_end]
 assert contains(bard_sleep, "int i, level = l;")
-assert contains(bard_sleep, "af.duration = 4 + (level < 0 ? -level : level);")
+assert contains(bard_sleep, "af.duration = song_sleep_duration(level);")
+assert contains(bard, "int duration = 4 + (level < 0 ? -level : level);")
 
 agitation_start = index(psionics, "static int molecular_agitation_damage(")
 agitation_end = index(psionics, "void spell_adrenaline_control(", agitation_start)

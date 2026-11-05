@@ -53,6 +53,12 @@ std::string show_signed(Range range);
 std::string show_landing(Range range);
 std::string share_percent(float share);
 
+// "N in M" for a roll from low to high coming out below threshold.
+std::string chance_under(int threshold, int low, int high);
+
+// "1 in N" for a fixed chance whose roll function hits on one result.
+std::string one_in(int (*roll)(const Rolls &rolls));
+
 // Info page styling shared by spells info, skills info and innate info: labels in cyan,
 // numbers in bright white. Facts stay plain text; mechanics_section() styles them.
 std::string info_field(const std::string &label, const std::string &value);
@@ -698,5 +704,79 @@ std::string doom_blade_facts(char_data *ch);
 std::string dragoon_weapon_facts(char_data *ch);
 std::string essence_of_wolf_facts(char_data *ch);
 std::string banish_facts(char_data *ch);
+std::string one_h_flaying_facts(char_data *ch);
+std::string one_h_piercing_facts(char_data *ch);
+std::string one_h_slashing_facts(char_data *ch);
+std::string two_h_flaying_facts(char_data *ch);
+std::string arcane_riposte_facts(char_data *ch);
+std::string battle_senses_facts(char_data *ch);
+std::string blindfighting_facts(char_data *ch);
+std::string boiling_blood_facts(char_data *ch);
+std::string critical_attack_facts(char_data *ch);
+std::string devastating_critical_facts(char_data *ch);
+std::string disperse_flames_facts(char_data *ch);
+std::string dodge_facts(char_data *ch);
+std::string double_attack_facts(char_data *ch);
+std::string double_strike_facts(char_data *ch);
+std::string dual_wield_facts(char_data *ch);
+std::string expert_parry_facts(char_data *ch);
+std::string expert_riposte_facts(char_data *ch);
+std::string flame_mastery_facts(char_data *ch);
+std::string followup_riposte_facts(char_data *ch);
+std::string holy_blade_facts(char_data *ch);
+std::string improved_shield_combat_facts(char_data *ch);
+std::string improved_twoweapon_facts(char_data *ch);
+std::string indomitable_rage_facts(char_data *ch);
+std::string mangle_facts(char_data *ch);
+std::string martial_arts_facts(char_data *ch);
+std::string parry_facts(char_data *ch);
+std::string quadruple_attack_facts(char_data *ch);
+std::string quick_step_facts(char_data *ch);
+std::string rage_facts(char_data *ch);
+std::string reach_weapons_facts(char_data *ch);
+std::string riposte_facts(char_data *ch);
+std::string shadow_movement_facts(char_data *ch);
+std::string shield_block_facts(char_data *ch);
+std::string sidestep_facts(char_data *ch);
+std::string soul_trap_facts(char_data *ch);
+std::string tainted_blade_facts(char_data *ch);
+std::string triple_attack_facts(char_data *ch);
+std::string unarmed_damage_facts(char_data *ch);
+std::string vicious_attack_facts(char_data *ch);
+std::string vicious_strike_facts(char_data *ch);
+std::string song_charming_facts(char_data *ch);
+std::string song_sleep_facts(char_data *ch);
+std::string epic_agility_facts(char_data *ch);
+std::string epic_charisma_facts(char_data *ch);
+std::string epic_constitution_facts(char_data *ch);
+std::string epic_dexterity_facts(char_data *ch);
+std::string epic_intelligence_facts(char_data *ch);
+std::string epic_luck_facts(char_data *ch);
+std::string epic_power_facts(char_data *ch);
+std::string epic_strength_facts(char_data *ch);
+std::string epic_wisdom_facts(char_data *ch);
+std::string shield_combat_facts(char_data *ch);
+std::string toughness_facts(char_data *ch);
+std::string archery_facts(char_data *ch);
+std::string critical_shot_facts(char_data *ch);
+std::string cursed_arrows_facts(char_data *ch);
+std::string enchant_arrows_facts(char_data *ch);
+std::string indirect_shot_facts(char_data *ch);
+std::string point_blank_shot_facts(char_data *ch);
+std::string shadow_archery_facts(char_data *ch);
+std::string arcane_block_facts(char_data *ch);
+std::string tiger_palm_facts(char_data *ch);
+std::string bearhug_facts(char_data *ch);
+std::string guard_facts(char_data *ch);
+std::string buddha_palm_facts(char_data *ch);
+std::string fist_of_dragon_facts(char_data *ch);
+std::string heroism_facts(char_data *ch);
+std::string jin_touch_facts(char_data *ch);
+std::string quivering_palm_facts(char_data *ch);
+std::string ship_damage_control_facts(char_data *ch);
+std::string anatomy_facts(char_data *ch);
+std::string devotion_facts(char_data *ch);
+std::string regenerate_facts(char_data *ch);
+std::string safe_fall_facts(char_data *ch);
 
 #endif

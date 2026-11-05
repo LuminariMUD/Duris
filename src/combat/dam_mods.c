@@ -42,6 +42,34 @@ int holy_sword_alignment_damage(const Rolls &rolls)
 }
 
 extern float dam_factor[LAST_DF + 1];
+
+// The chance threshold, rolled 1-250, of an arcane block on a spell.
+static int arcane_block_threshold(P_char victim)
+{
+	return (GET_LEVEL(victim) + GET_C_LUK(victim) / 10 +
+		GET_CHAR_SKILL(victim, SKILL_ARCANE_BLOCK));
+}
+
+// The percent of a spell's damage an arcane block disperses.
+static int arcane_block_reduction(const Rolls &rolls, P_char victim)
+{
+	return rolls.number(1, get_property("skill.arcane.block.dam.reduction", .4) *
+				       GET_CHAR_SKILL(victim, SKILL_ARCANE_BLOCK));
+}
+
+std::string arcane_block_facts(P_char ch)
+{
+	if (GET_CHAR_SKILL(ch, SKILL_ARCANE_BLOCK) <= 0)
+		return "  You need this skill to block spells.\n";
+	return fact("Chance to block a spell of more than 15 damage",
+		    chance_under(arcane_block_threshold(ch) + 1, 1, 250)) +
+	       fact("Less spell damage you take",
+		    show({ arcane_block_reduction(lowest_rolls, ch),
+			   arcane_block_reduction(highest_rolls, ch) }) +
+			    "%") +
+	       "    (added with your other spell damage modifiers)\n"
+	       "  Not while stunned or unable to move.\n";
+}
 extern float racial_spldam_offensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE];
 extern float racial_spldam_defensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE];
 
@@ -84,12 +112,9 @@ dam_mod->type = dam_mod_type::More;
 			     !IS_TRUSTED(victim) && !IS_STUNNED(victim) && !IS_IMMOBILE(victim)){
 	  if (damage > 15 &&
 	      (notch_skill(victim, SKILL_ARCANE_BLOCK, get_property("skill.notch.arcane", 10)) ||
-	       number(1, 250) <= (GET_LEVEL(victim) + GET_C_LUK(victim) / 10 +
-				  GET_CHAR_SKILL(victim, SKILL_ARCANE_BLOCK)) ||
+	       number(1, 250) <= arcane_block_threshold(victim) ||
 	       ((IS_ELITE(victim) || IS_GREATER_RACE(victim)) && !number(0, 4)))){
-		  dam_mod->mod = -(number(1, get_property("skill.arcane.block.dam.reduction", .4) *
-						     GET_CHAR_SKILL(victim, SKILL_ARCANE_BLOCK))) /
-				 100.0;
+		  dam_mod->mod = -(arcane_block_reduction(live_rolls, victim)) / 100.0;
 dam_mod->type = dam_mod_type::More;
 
 act("$N raises hands performing an &+Marcane gesture&n and some of $n's &+mspell energy&n is dispersed.",

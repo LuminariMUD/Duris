@@ -50,6 +50,8 @@ int main() {
 GUARD_FUNCTIONS = "\n".join(
     extract_function("guard.c", signature)
     for signature in (
+        "static int guard_multi_limit()",
+        "static int guard_single_limit()",
         "P_char guarding2(P_char ch, int n)",
         "P_char guarded_by(P_char ch)",
         "int number_guarding(P_char ch)",

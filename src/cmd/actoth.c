@@ -1055,6 +1055,51 @@ void do_infuriate(P_char ch, char * /*argument*/, int /*cmd*/)
 	}
 }
 
+static int rage_failed_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static double rage_lag()
+{
+	return 1.5 * PULSE_VIOLENCE;
+}
+
+static int rage_ragelord_lag()
+{
+	return (int)(0.5 * PULSE_VIOLENCE);
+}
+
+static int rage_duration(P_char ch)
+{
+	return (4 * PULSE_VIOLENCE * GET_CHAR_SKILL(ch, SKILL_RAGE)) / 100;
+}
+
+// Before you can rage again, from when it starts.
+static int rage_rest(int dura)
+{
+	return dura + (5 * WAIT_SEC) / 2;
+}
+
+std::string rage_facts(P_char ch)
+{
+	extern float dam_factor[LAST_DF + 1];
+	const int rating = GET_CHAR_SKILL(ch, SKILL_RAGE);
+	if (!rating)
+		return "  You need this skill to rage.\n";
+	return fact("Chance", chance_under(rating + 1, 1, 105)) +
+	       fact("Duration", seconds(rage_duration(ch))) +
+	       fact("Your melee damage", share_percent(dam_factor[DF_RAGED]) + " of normal") +
+	       fact("Before you can rage again", seconds(rage_rest(rage_duration(ch)))) +
+	       fact("Your lag",
+		    seconds(GET_SPEC(ch, CLASS_BERSERKER, SPEC_RAGELORD) ? rage_ragelord_lag() :
+									   (int)rage_lag())) +
+	       fact("Your lag if you fail", seconds(rage_failed_lag())) +
+	       fact("Spell damage added while you rage",
+		    "+" + share_percent(dam_factor[DF_BERSERKRAGE] - 1.0)) +
+	       "  It needs berserk. You can't dodge, block or parry anyone but your opponent.\n";
+}
+
 void do_rage(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	struct affected_type af;
@@ -1093,7 +1138,7 @@ void do_rage(P_char ch, char * /*argument*/, int /*cmd*/)
 	if (number(1, 105) > GET_CHAR_SKILL(ch, SKILL_RAGE))
 	{
 		send_to_char("&+RYou are unable to call forth the rage within you...\r\n", ch);
-		CharWait(ch, 2 * PULSE_VIOLENCE);
+		CharWait(ch, rage_failed_lag());
 		return;
 	}
 
@@ -1101,11 +1146,11 @@ void do_rage(P_char ch, char * /*argument*/, int /*cmd*/)
 
 	if (!(GET_SPEC(ch, CLASS_BERSERKER, SPEC_RAGELORD)))
 	{
-		CharWait(ch, 1.5 * PULSE_VIOLENCE);
+		CharWait(ch, rage_lag());
 	}
 	else
 	{
-		CharWait(ch, (int)(0.5 * PULSE_VIOLENCE));
+		CharWait(ch, rage_ragelord_lag());
 	}
 
 	act("&+rYou feel a rage start to come from within...\n", FALSE, ch, 0, 0, TO_CHAR);
@@ -1113,7 +1158,7 @@ void do_rage(P_char ch, char * /*argument*/, int /*cmd*/)
 	act("$n fills with a &+RSURGE&n of &+rBLoOdLuST! ROARRRRRRRR!!!\r\n", FALSE, ch, 0, 0,
 	    TO_ROOM);
 
-	dura = (4 * PULSE_VIOLENCE * GET_CHAR_SKILL(ch, SKILL_RAGE)) / 100;
+	dura = rage_duration(ch);
 
 	ch->specials.combat_tics = 3;
 	memset(&af, 0, sizeof(struct affected_type));
@@ -1130,7 +1175,7 @@ void do_rage(P_char ch, char * /*argument*/, int /*cmd*/)
 	  af.duration = dura;
 	  affect_to_char(ch, &af);*/
 
-	set_short_affected_by(ch, SKILL_RAGE_REORIENT, dura + (5 * WAIT_SEC) / 2);
+	set_short_affected_by(ch, SKILL_RAGE_REORIENT, rage_rest(dura));
 }
 
 // Creates a foragable item that would grow in sector, sends forage message to ch, and gives obj to them.

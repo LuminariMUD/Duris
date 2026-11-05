@@ -333,6 +333,8 @@ with tempfile.TemporaryDirectory(prefix="duris-falling-skills-") as temporary:
     subprocess.run(
         [
             "g++",
+            "-ffunction-sections",
+            "-Wl,--gc-sections",
             "-std=c++20",
             "-g",
             "-Og",
