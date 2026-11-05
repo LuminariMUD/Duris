@@ -48,6 +48,7 @@
 #include "economy/crafting.h"
 #include "world/weather.h"
 #include "core/safe_format.h"
+#include "abilities/abilities.h"
 
 #define SMITH_MAX_ITEMS 20
 
@@ -577,6 +578,75 @@ P_obj get_pole(P_char ch)
 	return NULL;
 }
 
+// What a round of tradeskill work takes from your vitality, at your rating.
+int tradeskill_vitality_cost(const Rolls &rolls, int rating)
+{
+	return (rolls.number(0, 100) > rating) ? 3 : 2;
+}
+
+static int fishing_rounds(P_char ch)
+{
+	return IS_TRUSTED(ch) ? 2 : (140 - GET_CHAR_SKILL(ch, SKILL_FISHING)) / 4;
+}
+
+static int fishing_interval()
+{
+	return PULSE_VIOLENCE;
+}
+
+// The share of your rating a catch pays in experience, in percent, and how it falls.
+static int fishing_exp_share()
+{
+	return 500;
+}
+
+static int fishing_exp_step()
+{
+	return 10;
+}
+
+static int fishing_exp_floor()
+{
+	return 20;
+}
+
+static int fishing_exp(int rating, int share)
+{
+	return (rating * share) / 100;
+}
+
+static int fishing_exp_memory()
+{
+	return 10;
+}
+
+// A roll of 0 damages the pole on a catch.
+static int fishing_pole_damage_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+std::string fishing_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_FISHING);
+	if (!rating)
+		return "  You have not learned to fish.\n";
+	return fact("Wait for a bite", real_time((fishing_rounds(ch) + 1) * fishing_interval())) +
+	       fact("Chance you catch something", chance_under(rating + 1, 1, 125)) +
+	       fact("Experience for a catch",
+		    std::to_string(fishing_exp(rating, fishing_exp_share())) + ", falling to " +
+			    std::to_string(fishing_exp(rating, fishing_exp_floor()))) +
+	       fact("  It recovers after no catch for", game_hours(fishing_exp_memory())) +
+	       fact("Vitality each round",
+		    show({ tradeskill_vitality_cost(lowest_rolls, rating),
+			   tradeskill_vitality_cost(highest_rolls, rating) })) +
+	       "    (you stop below 10)\n"
+	       "  A catch damages the pole " +
+	       one_in(fishing_pole_damage_roll) +
+	       " times.\n"
+	       "  It takes a pole and water, and it ruins a disguise.\n";
+}
+
 void do_fish(P_char ch, char *, int /*cmd*/)
 {
 	P_obj pole;
@@ -631,9 +701,9 @@ void do_fish(P_char ch, char *, int /*cmd*/)
 
 	data.room = ch->in_room;
 	// Two ticks for Immortals.. for testing
-	data.counter = IS_TRUSTED(ch) ? 2 : (140 - GET_CHAR_SKILL(ch, SKILL_FISHING)) / 4;
+	data.counter = fishing_rounds(ch);
 
-	add_event(event_fish_check, PULSE_VIOLENCE, ch, 0, 0, 0, &data,
+	add_event(event_fish_check, fishing_interval(), ch, 0, 0, 0, &data,
 		  sizeof(struct fishing_data));
 }
 
@@ -689,7 +759,7 @@ void event_fish_check(P_char ch, P_char /*victim*/, P_obj, void *data)
 			return;
 		}
 
-		if (!number(0, 2))
+		if (!fishing_pole_damage_roll(live_rolls))
 		{
 			DamageOneItem(ch, 9, pole, FALSE);
 		}
@@ -702,20 +772,20 @@ void event_fish_check(P_char ch, P_char /*victim*/, P_obj, void *data)
 		{
 			bzero(&af, sizeof(af));
 			af.type = SKILL_FISHING;
-			af.modifier = 500;
-			af.duration = 10;
+			af.modifier = fishing_exp_share();
+			af.duration = fishing_exp_memory();
 			af.flags = AFFTYPE_NOSHOW | AFFTYPE_NODISPEL | AFFTYPE_NOMSG |
 				   AFFTYPE_OFFLINE;
 			afp = affect_to_char(ch, &af);
 		}
 		else
 		{
-			afp->modifier -= 10;
-			afp->modifier = MAX(afp->modifier, 20);
-			afp->duration = 10;
+			afp->modifier -= fishing_exp_step();
+			afp->modifier = MAX(afp->modifier, fishing_exp_floor());
+			afp->duration = fishing_exp_memory();
 		}
 
-		gain_exp(ch, NULL, (GET_CHAR_SKILL(ch, SKILL_FISHING) * afp->modifier) / 100,
+		gain_exp(ch, NULL, fishing_exp(GET_CHAR_SKILL(ch, SKILL_FISHING), afp->modifier),
 			 EXP_BOON);
 
 		// fish->timer[0] = time(NULL); Fish no longer decay - drannak 5/13/13
@@ -731,10 +801,10 @@ void event_fish_check(P_char ch, P_char /*victim*/, P_obj, void *data)
 
 	send_to_char("You continue fishing...\n", ch);
 	notch_skill(ch, SKILL_FISHING, 10);
-	GET_VITALITY(ch) -= (number(0, 100) > GET_CHAR_SKILL(ch, SKILL_FISHING)) ? 3 : 2;
+	GET_VITALITY(ch) -= tradeskill_vitality_cost(live_rolls, GET_CHAR_SKILL(ch, SKILL_FISHING));
 
 	fdata->counter--;
-	add_event(event_fish_check, PULSE_VIOLENCE, ch, 0, 0, 0, fdata,
+	add_event(event_fish_check, fishing_interval(), ch, 0, 0, 0, fdata,
 		  sizeof(struct fishing_data));
 
 	// noise distance calc
@@ -956,6 +1026,62 @@ struct bandage_data
 	int maxheal;
 };
 
+// Zero, after notching, destroys the bandage: a low first roll lets the second reach zero.
+static int bandage_fumble_roll(const Rolls &rolls, int rating)
+{
+	return rolls.number(rolls.number(0, 3), rating);
+}
+
+static int bandage_heal(int maxheal, int rating)
+{
+	return (maxheal / 20 + rating / 7);
+}
+
+// Zero lets a further roll neutralize the target's poison.
+static int bandage_poison_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 4);
+}
+
+static int bandage_interval()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int bandage_duration()
+{
+	return 3;
+}
+
+static int bandage_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+std::string bandage_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_BANDAGE);
+	if (!rating)
+		return "  You have not learned to bandage.\n";
+	return fact("Healing every " + seconds(bandage_interval()),
+		    std::to_string(bandage_heal(0, rating)) +
+			    ", plus 1/20 of the bandage's strength") +
+	       "    (up to its strength in all, and to 7/8 of the target's maximum)\n" +
+	       fact("Chance each round destroys the bandage",
+		    "1 in " + std::to_string(4 * (rating + 1))) +
+	       fact("Chance each round cures poison",
+		    one_in(bandage_poison_roll) + ", then " + chance_under(rating, 0, 100)) +
+	       fact("Vitality each round",
+		    show({ tradeskill_vitality_cost(lowest_rolls, rating),
+			   tradeskill_vitality_cost(highest_rolls, rating) })) +
+	       "    (you stop below 10)\n" + fact("Your lag", seconds(bandage_lag())) +
+	       fact("Before the same target can be bandaged again",
+		    game_hours(bandage_duration())) +
+	       "    (unless it is dying)\n"
+	       "  It takes a bandage and a target at or below 7/8 of its maximum, with nobody\n"
+	       "  fighting you or it.\n";
+}
+
 void event_bandage_check(P_char ch, P_char victim, P_obj, void *data)
 {
 	struct bandage_data *mdata = (struct bandage_data *)data;
@@ -993,7 +1119,7 @@ void event_bandage_check(P_char ch, P_char victim, P_obj, void *data)
 	}
 
 	if (!notch_skill(ch, SKILL_BANDAGE, get_property("skill.notch.bandage", 3)) &&
-	    !number(number(0, 3), (GET_CHAR_SKILL(ch, SKILL_BANDAGE))))
+	    !bandage_fumble_roll(live_rolls, (GET_CHAR_SKILL(ch, SKILL_BANDAGE))))
 	{
 		send_to_char("You are not focused enough, you destroy the &+Wbandage&n.\n", ch);
 		send_to_char("You are no longer being &+Wbandaged&n.\n", victim);
@@ -1008,13 +1134,13 @@ void event_bandage_check(P_char ch, P_char victim, P_obj, void *data)
 	act("$n continues to &+Wbandage&n you.", FALSE, ch, 0, victim, TO_VICT);
 	act("$n continues to &+Wbandage&n $N", FALSE, ch, 0, victim, TO_NOTVICT);
 
-	healed = (mdata->maxheal / 20 + GET_CHAR_SKILL(ch, SKILL_BANDAGE) / 7);
+	healed = bandage_heal(mdata->maxheal, GET_CHAR_SKILL(ch, SKILL_BANDAGE));
 	healed = MIN(healed, mdata->maxheal - mdata->healed);
 	mdata->healed = mdata->healed + healed;
 	healed = vamp(victim, healed, GET_MAX_HIT(victim) * 0.875);
 	update_pos(victim);
 
-	if (IS_AFFECTED2(victim, AFF2_POISONED) && !number(0, 4) &&
+	if (IS_AFFECTED2(victim, AFF2_POISONED) && !bandage_poison_roll(live_rolls) &&
 	    (number(0, 100) < GET_CHAR_SKILL(ch, SKILL_BANDAGE)))
 	{
 		send_to_char("&+WThe poison in your bloodstream is neutralized!\n", victim);
@@ -1028,8 +1154,8 @@ void event_bandage_check(P_char ch, P_char victim, P_obj, void *data)
 		return;
 	}
 
-	GET_VITALITY(ch) -= (number(0, 100) > GET_CHAR_SKILL(ch, SKILL_BANDAGE)) ? 3 : 2;
-	add_event(event_bandage_check, PULSE_VIOLENCE, ch, victim, 0, 0, mdata,
+	GET_VITALITY(ch) -= tradeskill_vitality_cost(live_rolls, GET_CHAR_SKILL(ch, SKILL_BANDAGE));
+	add_event(event_bandage_check, bandage_interval(), ch, victim, 0, 0, mdata,
 		  sizeof(struct bandage_data));
 }
 
@@ -1120,16 +1246,16 @@ void do_bandage(P_char ch, char *arg, int /*cmd*/)
 	data.room = ch->in_room;
 	data.healed = 0;
 
-	add_event(event_bandage_check, PULSE_VIOLENCE, ch, victim, 0, 0, &data,
+	add_event(event_bandage_check, bandage_interval(), ch, victim, 0, 0, &data,
 		  sizeof(struct bandage_data));
 
 	bzero(&af, sizeof(af));
-	af.duration = 3;
+	af.duration = bandage_duration();
 	af.type = SKILL_BANDAGE;
 	af.flags = AFFTYPE_NOSHOW | AFFTYPE_NODISPEL;
 	affect_to_char(victim, &af);
 
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	CharWait(ch, bandage_lag());
 	return;
 }
 

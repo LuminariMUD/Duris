@@ -4025,6 +4025,31 @@ int get_innate_resistance(P_char ch)
 	return (res >= 100) ? 100 : res;
 }
 
+// A roll of 0-110 below this bursts through magic resistance.
+static int spell_penetration_threshold(int skill)
+{
+	return BOUNDED(10, skill,
+		       (int)get_property("skill.spellPenetration.highEndPercent", 60.000));
+}
+
+std::string spell_penetration_facts(P_char ch)
+{
+	extern int spell_penetration_damage_cut(const Rolls &rolls);
+	extern float spell_penetration_damage_cut_bonus();
+	const int skill = GET_CHAR_SKILL(ch, SKILL_SPELL_PENETRATION) / 2;
+	if (!skill)
+		return "  You have not learned spell penetration.\n";
+	char bonus[32];
+	snprintf(bonus, sizeof(bonus), "%g", spell_penetration_damage_cut_bonus());
+	return fact("Chance a spell bursts through magic resistance",
+		    chance_under(spell_penetration_threshold(skill), 0, 110)) +
+	       "    (with the target in your room; never past a beholder's eye)\n" +
+	       fact("Percent less damage it takes from its next spell damage",
+		    show({ spell_penetration_damage_cut(lowest_rolls),
+			   spell_penetration_damage_cut(highest_rolls) }) +
+			    " plus " + bonus);
+}
+
 bool resists_spell(P_char caster, P_char victim)
 {
 	int skill;
@@ -4102,11 +4127,7 @@ bool resists_spell(P_char caster, P_char victim)
 				skill = GET_LEVEL(caster); // Added Nov08 -Lucrot
 			}
 
-			if (number(0, 110) <
-				    BOUNDED(10, skill,
-					    (int)get_property(
-						    "skill.spellPenetration.highEndPercent",
-						    60.000)) &&
+			if (number(0, 110) < spell_penetration_threshold(skill) &&
 			    caster->in_room == victim->in_room)
 			{
 				struct affected_type af;

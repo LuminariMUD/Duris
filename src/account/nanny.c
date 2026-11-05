@@ -1494,10 +1494,9 @@ void schedule_pc_events(P_char ch)
 	add_event(event_autosave, 1200, ch, 0, 0, 0, 0, 0);
 	// Keep watching through the level unlock and temporary race/innate changes.
 	start_hatred_check(ch);
+	extern int smite_evil_interval();
 	if (GET_CHAR_SKILL(ch, SKILL_SMITE_EVIL))
-		add_event(event_smite_evil,
-			  get_property("skill.timer.secs.smiteEvil", 5) * WAIT_SEC, ch, 0, 0, 0, 0,
-			  0);
+		add_event(event_smite_evil, smite_evil_interval(), ch, 0, 0, 0, 0, 0);
 	if (GET_RACE(ch) == RACE_HALFLING)
 		add_event(event_halfling_check, 1, ch, 0, 0, 0, 0, 0);
 

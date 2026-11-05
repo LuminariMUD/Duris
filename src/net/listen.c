@@ -31,6 +31,7 @@ using namespace std;
 #include "net/listen.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
+#include "abilities/abilities.h"
 
 extern P_room world;
 extern P_desc descriptor_list;
@@ -87,15 +88,11 @@ void listen_broadcast(P_char ch, const char *buf, int cmd)
 	}
 }
 
-void listen_say(P_char ch, P_char tch, const char *buf)
+// How many rooms away you hear a say or group say.
+static int listen_range(int iskl)
 {
-	int iskl, range, nrange, howclose;
-	char strn[MAX_STRING_LENGTH], buf1[MAX_STRING_LENGTH];
+	int range, nrange;
 
-	if (IS_ROOM(tch->in_room, ROOM_SILENT))
-		return;
-
-	iskl = GET_CHAR_SKILL(tch, SKILL_IMPROVED_LISTEN);
 	nrange = (int)get_property("skill.listen.range.norm", 1);
 
 	if (iskl)
@@ -107,6 +104,87 @@ void listen_say(P_char ch, P_char tch, const char *buf)
 		range = nrange;
 	}
 
+	return range;
+}
+
+static int improved_listen_emote_range()
+{
+	return (int)get_property("skill.listen.range.improved", 2);
+}
+
+// A roll of 0-100 above this loses what you hear from past the next room.
+static int improved_listen_far_threshold(int iskl)
+{
+	return BOUNDED(20, iskl, 95);
+}
+
+// A roll of 25-45 below this lets you hear it.
+static int listen_hear_threshold(P_char tch)
+{
+	return MAX(40, GET_CHAR_SKILL(tch, SKILL_LISTEN));
+}
+
+// A roll of 15-55 below this lets you notice an emote.
+static int improved_listen_emote_threshold(int iskl)
+{
+	return MAX(40, iskl);
+}
+
+// A roll of 70-90 above this hides who a smaller emoter is.
+static int improved_listen_small_threshold(int iskl)
+{
+	return MAX(75, iskl);
+}
+
+std::string listen_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_LISTEN);
+	if (rating < 1)
+		return "  You have not learned to listen.\n";
+	return fact("Chance the listen command hears something", chance_under(rating + 1, 1, 101)) +
+	       "    (your luck can take a tenth off the roll)\n"
+	       "  It finds beings you can't see here, and counts them from level 15.\n" +
+	       fact("Rooms away you overhear a say or group say",
+		    std::to_string(listen_range(GET_CHAR_SKILL(ch, SKILL_IMPROVED_LISTEN)))) +
+	       fact("Chance you overhear it", chance_under(listen_hear_threshold(ch), 25, 45)) +
+	       fact("Chance you catch a speaker's name", chance_under(rating, 15, 35) +
+								 ", in a group say " +
+								 chance_under(rating, 20, 40)) +
+	       fact("Chance you catch each word, one room away",
+		    chance_under(listen_hear_threshold(ch) + 1 - 10, 25, 75)) +
+	       "    (10 worse for each further room)\n"
+	       "  Nothing carries into a silent room.\n";
+}
+
+std::string improved_listen_facts(P_char ch)
+{
+	const int iskl = GET_CHAR_SKILL(ch, SKILL_IMPROVED_LISTEN);
+	if (iskl < 1)
+		return "  You have not learned improved listen.\n";
+	return fact("Rooms away you overhear a say or group say",
+		    std::to_string(listen_range(iskl))) +
+	       fact("Chance past the next room",
+		    chance_under(improved_listen_far_threshold(iskl) + 1, 0, 100)) +
+	       fact("Rooms away you notice an emote",
+		    std::to_string(improved_listen_emote_range())) +
+	       fact("Chance you notice it",
+		    chance_under(improved_listen_emote_threshold(iskl), 15, 55)) +
+	       fact("Chance you see who a smaller emoter is",
+		    chance_under(improved_listen_small_threshold(iskl) + 1, 70, 90)) +
+	       "  You also need the listen skill.\n";
+}
+
+void listen_say(P_char ch, P_char tch, const char *buf)
+{
+	int iskl, range, howclose;
+	char strn[MAX_STRING_LENGTH], buf1[MAX_STRING_LENGTH];
+
+	if (IS_ROOM(tch->in_room, ROOM_SILENT))
+		return;
+
+	iskl = GET_CHAR_SKILL(tch, SKILL_IMPROVED_LISTEN);
+	range = listen_range(iskl);
+
 	howclose = how_close(ch->in_room, tch->in_room, range);
 
 	if (howclose < 0)
@@ -114,7 +192,7 @@ void listen_say(P_char ch, P_char tch, const char *buf)
 		return;
 	}
 
-	if ((howclose > 1) && (BOUNDED(20, iskl, 95) < number(0, 100)))
+	if ((howclose > 1) && (improved_listen_far_threshold(iskl) < number(0, 100)))
 	{
 		return;
 	}
@@ -122,7 +200,7 @@ void listen_say(P_char ch, P_char tch, const char *buf)
 	if ((GET_CHAR_SKILL(tch, SKILL_LISTEN) && (ch != tch) &&
 	     (world[ch->in_room].number != world[tch->in_room].number)))
 	{
-		if (MAX(40, GET_CHAR_SKILL(tch, SKILL_LISTEN)) > (number(25, 45)))
+		if (listen_hear_threshold(tch) > (number(25, 45)))
 		{
 			muddle_listened_string(ch, tch, buf, strn, howclose);
 
@@ -146,23 +224,14 @@ void listen_say(P_char ch, P_char tch, const char *buf)
 
 void listen_gsay(P_char ch, P_char tch, const char *buf)
 {
-	int iskl, range, nrange, howclose;
+	int iskl, range, howclose;
 	char strn[MAX_STRING_LENGTH], buf1[MAX_STRING_LENGTH];
 
 	if (IS_ROOM(tch->in_room, ROOM_SILENT))
 		return;
 
 	iskl = GET_CHAR_SKILL(tch, SKILL_IMPROVED_LISTEN);
-	nrange = (int)get_property("skill.listen.range.norm", 1);
-
-	if (iskl)
-	{
-		range = (nrange + (int)get_property("skill.listen.range.norm.extend", 1));
-	}
-	else
-	{
-		range = nrange;
-	}
+	range = listen_range(iskl);
 
 	howclose = how_close(ch->in_room, tch->in_room, range);
 
@@ -171,14 +240,14 @@ void listen_gsay(P_char ch, P_char tch, const char *buf)
 		return;
 	}
 
-	if ((howclose > 1) && (BOUNDED(20, iskl, 95) < number(0, 100)))
+	if ((howclose > 1) && (improved_listen_far_threshold(iskl) < number(0, 100)))
 	{
 		return;
 	}
 
 	if ((GET_CHAR_SKILL(tch, SKILL_LISTEN) && ch->group != tch->group))
 	{
-		if (MAX(40, GET_CHAR_SKILL(tch, SKILL_LISTEN)) > (number(25, 45)))
+		if (listen_hear_threshold(tch) > (number(25, 45)))
 		{
 			muddle_listened_string(ch, tch, buf, strn, howclose);
 
@@ -217,7 +286,7 @@ void listen_emote(P_char ch, P_char tch, const char *buf)
 	}
 
 	iskl = GET_CHAR_SKILL(tch, SKILL_IMPROVED_LISTEN);
-	irange = (int)get_property("skill.listen.range.improved", 2);
+	irange = improved_listen_emote_range();
 
 	howclose = how_close(ch->in_room, tch->in_room, irange);
 
@@ -226,16 +295,17 @@ void listen_emote(P_char ch, P_char tch, const char *buf)
 		return;
 	}
 
-	if ((howclose > 1) && (BOUNDED(20, iskl, 95)) < number(0, 100))
+	if ((howclose > 1) && (improved_listen_far_threshold(iskl)) < number(0, 100))
 	{
 		return;
 	}
 
 	if (iskl)
 	{
-		if ((MAX(40, iskl) > (number(15, 55))) && IS_PC(tch))
+		if ((improved_listen_emote_threshold(iskl) > (number(15, 55))) && IS_PC(tch))
 		{
-			if ((GET_SIZE(ch) < GET_SIZE(tch)) && (number(70, 90) > MAX(75, iskl)))
+			if ((GET_SIZE(ch) < GET_SIZE(tch)) &&
+			    (number(70, 90) > improved_listen_small_threshold(iskl)))
 			{
 				send_to_char(
 					"You notice someone in the distance scurrying about.\r\n",
@@ -287,8 +357,7 @@ void muddle_listened_string(P_char ch, P_char vict, const char *arg, char *muddl
 				break;
 			}
 		}
-		if (MAX(40, GET_CHAR_SKILL(vict, SKILL_LISTEN)) <
-		    (number(25, 75) + (extr_depth * 10)))
+		if (listen_hear_threshold(vict) < (number(25, 75) + (extr_depth * 10)))
 		{
 			// insert an appropriate number of asterisks
 

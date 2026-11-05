@@ -57,6 +57,9 @@ links = '\n'.join(extract_function('affects.c', signature) for signature in (
 behavior = '\n'.join((extract_function('fight.c', 'void set_fighting(P_char ch, P_char vict)'),
                       extract_function('mount.c', 'void stop_riding(P_char ch)'),
                       extract_function('mount.c', 'static double mounted_combat_mount_threshold('),
+                      extract_function('mount.c', 'static int mount_try('),
+                      extract_function('mount.c', 'static int mount_defense('),
+                      extract_function('mount.c', 'static int mount_vitality_cost('),
                       extract_function('mount.c', 'void do_mount(P_char ch, char *argument,')))
 
 RUNTIME = r'''

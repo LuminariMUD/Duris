@@ -138,6 +138,33 @@ std::string mounted_combat_facts(P_char ch)
 	       "  in flight.\n";
 }
 
+// An untrained animal can be ridden when this reaches twice its level.
+static int mount_try(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_MOUNT) + GET_LEVEL(ch));
+}
+
+static int mount_defense(int mount_level)
+{
+	return (mount_level * 2);
+}
+
+static int mount_vitality_cost(P_char ch)
+{
+	return MAX(1, ((100 - (GET_CHAR_SKILL(ch, SKILL_MOUNT))) / 10));
+}
+
+std::string mount_facts(P_char ch)
+{
+	int level = 0;
+	while (mount_defense(level + 1) <= mount_try(ch))
+		++level;
+	return fact("Vitality it costs to climb on", std::to_string(mount_vitality_cost(ch))) +
+	       fact("Highest level of untrained animal you can ride",
+		    level ? std::to_string(level) : "none yet") +
+	       "  Trained mounts need no such level. Other creatures can't be ridden.\n";
+}
+
 void do_mount(P_char ch, char *argument, int /*cmd*/)
 {
 	char name[MAX_STRING_LENGTH];
@@ -288,8 +315,8 @@ void do_mount(P_char ch, char *argument, int /*cmd*/)
 		    (GET_RACE(mount) == RACE_QUADRUPED) || (GET_RACE(mount) == RACE_PRIMATE) ||
 		    (GET_RACE(mount) == RACE_HERBIVORE) || (GET_RACE(mount) == RACE_CARNIVORE))
 		{
-			int mounttry = (GET_CHAR_SKILL(ch, SKILL_MOUNT) + GET_LEVEL(ch));
-			int mountdef = (GET_LEVEL(mount) * 2);
+			int mounttry = mount_try(ch);
+			int mountdef = mount_defense(GET_LEVEL(mount));
 			if (mountdef > mounttry)
 			{
 				act("You attempt to mount $N, but find you are not yet skilled enough to ride that creature.",
@@ -319,7 +346,7 @@ void do_mount(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	movescost = MAX(1, ((100 - (GET_CHAR_SKILL(ch, SKILL_MOUNT))) / 10));
+	movescost = mount_vitality_cost(ch);
 
 	if (GET_VITALITY(ch) - movescost < 0)
 	{

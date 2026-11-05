@@ -1857,6 +1857,37 @@ void stop_meditation(P_char ch)
 	disarm_char_nevents(ch, event_meditation);
 }
 
+static int meditate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string meditate_facts(P_char ch)
+{
+	extern double meditate_mana_gain(P_char ch);
+	extern int is_wearing_necroplasm(P_char);
+	const int rating = GET_CHAR_SKILL(ch, SKILL_MEDITATE);
+	const int advanced = GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION);
+	if (!rating)
+		return "  You have not learned to meditate.\n";
+	std::string text = fact("Chance a spell's recovery skips its extra half",
+				chance_under(rating + 1, 0, 100));
+	if (IS_PUNDEAD(ch) || GET_CLASS(ch, CLASS_WARLOCK) || IS_UNDEADRACE(ch) || IS_ANGEL(ch) ||
+	    is_wearing_necroplasm(ch))
+		text += fact("Chance your recovery time halves", chance_under(rating, 0, 100));
+	else if (USES_TUPOR(ch))
+		text += fact("Chance your recovery time halves",
+			     std::to_string(100 - rating) + " in 101");
+	text += fact("Base mana recovery, if you use mana",
+		     std::to_string((int)meditate_mana_gain(ch)) + " while you meditate") +
+		fact("Your lag", seconds(!advanced ? meditate_lag() :
+					 advanced > advanced_meditation_poison_rating() ?
+						     advanced_meditation_vitality_lag() :
+						     advanced_meditation_lag())) +
+		"  You must be sitting. An attack on you or most commands end it.\n";
+	return text;
+}
+
 void do_meditate(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	struct affected_type af;
@@ -1911,7 +1942,7 @@ void do_meditate(P_char ch, char * /*arg*/, int /*cmd*/)
 	else
 	{
 		send_to_char("You start meditating...\n", ch);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, meditate_lag());
 	}
 	SET_BIT(ch->specials.affected_by, AFF_MEDITATE);
 	StartRegen(ch, regen_resource::mana);

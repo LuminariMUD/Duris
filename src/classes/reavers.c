@@ -2051,6 +2051,22 @@ bool reaver_hit_proc(P_char ch, P_char victim, P_obj weapon)
 	return FALSE;
 }
 
+// What each weapon adds to a reaver's combat round, in pulses.
+float ice_reaver_1h_bludgeon_penalty()
+{
+	return get_property("reavers.ice.penalty.pulse.1hBludgeon", 2.);
+}
+
+float ice_reaver_2h_bludgeon_penalty()
+{
+	return get_property("reavers.ice.penalty.pulse.2hBludgeon", 3.);
+}
+
+float flame_reaver_2h_penalty()
+{
+	return get_property("reavers.flame.penalty.pulse.2hSlashing", 3.);
+}
+
 /*
  called from affect_total() in affects.c
  set all standard mods for reavers based on weapons, skills, etc
@@ -2068,14 +2084,12 @@ void apply_reaver_mods(P_char ch)
 		if ((w1 && required_weapon_skill(w1) == SKILL_1H_BLUDGEON) ||
 		    (w2 && required_weapon_skill(w2) == SKILL_1H_BLUDGEON))
 		{
-			ch->specials.base_combat_round +=
-				get_property("reavers.ice.penalty.pulse.1hBludgeon", 2.);
+			ch->specials.base_combat_round += ice_reaver_1h_bludgeon_penalty();
 		}
 		else if ((w1 && required_weapon_skill(w1) == SKILL_2H_BLUDGEON) ||
 			 (w2 && required_weapon_skill(w2) == SKILL_2H_BLUDGEON))
 		{
-			ch->specials.base_combat_round +=
-				get_property("reavers.ice.penalty.pulse.2hBludgeon", 3.);
+			ch->specials.base_combat_round += ice_reaver_2h_bludgeon_penalty();
 		}
 	}
 	else if (GET_SPEC(ch, CLASS_REAVER, SPEC_FLAME_REAVER))
@@ -2085,8 +2099,7 @@ void apply_reaver_mods(P_char ch)
 		    required_weapon_skill(w1) == SKILL_2H_FLAYING ||
 		    required_weapon_skill(w2) == SKILL_2H_FLAYING)
 		{
-			ch->specials.base_combat_round +=
-				get_property("reavers.flame.penalty.pulse.2hSlashing", 3.);
+			ch->specials.base_combat_round += flame_reaver_2h_penalty();
 		}
 	}
 	/* Shock reavers currently have no two handed weapon skills. Apr09 -Lucrot

@@ -906,6 +906,12 @@ P_obj random_zone_item(P_char ch)
 	"&+W(&+wconjure summon <number> &+m- &+mcall the &+Mminion&+m into existence&n.)\n&n"             \
 	"&+W(&+wconjure remove <number> &+m- &+Mpermanently&+m remove the &+Mminion&+m from your book&n.)\n&n"
 
+// What infuse life multiplies a conjured minion's hit points by.
+double conjure_minion_life_share(int life)
+{
+	return ((500.0 + life) / 500.0);
+}
+
 void do_conjure(P_char ch, char *argument, int /*cmd*/)
 {
 	char Gbuf1[MAX_STRING_LENGTH];
@@ -1142,7 +1148,7 @@ void do_conjure(P_char ch, char *argument, int /*cmd*/)
 			    ch, 0, t_ch, TO_CHAR);
 			GET_MAX_HIT(t_ch) = GET_HIT(t_ch) = t_ch->points.base_hit =
 				GET_HIT(t_ch) *
-				((500.0 + GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE)) / 500.0);
+				conjure_minion_life_share(GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE));
 		}
 
 		// Max hps for any minion is 8k.

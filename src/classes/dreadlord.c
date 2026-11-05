@@ -24,6 +24,7 @@
 #include "combat/damage.h"
 #include "item/objmisc.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 
 void event_dread_wrath(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 {
@@ -62,6 +63,21 @@ void event_dread_wrath(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 	}
 }
 
+static int dread_wrath_ac(P_char ch)
+{
+	return (int)(GET_CHAR_SKILL(ch, SKILL_DREAD_WRATH) * 2);
+}
+
+std::string dread_wrath_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_DREAD_WRATH))
+		return "  You have not learned dread wrath.\n";
+	return fact("Armor class of the target you fight",
+		    "+" + std::to_string(dread_wrath_ac(ch))) +
+	       "    (worse for it, while you keep fighting it)\n"
+	       "  Not on constructs or targets that can't be frightened.\n";
+}
+
 void do_dread_wrath(P_char ch, P_char victim)
 {
 	struct affected_type af, *afp;
@@ -88,7 +104,7 @@ void do_dread_wrath(P_char ch, P_char victim)
 		af.type = TAG_DREAD_WRATH;
 		af.flags = AFFTYPE_NOSAVE;
 		af.location = APPLY_AC;
-		af.modifier = (int)(GET_CHAR_SKILL(ch, SKILL_DREAD_WRATH) * 2);
+		af.modifier = dread_wrath_ac(ch);
 		af.duration = 1;
 		affect_to_char(victim, &af);
 		add_event(event_dread_wrath, 2 * WAIT_SEC, ch, victim, 0, 0, 0, 0);

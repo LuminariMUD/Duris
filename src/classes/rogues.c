@@ -30,11 +30,33 @@
 #include "string.h"
 #include "time.h"
 #include "world/weather.h"
+#include "abilities/abilities.h"
 
 extern struct str_app_type str_app[];
 extern P_char character_list;
 extern P_obj object_list;
 extern P_room world;
+
+static int slip_fighting_penalty()
+{
+	return (int)get_property("skill.slip.fightingPenalty", 20);
+}
+
+std::string slip_facts(P_char ch)
+{
+	extern int slip_get_threshold(P_char ch);
+	const int rating = GET_CHAR_SKILL(ch, SKILL_SLIP);
+	if (!rating)
+		return "  You have not learned to slip.\n";
+	return fact("Chance to slip something to someone",
+		    std::to_string(rating) + " less its weight, in 100") +
+	       fact("  Less, while you fight", std::to_string(slip_fighting_penalty())) +
+	       "    (if it fails, it falls to the ground)\n"
+	       "  Slipping it into a container always works, on the same chance unseen.\n" +
+	       fact("Chance you get something from a container unseen",
+		    chance_under(slip_get_threshold(ch), 0, 100)) +
+	       "    (from your rating and dexterity)\n";
+}
 
 void do_slip(P_char ch, char *argument, int /*cmd*/)
 {
@@ -141,7 +163,7 @@ void do_slip(P_char ch, char *argument, int /*cmd*/)
 
 			if (IS_FIGHTING(ch))
 			{
-				percent -= (int)get_property("skill.slip.fightingPenalty", 20);
+				percent -= slip_fighting_penalty();
 			}
 
 			if (check <= percent)

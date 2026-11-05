@@ -672,6 +672,37 @@ static std::string raised_undead_random_facts(P_char ch)
 	       raised_undead_shared_facts(ch, level);
 }
 
+std::string infuse_life_facts(P_char ch)
+{
+	extern double conjure_minion_life_share(int life);
+	extern int summon_beast_life_level(const Rolls &rolls, int life);
+	extern int greater_beast_life_level(const Rolls &rolls, int life);
+	extern int summon_beast_life_hit_points(int life);
+	extern int greater_beast_life_hit_points(int life);
+	const int life = GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE);
+	if (!life)
+		return "  You have not learned infuse life.\n";
+	std::string text = "  Your rating adds hit points to what you raise, conjure or summon.\n"
+			   "  Raising and elemental spell pages show them with your rating.\n";
+	if (raised_undead_spec_life(ch, life) != life)
+		text += fact("Your raised undead count your rating as",
+			     std::to_string(raised_undead_spec_life(ch, life)));
+	return text +
+	       fact("Hit points of minions from the conjure command",
+		    share_percent((float)conjure_minion_life_share(life)) + " of normal") +
+	       fact("Hit points a summoned beast gains",
+		    std::to_string(summon_beast_life_hit_points(life)) + ", a greater one " +
+			    std::to_string(greater_beast_life_hit_points(life))) +
+	       "    (about two-thirds of that with the dice, unless you're an animalist)\n" +
+	       fact("Levels a summoned beast gains",
+		    show({ summon_beast_life_level(lowest_rolls, life),
+			   summon_beast_life_level(highest_rolls, life) })) +
+	       fact("Levels a greater summoned beast gains",
+		    show({ greater_beast_life_level(lowest_rolls, life),
+			   greater_beast_life_level(highest_rolls, life) })) +
+	       "    (an animalist's greater beast uses its own, larger gain)\n";
+}
+
 void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_type)
 {
 	P_char undead;
@@ -2871,6 +2902,48 @@ void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[mayb
 	}
 }
 
+static int exhume_rest(int skl)
+{
+	return (get_property("timer.mins.exhume", 10) * WAIT_MIN * (150 - skl)) / 100;
+}
+
+static int exhume_lag(int skl)
+{
+	return 6 * WAIT_SEC - (skl / 10);
+}
+
+static int summon_host_lag(P_char ch)
+{
+	return 24 - (GET_CHAR_SKILL(ch, SKILL_EXHUME) / 10);
+}
+
+// MIN rolls again when the first roll doesn't pass the cap, so the cap can slip.
+static int exhume_corpse_level(const Rolls &rolls, P_char ch)
+{
+	return MIN(50, GET_LEVEL(ch) + rolls.number(0, 8) - 4);
+}
+
+std::string exhume_facts(P_char ch)
+{
+	const int skl = GET_CHAR_SKILL(ch, SKILL_EXHUME);
+	const bool host = has_innate(ch, INNATE_SUMMON_HOST);
+	if (!skl && !IS_TRUSTED(ch) && !host)
+		return "  You have not learned to exhume.\n";
+	std::string text = fact("Corpse level", show({ exhume_corpse_level(lowest_rolls, ch),
+						       exhume_corpse_level(highest_rolls, ch) })) +
+			   "    (near the cap of 50 the second roll of its check can pass it)\n" +
+			   fact("Before you can do it again", IS_TRUSTED(ch) ?
+								      "no wait, as an immortal" :
+								      real_time(exhume_rest(skl)));
+	if (host)
+		text += fact("Your lag summoning a host", seconds(summon_host_lag(ch)));
+	if (!skl && !IS_TRUSTED(ch))
+		return text;
+	return text + fact("Your lag exhuming", seconds(exhume_lag(skl))) +
+	       "  Exhuming takes a held or wielded shovel, hoe or pick, on the ground\n"
+	       "  in a field, forest, hills, mountains or wild underdark.\n";
+}
+
 void do_exhume(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	int skl;
@@ -2921,10 +2994,7 @@ void do_exhume(P_char ch, char * /*argument*/, int /*cmd*/)
 			return;
 		}
 
-		if (!affect_timer(ch,
-				  (get_property("timer.mins.exhume", 10) * WAIT_MIN * (150 - skl)) /
-					  100,
-				  SKILL_EXHUME))
+		if (!affect_timer(ch, exhume_rest(skl), SKILL_EXHUME))
 		{
 			send_to_char("Your weak arms need more rest.\r\n", ch);
 			return;
@@ -2937,10 +3007,10 @@ void do_exhume(P_char ch, char * /*argument*/, int /*cmd*/)
 		ch);
 
 	/* charWait for exhume is skill dependent:  between 14 and 24 (with base skill of 40, its actually between 14-20) */
-	CharWait(ch, 6 * WAIT_SEC - (skl / 10));
+	CharWait(ch, exhume_lag(skl));
 
 	obj1 = read_object(2, VIRTUAL);
-	obj1->value[CORPSE_LEVEL] = MIN(50, GET_LEVEL(ch) + number(0, 8) - 4);
+	obj1->value[CORPSE_LEVEL] = exhume_corpse_level(live_rolls, ch);
 
 	obj1->action_description = str_dup("&+La cadaver&n");
 	obj1->str_mask = STRUNG_DESC3;
@@ -3028,10 +3098,7 @@ void do_summon_host(P_char ch, char * /*argument*/, int /*cmd*/)
 		  return;
 		}
 		*/
-		if (!affect_timer(ch,
-				  (get_property("timer.mins.exhume", 10) * WAIT_MIN * (150 - skl)) /
-					  100,
-				  SKILL_EXHUME))
+		if (!affect_timer(ch, exhume_rest(skl), SKILL_EXHUME))
 		{
 			send_to_char(
 				"Your spirit is too weak to summon a new host at this time.\r\n",
@@ -3046,10 +3113,10 @@ void do_summon_host(P_char ch, char * /*argument*/, int /*cmd*/)
 		ch);
 
 	/* charWait for exhume is skill dependent:  between 14 and 24 (with base skill of 40, its actually between 14-20) */
-	CharWait(ch, 24 - (GET_CHAR_SKILL(ch, SKILL_EXHUME) / 10));
+	CharWait(ch, summon_host_lag(ch));
 
 	obj1 = read_object(2, VIRTUAL);
-	obj1->value[CORPSE_LEVEL] = MIN(50, GET_LEVEL(ch) + number(0, 8) - 4);
+	obj1->value[CORPSE_LEVEL] = exhume_corpse_level(live_rolls, ch);
 
 	obj1->action_description = str_dup("&+La cadaver&n");
 	obj1->str_mask = STRUNG_DESC3;

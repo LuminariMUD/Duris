@@ -32,6 +32,7 @@
 #include "stdio.h"
 #include "string.h"
 #include "time.h"
+#include "abilities/abilities.h"
 
 /*
  * external variables
@@ -169,10 +170,69 @@ static bool disguise_target_allowed(P_char ch, P_char target)
 	return true;
 }
 
+// A roll of 1-101, plus what the disguise's difficulty adds, must not pass this.
+static int disguise_score(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_DISGUISE) * 2;
+}
+
+static int disguise_failed_lag()
+{
+	return PULSE_VIOLENCE * 3;
+}
+
+static int disguise_size_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+static int disguise_lag()
+{
+	return PULSE_VIOLENCE * 5;
+}
+
+static int disguise_remove_lag()
+{
+	return PULSE_VIOLENCE * 3;
+}
+
+static int disguise_hit_points(P_char ch)
+{
+	return GET_LEVEL(ch) * 4;
+}
+
+// A failure's nonzero roll ruins the kit.
+static int disguise_kit_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+std::string disguise_facts(P_char ch)
+{
+	if (!disguise_score(ch))
+		return "  You have not learned to disguise yourself.\n";
+	const bool free_kit = IS_TRUSTED(ch) || affected_by_spell(ch, ACH_DECEPTICON);
+	const int score = free_kit ? 200 : disguise_score(ch);
+	return fact("Chance, as a listed type of your race", chance_under(score + 1, 1, 101)) +
+	       fact("Chance, as another race's type or someone you match",
+		    chance_under(score + 1 - 30, 1, 101)) +
+	       "    (someone of another race is 30 harder, another sex 10, an enemy 20)\n" +
+	       fact("Your lag", seconds(disguise_lag())) +
+	       fact("Your lag if you fail", seconds(disguise_failed_lag())) +
+	       fact("Your lag if the size is off by more than 1", seconds(disguise_size_lag())) +
+	       fact("Your lag removing a disguise", seconds(disguise_remove_lag())) +
+	       fact("Its strength", std::to_string(disguise_hit_points(ch))) +
+	       "    (damage you take wears it down, and so does time)\n" +
+	       (free_kit ? "  It takes a disguise kit, but doesn't use one up.\n" :
+			   "  It uses up a disguise kit; a failure ruins it " +
+				   one_in(disguise_kit_roll) + " times.\n") +
+	       "  Not while fighting.\n";
+}
+
 /* Disguises ch as target, a loaded character, or else as disguise_list[i]. */
 static void disguise_as(P_char ch, P_char target, int i)
 {
-	int skl_lvl = GET_CHAR_SKILL(ch, SKILL_DISGUISE) * 2;
+	int skl_lvl = disguise_score(ch);
 	int percent = 0;
 	int the_size;
 	char Gbuf1[MAX_STRING_LENGTH];
@@ -221,8 +281,9 @@ static void disguise_as(P_char ch, P_char target, int i)
 	{
 		send_to_char("You do a horrid job", ch);
 		notch_skill(ch, SKILL_DISGUISE, 25);
-		CharWait(ch, PULSE_VIOLENCE * 3);
-		if (!IS_TRUSTED(ch) && !affected_by_spell(ch, ACH_DECEPTICON) && number(0, 1))
+		CharWait(ch, disguise_failed_lag());
+		if (!IS_TRUSTED(ch) && !affected_by_spell(ch, ACH_DECEPTICON) &&
+		    disguise_kit_roll(live_rolls))
 		{
 			send_to_char(", and ruin your disguise kit in the process.\r\n", ch);
 			if (equipped)
@@ -248,12 +309,12 @@ static void disguise_as(P_char ch, P_char target, int i)
 	if ((GET_ALT_SIZE(ch) < (the_size - 1)) && !IS_TRUSTED(ch))
 	{
 		send_to_char("You're too small for that!\r\n", ch);
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, disguise_size_lag());
 	}
 	else if ((GET_ALT_SIZE(ch) > (the_size + 1)) && !IS_TRUSTED(ch))
 	{
 		send_to_char("You're too big for that!\r\n", ch);
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, disguise_size_lag());
 	}
 	else
 	{
@@ -269,7 +330,7 @@ static void disguise_as(P_char ch, P_char target, int i)
 			ch->disguise.m_class = target->player.m_class;
 			ch->disguise.race = GET_RACE(target);
 			ch->disguise.level = GET_LEVEL(target);
-			ch->disguise.hit = GET_LEVEL(ch) * 4;
+			ch->disguise.hit = disguise_hit_points(ch);
 			ch->disguise.racewar = GET_RACEWAR(target);
 			if (GET_TITLE(target))
 				ch->disguise.title = str_dup(GET_TITLE(target));
@@ -300,7 +361,7 @@ static void disguise_as(P_char ch, P_char target, int i)
 			ch->disguise.longname = str_dup(Gbuf1);
 			// GET_DISGUISE_TITLE(ch) = ch->disguise.name = ch->disguise.longname = str_dup(disguise_list_data[i].name[number(0, 2)]);
 			ch->disguise.race = disguise_list_data[i].race;
-			ch->disguise.hit = GET_LEVEL(ch) * 4;
+			ch->disguise.hit = disguise_hit_points(ch);
 			snprintf(Gbuf1, MAX_STRING_LENGTH, "You disguise yourself into a %s.\r\n",
 				 disguise_list[i]);
 			send_to_char(Gbuf1, ch);
@@ -316,7 +377,7 @@ static void disguise_as(P_char ch, P_char target, int i)
 				extract_obj(temp, TRUE); // An artifact disguise kit?
 		}
 		notch_skill(ch, SKILL_DISGUISE, 6.25);
-		CharWait(ch, PULSE_VIOLENCE * 5);
+		CharWait(ch, disguise_lag());
 	}
 	if (target)
 		free_char(target);
@@ -348,7 +409,7 @@ void do_disguise(P_char ch, char *arg, int /*cmd*/)
 	if (IS_NPC(ch))
 		return;
 
-	skl_lvl = GET_CHAR_SKILL(ch, SKILL_DISGUISE) * 2;
+	skl_lvl = disguise_score(ch);
 
 	// Do we have the skill?
 	if (!skl_lvl)
@@ -365,7 +426,7 @@ void do_disguise(P_char ch, char *arg, int /*cmd*/)
 			remove_disguise(ch, FALSE);
 			act("$n starts removing $s disguise.", FALSE, ch, 0, ch, TO_ROOM);
 			send_to_char("You start removing your disguise.\n\r", ch);
-			CharWait(ch, PULSE_VIOLENCE * 3);
+			CharWait(ch, disguise_remove_lag());
 		}
 		// Otherwise they are clueless
 		else

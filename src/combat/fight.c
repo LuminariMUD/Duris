@@ -7404,6 +7404,44 @@ std::string one_h_slashing_facts(P_char ch)
 	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_1H_SLASHING));
 }
 
+// A reaver's combat round runs longer with some weapons.
+static std::string reaver_round_line(const char *reaver, float penalty)
+{
+	if (penalty <= 0)
+		return "";
+	char pulses[32];
+	snprintf(pulses, sizeof(pulses), "%g", penalty);
+	return std::string("  As ") + reaver + ", one makes your combat round " + pulses +
+	       " pulses longer.\n";
+}
+
+std::string one_h_bludgeon_facts(P_char ch)
+{
+	extern float ice_reaver_1h_bludgeon_penalty();
+	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_1H_BLUDGEON)) +
+	       (GET_SPEC(ch, CLASS_REAVER, SPEC_ICE_REAVER) ?
+			reaver_round_line("an ice reaver", ice_reaver_1h_bludgeon_penalty()) :
+			"");
+}
+
+std::string two_h_bludgeon_facts(P_char ch)
+{
+	extern float ice_reaver_2h_bludgeon_penalty();
+	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_2H_BLUDGEON)) +
+	       (GET_SPEC(ch, CLASS_REAVER, SPEC_ICE_REAVER) ?
+			reaver_round_line("an ice reaver", ice_reaver_2h_bludgeon_penalty()) :
+			"");
+}
+
+std::string two_h_slashing_facts(P_char ch)
+{
+	extern float flame_reaver_2h_penalty();
+	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_2H_SLASHING)) +
+	       (GET_SPEC(ch, CLASS_REAVER, SPEC_FLAME_REAVER) ?
+			reaver_round_line("a flame reaver", flame_reaver_2h_penalty()) :
+			"");
+}
+
 std::string reach_weapons_facts(P_char ch)
 {
 	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_REACH_WEAPONS)) +

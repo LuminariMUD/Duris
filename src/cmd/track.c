@@ -1026,6 +1026,29 @@ void show_tracks(P_char ch, int room)
 	return;
 }
 
+// How far on the map a track scan shows tracks and blood.
+int improved_track_map_range(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_IMPROVED_TRACK) / 20);
+}
+
+std::string improved_track_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_IMPROVED_TRACK);
+	if (rating < 1)
+		return "  You have not learned improved track.\n";
+	return fact("Rooms a track scan shows on the map",
+		    std::to_string(improved_track_map_range(ch))) +
+	       fact("Chance the map shows fresh blood", chance_under(rating, 50, 80)) +
+	       fact("Chance the map shows old blood", chance_under(rating + 1, 80, 100)) +
+	       fact("Chance a scan shows blood here", chance_under(rating + 1, 50, 70)) +
+	       fact("  If it has dried", chance_under(rating + 1, 90, 100)) +
+	       fact("Base chance you notice tracks on entering a room",
+		    chance_under(rating, 1, 100)) +
+	       "    (terrain, race, class, position and sight change the roll)\n"
+	       "  A track scan needs the track skill.\n";
+}
+
 void show_tracking_map(P_char ch)
 {
 	struct affected_type af;

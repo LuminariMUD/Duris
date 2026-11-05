@@ -6,6 +6,9 @@ import tempfile
 from _paths import ROOT, extract_function
 
 production = '\n'.join((extract_function('fight.c', 'bool damage('),
+                        '#include "abilities/abilities.h"\nconst Rolls live_rolls = { dice, number };',
+                        extract_function('paladins.c', 'static int cleave_damage('),
+                        extract_function('paladins.c', 'static int cleave_target_rest('),
                         extract_function('paladins.c', 'bool cleave(')))
 fixture = r'''
 #include "core/prototypes.h"
