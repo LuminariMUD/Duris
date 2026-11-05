@@ -16,7 +16,7 @@ from _source_contract import function_bodies, strip_comments
 
 # The shared functions the facts use, by spell; every one is extracted for the harness.
 SHARED = """
-entangle_bind_chance entangle_duration
+entangle_bind_chance entangle_bind_roll entangle_duration
 vampiric_touch_duration vampiric_touch_hitroll
 sanctuary_duration hellfire_duration battletide_damroll battletide_hitroll battletide_duration
 mend_soul_healing heal_undead_healing greater_heal_undead_healing
@@ -28,14 +28,14 @@ elemental_form_str_max elemental_form_con_max elemental_form_agi elemental_form_
 command_undead_duration command_undead_level_gap turn_undead_fear_levels mage_flame_duration globe_of_darkness_duration
 elemental_shield_duration negative_energy_barrier_duration slow_poison_duration
 comprehend_languages_duration
-obtenebration_damage obtenebration_blind_chance obtenebration_blindness
+obtenebration_damage obtenebration_blind_chance obtenebration_blind_roll obtenebration_blindness
 incendiary_cloud_damage incendiary_cloud_failed_save incendiary_cloud_pc_damage
 incendiary_cloud_bonus
 disintegrate_damage disintegrate_failed_save shatter_damage shatter_saved
 cause_zealot_damage cause_light_damage cause_serious_damage cause_critical_damage
 unholy_wind_damage unholy_wind_failed_save purge_living_damage acid_stream_damage
 acid_blast_damage acid_blast_failed_save ice_storm_damage ice_storm_pc_damage
-faerie_fire_duration faerie_fire_armor faerie_fire_disguise_odds faerie_fog_disguise_odds
+faerie_fire_duration faerie_fire_armor faerie_fire_disguise_roll faerie_fog_disguise_roll
 blackmantle_duration
 pword_kill_max_hits pword_kill_sure_levels pword_kill_damage
 infernal_fury_duration freedom_of_movement_roll freedom_of_movement_duration
@@ -47,9 +47,9 @@ holy_word_slay_level holy_word_slay_damage holy_word_damage holy_word_bane_damag
 holy_word_blind_level holy_word_paralysis_level holy_word_zealot_damage holy_word_alignment
 unholy_word_alignment unholy_word_factor holy_word_lines
 solar_flare_damage solar_flare_boosted solar_flare_boost solar_flare_blindness
-solar_flare_blind_odds solar_flare_immolate_odds sunray_blindness
+solar_flare_blind_roll solar_flare_immolate_roll sunray_blindness
 silence_duration feeblemind_stat_loss feeblemind_short_duration feeblemind_long_duration
-pword_blind_duration pword_stun_duration dispel_magic_wall_damage dispel_magic_destroy_odds
+pword_blind_duration pword_stun_duration dispel_magic_wall_damage dispel_magic_destroy_roll
 dispel_magic_fade_roll resurrect_lag
 preserve_hours lesser_resurrect_lag waterbreath_duration protection_spell_duration
 darkness_duration infravision_duration embalm_hours
@@ -100,7 +100,7 @@ CALLS = {
     "spell_comprehend_languages": ["af.duration = comprehend_languages_duration(level);",
                                    "af1->duration = comprehend_languages_duration(level);"],
     "spell_single_obtenebration": ["dam = obtenebration_damage(live_rolls, level);",
-                                   "number(1, 100) < obtenebration_blind_chance()",
+                                   "obtenebration_blind_roll(live_rolls) < obtenebration_blind_chance()",
                                    "blind(ch, victim, obtenebration_blindness(live_rolls));"],
     "spell_single_incendiary_cloud": ["dam = incendiary_cloud_damage(live_rolls, level);",
                                       "dam = incendiary_cloud_failed_save(dam);",
@@ -116,9 +116,9 @@ CALLS = {
     "spell_acid_stream": ["dam = acid_stream_damage(live_rolls, level);"],
     "spell_acid_blast": ["int dam = acid_blast_damage(live_rolls, level);", "dam = acid_blast_failed_save(dam);"],
     "spell_single_icestorm": ["int dam = ice_storm_damage(live_rolls, level);", "dam = ice_storm_pc_damage(dam);"],
-    "spell_faerie_fire": ["!number(0, faerie_fire_disguise_odds()) && IS_DISGUISE(victim)",
+    "spell_faerie_fire": ["!faerie_fire_disguise_roll(live_rolls) && IS_DISGUISE(victim)",
                           "af.duration = faerie_fire_duration();", "af.modifier = faerie_fire_armor();"],
-    "spell_faerie_fog": ["if (!number(0, faerie_fog_disguise_odds()))"],
+    "spell_faerie_fog": ["if (!faerie_fog_disguise_roll(live_rolls))"],
     "spell_blackmantle": ["af.duration = blackmantle_duration(level);"],
     "spell_pword_kill": ["GET_HIT(victim) < pword_kill_max_hits()",
                          "level > GET_LEVEL(victim) + pword_kill_sure_levels()",
@@ -140,9 +140,9 @@ CALLS = {
     "spell_solar_flare": ["dam = solar_flare_damage(live_rolls, level);",
                           "if (solar_flare_boosted(ch) && type == SPELL_TYPE_SPELL && !obj)",
                           "dam = solar_flare_boost(dam);",
-                          "if (!number(0, solar_flare_blind_odds()) && !NewSaves(victim, SAVING_SPELL, mod))",
+                          "if (!solar_flare_blind_roll(live_rolls) && !NewSaves(victim, SAVING_SPELL, mod))",
                           "blind(ch, victim, solar_flare_blindness(live_rolls));",
-                          "if (!number(0, solar_flare_immolate_odds()))"],
+                          "if (!solar_flare_immolate_roll(live_rolls))"],
     "spell_sunray": ["blind(ch, victim, sunray_blindness(live_rolls));"],
     "spell_silence": ["af.duration = silence_duration(percent);"],
     "spell_feeblemind": ["intmod = feeblemind_stat_loss(live_rolls, GET_C_INT(victim), level);",
@@ -151,7 +151,7 @@ CALLS = {
     "spell_pword_blind": ["blind(ch, victim, pword_blind_duration(level, GET_LEVEL(victim)));"],
     "spell_pword_stun": ["Stun(victim, ch, pword_stun_duration(live_rolls, percent), FALSE);"],
     "spell_dispel_magic": ["dispel_magic_wall_damage(live_rolls, level)",
-                           "if (!number(0, dispel_magic_destroy_odds()) && !IS_TRUSTED(ch))",
+                           "if (!dispel_magic_destroy_roll(live_rolls) && !IS_TRUSTED(ch))",
                            "else if ((dispel_magic_fade_roll(live_rolls) < level) || IS_TRUSTED(ch))"],
     "spell_resurrect": ["CharWait(ch, resurrect_lag(ch, level));"],
     "spell_preserve": ["timePres = preserve_hours(level);"],
@@ -385,7 +385,7 @@ int main() {
     devotion = 0;
     const std::map<int, std::string> pages = {
         { SPELL_OBTENEBRATION, "  Sound damage: 401-440 to each target at your level, 50\n"
-                               "  Blindness: 19% chance, for 4 seconds to 12 seconds\n"
+                               "  Blindness: 19 in 100, for 4 seconds to 12 seconds\n"
                                "  Globes and spirit wards: do not stop it\n" },
         { SPELL_INCENDIARY_CLOUD, "  Fire damage: 75-525 to each target at your level, 50\n"
                                   "  If the target fails its save: 112-787\n"
@@ -411,9 +411,9 @@ int main() {
                             "  Any globe or spirit ward: stops it\n" },
         { SPELL_ICE_STORM, "  Globe of invulnerability: stops it; minor globes and spirit wards do not\n" },
         { SPELL_SOLAR_FLARE, "  Fire damage: 301-325 at your level, 50\n"
-                             "  Blindness if it survives: 50% chance, 4 seconds to 12 seconds\n"
+                             "  Blindness if it survives: 1 in 2, 4 seconds to 12 seconds\n"
                              "    if it fails its save\n"
-                             "  Immolate if it survives: 50% chance to also cast it on the target\n" },
+                             "  Immolate if it survives: 1 in 2 to also cast it on the target\n" },
         { SPELL_PWORD_KILL, "  Slays a target with under 1500 hit points that fails its save,\n"
                             "  unless it is a greater race or elite.\n"
                             "  Chance to slay: 1% plus 1% per level the target is below you\n"
@@ -429,7 +429,7 @@ int main() {
                                     "  Your lag: 4 seconds\n"
                                     "  It does not harm good races or angels.\n" },
         { SPELL_ENTANGLE, "  Paralysis if the target fails its save: 20 seconds at your level, 50\n"
-                          "  In a forest, if it fails its save: 4% chance to bind it until freed instead\n" },
+                          "  In a forest, if it fails its save: 4 in 100 to bind it until freed instead\n" },
         { SPELL_SANCTUARY, "  Duration: 15-16 game hours (18.75-20 minutes)\n" },
         { SPELL_BATTLETIDE, "  Damroll: +10\n  Hitroll: +10\n  Duration: 10-11 game hours (12.5-13.75 minutes)\n" },
         { SPELL_VAMPIRIC_TOUCH, "  Hitroll: +9 at your level, 50\n  Duration: 10-11 game hours" },
@@ -450,7 +450,7 @@ int main() {
                             "    a third of the target's, plus -5 to 15\n  Duration: 20 seconds\n"
                             "  On a wide success: 1-2 game hours (1.25-2.5 minutes)\n" },
         { SPELL_DISPEL_MAGIC, "  Damage to a conjured wall: 12-50 at your level, 50\n"
-                              "  A magic item: 20% chance to be destroyed\n"
+                              "  A magic item: 1 in 5 to be destroyed\n"
                               "  Otherwise its magic fades: 25 in 35 chance at your level, 50\n" },
         { SPELL_DARKNESS, "  Duration: 10 minutes 25 seconds at your level, 50\n"
                           "  In a magically lit room it only removes the light.\n" },
@@ -472,9 +472,9 @@ int main() {
                              "  An undead or angel at or above your level (not a player's pet) ends it.\n" },
         { SPELL_DIVINE_FURY, "  Damroll: +10 at your level, 50\n  Hitroll: +10\n" },
         { SPELL_FAERIE_FIRE, "  Target's armor class: +20\n  Duration: 5-6 game hours (6.25-7.5 minutes)\n"
-                             "  A visible, disguised target: 50% chance to lose its disguise\n" },
+                             "  A visible, disguised target: 1 in 2 to lose its disguise\n" },
         { SPELL_FAERIE_FOG, "  Reveals invisible and hidden creatures in the room that fail their save.\n"
-                            "  A visible, disguised creature: 50% chance to lose its disguise\n" },
+                            "  A visible, disguised creature: 1 in 2 to lose its disguise\n" },
         { SPELL_CHARM_PERSON, "  Highest target level: 33 at your level, 50\n"
                               "  Duration: up to 121-122 game hours (151.25-152.5 minutes)\n"
                               "  The more intelligent the target, the shorter it lasts.\n"
@@ -560,7 +560,7 @@ int main() {
     ch = char_data{};
     ch.player.level = 10;
     assert(entangle_facts(&ch) ==
-           "  In a forest, if it fails its save: 4% chance to bind it until freed instead\n");
+           "  In a forest, if it fails its save: 4 in 100 to bind it until freed instead\n");
     // A druid charms by its own level rules; a druid by second class too.
     ch.player.level = 50;
     ch.player.m_class = CLASS_DRUID;

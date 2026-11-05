@@ -45,6 +45,7 @@ extern int calming_delay();
 extern int calming_level_gap();
 extern int calming_gap_roll(const Rolls &rolls);
 extern int calming_notarget_percent();
+extern int calming_notarget_roll(const Rolls &rolls);
 
 /*
  * external variables
@@ -6697,7 +6698,7 @@ P_char PickTarget(P_char ch)
 
 		// Reflection Kobolds don't get innate calming anymore.
 		if (has_innate(t_ch, INNATE_CALMING) &&
-		    number(0, 101) <= calming_notarget_percent() &&
+		    calming_notarget_roll(live_rolls) <= calming_notarget_percent() &&
 		    !(IS_NPC(t_ch) && GET_VNUM(t_ch) == 250))
 		{
 			continue;

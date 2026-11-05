@@ -166,8 +166,8 @@ functions = [
     ('magic.c','static bool solar_flare_boosted('),
     ('magic.c','static int solar_flare_boost('),
     ('magic.c','static int solar_flare_blindness('),
-    ('magic.c','static int solar_flare_blind_odds('),
-    ('magic.c','static int solar_flare_immolate_odds('),
+    ('magic.c','static int solar_flare_blind_roll('),
+    ('magic.c','static int solar_flare_immolate_roll('),
     ('magic.c','void spell_solar_flare('),
 ]
 damage_source = extract_function('fight.c','int spell_damage(')

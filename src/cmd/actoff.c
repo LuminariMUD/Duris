@@ -3252,10 +3252,10 @@ static int combination_skill_required(int stage)
 	return required[stage];
 }
 
-// True when the combination falls apart before the first blow, 1 time in 51.
-static bool combination_fumble_roll(const Rolls &rolls)
+// The combination falls apart before the first blow when this rolls 0.
+static int combination_fumble_roll(const Rolls &rolls)
 {
-	return !rolls.number(0, 50);
+	return rolls.number(0, 50);
 }
 
 // The monk's lag after the blows, in pulses.
@@ -3299,7 +3299,7 @@ std::string combination_facts(P_char ch)
 		fact("Preparing before the first blow", seconds(combination_delay(GET_LEVEL(ch)))) +
 		fact("Your lag after the blows", seconds(combination_lag())) +
 		fact("Before you can start another", real_time(combination_rest())) +
-		fact("Chance it falls apart", "1 in 51");
+		fact("Chance it falls apart", one_in(combination_fumble_roll));
 	if (GET_LEVEL(ch) >= 50)
 		facts += fact("Blow 7 stuns unless the target saves", seconds(combination_stun()));
 	return facts + "  Each later blow also needs a roll; a miss ends the combination.\n"
@@ -3356,7 +3356,7 @@ void event_combination(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 
 	skill = GET_CHAR_SKILL(ch, SKILL_COMBINATION);
 
-	if (combination_fumble_roll(live_rolls))
+	if (!combination_fumble_roll(live_rolls))
 	{
 		act("&+R$n attempts a combination, but falls flat on $s face!", FALSE, ch, 0, 0,
 		    TO_ROOM);
@@ -3478,10 +3478,10 @@ void do_combination(P_char ch, char * /*argument*/, int /*cmd*/)
 	act("&+LYou begin moving into position for a combination...&n", TRUE, ch, 0, 0, TO_CHAR);
 }
 
-// True when the barrage falls apart before the first attack, 1 time in 31.
-static bool blade_barrage_fumble_roll(const Rolls &rolls)
+// The barrage falls apart before the first attack when this rolls 0.
+static int blade_barrage_fumble_roll(const Rolls &rolls)
 {
-	return !rolls.number(0, 30);
+	return rolls.number(0, 30);
 }
 
 // The rating each attack needs for the next one to follow; the last attack has no next.
@@ -3520,7 +3520,7 @@ std::string blade_barrage_facts(P_char ch)
 		    seconds(blade_barrage_delay(GET_LEVEL(ch)))) +
 	       fact("Your lag once it starts", seconds(blade_barrage_lag())) +
 	       fact("Before you can start another", real_time(blade_barrage_rest())) +
-	       fact("Chance it falls apart, with no lag", "1 in 31") +
+	       fact("Chance it falls apart, with no lag", one_in(blade_barrage_fumble_roll)) +
 	       "  You must wield a weapon and be fighting. Each later attack also needs a\n"
 	       "  roll; a miss ends the barrage.\n";
 }
@@ -3563,7 +3563,7 @@ void event_barrage(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 
 	skill = GET_CHAR_SKILL(ch, SKILL_BLADE_BARRAGE);
 
-	if (blade_barrage_fumble_roll(live_rolls))
+	if (!blade_barrage_fumble_roll(live_rolls))
 	{
 		act("&+R$n attempts a fancy attack, but almost cuts $s fingers off in the process!",
 		    FALSE, ch, 0, 0, TO_ROOM);
@@ -4135,16 +4135,16 @@ static int kick_groin_lag()
 	return (int)(PULSE_VIOLENCE * get_property("kick.groinkick.victimlag", 1.000));
 }
 
-// True on the 1 kick in 11 that lands low on a bigger humanoid.
-static bool kick_low_roll(const Rolls &rolls)
+// A kick lands low on a bigger humanoid when this rolls 0.
+static int kick_low_roll(const Rolls &rolls)
 {
-	return !rolls.number(0, 10);
+	return rolls.number(0, 10);
 }
 
-// True on the 1 in 25 kick into a wall or low kick that stuns.
-static bool kick_stun_roll(const Rolls &rolls)
+// A kick into a wall or a low kick stuns when this rolls 0.
+static int kick_stun_roll(const Rolls &rolls)
 {
-	return !rolls.number(0, 24);
+	return rolls.number(0, 24);
 }
 
 // How long, in pulses, a kick into a wall stuns.
@@ -4182,14 +4182,16 @@ std::string kick_facts(P_char ch)
 	       fact("Target's lag if kicked out of the room", seconds(kick_room_lag())) +
 	       fact("Target's lag if kicked into a wall instead", seconds(kick_wall_lag())) +
 	       fact("  Chance that also stuns it",
-		    "1 in 25, for " + seconds(kick_wall_stun(lowest_rolls)) + " to " +
-			    seconds(kick_wall_stun(highest_rolls))) +
+		    one_in(kick_stun_roll) + ", for " + seconds(kick_wall_stun(lowest_rolls)) +
+			    " to " + seconds(kick_wall_stun(highest_rolls))) +
 	       "    (only a target 2 or more sizes smaller than you can be sent flying)\n" +
 	       fact("Target's lag after a low kick", seconds(kick_groin_lag())) +
 	       fact("  Chance that also stuns it",
-		    "1 in 25, for " + seconds(kick_groin_stun(lowest_rolls)) + " to " +
-			    seconds(kick_groin_stun(highest_rolls))) +
-	       "    (only a humanoid 2 or more sizes bigger than you, at most 1 kick in 11,\n"
+		    one_in(kick_stun_roll) + ", for " + seconds(kick_groin_stun(lowest_rolls)) +
+			    " to " + seconds(kick_groin_stun(highest_rolls))) +
+	       "    (only a humanoid 2 or more sizes bigger than you, at most " +
+	       one_in(kick_low_roll) +
+	       " kicks,\n"
 	       "    after the takedown roll)\n"
 	       "  An immaterial target takes no damage. A stun needs a failed save, and\n"
 	       "  elites can't be stunned. The target's defenses apply to the damage after.\n";
@@ -4542,7 +4544,7 @@ void kick(P_char ch, P_char victim)
 		{
 			forced_rebound_messages(ch, victim, movement.reason, false);
 			SET_POS(victim, POS_PRONE + GET_STAT(victim));
-			if (kick_stun_roll(live_rolls) && !IS_STUNNED(victim))
+			if (!kick_stun_roll(live_rolls) && !IS_STUNNED(victim))
 				Stun(victim, ch, kick_wall_stun(live_rolls), TRUE);
 			stop_fighting(victim);
 			CharWait(victim, kick_wall_lag());
@@ -4550,7 +4552,7 @@ void kick(P_char ch, P_char victim)
 		return;
 	}
 	if (IS_HUMANOID(victim) && takedown_chance > random_number && csize < vsize &&
-	    kick_low_roll(live_rolls))
+	    !kick_low_roll(live_rolls))
 	{
 		act("Your nimble kick slams into $N's groin, and $N whimpers before crashing to the ground!",
 		    FALSE, ch, 0, victim, TO_CHAR);
@@ -4562,7 +4564,7 @@ void kick(P_char ch, P_char victim)
 		update_group_vitals(victim);
 		gmcp_char_vitals(victim);
 
-		if (kick_stun_roll(live_rolls))
+		if (!kick_stun_roll(live_rolls))
 		{
 			// Added a little more play in the stun time (from 1 pulse vio. to 3 1/4 pulse vio's).
 			Stun(victim, ch, kick_groin_stun(live_rolls), TRUE);
@@ -4630,6 +4632,12 @@ static int dragon_roar_lag()
 	return PULSE_VIOLENCE;
 }
 
+// A dragon hunter's roar scares a target when this rolls below its threshold.
+static int dragon_roar_flee_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 100);
+}
+
 // A dragon hunter's roar: the threshold of its flee roll, and the highest level it scares.
 static int dragon_roar_flee_threshold()
 {
@@ -4650,7 +4658,10 @@ std::string dragon_roar_facts(P_char ch)
 	std::string flee;
 	if (is_hunter)
 		flee = fact("Chance each other target also flees",
-			    std::to_string(dragon_roar_flee_threshold()) + " in 101, then " +
+			    chance_under(dragon_roar_flee_threshold(),
+					 dragon_roar_flee_roll(lowest_rolls),
+					 dragon_roar_flee_roll(highest_rolls)) +
+				    ", then " +
 				    std::to_string(GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR)) +
 				    " in 101") +
 		       "    (up to level " + std::to_string(dragon_roar_flee_level(ch, empower)) +
@@ -4840,7 +4851,7 @@ void do_dragon_roar(P_char ch, char * /*argument*/, int /*cmd*/)
 					{
 						if (is_hunter)
 						{
-							if ((number(0, 100) <
+							if ((dragon_roar_flee_roll(live_rolls) <
 							     dragon_roar_flee_threshold()) &&
 							    (number(0, 100) <
 							     GET_CHAR_SKILL(ch,
@@ -6290,6 +6301,12 @@ static int headbutt_weak_daze()
 	return (int)(PULSE_VIOLENCE * 0.5);
 }
 
+// Any roll but 0 stuns and lags a target that sees stars.
+static int headbutt_weak_daze_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 4);
+}
+
 // The chance threshold a second headbutt rolls 0-300 against.
 static int double_headbutt_threshold(P_char ch)
 {
@@ -6336,7 +6353,10 @@ std::string headbutt_facts(P_char ch)
 					     seconds(headbutt_knockout(highest_rolls))) +
 	       fact("  Stunned and lagged",
 		    seconds(headbutt_daze_stun()) + " and " + seconds(headbutt_daze_lag())) +
-	       fact("  Stunned and lagged, 4 times in 5", seconds(headbutt_weak_daze()) + " each") +
+	       fact("  Stunned and lagged, " + chance_under(headbutt_weak_daze_roll(highest_rolls),
+							    headbutt_weak_daze_roll(lowest_rolls),
+							    headbutt_weak_daze_roll(highest_rolls)),
+		    seconds(headbutt_weak_daze()) + " each") +
 	       fact("  Otherwise lagged", seconds(headbutt_daze_lag())) +
 	       "  The target must be standing and within one size of you.\n";
 }
@@ -6691,7 +6711,7 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 		{
 			send_to_char("Wow!  Look at all those stars!\n", victim);
 
-			if (number(0, 4))
+			if (headbutt_weak_daze_roll(live_rolls))
 			{
 				CharWait(victim, headbutt_weak_daze());
 				Stun(victim, ch, headbutt_weak_daze(), FALSE);
@@ -6768,10 +6788,10 @@ static int garrote_bleed_damage(const Rolls &rolls, P_char ch)
 	return rolls.dice(GET_LEVEL(ch) / 18, 4);
 }
 
-// True on the 1 round in 10 that stops the target's casting.
-static bool garrote_stops_casting_roll(const Rolls &rolls)
+// A round stops the target's casting when this rolls 0.
+static int garrote_stops_casting_roll(const Rolls &rolls)
 {
-	return !rolls.number(0, 9);
+	return rolls.number(0, 9);
 }
 
 std::string garrote_facts(P_char ch)
@@ -6785,7 +6805,8 @@ std::string garrote_facts(P_char ch)
 		    show({ garrote_bleed_damage(lowest_rolls, ch),
 			   garrote_bleed_damage(highest_rolls, ch) })) +
 	       "  Bleeding grows with the target's level, skips defenses and never kills.\n" +
-	       fact("Chance each round stops casting", "1 in 10, not elites or greater races") +
+	       fact("Chance each round stops casting",
+		    one_in(garrote_stops_casting_roll) + ", not elites or greater races") +
 	       fact("Your lag", seconds(garrote_hit_lag())) +
 	       fact("Before you can garrote again", seconds(garrote_hit_rest()) + " after a hit, " +
 							    seconds(garrote_miss_rest()) +
@@ -6816,7 +6837,7 @@ void event_garroteproc(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 			act("$n&+r's blo&+Rod spla&+rtter&+Rs as it hits the ground.&N", TRUE, ch,
 			    NULL, NULL, TO_NOTVICT);
 			make_bloodstain(ch);
-			if (garrote_stops_casting_roll(live_rolls) && !IS_GREATER_RACE(ch) &&
+			if (!garrote_stops_casting_roll(live_rolls) && !IS_GREATER_RACE(ch) &&
 			    !IS_ELITE(ch))
 			{
 				StopCasting(ch);
@@ -6830,7 +6851,7 @@ void event_garroteproc(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 			act("$n&+r's wound gushes &+Rblood &+rall over the surrounding area.", TRUE,
 			    ch, NULL, NULL, TO_NOTVICT);
 			make_bloodstain(ch);
-			if (garrote_stops_casting_roll(live_rolls) && !IS_GREATER_RACE(ch) &&
+			if (!garrote_stops_casting_roll(live_rolls) && !IS_GREATER_RACE(ch) &&
 			    !IS_ELITE(ch))
 			{
 				StopCasting(ch);
@@ -7416,10 +7437,15 @@ static int backstab_lag()
 	return 3 * WAIT_SEC / 2;
 }
 
-// True when a target's air aura foils the stab.
-static bool backstab_air_aura_roll(const Rolls &rolls)
+// A target's air aura foils the stab when this rolls below backstab_air_aura_below().
+static int backstab_air_aura_roll(const Rolls &rolls)
 {
-	return rolls.number(1, 20) < 7;
+	return rolls.number(1, 20);
+}
+
+static int backstab_air_aura_below()
+{
+	return 7;
 }
 
 // The chance thresholds of a critical stab and a spinal tap, rolled 1-100.
@@ -7487,7 +7513,9 @@ std::string backstab_facts(P_char ch)
 	       fact("Least against an incapacitated target",
 		    std::to_string(backstab_incapacitated_damage())) +
 	       fact("Your lag", seconds(backstab_lag())) +
-	       fact("Chance a target's air aura foils it", "6 in 20") +
+	       fact("Chance a target's air aura foils it",
+		    chance_under(backstab_air_aura_below(), backstab_air_aura_roll(lowest_rolls),
+				 backstab_air_aura_roll(highest_rolls))) +
 	       "  Armor and other damage reductions don't apply. Stoneskin, biofeedback,\n"
 	       "  shadow shield, drakescale aegis, vines and ironwood each absorb a stab,\n"
 	       "  leaving 1 damage, and then end. You need a piercing weapon, and a target\n"
@@ -7959,7 +7987,7 @@ bool backstab(P_char ch, P_char victim)
 
 	if (IS_AFFECTED2(victim, AFF2_AIR_AURA))
 	{
-		if (backstab_air_aura_roll(live_rolls))
+		if (backstab_air_aura_roll(live_rolls) < backstab_air_aura_below())
 		{
 			act("As you try to backstab $N you simply pass through $M.", FALSE, ch, 0,
 			    victim, TO_CHAR);
@@ -9139,6 +9167,12 @@ static int tackle_self_stun()
 	return PULSE_VIOLENCE;
 }
 
+// A tackle outside a fight can carry you both out of the room when this rolls 0.
+static int tackle_carry_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 4);
+}
+
 std::string tackle_facts(P_char)
 {
 	return fact("Your lag and the target's on a hit", seconds(tackle_lag()) + " each") +
@@ -9157,8 +9191,8 @@ std::string tackle_facts(P_char)
 	       fact("Target's combat pulse", "+" + std::to_string(tackle_combat_pulse()) + ", " +
 						     game_hours(tackle_combat_pulse_duration())) +
 	       "  Centaurs, quadrupeds and driders can't tackle. Tackling outside a fight\n"
-	       "  can carry you both out of the room, 1 time in 5.\n" +
-	       takedown_rest_note();
+	       "  can carry you both out of the room, " +
+	       one_in(tackle_carry_roll) + ".\n" + takedown_rest_note();
 }
 
 void do_tackle(P_char ch, char *arg, int /*cmd*/)
@@ -9312,7 +9346,8 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 		if (!IS_TRUSTED(ch))
 			set_short_affected_by(ch, SKILL_BASH, tackle_rest());
 
-		if (!IS_FIGHTING(ch) && !number(0, 4) && GET_POS(vict) == POS_STANDING &&
+		if (!IS_FIGHTING(ch) && !tackle_carry_roll(live_rolls) &&
+		    GET_POS(vict) == POS_STANDING &&
 		    !IS_ROOM(ch->in_room, ROOM_GUILD)) // Prevents tackling past golems.
 		{
 			door = number(0, NUM_EXITS - 1);
@@ -10100,10 +10135,10 @@ static int maul_aware_duration()
 	return 1;
 }
 
-// True on the 1 maul in 4 that clips a target of the wrong size for half damage.
-static bool maul_clip_roll(const Rolls &rolls)
+// A maul clips a target of the wrong size for half damage when this rolls 0.
+static int maul_clip_roll(const Rolls &rolls)
 {
-	return !rolls.number(0, 3);
+	return rolls.number(0, 3);
 }
 
 std::string maul_facts(P_char ch)
@@ -10119,7 +10154,7 @@ std::string maul_facts(P_char ch)
 	       fact("Your lag on a hit", seconds(maul_hit_lag(mauler))) +
 	       fact("Your lag on a miss or a target of the wrong size",
 		    seconds(maul_failed_lag())) +
-	       fact("Chance the wrong size still takes half damage", "1 in 4") +
+	       fact("Chance the wrong size still takes half damage", one_in(maul_clip_roll)) +
 	       fact("Your lag if the target foils the takedown", seconds(maul_penalty_lag())) +
 	       fact("Your lag if the target is asleep",
 		    seconds(takedown_sleeping_target_lag()) + " (you attack it instead)") +
@@ -10253,7 +10288,7 @@ void maul(P_char ch, P_char victim)
 		    FALSE, ch, 0, victim, TO_VICT);
 		act("&+yYou slam up against&n $N!", FALSE, ch, 0, victim, TO_CHAR);
 
-		if (maul_clip_roll(live_rolls))
+		if (!maul_clip_roll(live_rolls))
 		{
 			act("$n &+ygrowls&n on impact, and slams $s head into $N before falling to $s knees!",
 			    FALSE, ch, 0, victim, TO_NOTVICT);
@@ -10275,7 +10310,7 @@ void maul(P_char ch, P_char victim)
 		    TO_VICT);
 		send_to_char("&+yMauling creatures of this minute size is hopeless at best.\n", ch);
 
-		if (maul_clip_roll(live_rolls))
+		if (!maul_clip_roll(live_rolls))
 		{
 			act("As $n falls, $e delivers a nasty backhand blow to $N!", FALSE, ch, 0,
 			    victim, TO_NOTVICT);
@@ -11762,10 +11797,16 @@ static int springleap_crash_damage(P_char ch)
 	return GET_MAX_HIT(ch) / 25;
 }
 
-// True on the 3 leaps in 4 that a dragon monk lands as a plain leap.
-static bool springleap_plain_roll(const Rolls &rolls)
+// A dragon monk lands a plain leap unless this rolls 0.
+static int springleap_plain_roll(const Rolls &rolls)
 {
 	return rolls.number(0, 3);
+}
+
+// A dragon monk's stronger leap can stun, unless this rolls 0.
+static int springleap_super_stun_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
 }
 
 // The damage of a dragon monk's stronger leap.
@@ -11795,11 +11836,12 @@ std::string springleap_facts(P_char ch)
 		fact("Before you can leap again", seconds(springleap_rest())) +
 		fact("Target's lag", seconds(springleap_target_lag()));
 	if (GET_SPEC(ch, CLASS_MONK, SPEC_WAYOFDRAGON))
-		facts += fact("Chance of your dragon leap", "1 in 4") +
+		facts += fact("Chance of your dragon leap", one_in(springleap_plain_roll)) +
 			 fact("  Its damage", show({ springleap_super_damage(lowest_rolls),
 						     springleap_super_damage(highest_rolls) })) +
 			 fact("  Chance it also stuns, if the target fails a save",
-			      "1 in 2, for " + seconds(springleap_super_stun()));
+			      one_in(springleap_super_stun_roll) + ", for " +
+				      seconds(springleap_super_stun()));
 	return facts + "  The target must be your size or one bigger.\n" + takedown_rest_note();
 }
 
@@ -12077,7 +12119,7 @@ void do_springleap(P_char ch, char *argument, int /*cmd*/)
 
 		if (!damage(ch, vict, springleap_super_damage(live_rolls), SKILL_SPRINGLEAP))
 		{
-			if (number(0, 1))
+			if (springleap_super_stun_roll(live_rolls))
 				Stun(vict, ch, springleap_super_stun(), TRUE);
 		}
 		else
@@ -13374,6 +13416,12 @@ void gaze(P_char ch, P_char victim)
 	}
 }
 
+// Any roll but 0 stops the target's casting on a hit.
+static int restrain_stops_casting_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
 // The restrainer's lag, in pulses, by what happened.
 static int restrain_refused_lag()
 {
@@ -13429,8 +13477,11 @@ std::string restrain_facts(P_char ch)
 								    anatomy_kill_bonus(ch))) +
 			    " hit points, with your anatomy") +
 	       "  The target must be within 2 sizes; one not standing is very hard to restrain.\n"
-	       "  A hit stops casting, 2 times in 3.\n" +
-	       takedown_rest_note();
+	       "  A hit stops casting, " +
+	       chance_under(restrain_stops_casting_roll(highest_rolls),
+			    restrain_stops_casting_roll(lowest_rolls),
+			    restrain_stops_casting_roll(highest_rolls)) +
+	       ".\n" + takedown_rest_note();
 }
 
 void restrain(P_char ch, P_char victim)
@@ -13654,7 +13705,7 @@ void restrain(P_char ch, P_char victim)
 			{
 				CharWait(victim, restrain_npc_lag());
 			}
-			if (number(0, 2))
+			if (restrain_stops_casting_roll(live_rolls))
 			{
 				StopCasting(victim);
 			}
@@ -14210,10 +14261,15 @@ static int legsweep_rest()
 	return (int)(3.5 * PULSE_VIOLENCE);
 }
 
-// True on the 15 sweeps in 100 that leave the target prone.
-static bool legsweep_prone_roll(const Rolls &rolls)
+// A sweep leaves the target prone when this rolls at most legsweep_prone_up_to().
+static int legsweep_prone_roll(const Rolls &rolls)
 {
-	return rolls.number(1, 100) <= 15;
+	return rolls.number(1, 100);
+}
+
+static int legsweep_prone_up_to()
+{
+	return 15;
 }
 
 std::string legsweep_facts(P_char)
@@ -14225,7 +14281,9 @@ std::string legsweep_facts(P_char)
 		    seconds(takedown_sleeping_target_lag()) + " (you attack it instead)") +
 	       fact("Your lag if the target evades", seconds(takedown_evade_lag())) +
 	       fact("Before your next takedown after a hit", seconds(legsweep_rest())) +
-	       fact("Chance a hit leaves the target prone", "15 in 100") +
+	       fact("Chance a hit leaves the target prone",
+		    chance_under(legsweep_prone_up_to() + 1, legsweep_prone_roll(lowest_rolls),
+				 legsweep_prone_roll(highest_rolls))) +
 	       "  The target must be within one size of you. Centaurs, quadrupeds and\n"
 	       "  driders can't sweep.\n" +
 	       takedown_rest_note();
@@ -14371,7 +14429,7 @@ void do_legsweep(P_char ch, char *arg, int /*cmd*/)
 		}
 
 		// 15% chance to ass target.
-		if (legsweep_prone_roll(live_rolls))
+		if (legsweep_prone_roll(live_rolls) <= legsweep_prone_up_to())
 		{
 			act("You quickly maneuver alongside $N&n, drop low and &+RCOMPLETELY&n &+Wsweep&n $S legs out from under $M!",
 			    FALSE, ch, 0, vict, TO_CHAR);

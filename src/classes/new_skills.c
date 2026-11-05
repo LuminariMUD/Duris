@@ -4323,6 +4323,12 @@ static int appraise_roll(const Rolls &rolls)
 	return rolls.number(1, 101);
 }
 
+// A wild estimate reads high unless this rolls 0.
+static int appraise_wild_side_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
 static int appraise_wild_multiple(const Rolls &rolls)
 {
 	return rolls.number(1, 3);
@@ -4375,8 +4381,8 @@ std::string appraise_facts(P_char ch)
 			    " of the value") +
 	       fact("Otherwise it reads low",
 		    "by up to 1/" + std::to_string(appraise_miss_low_divisor(lowest_rolls))) +
-	       fact("Chance of a wild estimate", one_in(appraise_roll)) +
-	       "    (half the time high by up to " +
+	       fact("Chance of a wild estimate", one_in(appraise_roll)) + "    (" +
+	       one_in(appraise_wild_side_roll) + " high by up to " +
 	       std::to_string(appraise_wild_multiple(highest_rolls)) +
 	       " times the value, else low by up to 1/" +
 	       std::to_string(appraise_wild_divisor(lowest_rolls)) + ")\n" +
@@ -4419,7 +4425,7 @@ void do_appraise(P_char ch, char *argument, int /*cmd*/)
 	/* if it is a complete failure, then the appraise is way off */
 	if (percent == 101)
 	{
-		if ((number(0, 1)))
+		if ((appraise_wild_side_roll(live_rolls)))
 			estimate_value += (estimate_value * (appraise_wild_multiple(live_rolls)));
 		else
 			estimate_value -= (estimate_value / (appraise_wild_divisor(live_rolls)));

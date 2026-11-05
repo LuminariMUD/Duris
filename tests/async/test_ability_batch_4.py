@@ -113,9 +113,9 @@ apocalypse_pestilence_damage stornogs_spheres_count warring_zeal_duration
 warring_zeal_hitroll dazzle_duration accel_healing_duration accel_healing_regen
 pleasantry_duration command_stun group_heal_base group_heal_amount chaos_volley_damage
 chaos_volley_wound_bonus chaos_volley_drain chaos_volley_failed_save chaos_shield_duration
-chaos_shield_chance knock_chance knock_fail_lag knock_lag negative_concussion_blast_damage
-acidimmolate_damage acidimmolate_burn_damage chaotic_ripple_damage chaotic_ripple_rays
-chaotic_ripple_blast chaotic_ripple_bolts blink_fall_lag divine_blessing_parry_chance
+chaos_shield_chance chaos_shield_roll knock_chance knock_fail_lag knock_lag negative_concussion_blast_damage
+acidimmolate_damage acidimmolate_burn_damage chaotic_ripple_damage chaotic_ripple_rays chaotic_ripple_big_surge_roll chaotic_ripple_big_surge_rays chaotic_ripple_small_surge_roll chaotic_ripple_small_surge_rays
+chaotic_ripple_blast chaotic_ripple_bolts blink_fall_lag divine_blessing_parry_chance divine_blessing_parry_roll
 divine_blessing_parry_alignment divine_blessing_duration divine_blessing_min_alignment
 divine_blessing_penalty
 natures_calling_level perm_increase_amount perm_increase_max perm_increase_stat
@@ -209,7 +209,7 @@ CALLS = {
                            "GET_HIT(ch) -= chaos_volley_drain(dam);",
                            "dam = chaos_volley_failed_save(dam);"],
     "spell_chaos_shield": ["af.duration = chaos_shield_duration(ch);"],
-    "parse_chaos_shield": ["chance = chaos_shield_chance();", "if (chance < number(0, 101))"],
+    "parse_chaos_shield": ["chance = chaos_shield_chance();", "if (chance < chaos_shield_roll(live_rolls))"],
     "spell_knock": ["chance = knock_chance(ch);", "CharWait(ch, knock_fail_lag());",
                     "CharWait(ch, knock_lag());"],
     "spell_negative_concussion_blast": ["dam = negative_concussion_blast_damage(live_rolls, level);"],
@@ -222,7 +222,7 @@ CALLS = {
                              "spell_damage(ch, victim, chaotic_ripple_bolts(dam), SPLDAM_GENERIC"],
     "spell_blink": ["CharWait(tch, blink_fall_lag());"],
     "divine_blessing_parry": ["GET_ALIGNMENT(ch) > divine_blessing_parry_alignment()",
-                              "number(0, 99) < divine_blessing_parry_chance()"],
+                              "divine_blessing_parry_roll(live_rolls) < divine_blessing_parry_chance()"],
     "spell_divine_blessing": ["if (GET_ALIGNMENT(ch) < divine_blessing_min_alignment())",
                               "spell_damage(ch, ch, divine_blessing_penalty(), SPLDAM_HOLY",
                               "af.duration = divine_blessing_duration();"],
@@ -608,11 +608,12 @@ int main() {
                                    "  Burning, round 4 on: 54-62 each, until it wears off\n"
                                    "  Round 3 burns for no more than rounds 1-2. Spell damage modifiers and\n" },
         { chaotic_ripple_facts(&ch), "  Damage: 401-450 at your level, 50\n"
-                                     "  Rays that follow: 2-4, rarely more\n"
+                                     "  Rays that follow: 2-4\n"
+                                     "    (1 in 100 add 2-4 more, else 1 in 20 add 1-2 more)\n"
                                      "  Fireball or freezing ray: 160-180\n  Twin bolts: 140-157\n" },
         { blink_facts(&ch), "  An attacker who stumbles is lagged: 4 seconds\n" },
         { divine_blessing_facts(&ch), "  Duration: 15-16 game hours (18.75-20 minutes)\n"
-                                      "  Chance to parry an attack: 10% above alignment 990\n"
+                                      "  Chance to parry an attack: 10 in 100 above alignment 990\n"
                                       "  If your alignment is below 950: 600 holy damage to you, which cannot kill\n"
                                       "  That damage is before spell damage modifiers, and the blessing fails.\n" },
         { natures_calling_facts(&ch), "  Blessings cast at level: 25\n" },

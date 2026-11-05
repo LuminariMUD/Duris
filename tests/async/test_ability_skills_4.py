@@ -18,7 +18,7 @@ from _source_contract import function_bodies, strip_comments
 
 # File order matters: each file's functions may call those of the files before it.
 SHARED = {
-    "classes/new_skills.c": """chant_note feign_death_threshold feign_death_rest feign_death_forget_level feign_death_lag feign_death_failed_lag calm_lag diamond_soul_duration diamond_soul_rest diamond_soul_failed_lag diamond_soul_lag diamond_soul_save ki_strike_rest ki_strike_failed_lag ki_strike_fall_lag ki_strike_lag ki_strike_target_lag ki_strike_slow_roll ki_strike_anatomy_bonus ki_strike_slow_duration chant_roll_top chant_lag dragon_punch_size_gap dragon_punch_roll dragon_punch_damage dragon_punch_lag carve_roll appraise_roll appraise_wild_multiple appraise_wild_divisor appraise_miss_side_roll appraise_miss_high_divisor appraise_miss_low_divisor appraise_close_divisor appraise_lag chi_purge_poison_level chi_purge_curse_level chi_purge_blind_level chi_purge_wither_level chi_purge_disease_level chi_purge_failed_lag chi_purge_rest""".split(),
+    "classes/new_skills.c": """appraise_wild_side_roll chant_note feign_death_threshold feign_death_rest feign_death_forget_level feign_death_lag feign_death_failed_lag calm_lag diamond_soul_duration diamond_soul_rest diamond_soul_failed_lag diamond_soul_lag diamond_soul_save ki_strike_rest ki_strike_failed_lag ki_strike_fall_lag ki_strike_lag ki_strike_target_lag ki_strike_slow_roll ki_strike_anatomy_bonus ki_strike_slow_duration chant_roll_top chant_lag dragon_punch_size_gap dragon_punch_roll dragon_punch_damage dragon_punch_lag carve_roll appraise_roll appraise_wild_multiple appraise_wild_divisor appraise_miss_side_roll appraise_miss_high_divisor appraise_miss_low_divisor appraise_close_divisor appraise_lag chi_purge_poison_level chi_purge_curse_level chi_purge_blind_level chi_purge_wither_level chi_purge_disease_level chi_purge_failed_lag chi_purge_rest""".split(),
     "classes/avengers.c": """holy_smite_failed_lag holy_smite_lag holy_smite_damage holy_smite_blind_threshold holy_smite_blind_duration""".split(),
     "classes/disguise.c": """disguise_kit_roll disguise_score disguise_failed_lag disguise_size_lag disguise_lag disguise_remove_lag disguise_hit_points""".split(),
     "classes/dreadlord.c": """dread_wrath_ac""".split(),
@@ -110,7 +110,7 @@ HANDLER_CALLS = {
     ("classes/new_skills.c", "do_chant"): ["CharWait(ch, chant_lag());", "number(1, chant_roll_top(ch)) > (skl_lvl + GET_LEVEL(ch))", "chant_chi_purge(GET_LEVEL(ch), ch, NULL, 0, ch, NULL);"],
     ("classes/new_skills.c", "do_dragon_punch"): ["GET_ALT_SIZE(ch) - dragon_punch_size_gap()", "GET_ALT_SIZE(ch) + dragon_punch_size_gap()", "dam = dragon_punch_roll(live_rolls);", "dam = dragon_punch_damage(dam, skl_lvl);", "melee_damage(ch, vict, dam, PHSDAM_TOUCH, &messages);", "CharWait(ch, dragon_punch_lag());"],
     ("classes/new_skills.c", "do_carve"): ["percent = carve_roll(live_rolls);", "percent == 101", "percent > GET_CHAR_SKILL(ch, SKILL_CARVE)"],
-    ("classes/new_skills.c", "do_appraise"): ["percent = appraise_roll(live_rolls);", "percent == 101", "appraise_wild_multiple(live_rolls)", "appraise_wild_divisor(live_rolls)", "percent > GET_CHAR_SKILL(ch, SKILL_APPRAISE)", "appraise_miss_side_roll(live_rolls)",
+    ("classes/new_skills.c", "do_appraise"): ["percent = appraise_roll(live_rolls);", "percent == 101", "appraise_wild_side_roll(live_rolls)", "appraise_wild_multiple(live_rolls)", "appraise_wild_divisor(live_rolls)", "percent > GET_CHAR_SKILL(ch, SKILL_APPRAISE)", "appraise_miss_side_roll(live_rolls)",
                                               "appraise_miss_high_divisor(live_rolls)", "appraise_miss_low_divisor(live_rolls)", "appraise_close_divisor(live_rolls)", "appraise_close_divisor(live_rolls)", "CharWait(ch, appraise_lag());"],
     ("classes/new_skills.c", "chant_chi_purge"): ["GET_LEVEL(ch) > chi_purge_poison_level()", "GET_LEVEL(ch) > chi_purge_curse_level()", "GET_LEVEL(ch) > chi_purge_blind_level()", "GET_LEVEL(ch) > chi_purge_wither_level()", "GET_LEVEL(ch) > chi_purge_disease_level()",
                                                   "number(1, 100) > GET_CHAR_SKILL(ch, SKILL_CHI_PURGE)", "CharWait(ch, chi_purge_failed_lag());", "affect_timer(ch, chi_purge_rest(), SKILL_CHI_PURGE)"],
@@ -493,7 +493,7 @@ static void check_pages() {
                           "  A miss reads high: 2 in 3, by up to 1/1 of the value\n"
                           "  Otherwise it reads low: by up to 1/2\n"
                           "  Chance of a wild estimate: 1 in 101\n"
-                          "    (half the time high by up to 3 times the value, else low by up to 1/2)\n"
+                          "    (1 in 2 high by up to 3 times the value, else low by up to 1/2)\n"
                           "  Your lag: 8 seconds\n");
     EXACT(two_weapon_facts, "  Hitroll and damroll while you wield a second weapon: +6\n");
     EXACT(scribe_facts, "  Time for the first page: 0.25 seconds\n"
