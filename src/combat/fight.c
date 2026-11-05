@@ -147,6 +147,14 @@ extern P_char get_dragoon_mount(P_char ch);
 // extern struct mm_ds *wdead_trophy_pool;
 P_char combat_list = 0; /* head of l-list of fighting chars  */
 P_char combat_next_ch = 0; /* Next in combat global trick    */
+// Numbers shared with spell info pages, defined beside their spells.
+extern int storm_shield_discharge_roll(const Rolls &rolls);
+extern int thornskin_damage(const Rolls &rolls, int level);
+extern double thornskin_ironwood_multiplier();
+extern int kanchelsis_second_attack_level();
+extern int kanchelsis_third_attack_level();
+extern int kanchelsis_fourth_attack_level();
+
 float dam_factor[LAST_DF + 1];
 float racial_spldam_offensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE];
 float racial_spldam_defensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE];
@@ -4890,12 +4898,13 @@ int check_shields(P_char ch, P_char victim, int dam, int flags)
 		double thornDamage =
 			afp == NULL ?
 				2 :
-				dice(MAX(2, afp->level / 10),
-				     2); // 2 dam for bit, (level/10, min 2)d2 - 2d2 at 1, 5d2 at 50
+				thornskin_damage(
+					live_rolls,
+					afp->level); // 2 dam for bit, (level/10, min 2)d2 - 2d2 at 1, 5d2 at 50
 		if (affected_by_spell(victim, SPELL_IRONWOOD))
 		{
 			// double damage if ironwood is up as well
-			thornDamage *= 2.0;
+			thornDamage *= thornskin_ironwood_multiplier();
 		}
 		result = raw_damage(victim, ch, thornDamage,
 				    RAWDAM_DEFAULT | PHSDAM_NOREDUCE | flags, &thornskin);
@@ -8476,7 +8485,8 @@ int blockSucceed(P_char victim, P_char attacker, P_obj wpn)
 	if (number(0, attackerweaponskill) > number(0, learned))
 		return false;
 
-	if (affected_by_spell(victim, SPELL_STORMSHIELD) && !number(0, 2))
+	if (affected_by_spell(victim, SPELL_STORMSHIELD) &&
+	    !storm_shield_discharge_roll(live_rolls))
 	{
 		act("Your shield &+Yflares&n up and discharges a bolt of &+Blightning&n towards $n.",
 		    FALSE, attacker, 0, victim, TO_VICT);
@@ -9500,14 +9510,16 @@ int calculate_attacks(P_char ch, int attacks[])
 	{
 		ADD_ATTACK(PRIMARY_WEAPON);
 
-		if (GET_LEVEL(ch) >= 41 && ch->equipment[SECONDARY_WEAPON] &&
+		if (GET_LEVEL(ch) >= kanchelsis_second_attack_level() &&
+		    ch->equipment[SECONDARY_WEAPON] &&
 		    number(1, 100) < GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD))
 			ADD_ATTACK(SECONDARY_WEAPON);
 
-		if (GET_LEVEL(ch) >= 51)
+		if (GET_LEVEL(ch) >= kanchelsis_third_attack_level())
 			ADD_ATTACK(PRIMARY_WEAPON);
 
-		if (GET_LEVEL(ch) >= 56) // Long into wipe, give them something to strive for
+		if (GET_LEVEL(ch) >=
+		    kanchelsis_fourth_attack_level()) // Long into wipe, give them something to strive for
 			ADD_ATTACK(SECONDARY_WEAPON);
 	}
 

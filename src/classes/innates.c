@@ -4078,7 +4078,9 @@ bool resists_spell(P_char caster, P_char victim)
 		if (get_spell_from_room(&world[victim->in_room], SPELL_DESECRATE_LAND))
 		{
 			// 10% penalty to shrug if desecrate land is active.
-			if (shrugroll > get_innate_resistance(victim) - 10)
+			extern int desecrate_land_shrug_penalty();
+			if (shrugroll >
+			    get_innate_resistance(victim) - desecrate_land_shrug_penalty())
 			{
 				return FALSE;
 			}

@@ -24,6 +24,53 @@
 #include "combat/damage.h"
 #include "item/objmisc.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
+
+static int baladors_duration()
+{
+	return 32;
+}
+
+static int baladors_alignment_above()
+{
+	return 25;
+}
+
+static int baladors_saves_above()
+{
+	return 45;
+}
+
+static int baladors_save()
+{
+	return -3;
+}
+
+static int baladors_armor_above()
+{
+	return 4;
+}
+
+static int baladors_armor_class()
+{
+	return -20;
+}
+
+std::string baladors_protection_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	std::string text = fact("Duration", game_hours(baladors_duration()));
+	if (level > baladors_armor_above())
+		text += fact("Armor class", std::to_string(baladors_armor_class()));
+	else
+		text += "  It gives you nothing until level " +
+			std::to_string(baladors_armor_above() + 1) + ".\n";
+	if (level > baladors_alignment_above())
+		text += "  It protects you from good and from evil.\n";
+	if (level > baladors_saves_above())
+		text += fact("All five saves", std::to_string(baladors_save()));
+	return text;
+}
 
 void spell_baladors_protection(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			       P_char victim, P_obj /*obj*/)
@@ -38,17 +85,17 @@ void spell_baladors_protection(int /*level*/, P_char ch, char * /*arg*/, [[maybe
 		{
 			if (af1->type == SPELL_BALADORS_PROTECTION)
 			{
-				af1->duration = 32;
+				af1->duration = baladors_duration();
 			}
 		}
 		return;
 	}
 	bzero(&af, sizeof(af));
 
-	if (GET_LEVEL(ch) > 25)
+	if (GET_LEVEL(ch) > baladors_alignment_above())
 	{
 		af.type = SPELL_BALADORS_PROTECTION;
-		af.duration = 32;
+		af.duration = baladors_duration();
 		af.bitvector = AFF_PROTECT_GOOD;
 		affect_to_char(victim, &af);
 
@@ -56,38 +103,38 @@ void spell_baladors_protection(int /*level*/, P_char ch, char * /*arg*/, [[maybe
 		affect_to_char(victim, &af);
 	}
 
-	if (GET_LEVEL(ch) > 45)
+	if (GET_LEVEL(ch) > baladors_saves_above())
 	{
 		af.type = SPELL_BALADORS_PROTECTION;
-		af.duration = 32;
+		af.duration = baladors_duration();
 		af.location = APPLY_SAVING_SPELL;
-		af.modifier = -3;
+		af.modifier = baladors_save();
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_SAVING_PARA;
-		af.modifier = -3;
+		af.modifier = baladors_save();
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_SAVING_ROD;
-		af.modifier = -3;
+		af.modifier = baladors_save();
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_SAVING_FEAR;
-		af.modifier = -3;
+		af.modifier = baladors_save();
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_SAVING_BREATH;
-		af.modifier = -3;
+		af.modifier = baladors_save();
 		affect_to_char(victim, &af);
 	}
 
 	//  if( GET_LEVEL(ch) > 4 && !IS_AFFECTED(victim, AFF_ARMOR) )
 	// Taking the AFF_ARMOR part out of this so it'll give some ac regardless.
-	if (GET_LEVEL(ch) > 4)
+	if (GET_LEVEL(ch) > baladors_armor_above())
 	{
 		af.type = SPELL_BALADORS_PROTECTION;
-		af.duration = 32;
-		af.modifier = -20;
+		af.duration = baladors_duration();
+		af.modifier = baladors_armor_class();
 
 		//    af.bitvector = AFF_ARMOR;
 		af.location = APPLY_AC;
@@ -95,6 +142,26 @@ void spell_baladors_protection(int /*level*/, P_char ch, char * /*arg*/, [[maybe
 	}
 
 	send_to_char("&+WYou feel Balador's protection wash over you.&n\n", victim);
+}
+
+static int ferrix_precision_duration()
+{
+	return 32;
+}
+
+static int ferrix_precision_bonus(int level)
+{
+	return ((int)(level / 7)) + 2;
+}
+
+std::string ferrix_precision_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Maximum dexterity and hitroll",
+		    "+" + std::to_string(ferrix_precision_bonus(level)) + " at your level, " +
+			    std::to_string(level)) +
+	       fact("Duration", game_hours(ferrix_precision_duration())) +
+	       "  Casting it again renews the duration.\n";
 }
 
 void spell_ferrix_precision(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -110,7 +177,7 @@ void spell_ferrix_precision(int level, P_char ch, char * /*arg*/, [[maybe_unused
 		{
 			if (af1->type == SPELL_FERRIX_PRECISION)
 			{
-				af1->duration = 32;
+				af1->duration = ferrix_precision_duration();
 			}
 		}
 		return;
@@ -118,13 +185,13 @@ void spell_ferrix_precision(int level, P_char ch, char * /*arg*/, [[maybe_unused
 	bzero(&af, sizeof(af));
 
 	af.type = SPELL_FERRIX_PRECISION;
-	af.duration = 32;
-	af.modifier = ((int)(level / 7)) + 2;
+	af.duration = ferrix_precision_duration();
+	af.modifier = ferrix_precision_bonus(level);
 	af.location = APPLY_DEX_MAX;
 	affect_to_char(victim, &af);
 
-	af.duration = 32;
-	af.modifier = ((int)(level / 7)) + 2;
+	af.duration = ferrix_precision_duration();
+	af.modifier = ferrix_precision_bonus(level);
 	af.location = APPLY_HITROLL;
 	affect_to_char(victim, &af);
 
@@ -183,6 +250,93 @@ void spell_eshabalas_vitality(int level, P_char ch, char * /*arg*/, [[maybe_unus
 	send_to_char("&+mEshabalas vitality flows through you!&n\n", ch);
 }
 
+static int kanchelsis_duration()
+{
+	return 10;
+}
+
+static int kanchelsis_earth_penalty()
+{
+	return 3;
+}
+
+static int kanchelsis_strength(int level)
+{
+	return (level / 7) + 2;
+}
+
+static int kanchelsis_fastest_level()
+{
+	return 56;
+}
+
+static int kanchelsis_fastest_pulse()
+{
+	return -3;
+}
+
+static int kanchelsis_faster_level()
+{
+	return 53;
+}
+
+static int kanchelsis_faster_pulse()
+{
+	return -2;
+}
+
+static int kanchelsis_fast_level()
+{
+	return 51;
+}
+
+static int kanchelsis_fast_pulse()
+{
+	return -1;
+}
+
+// fight.c: the extra attacks a reaver under this fury gains by level.
+int kanchelsis_second_attack_level()
+{
+	return 41;
+}
+
+int kanchelsis_third_attack_level()
+{
+	return 51;
+}
+
+int kanchelsis_fourth_attack_level()
+{
+	return 56;
+}
+
+std::string kanchelsis_fury_facts(P_char ch)
+{
+	int level = GET_LEVEL(ch);
+	const int real_level = level;
+	if (GET_SPEC(ch, CLASS_REAVER, SPEC_EARTH_REAVER))
+		level -= kanchelsis_earth_penalty();
+	std::string text =
+		fact("Maximum strength", "+" + std::to_string(kanchelsis_strength(level)) +
+						 " at your level, " + std::to_string(real_level)) +
+		fact("Duration", game_hours(kanchelsis_duration()));
+	if (level >= kanchelsis_fastest_level())
+		text += fact("Combat pulse", std::to_string(kanchelsis_fastest_pulse()));
+	else if (level >= kanchelsis_faster_level())
+		text += fact("Combat pulse", std::to_string(kanchelsis_faster_pulse()));
+	else if (level >= kanchelsis_fast_level())
+		text += fact("Combat pulse", std::to_string(kanchelsis_fast_pulse()));
+	text += "  A reaver gains an attack with the main weapon.\n";
+	if (real_level >= kanchelsis_second_attack_level())
+		text += "  One with the off hand too, on a dual wield skill roll.\n";
+	if (real_level >= kanchelsis_third_attack_level())
+		text += "  Another with the main weapon.\n";
+	if (real_level >= kanchelsis_fourth_attack_level())
+		text += "  Another with the off hand.\n";
+	return text;
+}
+
 void spell_kanchelsis_fury(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			   P_char victim, P_obj /*obj*/)
 {
@@ -200,29 +354,29 @@ void spell_kanchelsis_fury(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 		// Earth reavers are a bit slower.
 		if (GET_SPEC(ch, CLASS_REAVER, SPEC_EARTH_REAVER))
 		{
-			level -= 3;
+			level -= kanchelsis_earth_penalty();
 		}
 		af.type = SPELL_KANCHELSIS_FURY;
-		af.duration = 10;
-		af.modifier = (level / 7) + 2;
+		af.duration = kanchelsis_duration();
+		af.modifier = kanchelsis_strength(level);
 		af.location = APPLY_STR_MAX;
 		affect_to_char(victim, &af);
-		if (level >= 56)
+		if (level >= kanchelsis_fastest_level())
 		{
 			af.location = APPLY_COMBAT_PULSE;
-			af.modifier = -3;
+			af.modifier = kanchelsis_fastest_pulse();
 			affect_to_char(victim, &af);
 		}
-		else if (level >= 53)
+		else if (level >= kanchelsis_faster_level())
 		{
 			af.location = APPLY_COMBAT_PULSE;
-			af.modifier = -2;
+			af.modifier = kanchelsis_faster_pulse();
 			affect_to_char(victim, &af);
 		}
-		else if (level >= 51)
+		else if (level >= kanchelsis_fast_level())
 		{
 			af.location = APPLY_COMBAT_PULSE;
-			af.modifier = -1;
+			af.modifier = kanchelsis_fast_pulse();
 			affect_to_char(victim, &af);
 		}
 	}
@@ -233,7 +387,7 @@ void spell_kanchelsis_fury(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 		for (af1 = victim->affected; af1; af1 = af1->next)
 			if (af1->type == SPELL_KANCHELSIS_FURY)
 			{
-				af1->duration = 10;
+				af1->duration = kanchelsis_duration();
 			}
 	}
 }
@@ -336,6 +490,61 @@ void event_blood_alliance(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*
 	affect_remove(ch, af);
 }
 
+static int ilienzes_flame_sword_duration(int level)
+{
+	return level / 2;
+}
+
+static int ilienzes_flame_sword_hitroll(const Rolls &rolls)
+{
+	return rolls.number(1, 4);
+}
+
+// The fire each weapon hit adds, and more under your own fireshield.
+static int ilienze_sword_damage(const Rolls &rolls, int level)
+{
+	return rolls.number(1, (level / 4));
+}
+
+static int ilienze_sword_fireshield(const Rolls &rolls)
+{
+	return rolls.number(2, 8);
+}
+
+// A charged burst fires when the charge beats this roll.
+static int ilienze_sword_burst_roll(const Rolls &rolls)
+{
+	return rolls.number(4, 40);
+}
+
+static int ilienze_sword_burst(const Rolls &rolls, int charge)
+{
+	return rolls.dice(charge, 12);
+}
+
+std::string ilienzes_flame_sword_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Hitroll", "+" + show({ ilienzes_flame_sword_hitroll(lowest_rolls),
+					    ilienzes_flame_sword_hitroll(highest_rolls) })) +
+	       fact("Duration",
+		    game_hours(ilienzes_flame_sword_duration(level)) + " at your level") +
+	       fact("Fire on each hit",
+		    show_landing({ ilienze_sword_damage(lowest_rolls, level),
+				   ilienze_sword_damage(highest_rolls, level) })) +
+	       fact("With fireshield", "+" + show({ ilienze_sword_fireshield(lowest_rolls),
+						    ilienze_sword_fireshield(highest_rolls) })) +
+	       "  A target with fireshield takes only 1. The fire cannot be shrugged.\n"
+	       "  With fireshield and immolate, each hit adds a charge.\n" +
+	       fact("It bursts at a charge above",
+		    show({ ilienze_sword_burst_roll(lowest_rolls),
+			   ilienze_sword_burst_roll(highest_rolls) })) +
+	       fact("A burst of fire deals, per charge",
+		    show({ ilienze_sword_burst(lowest_rolls, 1),
+			   ilienze_sword_burst(highest_rolls, 1) })) +
+	       "  You need a sword, flail or whip in hand. Constructs are unaffected.\n";
+}
+
 void spell_ilienzes_flame_sword(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 				P_char victim, P_obj /*obj*/)
 {
@@ -372,9 +581,9 @@ void spell_ilienzes_flame_sword(int level, P_char ch, char * /*arg*/, [[maybe_un
 	bzero(&af, sizeof(af));
 
 	af.type = SPELL_ILIENZES_FLAME_SWORD;
-	af.duration = level / 2;
+	af.duration = ilienzes_flame_sword_duration(level);
 	af.location = APPLY_HITROLL;
-	af.modifier = number(1, 4);
+	af.modifier = ilienzes_flame_sword_hitroll(live_rolls);
 
 	affect_to_char(victim, &af);
 
@@ -414,11 +623,11 @@ bool ilienze_sword(P_char ch, P_char victim, P_obj wpn)
 
 	messages.obj = wpn;
 
-	dam = number(1, (GET_LEVEL(ch) / 4));
+	dam = ilienze_sword_damage(live_rolls, GET_LEVEL(ch));
 
 	if (IS_AFFECTED2(ch, AFF2_FIRESHIELD))
 	{
-		dam += number(2, 8);
+		dam += ilienze_sword_fireshield(live_rolls);
 	}
 
 	if (IS_AFFECTED2(victim, AFF2_FIRESHIELD))
@@ -448,7 +657,7 @@ bool ilienze_sword(P_char ch, P_char victim, P_obj wpn)
 				"&+rYou start to gather the &+Rf&+Yl&+Ra&+rmes&n &+raround your blade..&n\n",
 				ch);
 		}
-		else if (afp->modifier > number(4, 40))
+		else if (afp->modifier > ilienze_sword_burst_roll(live_rolls))
 		{
 			if (afp->modifier < 8)
 			{
@@ -475,7 +684,7 @@ bool ilienze_sword(P_char ch, P_char victim, P_obj wpn)
 							    "&+Rf&+Yi&+Rr&+Re&+Rb&+Ra&+rll&n");
 			}
 
-			dam = dice(afp->modifier, 12);
+			dam = ilienze_sword_burst(live_rolls, afp->modifier);
 			afp->modifier = 0;
 
 			return (spell_damage(ch, victim, dam, SPLDAM_FIRE, 0, &proc_messages) !=
@@ -512,6 +721,100 @@ void ilienze_sword_proc_messages(char *attacker, char *victim, char *room, size_
 void cegilunes_broken(struct char_obj_link_data *cold)
 {
 	wear_off_message(cold->ch, cold->affect);
+}
+
+static int cegilune_blade_duration(int level)
+{
+	return level / 2;
+}
+
+// A roll of 0 raises the damage tier and deals that tier's damage.
+static int cegilune_tier_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 4);
+}
+
+static int cegilune_tier_0(const Rolls &rolls)
+{
+	return rolls.number(8, 16);
+}
+
+static int cegilune_tier_1(const Rolls &rolls)
+{
+	return rolls.number(16, 32);
+}
+
+static int cegilune_tier_2(const Rolls &rolls)
+{
+	return rolls.number(32, 40);
+}
+
+static int cegilune_tier_3(const Rolls &rolls)
+{
+	return rolls.number(40, 56);
+}
+
+static int cegilune_tier_4(const Rolls &rolls)
+{
+	return rolls.number(56, 64);
+}
+
+static int cegilune_tier_5(const Rolls &rolls)
+{
+	return rolls.number(64, 80);
+}
+
+// From this tier a roll of 0 sets the target on fire.
+static int cegilune_burn_tier()
+{
+	return 3;
+}
+
+static int cegilune_burn_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 5);
+}
+
+// The burn counts down from this, once every interval, before each burn.
+static int cegilune_burn_rounds()
+{
+	return 5;
+}
+
+static int cegilune_burn_interval()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int cegilune_burn_damage(const Rolls &rolls)
+{
+	return rolls.dice(12, 4);
+}
+
+std::string cegilunes_searing_blade_facts(P_char ch)
+{
+	const auto range = [](int (*tier)(const Rolls &))
+	{ return show({ tier(lowest_rolls), tier(highest_rolls) }); };
+	const int tier_odds =
+		cegilune_tier_roll(highest_rolls) - cegilune_tier_roll(lowest_rolls) + 1;
+	const int burn_odds =
+		cegilune_burn_roll(highest_rolls) - cegilune_burn_roll(lowest_rolls) + 1;
+	return fact("Duration",
+		    game_hours(cegilune_blade_duration(GET_LEVEL(ch))) + " at your level") +
+	       "  It lasts no longer than Ilienze's flaming sword has left.\n" +
+	       fact("Each hit raises the tier", "1 in " + std::to_string(tier_odds)) +
+	       fact("Fire by tier", range(cegilune_tier_0) + ", " + range(cegilune_tier_1) + ", " +
+					    range(cegilune_tier_2) + ", " + range(cegilune_tier_3) +
+					    ", " + range(cegilune_tier_4) + ", " +
+					    range(cegilune_tier_5)) +
+	       "  A miss or a change of fight resets the tier.\n" +
+	       fact("From tier " + std::to_string(cegilune_burn_tier()) + ", each hit sets a burn",
+		    "1 in " + std::to_string(burn_odds)) +
+	       fact("Burn", range(cegilune_burn_damage) + " fire every " +
+				    seconds(cegilune_burn_interval()) + ", " +
+				    std::to_string(cegilune_burn_rounds() - 1) + " times") +
+	       "  You need Ilienze's flaming sword up and a sword, flail or whip in hand.\n"
+	       "  Only the weapon it was cast on burns. Constructs are unaffected.\n";
 }
 
 void spell_cegilunes_searing_blade(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -553,7 +856,7 @@ void spell_cegilunes_searing_blade(int level, P_char ch, char * /*arg*/, [[maybe
 	bzero(&af, sizeof(af));
 
 	af.type = SPELL_CEGILUNE_BLADE;
-	af.duration = MIN(afp->duration, level / 2);
+	af.duration = MIN(afp->duration, cegilune_blade_duration(level));
 	af.location = APPLY_NONE;
 	af.modifier = 0;
 
@@ -627,13 +930,14 @@ bool cegilune_blade(P_char ch, P_char victim, P_obj wpn)
 		return FALSE;
 
 	// Chance for upgrading tier of damage.
-	if (!number(0, 4))
+	if (!cegilune_tier_roll(live_rolls))
 	{
 		// Modifier holds tier of damage.
 		switch (afp->modifier++)
 		{
 		case 0:
-			if (spell_damage(ch, victim, number(8, 16), SPLDAM_FIRE, SPLDAM_NODEFLECT,
+			if (spell_damage(ch, victim, cegilune_tier_0(live_rolls), SPLDAM_FIRE,
+					 SPLDAM_NODEFLECT,
 					 &tiers_messages[afp->modifier]) != DAM_NONEDEAD)
 			{
 				afp->modifier = 0;
@@ -641,7 +945,8 @@ bool cegilune_blade(P_char ch, P_char victim, P_obj wpn)
 			}
 			break;
 		case 1:
-			if (spell_damage(ch, victim, number(16, 32), SPLDAM_FIRE, SPLDAM_NODEFLECT,
+			if (spell_damage(ch, victim, cegilune_tier_1(live_rolls), SPLDAM_FIRE,
+					 SPLDAM_NODEFLECT,
 					 &tiers_messages[afp->modifier]) != DAM_NONEDEAD)
 			{
 				afp->modifier = 0;
@@ -649,7 +954,8 @@ bool cegilune_blade(P_char ch, P_char victim, P_obj wpn)
 			}
 			break;
 		case 2:
-			if (spell_damage(ch, victim, number(32, 40), SPLDAM_FIRE, SPLDAM_NODEFLECT,
+			if (spell_damage(ch, victim, cegilune_tier_2(live_rolls), SPLDAM_FIRE,
+					 SPLDAM_NODEFLECT,
 					 &tiers_messages[afp->modifier]) != DAM_NONEDEAD)
 			{
 				afp->modifier = 0;
@@ -657,7 +963,8 @@ bool cegilune_blade(P_char ch, P_char victim, P_obj wpn)
 			}
 			break;
 		case 3:
-			if (spell_damage(ch, victim, number(40, 56), SPLDAM_FIRE, SPLDAM_NODEFLECT,
+			if (spell_damage(ch, victim, cegilune_tier_3(live_rolls), SPLDAM_FIRE,
+					 SPLDAM_NODEFLECT,
 					 &tiers_messages[afp->modifier]) != DAM_NONEDEAD)
 			{
 				afp->modifier = 0;
@@ -665,7 +972,8 @@ bool cegilune_blade(P_char ch, P_char victim, P_obj wpn)
 			}
 			break;
 		case 4:
-			if (spell_damage(ch, victim, number(56, 64), SPLDAM_FIRE, SPLDAM_NODEFLECT,
+			if (spell_damage(ch, victim, cegilune_tier_4(live_rolls), SPLDAM_FIRE,
+					 SPLDAM_NODEFLECT,
 					 &tiers_messages[afp->modifier]) != DAM_NONEDEAD)
 			{
 				afp->modifier = 0;
@@ -673,8 +981,8 @@ bool cegilune_blade(P_char ch, P_char victim, P_obj wpn)
 			}
 			break;
 		default:
-			if (spell_damage(ch, victim, number(64, 80), SPLDAM_FIRE, SPLDAM_NODEFLECT,
-					 &tiers_messages[5]) != DAM_NONEDEAD)
+			if (spell_damage(ch, victim, cegilune_tier_5(live_rolls), SPLDAM_FIRE,
+					 SPLDAM_NODEFLECT, &tiers_messages[5]) != DAM_NONEDEAD)
 			{
 				afp->modifier = 0;
 				return TRUE;
@@ -685,9 +993,9 @@ bool cegilune_blade(P_char ch, P_char victim, P_obj wpn)
 	}
 
 	// if we are on 3th tier or higher there is chance for immolate like attack
-	if (afp->modifier >= 3)
+	if (afp->modifier >= cegilune_burn_tier())
 	{
-		if (!number(0, 5))
+		if (!cegilune_burn_roll(live_rolls))
 		{
 			act("&+LYour $q&+L suddenly ig&+rni&+Rte&+rs &+Linto &+rf&+Rl&+ra&+Rm&+re&+Rs &+Las it strikes $N!&n",
 			    FALSE, ch, wpn, victim, TO_CHAR);
@@ -701,16 +1009,16 @@ bool cegilune_blade(P_char ch, P_char victim, P_obj wpn)
 			{
 				memset(&af, 0, sizeof(af));
 				af.type = TAG_CEGILUNE_FIRE;
-				af.modifier = 5;
+				af.modifier = cegilune_burn_rounds();
 				af.flags = AFFTYPE_NOSHOW | AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY;
 				af.duration = 10;
 				af2p = affect_to_char(victim, &af);
-				add_event(event_cegilune_searing, PULSE_VIOLENCE, ch, victim, wpn,
-					  0, 0, 0);
+				add_event(event_cegilune_searing, cegilune_burn_interval(), ch,
+					  victim, wpn, 0, 0, 0);
 			}
 			else
 			{
-				af2p->modifier = 5;
+				af2p->modifier = cegilune_burn_rounds();
 			}
 		}
 	}
@@ -752,11 +1060,39 @@ void event_cegilune_searing(P_char ch, P_char vict, P_obj wpn, void * /*data*/)
 	}
 
 	// This correlates to 3 to 12 damage
-	if (spell_damage(ch, vict, dice(12, 4), SPLDAM_FIRE, SPLDAM_NODEFLECT, &messages) ==
-	    DAM_NONEDEAD)
+	if (spell_damage(ch, vict, cegilune_burn_damage(live_rolls), SPLDAM_FIRE, SPLDAM_NODEFLECT,
+			 &messages) == DAM_NONEDEAD)
 	{
-		add_event(event_cegilune_searing, PULSE_VIOLENCE, ch, vict, wpn, 0, 0, 0);
+		add_event(event_cegilune_searing, cegilune_burn_interval(), ch, vict, wpn, 0, 0, 0);
 	}
+}
+
+static int girilals_granite_hammer_duration(int level)
+{
+	return level / 2;
+}
+
+static int girilals_granite_hammer_damroll(int level)
+{
+	return level / 14;
+}
+
+static int girilals_granite_hammer_damage(const Rolls &rolls, int level)
+{
+	return rolls.number(8, (level * 2) / 5);
+}
+
+std::string girilals_granite_hammer_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const int a = girilals_granite_hammer_damage(lowest_rolls, level);
+	const int b = girilals_granite_hammer_damage(highest_rolls, level);
+	return fact("Damroll", "+" + std::to_string(girilals_granite_hammer_damroll(level)) +
+				       " at your level, " + std::to_string(level)) +
+	       fact("Duration", game_hours(girilals_granite_hammer_duration(level))) +
+	       fact("Earth damage on each hit", show({ MAX(1, a), MAX(1, b) })) +
+	       "  It cannot be shrugged. Constructs are unaffected.\n"
+	       "  You need a one-handed bludgeon in hand.\n";
 }
 
 void spell_girilals_granite_hammer(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -797,10 +1133,10 @@ void spell_girilals_granite_hammer(int level, P_char ch, char * /*arg*/, [[maybe
 	bzero(&af, sizeof(af));
 
 	af.type = SPELL_GIRILALS_GRANITE_HAMMER;
-	af.duration = level / 2;
+	af.duration = girilals_granite_hammer_duration(level);
 	af.location = APPLY_DAMROLL;
 	// +1 at 30 and +4 at 56.
-	af.modifier = level / 14;
+	af.modifier = girilals_granite_hammer_damroll(level);
 
 	affect_to_char(victim, &af);
 
@@ -829,7 +1165,7 @@ bool girilals_granite_hammer(P_char ch, P_char victim, P_obj wpn)
 	messages.obj = wpn;
 
 	// 2 to 5 damage at lvl 50.
-	dam = number(8, (GET_LEVEL(ch) * 2) / 5);
+	dam = girilals_granite_hammer_damage(live_rolls, GET_LEVEL(ch));
 
 	dam = MAX(1, dam);
 
@@ -843,6 +1179,46 @@ bool girilals_granite_hammer(P_char ch, P_char victim, P_obj wpn)
 void ileshs_broken(struct char_obj_link_data *cold)
 {
 	wear_off_message(cold->ch, cold->affect);
+}
+
+static int ileshs_duration(int level)
+{
+	return level / 2;
+}
+
+// A roll of 0 raises the tier and casts that tier's spell.
+static int ilesh_tier_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 4);
+}
+
+// In the fifth tier, a roll of 0 casts acid immolate rather than acid stream.
+static int ilesh_immolate_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 3);
+}
+
+static int ilesh_blindness(const Rolls &rolls)
+{
+	return rolls.number(4, 12) * WAIT_SEC;
+}
+
+std::string ileshs_smashing_fury_facts(P_char ch)
+{
+	const int tier_odds = ilesh_tier_roll(highest_rolls) - ilesh_tier_roll(lowest_rolls) + 1;
+	const int immolate_odds =
+		ilesh_immolate_roll(highest_rolls) - ilesh_immolate_roll(lowest_rolls) + 1;
+	return fact("Duration", game_hours(ileshs_duration(GET_LEVEL(ch))) + " at your level") +
+	       "  It lasts no longer than Girilal's hammer has left.\n" +
+	       fact("Each hit casts at your level", "1 in " + std::to_string(tier_odds)) +
+	       "  In turn: blindness, acid blast twice, earthen grasp, then acid stream.\n" +
+	       fact("Acid immolate replaces the stream", "1 in " + std::to_string(immolate_odds)) +
+	       fact("Then dust blinds the target",
+		    seconds(ilesh_blindness(lowest_rolls)) + " to " +
+			    seconds(ilesh_blindness(highest_rolls))) +
+	       "  The turn then starts over.\n"
+	       "  You need Girilal's hammer up and a one-handed bludgeon in hand.\n"
+	       "  Only the weapon it was cast on counts. Constructs are unaffected.\n";
 }
 
 void spell_ileshs_smashing_fury(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -885,7 +1261,7 @@ void spell_ileshs_smashing_fury(int level, P_char ch, char * /*arg*/, [[maybe_un
 	bzero(&af, sizeof(af));
 
 	af.type = SPELL_ILESHS_SMASHING_FURY;
-	af.duration = MIN(afp->duration, level / 2);
+	af.duration = MIN(afp->duration, ileshs_duration(level));
 	af.location = APPLY_NONE;
 	af.modifier = 0;
 
@@ -910,7 +1286,7 @@ bool ilesh_fury(P_char ch, P_char victim, P_obj wpn)
 		return FALSE;
 
 	// Chance for upgrading tier of damage.
-	if (!number(0, 4))
+	if (!ilesh_tier_roll(live_rolls))
 	{
 		// Modifier holds tier of damage.
 		switch (afp->modifier++)
@@ -926,7 +1302,7 @@ bool ilesh_fury(P_char ch, P_char victim, P_obj wpn)
 			spell_earthen_grasp(GET_LEVEL(ch), ch, NULL, 0, victim, NULL);
 			break;
 		case 4:
-			if (!number(0, 3))
+			if (!ilesh_immolate_roll(live_rolls))
 				spell_acidimmolate(GET_LEVEL(ch), ch, NULL, 0, victim, NULL);
 			else
 				spell_acid_stream(GET_LEVEL(ch), ch, NULL, 0, victim, NULL);
@@ -934,7 +1310,7 @@ bool ilesh_fury(P_char ch, P_char victim, P_obj wpn)
 		default:
 			act("&+LThe &+ydust&+L flies into your &+reyes&n.", FALSE, ch, 0, victim,
 			    TO_VICT);
-			blind(ch, victim, number(4, 12) * WAIT_SEC);
+			blind(ch, victim, ilesh_blindness(live_rolls));
 			afp->modifier = 0; // lets not go over max int
 			break;
 		}
@@ -982,6 +1358,66 @@ void event_cegilune_searing(P_char ch, P_char vict, P_obj wpn, void *data)
 }
 
 */
+static int thryms_icerazor_duration(int level)
+{
+	return level / 2;
+}
+
+static int thryms_icerazor_hitroll(int level)
+{
+	return 5 + MAX(0, level - 51);
+}
+
+static int thryms_icerazor_damage(const Rolls &rolls)
+{
+	return rolls.number(8, 6);
+}
+
+static int thryms_icerazor_coldshield(const Rolls &rolls)
+{
+	return rolls.number(4, 3);
+}
+
+static int thryms_icerazor_fireshield(const Rolls &rolls)
+{
+	return rolls.number(4, 4);
+}
+
+// With coldshield, a roll up to thryms_icerazor_slow_upto() slows the target.
+static int thryms_icerazor_slow_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+static int thryms_icerazor_slow_upto()
+{
+	return 5;
+}
+
+static int thryms_icerazor_slow_duration()
+{
+	return 2;
+}
+
+std::string thryms_icerazor_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Hitroll", "+" + std::to_string(thryms_icerazor_hitroll(level)) +
+				       " at your level, " + std::to_string(level)) +
+	       fact("Duration", game_hours(thryms_icerazor_duration(level))) +
+	       fact("Cold damage on each hit", show({ thryms_icerazor_damage(lowest_rolls),
+						      thryms_icerazor_damage(highest_rolls) })) +
+	       fact("With coldshield", "+" + show({ thryms_icerazor_coldshield(lowest_rolls),
+						    thryms_icerazor_coldshield(highest_rolls) })) +
+	       fact("With fireshield",
+		    "-" + std::to_string(thryms_icerazor_fireshield(lowest_rolls))) +
+	       fact("Chance to slow with coldshield",
+		    std::to_string(thryms_icerazor_slow_upto()) + "% per hit") +
+	       fact("Slow lasts", game_hours(thryms_icerazor_slow_duration())) +
+	       "  It deals at least 1 and cannot be shrugged. Constructs are unaffected.\n"
+	       "  You need a bludgeon in hand.\n";
+}
+
 void spell_thryms_icerazor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			   P_char victim, P_obj /*obj*/)
 {
@@ -1020,9 +1456,9 @@ void spell_thryms_icerazor(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 	bzero(&af, sizeof(af));
 
 	af.type = SPELL_THRYMS_ICERAZOR;
-	af.duration = level / 2;
+	af.duration = thryms_icerazor_duration(level);
 	af.location = APPLY_HITROLL;
-	af.modifier = 5 + MAX(0, level - 51);
+	af.modifier = thryms_icerazor_hitroll(level);
 
 	affect_to_char(victim, &af);
 
@@ -1051,17 +1487,18 @@ bool thryms_icerazor(P_char ch, P_char victim, P_obj wpn)
 
 	messages.obj = wpn;
 
-	dam = number(8, 6);
+	dam = thryms_icerazor_damage(live_rolls);
 
 	if (IS_AFFECTED3(ch, AFF3_COLDSHIELD))
-		dam += number(4, 3);
+		dam += thryms_icerazor_coldshield(live_rolls);
 
 	if (IS_AFFECTED2(ch, AFF2_FIRESHIELD))
-		dam -= number(4, 4);
+		dam -= thryms_icerazor_fireshield(live_rolls);
 
 	dam = MAX(1, dam);
 
-	if (IS_AFFECTED3(ch, AFF3_COLDSHIELD) && number(1, 100) <= 5)
+	if (IS_AFFECTED3(ch, AFF3_COLDSHIELD) &&
+	    thryms_icerazor_slow_roll(live_rolls) <= thryms_icerazor_slow_upto())
 	{
 		// additional slowness messages
 		act("&+CThe &+Bchilling&+C ice surrounding $n's &+Cweapon suddenly begin to vibrate as they strike $N!&n",
@@ -1074,7 +1511,7 @@ bool thryms_icerazor(P_char ch, P_char victim, P_obj wpn)
 		// apply slowness
 		bzero(&af, sizeof(af));
 		af.type = SPELL_SLOW;
-		af.duration = 2;
+		af.duration = thryms_icerazor_slow_duration();
 		af.modifier = 2;
 		af.bitvector2 = AFF2_SLOW;
 		affect_to_char(victim, &af);
@@ -1085,6 +1522,35 @@ bool thryms_icerazor(P_char ch, P_char victim, P_obj wpn)
 		return TRUE;
 
 	return FALSE;
+}
+
+static int lliendils_stormshock_duration(int level)
+{
+	return level / 2;
+}
+
+static int lliendils_stormshock_pulse(const Rolls &rolls)
+{
+	return rolls.number(-1, -2);
+}
+
+static int lliendils_stormshock_damage(const Rolls &rolls, int level)
+{
+	return rolls.number(1, level / 4);
+}
+
+std::string lliendils_stormshock_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Combat pulse", show_signed({ lliendils_stormshock_pulse(lowest_rolls),
+						  lliendils_stormshock_pulse(highest_rolls) })) +
+	       fact("Duration",
+		    game_hours(lliendils_stormshock_duration(level)) + " at your level") +
+	       fact("Lightning on each hit",
+		    show_landing({ lliendils_stormshock_damage(lowest_rolls, level),
+				   lliendils_stormshock_damage(highest_rolls, level) })) +
+	       "  It cannot be shrugged. Constructs are unaffected.\n"
+	       "  You need a one-handed sword, axe or dagger in hand.\n";
 }
 
 void spell_lliendils_stormshock(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -1123,9 +1589,9 @@ void spell_lliendils_stormshock(int level, P_char ch, char * /*arg*/, [[maybe_un
 	bzero(&af, sizeof(af));
 
 	af.type = SPELL_LLIENDILS_STORMSHOCK;
-	af.duration = level / 2;
+	af.duration = lliendils_stormshock_duration(level);
 	af.location = APPLY_COMBAT_PULSE;
-	af.modifier = number(-1, -2);
+	af.modifier = lliendils_stormshock_pulse(live_rolls);
 
 	affect_to_char(victim, &af);
 
@@ -1155,7 +1621,7 @@ bool lliendils_stormshock(P_char ch, P_char victim, P_obj wpn)
 
 	messages.obj = wpn;
 
-	dam = number(1, GET_LEVEL(ch) / 4);
+	dam = lliendils_stormshock_damage(live_rolls, GET_LEVEL(ch));
 
 	if (IS_AFFECTED3(ch, AFF3_LIGHTNINGSHIELD) && number(1, 100) <= 5)
 	{
@@ -1173,6 +1639,45 @@ bool lliendils_stormshock(P_char ch, P_char victim, P_obj wpn)
 	}
 
 	return FALSE;
+}
+
+static int stormcallers_fury_duration(int level)
+{
+	return level / 2;
+}
+
+// A roll of 0 builds a charge on a repeated target.
+static int stormcallers_fury_build_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+// A charge above this roll sets off the flurry.
+static int stormcallers_fury_trigger_roll(const Rolls &rolls)
+{
+	return rolls.number(14, 16);
+}
+
+static int stormcallers_fury_hits(const Rolls &rolls)
+{
+	return rolls.number(3, 6);
+}
+
+std::string stormcallers_fury_facts(P_char ch)
+{
+	const int odds = stormcallers_fury_build_roll(highest_rolls) -
+			 stormcallers_fury_build_roll(lowest_rolls) + 1;
+	return fact("Duration",
+		    game_hours(stormcallers_fury_duration(GET_LEVEL(ch))) + " at your level") +
+	       fact("Each hit on the same target builds a charge", "1 in " + std::to_string(odds)) +
+	       fact("A flurry comes above",
+		    show({ stormcallers_fury_trigger_roll(lowest_rolls),
+			   stormcallers_fury_trigger_roll(highest_rolls) }) +
+			    " charges") +
+	       fact("Extra hits in the flurry", show({ stormcallers_fury_hits(lowest_rolls),
+						       stormcallers_fury_hits(highest_rolls) })) +
+	       "  A new target resets the charge. Constructs are unaffected.\n"
+	       "  You need Lliendil's stormshock up and a one-handed sword, axe or dagger.\n";
 }
 
 void spell_stormcallers_fury(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -1217,7 +1722,7 @@ void spell_stormcallers_fury(int level, P_char ch, char * /*arg*/, [[maybe_unuse
 	bzero(&af, sizeof(af));
 
 	af.type = SPELL_STORMCALLERS_FURY;
-	af.duration = level / 2;
+	af.duration = stormcallers_fury_duration(level);
 	af.modifier = 0;
 
 	affect_to_char(victim, &af);
@@ -1268,7 +1773,7 @@ bool stormcallers_fury(P_char ch, P_char victim, P_obj wpn)
 	else
 	{
 		// buildup
-		if (!number(0, 1))
+		if (!stormcallers_fury_build_roll(live_rolls))
 		{
 			afp->modifier++;
 
@@ -1290,7 +1795,7 @@ bool stormcallers_fury(P_char ch, P_char victim, P_obj wpn)
 				act("&+BThe &+Yelectrical&+B aura around $n's &+Bweapon &+Bintensifies, and begins to &+Wcrackle &+Bloudly!&n",
 				    FALSE, ch, wpn, victim, TO_NOTVICT);
 			}
-			else if (afp->modifier > number(14, 16))
+			else if (afp->modifier > stormcallers_fury_trigger_roll(live_rolls))
 			{
 				afp->modifier = 0;
 
@@ -1301,7 +1806,7 @@ bool stormcallers_fury(P_char ch, P_char victim, P_obj wpn)
 				act("&+BSuddenly, the &+Yenergy&+B surrounding $n's &+Bweapon &+Bleaps into their body, causing them to strike out in a flurry of movement!&n",
 				    FALSE, ch, wpn, victim, TO_NOTVICT);
 
-				int num_hits = number(3, 6);
+				int num_hits = stormcallers_fury_hits(live_rolls);
 
 				for (int i = 0; i < num_hits && IS_ALIVE(victim); i++)
 					hit(ch, victim, wpn);
@@ -1319,6 +1824,46 @@ bool stormcallers_fury(P_char ch, P_char victim, P_obj wpn)
 	}
 
 	return FALSE;
+}
+
+static int kostchtchies_implosion_duration(int level)
+{
+	return level / 2;
+}
+
+// A roll of 0 builds a charge on a repeated target.
+static int kostchtchies_implosion_build_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+// A charge above this roll sets off the shards.
+static int kostchtchies_implosion_trigger_roll(const Rolls &rolls)
+{
+	return rolls.number(14, 16);
+}
+
+static int kostchtchies_implosion_damage(const Rolls &rolls)
+{
+	return 450 + rolls.dice(10, 10);
+}
+
+std::string kostchtchies_implosion_facts(P_char ch)
+{
+	const int odds = kostchtchies_implosion_build_roll(highest_rolls) -
+			 kostchtchies_implosion_build_roll(lowest_rolls) + 1;
+	return fact("Duration",
+		    game_hours(kostchtchies_implosion_duration(GET_LEVEL(ch))) + " at your level") +
+	       fact("Each hit on the same target builds a charge", "1 in " + std::to_string(odds)) +
+	       fact("Shards fly above",
+		    show({ kostchtchies_implosion_trigger_roll(lowest_rolls),
+			   kostchtchies_implosion_trigger_roll(highest_rolls) }) +
+			    " charges") +
+	       fact("Cold damage", show({ kostchtchies_implosion_damage(lowest_rolls),
+					  kostchtchies_implosion_damage(highest_rolls) })) +
+	       "  A new target resets the charge. It cannot be shrugged.\n"
+	       "  You need Thrym's icerazor up and a bludgeon in hand.\n"
+	       "  Constructs are unaffected.\n";
 }
 
 void spell_kostchtchies_implosion(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -1363,7 +1908,7 @@ void spell_kostchtchies_implosion(int level, P_char ch, char * /*arg*/, [[maybe_
 	bzero(&af, sizeof(af));
 
 	af.type = SPELL_CHILLING_IMPLOSION;
-	af.duration = level / 2;
+	af.duration = kostchtchies_implosion_duration(level);
 	af.modifier = 0;
 
 	affect_to_char(victim, &af);
@@ -1414,7 +1959,7 @@ bool kostchtchies_implosion(P_char ch, P_char victim, P_obj wpn)
 	else
 	{
 		// buildup
-		if (!number(0, 1))
+		if (!kostchtchies_implosion_build_roll(live_rolls))
 		{
 			afp->modifier++;
 
@@ -1436,7 +1981,7 @@ bool kostchtchies_implosion(P_char ch, P_char victim, P_obj wpn)
 				act("&+CThe &+Bice &+Cbegins to become heavy on $n's weapon&+C, and their determination fiercely intensifies!&n",
 				    FALSE, ch, wpn, victim, TO_NOTVICT);
 			}
-			else if (afp->modifier > number(14, 16))
+			else if (afp->modifier > kostchtchies_implosion_trigger_roll(live_rolls))
 			{
 				afp->modifier = 0;
 				struct damage_messages messages = {
@@ -1449,7 +1994,7 @@ bool kostchtchies_implosion(P_char ch, P_char victim, P_obj wpn)
 					DAMMSG_TERSE
 				};
 
-				int dam = 450 + dice(10, 10);
+				int dam = kostchtchies_implosion_damage(live_rolls);
 
 				if (spell_damage(ch, victim, dam, SPLDAM_COLD,
 						 SPLDAM_NODEFLECT | SPLDAM_NOSHRUG,

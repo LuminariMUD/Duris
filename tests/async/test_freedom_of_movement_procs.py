@@ -158,6 +158,7 @@ def production():
     wall = extract_function("specs.object.c", "int wall_generic(")
     start = wall.index("\tcase WEB:")
     end = wall.index("\tcase LIFE_WARD:", start)
+    code += "\n" + extract_function("magic/spells.c", "int web_paralysis(")
     code += "\nint web_wall(P_obj obj, P_char ch) { int dircmd = 0; char buffer[MAX_STRING_LENGTH]; affected_type af; bool drag_followers = false; switch (WEB) {\n"
     code += wall[start:end] + "} return drag_followers; }\n"
     damage = extract_function("fight.c", "int raw_damage(")

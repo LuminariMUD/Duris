@@ -207,6 +207,9 @@ production = "\n".join([
     extract_function("necromancy.c", "int setup_pet("),
     extract_function("necromancy.c", "int count_pets("),
     extract_function("sillusionist.c", "void spell_reflection("),
+    '#include "abilities/abilities.h"\nconst Rolls live_rolls = { dice, number };',
+    *(extract_function("blispells.c", f"static int shambler_{name}(")
+      for name in ("pet_limit", "count_poor", "count_open", "count_rich", "charm", "life")),
     extract_function("blispells.c", "void spell_shambler("),
 ])
 

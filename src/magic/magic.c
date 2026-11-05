@@ -5808,6 +5808,55 @@ void spell_flamestrike(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 	}
 }
 
+// Call lightning damage per strike at cast level `level`.
+static int call_lightning_damage(const Rolls &rolls, int level)
+{
+	return rolls.dice(MIN(40, level), 9);
+}
+
+// It strikes once, then this many more times.
+static int call_lightning_more_strikes()
+{
+	return 2;
+}
+
+static int call_lightning_delay()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int call_lightning_interval()
+{
+	return (int)(PULSE_VIOLENCE / 2);
+}
+
+static int call_lightning_stun()
+{
+	return (int)(PULSE_VIOLENCE / 2);
+}
+
+std::string call_lightning_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Lightning damage per strike",
+		    show({ call_lightning_damage(lowest_rolls, level),
+			   call_lightning_damage(highest_rolls, level) }) +
+			    " at your level, " + std::to_string(level)) +
+	       fact("Strikes", std::to_string(1 + call_lightning_more_strikes()) +
+				       ", the first after " + seconds(call_lightning_delay()) +
+				       ", then every " + seconds(call_lightning_interval())) +
+	       "  Each strike makes a target that fails a fear save flee.\n"
+	       "  These never flee: indomitability, elites, guardians, dreadlords, no-fear\n"
+	       "  effects, greater races of level 51 or more, and at times indomitable rage.\n" +
+	       fact("If it stays and fails a fear save, stun", seconds(call_lightning_stun())) +
+	       "  A passed save gets a second; failing that stuns it half as long.\n"
+	       "  Elites and greater races are neither made to flee nor stunned by it.\n"
+	       "  Plants, golems and constructs sometimes resist the stun.\n"
+	       "  If the target has left, it strikes someone outside your group.\n"
+	       "  You must be outdoors. Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 struct call_lightning_data
 {
 	int room;
@@ -5818,7 +5867,7 @@ struct call_lightning_data
 void event_call_lightning(P_char ch, P_char vict, P_obj /*obj*/, void *data)
 {
 	struct call_lightning_data *clData = (struct call_lightning_data *)data;
-	int result, dam = dice(MIN(40, clData->level), 9);
+	int result, dam = call_lightning_damage(live_rolls, clData->level);
 	struct damage_messages messages = {
 		"A &+WMASSIVE&n &=LBlightning bolt&N strikes $N from the sky!",
 		"A &+WMASSIVE&n &=LBlightning bolt&N from the heavens strikes you!",
@@ -5855,10 +5904,10 @@ void event_call_lightning(P_char ch, P_char vict, P_obj /*obj*/, void *data)
 	}
 	else if (result != DAM_VICTDEAD && !IS_ELITE(vict) && !IS_GREATER_RACE(vict))
 	{
-		Stun(vict, ch, (int)(PULSE_VIOLENCE / 2), TRUE);
+		Stun(vict, ch, call_lightning_stun(), TRUE);
 	}
 
-	if (result != DAM_CHARDEAD && (clData->waves++ < 2))
+	if (result != DAM_CHARDEAD && (clData->waves++ < call_lightning_more_strikes()))
 	{
 		if (number(0, 1))
 		{
@@ -5875,7 +5924,7 @@ void event_call_lightning(P_char ch, P_char vict, P_obj /*obj*/, void *data)
 				"&+WA clap of &+Lthunder&n &+Wbellows off to the %s.\n");
 		}
 
-		add_event(event_call_lightning, (int)(PULSE_VIOLENCE / 2), ch, vict, NULL, 0,
+		add_event(event_call_lightning, call_lightning_interval(), ch, vict, NULL, 0,
 			  clData, sizeof(struct call_lightning_data));
 	}
 	else
@@ -5903,7 +5952,7 @@ void spell_call_lightning(int level, P_char ch, P_char victim, P_obj /*obj*/)
 	clData.waves = 0;
 	clData.level = level;
 
-	add_event(event_call_lightning, PULSE_VIOLENCE, ch, victim, NULL, 0, &clData,
+	add_event(event_call_lightning, call_lightning_delay(), ch, victim, NULL, 0, &clData,
 		  sizeof(struct call_lightning_data));
 }
 
