@@ -9,6 +9,7 @@ struct named_set_identity
 {
 	int zone = 0; // Positive virtual ID; -1 means invalid metadata.
 	std::string legacy_title; // Only ambiguous, unmarked historical items group by title.
+	int legacy_group = 0; // Smallest matching zone ID; used only as a negative HP context.
 };
 
 named_set_identity named_set_origin(const obj_data *object);

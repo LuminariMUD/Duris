@@ -1842,6 +1842,18 @@ void do_stat(P_char ch, char *argument, int cmd, P_obj object)
 				 "&+YKeywords: &N%s\n&+YLong description:\n%s\n",
 				 ((j->name) ? j->name : "None"),
 				 ((j->description) ? j->description : "None"));
+		const auto origin = named_set_origin(j);
+		if (origin.zone > 0)
+			checked_snprintf(o_buf + strlen(o_buf), MAX_STRING_LENGTH - strlen(o_buf),
+					 "&+YNamed set origin: &N#%d\n", origin.zone);
+		else if (origin.zone < 0)
+			strlcat(o_buf,
+				"&+RNamed set origin: invalid metadata; repair required.&n\n",
+				MAX_STRING_LENGTH);
+		else if (!origin.legacy_title.empty())
+			checked_snprintf(o_buf + strlen(o_buf), MAX_STRING_LENGTH - strlen(o_buf),
+					 "&+YNamed set origin: &Nambiguous legacy '%s' (HP only)\n",
+					 origin.legacy_title.c_str());
 
 		if (j->ex_description)
 		{

@@ -4,8 +4,8 @@ Status: implementation in progress; catalog/report and persistent-origin chunks
 are pushed and open for review as stacked PRs.
 Date: 2026-11-05.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-origin`, based on
-`branch/named-zone-set-expansion`.
+Working branch: `branch/named-zone-set-membership`, based on
+`branch/named-zone-set-origin`.
 Inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-05)
@@ -129,11 +129,54 @@ make -C src -j4 pfile
 git diff --check
 ```
 
-**Next:** integrate the origin resolver into worn membership and spell lookup,
-then repair ownership/cleanup (sections 3 and 5) on another dependent branch.
-Name substring and first-room-derived membership, zero-index contexts,
-ordinary-cast adoption, and character-wide event cancellation remain unchanged.
-Do not install expansion rows before those repairs pass. Actual in-game
+### Worn membership and HP cleanup chunk
+
+The current branch routes `set_proc()`, `random_set()`, spell lookup and staff
+object `stat` through the origin resolver. Unique legacy armor and weapons gain
+their marker when worn; revealed names, renamed identified gear, and duplicate
+blank prototypes still count correctly. Virtual IDs replace substring matches,
+first-room arithmetic, and row-index contexts. Existing belt exclusions and
+the HP formula are unchanged.
+
+Ambiguous historical titles retain a separate HP-only group. Its context is the
+negative smallest matching virtual zone ID, stable under zone-table reordering;
+that value is a transient group key, **never an inferred origin or spell key**.
+Identified items use positive IDs and cannot join a legacy group. Each group
+refreshes its own cleanup event through the existing reschedule API. Event
+payloads carry the context instead of an affect pointer, and expiration removes
+only that group's HP. This also removes the callback's old freed-affect iteration.
+
+**Ablation:** retain the current counting rules, HP affects, and event scheduler;
+no extra membership registry, per-character reconciliation service, or timer
+infrastructure was introduced. Ordinary-cast ownership, shared-spell support,
+and cooldown repairs are the next independent chunk; this one does not claim
+to solve them or install new effects.
+
+`test_named_set_membership.py` executes the actual worn counting, tier selection,
+HP update, and cleanup callers under ASan/UBSan. It covers 1/2/3/5/6/9 pieces,
+Tharnadia's 3/5 thresholds, belts/back, random armor plus weapon blanks, mixed
+duplicate-title origins, ambiguous legacy HP, lazy migration, renamed/revealed
+weapons, Tiamat #196/#199, reversed zone order, two refresh deadlines and both
+removal orders. Spell bodies and scheduler I/O are fixture boundaries here;
+this is **not actual spell ownership or gameplay proof**. The real scheduler's
+ASan/UBSan reschedule regression, origin test, and catalog/report test also pass.
+Both maintained backend builds pass.
+
+```sh
+python3 tests/async/test_named_set_membership.py
+python3 tests/async/test_named_set_origin.py
+python3 tests/async/test_named_set_catalog.py
+python3 tests/async/test_nevent_scheduler_runtime.py
+make -C src -j4
+make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/tests/named-set-flatfile-server"
+./scripts/format.sh --check
+git diff --check
+```
+
+**Next:** repair actual effect ownership, shared-spell support, and cooldowns
+(section 5), with real spell/affect regressions, on a dependent branch. Existing
+ordinary-cast adoption and removal-by-spell-ID remain. Do not install expansion
+rows before those repairs pass. Actual in-game
 wear/transfer/save/reboot journeys, private chest/locker/shop journeys, live Redis
 lifecycle checks, balance, help publication, and the wider eligibility review
 remain outstanding. No production operation, release, or release tag has occurred.
@@ -268,7 +311,7 @@ Owning code: [random_equipment.c](../../src/item/random_equipment.c),
   `zone_table[world[finder->in_room].zone].number`. Store the origin even if that
   zone currently has no spell row: HP membership and future set definitions
   still need it. Owner-named and plain items do not become zone-set items.
-- [ ] Share one resolver between the generator's identity helpers, worn-piece
+- [x] Share one resolver between the generator's identity helpers, worn-piece
   counting, spell lookup, and diagnostics. Use the explicit ID, not zone-table
   indices, first-room arithmetic, display color, or substring matches. Keep
   `identify_random()` / `reveal true name` suffix changes independent of origin.
@@ -292,21 +335,21 @@ validation and round-trip tests; keep trap and spellbook metadata independent.
 
 ### Legacy item policy
 
-- [ ] For an unmarked item, parse the actual named-equipment tag and match a
+- [x] For an unmarked item, parse the actual named-equipment tag and match a
   complete historical zone title. Permit only recognized generated suffixes,
   including the weapon spell suffix, rather than arbitrary trailing text.
   Normalize presentation colors for matching and require a unique zone result.
   Resolve existing unique-origin items to IDs and persist that result through
   normal saves; do not run a bulk player-data rewrite.
-- [ ] Treat historical duplicate titles as unresolved when their origin cannot
+- [x] Treat historical duplicate titles as unresolved when their origin cannot
   be proved. Keep their legacy matching-tag HP group and the HP formula, but
   grant no newly selected zone spell on a guessed origin. Do not merge such a
   legacy group with an identified new set. Document this limitation; staff may
   correct an origin through existing item tools only with reliable provenance.
-- [ ] Do not infer the old origin from the current room, carrier, numeric object
+- [x] Do not infer the old origin from the current room, carrier, numeric object
   blank, or the first matching zone. Do not randomly divide indistinguishable
   Ceothia, Underworld, or Braddistock items among the new IDs.
-- [ ] Test exact and prefix titles beyond the seven rows too, especially Tiamat
+- [x] Test exact and prefix titles beyond the seven rows too, especially Tiamat
   #196 versus Astral Plane, Tiamat #199. Correct the erroneous substring lookup
   rather than preserving a wrong-zone grant as compatibility behavior.
 
@@ -341,10 +384,10 @@ Owning code: `set_proc()`, `random_set()`, `check_zone_spells()`, and
 `apply_zone_spell()` in [specs.object.c](../../src/specs/specs.object.c),
 [affects.c](../../src/magic/affects.c), and [new_events.c](../../src/world/new_events.c).
 
-- [ ] Count eligible worn random armor/weapon blanks by resolved origin ID.
+- [x] Count eligible worn random armor/weapon blanks by resolved origin ID.
   Retain the current belt-slot rules, worn-armor-driven periodic processing,
   and `5 * (count - 2)` HP formula. Preserve ordinary gear HP cap behavior.
-- [ ] Replace row-index contexts with unambiguous nonzero source identity.
+- [x] Replace row-index contexts with unambiguous nonzero source identity.
   Index zero must not become a wildcard. Cancel or reconcile cleanup for the
   relevant set; one set's refresh must not cancel another set's wear-off.
 - [ ] Mark only affects actually created for a set invocation. Never adopt an
