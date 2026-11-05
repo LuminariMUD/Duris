@@ -7,8 +7,20 @@
 #include "world/db.h"
 #include "world/vnum.obj.h"
 
+#include <climits>
+
 extern P_index obj_index;
 extern int top_of_zone_table;
+
+// FNV-1a, placed above every zone ID so a retired title's negative HP context never meets a zone's.
+static int retired_title_group(const std::string &title)
+{
+	constexpr unsigned int first_group = 1U << 24;
+	unsigned int hash = 2166136261U;
+	for (const unsigned char byte : title)
+		hash = (hash ^ byte) * 16777619U;
+	return static_cast<int>(hash % (INT_MAX - first_group) + first_group);
+}
 
 named_set_identity named_set_origin(const obj_data *object)
 {
@@ -46,6 +58,12 @@ named_set_identity named_set_origin(const obj_data *object)
 				suffix = " of " + strip_ansi(spell.name);
 				break;
 			}
+	// c79fde573 replaced #150 with #3000. Their indistinguishable old tags
+	// cannot prove either origin, even if one producer is no longer loaded.
+	constexpr const char *misty_legacy_title = "The Chasm of the Misty Vale";
+	if (title == misty_legacy_title ||
+	    (!suffix.empty() && title == std::string(misty_legacy_title) + suffix))
+		return { 0, misty_legacy_title, 150 };
 	std::string matched_title;
 	int matches = 0;
 	int legacy_group = 0;
@@ -66,7 +84,11 @@ named_set_identity named_set_origin(const obj_data *object)
 		return { origin, {} };
 	if (matches > 1)
 		return { 0, matched_title, legacy_group };
-	return {};
+	// A retired title proves no zone, but its pieces still share a set's HP as they always did.
+	std::string retired_title = title;
+	if (!suffix.empty() && retired_title.ends_with(suffix))
+		retired_title.resize(retired_title.size() - suffix.size());
+	return { 0, retired_title, retired_title_group(retired_title) };
 }
 
 bool set_named_set_origin(obj_data *object, int zone)

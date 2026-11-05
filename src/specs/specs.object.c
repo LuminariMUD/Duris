@@ -13332,7 +13332,7 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 		if (!has_skin_spell(ch) &&
 		    obj->timer[0] + get_property("timer.stoneskin.generic", 60) < time(NULL))
 		{
-			spell_stone_skin(count * 5, ch, 0, 0, ch, 0);
+			spell_stone_skin(MIN(56, count * 5), ch, 0, 0, ch, 0);
 			obj->timer[0] = time(NULL);
 			message = SETMSG_PROTECT;
 		}
@@ -13377,7 +13377,8 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 	case SPELL_CONJURE_ELEMENTAL:
 		if (obj->timer[0] + get_property("timer.conjureElement.generic", 300) < time(NULL))
 		{
-			(skills[spell].spell_pointer)(MAX(30, count * 10), ch, 0, 0, ch, 0);
+			(skills[spell].spell_pointer)(MIN(56, MAX(30, count * 10)), ch, 0, 0, ch,
+						      0);
 			obj->timer[0] = time(NULL);
 			message = SETMSG_STRENGTH;
 		}
@@ -13386,7 +13387,8 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 		if (obj->timer[0] + get_property("timer.invigorate.generic", 60) < time(NULL) &&
 		    GET_VITALITY(ch) < GET_MAX_VITALITY(ch))
 		{
-			(skills[spell].spell_pointer)(MAX(30, count * 10), ch, 0, 0, ch, 0);
+			(skills[spell].spell_pointer)(MIN(56, MAX(30, count * 10)), ch, 0, 0, ch,
+						      0);
 			obj->timer[0] = time(NULL);
 			message = SETMSG_STRENGTH;
 		}
@@ -13394,7 +13396,8 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 	case SPELL_ENDURANCE:
 		if (!affected_by_spell(ch, SPELL_MIELIKKI_VITALITY))
 		{
-			(skills[spell].spell_pointer)(MAX(30, count * 10), ch, 0, 0, ch, 0);
+			(skills[spell].spell_pointer)(MIN(56, MAX(30, count * 10)), ch, 0, 0, ch,
+						      0);
 			message = SETMSG_STRENGTH;
 		}
 		break;
@@ -13647,8 +13650,6 @@ int set_proc(P_obj obj, P_char ch, int cmd, char *arg)
 			disarm_obj_nevents(obj, event_object_proc);
 			return FALSE;
 		}
-		if (identity.zone > 0)
-			set_named_set_origin(obj, identity.zone);
 	}
 
 	// No proc if not worn.
