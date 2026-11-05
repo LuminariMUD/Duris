@@ -18,7 +18,7 @@ static room_data rooms[4]{};
 static zone_data zones[2]{};
 P_room world = rooms;
 zone_data *zone_table = zones;
-static int draws, rejected, moved, stopped;
+static int draws, rejected, moved, stopped, close_checks, close_result;
 static bool raidable = true;
 static std::string feedback;
 int number(int low, int high) {
@@ -27,12 +27,15 @@ int number(int low, int high) {
     return draws <= rejected ? 1 : 2;
 }
 int is_Raidable(P_char, char *, int) { return raidable; }
+int how_close(int, int, int max_steps) { assert(max_steps == 5); ++close_checks; return close_result; }
 void send_to_char(const char *text, P_char) { feedback += text; }
 void act(const char *, int, P_char, P_obj, void *, int) {}
 void stop_fighting(P_char ch) { ++stopped; ch->specials.fighting = nullptr; }
 void char_from_room(P_char ch) { ch->in_room = NOWHERE; }
 bool char_to_room(P_char ch, int room, int) { ++moved; ch->in_room = room; return true; }
-''' + extract_function('magic.c', 'void spell_group_teleport(') + r'''
+''' + extract_function('magic.c', 'static bool teleport_blocked_destination(') + \
+    extract_function('magic.c', 'static void group_teleport_move(') + \
+    extract_function('magic.c', 'void spell_group_teleport(') + r'''
 int main() {
     zones[0].real_bottom = 1;
     zones[0].real_top = 2;
@@ -41,7 +44,7 @@ int main() {
         for (bool group : {false, true}) {
             for (int failures : {0, 1, 999, 1000}) {
                 // Exercise each destination rejection rule and eventual exhaustion.
-                for (int restriction : std::initializer_list<int>{ROOM_PRIVATE, ROOM_NO_TELEPORT, -1, 0}) {
+                for (int restriction : std::initializer_list<int>{ROOM_PRIVATE, ROOM_NO_MAGIC, ROOM_NO_TELEPORT, -1, 0}) {
                     rooms[1].zone = 1;
                     rooms[1].room_flags = restriction > 0 ? restriction : 0;
                     zones[1].hometown = restriction == -1;
@@ -49,6 +52,7 @@ int main() {
                     char_data caster{}, ally{}, absent{}, opponent{};
                     absent.in_room = 3;
                     caster.specials.fighting = ally.specials.fighting = &opponent;
+                    ally.specials.affected_by = AFF_HIDE;
                     group_list away{}, local{}, leader{};
                     away.ch = &absent;
                     local.ch = &ally; local.next = &away;
@@ -63,6 +67,7 @@ int main() {
                     assert(ally.in_room == (group ? destination : 0) && absent.in_room == 3);
                     assert(moved == (group ? 2 : 1) && stopped == (group ? 2 : 1));
                     assert(!caster.specials.fighting && (group || ally.specials.fighting));
+                    assert(bool(IS_AFFECTED(&ally, AFF_HIDE)) == !group);
                 }
             }
         }
@@ -84,6 +89,20 @@ int main() {
         spell_group_teleport(50, &caster, nullptr, SPELL_TYPE_SPELL, nullptr, nullptr);
         assert(!draws && !moved);
         raidable = true;
+    }
+    // A limited teleport zone refuses destinations beyond the solo spell's range.
+    zones[0].flags = 0;
+    rooms[0].number = 5700;
+    for (bool in_range : {false, true}) {
+        char_data caster{};
+        group_list leader{};
+        leader.ch = &caster;
+        caster.group = &leader;
+        moved = close_checks = draws = 0;
+        rejected = 0;
+        close_result = in_range ? 3 : -1;
+        spell_group_teleport(50, &caster, nullptr, SPELL_TYPE_SPELL, nullptr, nullptr);
+        assert(close_checks == 1 && moved == in_range && caster.in_room == (in_range ? 2 : 0));
     }
     std::puts("PASS group teleport: bounded map/zone search, rejection rules, exhaustion, solo/group movement");
 }
