@@ -19,7 +19,7 @@
 
 // Shared ability numbers: a converted ability's handler and its info page call the same
 // function, so the page cannot drift from what the game does.
-// See docs/ongoing-projects/ability-framework.md.
+// See docs/ongoing-projects/ability-framework-conversion-brief.md.
 
 struct char_data;
 
