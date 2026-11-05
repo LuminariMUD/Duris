@@ -896,8 +896,12 @@ void load_cmd_attributes()
 		}
 		// create the list of attributes.
 		attributes[0] = '\0';
-		APPEND_ATTR(
-			"The following character attributes are used in execution of this ability (if any):\n");
+		for (i = 0; i < ATT_MAX; i++)
+			if (ch_attributes[i] || vi_attributes[i])
+				break;
+		if (i < ATT_MAX)
+			APPEND_ATTR(
+				"The following character attributes are used in execution of this ability (if any):\n");
 		if (ch_attributes[ATT_STR])
 			APPEND_ATTR("Char's Strength.\n");
 		if (vi_attributes[ATT_STR])

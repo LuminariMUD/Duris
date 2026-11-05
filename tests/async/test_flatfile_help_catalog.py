@@ -58,6 +58,8 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-help-") as temporary:
             "-Isrc/no_mysql",
             "-Isrc",
             "tests/async/flatfile_help_runtime_harness.cpp",
+            rel("actinf.c"),
+            rel("safe_io.c"),
             rel("wikihelp.c"),
             rel("flatfile_help_catalog.c"),
             "-Wl,--gc-sections",
