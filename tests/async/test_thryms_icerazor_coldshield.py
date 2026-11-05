@@ -19,6 +19,8 @@ from _paths import ROOT, HARNESS_STUBS, extract_function
 
 
 ICERAZOR = extract_function("reavers.c", "bool thryms_icerazor(P_char ch, P_char victim, P_obj wpn)")
+SHARED = "\n".join(extract_function("reavers.c", f"static int thryms_icerazor_{name}(")
+                   for name in ("damage", "coldshield", "fireshield", "slow_roll", "slow_upto", "slow_duration"))
 
 PRELUDE = r'''
 #include "core/prototypes.h"
@@ -197,7 +199,8 @@ with tempfile.TemporaryDirectory(prefix="duris-icerazor-") as directory:
     temporary = Path(directory)
     harness = temporary / "harness.cpp"
     binary = temporary / "harness"
-    harness.write_text("\n".join((PRELUDE, ICERAZOR, DRIVER)), encoding="utf-8")
+    harness.write_text("\n".join((PRELUDE, '#include "abilities/abilities.h"\nstatic int no_dice(int, int) { return 0; }\n'
+                                   "const Rolls live_rolls = { no_dice, number };", SHARED, ICERAZOR, DRIVER)), encoding="utf-8")
     subprocess.run(
         [
             "g++",

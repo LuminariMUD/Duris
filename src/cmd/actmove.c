@@ -1541,7 +1541,8 @@ revalidate_movement:
 
 	if (affected_by_spell(moving, SPELL_BLOODTOSTONE))
 	{
-		need_movement += number(1, 4);
+		extern int blood_to_stone_move_cost(const Rolls &rolls);
+		need_movement += blood_to_stone_move_cost(live_rolls);
 	}
 
 	if (affected_by_spell(moving, TAG_CRIPPLED))

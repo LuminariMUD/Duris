@@ -104,6 +104,9 @@ int STAT_INDEX(int) { return 100; }
 int GET_CHAR_SKILL_P(P_char, int) { return 0; }
 bool notch_skill(P_char, int, float) { return false; }
 int number(int low, int) { return low; }
+#include "abilities/abilities.h"
+static int no_dice(int, int) { return 0; }
+const Rolls live_rolls = { no_dice, number };
 int BOUNDED(int low, int value, int high) { return std::max(low,std::min(value,high)); }
 char *FirstWord(char *word) { return word; }
 int exitnumb_to_cmd(int dir) { return dir+1; }
@@ -137,6 +140,7 @@ void update_pos(P_char) {}
 move = source('actmove.c').read_text()
 structure = re.search(r'struct water_crossing_data\n\{.*?\n};',move,re.S)[0]
 functions = [
+    ('magic/spells.c', 'int blood_to_stone_move_cost('),
     ('utility.c', 'bool has_water_form_travel('),
     ('utility.c', 'int move_cost('),
     ('actmove.c', 'static bool water_crossing_valid('),
