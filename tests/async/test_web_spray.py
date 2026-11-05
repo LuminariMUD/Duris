@@ -167,6 +167,7 @@ void telemetry_gameplay_movement(P_char) {}
 '''
 
 DRIVER = r'''
+void innate_info(P_char, const char *) {}
 static void clear(P_char ch) {
     while (ch->affected) affect_remove(ch, ch->affected);
     assert(!ch->nevents);
@@ -305,7 +306,7 @@ production = '\n'.join(extract_function(file, signature) for file, signature in 
     ('interp.c', 'void argument_interpreter('), ('interp.c', 'char *one_argument('),
     ('interp.c', 'bool is_abbrev('),
     ('utility.c', 'int strn_cmp('), ('sparser.c', 'char *skip_spaces('),
-    ('innates.c', 'bool has_innate('), ('innates.c', 'bool can_use_innate('),
+    ('innates.c', 'bool has_innate('), ('innates.c', 'static struct affected_type *find_innate_timer('), ('innates.c', 'static int innate_rest_seconds('), ('innates.c', 'static int innate_uses('), ('innates.c', 'bool can_use_innate('),
     ('innates.c', 'P_char parse_victim('), ('innates.c', 'bool check_innate_time('),
     ('affects.c', 'struct affected_type *get_spell_from_char('),
     ('affects.c', 'bool affected_by_spell('), ('affects.c', 'void event_short_affect('),

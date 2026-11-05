@@ -44,10 +44,11 @@ functions = [
     ('affects.c', 'struct affected_type *get_spell_from_char('),
     ('affects.c', 'bool affected_by_spell('),
     ('innates.c', 'bool has_innate('), ('innates.c', 'void assign_innates('),
-    ('innates.c', 'bool can_use_innate('), ('innates.c', 'void do_innate(P_char ch,'),
+    ('innates.c', 'static struct affected_type *find_innate_timer('), ('innates.c', 'bool can_use_innate('), ('innates.c', 'void do_innate(P_char ch,'),
 ]
 production = '\n'.join(extract_function(file, signature) for file, signature in functions)
 driver = r'''
+void innate_info(P_char, const char *) {}
 static std::string run(P_char ch, const char *text) {
     char args[MAX_STRING_LENGTH];
     strcpy(args, text); used.clear(); output.clear();

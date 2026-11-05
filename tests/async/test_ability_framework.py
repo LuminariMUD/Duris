@@ -24,6 +24,7 @@ HARNESS = r'''
 #include <string>
 
 void randomize(uint64_t seed);
+std::string reflection_innate_facts(P_char) { return ""; }
 struct str_app_type str_app[52];
 
 // The next draw after a roll; equal fingerprints after equal seeds mean equal draw counts.
@@ -86,12 +87,16 @@ int main() {
     assert(seconds(WAIT_SEC) == "1 second");
     assert(seconds(PULSE_VIOLENCE * 2) == "8 seconds");
     assert(seconds(6) == "1.5 seconds");
+    assert(real_time(30 * WAIT_SEC) == "30 seconds" && real_time(60 * WAIT_SEC) == "1 minute");
+    assert(real_time(75 * WAIT_SEC) == "1 minute 15 seconds" && real_time(720 * WAIT_SEC) == "12 minutes");
     assert(game_hours(1) == "1 game hour (about 1.25 minutes)");
     assert(game_hours(24) == "24 game hours (about 30 minutes)");
     assert(show({ 3, 3 }) == "3" && show({ 3, 9 }) == "3-9");
     assert(ability_facts(SPELL_FIREBALL) == fireball_facts);
     assert(ability_facts(SKILL_BASH) == bash_facts);
     assert(ability_facts(SPELL_HEAL) == nullptr);
+    assert(innate_facts(INNATE_REFLECTION) == reflection_innate_facts);
+    assert(innate_facts(INNATE_DOORBASH) == nullptr);
 
     // Fireball rolls exactly as before at every level, and its facts never roll.
     for (int level = 1; level <= 62; ++level)

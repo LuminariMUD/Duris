@@ -37,6 +37,7 @@
 #include "item/objmisc.h"
 #include "classes/paladins.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "world/weather.h"
 #include "core/safe_format.h"
 
@@ -1097,8 +1098,8 @@ int get_innate_property(int innate, const char *prefix, int default_value)
 	return get_property(property_string, default_value);
 }
 
-// an additional function, for when one needs to check the innate timer without altering it
-bool can_use_innate(P_char ch, int innate)
+// The timer an innate's first use starts; it ends the rest and restores every use.
+static struct affected_type *find_innate_timer(P_char ch, int innate)
 {
 	struct affected_type *afp;
 
@@ -1109,6 +1110,29 @@ bool can_use_innate(P_char ch, int innate)
 			break;
 		}
 	}
+	return afp;
+}
+
+// How long an innate rests, in seconds: the caller's duration, or its configured timer.
+static int innate_rest_seconds(int innate, int duration)
+{
+	// in seconds. default is 12 mins = 12*60 = 720
+	const int default_duration = get_property("innate.timer.secs.default", 720);
+
+	return (!duration) ? get_innate_property(innate, "innate.timer.secs", default_duration) :
+			     duration;
+}
+
+// How many uses an innate gets before it rests.
+static int innate_uses(int innate)
+{
+	return get_innate_property(innate, "innate.uses", 1);
+}
+
+// an additional function, for when one needs to check the innate timer without altering it
+bool can_use_innate(P_char ch, int innate)
+{
+	struct affected_type *afp = find_innate_timer(ch, innate);
 
 	if (afp && afp->modifier == 1)
 	{
@@ -1118,19 +1142,91 @@ bool can_use_innate(P_char ch, int innate)
 	return TRUE;
 }
 
+// An innate's uses and rest, as check_innate_time(ch, innate, duration) applies them.
+static std::string innate_rest_facts(int innate, int duration)
+{
+	return fact("Uses", std::to_string(innate_uses(innate)) + " before it rests") +
+	       fact("Rest", "all uses return " +
+				    real_time(innate_rest_seconds(innate, duration) * WAIT_SEC) +
+				    " after the first");
+}
+
+// The innate's rest as its owner sees it, read without changing the timer.
+static std::string innate_status(P_char ch, int innate)
+{
+	struct affected_type *afp = find_innate_timer(ch, innate);
+	if (!afp)
+		return "ready";
+	int pulses = 0;
+	P_nevent event;
+	LOOP_EVENTS_CH(event, ch->nevents)
+	{
+		if (event->func == event_short_affect && event->data &&
+		    static_cast<event_short_affect_data *>(event->data)->af == afp)
+		{
+			pulses = ne_event_time(event);
+			break;
+		}
+	}
+	// check_innate_time refuses a use once the timer is down to its last one.
+	const int uses_left = afp->modifier - 1;
+	if (uses_left > 0)
+		return std::to_string(uses_left) + (uses_left == 1 ? " use" : " uses") +
+		       " left; all uses return in " + real_time(pulses);
+	return "resting; ready in " + real_time(pulses);
+}
+
+// innate info <name>: what an innate is, the viewer's access, its rest, and its mechanics.
+void innate_info(P_char ch, const char *arg)
+{
+	int found = -1, best = -1;
+	std::string name = arg;
+	name.erase(name.find_last_not_of(" \t\r\n") + 1);
+
+	// Prefer an exact name, then an innate the viewer has.
+	for (int i = 0; !name.empty() && i <= LAST_INNATE; i++)
+	{
+		const bool exact = !str_cmp(name.c_str(), innates_data[i].name);
+		if (!exact && !is_abbrev(name.c_str(), innates_data[i].name))
+			continue;
+		const int rank = (exact ? 2 : 0) + (has_innate(ch, i) ? 1 : 0);
+		if (rank > best)
+		{
+			found = i;
+			best = rank;
+		}
+	}
+	if (found < 0)
+	{
+		send_to_char("Provide a known innate name. Example: innate info reflection\n", ch);
+		return;
+	}
+
+	const int unlock = innate_unlock_level(ch, found);
+	std::string text = std::string("\n&+C  >====[ ") + innates_data[found].name +
+			   " : INNATE INFO&+C ]====<&n\n\n  Type: " +
+			   (innates_data[found].func ? "Active" : "Always active") + "\n";
+	if (!unlock)
+		text += "  Not available to your race, class or specialization.\n";
+	else if (GET_LEVEL(ch) < unlock)
+		text += "  Unlocks for you at level " + std::to_string(unlock) + ".\n";
+	else
+	{
+		text += "  You have it (from level " + std::to_string(unlock) + ").\n";
+		if (innates_data[found].func)
+			text += "  Status: " + innate_status(ch, found) + "\n";
+	}
+	if (AbilityFacts facts = innate_facts(found))
+		text += "\n&+W  Mechanics&n\n" + facts(ch);
+	send_to_char(text.c_str(), ch);
+}
+
 bool check_innate_time(P_char ch, int innate, int duration)
 {
 	struct affected_type af, *afp;
 	int timer;
-	int default_duration;
 
-	for (afp = ch->affected; afp; afp = afp->next)
-	{
-		if (afp->type == TAG_INNATE_TIMER && afp->location == innate)
-		{
-			break;
-		}
-	}
+	afp = find_innate_timer(ch, innate);
 	if (afp)
 	{
 		if (afp->modifier == 1)
@@ -1149,15 +1245,11 @@ bool check_innate_time(P_char ch, int innate, int duration)
 		//  to be replaced with check to see if innate.pvp.timer exists
 	}
 
-	// in seconds. default is 12 mins = 12*60 = 720
-	default_duration = get_property("innate.timer.secs.default", 720);
-
-	timer = (!duration) ? get_innate_property(innate, "innate.timer.secs", default_duration) :
-			      duration;
+	timer = innate_rest_seconds(innate, duration);
 	memset(&af, 0, sizeof(af));
 	af.type = TAG_INNATE_TIMER;
 	af.location = innate;
-	af.modifier = get_innate_property(innate, "innate.uses", 1);
+	af.modifier = innate_uses(innate);
 	af.flags = AFFTYPE_SHORT | AFFTYPE_NOSHOW | AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY;
 	af.duration = timer * WAIT_SEC;
 
@@ -2641,6 +2733,21 @@ void do_stone_skin(P_char ch, char * /*arg*/, int /*cmd*/)
 	CharWait(ch, PULSE_VIOLENCE * 3);
 }
 
+// The Reflection innate's lag, in pulses.
+static int reflection_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string reflection_innate_facts(P_char ch)
+{
+	std::string text = fact("Effect", "casts your reflection spell on you at your level");
+	if (AbilityFacts spell = ability_facts(SPELL_REFLECTION))
+		text += spell(ch);
+	return text + innate_rest_facts(INNATE_REFLECTION, 0) +
+	       fact("Your lag", seconds(reflection_innate_lag()));
+}
+
 // Gnome and kobold innate: the illusionist's reflection, always on the user.
 // The cooldown is innate.timer.secs.reflection.
 void do_innate_reflection(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -2662,7 +2769,7 @@ void do_innate_reflection(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 	spell_reflection(GET_LEVEL(ch), ch, 0, 0, ch, 0);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, reflection_innate_lag());
 }
 
 void do_shade_movement(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -3530,6 +3637,13 @@ void do_innate(P_char ch, char *arg, int cmd)
 			}
 			send_to_char(buf, ch);
 		}
+		return;
+	}
+
+	if (!str_cmp(innate_name, "info"))
+	{
+		// innate_args holds one word; names like "protection from cold" need the rest.
+		innate_info(ch, skip_spaces(one_argument(arg, buf)));
 		return;
 	}
 
