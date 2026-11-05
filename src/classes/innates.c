@@ -1143,7 +1143,7 @@ bool can_use_innate(P_char ch, int innate)
 }
 
 // An innate's uses and rest, as check_innate_time(ch, innate, duration) applies them.
-static std::string innate_rest_facts(int innate, int duration)
+std::string innate_rest_facts(int innate, int duration)
 {
 	return fact("Uses", std::to_string(innate_uses(innate)) + " before it rests") +
 	       fact("Rest", "all uses return " +

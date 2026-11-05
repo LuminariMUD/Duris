@@ -97,6 +97,37 @@ std::string real_time(int pulses)
 	return text;
 }
 
+// A duration in ticks that may vary, shown as game_hours() shows one: an affect set to
+// `ticks.low` to `ticks.high` ticks lasts more than `ticks.low` and up to `ticks.high + 1`
+// game hours.
+std::string game_hours_range(Range ticks)
+{
+	if (ticks.low == ticks.high)
+		return game_hours(ticks.low);
+	const double minutes = PULSES_IN_TICK / static_cast<double>(WAIT_SEC) / 60.0;
+	char text[96];
+	snprintf(text, sizeof(text), "%d-%d game hours (%.10g-%.10g minutes)", ticks.low,
+		 ticks.high + 1, ticks.low * minutes, (ticks.high + 1) * minutes);
+	return text;
+}
+
+// A range that may hold negative numbers, which show() would join with a second dash.
+std::string show_signed(Range range)
+{
+	if (range.low < 0 && range.low != range.high)
+		return std::to_string(range.low) + " to " + std::to_string(range.high);
+	return show(range);
+}
+
+// spell_damage() deals no damage and vamp() heals nothing for an amount below 1, so a
+// range that starts there shows what lands.
+std::string show_landing(Range range)
+{
+	if (range.low >= 1)
+		return show(range);
+	return show({ 0, std::max(range.high, 0) }) + " (none below 1 lands)";
+}
+
 std::string info_field(const std::string &label, const std::string &value)
 {
 	return "  &+c" + label + ":&n " + value + "\n";

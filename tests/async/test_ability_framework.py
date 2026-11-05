@@ -94,6 +94,13 @@ int main() {
     assert(game_hours(24) == "24-25 game hours (30-31.25 minutes)");
     assert(game_hours(0) == "up to 1 game hour (up to 1.25 minutes)");
     assert(game_hours(-1) == "permanent");
+    assert(game_hours_range({ 24, 24 }) == game_hours(24));
+    assert(game_hours_range({ 2, 5 }) == "2-6 game hours (2.5-7.5 minutes)");
+    assert(show_signed({ -10, -5 }) == "-10 to -5" && show_signed({ -3, -3 }) == "-3");
+    assert(show_signed({ 2, 5 }) == "2-5");
+    assert(show_landing({ 1, 5 }) == "1-5");
+    assert(show_landing({ -25, 55 }) == "0-55 (none below 1 lands)");
+    assert(show_landing({ -5, -2 }) == "0 (none below 1 lands)");
     assert(game_hours(8001) == "8001-8002 game hours (10001.25-10002.5 minutes)");
     assert(show({ 3, 3 }) == "3" && show({ 3, 9 }) == "3-9");
     // Info pages style facts at render time: cyan labels, bright numbers, dim notes.

@@ -80,7 +80,7 @@ functions = [
     ('abilities.c', 'std::string fact('), ('abilities.c', 'std::string seconds('),
     ('abilities.c', 'std::string real_time('), ('abilities.c', 'std::string info_field('),
     ('abilities.c', 'static std::string bright_numbers('), ('abilities.c', 'std::string mechanics_section('),
-    ('innates.c', 'static std::string innate_rest_facts('), ('innates.c', 'static std::string innate_status('),
+    ('innates.c', 'std::string innate_rest_facts('), ('innates.c', 'static std::string innate_status('),
     ('innates.c', 'void innate_info(P_char ch'), ('innates.c', 'std::string reflection_innate_facts('),
 ]
 production = '\n'.join(extract_function(file, signature) for file, signature in functions)
