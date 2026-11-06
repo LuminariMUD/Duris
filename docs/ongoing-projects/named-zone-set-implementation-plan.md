@@ -4,8 +4,8 @@ Status: implementation in progress; fifteen focused implementation/test PRs are 
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-edits`, based on
-`branch/named-zone-set-transfer`.
+Working branch: `branch/named-zone-set-pet-storage`, based on
+`branch/named-zone-set-edits`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -963,6 +963,42 @@ snapshot fixture identify their UIDs without guessing names. For the next
 storage proof, inspect the maintained `test_pet_restart_journey.py`,
 `test_corpse_trap_restart_journey.py` and locker/shop journeys before adding
 fixtures; keep these real marked items and the existing authority.
+
+### Native pet-held named items passed
+
+**Outcome/files/proof:** add `run_named_set_pet_journey.py` using the shared
+native I/O, existing Meranen and original #1325 body item. Native `givepet`
+creates an ordinary permanent cat; native put/give places the marked piece in
+its backpack. Verify active pet restoration, exact child UID/origin/parent/slot
+through two owner reboots, then use native order/give/get to recover and wear
+the same item and verify another reboot. Extend the snapshot fixture with
+read-only pet inventory coordinates, reusing its origin reader; no pet, item or
+origin payload is seeded. No product code, new command or storage format is
+needed. Two native restarts retain the active cat and exact marked child graph.
+Animal NPCs intentionally ignore `drop`, so recovery uses the supported ordered
+give. The first recovery also exposed the fixture's overly broad affect reset:
+clearing achievement markers re-issued reward satchels and exhausted mortal
+inventory slots. Preparation now clears spell/rest buffs while preserving all
+internal tags, including achievements and cooldowns; existing reward bags are
+retained inside another native container. No product defect was found here.
+
+**Passed:** native `givepet` creates the active ordinary cat #74132. Backpack
+`81069478` carries original body UID **`76068769`**, still #1325 with its edited
+plain description, under the pet after two owner reboots. Exact inventory
+parent/slot/origin rows are unchanged and hold reason remains none. Native
+`order cat give backpack Meranen` returns it; get/unpack and wear restore +5 HP
+and Armor from the recorded 1475 receiver baseline. Another reboot preserves
+the exact returned origins, wear slots and flags. A complete repeat passes on
+the same authority, with the same reward satchel UIDs across all reboots; the
+fixture no longer re-issues level achievement gifts.
+
+**Run/proof:** `python3 tests/async/run_named_set_pet_journey.py` and its repeat
+finish with exit 0. `make -C src -j4`, fixture warning-clean compilation, Python
+static checks, C++ formatting and `git diff --check` pass. Setup/results/logs
+and full transcripts stay ignored under the existing runtime. The cat remains
+an active empty permanent follower; the body is back on Meranen. All private
+servers are stopped. This proves the flat-file pet inventory path; corpse and
+other storage/backend gates remain separate. No release or deployment occurred.
 
 ## Start here
 

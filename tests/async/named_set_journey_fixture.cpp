@@ -4,6 +4,7 @@
 #include "flatfile/flatfile_store.h"
 #include "player/player_snapshot_codec.h"
 #include "core/defines.h"
+#include "magic/spells.h"
 #include <cassert>
 #include <cstdio>
 #include <openssl/sha.h>
@@ -12,6 +13,14 @@ template <class T> void number(std::vector<uint8_t> &out, T value)
 {
 	for (size_t i = 0; i < sizeof(T); ++i)
 		out.push_back(static_cast<uint64_t>(value) >> (i * 8));
+}
+
+int item_origin(const player_item_snapshot &item)
+{
+	for (const auto &description : item.extra_descriptions)
+		if (description.keyword == "DURIS_NAMED_SET_ORIGIN_V1")
+			return std::stoi(description.description);
+	return 0;
 }
 
 int main(int argc, char **argv)
@@ -40,8 +49,12 @@ int main(int argc, char **argv)
 			if (field.field == player_status_field::base_hit)
 				field.signed_value = field.unsigned_value = 1000;
 		}
-		// Remove unrelated welcome/rest buffs to isolate equipment application.
-		snapshot.affects.clear();
+		// Clear spell/rest buffs, retaining achievements, receipts and cooldowns.
+		std::erase_if(snapshot.affects,
+			      [](const player_affect_snapshot &affect) {
+				      return affect.type < FIRST_TAG || affect.type == TAG_RESTED ||
+					     affect.type == TAG_WELLRESTED;
+			      });
 		std::vector<uint8_t> payload, bytes;
 		snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
 		assert(player_snapshot_encode(snapshot, &payload) ==
@@ -76,13 +89,29 @@ int main(int argc, char **argv)
 				    item.parent_index, item.equipment_slot);
 		return 0;
 	}
+	if (mode == "pets")
+	{
+		for (size_t index = 0; index < snapshot.pets.size(); ++index)
+		{
+			const auto &pet = snapshot.pets[index];
+			std::printf("%zu|%llu|%d|0|0|-1|0|%u\n", index,
+				    static_cast<unsigned long long>(pet.pet_uid), pet.mob_vnum,
+				    static_cast<unsigned>(pet.hold_reason));
+			for (const auto &item : pet.items)
+				std::printf("%zu|%llu|%d|%llu|%d|%d|%d|%u\n", index,
+					    static_cast<unsigned long long>(pet.pet_uid),
+					    pet.mob_vnum,
+					    static_cast<unsigned long long>(item.object_uid),
+					    item_origin(item), item.parent_index,
+					    item.equipment_slot,
+					    static_cast<unsigned>(pet.hold_reason));
+		}
+		return 0;
+	}
 	assert(mode == "inspect");
 	for (const auto &item : snapshot.items)
 	{
-		int zone = 0;
-		for (const auto &description : item.extra_descriptions)
-			if (description.keyword == "DURIS_NAMED_SET_ORIGIN_V1")
-				zone = std::stoi(description.description);
+		const int zone = item_origin(item);
 		if (!zone)
 			continue;
 		bool clean = item.dynamic_affects.empty();

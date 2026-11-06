@@ -228,6 +228,12 @@ class NamedSetGame:
             if line.startswith(str(spell) + "|")
         ]
 
+    def pets(self, pid=1):
+        return [
+            list(map(int, line.split("|")))
+            for line in self.read("pets", pid).splitlines()
+        ]
+
     def prepare_mortal(self, pid=1):
         subprocess.run(
             [str(self.fixture), str(self.state), "mortal", str(pid)], check=True
