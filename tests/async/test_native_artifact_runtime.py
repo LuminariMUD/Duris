@@ -81,6 +81,7 @@ void all_affects(P_char ch, int mode) {
         if(af->location==APPLY_HIT && !(af->flags&AFFTYPE_NOAPPLY)) TmpAffs.Hits+=af->modifier;
     // INSERT_HP_RECALC
 }
+char affect_total(P_char actor,int) { all_affects(actor,FALSE); all_affects(actor,TRUE); return 0; }
 affected_type *affect_to_char(P_char actor,affected_type *af) {
     auto *copy=new affected_type(*af); copy->next=actor->affected; actor->affected=copy;
     actor->specials.affected_by2|=af->bitvector2;
