@@ -1,5 +1,7 @@
 # Locker identification
 
+Bare `stat` (including whitespace-only arguments) shows the character's attributes inside a storage locker. Use `stat <item>` for paid identification or `stat receipt` to recover or reread the latest receipt. Trusted staff retain their normal `stat` command; staff in mortal mode use the player routing.
+
 Paid locker `stat <item>` captures the selected item's description and charges the configured copper value from the wallet, in memory; the player's save writes it. It does not add a fixed recovery timer or clear existing combat/skill waits. Ordinary lore and legend-lore recovery remain unchanged. Fighting, ownership and level-based identification restrictions are checked before accepting the request.
 
 The captured description belongs to the selection at request time. Renaming, moving or extracting that item while payment is pending does not change the purchased description. The deferred service retains no object or character pointers.
@@ -32,7 +34,7 @@ Keep the receipt subdirectory in recursive backups of `CRITICAL_COMMAND_JOURNAL_
 
 Every crash boundary also runs with 40 online players without receipts queued before the recovering player, reproducing copyover admission before the first pulse. These cases verify that prepared and paid recovery survives multiple admission batches, charges once and preserves silent automatic handling of delivered receipts. The harness also checks repeated automatic notifications, disconnected deferred players, explicit rereads claiming deferred entries, shutdown cleanup and the 16-active-request limit.
 
-`test_locker_identify.py` checks the actual lore renderer for weapons, armor, totems, potions and wands. `test_currency_in_memory.py` applies a prepared payment the way the receipt service submits it; `test_currency_transaction_contract.py` retains schema and source contracts. These controlled tests do not constitute a live multiplayer latency benchmark.
+`test_locker_identify.py` executes the locker room special and argument parser under ASan/UBSan, checking bare/whitespace-only `stat`, item identification and configured costs, receipt recovery, missing-item feedback and staff routing. Bare input must reach attributes without item lookup, pricing or identification/receipt requests. It also checks the actual lore renderer for weapons, armor, totems, potions and wands. `test_currency_in_memory.py` applies a prepared payment the way the receipt service submits it; `test_currency_transaction_contract.py` retains schema and source contracts. These controlled tests do not constitute a live multiplayer latency benchmark.
 
 ## Backup and restore qualification
 
