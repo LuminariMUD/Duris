@@ -399,6 +399,43 @@ static void inspect_locker_items(const std::string &root, const std::string &nam
 	std::cout << "]}\n";
 }
 
+static void inspect_room_items(const std::string &root, int room_vnum)
+{
+	std::string error;
+	std::vector<flatfile_room_item_record> rooms;
+	const auto found = flatfile_world_item_list_rooms(root, &rooms, &error);
+	require(found == flatfile_world_item_result::ok ||
+			found == flatfile_world_item_result::not_found,
+		"inspect room items: " + error);
+	std::cout << "{\"items\":[";
+	bool first = true;
+	for (const auto &room : rooms)
+		if (room.room_vnum == room_vnum)
+			for (const auto &item : room.items)
+			{
+				if (!first)
+					std::cout << ',';
+				first = false;
+				const uint64_t parent =
+					item.parent_index < 0 ?
+						0 :
+						room.items
+							.at(static_cast<size_t>(item.parent_index))
+							.object_uid;
+				std::cout << "{\"uid\":" << item.object_uid
+					  << ",\"vnum\":" << item.vnum
+					  << ",\"parent_uid\":" << parent
+					  << ",\"slot\":" << item.equipment_slot
+					  << ",\"type\":" << static_cast<int>(item.type);
+				for (const auto &description : item.extra_descriptions)
+					if (description.keyword == "DURIS_NAMED_SET_ORIGIN_V1")
+						std::cout << ",\"named_origin\":\""
+							  << description.description << '"';
+				std::cout << '}';
+			}
+	std::cout << "]}\n";
+}
+
 static void source_id_gap_case(const fs::path &path)
 {
 	const std::string root = path.string();
@@ -2156,6 +2193,11 @@ int main(int argc, char **argv)
 	if (argc >= 4 && std::string(argv[2]) == "inspect-world-items")
 	{
 		inspect_world_items(argv[1], argc, argv);
+		return 0;
+	}
+	if (argc == 4 && std::string(argv[2]) == "inspect-room-items")
+	{
+		inspect_room_items(argv[1], std::stoi(argv[3]));
 		return 0;
 	}
 	if (argc == 4 && std::string(argv[2]) == "inspect-locker-items")

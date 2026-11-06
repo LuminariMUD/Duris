@@ -4,11 +4,20 @@ Status: implementation in progress; twenty-two focused implementation/test PRs a
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-shop-world`, based on
-`branch/named-zone-set-live-report`.
+Working branch: `branch/named-zone-set-world-storage`, based on
+`branch/named-zone-set-shop-world`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
+
+**Continue with:** SQL shop/world journeys, compatible rollback rehearsal and final
+local/review reconciliation. MariaDB player/private chest, canonical help on both
+backends, live Redis reports and native flat-file shop/world gates now pass.
+The native world journey found and fixed orphaned storage descendants; preserve
+source-fix commit `265299320` in any compatibility rollback build. All three
+original #1325 pieces are worn by mortal Meranen, and saved root `144069157` is
+empty. The retained named count is 751 after the separately disclosed earlier
+copy loss. No production operation or merge has occurred.
 
 **Review stack:** [PR #714](https://github.com/LuminariMUD/Duris/pull/714)
 (`branch/named-zone-set-expansion`, `67c7fc7d9`) contains the catalog foundation
@@ -1321,6 +1330,75 @@ python3 tests/async/run_named_set_shop_journey.py
 After this focused flat-file shop chunk, complete the native persistent-storage
 journey and SQL shop/world extensions, then compatibility rollback and final
 local/review reconciliation. No release or deployment is authorized by this test.
+
+### Native saved-world checkpoint and room-subtree repair
+
+**Outcome/files/ablation:** `run_named_set_world_journey.py` uses native
+`storage new 83185` to create a real non-takeable `ITEM_STORAGE` root in room
+132500. The maintained player inspector gains read-only `inspect-room-items`
+output with UID/vnum/parent/slot/type/origin from the complete room payload.
+The existing collector bag `125068524` holds the three original #1325 pieces;
+the saved root is **`144069157`**. No guessed/recreated identities or ordinary
+floor drops are used. `named-world-setup.json` retains the original slots and
+exact player graph before deposit.
+
+The original collector keywords also include "bottomless", so the first put
+attempt resolved the destination to the carried bag itself and was safely
+rejected. Its transcript is retained as `named-world-first-put.txt`. The runner
+now uses a native keyword edit to keep `collector` and add `collectorproof`
+without the conflicting word; the floor root remains `bottomless`.
+
+**Actual defect:** native deposit durably writes all five UIDs with their exact
+parents and origins, removes player custody, and survives reboot. Native mortal
+retrieval correctly saves the four-item bag tree back to PID 2, but the room
+payload retains those four entries as orphan roots. The room ownership ledger
+correctly contains only storage root `144069157`; the player ledger owns all four
+retrieved entries. The saved player revision 185 and the failed retrieval
+transcript (`named-world-retrieval-failure.txt`) preserve this evidence. The items
+are safe in Meranen's player snapshot; do not erase/reseed the authority or
+invent replacement UIDs.
+
+`flatfile_world_item_prepare_room_item_snapshot()` passed only the new tree's
+UIDs to `strip_everywhere()`. When the saved root shrank, its old omitted children
+were promoted to top-level room entries. The narrow repair uses the existing
+strip/remap path to retire the old room subtree rooted at each replacement UID,
+then installs the new graph. Independent room roots and other rooms survive;
+corpse/other transfer callers retain their existing promotion policy. No schema,
+wire format, broad reconciliation service or data rewrite is introduced.
+
+`test_flatfile_world_item_repository.py` now reproduces the orphan bug before the
+repair and passes after it, covering nested removal, a now-empty root, root
+removal with omitted descendants, independent roots and another room with exact
+payload/metadata comparison. Source-fix commit **`265299320`** contains only this
+narrow repair and its focused regression, so it can be retained independently
+in a compatibility rollback build.
+
+**Passed:** both maintained builds, the world repository regression (red before
+the repair, green after), full flat-file player repository regressions, warning-clean
+inspector build, formatting, Python compilation and `git diff --check`.
+The rebuilt native server reuses the real player-held bag and the same saved root;
+normal put/get retires the old stale payload. Deposit, world reboot, mortal
+retrieval, wear and another player reboot pass end to end (exit 0). The room now
+contains only empty `ITEM_STORAGE` root `144069157`; all three originals are back
+on mortal Meranen in exact original slots with Armor/+5 HP. The full pre-run
+named-origin map remains unchanged: all 751 retained named items survive.
+Boot's existing ownership filter skips the old stale room entries because they
+are authoritatively player-owned; no data rewrite/reset was used. The runner
+resumes only from an actual bag-under-storage graph, not the old orphan payload.
+All private servers are stopped; final evidence remains in
+`named-world-transcript.txt`, `named-world-setup.json` and the separate failed logs.
+
+```sh
+python3 tests/async/test_flatfile_world_item_repository.py
+make -C src -j4
+make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/tests/named-set-flatfile-server"
+python3 tests/async/test_flatfile_player_repository.py --build-inspector bin/tests/coin-death-inspector
+python3 tests/async/run_named_set_world_journey.py
+```
+
+The compatibility rollback build must retain this storage repair, rather than
+reintroducing the newly demonstrated stale-descendant defect. SQL shop/world,
+rollback and final reconciliation remain open. No production operation occurred.
 
 ## Start here
 
