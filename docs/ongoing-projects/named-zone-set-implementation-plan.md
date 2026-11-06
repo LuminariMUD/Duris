@@ -558,6 +558,10 @@ Important evidence: authored XP is not an eligibility filter. `read_mobile()`
 calls `convertMob()`, which normally assigns positive XP even when the `.mob` XP
 field is zero; ACT_IGNORE/`_ignore_` exceptions retain their authored XP. Apply the
 actual shopkeeper, guild-room and recognized-hometown level guards. The temporary
+audit also excludes ZONE_SAFE combat areas: `is_in_safe()` in `cmd/actoff.c`
+rejects ordinary fighting there. This affects #366 Wandering Fields and #827
+Forgotten Forest and must be reflected in their final exclusion reasons.
+The temporary
 audit records reset encounters, cross-zone exits and placed ITEM_TELEPORT routes;
 its topology search includes closed/locked/secret doors but excludes closed/private
 zones, guild rooms and map mountain barriers. Its route candidates still need
