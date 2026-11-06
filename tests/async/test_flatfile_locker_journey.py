@@ -145,6 +145,13 @@ def run(binary: pathlib.Path) -> None:
             for text in ("eq chest list", "eq chest create vault fixture-secret",
                          "eq chest password vault none", "eq chest delete vault", "eq log"):
                 assert "require SQL storage" in command(client, text), text
+            # Trusted staff keep their stat command; in mortal mode it routes as for a player.
+            assert "Character attributes for" not in command(client, "stat")
+            command(client, "toggle fog")
+            assert "Character attributes for" in command(client, "stat")
+            assert "what item should i tell" in command(client, "stat no-such-item")
+            command(client, "toggle fog")
+            assert "Character attributes for" not in command(client, "stat")
             # Ordinary door opening and public storage must still work on this backend.
             assert "require SQL storage" not in command(client, "open door")
             client.send("drop banana")

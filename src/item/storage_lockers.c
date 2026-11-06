@@ -2720,9 +2720,7 @@ int storage_locker(int room, P_char ch, int cmd, char *arg)
 		}
 		if (!*name)
 		{
-			send_to_char(
-				"The member of the &+YStorage Locker Safety Commission&n says 'Hmm, what item should i tell you more about?'\r\n",
-				ch);
+			do_attributes(ch, arg, cmd);
 			return TRUE;
 		}
 

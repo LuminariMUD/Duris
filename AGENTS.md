@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## Branch policy override
+
+When the user explicitly asks you to merge, you may override branch policy to complete the requested merge.
+
 ## Golden rules
 
 Write the simplest code that fully solves the task. Build only what is needed now: no new abstractions, helpers, options, or layers for needs that don't exist yet, and no handling for situations that can't happen. Reuse what the codebase already has before adding anything new. Simple means easy to read and follow, not short or clever, so keep the error handling and tests the task really needs. If a fix would stack another patch onto tangled code, straighten out the piece you are touching instead. Before finishing, reread the change and cut anything the task would not miss.
