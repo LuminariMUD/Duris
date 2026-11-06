@@ -109,7 +109,7 @@ HANDLER_CALLS = {
         "cast_nether_gate": ["set.throughput = gate_throughput()", "set.decay_timer = gate_decay()"],
         "cast_plane_shift": ["GET_LEVEL(ch) < plane_shift_druid_level()"],
         "cast_area_resurrect": ["GET_HIT(ch) = aura_of_rebirth_hit_points(i)", "if (i > aura_of_rebirth_fatal_above())",
-                                "CharWait(ch, aura_of_rebirth_lag(i))", "spell_resurrect(level, ch"],
+                                "CharWait(ch, aura_of_rebirth_lag(i))", "resurrect_corpse(level, ch"],
         "spell_wall_of_flames": ["WALL_OF_FLAMES, wall_of_flames_power(live_rolls, level)", "wall_decay()"],
         "spell_wall_of_ice": ["WALL_OF_ICE, wall_of_ice_power()", "wall_decay()", "EX_BREAKABLE"],
         "cast_life_ward": ["LIFE_WARD, 40, wall_decay()"],
@@ -129,9 +129,9 @@ HANDLER_CALLS = {
                        "af.modifier = vines_absorb(count)"],
         "event_spike_growth": ["duration = spike_growth_duration(live_rolls)", "chance = spike_growth_affect_chance()",
                                "spike_growth_affect_roll(live_rolls) < 100 - chance",
-                               "technique = spike_growth_technique(live_rolls)", "spell_grow_spike(GET_LEVEL(ch), ch",
+                               "technique = spike_growth_technique(live_rolls)", "grow_spike(GET_LEVEL(ch), ch",
                                "spike_growth_foot_damage(live_rolls, ch)", "CharWait(tch, spike_growth_foot_lag())",
-                               "dam = spike_growth_bone_damage(live_rolls, ch)",
+                               "spike_growth_bone_damage(live_rolls, ch)",
                                "add_event(event_spike_growth, spike_growth_interval()"],
         "event_awaken_forest": ["duration = awaken_forest_duration(live_rolls)",
                                 "awaken_forest_affect_roll(live_rolls, nCnt) > awaken_forest_pass_above()",
@@ -201,13 +201,13 @@ HANDLER_CALLS = {
         "spell_drain_nature": ["healpoints = drain_nature_first_wave(level)", "healpoints = drain_nature_outsider(healpoints)",
                                "healpoints < drain_nature_least()", "healpoints = drain_nature_scourge(healpoints)"],
         "spell_create_pond": ["set_obj_affected(pond, create_pond_decay()"],
-        "spell_toxic_fog": ["dam = toxic_fog_damage(live_rolls, level)", "dam = toxic_fog_failed_save(dam)"],
+        "spell_toxic_fog": ["dam = toxic_fog_damage(live_rolls, level)", "dam = toxic_fog_saved(dam)"],
         "spell_faluzures_vitality": ["int healpoints = faluzures_vitality_hit_points(level)",
                                      "paf->duration = faluzures_vitality_duration()",
                                      "af.duration = faluzures_vitality_duration()",
                                      "af.modifier = faluzures_vitality_moves(level)"],
         "spell_sap_nature": ["skl_lvl = sap_nature_amount(level)", "skl_lvl = sap_nature_scourge(skl_lvl)"],
-        "spell_bloodstone": ["int duration = bloodstone_duration(level)", "af.duration = duration / PULSES_IN_TICK"],
+        "spell_bloodstone": ["int duration = bloodstone_duration(level)", "af.duration = duration"],
     },
     "reavers.c": {
         "spell_baladors_protection": ["GET_LEVEL(ch) > baladors_alignment_above()", "GET_LEVEL(ch) > baladors_saves_above()",
@@ -420,7 +420,7 @@ int main() {
         SAME(40 + level * 6 + number(1, 30), hurricane_damage(rolls, level));
         SAME((dice((level / 5) + 5, 6) * 3), flame_sphere_damage(rolls, level));
         SAME((level > 40) ? dice(40 * 3, 6) : dice(level * 3, 6), blight_damage(rolls, level));
-        SAME(GET_LEVEL(ch) / 4 + number(-4, 2), waves_fatigue_moves(rolls, ch));
+        SAME(std::max(1, GET_LEVEL(ch) / 4 + number(-4, 2)), waves_fatigue_moves(rolls, ch));
         SAME(30 + GET_LEVEL(ch) + number(0, 20), acid_rain_damage(rolls, ch));
         SAME(5 * level + dice(level * 2, 10), implosion_damage(rolls, level));
         SAME(dice(level * 3, 6), sandstorm_damage(rolls, level));
@@ -507,7 +507,7 @@ int main() {
     assert(drain_nature_terrain(47, SECT_INSIDE) == 47);
     assert(drain_nature_total(47, SECT_INSIDE) == 47 + 23 + 11 + 5 + 2);
     // A saved firelance, implosion and fog truncate as the original int /= double did.
-    { int dam = 476; dam /= 1.5; assert(firelance_saved(476) == dam && toxic_fog_failed_save(476) == dam); }
+    { int dam = 476; dam /= 1.5; assert(firelance_saved(476) == dam && toxic_fog_saved(476) == dam); }
     { int dam = 1250; dam /= 1.8; assert(implosion_saved(1250) == dam); }
 
     const Viewer &plain = viewers[1], &ruiner = viewers[2], &scourge = viewers[3], &storm = viewers[4];
@@ -609,8 +609,8 @@ int main() {
     PAGE_HAS(waves_fatigue, plain, 50, "  Vitality lost per wave: 8-14 at your level, 50");
     PAGE_HAS(waves_fatigue, plain, 50, "  If it passes a paralysis save, 8 harder: 2-3");
     PAGE_HAS(waves_fatigue, plain, 50, "  Waves: one now, then after 2 seconds and 4 seconds");
-    PAGE_HAS(waves_fatigue, plain, 1, "  Vitality lost per wave: -4 to 2 at your level, 1");
-    PAGE_HAS(waves_fatigue, plain, 1, "  A wave below 0 gives the target vitality.");
+    PAGE_HAS(waves_fatigue, plain, 1, "  Vitality lost per wave: 1-2 at your level, 1");
+    assert(page(waves_fatigue_facts, plain, 1).find("gives the target") == std::string::npos);
     assert(page(waves_fatigue_facts, plain, 50).find("gives the target") == std::string::npos);
     PAGE_HAS(acid_rain, plain, 50, "  Acid damage per wave: 80-100 at your level, 50");
     PAGE_HAS(acid_rain, storm, 50, "  Acid damage per wave: 100-120 at your level, 50");
@@ -643,14 +643,14 @@ int main() {
     PAGE_HAS(create_pond, plain, 50, "  From level 51: it also casts regeneration");
     PAGE_HAS(toxic_fog, plain, 50, "  Gas damage: 80-560 at your level, 50");
     PAGE_HAS(toxic_fog, plain, 51, "  Gas damage: 80-640 at your level, 51");
-    PAGE_HAS(toxic_fog, plain, 50, "  If the target fails its save: 53-373");
+    PAGE_HAS(toxic_fog, plain, 50, "  If the target makes its save: 53-373");
     PAGE_HAS(faluzures_vitality, plain, 50, "  Maximum hit points: +175 at your level, 50");
     PAGE_HAS(faluzures_vitality, plain, 50, "  Maximum moves: +50");
     PAGE_HAS(sap_nature, plain, 50, "  Move regeneration: +22 at your level");
     PAGE_HAS(sap_nature, scourge, 50, "  Move regeneration: +27 at your level");
     PAGE_HAS(sap_nature, plain, 50, "  Endurance refuses it, and Mielikki's vitality except on druids and huntsmen.");
     PAGE_HAS(sap_nature, plain, 50, "  With Faluzure's vitality up, you cannot give it to a non-blighter.");
-    PAGE_HAS(bloodstone, plain, 50, "  Duration: 160-161 game hours (200-201.25 minutes) at your level");
+    PAGE_HAS(bloodstone, plain, 50, "  Duration: 200 minutes at your level");
 
     PAGE_HAS(baladors_protection, reaver, 50, "  Armor class: -20");
     PAGE_HAS(baladors_protection, reaver, 50, "  All five saves: -3");

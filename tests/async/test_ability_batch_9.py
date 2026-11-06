@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import ROOT, extract_function, source
+from contract_text import contains
 from _source_contract import function_bodies, strip_comments
 
 ILLUSION = "classes/sillusionist.c"
@@ -199,13 +200,13 @@ HANDLER_CALLS = {
                          "raised_undead_armor(GET_LEVEL(undead), typ)", "raised_undead_hitroll(GET_LEVEL(undead))",
                          "raised_undead_damroll(live_rolls, GET_LEVEL(undead))",
                          "raised_undead_dice_size(level)", "raised_undead_control(timeToDecay)",
-                         "duration += raised_undead_late_death_roll(live_rolls)",
-                         "raised_undead_death_delay(duration)"],
+                         "raised_undead_late_death_roll(live_rolls)",
+                         "raised_undead_death_delay( duration, raised_undead_late_death_roll(live_rolls))"],
         "spell_call_titan": ["obj->value[CORPSE_LEVEL] < corpse_pet_corpse_level()",
                              "life += corpse_pet_globe_life(ch)", "call_titan_hit_points(live_rolls, life)",
                              "(!corpse_pet_rebel_roll(live_rolls))", "corpse_pet_rebel_death(live_rolls)",
-                             "GET_AC(mob) -= call_titan_ac()", "duration += raised_undead_late_death_roll(live_rolls)",
-                             "raised_undead_death_delay(duration)"],
+                             "GET_AC(mob) -= call_titan_ac()", "raised_undead_late_death_roll(live_rolls)",
+                             "raised_undead_death_delay( duration, raised_undead_late_death_roll(live_rolls))"],
         "spell_create_dracolich": ["obj->value[CORPSE_LEVEL] < corpse_pet_corpse_level()",
                                    "life += corpse_pet_globe_life(ch)", "create_dracolich_hit_points(live_rolls, life)",
                                    "mob->points.damnodice = create_dracolich_dice_count(level)",
@@ -222,14 +223,14 @@ HANDLER_CALLS = {
                          "percent = golem_form_roll(live_rolls)", "percent > golem_form_above()",
                          "golem_hit_points(live_rolls, GET_LEVEL(mob), GET_LEVEL(ch), which_type, life)",
                          "golem_hitroll(GET_LEVEL(mob))", "golem_damroll(GET_LEVEL(mob))",
-                         "duration += raised_undead_late_death_roll(live_rolls)",
-                         "raised_undead_death_delay(duration)"],
+                         "raised_undead_late_death_roll(live_rolls)",
+                         "raised_undead_death_delay( duration, raised_undead_late_death_roll(live_rolls))"],
         "spell_call_avatar": ["obj->value[CORPSE_LEVEL] < greater_corpse_pet_corpse_level()",
                               "life += corpse_pet_globe_life(ch)", "call_avatar_hit_points(live_rolls, life)",
                               "GET_C_STR(mob) < corpse_pet_stat_floor()", "mob->base_stats.Str = corpse_pet_stat()",
                               "(!corpse_pet_rebel_roll(live_rolls))", "corpse_pet_rebel_death(live_rolls)",
-                              "duration += raised_undead_late_death_roll(live_rolls)",
-                              "raised_undead_death_delay(duration)"],
+                              "raised_undead_late_death_roll(live_rolls)",
+                              "raised_undead_death_delay( duration, raised_undead_late_death_roll(live_rolls))"],
         "spell_create_greater_dracolich": ["level = greater_dracolich_level(level, ch)",
                                            "obj->value[CORPSE_LEVEL] < greater_corpse_pet_corpse_level()",
                                            "life += corpse_pet_globe_life(ch)",
@@ -480,6 +481,7 @@ EXACT = r'''
         "  Damage per hit if the target fails its save: 285-325 at your level, 56\n"
         "  If it saves: 172-212\n"
         "  Each hit makes its own save. It stops if either of you dies.\n"
+        "  Damage scales with your level without a level-51 cap.\n"
         "  It does nothing to a target with no lungs. It cannot be deflected.\n"
         "  Globes and spirit wards do not stop it.\n"
         "  Spell damage modifiers and the target's defenses apply after.\n");
@@ -534,7 +536,7 @@ EXACT = r'''
         "  ocean around the target, and flying or swimming. Both must be raidable.\n");
     ch = viewer(viewers[1], 56); // illusionist
     assert(flicker_facts(&ch) ==
-        "  You need a group. It leaves the room in twilight.\n"
+        "  You need a group. It leaves the room in permanent twilight.\n"
         "  Casts: shadow shield on your group here, at level 36\n"
         "  Hits absorbed: 7-10\n"
         "  Each melee hit on them: 46 less\n"
@@ -737,7 +739,7 @@ EXACT = r'''
         "  Power it costs: 10-28 of your 112\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -754,7 +756,7 @@ EXACT = r'''
         "  Power it costs: 10-28 of your 112\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -773,7 +775,7 @@ EXACT = r'''
         "  Power it costs: 10 of your 112\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -794,7 +796,7 @@ EXACT = r'''
         "  A globe of shadows also adds to infuse life: 112\n"
         "  Safe rooms block it, and the corpse must be here. You must be able to move.\n"
         "  In vampire form you need necroplasm on.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n");
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n");
     ch = viewer(viewers[9], 56); // theurgist
     assert(call_bralani_facts(&ch) ==
         "  Corpse level needed: 30\n"
@@ -807,7 +809,7 @@ EXACT = r'''
         "  Power it costs: 22 of your 112\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -826,7 +828,7 @@ EXACT = r'''
         "  Power it costs: 65 of your 112\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -845,7 +847,7 @@ EXACT = r'''
         "  Power it costs: 28 of your 112\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -864,7 +866,7 @@ EXACT = r'''
         "  Power it costs: 28 of your 112\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -885,7 +887,7 @@ EXACT = r'''
         "  A globe of shadows also adds to infuse life: 112\n"
         "  Safe rooms block it, and the corpse must be here. You must be able to move.\n"
         "  In vampire form you need necroplasm on.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n");
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n");
     ch = viewer(viewers[4], 56); // necromancer
     assert(create_dracolich_facts(&ch) ==
         "  Corpse level needed: 46\n"
@@ -903,7 +905,7 @@ EXACT = r'''
         "  A globe of shadows also adds to infuse life: 112\n"
         "  Safe rooms block it, and the corpse must be here. You must be able to move.\n"
         "  In vampire form you need necroplasm on.\n"
-        "  It dies after its charm's ticks as minutes, plus: 1 minute\n");
+        "  It dies after its charm ends, plus: 1 minute\n");
     ch = viewer(viewers[4], 56); // necromancer
     assert(create_golem_facts(&ch) ==
         "  Flesh golem, corpse level needed: 41\n"
@@ -931,7 +933,7 @@ EXACT = r'''
         "  Its control lasts longer on a fresher corpse and with a duller pet.\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows replaces infuse life with: 112\n"
         "  Safe rooms block it, and the corpse must be here. You must be able to move.\n"
         "  In vampire form you need necroplasm on.\n");
@@ -953,7 +955,7 @@ EXACT = r'''
         "  A globe of shadows also adds to infuse life: 112\n"
         "  Safe rooms block it, and the corpse must be here. You must be able to move.\n"
         "  In vampire form you need necroplasm on.\n"
-        "  It dies after its charm's ticks as minutes, plus: 1 minute\n");
+        "  It dies after its charm ends, plus: 1 minute\n");
     ch = viewer(viewers[4], 56); // necromancer
     assert(raise_lich_facts(&ch) ==
         "  Corpse level needed: 45\n"
@@ -966,7 +968,7 @@ EXACT = r'''
         "  Power it costs: 28 of your 112\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -985,7 +987,7 @@ EXACT = r'''
         "  Power it costs: 65 of your 112\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -1005,7 +1007,7 @@ EXACT = r'''
         "  Power it costs: 10 of your 112\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -1024,7 +1026,7 @@ EXACT = r'''
         "  Power it costs: 28 of your 112\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -1043,7 +1045,7 @@ EXACT = r'''
         "  Power it costs: 22 of your 112\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -1201,7 +1203,7 @@ EXACT = r'''
         "  Its control lasts longer on a fresher corpse and with a duller pet.\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows replaces infuse life with: 90\n"
         "  Safe rooms block it, and the corpse must be here. You must be able to move.\n"
         "  In vampire form you need necroplasm on.\n");
@@ -1219,7 +1221,7 @@ EXACT = r'''
         "  Its control lasts longer on a fresher corpse and with a duller pet.\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows replaces infuse life with: 90\n"
         "  Safe rooms block it, and the corpse must be here. You must be able to move.\n"
         "  In vampire form you need necroplasm on.\n");
@@ -1233,7 +1235,7 @@ EXACT = r'''
         "  Power it costs: 10 of your 30\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -1251,7 +1253,7 @@ EXACT = r'''
         "  Power it costs: 10 of your 2\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -1272,7 +1274,7 @@ EXACT = r'''
         "  Power it costs: 10 of your 90\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -1292,7 +1294,7 @@ EXACT = r'''
         "  Power it costs: 22 of your 100\n"
         "  Control lasts at least: 4-5 game hours (5-6.25 minutes)\n"
         "  It lasts longer on a fresher corpse.\n"
-        "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+        "  It dies after its charm ends, plus: 2 minutes to 11 minutes\n"
         "  A globe of shadows or unholy alliance makes the charm permanent,\n"
         "  and then it does not die.\n"
         "  A globe of shadows also adds to infuse life: 50-100\n"
@@ -1362,7 +1364,7 @@ EXACT = r'''
         "  A globe of shadows also adds to infuse life: 2\n"
         "  Safe rooms block it, and the corpse must be here. You must be able to move.\n"
         "  In vampire form you need necroplasm on.\n"
-        "  It dies after its charm's ticks as minutes, plus: 1 minute\n");
+        "  It dies after its charm ends, plus: 1 minute\n");
     ch = viewer(viewers[1], 1); // illusionist
     assert(boulder_facts(&ch) ==
         "  Damage: 2-16 at your level, 1\n"
@@ -1374,7 +1376,7 @@ EXACT = r'''
         "  Elites and greater races do not fall.\n");
     ch = viewer(viewers[1], 1); // illusionist
     assert(flicker_facts(&ch) ==
-        "  You need a group. It leaves the room in twilight.\n"
+        "  You need a group. It leaves the room in permanent twilight.\n"
         "  Casts: shadow shield on your group here, at level 0\n"
         "  Hits absorbed: 1-4\n"
         "  Each melee hit on them: 46 less\n"
@@ -1416,7 +1418,7 @@ EXACT = r'''
         "  A globe of shadows also adds to infuse life: 120\n"
         "  Safe rooms block it, and the corpse must be here. You must be able to move.\n"
         "  In vampire form you need necroplasm on.\n"
-        "  It dies after its charm's ticks as minutes, plus: 1 minute\n");
+        "  It dies after its charm ends, plus: 1 minute\n");
     ch = viewer(viewers[1], 60); // illusionist
     assert(hammer_facts(&ch) ==
         "  Damage: 479-529 at your level, 60\n"
@@ -1486,7 +1488,7 @@ def check_sources():
             assert len(bodies) == 1, handler
             body = re.sub(r"\s+", " ", bodies[0])
             for call in calls:
-                assert call in body, f"{handler} does not call {call}"
+                assert contains(body, call), f"{handler} does not call {call}"
     illusion = strip_comments(source(ILLUSION).read_text(encoding="utf-8", errors="replace"))
     # The handler's rolls stay where they were.
     travel = re.sub(r"\s+", " ", function_bodies(illusion, r"\bvoid\s+spell_shadow_travel\s*\(")[0])

@@ -2101,7 +2101,7 @@ revalidate_movement:
 					while (!CAN_GO(ch, cmd2) && attempts < 10)
 					{
 						attempts++;
-						cmd2 = number(0, 6);
+						cmd2 = number(1, 6);
 					}
 
 					if (attempts < 9)

@@ -89,8 +89,7 @@ HANDLERS = {
     "spell_life_leech": "life_leech_damage life_leech_saved life_leech_kill_level life_leech_vamp",
     "spell_energy_drain": "energy_drain_level energy_drain_damage energy_drain_saved "
                           "energy_drain_kill_level energy_drain_vamp energy_drain_taps "
-                          "energy_drain_moves energy_drain_duration energy_drain_regen "
-                          "energy_drain_extension",
+                          "energy_drain_moves energy_drain_duration energy_drain_regen",
     "spell_wither": "wither_undead_damage wither_armor_class wither_duration",
     "spell_mirror_image": "mirror_image_count",
     "spell_call_woodland_beings": "call_woodland_beings_level call_woodland_beings_hit_points "
@@ -601,7 +600,7 @@ int main() {
 
     text = page(aid_facts);
     check(contains(text, "  Shortens harmful spells by: 12 game hours, to at least 1\n"), "aid", text);
-    check(contains(text, "  Duration: 50-51 game hours (62.5-63.75 minutes)\n"), "aid duration", text);
+    check(contains(text, "  Duration: 5-6 game hours (6.25-7.5 minutes)\n"), "aid duration", text);
 
     // number(1, 100) is below 70 for 69 of its 100 values.
     text = page(ray_of_enfeeblement_facts);
@@ -712,9 +711,8 @@ int main() {
     check(contains(text, "  Negative damage: 420-660 at casting level 60\n"), "reaper drain", text);
     check(contains(text, "  You drain: 5-30 movement, half if it is already drained\n"), "reaper moves", text);
     check(contains(text, "  If it fails its save and survives: its regeneration drops by 3\n"), "drain regen", text);
-    check(contains(text, "  Hit point and movement regeneration loss lasts: 6 seconds\n"
-                         "  Not if it is already drained: its loss lasts 0.25 seconds longer instead,\n"
-                         "  even if it saves.\n"), "drain time", text);
+    check(contains(text, "  Hit point and movement regeneration loss lasts: 5 seconds\n"
+                         "  Recasting restores that duration, at most 5 seconds, even if it saves.\n"), "drain time", text);
 
     // Charisma 77 + 30 / 5; the weaker level's highest roll is the lowest level.
     caster(30);

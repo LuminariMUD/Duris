@@ -2020,6 +2020,7 @@ std::string mental_anguish_facts(P_char ch)
 	return fact("Duration", seconds(mental_anguish_duration(ch)) + " at your level, " +
 					std::to_string(GET_LEVEL(ch))) +
 	       "  A target that makes its power save is unaffected.\n"
+	       "  Effective skill ratings are capped at 10 while it lasts.\n"
 	       "  It does not stack.\n";
 }
 
@@ -2070,9 +2071,15 @@ int memory_block_forget_roll(const Rolls &rolls)
 	return rolls.number(0, 1);
 }
 
-std::string memory_block_facts(P_char /*ch*/)
+static int memory_block_duration(P_char ch)
 {
-	return fact("Chance each cast fails",
+	return MAX(1, GET_LEVEL(ch) / 2) * WAIT_SEC;
+}
+
+std::string memory_block_facts(P_char ch)
+{
+	return fact("Duration", seconds(memory_block_duration(ch))) +
+	       fact("Chance each cast fails",
 		    "1 in " + std::to_string(memory_block_forget_roll(highest_rolls) -
 					     memory_block_forget_roll(lowest_rolls) + 1)) +
 	       "  A target that makes its power save is unaffected.\n";
@@ -2099,7 +2106,15 @@ void spell_memory_block(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, 
 	act("You seem to have forgotten why you are here!&n", TRUE, ch, 0, victim, TO_VICT);
 	act("$N stares around blankly.", TRUE, ch, 0, victim, TO_NOTVICT);
 
-	SET_BIT(victim->specials.affected_by5, AFF5_MEMORY_BLOCK);
+	affect_from_char(victim, SPELL_MEMORY_BLOCK);
+	struct affected_type af
+	{
+	};
+	af.type = SPELL_MEMORY_BLOCK;
+	af.duration = memory_block_duration(ch);
+	af.flags = AFFTYPE_SHORT;
+	af.bitvector5 = AFF5_MEMORY_BLOCK;
+	affect_to_char(victim, &af);
 	return;
 }
 
@@ -2756,40 +2771,14 @@ void spell_flesh_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 	    TO_ROOM);
 }
 
-// What casting it again sets. As before the move, every level below 57 takes the "< 57" branch.
-static int inertial_barrier_renewal(P_char ch)
+static int inertial_barrier_duration()
 {
-	int duration = 0;
-
-	if (GET_LEVEL(ch) >= 57)
-		duration = 50;
-	else if (GET_LEVEL(ch) < 57)
-		duration = 30;
-	else if (GET_LEVEL(ch) < 50)
-		duration = 15;
-	else if (GET_LEVEL(ch) < 41)
-		duration = 10;
-	return duration;
+	return 30;
 }
 
-static int inertial_barrier_duration(P_char ch)
+std::string inertial_barrier_facts(P_char /*ch*/)
 {
-	int duration = 0;
-
-	if (GET_LEVEL(ch) >= 57)
-		duration = 50;
-	else if (GET_LEVEL(ch) < 57)
-		duration = 30;
-	else if (GET_LEVEL(ch) < 50)
-		duration = 15;
-	else if (GET_LEVEL(ch) < 41)
-		duration = 6;
-	return duration;
-}
-
-std::string inertial_barrier_facts(P_char ch)
-{
-	return fact("Duration", game_hours(inertial_barrier_duration(ch))) +
+	return fact("Duration", game_hours(inertial_barrier_duration())) +
 	       fact("Melee attacks against you",
 		    share_percent(inertial_barrier_attack_share()) +
 			    " of normal, rounded up, before any hit rolls") +
@@ -2815,14 +2804,14 @@ void spell_inertial_barrier(int /*level*/, P_char ch, char * /*arg*/, [[maybe_un
 		for (af1 = victim->affected; af1; af1 = af1->next)
 			if (af1->type == SPELL_INERTIAL_BARRIER)
 			{
-				af1->duration = inertial_barrier_renewal(ch);
+				af1->duration = inertial_barrier_duration();
 			}
 		return;
 	}
 
 	bzero(&af, sizeof(af));
 	af.type = SPELL_INERTIAL_BARRIER;
-	af.duration = inertial_barrier_duration(ch);
+	af.duration = inertial_barrier_duration();
 	af.modifier = 0;
 	af.bitvector3 = AFF3_INERTIAL_BARRIER;
 	affect_to_char(victim, &af);
@@ -3562,7 +3551,7 @@ static int psionic_wave_blast_damage(const Rolls &rolls, int level)
 	return rolls.dice(level, 4);
 }
 
-// A nonzero roll lets the target try to shrug the first hit; a zero, a wave.
+// Only a zero lets the target attempt a shrug, on every hit.
 static int psionic_wave_blast_shrug_roll(const Rolls &rolls)
 {
 	return rolls.number(0, 2);
@@ -3622,8 +3611,9 @@ std::string psionic_wave_blast_facts(P_char ch)
 						 psionic_wave_blast_away(wave.high) })) +
 	       fact("Mana per continuing wave", std::to_string(psionic_wave_blast_mana())) +
 	       fact("Chance a target may try to shrug the first hit",
-		    std::to_string(outcomes - 1) + " in " + std::to_string(outcomes)) +
+		    "1 in " + std::to_string(outcomes)) +
 	       fact("Chance it may try to shrug a wave", "1 in " + std::to_string(outcomes)) +
+	       "  This gates the shrug attempt; it does not change the target's shrug rating.\n"
 	       "  A shrug of the first hit ends it; a shrugged wave still costs mana.\n"
 	       "  Waves need the target to survive what came before.\n"
 	       "  The target must be at full health when you cast it.\n"
@@ -3663,7 +3653,7 @@ void spell_psionic_wave_blast(int level, P_char ch, char * /*arg*/, [[maybe_unus
 	dam = psionic_wave_blast_damage(live_rolls, level);
 
 	// 66 percent less shrugging of this spell at start.
-	if (psionic_wave_blast_shrug_roll(live_rolls) && resists_spell(ch, victim))
+	if (!psionic_wave_blast_shrug_roll(live_rolls) && resists_spell(ch, victim))
 		return;
 
 	if (spell_damage(ch, victim, dam, SPLDAM_PSI,
@@ -3904,18 +3894,12 @@ static int cannibalize_duration(int level)
 	return level;
 }
 
-// Casting it again sets this shorter duration instead of the first.
-static int cannibalize_renewal(int level)
-{
-	return 2 * level / 3;
-}
-
 std::string cannibalize_facts(P_char ch)
 {
 	const int level = GET_LEVEL(ch);
 	return fact("Duration", game_hours(cannibalize_duration(level)) + " at your level, " +
 					std::to_string(level)) +
-	       fact("If cast again while it lasts", game_hours(cannibalize_renewal(level))) +
+	       "  Casting it again renews the full duration.\n" +
 	       fact("Mana you take per hit", show({ (int)cannibalize_mana(0, level),
 						    (int)cannibalize_mana(INT_MAX, level) })) +
 	       "  It rises with the damage dealt, and is taken after the damage lands.\n" +
@@ -3942,7 +3926,7 @@ void spell_cannibalize(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 		{
 			if (af1->type == SPELL_CANNIBALIZE)
 			{
-				af1->duration = cannibalize_renewal(level);
+				af1->duration = cannibalize_duration(level);
 			}
 		}
 		return;
@@ -4543,20 +4527,14 @@ static int thought_beacon_duration(int level)
 	return level * 4 * WAIT_MIN;
 }
 
-// How long the caster's link to the beacon lasts, in ticks.
-static int thought_beacon_link(int duration)
-{
-	return duration / PULSES_IN_TICK;
-}
-
 std::string thought_beacon_facts(P_char ch)
 {
 	const int level = GET_LEVEL(ch);
 	const int duration = thought_beacon_duration(level);
 	return fact("Beacon lasts",
 		    real_time(duration) + " at your level, " + std::to_string(level)) +
-	       fact("Your link to it", game_hours(thought_beacon_link(duration))) +
-	       "  A new beacon replaces the old one and does not renew your link.\n"
+	       fact("Your link to it", real_time(duration)) +
+	       "  A new beacon replaces the old one and renews your link.\n"
 	       "  It fails in no-teleport rooms and on oceans.\n";
 }
 
@@ -4573,25 +4551,6 @@ void spell_thought_beacon(int level, P_char ch, char * /*arg*/, [[maybe_unused]]
 		return;
 	}
 
-	if ((afp = get_spell_from_char(ch, SPELL_THOUGHT_BEACON)))
-	{
-		beacon = get_obj_in_list_num(real_object(VOBJ_THOUGHT_BEACON),
-					     world[afp->modifier].contents);
-		if (beacon)
-			extract_obj(beacon, FALSE);
-		afp->modifier = ch->in_room;
-	}
-	else
-	{
-		memset(&af, 0, sizeof(af));
-		af.type = SPELL_THOUGHT_BEACON;
-		af.flags = /*AFFTYPE_NOSHOW | AFFTYPE_NOSAVE |*/ AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY;
-		af.modifier = ch->in_room;
-		af.duration = thought_beacon_link(duration);
-
-		affect_to_char(ch, &af);
-	}
-
 	beacon = read_object(real_object(416), REAL);
 
 	if (!beacon)
@@ -4599,6 +4558,28 @@ void spell_thought_beacon(int level, P_char ch, char * /*arg*/, [[maybe_unused]]
 		logit(LOG_DEBUG, "spell_thought_beacon(): obj x not loadable");
 		return;
 	}
+
+	if ((afp = get_spell_from_char(ch, SPELL_THOUGHT_BEACON)))
+	{
+		P_obj previous;
+		for (previous = world[afp->modifier].contents; previous;
+		     previous = previous->next_content)
+		{
+			if (previous->R_num == real_object(VOBJ_THOUGHT_BEACON) &&
+			    previous->value[0] == GET_PID(ch))
+				break;
+		}
+		if (previous)
+			extract_obj(previous, FALSE);
+		affect_from_char(ch, SPELL_THOUGHT_BEACON);
+	}
+
+	memset(&af, 0, sizeof(af));
+	af.type = SPELL_THOUGHT_BEACON;
+	af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY;
+	af.modifier = ch->in_room;
+	af.duration = duration;
+	affect_to_char(ch, &af);
 
 	act("&+LYou sink into your &+Mtho&+Wug&+Mhts, &+Lamplifying the "
 	    "&+bpsy&+mch&+bic &+wene&+Wrgi&+wes&+L in this room.&n",
@@ -4652,7 +4633,7 @@ static int wormhole_decay_timer(P_char ch)
 	return decay_timer;
 }
 
-// How many can pass. A portal only counts a positive number; zero or below has no limit.
+// A positive capacity is required: zero or below means unlimited to the portal code.
 static int wormhole_throughput(const Rolls &rolls, P_char ch)
 {
 	int specBonus = 0;
@@ -4660,7 +4641,8 @@ static int wormhole_throughput(const Rolls &rolls, P_char ch)
 
 	if (has_innate(ch, INNATE_IMPROVED_WORMHOLE))
 		specBonus = improved_wormhole_bonus();
-	return (int)((ch->player.level - 46) / 2) + rolls.number(1, maxToPass + specBonus);
+	const int capacity = (ch->player.level - 46) / 2 + rolls.number(1, maxToPass + specBonus);
+	return MAX(1, capacity);
 }
 
 std::string wormhole_facts(P_char ch)
@@ -4669,10 +4651,6 @@ std::string wormhole_facts(P_char ch)
 	const Range pass = { wormhole_throughput(lowest_rolls, ch),
 			     wormhole_throughput(highest_rolls, ch) };
 	std::string people = show(pass);
-	if (pass.high < 1)
-		people = "no limit";
-	else if (pass.low < 1)
-		people = "up to " + std::to_string(pass.high) + ", or no limit on a low roll";
 	std::string text =
 		fact("Can pass each way", people + " at your level, " + std::to_string(level)) +
 		fact("Portal lasts", "up to " + seconds(wormhole_decay_timer(ch))) +

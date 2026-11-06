@@ -5392,7 +5392,7 @@ P_char get_random_char_in_room(int room, P_char ch, int flag)
  * generic check for affect of area spells, returns: 1 - victim should be
  * hit by ch's area spell 0 - victim should not be hit by ch's area spell
  */
-bool should_area_hit(P_char ch, P_char victim)
+static bool should_area_hit_with_position(P_char ch, P_char victim, bool caster_position)
 {
 	P_char c_leader = NULL, v_leader = NULL;
 	struct affected_type *af;
@@ -5400,7 +5400,7 @@ bool should_area_hit(P_char ch, P_char victim)
 	if (!ch || !victim)
 		return FALSE;
 
-	if (victim->specials.z_cord != ch->specials.z_cord)
+	if (caster_position && victim->specials.z_cord != ch->specials.z_cord)
 		return FALSE;
 
 	if (ch == victim)
@@ -5426,7 +5426,8 @@ bool should_area_hit(P_char ch, P_char victim)
 	if (IS_TRUSTED(victim) && (GET_OPPONENT(victim) != ch))
 		return FALSE;
 
-	if (IS_ROOM(ch->in_room, ROOM_SINGLE_FILE) && !AdjacentInRoom(ch, victim))
+	if (caster_position && IS_ROOM(ch->in_room, ROOM_SINGLE_FILE) &&
+	    !AdjacentInRoom(ch, victim))
 		return FALSE;
 
 	if ((af = get_spell_from_char(victim, TAG_IMMUNE_AREA)))
@@ -5467,6 +5468,16 @@ bool should_area_hit(P_char ch, P_char victim)
 	    */
 
 	return TRUE;
+}
+
+bool should_area_hit(P_char ch, P_char victim)
+{
+	return should_area_hit_with_position(ch, victim, true);
+}
+
+bool should_stationary_area_hit(P_char ch, P_char victim)
+{
+	return should_area_hit_with_position(ch, victim, false);
 }
 
 /*

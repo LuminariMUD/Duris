@@ -694,7 +694,7 @@ int main() {
     // Level boundaries and low levels.
     ch = viewer(viewers[1], 1);
     assert(contains(ethereal_discharge_facts(&ch), "  Damage per spell stripped: 0 (none below 1 lands)\n"));
-    assert(contains(cosmic_vacuum_facts(&ch), "  All saving throws: 2 worse\n"));
+    assert(contains(cosmic_vacuum_facts(&ch), "  All saving throws: 0 worse\n"));
     assert(contains(vortex_of_fear_facts(&ch), "  Fear save: -3, easier at your level, 1\n"));
     assert(contains(frost_beacon_facts(&ch), "  Beacon lasts: 1 minute to 2 minutes at your level, 1\n"));
     assert(contains(purge_facts(&ch), "  Damage: 30 at your level, 1, less 10 per target level\n"));

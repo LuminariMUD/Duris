@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Execute the real resurrection refund block for zero and nonzero corpses."""
+"""Execute resurrection's XP refund and carried-item transfer blocks."""
 from pathlib import Path
 import subprocess
 import tempfile
 
 from _paths import source
 
-function = source('magic.c').read_text().split('void spell_resurrect(', 1)[1]
+function = source('magic.c').read_text().split('bool resurrect_corpse(', 1)[1]
 start = function.index('\t/*\n\t * restore lost exp from death')
 block = function[start:function.index('\n\tGET_HIT(t_ch)', start)]
 prelude = r'''
@@ -62,12 +62,42 @@ int main() {
     assert(calls == 1 && restored == 0 && player.xp == 12346);
 }
 '''
+inventory_start = function.index('\t\tfor (t_obj = t_ch->carrying;')
+inventory_block = function[inventory_start:function.index('\n\t\t/*', inventory_start)]
+inventory = r'''
+#include <cassert>
+#include <cstddef>
+#include <initializer_list>
+struct Object { int extra_flags = 0; Object *next_content = nullptr; bool destroyed = false, dropped = false; };
+struct Character { Object *carrying; int in_room = 1; };
+constexpr int ITEM_TRANSIENT = 1, TRUE = 1;
+#define IS_SET(flags, bit) ((flags) & (bit))
+void extract_obj(Object *obj, int) { obj->destroyed = true; }
+void obj_from_char(Object *) {}
+void obj_to_room(Object *obj, int) { obj->dropped = true; }
+void transfer(Character *t_ch, [[maybe_unused]] Object *obj) {
+    Object *t_obj, *next_obj;
+''' + inventory_block + r'''
+}
+int main() {
+    for (int corpse_flags : {0, ITEM_TRANSIENT}) {
+        Object ordinary, transient, corpse;
+        transient.extra_flags = ITEM_TRANSIENT; ordinary.next_content = &transient;
+        corpse.extra_flags = corpse_flags;
+        Character owner{&ordinary};
+        transfer(&owner, &corpse);
+        assert(ordinary.dropped && !ordinary.destroyed);
+        assert(transient.destroyed && !transient.dropped);
+    }
+}
+'''
 with tempfile.TemporaryDirectory(prefix='duris-resurrection-zero-') as temporary:
     root = Path(temporary)
-    source, binary = root / 'refund.cpp', root / 'refund'
-    source.write_text(prelude + block + cases)
-    subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
-                    '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',
-                    str(source), '-o', str(binary)], check=True)
-    subprocess.run([str(binary)], check=True)
-print('zero-loss resurrection does not fabricate XP or warnings; nonzero refunds unchanged')
+    for name, code in [('refund', prelude + block + cases), ('inventory', inventory)]:
+        source, binary = root / f'{name}.cpp', root / name
+        source.write_text(code)
+        subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
+                        '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',
+                        str(source), '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
+print('resurrection refunds remain correct; only transient carried items are destroyed')

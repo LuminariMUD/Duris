@@ -1560,6 +1560,7 @@ int can_call_woodland_beings(P_char, int);
 int can_raise_undead(P_char, int);
 int can_raise_draco(P_char, int, bool);
 bool should_area_hit(P_char, P_char);
+bool should_stationary_area_hit(P_char, P_char);
 /* True while cast_as_damage_area() is inside its victim loop (core/utility.c).
  * The damage pipeline is never told which spell it is scaling, so this is how a
  * modifier learns that the damage in front of it came from an area spell. */
@@ -2175,6 +2176,9 @@ int can_raise_greater_draco(P_char ch);
 void spell_corpseform(int, P_char, char *, int, P_char, P_obj);
 void event_corpseform_wearoff(P_char, P_char, P_obj, void *);
 void spell_undead_to_death(int, P_char, char *, int, P_char, P_obj);
+bool resurrect_corpse(int level, P_char ch, P_obj corpse);
+int grow_spike(int level, P_char ch, P_char victim, int room, bool stationary_growth);
+int spike_growth_damage(int damage, int room);
 
 /* new_skills.c */
 

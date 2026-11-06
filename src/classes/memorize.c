@@ -2194,7 +2194,10 @@ std::string devotion_facts(P_char ch)
 			"Chance on a hit to regain a spell",
 			chance_under(zealot_regain_threshold(devotion_zealot_bonus(rating)) + 1, 1,
 				     100));
-	return text + "  Many healing and holy spells count it too: see their pages.\n";
+	return text + "  The extra cast's level is 10 times its positive devotion power.\n"
+		      "  This includes cause light, cause serious, cause critical, holy word,\n"
+		      "  unholy word and turn undead.\n"
+		      "  Many healing and holy spells count it too: see their pages.\n";
 }
 
 // Spatial focus: its chance threshold, rolled 1-100, and the mana it charges then.
@@ -3066,7 +3069,7 @@ std::string mordenkainens_lucubration_facts(P_char /*ch*/)
 void spell_mordenkainens_lucubration(int /*level*/, P_char ch, char * /*arg*/,
 				     [[maybe_unused]] int type, P_char /*victim*/, P_obj /*obj*/)
 {
-	if (!ch)
+	if (!ch || USES_MANA(ch))
 		return;
 
 	char buff[MAX_STRING_LENGTH];
@@ -3079,10 +3082,7 @@ void spell_mordenkainens_lucubration(int /*level*/, P_char ch, char * /*arg*/,
 		"&+CYour spell releases a &+Ymassive&+C cloud of energy which you instantly focus into your &+mmind&+C...\n");
 	send_to_char(buff, ch);
 
-	if ((!USES_COMMUNE(ch) && !GET_CLASS(ch, CLASS_WARLOCK) &&
-	     !(IS_PUNDEAD(ch) || USES_TUPOR(ch) || IS_UNDEADRACE(ch) ||
-	       is_wearing_necroplasm(ch))) ||
-	    !USES_FOCUS(ch))
+	if (!uses_slot_recovery(ch))
 	{
 		// normal casters
 

@@ -2816,7 +2816,7 @@ static int flicker_shield_level(int level)
 std::string flicker_facts(P_char ch)
 {
 	const int level = GET_LEVEL(ch);
-	return "  You need a group. It leaves the room in twilight.\n" +
+	return "  You need a group. It leaves the room in permanent twilight.\n" +
 	       fact("Casts", "shadow shield on your group here, at level " +
 				     std::to_string(flicker_shield_level(level))) +
 	       shadow_shield_facts_at(flicker_shield_level(level), "", "them");
@@ -3466,6 +3466,7 @@ std::string asphyxiate_facts(P_char ch)
 	       fact("If it saves", show({ asphyxiate_saved_damage(lowest_rolls, ch),
 					  asphyxiate_saved_damage(highest_rolls, ch) })) +
 	       "  Each hit makes its own save. It stops if either of you dies.\n"
+	       "  Damage scales with your level without a level-51 cap.\n"
 	       "  It does nothing to a target with no lungs. It cannot be deflected.\n"
 	       "  Globes and spirit wards do not stop it.\n"
 	       "  Spell damage modifiers and the target's defenses apply after.\n";
@@ -3475,7 +3476,7 @@ std::string asphyxiate_facts(P_char ch)
 void event_asphyxiate(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 {
 	int rounds = *((int *)data);
-	int dam, level;
+	int dam;
 	struct damage_messages messages = {
 		"&+cYou smirk as a pair of &+Wgh&+Los&+wtl&+Wy h&+Lan&+wds &+Rtighten &+caround $N&+c's throat!&n",
 		"&+cYou gasp for &+Cair &+cas a pair of &+Wgh&+Los&+wtl&+Wy h&+Lan&+wds &+ctighten around your throat!&n",
@@ -3490,10 +3491,6 @@ void event_asphyxiate(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 	{
 		return;
 	}
-
-	level = GET_LEVEL(ch);
-	if (level > 51)
-		level = 51;
 
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_ASPHYXIATE);
 
