@@ -180,7 +180,14 @@ bool nevent_reschedule_after(nevent_handle, unsigned long long delay) { reschedu
 nevent_handle nevent_handle_from_event(P_nevent e) { return {e, 1}; }
 int spell_damage(P_char, P_char victim, double dam, int, uint flags, damage_messages *, int *) {
     precise_damage = dam; damage_done = dam; damage_flags = flags; ++damage_calls; recipients.push_back(victim);
-    if (damage_result == DAM_VICTDEAD) delete victim;
+    if (damage_result == DAM_VICTDEAD) {
+        for (auto &room : rooms) {
+            for (auto **person = &room.people; *person; person = &(*person)->next_in_room) {
+                if (*person == victim) { *person = victim->next_in_room; break; }
+            }
+        }
+        delete victim;
+    }
     return damage_result;
 }
 int melee_damage(P_char, P_char victim, double dam, int flags, damage_messages *, int *) {
@@ -671,6 +678,12 @@ int main() {
     affect_to_char(&target, &immunity); damage_calls = 0;
     event_awaken_forest(&caster, nullptr, nullptr, &woods);
     assert(!target.affected && damage_calls == 0);
+    auto *forest_first = new char_data(target), *forest_second = new char_data(target);
+    forest_first->next_in_room = forest_second; rooms[1].people = forest_first;
+    damage_result = DAM_VICTDEAD; damage_calls = 0;
+    event_awaken_forest(&caster, nullptr, nullptr, &woods);
+    assert(damage_calls == 2 && !rooms[1].people);
+    damage_result = DAM_NONEDEAD; rooms[1].people = &target;
     // Expiry wins over terrain, including cancellation of the grow we await.
     for (int sector : {SECT_FIELD, SECT_FOREST}) {
         rooms[1].sector_type = sector; room_af[1] = {};
