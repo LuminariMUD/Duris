@@ -1,6 +1,6 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; nineteen focused implementation/test PRs are pushed
+Status: implementation in progress; twenty focused implementation/test PRs are pushed
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
@@ -83,6 +83,10 @@ unfunded setup loss disclosed; it targets #739 and is ready for review.
 (`branch/named-zone-set-mariadb-chest`, implementation commit `ce8594083`)
 proves native MariaDB player and private-chest persistence, retrieval and worn
 set recovery; it targets #740 and is ready for review.
+[PR #742](https://github.com/LuminariMUD/Duris/pull/742)
+(`branch/named-zone-set-help`, implementation commit `eee3bc793`)
+updates canonical help and verifies native publication on both active backends;
+it targets #741 and is ready for review.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
 into the foundation and propagated through each dependent branch without
