@@ -4,8 +4,8 @@ Status: implementation in progress; twelve focused implementation/test PRs are p
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-area-journeys`, based on
-`branch/named-zone-set-native-journey`.
+Working branch: `branch/named-zone-set-title-journeys`, based on
+`branch/named-zone-set-area-journeys`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -793,12 +793,46 @@ C++ formatting/fixture compilation, Python static checks, `make -C src -j4` and
 `git diff --check` pass. #732 was marked ready for review after these native gates
 passed; no implementation PR was merged, tagged or deployed.
 
-**Next:** complete the four previously plain-title existing sets' remaining native
-journeys (#87/#370/#676/#824), then the cross-owner/storage and MariaDB journeys,
-live Redis lifecycle, canonical help publication and rollback rehearsal. Reuse
-these real generated items and the existing private authority. The six-piece
-Vitality case needs its actual spell HP bonus as well as the basic set HP formula;
-do not assume that every effect leaves maximum HP unchanged.
+The four previously plain-title existing sets' native journeys are now complete
+in the following checkpoint. Next complete the cross-owner/storage and MariaDB
+journeys, live Redis lifecycle, canonical help publication and rollback rehearsal.
+Reuse the real generated items and the existing private authority.
+
+### Existing-title native journeys passed
+
+**Outcome/files/proof:** reuse `run_named_set_wear_journey.py` and its private
+full-world authority for #87 Spirit Ward at three / Haste at five, #370
+Endurance at three, #676 Endurance at four and #824 Vitality at six. Extend the
+existing slot list with feet for the sixth piece. Vitality's real native handler
+adds `4 * cast level`: six pieces reach the existing 56 cap, so the expected
+gain is **+20 basic set HP plus +224 Vitality HP**. Both terms must disappear
+according to their own support threshold on removal. The fixture excludes
+built-in Haste alongside the existing Armor/light conflicts so #87's grant is
+observable, without altering generated item contents. No product code, effect
+adapter or new test framework is needed. Verify native generation from the
+repaired titles, report/inventory, mortal thresholds, exact UID/origin/wear-slot
+restoration, transient affect storage, removal, and all prior nested origins.
+**Passed:** #87 activates Spirit Ward at three and Haste only at five;
+removing the fifth piece cleans Haste while retaining Spirit Ward. Both are
+transient across save/reboot. Its selected UIDs are `64068522`, `64068838`,
+`64069531`, `64069559`, `64069590`. #370 Endurance at three passes with UIDs
+`67068561`, `67068912`, `67069388`; #676 Endurance at four passes with UIDs
+`70068512`, `70068767`, `70069456`, `70069482`. All three pass native report,
+inventory, mortal wear/HP, reboot identity, removal and earlier nested-origin
+retention. #824 also passes through six pieces with UIDs `73068568`, `73069023`,
+`73069578`, `73069606`, `73069638`, `73069686`. Its native mortal maximum HP
+observations are **1486 / 1491 / 1496 / 1501 / 1730**: the six-piece value is
+baseline +20 set HP +224 Vitality. Save/reboot restores +244 total, removing the
+sixth piece returns to +15 without Vitality, and full removal returns to baseline.
+
+The serial `bin/tests/run-named-title-cases.py` finishes with exit 0. Per-zone
+logs/results/transcripts use the same ignored locations as the earlier cases.
+The final real saved authority contains **645 unique named UID/origin pairs
+across sixteen origins**, retaining the earlier container-held items throughout
+these reboots. All private server processes are stopped. The native runs,
+fixture compilation, `make -C src -j4`, C++ formatting, Python static checks and
+`git diff --check` pass. No product code, generated item content, production
+state, release tag or deployment was changed.
 
 ## Start here
 

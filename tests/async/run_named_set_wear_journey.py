@@ -15,7 +15,7 @@ import sys
 import time
 import test_flatfile_combat_journey as journey
 
-# The required full-world cases; tuple = generation room, threshold, native name, ID.
+# Required cases: generation room, maximum tier, primary native name and spell ID.
 CASES = {
     1325: (132500, 5, "armor", 1),
     740: (74000, 5, "battletide", 395),
@@ -29,6 +29,10 @@ CASES = {
     990: (99001, 3, "scent of the bloodhound", 517),
     300: (30000, 3, "globe of darkness", 302),
     1350: (135001, 3, "phantom armor", 400),
+    87: (8700, 5, "spirit ward", 220),
+    370: (37000, 3, "endurance", 355),
+    676: (67600, 4, "endurance", 355),
+    824: (82400, 6, "vitality", 56),
 }
 zone = int(sys.argv[1]) if len(sys.argv) == 2 else 1325
 generation_room, pieces, effect, spell = CASES[zone]
@@ -166,9 +170,14 @@ def stored_affects(spell_id):
 
 
 def expect_set(count):
-    text = expect_max_hp(baseline + max(0, count - 2) * 5)
+    # Vitality at capped cast level 56 adds its own 4 * 56 HP, separately
+    # from the basic five HP per piece beyond two.
+    spell_hp = 224 if zone == 824 and count >= 6 else 0
+    text = expect_max_hp(baseline + max(0, count - 2) * 5 + spell_hp)
     if zone == 1325:
         expected = {"armor": count >= 3, "endurance": count >= 5}
+    elif zone == 87:
+        expected = {"spirit ward": count >= 3, "haste": count >= 5}
     else:
         expected = {effect: count >= pieces}
     for name, present in expected.items():
@@ -234,6 +243,7 @@ try:
         ("legs", 32),
         ("hands", 128),
         ("arms", 256),
+        ("feet", 64),
     )[:pieces]:
         if not any(
             row[1] == str(zone)
@@ -310,7 +320,7 @@ try:
         if len(chosen) >= 3:
             expect_set(len(chosen))
     print(
-        f"#{zone}: native HP and {effect} threshold passed at {pieces} pieces",
+        f"#{zone}: native HP and all spell thresholds passed through {pieces} pieces",
         chosen,
         flush=True,
     )
@@ -332,6 +342,10 @@ try:
     assert not stored_affects(spell), (
         "set effect must not persist as an ordinary affect"
     )
+    if zone == 87:
+        assert not stored_affects(41), (
+            "set Haste must not persist as an ordinary affect"
+        )
     if zone != 1325:
         client.send("remove " + selector(chosen[-1]))
         expect_set(pieces - 1)

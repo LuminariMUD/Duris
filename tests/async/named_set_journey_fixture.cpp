@@ -80,8 +80,8 @@ int main(int argc, char **argv)
 			    affect[0] == APPLY_CON_MAX || affect[0] == APPLY_CON_RACE)
 				clean = false;
 		// Ordinary vision/protection bits do not enter calculate_hitpoints2().
-		// Avoid a built-in armor bit so the set's Armor grant is observable too.
-		clean = clean && !(item.bitvectors[0] & AFF_ARMOR) &&
+		// Exclude built-in effects that would prevent observing the set grant.
+		clean = clean && !(item.bitvectors[0] & (AFF_ARMOR | AFF_HASTE)) &&
 			!(item.bitvectors[3] & (AFF4_MAGE_FLAME | AFF4_GLOBE_OF_DARKNESS));
 		std::printf("%llu|%d|%d|%u|%d|%d|%s\n",
 			    static_cast<unsigned long long>(item.object_uid), zone,
