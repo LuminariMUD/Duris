@@ -2997,6 +2997,7 @@ std::string awaken_forest_facts(P_char /*ch*/)
 						awaken_forest_branch_damage(highest_rolls) })) +
 	       "  Globes and spirit wards do not stop this damage.\n"
 	       "  It needs a forest, or grow under way, and waits for the room to be forest.\n"
+	       "  It expires even if the terrain changes before its duration ends.\n"
 	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
@@ -3021,8 +3022,20 @@ void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 
 	awd = (struct awaken_forest_data *)data;
 
+	if (awd->iter > 0 && !get_spell_from_room(&world[awd->room], SPELL_AWAKEN_FOREST))
+	{
+		send_to_room(
+			"The flailing &+Gforest&n calms down and returns to its normal state.\r\n",
+			awd->room);
+		return;
+	}
+
 	if (world[awd->room].sector_type != SECT_FOREST)
+	{
+		if (awd->iter == 0 && !get_spell_from_room(&world[awd->room], SPELL_GROW))
+			return;
 		goto awaken_next;
+	}
 
 	if (awd->iter == 0)
 	{
@@ -3116,14 +3129,6 @@ void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 
 			break;
 		}
-	}
-
-	if (!get_spell_from_room(&world[awd->room], SPELL_AWAKEN_FOREST))
-	{
-		send_to_room(
-			"The flailing &+Gforest&n calms down and returns to its normal state.\r\n",
-			awd->room);
-		return;
 	}
 
 awaken_next:

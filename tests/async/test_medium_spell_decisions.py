@@ -671,6 +671,30 @@ int main() {
     affect_to_char(&target, &immunity); damage_calls = 0;
     event_awaken_forest(&caster, nullptr, nullptr, &woods);
     assert(!target.affected && damage_calls == 0);
+    // Expiry wins over terrain, including cancellation of the grow we await.
+    for (int sector : {SECT_FIELD, SECT_FOREST}) {
+        rooms[1].sector_type = sector; room_af[1] = {};
+        pending.clear(); damage_calls = 0;
+        event_awaken_forest(&caster, nullptr, nullptr, &woods);
+        assert(pending.empty() && damage_calls == 0);
+    }
+    rooms[1].sector_type = SECT_FIELD;
+    woods.iter = 0; room_af[1].type = SPELL_GROW; pending.clear();
+    event_awaken_forest(&caster, nullptr, nullptr, &woods);
+    assert(pending.size() == 1 && woods.iter == 0);
+    room_af[1] = {}; pending.clear();
+    event_awaken_forest(&caster, nullptr, nullptr, &woods);
+    assert(pending.empty());
+    // A temporary non-forest interval keeps only a still-live forest effect.
+    woods.iter = 2; room_af[1].type = SPELL_AWAKEN_FOREST; pending.clear();
+    event_awaken_forest(&caster, nullptr, nullptr, &woods);
+    assert(pending.size() == 1);
+    rooms[1].sector_type = SECT_FOREST; damage_calls = 0;
+    event_awaken_forest(&caster, nullptr, nullptr, &woods);
+    assert(damage_calls == 1);
+    rooms[1].sector_type = SECT_FIELD; room_af[1] = {}; pending.clear();
+    event_awaken_forest(&caster, nullptr, nullptr, &woods);
+    assert(pending.empty());
     std::puts("PASS #715 spell decisions: bounds, saves, flags, refreshes, memory expiry and caster resources");
 }
 '''
