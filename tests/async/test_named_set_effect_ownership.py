@@ -53,6 +53,7 @@ static char_data wearer,companion;
 static obj_data gear[12];
 static int grants;
 static int guardian_rejections;
+static int output_messages;
 static int alias_calls;
 static bool high_roll;
 static bool innate_eyes;
@@ -101,6 +102,7 @@ char affect_total(P_char ch,int) {all_affects(ch,FALSE); all_affects(ch,TRUE); r
 bool SanityCheck(P_char ch,const char *) {return IS_ALIVE(ch);}
 bool has_innate(P_char,int innate) {return innate_eyes && innate==INNATE_OPHIDIAN_EYES;}
 void send_to_char(const char *text,P_char) {
+    ++output_messages;
     if(strstr(text,"spirits of")) ++grants;
     if(strstr(text,"forefathers")) ++guardian_rejections;
 }
@@ -547,7 +549,10 @@ static void qualify_expansion_effects() {
             auto *original=wearer.affected;
             assert(original && light_updates>before && room_light_updates>room_before);
             original->duration=1; before=light_updates; room_before=room_light_updates;
+            int messages=output_messages;
             apply_zone_spell(&wearer,6,"Conflicting light",10000+second,&gear[0],second);
+            apply_zone_spell(&wearer,6,"Conflicting light",10000+second,&gear[0],second);
+            assert(output_messages==messages);
             assert(wearer.affected==original && !original->next && original->duration==1);
             assert(light_updates==before && room_light_updates==room_before);
             reconcile_named_set_spell(&wearer,first);
@@ -557,8 +562,13 @@ static void qualify_expansion_effects() {
             reset();
             skills[first].spell_pointer(30,&wearer,nullptr,0,&wearer,nullptr);
             original=wearer.affected;
+            messages=output_messages;
             apply_zone_spell(&wearer,6,"Ordinary light retained",10000+second,&gear[0],second);
+            apply_zone_spell(&wearer,6,"Ordinary light retained",10000+second,&gear[0],second);
+            assert(output_messages==messages);
             assert(wearer.affected==original && !original->next && !(original->flags&AFFTYPE_SET_AFFECT));
+            skills[second].spell_pointer(30,&wearer,nullptr,0,&wearer,nullptr);
+            assert(output_messages==messages+1); // Manual rejection remains visible.
         }
     for(int spell:{SPELL_PHANTOM_ARMOR,SPELL_VAPOR_ARMOR}) {
         reset(); inherent_armor=true; all_affects(&wearer,TRUE);

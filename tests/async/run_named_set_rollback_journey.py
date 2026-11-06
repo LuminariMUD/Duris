@@ -164,6 +164,8 @@ try:
     text = expect_max_hp(actor, baseline + 5)
     assert "protection from animals (" not in text
     save(actor)
+    receiver = game.login(account="Namedguest", character="Meranen", source_host="127.0.0.2")
+    save(receiver, "Meranen")
     assert origins() == expected_origins and graphs() == expected_graphs
     assert not game.affects(383)
     report(actor, "compatibility", old_ids)
@@ -174,6 +176,8 @@ try:
     actor = game.boot("expanded-after-rollback")
     assert "protection from animals (" in expect_max_hp(actor, baseline + 5)
     save(actor)
+    receiver = game.login(account="Namedguest", character="Meranen", source_host="127.0.0.2")
+    save(receiver, "Meranen")
     assert origins() == expected_origins and graphs() == expected_graphs
     assert not game.affects(383)
     report(actor, "expanded-after", expanded_ids)

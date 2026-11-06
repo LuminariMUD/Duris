@@ -13314,6 +13314,10 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 {
 	if (!named_set_effect_supported(spell))
 		return;
+	if ((spell == SPELL_HOLY_LIGHT || spell == SPELL_MAGE_FLAME ||
+	     spell == SPELL_GLOBE_OF_DARKNESS) &&
+	    (IS_AFFECTED4(ch, AFF4_MAGE_FLAME) || IS_AFFECTED4(ch, AFF4_GLOBE_OF_DARKNESS)))
+		return;
 	// Automatic refreshes must not repeat the manual spell's class rejection.
 	if (spell == SPELL_GUARDIAN_SPIRITS && !GET_CLASS(ch, CLASS_SHAMAN))
 		return;
