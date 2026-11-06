@@ -26856,6 +26856,7 @@ Endurance at five. A set without a listed spell can still grant HP.
 Spell power when granted depends on the piece count and has a cap.
 Sets granting the same spell do not stack that spell. Ordinary casts
 retain their own durations when a set is equipped or removed.
+A Vitality cast no stronger than the set's grant has no effect.
 
 Sets match their source zone ID, even when two zones have the same
 visible name. Changing an item's visible name does not change its

@@ -65,6 +65,11 @@ The final diff is reconciled with `master`. Superseded unmerged PRs are closed a
 point to #748; their branches and commits remain intact. Address concrete review
 findings on the single delivery branch.
 
+A weaker ordinary cast still replaces a level-scaled set grant for its duration. This
+is accepted for AC, stats and other non-lethal modifiers: the Constitution spells move
+maximum HP by about 20 points at most. Vitality refuses a cast no stronger than its
+grant, because the larger HP drop could kill the wearer.
+
 ### 2. Close the known Armor proof gap
 
 [run_named_set_transfer_journey.py](../../tests/async/run_named_set_transfer_journey.py)
