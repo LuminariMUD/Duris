@@ -4,8 +4,8 @@ Status: implementation in progress; eighteen focused implementation/test PRs are
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-locker-storage`, based on
-`branch/named-zone-set-corpse-storage`.
+Working branch: `branch/named-zone-set-mariadb-chest`, based on
+`branch/named-zone-set-locker-storage`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -1115,10 +1115,59 @@ pieces are worn by Meranen. The retained named count is 751 after the documented
 unfunded setup loss; it does not include the lost copied items. No product code,
 lost identity re-creation, authority reset, release or deployment occurred.
 
-Next use disposable MariaDB for private chests and native backend journeys;
-the maintained `with_disposable_mariadb.sh` wrapper is available and its
-`mariadb:10.11` image is cached. Preserve the current authority and the original
-UIDs. Shop/saved-world, live Redis, canonical help and rollback remain open.
+The following checkpoint covers disposable MariaDB/private chests. Preserve the
+flat-file authority and its original UIDs; it is not reset or reused for SQL.
+
+### Native MariaDB player and private-chest checkpoint
+
+`run_named_set_mariadb_chest_journey.py` reuses the maintained disposable
+MariaDB wrapper/bootstrap, native account creation and GMCP item commands.
+Its full-world areas are the privately generated named-set world; its `lib`
+and help sources come from tracked `HEAD`, excluding local account/player data.
+Only synthetic level/HP and currency fixtures are set offline. All gear, origin
+markers, UIDs, containers and custody movements come from native commands.
+
+Two new accounts provide a mortal wearer and a staff helper at real bank #16590.
+Native `randobj` in #1325 supplies three HP/CON-clean head/body/leg pieces.
+The mortal journey checks two pieces give no HP/Armor grant, three give +5 HP
+and active Armor, and removing them removes both benefits. SQL player metadata
+retains the exact UIDs, #1325 origins and worn slots across reboot. Set Armor is
+not serialized as an ordinary cast in `player_affects`.
+
+Native funded locker entry checks payment success and the actual locker room.
+The owner buys a password-protected private `vault`, stores the three marked
+pieces in a native collector bag, closes it and leaves through the normal save
+barrier. `locker_items` and `locker_item_extra_descr` must contain exactly the
+four-item UID/vnum/parent/origin graph; player custody must exclude that tree.
+After reboot, native owner open/retrieval empties the private chest and restores
+that exact graph. Native unpack/wear and a final player reboot must restore the
+same origins, equipment slots, Armor and +5 HP.
+
+**Ablation:** one focused SQL journey, reusing existing authority and command
+helpers. No product code, schema, backend adapter or generalized runner change.
+Artifacts and transcripts remain in a unique ignored `bin/tests/named-set-mariadb-*`
+directory. A failed run also dumps its disposable database before cleanup; the
+first SQL-output parser failure is retained separately. No old fixture UIDs are
+fabricated or replaced, and the existing flat-file authority remains untouched.
+
+**Passed:** two complete native player/chest/retrieval/reboot runs. The final
+run includes explicit two-piece, active-spell and no-saved-Armor assertions;
+its `bin/tests/named-set-mariadb-_rer4ev4/evidence.json` and transcript retain
+UIDs `1071684`, `1072149`, `1072594`, bag `1072745`, baseline HP 1486 and the
+exact original SQL equipment slots. The first parser-failure artifacts remain
+in `named-set-mariadb-hbcsnv8s`. Python compilation and `git diff --check` pass.
+All private servers are stopped; the disposable schema/container are removed
+through the existing wrapper. The flat-file authority remains at its previously
+disclosed 751 retained named items. Command:
+
+```sh
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_named_set_mariadb_chest_journey.py
+```
+
+Next complete shop/saved-world paths on both active backends, live Redis report
+lifecycle, canonical help publication and compatibility rollback. The checklists
+below now distinguish already proven implementation from these remaining gates.
+No release, merge or production deployment has occurred.
 
 ## Start here
 
@@ -1200,7 +1249,8 @@ for these checks.
 The roster exclusions #380, #384, #536, #870, and #1422 remain recorded unless
 new evidence and a content decision change them. The four existing plain-title
 set zones (#87, #370, #676, #824) are now source-reviewed independent playable
-sets with authored title fixes; their final gameplay/deployment gates remain.
+sets with authored title fixes; their native gameplay journeys pass. Production
+publication remains an owner-authorized deployment gate.
 Also classify the duplicate-name counterparts #1350 and #300; resolving their
 identity does not automatically give them the new #13 or #44 bonus.
 
@@ -1264,7 +1314,7 @@ Owning code: [random_equipment.c](../../src/item/random_equipment.c),
   clone, and staff item-edit paths that can touch descriptions. An older reader
   that preserves ordinary extra descriptions must retain the marker for a later
   upgraded reader.
-- [ ] Validate the complete stored marker before materialization. An absent
+- [x] Validate the complete stored marker before materialization. An absent
   marker takes the legacy path below; malformed or conflicting metadata must
   never silently fall back to guessing a zone from the name. Surface an
   actionable staff diagnostic and use the established item-load failure policy;
@@ -1336,29 +1386,29 @@ Owning code: `set_proc()`, `random_set()`, `check_zone_spells()`, and
 - [x] Mark only affects actually created for a set invocation. Never adopt an
   existing ordinary cast by marking every affect of the same spell type.
   Remove only matching set-owned affects, not every instance of that spell ID.
-- [ ] Before removing a shared spell, reconcile all currently qualifying worn
+- [x] Before removing a shared spell, reconcile all currently qualifying worn
   sets. The spell must remain supported while another set still qualifies,
   without stacking duplicate buffs merely because two zones use it. Verify
   ordinary casts both before and after the set grant; preserve their independent
   durations and source ownership. Keep any ownership helper limited to these
   demonstrated set/cast collisions.
-- [ ] Preserve existing timed effects and their reapplication constraints.
+- [x] Preserve existing timed effects and their reapplication constraints.
   Re-equipping, swapping the selected item, or alternating two sets must not
   create unintended fresh grants or bypass cooldowns. Trace linked/group
   effects already present in old sets while retaining the new simple-effect scope.
 
 ## 6. Install the catalog and publish one consistent report
 
-- [ ] Add the 104 assigned rows only after ID membership and cleanup pass their
+- [x] Add the 104 assigned rows only after ID membership and cleanup pass their
   focused regressions. Use the assignment document as the mapping authority,
   including independent Barovia/Barovia Continued IDs that intentionally reuse
   Lifelust. Add any further zones accepted by the wider review with recorded
   mappings and updated counts.
-- [ ] Make Redis-cached and uncached `namedreport` use the same catalog and
+- [x] Make Redis-cached and uncached `namedreport` use the same catalog and
   formatting path. Include zone IDs, piece requirements, conditional-effect
   notes, and existing cooldown markers. Replace fixed-size concatenation with
   bounded/growing output so the expanded roster is complete and paginates safely.
-- [ ] Update the staff diagnostic to traverse the complete real catalog and
+- [x] Update the staff diagnostic to traverse the complete real catalog and
   use registered effect names. Keep roaming-spawn diagnostics separate.
 - [ ] Verify cold cache, warm cache, Redis unavailable/disabled, boot warming,
   expiry, and staff invalidation. The existing one-day cache must not keep an
@@ -1410,7 +1460,7 @@ instead of claiming source inspection is a completed gameplay journey.
 
 ## 8. Rollout and issue completion
 
-- [ ] Finish the reviewed eligibility roster with independent/shared/excluded
+- [x] Finish the reviewed eligibility roster with independent/shared/excluded
   decisions and exact counts. Record any unresolved area as outstanding work;
   the full issue cannot close solely because the initial 104 rows are assigned.
 - [ ] Complete local builds, focused tests, both-backend journeys, and review.
