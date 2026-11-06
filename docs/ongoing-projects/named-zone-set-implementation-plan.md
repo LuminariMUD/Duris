@@ -4,8 +4,8 @@ Status: implementation in progress; twenty focused implementation/test PRs are p
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-help`, based on
-`branch/named-zone-set-mariadb-chest`.
+Working branch: `branch/named-zone-set-live-report`, based on
+`branch/named-zone-set-help`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -1214,6 +1214,59 @@ tests/async/with_disposable_mariadb.sh python3 bin/tests/run-named-help-publicat
 Shop/saved-world, live Redis and compatibility rollback remain the next local
 gates. Canonical help is ready for review and later authorized publication.
 
+### Live named-report cache checkpoint
+
+**Outcome/files/ablation:** verify the existing formatter/cache APIs and native
+report/staff commands. `test_named_set_report_cache_live.py` links the real
+catalog, report cache, connection, cache store and observability code against
+isolated live Redis. Only world titles, skill names/callbacks and output I/O are
+fixtures; this is cache proof, not spell-handler proof. It checks the actual
+one-day default TTL, complete byte-identical cache/fallback output, warm reads
+without new submissions, invalidation and regeneration.
+
+To prove expiry without a one-day wait or product test settings, it uses the
+existing cache-store API to publish that report with a one-second TTL. Both the
+real process-local steady-clock deadline and Redis key expire; the next real
+`do_namedreport()` regenerates the complete report and restores the one-day TTL.
+Shortening only Redis's TTL would not prove the local cache's expiry. This live
+API test passes; the existing catalog/long-title/diagnostic regression also passes.
+
+`run_named_set_report_journey.py` uses the normal full MariaDB server, maintained
+disposable database setup, a new synthetic staff account, the generated private
+world and a dedicated loopback Redis process/namespace. Native proof compares
+all 298 IDs, ordered title/effect/piece-count rows and conditional notes across
+boot warming, repeated warm reads, staff `redis clear named`, cold regeneration,
+reboot with a stale one-day Redis value, Redis loss/local invalidation and
+Redis-disabled paginated fallback. No item payload, UID or existing authority is
+changed. The fresh full native run passes (exit 0), with one-day boot TTL 86395
+seconds and 11 continuation prompts in disabled mode. Complete reports, evidence
+and transcripts are retained under `bin/tests/named-report-mariadb-2iq_137f`.
+The earlier `named-report-mariadb-evdjxwxb` run exposed a test parser assumption:
+the byte-limited pager can split a row mid-spell or piece count. Its retained
+output reconstructs to all 298 identical rows; the runner now removes Telnet
+go-ahead and added pager prompt/newlines before comparing complete rows.
+
+**Backend boundary:** the flat-file build's existing `sql_season_epoch()` returns
+0, and `redis_init()` consequently disables the season-scoped Redis surfaces.
+An initial native flat-file attempt confirmed that path; it must not be presented
+as live-cache proof or bypassed by inventing an epoch. Flat-file disabled-cache
+native output is already proven above; live native caching uses MariaDB. The
+initial readiness/missing-key failures retain separate logs under the private
+world's `named-report-redis-*` directories. No product change is needed here.
+Both maintained direct checks, the complete native run, Python compilation and
+`git diff --check` pass. All native servers and disposable Redis/SQL are stopped
+and cleaned up. The retained flat-file item authority is not reset or reseeded.
+
+```sh
+python3 tests/async/test_named_set_report_cache_live.py
+python3 tests/async/test_named_set_catalog.py
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_named_set_report_journey.py
+```
+
+Next complete the native shop/saved-world paths on both active backends and
+compatibility rollback, then reconcile the final local gates and review stack.
+No merge, release or production operation occurred.
+
 ## Start here
 
 1. Read this plan for implementation order, compatibility decisions, and proof.
@@ -1455,7 +1508,7 @@ Owning code: `set_proc()`, `random_set()`, `check_zone_spells()`, and
   bounded/growing output so the expanded roster is complete and paginates safely.
 - [x] Update the staff diagnostic to traverse the complete real catalog and
   use registered effect names. Keep roaming-spawn diagnostics separate.
-- [ ] Verify cold cache, warm cache, Redis unavailable/disabled, boot warming,
+- [x] Verify cold cache, warm cache, Redis unavailable/disabled, boot warming,
   expiry, and staff invalidation. The existing one-day cache must not keep an
   old roster after rollout; invalidate the named-report cache explicitly.
 - [x] Update the canonical Named Equipment Sets help and its active MySQL and
