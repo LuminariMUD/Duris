@@ -2149,17 +2149,21 @@ void spell_create_golem(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 
 	clevel = obj->value[CORPSE_LEVEL];
 
-	if (level >= golem_flesh_level())
-		pet_type = NECROGOLEM_FLESH;
-
-	if (level >= golem_blood_level() && clevel >= golem_blood_level())
-		pet_type = NECROGOLEM_BLOOD;
-
-	if (level >= golem_bone_level() && clevel >= golem_bone_level())
-		pet_type = NECROGOLEM_BONE;
-
 	if (GET_CLASS(ch, CLASS_THEURGIST))
 		pet_type = THEURGOLEM_VALOR;
+	else
+	{
+		if (level < golem_flesh_level())
+		{
+			send_to_char("You are not powerful enough to animate a golem!\r\n", ch);
+			return;
+		}
+		pet_type = NECROGOLEM_FLESH;
+		if (level >= golem_blood_level() && clevel >= golem_blood_level())
+			pet_type = NECROGOLEM_BLOOD;
+		if (level >= golem_bone_level() && clevel >= golem_bone_level())
+			pet_type = NECROGOLEM_BONE;
+	}
 
 	create_golem(level, ch, victim, obj, pet_type);
 }

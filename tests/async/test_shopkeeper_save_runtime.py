@@ -15,7 +15,7 @@ baseline = "--baseline" in sys.argv
 sql = (subprocess.check_output(["git", "show", "440248b17:src/sql/sql_player.c"], cwd=ROOT, text=True)
        if baseline else (ROOT / "src/sql/sql_player.c").read_text())
 save_start = sql.rindex("bool sql_save_shopkeeper(P_char ch, int shop_nr)")
-save_end = "bool sql_delete_shopkeeper" if baseline else "static bool sql_save_saved_item_affects"
+save_end = "bool sql_delete_shopkeeper" if baseline else "static bool sql_load_saved_item_affects"
 save = sql[save_start:sql.index(save_end, save_start)]
 # The periodic save's continuation event stands ahead of the save itself.
 flush_marker = ("void sql_save_dirty_shopkeepers(" if baseline
