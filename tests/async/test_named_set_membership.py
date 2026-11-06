@@ -21,6 +21,7 @@ harness = r'''
 #include "world/vnum.obj.h"
 #include "item/named_set_origin.h"
 #include "item/named_sets.h"
+#include "item/named_set_effects.h"
 #include "item/random_equipment.h"
 #include "magic/spells.h"
 #include <algorithm>
@@ -43,6 +44,10 @@ static zone_data zones[] = {
     {.number=199,.name=const_cast<char *>("&+RAstral Plane, Tiamat&n")},
     {.number=740,.name=const_cast<char *>("&+rBloodstone Keep&n")},
     {.number=990,.name=const_cast<char *>("&+gNeverwinter Woods&n")},
+    {.number=87,.name=const_cast<char *>("&+gLair of the Gibberling King&n")},
+    {.number=370,.name=const_cast<char *>("&+gCrystalspyre Mountains&n")},
+    {.number=676,.name=const_cast<char *>("&+gTaliccicopiid&n")},
+    {.number=824,.name=const_cast<char *>("&+gThe Temple of the Sun&n")},
     {.number=150,.name=const_cast<char *>("Retired Misty Chasm prototypes")},
     {.number=3000,.name=const_cast<char *>("&+LThe Chasm of the Misty Vale&n")},
 };
@@ -174,6 +179,21 @@ int main() {
         if(count>=3) assert(spells[0]==std::make_tuple(SPELL_ARMOR,count,1325));
         if(count>=5) assert(spells[1]==std::make_tuple(SPELL_ENDURANCE,count,1325));
     }
+    // The restored titles retain their existing HP and spell thresholds.
+    for(int zone:{87,370,676,824}) for(int count:{2,3,4,5,6}) {
+        reset(); for(int i=0;i<count;++i) wear(i,i+1,zone);
+        process(0);
+        assert(hp(zone) && hp(zone)->modifier==5*(count-2));
+        std::vector<std::tuple<int,int,int>> expected;
+        if(zone==87 && count>=3) expected.emplace_back(SPELL_SPIRIT_WARD,count,zone);
+        if(zone==87 && count>=5) expected.emplace_back(SPELL_HASTE,count,zone);
+        if(zone==370 && count>=3) expected.emplace_back(SPELL_ENDURANCE,count,zone);
+        if(zone==676 && count>=4) expected.emplace_back(SPELL_ENDURANCE,count,zone);
+        if(zone==824 && count>=6) expected.emplace_back(SPELL_VITALITY,count,zone);
+        assert(spells==expected);
+        for(int slot=1;slot<=count;++slot) wearer.equipment[slot]=nullptr;
+        expire(zone); assert(!hp(zone));
+    }
     // Catalog row zero is a real nonzero source, not a wildcard.
     reset(); for(int i=0;i<3;++i) wear(i,i+1,14); process(0);
     assert(hp(14) && hp(14)->modifier==5 && spells.size()==2);
@@ -242,7 +262,8 @@ int main() {
         assert(hp(1325)->modifier==5);
         // Astral Plane, Tiamat never receives the shorter Tiamat row.
         reset(); for(int i=0;i<3;++i) wear(i,i+1,199,false); process(0);
-        assert(hp(199)->modifier==5 && spells.empty());
+        assert(hp(199)->modifier==5 && spells.size()==1);
+        assert(spells[0]==std::make_tuple(SPELL_PROTECT_FROM_GAS,3,199));
     }
     // Independent refresh and removal: both orders, without raw affect pointers.
     for(int first : {740,990}) {
@@ -277,7 +298,7 @@ with tempfile.TemporaryDirectory(prefix="named-set-membership-", dir=build) as d
     subprocess.run([
         "g++", "-std=c++20", "-g", "-O1", "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
         "-ffunction-sections", "-fdata-sections", "-Isrc", str(cpp), "src/item/named_set_origin.c",
-        "src/item/named_sets.c", "src/item/random_equipment_tables.c", str(HARNESS_STUBS),
+        "src/item/named_set_effects.c", "src/item/named_sets.c", "src/item/random_equipment_tables.c", str(HARNESS_STUBS),
         "-Wl,--gc-sections", "-o", str(binary),
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True)

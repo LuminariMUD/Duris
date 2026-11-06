@@ -92,7 +92,7 @@ static int64_t container_total_weight(P_obj container)
         total += o->weight;
     return total;
 }
-static void obj_from_obj(P_obj o)
+static void obj_from_obj_unsaved(P_obj o)
 {
     P_obj *link = &o->inside->contains;
     while (*link != o)
@@ -111,6 +111,7 @@ static void char_light(P_char) {}
 static void room_light(int, int) {}
 static void mark_player_dirty_components(int, int) { ++saves; }
 static void writeSavedItem(P_obj) {}
+static void currency_transaction_save_first(P_char) {}
 static P_obj corpse_saved = nullptr;
 static void writeCorpse(P_obj corpse) { corpse_saved = corpse; }
 '''

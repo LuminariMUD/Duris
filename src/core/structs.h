@@ -135,6 +135,7 @@ typedef struct combat_data *P_combat;
 #define AFFTYPE_LINKED_OBJ BIT_12
 #define AFFTYPE_SET_AFFECT BIT_13
 #define AFFTYPE_DAM_WARD BIT_14
+#define AFFTYPE_SET_SUSPENDED BIT_15 // dormant set grant while an ordinary cast applies
 #define AFFTYPE_STORE (AFFTYPE_NOAPPLY | AFFTYPE_NODISPEL | AFFTYPE_NOSHOW)
 #define MAX_FORGE_ITEMS 1000
 #define MEMTYPE_FULL AFFTYPE_CUSTOM1
@@ -1199,6 +1200,9 @@ struct affected_type
 	ubyte location; /* Tells which ability to change(APPLY_XXX)*/
 	uint16_t loc2; // skill IDs extend beyond the byte-sized apply locations
 	void *context;
+	int set_zone; // Transient provenance of an affect created by named equipment.
+	int set_spell;
+	uint64_t set_owner;
 	unsigned short level;
 	unsigned long bitvector; /* Tells which bits to set (AFF_XXX)       */
 	unsigned long bitvector2; /* Tells which bits to set (AFF2_XXX)      */

@@ -26843,13 +26843,39 @@ apply. Read 'help mounted combat', 'help mount' and 'help cast'.
 #
 Named Equipment Sets
 Use 'namedreport' to list the spells granted by named equipment sets,
-grouped by zone, with the required number of pieces.
-Wearing more than the required number increases the granted spells'
-caster level. The report marks one-minute cooldown spells in green
-and five-minute cooldown spells in yellow. Sets from zones not listed
-can still grant hit points.
-The report describes set bonuses; it is not a list of living named
-monsters or their current locations.
+grouped by source zone ID, with each spell's required piece count.
+Wear matching random armor and weapons to qualify. Keep at least one
+matching random armor piece equipped; weapons can add to the total.
+Carried items and the second and third belt attachments do not count.
+The first belt attachment and back slot can count.
+
+Each matching piece beyond the second adds 5 hit points: three pieces
+give +5 HP, five give +15 HP, and six give +20 HP. Spell thresholds
+are separate. For example, Tharnadia gives Armor at three pieces and
+Endurance at five. A set without a listed spell can still grant HP.
+Spell power when granted depends on the piece count and has a cap.
+Sets granting the same spell do not stack that spell. Ordinary casts
+retain their own durations when a set is equipped or removed.
+A Vitality cast no stronger than the set's grant has no effect.
+
+Sets match their source zone ID, even when two zones have the same
+visible name. Changing an item's visible name does not change its
+recorded origin. Older gear with an unambiguous source gains that
+identity through normal use and saving. Indistinguishable older tags,
+including Ceothia, Underworld, Braddistock and Misty Vale, retain their
+same-title HP bonus but grant no guessed zone spell. Those unresolved
+pieces do not combine with pieces whose zone identity is known.
+
+Some spells have conditions: Guardian Spirits requires a Shaman.
+Virtue helps good wearers against non-good targets and evil wearers
+against non-evil targets; neutral wearers gain no bonus. Globe of
+Darkness excludes Holy Light and Mage Flame.
+The report marks one-minute cooldown spells in green and five-minute
+cooldown spells in yellow. Removing, trading or re-equipping pieces,
+or reconnecting, does not clear your running cooldown.
+Use 'score' to inspect visible active effects. The report lists set
+bonuses, not living named monsters or their current locations.
+See also: Namedreport, Score.
 #
 Affects
 Use 'score' to inspect your character's visible ongoing effects,
@@ -27034,8 +27060,9 @@ Read 'help quest', 'help bartender' and 'help ask' for full details.
 #
 Namedreport
 Syntax: namedreport
-Lists the bonus spells granted by named equipment sets, grouped by zone,
-along with the required piece counts and cooldown colors.
+Lists named equipment set spells by source zone ID and name, with each
+spell's required piece count, conditional-effect notes and cooldown colors.
+Zones with identical names have separate IDs and separate sets.
 Read 'help named equipment sets' for full rules.
 #
 Alliancechat

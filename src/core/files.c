@@ -4079,6 +4079,22 @@ void writeSavedItem(P_obj item)
 	if (!item)
 		return;
 
+	// A saved record holds a whole tree: nested storage is saved by its outermost owner.
+	P_obj root = item;
+	while (OBJ_INSIDE(root))
+		root = root->loc.inside;
+	if (root != item && root->type == ITEM_STORAGE && OBJ_ROOM(root))
+	{
+		writeSavedItem(root);
+		return;
+	}
+	if (root != item && root->type == ITEM_CORPSE &&
+	    IS_SET(root->value[CORPSE_FLAGS], PC_CORPSE))
+	{
+		writeCorpse(root);
+		return;
+	}
+
 	if (item->cost < 100 && item->db_item_id <= 0 && item->type != ITEM_STORAGE)
 		return;
 

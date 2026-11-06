@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "item/named_set_effects.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/events.h"
@@ -2241,6 +2242,7 @@ std::string song_dragons_facts(P_char ch)
 
 void bard_dragons(int l, P_char ch, P_char victim, int song)
 {
+	named_set_ordinary_cast ordinary_cast(ch, victim, SONG_DRAGONS);
 	struct affected_type af;
 	int x = GET_LEVEL(ch);
 	int empower = GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG);

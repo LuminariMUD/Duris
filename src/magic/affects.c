@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "item/named_set_effects.h"
 #include "core/profile.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -2058,11 +2059,13 @@ struct affected_type *affect_to_char(P_char ch, struct affected_type *af)
 
 	affected_alloc = (struct affected_type *)mm_get(dead_affect_pool);
 	*affected_alloc = *af;
+	named_set_grant::mark(ch, affected_alloc);
 
 	affected_alloc->next = ch->affected;
 	ch->affected = affected_alloc;
+	update_named_set_suspension(ch);
 	gmcp_spell_preparation_affect_changed(ch, affected_alloc);
-	if (!IS_SET(af->flags, AFFTYPE_NOAPPLY))
+	if (!IS_SET(affected_alloc->flags, AFFTYPE_NOAPPLY))
 	{
 		ch->specials.affected_by |= af->bitvector;
 		ch->specials.affected_by2 |= af->bitvector2;
@@ -2327,6 +2330,7 @@ void affect_remove(P_char ch, struct affected_type *af)
 	mm_release(dead_affect_pool, af);
 
 	af = NULL;
+	update_named_set_suspension(ch);
 	all_affects(ch, TRUE);
 
 	char_light(ch);
@@ -2372,7 +2376,8 @@ struct affected_type *get_spell_from_char(P_char ch, int spell, void *context, i
 
 	for (hjp = ch->affected; hjp; hjp = hjp->next)
 	{
-		if (hjp->type == spell && (context == NULL || hjp->context == context) &&
+		if (!(hjp->flags & AFFTYPE_SET_SUSPENDED) && hjp->type == spell &&
+		    (context == NULL || hjp->context == context) &&
 		    (flagMask == 0 || (hjp->flags & flagMask) != 0))
 		{
 			return hjp;
@@ -2386,7 +2391,7 @@ bool affected_by_spell(P_char ch, int skill)
 	struct affected_type *hjp;
 
 	for (hjp = ch->affected; hjp; hjp = hjp->next)
-		if (hjp->type == skill)
+		if (hjp->type == skill && !(hjp->flags & AFFTYPE_SET_SUSPENDED))
 			return (TRUE);
 
 	return (FALSE);
@@ -2398,7 +2403,7 @@ int affected_by_spell_count(P_char ch, int skill)
 	struct affected_type *hjp;
 
 	for (hjp = ch->affected; hjp; hjp = hjp->next)
-		if (hjp->type == skill)
+		if (hjp->type == skill && !(hjp->flags & AFFTYPE_SET_SUSPENDED))
 			count++;
 
 	return count;
@@ -2420,7 +2425,7 @@ struct affected_type *get_first_affect_with_flag(P_char ch, uint flags)
 	struct affected_type *hjp;
 
 	for (hjp = ch->affected; hjp; hjp = hjp->next)
-		if ((hjp->flags & (flags)) == flags)
+		if (!(hjp->flags & AFFTYPE_SET_SUSPENDED) && (hjp->flags & (flags)) == flags)
 			return (hjp);
 
 	return (NULL);
@@ -2431,7 +2436,7 @@ bool affected_by_spell_flagged(P_char ch, int skill, uint flags)
 	struct affected_type *hjp;
 
 	for (hjp = ch->affected; hjp; hjp = hjp->next)
-		if (hjp->type == skill &&
+		if (!(hjp->flags & AFFTYPE_SET_SUSPENDED) && hjp->type == skill &&
 		    (hjp->flags & (AFFTYPE_CUSTOM1 | AFFTYPE_CUSTOM2)) == flags)
 			return (TRUE);
 
@@ -2444,8 +2449,12 @@ void affect_join(P_char ch, struct affected_type *af, int avg_dur, int avg_mod)
 
 	for (hjp = ch->affected; hjp; hjp = hjp->next)
 	{
-		if (hjp->type == af->type)
+		if (hjp->type == af->type && !(hjp->flags & AFFTYPE_SET_SUSPENDED))
 		{
+			if (named_set_grant::active())
+				return;
+			if (hjp->flags & AFFTYPE_SET_AFFECT)
+				continue;
 			// A short affect keeps its original duration; its event has the time left.
 			int remaining = hjp->duration;
 			if (IS_SET(hjp->flags, AFFTYPE_SHORT))
@@ -2487,13 +2496,17 @@ void affect_join(P_char ch, struct affected_type *af, int avg_dur, int avg_mod)
 //---------------------------------------------------------------------------------
 void wear_off_message(P_char ch, struct affected_type *af)
 {
+	update_named_set_suspension(ch, af);
+	if (af->flags & AFFTYPE_SET_SUSPENDED)
+		return;
 	if ((af->flags & AFFTYPE_NOMSG)) //|| (af->flags & AFFTYPE_SUBAFFECT))
 		return;
 
 	/* Multi-part spells use one affect per modifier.  The spell has not worn off
 	 * while another affect of the same type remains. */
 	for (struct affected_type *other = ch->affected; other; other = other->next)
-		if (other != af && other->type == af->type)
+		if (other != af && other->type == af->type &&
+		    !(other->flags & AFFTYPE_SET_SUSPENDED))
 			return;
 
 	if (af->type == TAG_INNATE_TIMER && af->location == INNATE_LAY_HANDS)

@@ -40,13 +40,38 @@ int main()
         assert(!pet_restore_state_decode(encoded.substr(0, size), &decoded));
     auto invalid = encoded; invalid[0] = 'g';
     assert(!pet_restore_state_decode(invalid, &decoded));
-    invalid = encoded; invalid[0] = '2'; // unknown payload version
+    invalid = encoded; invalid[0] = '3'; // unknown payload version
     assert(!pet_restore_state_decode(invalid, &decoded));
     s.charm_expires_at = s.death_expires_at = 0;
     assert(pet_restore_state_encode(s, &again) && pet_restore_state_decode(again, &decoded));
     assert(!decoded.charm_expires_at && !decoded.death_expires_at);
     s.base_points[1] = INT32_MAX;
     assert(!pet_restore_state_encode(s, &again));
+
+    pet_restore_state timed;
+    timed.version = 2;
+    timed.named_set_cooldowns = {2000000001, 2000000300, 2000000060};
+    assert(pet_restore_state_encode(timed, &again));
+    assert(pet_restore_state_decode(again, &decoded));
+    assert(decoded.kind == summoned_pet_kind::ordinary);
+    assert(decoded.named_set_cooldowns == timed.named_set_cooldowns);
+    assert(summoned_pet_matches_prototype(decoded.kind, 200));
+    assert(!summoned_pet_matches_prototype(decoded.kind, 1201));
+    timed.named_set_cooldowns[0] = -1;
+    assert(!pet_restore_state_encode(timed, &again));
+    timed.named_set_cooldowns[0] = INT64_MAX;
+    assert(!pet_restore_state_encode(timed, &again));
+    timed.named_set_cooldowns[0] = 1;
+    timed.version = 1;
+    assert(!pet_restore_state_encode(timed, &again));
+
+    s.base_points[1] = 55;
+    s.version = 2;
+    s.named_set_cooldowns = {2000000001, 0, 0};
+    assert(pet_restore_state_encode(s, &again));
+    assert(pet_restore_state_decode(again, &decoded));
+    assert(decoded.kind == s.kind && decoded.base_points == s.base_points);
+    assert(decoded.named_set_cooldowns == s.named_set_cooldowns);
     for (uint32_t kind = 1; kind <= 22; ++kind)
         assert(summoned_pet_cost(static_cast<summoned_pet_kind>(kind)) > 0);
     assert(summoned_pet_cost(summoned_pet_kind::dracolich) == 37);

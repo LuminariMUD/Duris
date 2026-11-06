@@ -5,7 +5,7 @@
 
 int main(int argc, char **argv)
 {
-	if (argc != 4)
+	if (argc != 4 && !(argc == 5 && std::string(argv[4]) == "named"))
 		return 2;
 	std::vector<flatfile_shopkeeper_record> records;
 	std::string error;
@@ -30,7 +30,17 @@ int main(int argc, char **argv)
 				const auto &item = record.items[index];
 				std::cout << item.object_uid << '\t' << item.vnum << '\t'
 					  << identities[index].parent_item_uid << '\t'
-					  << item.equipment_slot << '\t' << item.cost << '\n';
+					  << item.equipment_slot << '\t' << item.cost;
+				if (argc == 5)
+				{
+					std::string origin = "-";
+					for (const auto &description : item.extra_descriptions)
+						if (description.keyword ==
+						    "DURIS_NAMED_SET_ORIGIN_V1")
+							origin = description.description;
+					std::cout << '\t' << origin;
+				}
+				std::cout << '\n';
 			}
 			return 0;
 		}

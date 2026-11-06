@@ -1203,10 +1203,10 @@ flatfile_world_item_result flatfile_world_item_prepare_collector_transfer(
 
 namespace
 {
-// Removes `taken` from a record's items; what they held and did not take along moves
-// to the top level.
+// Remove claimed IDs, normally promoting their remaining children. A complete
+// subtree replacement also retires descendants omitted from the new snapshot.
 void strip_items(std::vector<player_item_snapshot> *items,
-		 const std::unordered_set<uint64_t> &taken)
+		 const std::unordered_set<uint64_t> &taken, bool descendants = false)
 {
 	if (std::none_of(items->begin(), items->end(), [&](const player_item_snapshot &item)
 			 { return taken.contains(item.object_uid); }))
@@ -1216,10 +1216,12 @@ void strip_items(std::vector<player_item_snapshot> *items,
 	for (size_t index = 0; index < items->size(); ++index)
 	{
 		player_item_snapshot item = std::move((*items)[index]);
-		if (taken.contains(item.object_uid))
-			continue;
 		const bool nested = item.parent_index >= 0 &&
 				    static_cast<size_t>(item.parent_index) < index;
+		if (taken.contains(item.object_uid) ||
+		    (descendants && nested &&
+		     remap[static_cast<size_t>(item.parent_index)] == PLAYER_SNAPSHOT_NO_PARENT))
+			continue;
 		item.parent_index = nested ? remap[static_cast<size_t>(item.parent_index)] :
 					     PLAYER_SNAPSHOT_NO_PARENT;
 		remap[index] = static_cast<int32_t>(kept.size());
@@ -1329,6 +1331,14 @@ flatfile_world_item_result flatfile_world_item_prepare_room_item_snapshot(
 		const auto loaded = load_for_snapshot(root, &catalog, error);
 		if (loaded != flatfile_world_item_result::ok)
 			return loaded;
+		// This is a complete replacement of each saved root's old subtree.
+		// Retire omitted children instead of promoting stale copies to the floor.
+		std::unordered_set<uint64_t> replaced;
+		for (const auto &item : items)
+			if (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT)
+				replaced.insert(item.object_uid);
+		for (auto &room : catalog.rooms)
+			strip_items(&room.items, replaced, true);
 		strip_everywhere(&catalog, items);
 		if (!remove)
 		{

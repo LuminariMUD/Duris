@@ -18,6 +18,7 @@ from _innate_numbers import with_innate_numbers
 
 PRELUDE = r'''
 #include "core/prototypes.h"
+#include "item/named_set_effects.h"
 #include "core/utils.h"
 #include "net/gmcp.h"
 #include "core/mm.h"

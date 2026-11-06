@@ -18,6 +18,7 @@
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "core/utils.h"
+#include "item/named_set_effects.h"
 #include "world/events.h"
 #include "classes/necromancy.h"
 
@@ -44,10 +45,22 @@ bool summoned_pet_capture(P_char pet, std::string *encoded)
 	if (!pet || !IS_NPC(pet) || !training_dummy_capture_target_allowed(pet) || !encoded)
 		return false;
 	encoded->clear();
-	if (!pet->only.npc->summon_kind)
-		return true;
 	const auto &npc = *pet->only.npc;
 	pet_restore_state s;
+	const int64_t now = time(nullptr);
+	for (size_t i = 0; i < s.named_set_cooldowns.size(); ++i)
+	{
+		const int remaining =
+			named_set_cooldown_remaining(pet, named_set_cooldown_spells[i]);
+		if (remaining > 0)
+		{
+			s.version = 2;
+			s.named_set_cooldowns[i] =
+				now + (static_cast<int64_t>(remaining) + WAIT_SEC - 1) / WAIT_SEC;
+		}
+	}
+	if (!npc.summon_kind)
+		return s.version == 1 || pet_restore_state_encode(s, encoded);
 	s.kind = static_cast<summoned_pet_kind>(npc.summon_kind);
 	s.charm_expires_at = npc.pet_charm_expires_at;
 	s.death_expires_at = npc.pet_death_expires_at;
@@ -80,8 +93,18 @@ bool summoned_pet_capture(P_char pet, std::string *encoded)
 
 bool summoned_pet_apply(P_char pet, const pet_restore_state &s)
 {
-	if (!pet || !IS_NPC(pet) || s.race > LAST_RACE || !(s.act & ACT_ISNPC))
+	if (!pet || !IS_NPC(pet) ||
+	    (s.kind != summoned_pet_kind::ordinary && (s.race > LAST_RACE || !(s.act & ACT_ISNPC))))
 		return false;
+	const int64_t now = time(nullptr);
+	for (size_t i = 0; i < s.named_set_cooldowns.size(); ++i)
+		if (s.named_set_cooldowns[i] > now)
+			start_named_set_cooldown(
+				pet, named_set_cooldown_spells[i],
+				static_cast<int>(std::min<int64_t>(
+					INT_MAX, (s.named_set_cooldowns[i] - now) * WAIT_SEC)));
+	if (s.kind == summoned_pet_kind::ordinary)
+		return true;
 	auto &npc = *pet->only.npc;
 	const auto replace = [&](char **target, const std::string &text, unsigned flag)
 	{

@@ -5292,6 +5292,11 @@ int GET_CHAR_SKILL_P(P_char ch, int skl)
 	af = ch->affected;
 	while (af)
 	{
+		if (af->flags & AFFTYPE_SET_SUSPENDED)
+		{
+			af = af->next;
+			continue;
+		}
 		if ((af->location == APPLY_SKILL_ADD) && (af->loc2 == skl) && skllvl)
 			mod += af->modifier;
 		else if ((af->location == APPLY_SKILL_GRANT) && (af->loc2 == skl))

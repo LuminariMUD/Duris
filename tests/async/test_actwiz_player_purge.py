@@ -17,7 +17,7 @@ FUNCTIONS = "\n\n".join(extract_function("actwiz.c", signature) for signature in
     "void do_purge(P_char ch, char *argument, int /*cmd*/)",
 )) + "\n\n" + "\n\n".join(extract_function("handler.c", signature) for signature in (
     "bool obj_can_nest(", "bool obj_is_in_container(",
-    "void obj_to_obj(P_obj obj, P_obj obj_to)", "void obj_from_obj(P_obj obj)",
+    "void obj_to_obj(P_obj obj, P_obj obj_to)", "void obj_from_obj_unsaved(P_obj obj)", "void obj_from_obj(P_obj obj)",
     "P_obj unequip_char(P_char ch, int pos, bool saving)",
 ))
 

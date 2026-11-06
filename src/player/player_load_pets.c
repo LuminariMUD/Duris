@@ -117,6 +117,10 @@ bool player_load_pets_stage(P_char owner, const player_load_result &result,
 		pet_restore_state state;
 		const bool has_state = !snapshot.restore_state.empty();
 		pet_hold_reason reason = snapshot.hold_reason;
+		// An older binary holds a state it cannot decode. Validate the state again
+		// below, so a rollback does not strand a pet the upgrade restored support for.
+		if (reason == pet_hold_reason::invalid_state && has_state)
+			reason = pet_hold_reason::none;
 		// A malformed pet must not lock its owner out. Retain it and its equipment
 		// through the existing recovery path instead of rejecting the character.
 		if (reason == pet_hold_reason::none && !valid_pet(snapshot))
@@ -124,12 +128,14 @@ bool player_load_pets_stage(P_char owner, const player_load_result &result,
 		if (reason == pet_hold_reason::none && has_state &&
 		    !pet_restore_state_decode(snapshot.restore_state, &state))
 			reason = pet_hold_reason::invalid_state;
+		const bool has_summon_state = has_state &&
+					      state.kind != summoned_pet_kind::ordinary;
 		if (reason == pet_hold_reason::none && !has_state &&
 		    legacy_summon_prototype(snapshot.mob_vnum))
 			reason = pet_hold_reason::legacy_summon;
 		if (reason == pet_hold_reason::none && has_state &&
 		    (!summoned_pet_matches_prototype(state.kind, snapshot.mob_vnum) ||
-		     state.race > LAST_RACE || !(state.act & ACT_ISNPC)))
+		     (has_summon_state && (state.race > LAST_RACE || !(state.act & ACT_ISNPC)))))
 			reason = pet_hold_reason::invalid_state;
 		if (reason == pet_hold_reason::none && mobile_number < 0)
 			reason = pet_hold_reason::missing_prototype;
@@ -137,7 +143,7 @@ bool player_load_pets_stage(P_char owner, const player_load_result &result,
 		const auto kind = static_cast<uint32_t>(state.kind);
 		const bool golem = has_state && kind >= 15 && kind <= 18;
 		const int64_t now = time(nullptr);
-		if (reason == pet_hold_reason::none && has_state &&
+		if (reason == pet_hold_reason::none && has_summon_state &&
 		    ((state.charm_expires_at && state.charm_expires_at <= now) ||
 		     (state.death_expires_at && state.death_expires_at <= now)))
 			reason = pet_hold_reason::expired;
@@ -195,7 +201,7 @@ bool player_load_pets_stage(P_char owner, const player_load_result &result,
 			player_load_pets_discard(pets);
 			return fail(metrics, player_load_pet_materialize_outcome::invalid_snapshot);
 		}
-		if (has_state)
+		if (has_summon_state)
 			affect_total(pet, FALSE);
 		const item_owner_identity owner_identity =
 			identity.pet_uid ?
@@ -215,7 +221,7 @@ bool player_load_pets_stage(P_char owner, const player_load_result &result,
 		metrics->operation_count += item_metrics.operation_count;
 		metrics->maximum_depth =
 			std::max(metrics->maximum_depth, item_metrics.maximum_depth);
-		if (!has_state)
+		if (!has_summon_state)
 		{
 			GET_MAX_HIT(pet) = snapshot.max_hit;
 			GET_MAX_MANA(pet) = snapshot.max_mana;
@@ -243,7 +249,8 @@ void player_load_pets_commit(P_char owner, std::vector<P_char> *pets,
 		if (!pet)
 			continue;
 		pet_restore_state state;
-		if (pet_restore_state_decode(result.snapshot.pets[index].restore_state, &state))
+		if (pet_restore_state_decode(result.snapshot.pets[index].restore_state, &state) &&
+		    state.kind != summoned_pet_kind::ordinary)
 			summoned_pet_restore_lifetime(pet, owner, state);
 		else
 			setup_pet(pet, owner, result.snapshot.pets[index].charm_duration,

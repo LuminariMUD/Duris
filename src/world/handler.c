@@ -3254,7 +3254,7 @@ void obj_to_char_at_end(P_obj object, P_char ch)
  * remove an object from an object
  */
 
-void obj_from_obj(P_obj obj)
+void obj_from_obj_unsaved(P_obj obj)
 {
 	P_obj tmp, obj_from;
 
@@ -3328,9 +3328,15 @@ void obj_from_obj(P_obj obj)
 	obj->loc_p = LOC_NOWHERE;
 	obj->loc.inside = NULL; // must clear full pointer, not just int-sized loc.room
 	obj->next_content = NULL;
+}
 
-	if (GET_ITEM_TYPE(obj_from) == ITEM_STORAGE)
-		writeSavedItem(obj_from);
+void obj_from_obj(P_obj obj)
+{
+	P_obj container = obj && OBJ_INSIDE(obj) ? obj->loc.inside : NULL;
+
+	obj_from_obj_unsaved(obj);
+	if (container && GET_ITEM_TYPE(container) == ITEM_STORAGE)
+		writeSavedItem(container);
 }
 
 /*

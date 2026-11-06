@@ -8,6 +8,7 @@ from _paths import ROOT, HARNESS_STUBS, extract_function
 harness = r"""
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "item/named_set_effects.h"
 #include "magic/spells.h"
 #include "net/comm.h"
 #include <cassert>
@@ -17,7 +18,9 @@ Skill skills[MAX_AFFECT_TYPES + 1];
 static room_data room{};
 P_room world = &room;
 int get_property(const char *, int fallback) { return fallback; }
+int GET_CLASS(P_char ch,uint cls) { return (ch->player.m_class&cls)!=0; }
 bool grouped(P_char, P_char) { return false; }
+void named_set_grant::release_wearer_output() {}
 bool affected_by_skill(P_char, int) { return false; }
 struct affected_type *get_spell_from_char(P_char, int, void *, int) { return nullptr; }
 struct affected_type *affect_to_char(P_char, struct affected_type *) { return nullptr; }
@@ -33,7 +36,8 @@ bool has_skin_spell(P_char) { return false; }
 void spell_stone_skin(int level, P_char ch, char *arg, int type, P_char victim, P_obj obj) {
     record_cast(level, ch, arg, type, victim, obj);
 }
-""" + extract_function("specs.object.c", "void apply_zone_spell(") + r"""
+""" + extract_function("specs.object.c", "static void grant_dragons_to_group(") + \
+    extract_function("specs.object.c", "void apply_zone_spell(") + r"""
 int main() {
     for (int spell : {SPELL_CONJURE_ELEMENTAL, SPELL_INVIGORATE, SPELL_ENDURANCE, SPELL_STONE_SKIN}) {
         skills[spell].spell_pointer = record_cast;

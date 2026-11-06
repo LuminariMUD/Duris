@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "item/named_set_effects.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "net/gmcp.h"
@@ -6349,6 +6350,7 @@ std::string fortitude_facts(P_char ch)
 void spell_fortitude(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		     P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_FORTITUDE);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_FORTITUDE))
@@ -6871,6 +6873,7 @@ std::string armor_facts(P_char ch)
 void spell_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		 P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_ARMOR);
 	struct affected_type af;
 	bool shown;
 
@@ -6931,6 +6934,7 @@ std::string virtue_facts(P_char ch)
 void spell_virtue(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		  P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_VIRTUE);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_VIRTUE))
@@ -7071,6 +7075,7 @@ std::string sense_holiness_facts(P_char /*ch*/)
 void spell_sense_holiness(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 			  P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_SENSE_HOLINESS);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_SENSE_HOLINESS))
@@ -7737,6 +7742,7 @@ std::string lifelust_facts(P_char ch)
 void spell_lifelust(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		    P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_LIFELUST);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_LIFELUST))
@@ -7902,6 +7908,7 @@ std::string bless_facts(P_char ch)
 void spell_bless(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		 P_obj obj)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_BLESS);
 	struct affected_type af;
 
 	if (obj)
@@ -8062,6 +8069,7 @@ std::string pulchritude_facts(P_char ch)
 void spell_pulchritude(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PULCHRITUDE);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_PULCHRITUDE))
@@ -8271,6 +8279,7 @@ std::string serendipity_facts(P_char ch)
 void spell_serendipity(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_SERENDIPITY);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_SERENDIPITY))
@@ -9225,6 +9234,7 @@ std::string detect_evil_facts(P_char ch)
 void spell_detect_evil(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_DETECT_EVIL);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_DETECT_EVIL))
@@ -9262,6 +9272,7 @@ std::string detect_good_facts(P_char ch)
 void spell_detect_good(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_DETECT_GOOD);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_DETECT_GOOD))
@@ -9299,6 +9310,7 @@ std::string detect_magic_facts(P_char ch)
 void spell_detect_magic(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_DETECT_MAGIC);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_DETECT_MAGIC))
@@ -9334,6 +9346,7 @@ std::string detect_invisibility_facts(P_char ch)
 void spell_detect_invisibility(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 			       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_DETECT_INVISIBLE);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_DETECT_INVISIBLE))
@@ -10404,6 +10417,7 @@ std::string concealment_facts(P_char ch)
 void spell_concealment(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj obj)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_CONCEALMENT);
 	struct affected_type af;
 
 	if (obj)
@@ -10463,6 +10477,7 @@ std::string invisibility_facts(P_char ch)
 void spell_invisibility(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj obj)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_INVISIBILITY);
 	struct affected_type af;
 
 	if (obj)
@@ -10953,6 +10968,7 @@ std::string protection_from_evil_facts(P_char ch)
 void spell_protection_from_evil(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 				P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PROTECT_FROM_EVIL);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_PROTECT_FROM_EVIL))
@@ -10982,6 +10998,7 @@ std::string protection_from_good_facts(P_char ch)
 void spell_protection_from_good(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 				P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PROTECT_FROM_GOOD);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_PROTECT_FROM_GOOD))
@@ -11293,6 +11310,7 @@ std::string stone_skin_facts(P_char ch)
 void spell_stone_skin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_STONE_SKIN);
 	struct affected_type af;
 	int absorb = stone_skin_absorb(live_rolls, level);
 	int layers = 0;
@@ -11541,6 +11559,7 @@ std::string dexterity_facts(P_char ch)
 void spell_dexterity(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		     P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_DEXTERITY);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_DEXTERITY))
@@ -11579,6 +11598,7 @@ std::string agility_facts(P_char ch)
 void spell_agility(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		   P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_AGILITY);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch))
@@ -11621,6 +11641,7 @@ std::string strength_facts(P_char ch)
 void spell_strength(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		    P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_STRENGTH);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_STRENGTH))
@@ -12363,6 +12384,7 @@ std::string sense_life_facts(P_char ch)
 void spell_sense_life(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_SENSE_LIFE);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_SENSE_LIFE))
@@ -12408,6 +12430,7 @@ std::string blur_facts(P_char /*ch*/)
 void spell_blur(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_BLUR);
 	struct affected_type af;
 	struct affected_type *af1;
 
@@ -12462,6 +12485,7 @@ std::string lodestone_vision_facts(P_char /*ch*/)
 void spell_lodestone_vision(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			    P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_LODESTONE);
 	if (IS_AFFECTED5(victim, AFF5_MINE))
 	{
 		if (ch == victim)
@@ -12520,6 +12544,7 @@ std::string haste_facts(P_char ch)
 void spell_haste(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		 P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_HASTE);
 	if (affected_by_spell(victim, SPELL_SLOW))
 	{
 		affect_from_char(victim, SPELL_SLOW);
@@ -13129,6 +13154,17 @@ void spell_vitality(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 	if (!IS_ALIVE(ch))
 		return;
 
+	// Current HP falls with maximum HP, so a weaker cast must not replace a set grant.
+	for (const affected_type *set = victim->affected; set; set = set->next)
+		if (set->type == SPELL_VITALITY && (set->flags & AFFTYPE_SET_AFFECT) &&
+		    !(set->flags & AFFTYPE_SET_SUSPENDED) && set->modifier >= healpoints)
+		{
+			send_to_char("Nothing new seems to happen.\r\n", ch);
+			return;
+		}
+
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_VITALITY);
+
 	if (IS_NPC(victim) && GET_VNUM(victim) == IMAGE_REFLECTION_VNUM)
 		return;
 
@@ -13173,6 +13209,8 @@ void spell_vitality(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 
 		affect_to_char(victim, &af);
 
+		// Apply the replacement HP before position sees the temporarily detached set.
+		affect_total(victim, FALSE);
 		update_pos(victim);
 	}
 	else
@@ -13439,6 +13477,7 @@ std::string farsee_facts(P_char ch)
 void spell_farsee(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		  P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_FARSEE);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_FARSEE))
@@ -13535,6 +13574,7 @@ std::string globe_facts(P_char ch)
 void spell_globe(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		 P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_GLOBE);
 	struct affected_type af;
 
 	if (IS_AFFECTED2(victim, AFF2_GLOBE))
@@ -13581,6 +13621,7 @@ std::string minor_globe_facts(P_char /*ch*/)
 void spell_minor_globe(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_MINOR_GLOBE);
 	struct affected_type af;
 
 	if (IS_AFFECTED(victim, AFF_MINOR_GLOBE))
@@ -15642,6 +15683,7 @@ std::string levitate_facts(P_char ch)
 void spell_levitate(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		    P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_LEVITATE);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_LEVITATE))
@@ -15682,6 +15724,7 @@ std::string fly_facts(P_char ch)
 void spell_fly(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 	       P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_FLY);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_FLY))
@@ -16057,6 +16100,7 @@ std::string barkskin_facts(P_char ch)
 void spell_barkskin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		    P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_BARKSKIN);
 	struct affected_type af1;
 	bool shown;
 
@@ -16456,6 +16500,7 @@ std::string vampiric_touch_facts(P_char ch)
 void spell_vampiric_touch(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			  P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(ch, SPELL_VAMPIRIC_TOUCH);
 	struct affected_type af;
 
 	if (IS_AFFECTED2(victim, AFF2_VAMPIRIC_TOUCH))
@@ -16568,6 +16613,7 @@ std::string battletide_facts(P_char /*ch*/)
 void spell_battletide(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(ch, SPELL_BATTLETIDE);
 	struct affected_type af;
 
 	if (IS_AFFECTED4(victim, AFF4_BATTLETIDE))
@@ -16845,6 +16891,7 @@ std::string prot_from_undead_facts(P_char ch)
 void spell_prot_from_undead(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			    P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PROT_FROM_UNDEAD);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_PROT_FROM_UNDEAD))
@@ -16960,6 +17007,7 @@ std::string regeneration_facts(P_char ch)
 void spell_regeneration(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_REGENERATION);
 	struct affected_type af;
 	char Gbuf1[100];
 	int skl_lvl;
@@ -17016,6 +17064,7 @@ std::string endurance_facts(P_char ch)
 void spell_endurance(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		     P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_ENDURANCE);
 	struct affected_type af;
 	char Gbuf1[100];
 	int skl_lvl;
@@ -17571,6 +17620,7 @@ std::string mage_flame_facts(P_char ch)
 void spell_holy_light(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_HOLY_LIGHT);
 	struct affected_type af;
 
 	if (!IS_AFFECTED4(victim, AFF4_MAGE_FLAME) && !IS_AFFECTED4(victim, AFF4_GLOBE_OF_DARKNESS))
@@ -17600,6 +17650,7 @@ void spell_holy_light(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]]
 void spell_mage_flame(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_MAGE_FLAME);
 	struct affected_type af;
 
 	if (!IS_AFFECTED4(victim, AFF4_MAGE_FLAME) && !IS_AFFECTED4(victim, AFF4_GLOBE_OF_DARKNESS))
@@ -17641,6 +17692,7 @@ std::string globe_of_darkness_facts(P_char ch)
 void spell_globe_of_darkness(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 			     P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_GLOBE_OF_DARKNESS);
 	struct affected_type af;
 
 	if (!IS_AFFECTED4(victim, AFF4_MAGE_FLAME) && !IS_AFFECTED4(victim, AFF4_GLOBE_OF_DARKNESS))
@@ -17680,6 +17732,7 @@ std::string elemental_shield_facts(P_char /*ch*/)
 void spell_fireshield(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_FIRESHIELD);
 	struct affected_type af;
 
 	if (!IS_AFFECTED2(victim, AFF2_FIRESHIELD) && !IS_AFFECTED3(victim, AFF3_COLDSHIELD) &&
@@ -17699,6 +17752,7 @@ void spell_fireshield(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unus
 void spell_coldshield(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_COLDSHIELD);
 	struct affected_type af;
 
 	if (!IS_AFFECTED2(victim, AFF2_FIRESHIELD) && !IS_AFFECTED3(victim, AFF3_COLDSHIELD) &&
@@ -17749,6 +17803,7 @@ std::string negative_energy_barrier_facts(P_char /*ch*/)
 void spell_negative_energy_barrier(int /*level*/, P_char ch, char * /*arg*/,
 				   [[maybe_unused]] int type, P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_NEG_ENERGY_BARRIER);
 	struct affected_type af;
 
 	if (IS_AFFECTED2(victim, AFF2_SOULSHIELD))
@@ -17788,6 +17843,7 @@ std::string slow_poison_facts(P_char ch)
 void spell_slow_poison(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_SLOW_POISON);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_SLOW_POISON))
@@ -17817,6 +17873,7 @@ std::string comprehend_languages_facts(P_char ch)
 void spell_comprehend_languages(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 				P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_COMPREHEND_LANGUAGES);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_COMPREHEND_LANGUAGES))
@@ -19140,6 +19197,7 @@ std::string infernal_fury_facts(P_char /*ch*/)
 void spell_infernal_fury(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 			 P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_INFERNAL_FURY);
 	struct affected_type af;
 
 	if (!IS_AFFECTED(victim, AFF_INFERNAL_FURY))
@@ -20721,7 +20779,7 @@ std::string dispel_magic_facts(P_char ch)
 void spell_dispel_magic(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj obj)
 {
-	struct affected_type *af, *next_af_dude;
+	struct affected_type *af;
 	int mod, success = 0, nosave = 0;
 	P_obj temp_wall, next_obj;
 	P_char orig;
@@ -20759,17 +20817,18 @@ void spell_dispel_magic(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		act("You try to dispel $N's magic.", FALSE, ch, 0, victim, TO_CHAR);
 		act("$n tries to dispel $N's magic!", FALSE, ch, 0, victim, TO_NOTVICT);
 
-		for (af = victim->affected; af; af = next_af_dude)
+		// Select active types before removal: a dormant set grant is cleared with its
+		// ordinary cast, not a second target in the same pass.
+		std::vector<int> active_types;
+		for (af = victim->affected; af; af = af->next)
+			if (!(af->flags & AFFTYPE_SET_SUSPENDED) && af->type > 0 &&
+			    std::find(active_types.begin(), active_types.end(), af->type) ==
+				    active_types.end())
+				active_types.push_back(af->type);
+		for (int affect_type : active_types)
 		{
-			next_af_dude = af->next;
-
-			// Skip over the multiple affect spells.
-			while (next_af_dude && next_af_dude->type == af->type)
-			{
-				next_af_dude = next_af_dude->next;
-			}
-
-			if (!IS_SET(af->flags, AFFTYPE_NODISPEL) && (af->type > 0))
+			af = get_spell_from_char(victim, affect_type);
+			if (af && !IS_SET(af->flags, AFFTYPE_NODISPEL))
 			{
 				if (nosave ||
 				    !NewSaves(victim, SAVING_SPELL, (IS_ELITE(ch) ? mod + 5 : mod)))
@@ -20780,6 +20839,16 @@ void spell_dispel_magic(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 					}
 
 					success = 1;
+					// The buff is ending, so a dormant grant must not resume and
+					// silence its message.
+					for (affected_type *dormant = victim->affected, *next;
+					     dormant; dormant = next)
+					{
+						next = dormant->next;
+						if (dormant->type == af->type &&
+						    (dormant->flags & AFFTYPE_SET_SUSPENDED))
+							affect_remove(victim, dormant);
+					}
 					wear_off_message(victim, af);
 					if ((af->type == SPELL_CALL_OF_THE_WILD) &&
 					    IS_MORPH(victim))
@@ -21731,6 +21800,7 @@ std::string waterbreath_facts(P_char ch)
 void spell_waterbreath(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_WATERBREATH);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_WATERBREATH))
@@ -21774,6 +21844,7 @@ std::string protection_spell_facts(P_char ch)
 void spell_protection_from_fire(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 				P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PROTECT_FROM_FIRE);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_PROTECT_FROM_FIRE))
@@ -21793,6 +21864,7 @@ void spell_protection_from_fire(int level, P_char /*ch*/, char * /*arg*/, [[mayb
 void spell_protection_from_cold(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 				P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PROTECT_FROM_COLD);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_PROTECT_FROM_COLD))
@@ -21812,6 +21884,7 @@ void spell_protection_from_cold(int level, P_char /*ch*/, char * /*arg*/, [[mayb
 void spell_protection_from_living(int level, P_char /*ch*/, char * /*arg*/,
 				  [[maybe_unused]] int type, P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PROTECT_FROM_LIVING);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_PROTECT_FROM_LIVING))
@@ -21838,6 +21911,7 @@ void spell_protection_from_living(int level, P_char /*ch*/, char * /*arg*/,
 void spell_protection_from_animals(int level, P_char /*ch*/, char * /*arg*/,
 				   [[maybe_unused]] int type, P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PROTECT_FROM_ANIMAL);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_PROTECT_FROM_ANIMAL))
@@ -21891,6 +21965,7 @@ void spell_animal_friendship(int level, P_char ch, char * /*arg*/, int /*type*/,
 void spell_protection_from_gas(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 			       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PROTECT_FROM_GAS);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_PROTECT_FROM_GAS))
@@ -21910,6 +21985,7 @@ void spell_protection_from_gas(int level, P_char /*ch*/, char * /*arg*/, [[maybe
 void spell_protection_from_acid(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 				P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PROTECT_FROM_ACID);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_PROTECT_FROM_ACID))
@@ -21929,6 +22005,7 @@ void spell_protection_from_acid(int level, P_char /*ch*/, char * /*arg*/, [[mayb
 void spell_protection_from_lightning(int level, P_char /*ch*/, char * /*arg*/,
 				     [[maybe_unused]] int type, P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PROTECT_FROM_LIGHTNING);
 	struct affected_type af;
 
 	if (!affected_by_spell(victim, SPELL_PROTECT_FROM_LIGHTNING))
@@ -22063,6 +22140,7 @@ std::string infravision_facts(P_char ch)
 void spell_infravision(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_INFRAVISION);
 	struct affected_type af;
 
 	if (IS_AFFECTED(victim, AFF_INFRAVISION) || has_innate(victim, INNATE_OPHIDIAN_EYES))
@@ -22241,6 +22319,7 @@ std::string divine_fury_facts(P_char ch)
 void spell_divine_fury(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char /*victim*/, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(ch, SPELL_DIVINE_FURY);
 	struct affected_type af;
 	char strn[256];
 
@@ -22287,6 +22366,7 @@ std::string soulshield_facts(P_char ch)
 void spell_soulshield(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_SOULSHIELD);
 	struct affected_type af;
 	if (!ch || !IS_ALIVE(ch) || !victim || !IS_ALIVE(victim))
 	{
@@ -22399,6 +22479,7 @@ std::string battle_ecstasy_facts(P_char ch)
 void spell_battle_ecstasy(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			  P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_BATTLE_ECSTASY);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch))
@@ -22635,6 +22716,7 @@ std::string true_seeing_facts(P_char /*ch*/)
 void spell_true_seeing(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_TRUE_SEEING);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_TRUE_SEEING))
@@ -24603,6 +24685,7 @@ std::string sense_follower_facts(P_char ch)
 void spell_sense_follower(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 			  P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_SENSE_FOLLOWER);
 	struct affected_type af;
 
 	if (!IS_AFFECTED4(victim, AFF4_SENSE_FOLLOWER))
@@ -24640,6 +24723,7 @@ std::string pass_without_trace_facts(P_char /*ch*/)
 void spell_pass_without_trace(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PASS_WITHOUT_TRACE);
 	struct affected_type af;
 
 	if (IS_AFFECTED3(victim, AFF3_PASS_WITHOUT_TRACE))
@@ -24742,6 +24826,7 @@ std::string vampire_facts(P_char /*ch*/)
 void spell_vampire(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		   P_char /*vict*/, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(ch, SPELL_VAMPIRE);
 	struct affected_type af, *afp;
 	struct follow_type *foll, *next_foll;
 	P_char tch;
@@ -25365,6 +25450,7 @@ std::string stornogs_spheres_facts(P_char ch)
 void spell_stornogs_spheres(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			    P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_STORNOGS_SPHERES);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -25406,6 +25492,7 @@ std::string warring_zeal_facts(P_char ch)
 void spell_warring_zeal(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(ch, SPELL_WARRING_ZEAL);
 	struct affected_type af;
 	struct affected_type *paf = NULL;
 
@@ -25447,6 +25534,7 @@ std::string dazzle_facts(P_char ch)
 void spell_dazzle(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		  P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_DAZZLE);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -25994,6 +26082,7 @@ std::string chaos_shield_facts(P_char ch)
 void spell_chaos_shield(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char /*victim*/, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(ch, SPELL_CHAOS_SHIELD);
 	if (affected_by_spell(ch, SPELL_CHAOS_SHIELD))
 	{
 		send_to_char("You're already protected by &+rchaotic forces&n.\n", ch);

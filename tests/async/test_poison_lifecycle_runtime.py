@@ -18,6 +18,7 @@ from _innate_numbers import with_innate_numbers
 
 PRELUDE = r'''
 #include "world/new_events.c"
+#include "item/named_set_effects.h"
 #include "net/comm.h"
 #include "net/gmcp.h"
 #include "magic/spells.h"

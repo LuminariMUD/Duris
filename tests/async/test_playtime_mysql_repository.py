@@ -77,6 +77,11 @@ int main() {
     // is made to agree.
     sql("CREATE TEMPORARY TABLE item_payload_shape LIKE player_items");
     sql("CREATE TEMPORARY TABLE player_items LIKE item_payload_shape");
+    // The real child tables' foreign keys cannot see the temporary payload rows.
+    for (const std::string child : {"player_item_affects", "player_item_extra_descr"}) {
+        sql(("CREATE TEMPORARY TABLE " + child + "_shape LIKE " + child).c_str());
+        sql(("CREATE TEMPORARY TABLE " + child + " LIKE " + child + "_shape").c_str());
+    }
     sql("CREATE TEMPORARY TABLE custody_shape LIKE item_current_owner");
     sql("CREATE TEMPORARY TABLE item_current_owner LIKE custody_shape");
     sql("INSERT INTO item_current_owner(item_uid,root_item_uid,parent_item_uid,"

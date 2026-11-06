@@ -1028,7 +1028,7 @@ char *json_build_char_affects(struct char_data *ch)
 				continue;
 			}
 			/* Skip affects marked as hidden */
-			if (IS_SET(aff->flags, AFFTYPE_NOSHOW))
+			if (IS_SET(aff->flags, AFFTYPE_NOSHOW | AFFTYPE_SET_SUSPENDED))
 			{
 				continue;
 			}

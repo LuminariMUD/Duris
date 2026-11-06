@@ -17,6 +17,7 @@ from _paths import ROOT, HARNESS_STUBS, extract_function
 
 PRELUDE = r'''
 #include "core/prototypes.h"
+#include "item/named_set_effects.h"
 #include "core/utils.h"
 #include "net/gmcp.h"
 #include "core/mm.h"

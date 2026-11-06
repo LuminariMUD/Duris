@@ -1,7 +1,7 @@
 # Named zone sets: effect usage and unused candidates
 
-Status: baseline effect inventory for [issue #706](https://github.com/LuminariMUD/Duris/issues/706); the 115 loaded definitions have been extracted unchanged into the canonical catalog. Expansion assignments remain uninstalled.
-Date: 2026-11-05.
+Status: baseline effect inventory for [issue #706](https://github.com/LuminariMUD/Duris/issues/706). All 115 baseline definitions are retained; the integrated catalog adds 183 reviewed areas, totaling 298 rows, 389 tiers and 106 effect IDs. Validation and release status are recorded in [PR #748](https://github.com/LuminariMUD/Duris/pull/748); production publication is pending.
+Date: 2026-11-06.
 Inspected `master`: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 Implementation entry point: [end-to-end plan](named-zone-set-implementation-plan.md).
@@ -9,10 +9,15 @@ Proposed zone homes: [complete assignment plan](named-zone-set-first-pass-assign
 
 ## What this document counts
 
-A named set is matching random equipment with the same `from <zone>` tag.
+A named set is matching random equipment with the same virtual zone origin.
+Unresolved historical tags retain their separate HP-only legacy groups.
 Its ordinary HP bonus is separate from its configured spell bonuses: every
 piece after the second adds 5 maximum HP. This document inventories the extra
 effects that can help us choose bonuses for uncovered zones.
+
+**The counts below describe the original baseline.** Final home counts for the
+qualified pool appear in the assignment document, including the 79 wider-review
+additions. No original effect or threshold was retuned.
 
 **Zone count means the number of distinct loaded zones whose set definition
 uses that effect ID.** A three-piece requirement counts as one zone, not three
@@ -36,11 +41,13 @@ The two stale definitions are kept outside the main count:
 | 30 | Concealment at 3 pieces; Haste at 5 | +1 Concealment zone and +1 Haste zone |
 | 250 | Fire Ward at 2 pieces | +1 Fire Ward zone |
 
-Four loaded zones have set definitions but plain titles that block fresh
-zone-named kill drops under the current naming rule: Lair of the Gibberling
-King (#87), Crystalspyre Mountains (#370), Taliccicopiid (#676), and The Temple
-of the Sun (#824). They remain in the configured counts. Known zone-name
-collisions and worn-set cleanup issues also remain relevant; see #706.
+Four baseline zones had set definitions but plain titles that blocked fresh
+zone-named kill drops: Lair of the Gibberling King (#87), Crystalspyre Mountains
+(#370), Taliccicopiid (#676), and The Temple of the Sun (#824). Their authored
+titles now carry color codes after source review of their entrances and repeatable
+encounters. They retain their existing effects/thresholds and remain in the 115
+configured rows. Regeneration and deployment are required for a running game to
+use those title fixes. See the [eligibility evidence](named-zone-set-first-pass-assignments.md#existing-plain-title-set-areas).
 
 Sources: [set definitions](../../src/item/named_sets.c),
 [active area registry](../../areas/AREA),
@@ -219,8 +226,8 @@ the number of matching pieces.
 
 | Effect (game ID; all have zone count 0) | Benefit in plain language | Integration notes |
 |---|---|---|
-| [Guardian Spirits](../../src/magic/smagic.c#L208) (#579) | Protective spirits and armor. | Conditional: current implementation requires a Shaman. |
-| [Virtue](../../src/magic/magic.c#L6927) (#515) | Improved accuracy against opposed alignment. | Conditional: alignment-dependent combat benefit. |
+| [Guardian Spirits](../../src/magic/smagic.c#L208) (#579) | 150–200 AC protection. | Conditional: requires a Shaman wearer, any specialization. Both proposed assignments require six pieces. |
+| [Virtue](../../src/magic/magic.c#L6927) (#515) | Native 10% accuracy bonus against eligible targets. | Good wearers benefit against non-good targets; evil wearers against non-evil targets, including neutral targets. Neutral wearers receive no accuracy bonus. |
 
 ## Effects screened out of this wearer-bonus catalog
 

@@ -29,6 +29,7 @@ handler = "\n".join(extract_function("world/handler.c", signature) for signature
     "void obj_to_obj(",
     "static void append_obj_to_list(",
     "void obj_to_obj_at_end(",
+    "void obj_from_obj_unsaved(",
     "void obj_from_obj(",
 ))
 files = "\n".join(extract_function("core/files.c", signature) for signature in (

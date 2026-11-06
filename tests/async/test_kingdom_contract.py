@@ -1910,7 +1910,7 @@ def test_review_fixes_from_the_second_round_hold() -> None:
 
     for signature, argument in ((r"\bvoid\s+obj_to_obj\s*\(", "obj_to"),
                                 (r"\bvoid\s+obj_to_obj_at_end\s*\(", "obj_to"),
-                                (r"\bvoid\s+obj_from_obj\s*\(", "obj_from")):
+                                (r"\bvoid\s+obj_from_obj_unsaved\s*\(", "obj_from")):
         bodies = function_bodies(handler, signature)
         check(len(bodies) == 1, f"{signature} is defined once", f"{len(bodies)}")
         if not bodies:
