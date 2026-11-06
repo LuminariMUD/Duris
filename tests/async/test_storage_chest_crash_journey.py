@@ -121,9 +121,12 @@ def run(binary, backend):
                 boot()
                 login()
                 assert owners("after decay and crash") == ["chest"]
+                inside = command(client, "look in huge")
+                assert "a storage chest" in inside, inside
                 command(client, "get chest huge")
                 nested = command(client, "look in chest")
-                assert POTION in nested and "corpse" not in nested, nested
+                assert "A storage chest contains" in nested and POTION in nested, nested
+                assert "corpse" not in nested, nested
 
                 # No kill point may lose the item or leave it with two owners.
                 for delay in (0, 0, .02, .1, 2):
