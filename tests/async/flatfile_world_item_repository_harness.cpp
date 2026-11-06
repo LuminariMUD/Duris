@@ -158,6 +158,62 @@ static std::vector<uint8_t> encode_items(const std::vector<player_item_snapshot>
 	return bytes;
 }
 
+static void test_room_subtree_replacement(const fs::path &root)
+{
+	prepare_root(root);
+	std::string error;
+	auto save =
+		[&](int room, const std::vector<player_item_snapshot> &items, bool remove = false)
+	{
+		flatfile_authority_lock lock;
+		require(lock.acquire(root.string(), &error), "could not lock room snapshot");
+		flatfile_authority_operation operation;
+		require(flatfile_world_item_prepare_room_item_snapshot(
+				root.string(), lock, room, items, remove, &operation, &error) ==
+				flatfile_world_item_result::ok,
+			"room snapshot did not prepare: " + error);
+		require(flatfile_authority_transaction_commit_operations(root.string(), lock,
+									 { operation }, &error) ==
+				flatfile_authority_transaction_result::ok,
+			"room snapshot did not commit: " + error);
+	};
+	const auto storage = item(1000, PLAYER_SNAPSHOT_NO_PARENT, 500);
+	const std::vector<player_item_snapshot> independent = {
+		item(2000, PLAYER_SNAPSHOT_NO_PARENT, 600), item(2001, 0, 601)
+	};
+	const std::vector<player_item_snapshot> other_room = {
+		item(3000, PLAYER_SNAPSHOT_NO_PARENT, 700), item(3001, 0, 701)
+	};
+	save(500, { storage, item(1001, 0, 501), item(1002, 1, 502), item(1003, 0, 503) });
+	save(500, independent);
+	save(600, other_room);
+	save(500, { storage, item(1003, 0, 503) });
+	std::vector<flatfile_room_item_record> rooms;
+	require(flatfile_world_item_list_rooms(root.string(), &rooms, &error) ==
+				flatfile_world_item_result::ok &&
+			rooms.size() == 2,
+		"room snapshots did not reload");
+	auto expected = independent;
+	expected.push_back(storage);
+	expected.push_back(item(1003, 2, 503));
+	require(encode_items(rooms[0].items) == encode_items(expected),
+		"replacing a storage subtree retained removed descendants as room roots");
+	save(500, { storage });
+	expected = independent;
+	expected.push_back(storage);
+	require(flatfile_world_item_list_rooms(root.string(), &rooms, &error) ==
+				flatfile_world_item_result::ok &&
+			encode_items(rooms[0].items) == encode_items(expected),
+		"empty storage snapshot retained a removed child");
+	save(500, { storage, item(1004, 0, 504), item(1005, 1, 505) });
+	save(0, { storage }, true);
+	require(flatfile_world_item_list_rooms(root.string(), &rooms, &error) ==
+				flatfile_world_item_result::ok &&
+			encode_items(rooms[0].items) == encode_items(independent) &&
+			encode_items(rooms[1].items) == encode_items(other_room),
+		"storage removal changed an independent root or another room");
+}
+
 static std::vector<uint8_t> read_catalog(const fs::path &root)
 {
 	std::ifstream input(root / "domains/world_item_catalog", std::ios::binary);
@@ -420,6 +476,7 @@ int main(int argc, char **argv)
 	require_saved_items(saved_items[0], two_roots);
 	test_saved_root_collection(fs::path(argv[1]) / "collector-root");
 	test_nested_saved_container_collection(fs::path(argv[1]) / "collector-nested");
+	test_room_subtree_replacement(fs::path(argv[1]) / "room-replacement");
 
 	flatfile_world_item_player_removal removal;
 	{
