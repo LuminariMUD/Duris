@@ -3715,6 +3715,7 @@ void event_psionic_wave_blast(P_char ch, P_char victim, P_obj /*obj*/, void *dat
 
 		if (affected_by_spell(victim, SPELL_PSIONIC_WAVE_BLAST))
 			affect_from_char(victim, SPELL_PSIONIC_WAVE_BLAST);
+		return;
 	}
 
 	if ((af->modifier)-- == 0)
@@ -3751,8 +3752,9 @@ void event_psionic_wave_blast(P_char ch, P_char victim, P_obj /*obj*/, void *dat
 	if (ch->in_room != victim->in_room)
 		dam = psionic_wave_blast_away(dam);
 
-	if (spell_damage(ch, victim, dam, SPLDAM_PSI, SPLDAM_NODEFLECT | SPLDAM_NOSHRUG,
-			 &messages) == DAM_NONEDEAD)
+	const int result = spell_damage(ch, victim, dam, SPLDAM_PSI,
+					SPLDAM_NODEFLECT | SPLDAM_NOSHRUG, &messages);
+	if (result == DAM_NONEDEAD)
 	{
 		if (!IS_SET((ch)->specials.affected_by2, AFF2_CASTING))
 			SET_BIT((ch)->specials.affected_by2, AFF2_CASTING);
@@ -3763,6 +3765,9 @@ void event_psionic_wave_blast(P_char ch, P_char victim, P_obj /*obj*/, void *dat
 			  0, &level, sizeof(level));
 		return;
 	}
+
+	if (result != DAM_VICTDEAD)
+		return; // The caster is gone.
 
 	if (IS_SET((ch)->specials.affected_by2, AFF2_CASTING))
 		REMOVE_BIT((ch)->specials.affected_by2, AFF2_CASTING);
@@ -4164,6 +4169,9 @@ void spell_radial_navigation(int /*level*/, P_char ch, char *arg, int /*type*/, 
 		return;
 	}
 
+	if (!victim)
+		victim = ch;
+
 	argument_interpreter(arg, arg1, arg2);
 
 	/* Bypassing class check. Lucrot 31Aug2008
@@ -4202,7 +4210,7 @@ void spell_radial_navigation(int /*level*/, P_char ch, char *arg, int /*type*/, 
 		send_to_char("That is not a valid direction.\r\n", ch);
 		return;
 	}
-	if (!(is_number(arg2) && (distance = atoi(arg2))))
+	if (!is_number(arg2) || (distance = atoi(arg2)) <= 0)
 	{
 		send_to_char("That is not a proper distance.\r\n", ch);
 		return;
