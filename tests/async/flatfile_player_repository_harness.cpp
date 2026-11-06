@@ -337,8 +337,9 @@ static void inspect_world_items(const std::string &root, int argc, char **argv)
 	std::string error;
 	std::vector<flatfile_corpse_record> corpses;
 	std::vector<flatfile_saved_world_item_record> saved_items;
-	require(flatfile_world_item_list(root, &corpses, &saved_items, &error) ==
-			flatfile_world_item_result::ok,
+	const auto listed = flatfile_world_item_list(root, &corpses, &saved_items, &error);
+	require(listed == flatfile_world_item_result::ok ||
+			listed == flatfile_world_item_result::not_found,
 		"inspect world items: " + error);
 	std::cout << "{\"items\":[";
 	bool first = true;
@@ -358,6 +359,9 @@ static void inspect_world_items(const std::string &root, int argc, char **argv)
 				if (description.keyword == "DURIS_TRAP_STATE_V1")
 					std::cout << ",\"trap_state\":\"" << description.description
 						  << '"';
+				else if (description.keyword == "DURIS_NAMED_SET_ORIGIN_V1")
+					std::cout << ",\"named_origin\":\""
+						  << description.description << '"';
 			std::cout << '}';
 		}
 	std::cout << "]}\n";

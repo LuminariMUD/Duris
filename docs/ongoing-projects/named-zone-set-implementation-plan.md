@@ -4,8 +4,8 @@ Status: implementation in progress; sixteen focused implementation/test PRs are 
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-pet-storage`, based on
-`branch/named-zone-set-edits`.
+Working branch: `branch/named-zone-set-corpse-storage`, based on
+`branch/named-zone-set-pet-storage`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -1003,6 +1003,52 @@ and full transcripts stay ignored under the existing runtime. The cat remains
 an active empty permanent follower; the body is back on Meranen. All private
 servers are stopped. This proves the flat-file pet inventory path; corpse and
 other storage/backend gates remain separate. No release or deployment occurred.
+
+### Native player-corpse named items passed
+
+**Outcome/files/proof:** use the existing private authority, six real marked
+pieces and Meranen for native death/corpse/loot/reboot. `run_named_set_corpse_journey.py`
+packs the complete inventory tree natively, invokes the normal death pipeline
+through staff kill, verifies corpse custody and origin values, reboots before
+looting, checks the exact recovered graph and restores worn bonuses on another
+reboot. The maintained flat-file inspector gains only the reserved origin value
+in its existing corpse-item output; build it with
+`python3 tests/async/test_flatfile_player_repository.py --build-inspector bin/tests/coin-death-inspector`.
+No item payload is seeded and no product code or new storage API is needed.
+Existing corpse state is inspected and resumed, never reset to hide a failed
+attempt. The inspector now treats a genuinely absent catalogue as empty while
+retaining errors for corrupt or unreadable state.
+
+**Passed:** native staff kill enters the normal death pipeline for mortal
+Meranen and persists all six original/copied UIDs with exact #1325 values in the
+player corpse. Those UIDs disappear from the player. A full reboot restores
+the corpse with the same six markers; normal owner looting releases corpse
+custody and restores the **exact 14-item nested inventory graph**, keyed by
+UID/vnum/parent UID/slot. The recovered original pieces restore +5 HP and Armor
+from the 1475 baseline, and another reboot retains every named item's exact
+origin, wear slot and wear flags. All **754** earlier named identities remain
+unique across both players; no recovered UID remains in corpse custody.
+
+The first loot attempt actually succeeded but the runner expected the old
+per-item receipt; bulk corpse looting reports `Haul:`. Recovery resumed from
+the observed saved player graph without manufacturing another death. The runner
+now records verified corpse persistence before looting and recognizes that
+completed recovery point. A subsequent fresh death-to-recovery run passes with
+exit 0 under the corrected receipts. It requests real nested item selectors to
+retrieve the three pieces individually, avoiding a full-inventory bulk unpack.
+
+**Run/proof:** build the maintained inspector as above, then
+`python3 tests/async/run_named_set_corpse_journey.py`. The saved-state recovery
+and full fresh run both pass; inspector warning-clean build, `make -C src -j4`,
+Python static checks, C++ formatting and `git diff --check` pass. Setup/result
+JSON, corpse/resume/final logs and complete transcripts stay ignored under
+the existing runtime. All private servers are stopped. No product code or
+generated item payload was edited; no release or deployment occurred.
+
+The six pieces are again under Meranen: originals worn and copies in the
+outer container; the empty cat was dismissed by the normal death pipeline.
+Next complete locker/private chest, shop/saved-world, MariaDB, live Redis,
+canonical help and rollback gates using the retained authority and real items.
 
 ## Start here
 

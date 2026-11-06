@@ -81,6 +81,38 @@ def put(client, uid, bag):
     score(client)
 
 
+def get_from_container(client, uid, bag):
+    container = selector(client, bag)
+    offset = len(client.raw_transcript)
+    gmcp(client, "Char.Items.Get " + json.dumps([container]))
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        client._receive()
+        for packet in re.findall(
+            rb"\xff\xfa\xc9(.*?)\xff\xf0", bytes(client.raw_transcript[offset:]), re.S
+        ):
+            if not packet.startswith(b"Char.Items.List "):
+                continue
+            page = json.loads(packet.split(b" ", 1)[1])
+            if page["location"] != container or not page["complete"]:
+                continue
+            token = next(
+                (
+                    item["selector"]
+                    for item in page["items"]
+                    if item.get("selector")
+                    and item["selector"].endswith(":" + str(uid))
+                ),
+                None,
+            )
+            assert token, (uid, page)
+            client.send("get " + token + " " + container)
+            client.expect("You get", timeout=30)
+            score(client)
+            return
+    raise AssertionError("no completed contents for " + str(bag))
+
+
 def score(client):
     client.send("score")
     text = client.expect("Score information for")
