@@ -36,18 +36,16 @@ area callers. Extend the existing `tests/async/test_named_set_*.py` and
 [effect inventory](named-zone-set-effect-inventory.md) is reference material,
 not a request to redesign the effect system.
 
-## Remaining work
+## Delivery requirements
 
 ### 1. Integrate once
 
-Use the accumulated implementation on `branch/named-zone-set-rollback-proof` and
-bring it into `branch/named-zone-set-expansion` for one final PR against `master`.
-Check current branch heads before integration; preserve later fixes and unrelated
-work. Keep existing commits and branches intact. Do not replay development from
-the original planning commit or propagate every change through the old PR stack.
+The delivery branch is `branch/named-zone-set-expansion`, with one consolidated
+[PR #748](https://github.com/LuminariMUD/Duris/pull/748) against `master`. It retains
+the accumulated implementation, accepted review repairs, and landed upstream
+changes. Existing commits and branches are preserved.
 
-The following existing repairs are absent from the inspected accumulated head;
-include them, or their verified equivalents, without implementing them again:
+The integration includes these existing repairs or their verified equivalents:
 
 - `3a4b0ed26`: validate origin metadata only for items the loader keeps.
 - `79dcb93e6`: apply Vitality's HP adjustment before evaluating body position.
@@ -56,18 +54,18 @@ include them, or their verified equivalents, without implementing them again:
 - `0cbfd9794`: suppress ineligible automatic Guardian Spirits attempts.
 - `2a482448e`: require fresh captured output for each report-cache state.
 
-Reconcile the final diff with current `master` once. Address concrete review
-findings on that integrated branch. Superseded PRs should point to the single
-replacement when the integration work is authorized; branch cleanup is not a
-prerequisite for proving the feature.
+The final diff is reconciled with `master`. Superseded unmerged PRs are closed and
+point to #748; their branches and commits remain intact. Address concrete review
+findings on the single delivery branch.
 
 ### 2. Close the known Armor proof gap
 
-Update [run_named_set_transfer_journey.py](../../tests/async/run_named_set_transfer_journey.py)
-to measure ordinary Armor alone with identical equipped item contributions and
-cast strength, then compare the ordinary-plus-set state against that independent
-value. Check removal, re-equipping, and reload. The current overlap-to-overlap
-comparison can pass even when Armor incorrectly stacks.
+[run_named_set_transfer_journey.py](../../tests/async/run_named_set_transfer_journey.py)
+compares overlap against an independent ordinary-only reference. It saves the
+ordinary cast, reloads with two pieces worn so transient set Armor cannot return,
+then re-equips the third while the ordinary cast prevents a fresh set grant.
+Both measurements use identical gear and the same cast, avoiding Armor's random
+modifier. Removal, re-equipping, and the final worn reload must agree.
 
 Use the existing `NamedSetGame(runtime=..., binary=...)` support with a fresh
 private copy. The retained runtime is `bin/tests/named-set-roster-world`; its old
