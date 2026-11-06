@@ -30,6 +30,8 @@ void redis_report_cache_reset(void);
 bool redis_report_cache_enabled(void);
 const char *redis_report_cache_pattern(void);
 
+// Caller owns the allocated complete report, also used without Redis.
+char *generate_named_report(void);
 void redis_cache_named_report(void);
 char *redis_get_named_report(void);
 bool redis_invalidate_named_report(void);

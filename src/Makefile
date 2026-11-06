@@ -460,6 +460,7 @@ OBJS =  $(SHIP_OBJS) \
 				 classes/psionics.o \
 				 world/quest.o \
 				 core/random.o \
+				 item/named_sets.o \
 				 item/random_equipment.o \
 				 item/random_equipment_drop.o \
 				 item/random_equipment_tables.o \
