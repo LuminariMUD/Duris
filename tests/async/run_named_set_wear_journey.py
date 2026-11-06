@@ -172,23 +172,25 @@ try:
     existing = inspect()
     journey.make_overlord(state, journey.CHARACTER)
     boot("named-generation")
-    if not any(row[1] == "1325" for row in existing):
-        client.send("goto 132500")
-        _, text = score()
-        assert "Level: 62" in text, text
-        for slot in ("head", "body", "legs"):
+    client.send("goto 132500")
+    _, text = score()
+    assert "Level: 62" in text, text
+    choices = []
+    for slot, flag in (
+        ("head", 16),
+        ("body", 8),
+        ("legs", 32),
+        ("hands", 128),
+        ("arms", 256),
+    ):
+        if not any(
+            row[1] == "1325" and row[4] == "1" and row[5] == "-1" and int(row[3]) & flag
+            for row in existing
+        ):
             client.send("randobj eq " + slot + " 56 30")
             client.expect("Created 30 equipment items.", timeout=30)
-        save()
-        existing = inspect()
-        print(
-            "Native randobj generation saved",
-            sum(row[1] == "1325" for row in existing),
-            "Tharnadia origins",
-            flush=True,
-        )
-    choices = []
-    for flag in (16, 8, 32):
+            save()
+            existing = inspect()
         rows = [
             row
             for row in existing
@@ -243,16 +245,21 @@ try:
             time.sleep(6)
             two, _ = score()
             assert two == baseline, ("two-piece HP", baseline, two)
-    expect_max_hp(baseline + 5)
-    three = baseline + 5
+        if len(chosen) >= 3:
+            text = expect_max_hp(baseline + 5 * (len(chosen) - 2))
+            assert "armor (" in text, text
+            assert ("endurance (" in text) == (len(chosen) == 5), text
     print(
-        "Ordinary native wear: two pieces +0 HP, three pieces +5 HP", chosen, flush=True
+        "Ordinary native wear: 2/3/4/5 pieces +0/+5/+10/+15 HP; Armor at 3, Endurance at 5",
+        chosen,
+        flush=True,
     )
     save()
     before = inspect()
     stop()
     boot("named-mortal-reboot")
-    expect_max_hp(baseline + 5)
+    text = expect_max_hp(baseline + 15)
+    assert "endurance (" in text, text
     save()
     after = inspect()
     for uid in chosen:
@@ -260,22 +267,31 @@ try:
         new = next(row for row in after if int(row[0]) == uid)
         assert old[:4] == new[:4], (old, new)
     assert not armor_affects(), "set Armor must not persist as an ordinary affect"
+    for uid in chosen[3:]:
+        client.send("remove " + selector(uid))
+        score()
+    text = expect_max_hp(baseline + 5)
+    assert "armor (" in text and "endurance (" not in text, text
+    print(
+        "Native five-piece save/reboot retained all UIDs, origins, wear slots and Endurance; returning to three cleaned Endurance",
+        flush=True,
+    )
     client.send("quaff solution")
     client.expect("Bands of magic armor wrap around you!", timeout=20)
     score()
     save()
     ordinary = armor_affects()
     assert len(ordinary) == 1, ordinary
-    client.send("remove " + selector(chosen[-1]))
+    client.send("remove " + selector(chosen[2]))
     score()
     text = expect_max_hp(baseline)
     assert "armor (" in text, text
     save()
     assert len(armor_affects()) == 1
     # The already ordinary Armor is present before this new set application.
-    client.send("wear " + selector(chosen[-1]))
+    client.send("wear " + selector(chosen[2]))
     expect_max_hp(baseline + 5)
-    client.send("remove " + selector(chosen[-1]))
+    client.send("remove " + selector(chosen[2]))
     expect_max_hp(baseline)
     save()
     saved_armor = armor_affects()
@@ -287,7 +303,7 @@ try:
     save()
     assert len(armor_affects()) == 1
     print(
-        "Native save/reboot retained UIDs, origins, equipment and +5 HP; removal cleaned HP",
+        "Native ordinary Armor and named HP removal passed",
         flush=True,
     )
     print(
@@ -295,7 +311,14 @@ try:
         flush=True,
     )
     (runtime / "named-wear-result.json").write_text(
-        json.dumps({"baseline": baseline, "uids": chosen, "three_piece_max": three})
+        json.dumps(
+            {
+                "baseline": baseline,
+                "uids": chosen,
+                "three_piece_max": baseline + 5,
+                "five_piece_max": baseline + 15,
+            }
+        )
     )
 except Exception:
     if client:

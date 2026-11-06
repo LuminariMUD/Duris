@@ -1,6 +1,6 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; nine focused implementation PRs are pushed
+Status: implementation in progress; ten focused implementation/test PRs are pushed
 and ready for review; the expanded catalog is in draft #732 for gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
@@ -45,6 +45,11 @@ release has been performed.
 (`branch/named-zone-set-roster`, implementation commit `0ad13149a`)
 adds the complete reviewed catalog and targets #730. Keep it in draft until the
 native gameplay gate described in its checkpoint below passes.
+[PR #733](https://github.com/LuminariMUD/Duris/pull/733)
+(`branch/named-zone-set-native-journey`, implementation commit `4ebf192f8`)
+adds the native Tharnadia 2/3/4/5-piece wear, ordinary Armor and reboot journey and
+targets #732. This focused test chunk is ready for review; the broader catalog
+readiness gate remains open.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
 into the foundation and propagated through each dependent branch without
@@ -669,8 +674,8 @@ credentials come from that test module; no owner credentials were copied.
 and writes `full-server.out` / `namedreport.txt`; its process is stopped after the
 check. Do not delete/reseed this state to hide a failure. Continue using the native
 `randobj eq <slot> 56 <count>` staff path in this isolated world and retain the
-real generated item UIDs/origins. Tharnadia's first native journey now passes as
-recorded below; its five-piece tier, Bloodstone and the seven identity cases
+real generated item UIDs/origins. Tharnadia's native journey now passes as
+recorded below; Bloodstone, another new area and the seven identity cases
 remain mandatory journeys.
 
 ### Native Tharnadia wear, ordinary cast and reboot journey
@@ -685,18 +690,23 @@ HP is a test buffer, not a balance claim. No product code changed in this chunk.
 
 The initial native `randobj` batches produced 24 named #1325 items among 90
 candidates. The runner selects HP/CON-clean head/body/leg pieces, retaining UIDs
-`3068497`, `3068540`, `3068564`. Ordinary vision/protection bits remain unchanged;
+`3068497`, `3068540`, `3068564`; two further native batches supplied hands/arms
+UIDs `23068496`, `23068524`. Existing candidates are reused on subsequent runs.
+Ordinary vision/protection bits remain unchanged;
 pieces with built-in Armor are excluded so the set grant is observable.
 Surplus gear is packed through native `load`/`open`/`put` into ordinary containers,
 including nested backpacks, rather than being deleted or resetting the authority.
 This preparation is needed because a staff inventory can exceed the mortal
 item limit and correctly block `remove`.
 
-**Native proof:** a level-56 Human Warrior gets **+0 maximum HP at two pieces**
-and **+5 at three**, with Armor. Native save completion, disconnect/server restart
-and login retain the three exact UIDs, #1325 origins and wear slots and restore
-the +5 bonus. Removing a piece returns maximum HP to its baseline. The reserved
-origin is read from the real saved item, not inferred from the name.
+**Native proof:** a level-56 Human Warrior gets **+0/+5/+10/+15 maximum HP at
+2/3/4/5 pieces**. Armor starts at three; Endurance starts only at five. Native save
+completion, disconnect/server restart and login retain all five exact UIDs,
+#1325 origins and wear slots, restoring +15 HP and Endurance. Removing the two
+extra pieces returns to +5 HP with Armor and cleans Endurance. Dropping below
+three returns HP to baseline. The reserved origin is read from the real saved
+item, not inferred from the name. Both the earlier three-piece reboot run and
+the extended five-piece reboot run pass.
 
 The native `quaff` of the existing Armor-only potion #39130 after a set grant
 creates one ordinary Armor affect. Reapplying the set with that ordinary affect
@@ -723,8 +733,8 @@ a fixed six-second cleanup delay was too short on a repeat run and was removed.
 
 **Ablation/limits:** reuse the existing client, account, snapshot codec and native
 generator. No gameplay debug command, persistence schema, test-only server option
-or separate spell simulator is added. This proves Tharnadia's 2/3 threshold and
-ordinary Armor ownership; it does not complete the five-piece Endurance tier,
+or separate spell simulator is added. This proves Tharnadia's 2/3/4/5 thresholds,
+Endurance cleanup and ordinary Armor ownership; it does not complete
 Bloodstone/new-area or seven-zone journeys, cross-owner/storage gates, MariaDB
 gameplay, live Redis, help publication or rollback. Keep #732 in draft until its
 remaining native catalog gates pass; keep #706 and the overall goal open.
