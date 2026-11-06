@@ -142,9 +142,29 @@ def run(binary, backend):
                         for text in ("get potion", "put potion huge"):
                             command(client, text)
                     time.sleep(3)
-                client.close()
-                process.send_signal(signal.SIGTERM)
-                process.wait(timeout=60)
+                # A crash between the two commits: the player has it, the chest still lists it.
+                stop()
+                if sql:
+                    sql("CREATE TABLE stale_saved_items AS SELECT * FROM saved_items")
+                else:
+                    catalog = state / "domains/world_item_catalog"
+                    stale = catalog.read_bytes()
+                boot()
+                login()
+                client.send("get potion huge")
+                client.expect("You get a thick cyan potion", timeout=20)
+                command(client, "save")
+                time.sleep(3)
+                stop()
+                if sql:
+                    sql("DELETE FROM saved_items; INSERT INTO saved_items "
+                        "SELECT * FROM stale_saved_items; DROP TABLE stale_saved_items")
+                else:
+                    catalog.write_bytes(stale)
+                boot()
+                login()
+                assert owners("chest record stale") == ["inventory"]
+                stop()
             except Exception:
                 print(output_path.read_text(errors="replace")[-6000:])
                 if client:
