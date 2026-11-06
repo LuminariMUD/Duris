@@ -117,6 +117,10 @@ bool player_load_pets_stage(P_char owner, const player_load_result &result,
 		pet_restore_state state;
 		const bool has_state = !snapshot.restore_state.empty();
 		pet_hold_reason reason = snapshot.hold_reason;
+		// An older binary holds a state it cannot decode. Validate the state again
+		// below, so a rollback does not strand a pet the upgrade restored support for.
+		if (reason == pet_hold_reason::invalid_state && has_state)
+			reason = pet_hold_reason::none;
 		// A malformed pet must not lock its owner out. Retain it and its equipment
 		// through the existing recovery path instead of rejecting the character.
 		if (reason == pet_hold_reason::none && !valid_pet(snapshot))
