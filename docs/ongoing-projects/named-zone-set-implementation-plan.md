@@ -4,13 +4,13 @@ Status: implementation in progress; twenty-four focused implementation/test PRs 
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-mariadb-storage`, based on
-`branch/named-zone-set-world-storage`.
+Working branch: `branch/named-zone-set-rollback-proof`, based on
+`branch/named-zone-set-mariadb-storage`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
 
-**Continue with:** compatible rollback rehearsal and final
+**Continue with:** final
 local/review reconciliation. MariaDB player/private chest, canonical help on both
 backends, live Redis reports and native shop/world gates on both backends now pass.
 The native world journey found and fixed orphaned storage descendants; preserve
@@ -18,6 +18,9 @@ source-fix commit `265299320` in any compatibility rollback build. All three
 original #1325 pieces are worn by mortal Meranen, and saved root `144069157` is
 empty. The retained named count is 751 after the separately disclosed earlier
 copy loss. No production operation or merge has occurred.
+The compatibility rollback and re-upgrade rehearsal now passes; its published
+recovery-only checkpoint is recorded below. Keep that variant outside the normal
+feature merge stack because it intentionally restores the old catalog.
 
 **Review stack:** [PR #714](https://github.com/LuminariMUD/Duris/pull/714)
 (`branch/named-zone-set-expansion`, `67c7fc7d9`) contains the catalog foundation
@@ -1450,6 +1453,63 @@ Next rehearse compatibility rollback with source fix
 `265299320` retained, reconcile final local gates and prepare the review/issue
 handoff. No merge, tag, release or production operation occurred in this chunk.
 
+### Compatible rollback and re-upgrade checkpoint
+
+**Outcome/files/ablation:** preserve the current identity, ownership, ordinary-cast,
+cooldown, spell and room-storage fixes, changing only `src/item/named_sets.c` to
+the exact original 115-row catalog from `f7de76f10`. This avoids reintroducing the
+unsafe old lookup/cleanup behavior or the newly found storage defect. No runtime
+feature switch, migration, guessed item conversion or second persistence path.
+The separate compatibility worktree/branch changes only that catalog file from
+the qualified feature code; source fix `265299320` is an ancestor.
+
+The published recovery-only source is **`cd3d04faa`**, branch
+`branch/named-zone-set-rollback-compat`, annotated tag
+**`checkpoint/named-zone-set-rollback-20261106`**. It is a standby code checkpoint,
+not a release/deployment and not a PR to merge into the feature stack. Its normal
+flat-file build and live report-cache API test pass with the 115-row catalog;
+the room repository regression confirms the storage repair remains intact.
+The feature catalog's independent frozen/manifest contract still checks all
+298 rows; the cache test no longer duplicates that count so it can qualify both
+real catalogs without a test-only product option.
+
+`run_named_set_rollback_journey.py` copies the stopped private authority's
+state/accounts/journals into a unique ignored runtime. Existing native I/O now
+accepts explicit runtime/binary paths for this concrete second runtime/version
+caller; all existing journey defaults remain unchanged. Native generation adds
+a fresh #827 cohort only in the copy, preserving every copied UID. The full
+current -> compatibility -> current journey passes (exit 0):
+
+- Source authority contains 751 named items; the copied/generated qualification
+  authority contains 791. Hashes of the original state/accounts/journals match
+  exactly before and after. No source authority or lost identity is recreated.
+- New cohort UIDs `150068557`, `150069581`, `150069613` grant Protection from
+  Animals and +5 HP from baseline 1486 on the expanded build. The spell is absent
+  from ordinary stored affects.
+- Compatibility reload preserves every named origin and both complete player
+  UID/vnum/parent/equipment graphs, retains +5 HP, removes the new #827 spell and
+  reports exactly the original 115 zone IDs.
+- Re-upgrade restores the new spell and all 298 report IDs with the exact same
+  stored item graphs. No bulk conversion, item erasure or data reset is used.
+
+Evidence, reports, transcripts and binary SHA-256 are retained in
+`bin/tests/named-rollback-world-275pore8`; the earlier test setup TypeError is
+isolated in `named-rollback-world-aopdt9ze`. The compatibility source/build remains
+at `bin/tests/named-set-rollback-source`. All private servers are stopped.
+Both real-catalog live cache tests, the compatibility world regression, feature
+catalog/frozen contract, Python compilation and `git diff --check` pass.
+
+```sh
+make -C bin/tests/named-set-rollback-source/src -j4 PERSISTENCE_BACKEND=flatfile
+python3 bin/tests/named-set-rollback-source/tests/async/test_named_set_report_cache_live.py
+python3 bin/tests/named-set-rollback-source/tests/async/test_flatfile_world_item_repository.py
+python3 tests/async/run_named_set_rollback_journey.py bin/tests/named-set-rollback-source/bin/server/dms_new
+```
+
+The next work is requirement-by-requirement local evidence/review reconciliation,
+release/help handoff and #706 references. Production publication, review/merge and
+owner deployment permission remain distinct from this local rehearsal.
+
 ## Start here
 
 1. Read this plan for implementation order, compatibility decisions, and proof.
@@ -1751,7 +1811,7 @@ instead of claiming source inspection is a completed gameplay journey.
   verified build, refresh the report cache, and smoke-test named drops and
   effects. Any persistence/schema change discovered during implementation must
   be additive, guarded, and tested before a production operation.
-- [ ] Keep a rollback revision and compatible persisted metadata. Rehearse a
+- [x] Keep a rollback revision and compatible persisted metadata. Rehearse a
   rollback that retains the origin marker, removes transient set-owned character
   effects on reload, and refreshes reports; do not erase player items or guessed
   origins to recover. If an older build cannot safely interpret the new naming
