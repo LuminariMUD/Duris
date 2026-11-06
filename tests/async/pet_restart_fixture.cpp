@@ -133,6 +133,13 @@ int main(int argc, char **argv)
 			snapshot.affects.push_back(timer);
 		}
 	}
+	if (mode == "rollback-hold")
+	{
+		// An older binary holds every v2 state it cannot decode and saves that hold.
+		for (auto &pet : snapshot.pets)
+			if (!pet.restore_state.empty())
+				pet.hold_reason = pet_hold_reason::invalid_state;
+	}
 	if (mode == "timers")
 	{
 		for (const auto &affect : snapshot.affects)
@@ -153,7 +160,8 @@ int main(int argc, char **argv)
 		}
 		return 0;
 	}
-	if (mode == "seed" || mode == "arm-expiry" || mode == "arm-cooldowns")
+	if (mode == "seed" || mode == "arm-expiry" || mode == "arm-cooldowns" ||
+	    mode == "rollback-hold")
 	{
 		std::vector<uint8_t> payload, bytes;
 		snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;

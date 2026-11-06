@@ -165,6 +165,7 @@ def run(binary):
             rows("arm-cooldowns")
             initial_timers = rows("timers")
             assert len(initial_timers) == 6, initial_timers
+            cooled = {row[3] for row in rows() if row[0] == "0"}
             for cycle in range(2):
                 boot()
                 client = journey.reconnect_character(port)
@@ -183,6 +184,16 @@ def run(binary):
                 print(f"cooldown restart {cycle + 1}: player short timers and v2 pet deadlines preserved", flush=True)
                 if cycle == 0:
                     stop()
+            # A rollback holds the v2 states; the upgrade releases them with their timers.
+            stop()
+            assert all(row[0] == "2" for row in rows("rollback-hold") if row[3] in cooled), rows()
+            boot()
+            client = journey.reconnect_character(port)
+            client.send("save")
+            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+            assert all(row[0] == "0" for row in rows() if row[3] in cooled), rows()
+            assert len(rows("timers")) == 6, rows("timers")
+            print("upgrade releases pets a rollback held", flush=True)
             client.send("quit")
             client.expect("ACCOUNT MENU", timeout=30)
             remaining = rows()
