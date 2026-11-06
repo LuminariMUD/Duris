@@ -101,17 +101,21 @@ int main(int argc, char **argv) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1100));
     assert(!redis_get_named_report() && remote().empty());
     char_data ch = {};
+    displayed.clear();
     do_namedreport(&ch, nullptr, 0);
     assert(displayed == expected && redis_cache_store_drain(5000));
     assert(remote() == expected && ttl() > 86390);
     const auto submitted = redis_cache_store_health_copy().submitted;
+    displayed.clear();
     do_namedreport(&ch, nullptr, 0);
     assert(displayed == expected && redis_cache_store_health_copy().submitted == submitted);
     assert(redis_invalidate_named_report());
     assert(!redis_get_named_report() && redis_cache_store_drain(5000) && remote().empty());
+    displayed.clear();
     do_namedreport(&ch, nullptr, 0);
     assert(displayed == expected && redis_cache_store_drain(5000) && remote() == expected);
     assert(redis_report_cache_shutdown(5000));
+    displayed.clear();
     do_namedreport(&ch, nullptr, 0);
     assert(displayed == expected); // disabled cache uses the same complete formatter
     redisFree(context);
@@ -120,6 +124,7 @@ int main(int argc, char **argv) {
 '''
 
 
+(ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="named-cache-", dir=ROOT / "bin/tests") as temporary:
     runtime = Path(temporary)
     source = runtime / "report.cpp"
