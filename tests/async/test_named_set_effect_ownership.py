@@ -106,7 +106,6 @@ void send_to_char(const char *text,P_char) {
     if(strstr(text,"spirits of")) ++grants;
     if(strstr(text,"forefathers")) ++guardian_rejections;
 }
-void wear_off_message(P_char,affected_type *) {}
 int attack_back(P_char,P_char,int) {return 0;}
 void act(const char *,int,P_char,P_obj,void *,int) {}
 nevent_schedule_result add_event(event_func,int,P_char,P_char,P_obj,int,const void *,int) {return {};}
@@ -142,7 +141,7 @@ static void alias_effect(int,P_char ch,char *,int,P_char,P_obj) {
 for signature in (
         "struct affected_type *get_spell_from_char(", "bool affected_by_spell(",
         "bool affected_by_skill(", "struct affected_type *affect_to_char(", "void affect_remove(",
-        "void affect_from_char(", "void affect_join(", "struct char_link_data *link_char_with_affect(",
+        "void affect_from_char(", "void affect_join(", "void wear_off_message(", "struct char_link_data *link_char_with_affect(",
         "void linked_affect_to_char(", "void dispose_link(", "void internal_unlink_char(",
         "void unlink_char_affect("):
     # Skip the forward declarations at the top of affects.c.
@@ -322,6 +321,8 @@ for file, signatures in {
 }.items():
     for signature in signatures:
         harness += extract_function(file, signature) + "\n"
+harness += extract_function("magic.c", "static int prot_from_undead_duration(") + "\n"
+harness += extract_function("magic.c", "void spell_prot_from_undead(") + "\n"
 harness += extract_function("magic.c", "static int vitality_hit_points(") + "\n"
 harness += extract_function("magic.c", "static int vitality_duration(") + "\n"
 harness += extract_function("fight.c", "unsigned int calculate_ch_state(") + "\n"
@@ -475,7 +476,7 @@ static void qualify_expansion_effects() {
             int modifiers[]={entry.modifiers[sample],entry.second_modifiers[sample]};
             int duration=entry.durations[sample];
             if(entry.spell==SPELL_FORTITUDE && actor_level==12) modifiers[0]=3;
-            if((entry.spell==SPELL_DETECT_EVIL || entry.spell==SPELL_DETECT_GOOD) && actor_level==12) duration=1;
+            if(entry.spell==SPELL_DETECT_EVIL || entry.spell==SPELL_DETECT_GOOD) duration=actor_level;
             if(entry.spell==SPELL_GUARDIAN_SPIRITS && endpoint) {modifiers[0]=-200;duration+=4;}
             if(entry.spell==SPELL_LODESTONE && endpoint) duration=7;
             if(entry.spell==SPELL_VAPOR_STRIKE && endpoint) modifiers[0]=11;
@@ -625,11 +626,41 @@ int main() {
             named_set_grant grant(&wearer,&wearer,824,SPELL_VITALITY);
             affect_to_char(&wearer,&vitality);
         }
-        all_affects(&wearer,TRUE); GET_HIT(&wearer)=50;
-        cast_native_vitality(50,&wearer,nullptr,0,&wearer,nullptr);
-        assert(GET_HIT(&wearer)==50 && GET_MAX_HIT(&wearer)==1200);
+        all_affects(&wearer,TRUE);
+        // Equal or weaker casts, including from another caster, leave a wounded wearer alone.
+        auto *granted=get_spell_from_char(&wearer,SPELL_VITALITY);
+        for(int level:{50,40,21,1}) {
+            GET_HIT(&wearer)=10; granted->duration=17;
+            cast_native_vitality(level,&companion,nullptr,0,&wearer,nullptr);
+            assert(GET_HIT(&wearer)==10 && GET_MAX_HIT(&wearer)==1200);
+            assert(GET_STAT(&wearer)==STAT_NORMAL && IS_ALIVE(&wearer));
+            assert(granted->duration==17 && !(granted->flags&AFFTYPE_SET_SUSPENDED));
+            assert(count(&wearer,SPELL_VITALITY,false)==0 && count(&wearer,SPELL_VITALITY,true)==1);
+        }
+        // A stronger cast still replaces the grant for its duration.
+        GET_HIT(&wearer)=50;
+        cast_native_vitality(56,&wearer,nullptr,0,&wearer,nullptr);
+        assert(GET_HIT(&wearer)==74 && GET_MAX_HIT(&wearer)==1224);
         assert(GET_STAT(&wearer)==STAT_NORMAL && IS_ALIVE(&wearer));
         assert(count(&wearer,SPELL_VITALITY,false)==1 && count(&wearer,SPELL_VITALITY,true)==1);
+        assert(granted->flags&AFFTYPE_SET_SUSPENDED);
+        // Under a stronger cast, a weak one refreshes that cast instead of the dormant grant.
+        cast_native_vitality(21,&companion,nullptr,0,&wearer,nullptr);
+        assert(GET_HIT(&wearer)==74 && GET_MAX_HIT(&wearer)==1224);
+    }
+    {
+        // The ordinary cast lands on its target and leaves the target's set grant unchanged.
+        reset();
+        affected_type undead{}; undead.type=SPELL_PROT_FROM_UNDEAD; undead.duration=17;
+        undead.bitvector5=AFF5_PROT_UNDEAD;
+        affected_type *granted;
+        {
+            named_set_grant grant(&wearer,&wearer,412,SPELL_PROT_FROM_UNDEAD);
+            granted=affect_to_char(&wearer,&undead);
+        }
+        spell_prot_from_undead(56,&companion,nullptr,0,&wearer,nullptr);
+        assert(granted->duration==17 && (granted->flags&AFFTYPE_SET_SUSPENDED));
+        assert(count(&wearer,SPELL_PROT_FROM_UNDEAD,false)==1 && !companion.affected);
     }
     reset();
     affected_type *ordinary=nullptr;
@@ -745,7 +776,11 @@ int main() {
         spell_armor(40,&companion,nullptr,0,&wearer,nullptr);
         cast_armor=get_spell_from_char(&wearer,SPELL_ARMOR);
         if(!source_first) {wearer.affected=cast_armor; cast_armor->next=set_armor; set_armor->next=nullptr;}
+        skills[SPELL_ARMOR].wear_off_char[0]="Your armor fades.";
+        int messages=output_messages;
         dispel_active(&wearer);
+        assert(output_messages==messages+2); // The buff is gone, so its message and newline print.
+        skills[SPELL_ARMOR].wear_off_char[0]=nullptr;
         assert(!get_spell_from_char(&wearer,SPELL_ARMOR) && !count(&wearer,SPELL_ARMOR,true) && !count(&wearer,SPELL_ARMOR,false));
     }
     // Consumable protections spend the active ordinary counter and resume only

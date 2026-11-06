@@ -13148,12 +13148,22 @@ std::string vitality_facts(P_char ch)
 void spell_vitality(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		    P_obj /*obj*/)
 {
-	named_set_ordinary_cast ordinary_cast(victim, SPELL_VITALITY);
 	struct affected_type af;
 	int healpoints = vitality_hit_points(level), duration = 1;
 
 	if (!IS_ALIVE(ch))
 		return;
+
+	// Current HP falls with maximum HP, so a weaker cast must not replace a set grant.
+	for (const affected_type *set = victim->affected; set; set = set->next)
+		if (set->type == SPELL_VITALITY && (set->flags & AFFTYPE_SET_AFFECT) &&
+		    !(set->flags & AFFTYPE_SET_SUSPENDED) && set->modifier >= healpoints)
+		{
+			send_to_char("Nothing new seems to happen.\r\n", ch);
+			return;
+		}
+
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_VITALITY);
 
 	if (IS_NPC(victim) && GET_VNUM(victim) == IMAGE_REFLECTION_VNUM)
 		return;
@@ -16881,7 +16891,7 @@ std::string prot_from_undead_facts(P_char ch)
 void spell_prot_from_undead(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			    P_char victim, P_obj /*obj*/)
 {
-	named_set_ordinary_cast ordinary_cast(ch, SPELL_PROT_FROM_UNDEAD);
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PROT_FROM_UNDEAD);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_PROT_FROM_UNDEAD))
@@ -20807,8 +20817,8 @@ void spell_dispel_magic(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		act("You try to dispel $N's magic.", FALSE, ch, 0, victim, TO_CHAR);
 		act("$n tries to dispel $N's magic!", FALSE, ch, 0, victim, TO_NOTVICT);
 
-		// Select active types before removal: a dormant set that resumes after
-		// dispelling an ordinary cast is not a second target in the same pass.
+		// Select active types before removal: a dormant set grant is cleared with its
+		// ordinary cast, not a second target in the same pass.
 		std::vector<int> active_types;
 		for (af = victim->affected; af; af = af->next)
 			if (!(af->flags & AFFTYPE_SET_SUSPENDED) && af->type > 0 &&
@@ -20829,6 +20839,16 @@ void spell_dispel_magic(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 					}
 
 					success = 1;
+					// The buff is ending, so a dormant grant must not resume and
+					// silence its message.
+					for (affected_type *dormant = victim->affected, *next;
+					     dormant; dormant = next)
+					{
+						next = dormant->next;
+						if (dormant->type == af->type &&
+						    (dormant->flags & AFFTYPE_SET_SUSPENDED))
+							affect_remove(victim, dormant);
+					}
 					wear_off_message(victim, af);
 					if ((af->type == SPELL_CALL_OF_THE_WILD) &&
 					    IS_MORPH(victim))

@@ -81,7 +81,7 @@ def catalog_ids(text):
 
 expanded_ids = catalog_ids((ROOT / "src/item/named_sets.c").read_text())
 old_ids = catalog_ids(subprocess.check_output(
-    ["git", "show", "f7de76f10:src/item/named_sets.c"], cwd=ROOT, text=True))
+    ["git", "show", "bff1043fd:src/item/named_sets.c"], cwd=ROOT, text=True))
 assert len(expanded_ids) == 298 and len(old_ids) == 115 and old_ids < expanded_ids
 
 
