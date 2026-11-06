@@ -4,8 +4,8 @@ Status: implementation in progress; twenty-one focused implementation/test PRs a
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-live-report`, based on
-`branch/named-zone-set-help`.
+Working branch: `branch/named-zone-set-shop-world`, based on
+`branch/named-zone-set-live-report`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -1270,6 +1270,53 @@ tests/async/with_disposable_mariadb.sh python3 tests/async/run_named_set_report_
 Next complete the native shop/saved-world paths on both active backends and
 compatibility rollback, then reconcile the final local gates and review stack.
 No merge, release or production operation occurred.
+
+### Native flat-file shop checkpoint
+
+**Outcome/files/ablation:** `run_named_set_shop_journey.py` reuses the retained
+three original #1325 pieces, native command/GMCP helpers and the maintained shop
+stock inspector. Its optional `named` output adds the origin from the actual shop
+item payload while preserving the inspector's existing five-column default.
+One native keyword edit makes the selected resale unambiguous; it changes no UID,
+origin or visible short description. Native staff currency funding follows the
+maintained shop journeys, then sale and repurchase use mortal level 56.
+
+The candidate is original UID `76068523` with the original other two pieces
+retained by Meranen. The runner checks durable shop payload and removed player
+custody before stopping, requires the exact saved shop record after reboot,
+then buys the same finite item back and checks original slots, origins,
+Armor/+5 HP and another player reboot. It can resume from shop custody if a
+later stage fails. Setup and transcripts are retained under the private runtime
+as `named-shop-setup.json` / `named-shop-transcript.txt`; no reset or lost-UID
+recreation is allowed. The full native journey passes (exit 0). The saved resale
+record is vnum 1252, parent/slot 0, cost 990 and origin 1325; it survives reboot
+unchanged and is absent from shop storage after repurchase. All three originals
+are back on mortal Meranen with their exact original slots/origins and Armor/+5 HP
+after the final reboot. Set Armor remains absent from ordinary saved affects.
+The initial setup stopped because `string` does not accept equipped items; the
+runner now removes the selected piece before editing its keyword. Its transcript
+is retained separately as `named-shop-string-failure.txt`; no item was lost.
+`make -C src -j4`, the warning-clean inspector build, native journey, default/named
+inspector comparison for all 12 shop items, Python compilation, formatting and
+`git diff --check` pass. All private servers are stopped. There are still 751
+retained named items; this test creates or discards no named gear.
+
+**Saved-world boundary found during tracing:** `writeSavedItem()` persists
+`ITEM_STORAGE` containers and their nested graph through the existing writer.
+Native `storage new <container-vnum>` creates that durable, non-takeable root;
+ordinary floor drops do not provide this guarantee. The next world journey must
+observe its actual saved payload before stopping, rather than repeating the
+earlier unfunded-locker floor mistake. Source owners are `core/files.c`,
+`cmd/actwiz.c::do_storage`, and the room/storage put/get paths in `cmd/actobj.c`.
+
+```sh
+make -C src -j4
+python3 tests/async/run_named_set_shop_journey.py
+```
+
+After this focused flat-file shop chunk, complete the native persistent-storage
+journey and SQL shop/world extensions, then compatibility rollback and final
+local/review reconciliation. No release or deployment is authorized by this test.
 
 ## Start here
 
