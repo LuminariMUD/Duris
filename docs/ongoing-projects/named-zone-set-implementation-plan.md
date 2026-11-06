@@ -1,6 +1,6 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; thirteen focused implementation/test PRs are pushed
+Status: implementation in progress; fourteen focused implementation/test PRs are pushed
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
@@ -59,6 +59,10 @@ chunk is ready for review.
 (`branch/named-zone-set-title-journeys`, implementation commit `397381d89`)
 completes the four existing-title native journeys, including six-piece Vitality,
 and targets #734. It is ready for review.
+[PR #736](https://github.com/LuminariMUD/Duris/pull/736)
+(`branch/named-zone-set-transfer`, implementation commit `ffece9482`)
+adds native cross-owner nested transfer and effective ordinary Armor proof and
+targets #735. It is ready for review.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
 into the foundation and propagated through each dependent branch without
@@ -839,7 +843,7 @@ fixture compilation, `make -C src -j4`, C++ formatting, Python static checks and
 `git diff --check` pass. No product code, generated item content, production
 state, release tag or deployment was changed.
 
-**Next storage journey:** use the existing character helpers with a second
+**Transfer approach (implemented below):** use the existing character helpers with a second
 synthetic account, retaining the current authority and real generated item UIDs.
 Transfer named gear in native nested containers, then wear/save/reboot it under
 the recipient. Keep the recipient free of the accumulated candidate pool so the
