@@ -889,8 +889,7 @@ build = ROOT / "bin/tests"
 # Keep the fixture's IDs and callbacks aligned with the recorded pool and actual
 # registration, so a missing/rebound entry cannot silently evade qualification.
 assignments = (ROOT / "docs/ongoing-projects/named-zone-set-first-pass-assignments.md").read_text()
-pool = assignments.split("## Effect homes after both passes")[1].split("
-## ", 1)[0]
+pool = assignments.split("## Effect homes after both passes")[1].split("\n## ", 1)[0]
 pool_ids = {int(value) for value in re.findall(r"\(#(\d+)\)", pool)}
 tested = {int(value): callback for value, callback in re.findall(r"^    \{(\d+),(spell_\w+),", harness, re.M)}
 assert set(tested) == pool_ids and len(tested) == 50
