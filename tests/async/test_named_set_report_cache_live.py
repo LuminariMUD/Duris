@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
             skills[tier[1]].spell_pointer = fixture_spell;
         }
     }
-    assert(named_set_count == 298 && validate_named_sets());
+    assert(validate_named_sets()); // Catalog/manifest counts have their own contract test.
     redis_connection_options options = {
         "127.0.0.1", atoi(argv[1]), 250, 100, 0, nullptr, nullptr,
         false, nullptr, nullptr, false, nullptr};

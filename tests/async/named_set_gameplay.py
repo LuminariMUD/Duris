@@ -145,8 +145,9 @@ def inventory_graph(rows):
 
 
 class NamedSetGame:
-    def __init__(self):
-        self.runtime = (journey.ROOT / "bin/tests/named-set-roster-world").resolve()
+    def __init__(self, runtime=None, binary=None):
+        self.runtime = (runtime or journey.ROOT / "bin/tests/named-set-roster-world").resolve()
+        self.binary = (binary or journey.ROOT / "bin/tests/named-set-flatfile-server").resolve()
         self.state = self.runtime / "state"
         assert self.state.is_dir() and (self.runtime / "areas/world.zon").is_file(), (
             "prepare the isolated full-world runtime first"
@@ -196,7 +197,7 @@ class NamedSetGame:
         self.output = log.open("w")
         self.process = subprocess.Popen(
             [
-                str(journey.ROOT / "bin/tests/named-set-flatfile-server"),
+                str(self.binary),
                 "-d",
                 str(self.runtime),
                 str(self.port),
