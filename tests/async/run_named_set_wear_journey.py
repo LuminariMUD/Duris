@@ -131,8 +131,11 @@ try:
     client.expect("Ok.")
     client.send("put all collector")
     score(client)
-    if zone == 1325:
+    if zone in (1325, 13):
         client.send("load obj 39130")
+        client.expect("You have created")
+    if zone == 824:
+        client.send("load obj 2800")
         client.expect("You have created")
     # Wearing outside the generation zone also checks that room identity is irrelevant.
     client.send("goto 132500")
@@ -188,6 +191,11 @@ try:
         new = next(row for row in after if int(row[0]) == uid)
         assert old[:4] == new[:4], (old, new)
     assert not game.affects(spell), "set effect must not persist as an ordinary affect"
+    if zone == 824:
+        # A level 22 Vitality potion once replaced this grant and could kill the wearer.
+        client.send("quaff potion")
+        client.expect("Nothing new seems to happen.", timeout=20)
+        expect_set(pieces)
     if zone == 87:
         assert not game.affects(41), "set Haste must not persist as an ordinary affect"
     if zone != 1325:
@@ -196,6 +204,25 @@ try:
         client.send("remove all")
         expect_set(0)
         save(client)
+        if zone == 13:
+            # The set's proc rejects Phantom Armor under ordinary Armor, silently.
+            deadline = time.monotonic() + 180
+            while True:
+                offset = len(client.transcript)
+                client.send("quaff solution")
+                score(client)
+                if b"Bands of magic armor wrap around you!" in client.transcript[offset:]:
+                    break
+                assert time.monotonic() < deadline, "the potion cooldown never ended"
+                time.sleep(5)
+            for uid in chosen:
+                client.send("wear " + selector(client, uid))
+                score(client)
+            offset = len(client.transcript)
+            time.sleep(35)
+            score(client)
+            assert b"already affected" not in client.transcript[offset:]
+            assert not game.affects(spell), "the rejected set effect must not apply"
         (runtime / f"named-zone-{zone}-result.json").write_text(
             json.dumps(
                 {
