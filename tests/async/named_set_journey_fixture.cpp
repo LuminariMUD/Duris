@@ -16,15 +16,18 @@ template <class T> void number(std::vector<uint8_t> &out, T value)
 
 int main(int argc, char **argv)
 {
-	assert(argc == 3);
+	assert(argc == 3 || argc == 4);
 	const std::string root = argv[1], mode = argv[2];
+	const int pid = argc == 4 ? std::stoi(argv[3]) : 1;
+	assert(pid == 1 || pid == 2);
 	player_snapshot snapshot;
 	std::string error;
-	assert(flatfile_player_snapshot_read(root, 1, &snapshot, &error) ==
+	assert(flatfile_player_snapshot_read(root, pid, &snapshot, &error) ==
 	       flatfile_player_load_result::ok);
 	bool synthetic = false;
 	for (const auto &field : snapshot.status_strings)
-		if (field.field == player_status_string_field::name && field.value == "Taverek")
+		if (field.field == player_status_string_field::name &&
+		    field.value == (pid == 1 ? "Taverek" : "Meranen"))
 			synthetic = true;
 	assert(synthetic && root.find("/bin/tests/") != std::string::npos);
 	if (mode == "mortal")
@@ -54,7 +57,7 @@ int main(int argc, char **argv)
 		SHA256(payload.data(), payload.size(), digest);
 		bytes.insert(bytes.end(), digest, digest + sizeof(digest));
 		bytes.insert(bytes.end(), payload.begin(), payload.end());
-		assert(flatfile_atomic_write(player_directory(root), player_filename(1), bytes,
+		assert(flatfile_atomic_write(player_directory(root), player_filename(pid), bytes,
 					     &error));
 		return 0;
 	}
@@ -63,6 +66,14 @@ int main(int argc, char **argv)
 		for (const auto &affect : snapshot.affects)
 			std::printf("%d|%d|%u|%d\n", affect.type, affect.duration, affect.flags,
 				    affect.modifier);
+		return 0;
+	}
+	if (mode == "inventory")
+	{
+		for (const auto &item : snapshot.items)
+			std::printf("%llu|%d|%d|%d\n",
+				    static_cast<unsigned long long>(item.object_uid), item.vnum,
+				    item.parent_index, item.equipment_slot);
 		return 0;
 	}
 	assert(mode == "inspect");

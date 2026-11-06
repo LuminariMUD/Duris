@@ -4,8 +4,8 @@ Status: implementation in progress; thirteen focused implementation/test PRs are
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-title-journeys`, based on
-`branch/named-zone-set-area-journeys`.
+Working branch: `branch/named-zone-set-transfer`, based on
+`branch/named-zone-set-title-journeys`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -848,6 +848,66 @@ armor/load caps. Compare the same worn gear after ordinary Armor and after
 removing/reapplying set support to prove effective non-stacking, alongside the
 already verified duration/source and saved-affect checks. Do not edit generated
 item identity or provenance to prepare this journey.
+
+### Native transfer and effective Armor journey passed
+
+**Outcome/files/proof:** extract the wear runner's existing native I/O into
+`tests/async/named_set_gameplay.py` for its two real callers; keep the case data
+and assertions in the wear runner. Add `run_named_set_transfer_journey.py` for
+two accounts and native nested-bag transfer, receiver wear/reboot and effective
+ordinary Armor checks through `attributes`. Extend the snapshot fixture only
+to the second synthetic character (PID 2, `Meranen`) and read-only inventory
+coordinates; retain the PID/name/private-path guards. The only offline writes
+remain tester level/base HP and unrelated stored buffs. Generated content,
+UIDs and provenance are never prepared by editing snapshots. Use native bag
+commands to archive starter gear and keep the recipient's Armor Points away
+from the real caps. No product code, new server option or storage format is
+needed. The shared-helper Tharnadia regression passes, including the full
+five-piece/ordinary Armor path after the helper extraction.
+
+The normal character-creation path created the second account `Namedguest` and
+character `Meranen` (PID 2). Native commands archive starter gear, prepare the
+two bags and make both testers visible. At the actual handoff both are level-56
+mortals; native consent/give moves a cotton backpack inside the collector bag,
+containing the original #1325 UIDs **`76068523`, `76068769`, `76069376`**. The
+test checks that those UIDs leave PID 1 and appear only under PID 2. It verifies
+the exact inner/outer/child parent links both after the give and after receiver
+materialization/save on the next boot, then unpacks and wears them natively.
+Another reboot preserves the exact origins, wear slots and wear flags.
+
+The clean recipient's baseline maximum HP is **1475**, with +5 at three pieces.
+Set Armor is absent from stored ordinary affects. After native potion Armor,
+removing/reapplying set support leaves the same effective `attributes` Armor
+Points, away from both caps, and another reboot retains exactly one ordinary
+Armor with no duration increase. The first two successful runs observe **-63**
+and **-64**; the final run with explicit post-load parent/slot comparisons
+observes **-65**, constant within that run across reapplication and reboot.
+The differing runs use separate native potion rolls. No expected item or spell
+payload was installed through the snapshot fixture.
+
+One preparation attempt exposed stale test selectors: repeatedly resetting
+`Char.Items.Get []` could pick already queued pages from an older scope. The
+shared reader now consumes the automatic stream's latest complete inventory /
+equipment revision, including context/body identity, and returns all selectors
+for one command from that same snapshot. The server correctly rejected the old
+tokens; no product repair was needed. The authority was retained and the same
+UID manifest resumed the test. A complete repeat also passes using the same
+items after returning them through native commands, without reseeding.
+
+**Run/proof:** `python3 tests/async/run_named_set_transfer_journey.py`; rerun the
+existing wear runner directly for its shared-helper regression. Setup/result
+JSON, complete transcripts and the qualification logs stay under the existing
+ignored runtime / `bin/tests/` paths. The final real authority retains **751
+unique named UID/origin pairs across both owners**, with no duplicate UID across
+their complete inventories. All private servers are stopped. The native runs,
+`make -C src -j4`, fixture `-Wall -Wextra -Werror` compilation, C++ formatting,
+Python static checks and `git diff --check` pass.
+
+This closes the native flat-file player/nested-container/cross-owner proof and
+the effective ordinary Armor overlap check. Pets, corpses, lockers/private
+chests, shops, saved-world paths, visible-name editing/cloning, MariaDB gameplay,
+live Redis, canonical help publication and rollback remain project gates.
+No implementation PR was merged, tagged or deployed.
 
 ## Start here
 
