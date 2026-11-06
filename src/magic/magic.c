@@ -7492,13 +7492,41 @@ void spell_relocate(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	act("&+WYou materialize elsewhere!&n", FALSE, ch, 0, 0, TO_CHAR);
 }
 
+// Rooms a random zone-wide teleport must not land in.
+static bool teleport_blocked_destination(int room)
+{
+	return IS_ROOM(room, ROOM_PRIVATE) || IS_ROOM(room, ROOM_NO_MAGIC) ||
+	       IS_ROOM(room, ROOM_NO_TELEPORT) || IS_HOMETOWN(room) ||
+	       world[room].sector_type == SECT_OCEAN;
+}
+
+static void group_teleport_move(P_char ch, int to_room)
+{
+	act("$n slowly fades out of existence.", FALSE, ch, 0, 0, TO_ROOM);
+
+	if (IS_FIGHTING(ch))
+		stop_fighting(ch);
+	REMOVE_BIT(ch->specials.affected_by, AFF_HIDE);
+
+#if defined(CTF_MUD) && (CTF_MUD == 1)
+	if (to_room != ch->in_room && ctf_carrying_flag(ch) == CTF_PRIMARY)
+	{
+		send_to_char("You can't carry that with you.\r\n", ch);
+		drop_ctf_flag(ch);
+	}
+#endif
+
+	char_from_room(ch);
+	char_to_room(ch, to_room, -1);
+
+	act("$n slowly fades into existence.", FALSE, ch, 0, 0, TO_ROOM);
+}
+
 void spell_group_teleport(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			  P_obj /*obj*/)
 {
-	int from_room, to_room, tries; // , dir;
+	int from_room, to_room, tries = 0;
 	struct group_list *gl = NULL;
-	// int      range = get_property("spell.teleport.range", 30);
-	int range = 800000;
 
 	if ((ch && !is_Raidable(ch, 0, 0)) || (victim && !is_Raidable(victim, 0, 0)))
 	{
@@ -7515,107 +7543,39 @@ void spell_group_teleport(int /*level*/, P_char ch, char * /*arg*/, int /*type*/
 	}
 
 	// find a suitable room in the zone to teleport to
-	if (IS_MAP_ROOM(ch->in_room))
+	do
 	{
-		to_room = ch->in_room;
-
-		for (int i = 0; i < range; i++)
-		{
-			tries = 0;
-			do
-			{
-				to_room = number(zone_table[world[ch->in_room].zone].real_bottom,
-						 zone_table[world[ch->in_room].zone].real_top);
-				tries++;
-			} while ((IS_ROOM(to_room, ROOM_PRIVATE) ||
-				  IS_ROOM(to_room, ROOM_NO_TELEPORT) || IS_HOMETOWN(to_room) ||
-				  (world[to_room].sector_type == SECT_OCEAN)) &&
-				 (tries < 1000));
-		}
-		/*
-		do
-		      {
-		        dir = number(0, 3);
-		      } while( tries++ < 20 && !VALID_TELEPORT_EDGE(to_room, dir, ch->in_room) );
-
-		      if( tries < 20 )
-		        to_room = TOROOM(to_room, dir);
-		*/
-	}
-	else
-	{
-		tries = 0;
-		do
-		{
-			to_room = number(zone_table[world[ch->in_room].zone].real_bottom,
-					 zone_table[world[ch->in_room].zone].real_top);
-			tries++;
-		} while ((IS_ROOM(to_room, ROOM_PRIVATE) || IS_ROOM(to_room, ROOM_NO_TELEPORT) ||
-			  IS_HOMETOWN(to_room) || (world[to_room].sector_type == SECT_OCEAN)) &&
-			 (tries < 1000));
-	}
+		to_room = number(zone_table[world[ch->in_room].zone].real_bottom,
+				 zone_table[world[ch->in_room].zone].real_top);
+		tries++;
+	} while (teleport_blocked_destination(to_room) && tries < 1000);
 
 	// if no suitable room was found, teleport back to the same room they're in
 	if (tries == 1000)
 		to_room = ch->in_room;
 
-	/*
-	  // if this zone limits teleports, check to see if the teleportation range is too great
-	  if(LIMITED_TELEPORT_ZONE(ch->in_room))
-	  {
-	    if(how_close(ch->in_room, to_room, 5))
-	      send_to_char
-	        ("The magic gathers, but somehow fades away before taking effect.\n",
-	         ch);
-	    return;
-	  }
-	*/
+	if (LIMITED_TELEPORT_ZONE(ch->in_room) && how_close(ch->in_room, to_room, 5) < 0)
+	{
+		send_to_char("The magic gathers, but somehow fades away before taking effect.\n",
+			     ch);
+		return;
+	}
+
 	// get the room the teleport is taking place so we don't have to move the teleporter last
 	from_room = ch->in_room;
 
-	// if the teleporter is grouped
 	if (ch->group)
 	{
 		// teleport the group members in the character's room
 		for (gl = ch->group; gl; gl = gl->next)
 		{
 			if (gl->ch->in_room == from_room)
-			{
-				// show the room they're fading
-				act("$n slowly fades out of existence.", FALSE, gl->ch, 0, 0,
-				    TO_ROOM);
-
-				// if they're fighting, break it up
-				if (IS_FIGHTING(gl->ch))
-					stop_fighting(gl->ch);
-				REMOVE_BIT(ch->specials.affected_by, AFF_HIDE);
-
-				// move the char
-				char_from_room(gl->ch);
-				char_to_room(gl->ch, to_room, -1);
-
-				// show the new room they've arrived
-				act("$n slowly fades into existence.", FALSE, gl->ch, 0, 0,
-				    TO_ROOM);
-			}
+				group_teleport_move(gl->ch, to_room);
 		}
 	}
 	else
 	{
-		// show the room they're fading
-		act("$n slowly fades out of existence.", FALSE, ch, 0, 0, TO_ROOM);
-
-		// if they're fighting, break it up
-		if (IS_FIGHTING(ch))
-			stop_fighting(ch);
-		REMOVE_BIT(ch->specials.affected_by, AFF_HIDE);
-
-		// move the char
-		char_from_room(ch);
-		char_to_room(ch, to_room, -1);
-
-		// show the new room they've arrived
-		act("$n slowly fades into existence.", FALSE, ch, 0, 0, TO_ROOM);
+		group_teleport_move(ch, to_room);
 	}
 }
 
@@ -7685,10 +7645,7 @@ void spell_teleport(int level, P_char ch, char * /*arg*/, int /*type*/, P_char v
 			to_room = number(zone_table[world[vict->in_room].zone].real_bottom,
 					 zone_table[world[vict->in_room].zone].real_top);
 			tries++;
-		} while ((IS_ROOM(to_room, ROOM_PRIVATE) || IS_ROOM(to_room, ROOM_NO_MAGIC) ||
-			  IS_ROOM(to_room, ROOM_NO_TELEPORT) || IS_HOMETOWN(to_room) ||
-			  world[to_room].sector_type == SECT_OCEAN) &&
-			 tries < 1000);
+		} while (teleport_blocked_destination(to_room) && tries < 1000);
 		if (tries >= 1000)
 			to_room = vict->in_room;
 	}
