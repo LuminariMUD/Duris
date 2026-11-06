@@ -2328,7 +2328,7 @@ static int song_dissonance_power(P_char ch, int empower)
 	return empower / 3 + GET_LEVEL(ch) + GET_C_CHA(ch) / 2 + GET_C_LUK(ch) / 5;
 }
 
-// What a disharmonist adds to that strength for each target checked.
+// What a disharmonist adds to its base strength.
 static int song_dissonance_disharmonist_bonus(int c_roll)
 {
 	return (int)(c_roll * 1.20);
@@ -2346,10 +2346,12 @@ static int song_dissonance_pet_death_delay()
 
 std::string song_dissonance_facts(P_char ch)
 {
-	const int power = song_dissonance_power(ch, GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG));
+	int power = song_dissonance_power(ch, GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG));
+	if (GET_SPEC(ch, CLASS_BARD, SPEC_DISHARMONIST))
+		power += song_dissonance_disharmonist_bonus(power);
 	return fact("Your strength", std::to_string(power)) +
 	       (GET_SPEC(ch, CLASS_BARD, SPEC_DISHARMONIST) ?
-			fact("A disharmonist's strength grows for each target by",
+			fact("Included disharmonist bonus",
 			     share_percent(song_dissonance_disharmonist_bonus(100) / 100.f)) :
 			"") +
 	       "  Each side adds 0-50. If you beat another singer's strength, worked out\n"
@@ -2364,82 +2366,48 @@ std::string song_dissonance_facts(P_char ch)
 // The song has two affects. The first breaks pet links and the
 // second forces other bards to stop singing.
 
-void bard_dissonance(int /*l*/, P_char ch, P_char /*victim*/, int /*song*/)
+void bard_dissonance(int /*l*/, P_char ch, P_char t, int /*song*/)
 {
-	P_char t, t_next;
-	int empower = GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG);
-	int c_roll, t_roll;
-
-	if (!IS_ALIVE(ch))
-	{
+	if (!IS_ALIVE(ch) || !IS_ALIVE(t) || !IS_AFFECTED3(ch, AFF3_SINGING))
 		return;
+
+	if (!should_area_hit(ch, t) || IS_TRUSTED(t) || grouped(ch, t))
+		return;
+
+	int c_roll = song_dissonance_power(ch, GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG));
+	if (GET_SPEC(ch, CLASS_BARD, SPEC_DISHARMONIST))
+		c_roll += song_dissonance_disharmonist_bonus(c_roll);
+
+	if (IS_AFFECTED3(t, AFF3_SINGING))
+	{
+		int t_roll = (GET_CHAR_SKILL(t, SKILL_EMPOWER_SONG) / 3) + GET_LEVEL(t) +
+			     (GET_C_CHA(t) / 2) + (GET_C_LUK(t) / 5);
+
+		if (c_roll + number(0, 50) > t_roll + number(0, 50))
+		{
+			act("You have &+ym&+Ya&+yn&+Yg&+yl&+Ye&+yd&n $N's singing!", TRUE, ch, 0, t,
+			    TO_CHAR);
+			act("$n's &+Chorn blasting&n &+ym&+Ya&+yn&+Yg&+yl&+Ye&+ys&n your song...",
+			    TRUE, ch, 0, t, TO_VICT);
+			act("$N's &+Csong&n is &+ym&+Ya&+yn&+Yg&+yl&+Ye&+yd&n!", TRUE, ch, 0, t,
+			    TO_NOTVICT);
+
+			CharWait(t, song_dissonance_target_lag());
+
+			stop_singing(t);
+			return;
+		}
 	}
 
-	c_roll = song_dissonance_power(ch, empower);
-
-	for (t = world[ch->in_room].people; t; t = t_next)
+	if (IS_NPC(t) && get_linked_char(t, LNK_PET) &&
+	    get_linked_char(t, LNK_PET)->in_room == t->in_room && c_roll > number(1, 2000))
 	{
-		t_next = t->next_in_room;
-
-		// If, for whatever reason, our bard has stopped singing, stop song effects.
-		if (!IS_AFFECTED3(ch, AFF3_SINGING))
-		{
-			break;
-		}
-
-		if (!should_area_hit(ch, t))
-		{
-			continue;
-		}
-
-		if (IS_TRUSTED(t))
-		{
-			continue;
-		}
-
-		if (GET_SPEC(ch, CLASS_BARD, SPEC_DISHARMONIST))
-		{
-			c_roll += song_dissonance_disharmonist_bonus(c_roll);
-		}
-
-		// Below here are aggressive things that don't hit the bard's group.
-		if (grouped(ch, t))
-		{
-			continue;
-		}
-
-		if (IS_AFFECTED3(t, AFF3_SINGING))
-		{
-			t_roll = (GET_CHAR_SKILL(t, SKILL_EMPOWER_SONG) / 3) + GET_LEVEL(t) +
-				 (GET_C_CHA(t) / 2) + (GET_C_LUK(t) / 5);
-
-			if (c_roll + number(0, 50) > t_roll + number(0, 50))
-			{
-				act("You have &+ym&+Ya&+yn&+Yg&+yl&+Ye&+yd&n $N's singing!", TRUE,
-				    ch, 0, t, TO_CHAR);
-				act("$n's &+Chorn blasting&n &+ym&+Ya&+yn&+Yg&+yl&+Ye&+ys&n your song...",
-				    TRUE, ch, 0, t, TO_VICT);
-				act("$N's &+Csong&n is &+ym&+Ya&+yn&+Yg&+yl&+Ye&+yd&n!", TRUE, ch,
-				    0, t, TO_NOTVICT);
-
-				CharWait(t, song_dissonance_target_lag());
-
-				stop_singing(t);
-				break;
-			}
-		}
-
-		if (IS_NPC(t) && get_linked_char(t, LNK_PET) &&
-		    get_linked_char(t, LNK_PET)->in_room == ch->in_room && c_roll > number(1, 2000))
-		{
-			act("$N &+Wshudders and quivers&n for a moment...", TRUE, ch, 0, t,
-			    TO_ROOM);
-			act("$N &+Wshudders and quivers&n for a moment.", TRUE, ch, 0, t, TO_CHAR);
-			clear_all_links(t);
-			// Pets go away after 1 1/2 min to prevent cheese.
-			add_event(event_pet_death, song_dissonance_pet_death_delay(), t, NULL, NULL,
-				  0, NULL, 0);
-		}
+		act("$N &+Wshudders and quivers&n for a moment...", TRUE, ch, 0, t, TO_ROOM);
+		act("$N &+Wshudders and quivers&n for a moment.", TRUE, ch, 0, t, TO_CHAR);
+		clear_all_links(t);
+		// Pets go away after 1 1/2 min to prevent cheese.
+		add_event(event_pet_death, song_dissonance_pet_death_delay(), t, NULL, NULL, 0,
+			  NULL, 0);
 	}
 }
 
@@ -2510,6 +2478,28 @@ void sing_verses(P_char ch, int song)
 			}
 		}
 	}
+}
+
+// Sings to one target. A song's effect can kill and release anyone in the room, so this clears
+// target and next when they are gone. Returns false when the singer is gone and must not be read.
+static bool sing_to_target(song_function *funct, int level, P_char ch, P_char *target, P_char *next,
+			   int song)
+{
+	const uint64_t removal_before = character_removal_generation;
+	const uint64_t singer_id = ch->runtime_id, target_id = (*target)->runtime_id;
+	const uint64_t next_id = *next ? (*next)->runtime_id : 0;
+
+	funct(level, ch, *target, song);
+
+	if (removal_before == character_removal_generation)
+		return true;
+	if (!find_character_by_runtime_id(singer_id))
+		return false;
+	if (!find_character_by_runtime_id(target_id))
+		*target = NULL;
+	if (*next && !find_character_by_runtime_id(next_id))
+		*next = NULL;
+	return true;
 }
 
 // The reduced song level an echo plays at.
@@ -2586,7 +2576,9 @@ void event_echosong(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 			}
 
 			// Sing the song.
-			(songDescrip->funct)(songLevel, ch, victim, song);
+			if (!sing_to_target(songDescrip->funct, songLevel, ch, &victim, &victim2,
+					    song))
+				return;
 
 			if (IS_SET(songDescrip->flags, SONG_AGGRESSIVE) && IS_ALIVE(ch) &&
 			    IS_ALIVE(victim) && bard_saves(ch, victim, song) &&
@@ -2784,7 +2776,8 @@ void event_bardsong(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 			}
 
 			// Sing the song.
-			(sd->funct)(l, ch, tch, song);
+			if (!sing_to_target(sd->funct, l, ch, &tch, &next, song))
+				return;
 
 			if (IS_SET(sd->flags, SONG_AGGRESSIVE) && IS_ALIVE(ch) && IS_ALIVE(tch) &&
 			    bard_saves(ch, tch, song) && !IS_FIGHTING(tch))
@@ -3189,7 +3182,8 @@ void do_riff(P_char ch, char *arg, int /*cmd*/)
 			}
 			if (is_char_in_room(tch, room))
 			{
-				(sd->funct)(l, ch, tch, s);
+				if (!sing_to_target(sd->funct, l, ch, &tch, &next, s))
+					return;
 			}
 		}
 	}
