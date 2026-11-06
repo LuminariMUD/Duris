@@ -35,6 +35,10 @@ static zone_data zones[] = {
     {.number = 204, .name = const_cast<char *>("Neverwind Valley")},
     {.number = 990, .name = const_cast<char *>("Neverwinter Woods")},
     {.number = 740, .name = const_cast<char *>("&+rBloodstone Keep&n")},
+    {.number = 87, .name = const_cast<char *>("&+gLair of the Gibberling King&n")},
+    {.number = 370, .name = const_cast<char *>("&+gCrystalspyre Mountains&n")},
+    {.number = 676, .name = const_cast<char *>("&+gTaliccicopiid&n")},
+    {.number = 824, .name = const_cast<char *>("&+gThe Temple of the Sun&n")},
     {.number = 150, .name = const_cast<char *>("Retired Misty Chasm prototypes")},
     {.number = 3000, .name = const_cast<char *>("&+LThe &+yChasm &+Lof the &+WMisty &+GVale")},
 };
@@ -67,7 +71,7 @@ int main() {
     indexes[1].virtual_number = VOBJ_RANDOM_WEAPON;
     for (int reverse : {0, 1}) {
         if (reverse) std::reverse(std::begin(zones), std::end(zones));
-        for (int zone : {13, 1350, 44, 300, 808, 811, 814, 196, 199, 204, 990, 740, 150, 3000, INT_MAX}) {
+        for (int zone : {13, 1350, 44, 300, 808, 811, 814, 196, 199, 204, 990, 740, 87, 370, 676, 824, 150, 3000, INT_MAX}) {
             obj_data object{};
             object.short_description = const_cast<char *>("an item &+rfrom &+gCeothia&n");
             assert(set_named_set_origin(&object, zone));
@@ -97,7 +101,7 @@ int main() {
             identity = named_set_origin(&object);
             assert(identity.zone == 0 && identity.legacy_title == title);
         }
-        for (int zone : {196, 199, 204, 990, 740}) {
+        for (int zone : {196, 199, 204, 990, 740, 87, 370, 676, 824}) {
             auto found = std::find_if(std::begin(zones), std::end(zones),
                                       [zone](const auto &candidate) {return candidate.number == zone;});
             obj_data object{};

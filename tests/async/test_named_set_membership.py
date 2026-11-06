@@ -44,6 +44,10 @@ static zone_data zones[] = {
     {.number=199,.name=const_cast<char *>("&+RAstral Plane, Tiamat&n")},
     {.number=740,.name=const_cast<char *>("&+rBloodstone Keep&n")},
     {.number=990,.name=const_cast<char *>("&+gNeverwinter Woods&n")},
+    {.number=87,.name=const_cast<char *>("&+gLair of the Gibberling King&n")},
+    {.number=370,.name=const_cast<char *>("&+gCrystalspyre Mountains&n")},
+    {.number=676,.name=const_cast<char *>("&+gTaliccicopiid&n")},
+    {.number=824,.name=const_cast<char *>("&+gThe Temple of the Sun&n")},
     {.number=150,.name=const_cast<char *>("Retired Misty Chasm prototypes")},
     {.number=3000,.name=const_cast<char *>("&+LThe Chasm of the Misty Vale&n")},
 };
@@ -174,6 +178,21 @@ int main() {
         assert(spells.size()==static_cast<size_t>((count>=3)+(count>=5)));
         if(count>=3) assert(spells[0]==std::make_tuple(SPELL_ARMOR,count,1325));
         if(count>=5) assert(spells[1]==std::make_tuple(SPELL_ENDURANCE,count,1325));
+    }
+    // The restored titles retain their existing HP and spell thresholds.
+    for(int zone:{87,370,676,824}) for(int count:{2,3,4,5,6}) {
+        reset(); for(int i=0;i<count;++i) wear(i,i+1,zone);
+        process(0);
+        assert(hp(zone) && hp(zone)->modifier==5*(count-2));
+        std::vector<std::tuple<int,int,int>> expected;
+        if(zone==87 && count>=3) expected.emplace_back(SPELL_SPIRIT_WARD,count,zone);
+        if(zone==87 && count>=5) expected.emplace_back(SPELL_HASTE,count,zone);
+        if(zone==370 && count>=3) expected.emplace_back(SPELL_ENDURANCE,count,zone);
+        if(zone==676 && count>=4) expected.emplace_back(SPELL_ENDURANCE,count,zone);
+        if(zone==824 && count>=6) expected.emplace_back(SPELL_VITALITY,count,zone);
+        assert(spells==expected);
+        for(int slot=1;slot<=count;++slot) wearer.equipment[slot]=nullptr;
+        expire(zone); assert(!hp(zone));
     }
     // Catalog row zero is a real nonzero source, not a wildcard.
     reset(); for(int i=0;i<3;++i) wear(i,i+1,14); process(0);

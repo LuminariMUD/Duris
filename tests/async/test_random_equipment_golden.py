@@ -20,6 +20,7 @@ also cover every suffix total, blank template identity and rejected kill context
 without changing the frozen output.
 """
 import os
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -651,6 +652,37 @@ static void origin_generation_contract()
     release(plain);
     zones[0].name=saved_title;
 }
+static void restored_zone_titles_contract()
+{
+    const struct {int zone; const char *title; const char *visible;} titles[]={
+        RESTORED_ZONE_TITLES
+    };
+    person finder("Finder",56,160,true);
+    char *saved_title=zones[0].name;
+    const int saved_number=zones[0].number;
+    for(const auto &entry:titles) {
+        assert(strip_ansi(entry.title)==entry.visible);
+        zones[0].number=entry.zone;
+        zones[0].name=const_cast<char *>(entry.title);
+        randomize(7);
+        P_obj named=create_random_eq(&finder.ch,56,62,0,-1);
+        assert(named && named_set_origin(named).zone==entry.zone);
+        assert(strstr(named->short_description,entry.title));
+        release(named);
+        // The same authored title still requires the normal successful roll.
+        person unlucky("Finder",56,60,true);
+        randomize(7);
+        P_obj failed=create_random_eq(&unlucky.ch,56,62,0,-1);
+        assert(failed && !named_set_origin(failed).zone && !failed->ex_description);
+        release(failed);
+        // Fixed materials keep the ordinary non-zone-name path.
+        randomize(7);
+        P_obj fixed=create_random_eq(&finder.ch,56,62,0,0);
+        assert(fixed && !named_set_origin(fixed).zone && !fixed->ex_description);
+        release(fixed);
+    }
+    zones[0].number=saved_number; zones[0].name=saved_title;
+}
 int main()
 {
 	setup_world();
@@ -663,6 +695,7 @@ int main()
 	encrust_and_true_name();
 	foreign_spell_name();
 	origin_generation_contract();
+	restored_zone_titles_contract();
 	return 0;
 }
 '''
@@ -673,7 +706,17 @@ def main():
         work = Path(directory)
         harness = work / "harness.cpp"
         helpers = class_groups() + "\n".join(extract_function(name, signature) for name, signature in HELPERS)
-        harness.write_text(HARNESS + "\n" + helpers)
+        titles=[]
+        for zone, area, visible in (
+            (87,"gibber","Lair of the Gibberling King"),
+            (370,"vrzawild","Crystalspyre Mountains"),
+            (676,"thri","Taliccicopiid"),
+            (824,"suntmpl","The Temple of the Sun"),
+        ):
+            lines=(ROOT / "areas/zon" / (area + ".zon")).read_text().splitlines()
+            assert lines[0]==f"#{zone}" and lines[1].endswith("~")
+            titles.append(f"{{{zone},{json.dumps(lines[1][:-1])},{json.dumps(visible)}}},")
+        harness.write_text(HARNESS.replace("RESTORED_ZONE_TITLES", "\n".join(titles)) + "\n" + helpers)
         binary = work / "golden"
         subprocess.run(
             [

@@ -4,8 +4,8 @@ Status: implementation in progress; eight focused implementation PRs are pushed
 and ready for review in the stack below.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-effect-qualification`, based on
-`branch/named-zone-set-cooldowns`.
+Working branch: `branch/named-zone-set-eligibility`, based on
+`branch/named-zone-set-effect-qualification`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -533,6 +533,84 @@ The next independent chunk is the wider area eligibility review, followed by
 catalog installation with the recorded thresholds and end-to-end gameplay,
 storage, report/cache, help/publication and rollback checks.
 
+### Wider eligibility review (in progress)
+
+**Outcome:** classify the active world beyond the original 104 assignments,
+including plain-title areas, independently keyed duplicate-title counterparts,
+connectors/infrastructure and gated or disconnected destinations. Preserve the
+owner's exclusions. Record eligible additions and simple-pool assignments with
+their access and encounter evidence before installing the final catalog.
+
+**Non-goals/files/ablation:** use the existing assignment/plan documents and
+authored area/route owners. Do not restore disabled entrances or change spawn/drop
+rules to manufacture eligibility. A fresh isolated `make world` from `8d01225ef`
+under `bin/tests/named-set-roster-world` contains **354 records, 253,452 rooms and
+17,826 mobile prototypes**. The extra record versus the issue's 353-record baseline
+is inert retired #150. The 115 existing and 104 planned IDs leave 135 records to
+classify, including Limbo/Heaven/end/maps. Generated files in the working checkout
+are untouched.
+
+Important evidence: authored XP is not an eligibility filter. `read_mobile()`
+calls `convertMob()`, which normally assigns positive XP even when the `.mob` XP
+field is zero; ACT_IGNORE/`_ignore_` exceptions retain their authored XP. Apply the
+actual shopkeeper, guild-room and recognized-hometown level guards. The temporary
+audit records reset encounters, cross-zone exits and placed ITEM_TELEPORT routes;
+its topology search includes closed/locked/secret doors but excludes closed/private
+zones, guild rooms and map mountain barriers. Its route candidates still need
+the authored key/proc/purpose review; a graph hit alone is not final eligibility.
+
+Current next work: review disconnected/gated destinations and infrastructure
+records, finish the 135-row classification and additional assignments in the
+assignment document. The four existing plain-title sets are resolved in the
+focused chunk below. The broader checkbox remains open until all 135 records
+are classified.
+
+Local continuation artifacts (research only, not release inputs):
+`bin/tests/named-set-roster-audit.py` reads the isolated generated world and writes
+`bin/tests/named-set-roster-audit.{json,txt}`; `bin/tests/roster-detail.py <IDs>`
+prints route and encounter witnesses. The route roots include Tharnadia and the
+eight explicit native planar destinations in `magic/spells.c`; a generic guessed
+teleport target is not an authored entrance. The remaining disconnected/gated
+review includes #122/#146/#203/#514/#533/#673/#904/#907/#1340/#1351/#1352/#1354/
+#1380/#1420, plus tutorial and infrastructure purpose decisions. Internal portals
+are not counted as incoming cross-zone entrances. Keep this research available
+until its reviewed decisions replace the temporary outputs in the assignment
+document; the final roster must not depend on ignored artifacts.
+
+### Restore naming for four existing sets
+
+**Outcome:** source review confirms independent playable areas for #87 Gibberling
+King, #370 Crystalspyre Mountains, #676 Taliccicopiid and #824 Temple of the Sun.
+Their authored headers now use `&+g…&n` without changing the visible wording.
+The [assignment document](named-zone-set-first-pass-assignments.md#existing-plain-title-set-areas)
+records concrete entrances, reset encounters and the Gibberling entry key.
+Existing tiers remain Spirit Ward 3/Haste 5; Endurance 3; Endurance 4; Vitality 6,
+respectively. Catalog counts remain **115 rows / 206 tiers / 64 effect IDs**.
+
+**Non-goals/files/ablation:** four authored `.zon` title lines, existing tests and
+the continuation documents only. The generator's color/naming rules, RNG, drops,
+spawn pool, reset commands, item identity format and spell thresholds are
+unchanged. These four need no new catalog or shared-set abstraction.
+
+**Proof passed:** the real generator consumes their actual authored titles and
+checks successful naming/origin, failed rolls and fixed-material exclusion.
+The 1,480 frozen equipment cases and all RNG sentinels remain identical. Origin
+tests include all four IDs and legacy names/clones; native membership and tier
+dispatch cover 2/3/4/5/6 pieces, HP and removal. Isolated `make world` changes
+exactly the four title strings: all reset bytes and the other six generated
+outputs match the previous world. No generated outputs in the working checkout
+are edited. Commands:
+
+```sh
+python3 tests/async/test_random_equipment_golden.py
+python3 tests/async/test_named_set_origin.py
+python3 tests/async/test_named_set_membership.py
+python3 tests/async/test_named_set_catalog.py
+```
+
+These are source/generator/membership checks. Actual full gameplay and storage
+journeys remain in the final gates. No deployment or release has occurred.
+
 ## Start here
 
 1. Read this plan for implementation order, compatibility decisions, and proof.
@@ -610,9 +688,9 @@ for these checks.
   effect pool; reconcile the totals again.
 
 The roster exclusions #380, #384, #536, #870, and #1422 remain recorded unless
-new evidence and a content decision change them. Review the four existing
-plain-title set zones (#87, #370, #676, #824) separately: either restore naming
-eligibility for a verified playable area or record why it remains legacy-only.
+new evidence and a content decision change them. The four existing plain-title
+set zones (#87, #370, #676, #824) are now source-reviewed independent playable
+sets with authored title fixes; their final gameplay/deployment gates remain.
 Also classify the duplicate-name counterparts #1350 and #300; resolving their
 identity does not automatically give them the new #13 or #44 bonus.
 

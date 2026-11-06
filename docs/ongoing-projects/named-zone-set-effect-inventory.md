@@ -36,11 +36,13 @@ The two stale definitions are kept outside the main count:
 | 30 | Concealment at 3 pieces; Haste at 5 | +1 Concealment zone and +1 Haste zone |
 | 250 | Fire Ward at 2 pieces | +1 Fire Ward zone |
 
-Four loaded zones have set definitions but plain titles that block fresh
-zone-named kill drops under the current naming rule: Lair of the Gibberling
-King (#87), Crystalspyre Mountains (#370), Taliccicopiid (#676), and The Temple
-of the Sun (#824). They remain in the configured counts. Known zone-name
-collisions and worn-set cleanup issues also remain relevant; see #706.
+Four baseline zones had set definitions but plain titles that blocked fresh
+zone-named kill drops: Lair of the Gibberling King (#87), Crystalspyre Mountains
+(#370), Taliccicopiid (#676), and The Temple of the Sun (#824). Their authored
+titles now carry color codes after source review of their entrances and repeatable
+encounters. They retain their existing effects/thresholds and remain in the 115
+configured rows. Regeneration and deployment are required for a running game to
+use those title fixes. See the [eligibility evidence](named-zone-set-first-pass-assignments.md#existing-plain-title-set-areas).
 
 Sources: [set definitions](../../src/item/named_sets.c),
 [active area registry](../../areas/AREA),

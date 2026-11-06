@@ -337,6 +337,38 @@ existing fixture and persistence evidence.
 | 814 | [Ceothia](../../areas/zon/ceofutur.zon) | [Vapor Strike](../../src/classes/ethermancer.c#L1134) (#467) | Separate explicit era origin and ambiguous legacy grouping implemented; catalog/actual gameplay gate pending. |
 | 990 | [Neverwinter Woods](../../areas/zon/moria.zon) | [Scent Of The Bloodhound](../../src/magic/smagic.c#L2353) (#517) | Authored color/title fix and isolated world regeneration verified; final named-drop/activation/reload gate pending. |
 
+## Existing plain-title set areas
+
+The four existing set areas below are **independent playable sets**, rather than
+legacy-only records. Their authored titles now have the same narrow `&+g…&n`
+color treatment used for #204/#990, preserving every visible character. This
+restores the existing generator's title eligibility; its rolls and formulas are
+unchanged. No new catalog row or effect tier is needed for these four areas.
+
+| ID / authored area | Access and repeatable encounter evidence | Existing spell tiers retained |
+|---|---|---|
+| #87 [Gibberling King](../../areas/zon/gibber.zon) | Underdark `820717 E → 8700` (also `820318 S → 8700`), then down to 8701. Key #8739 resets on the floor in 8701 and unlocks the east door to 8702; mob #8709 (level 20) resets there. | Spirit Ward at 3; Haste at 5. |
+| #370 [Crystalspyre](../../areas/zon/vrzawild.zon) | Surface `523536 W → 37090`, with interior routes to repeatable dire wolves, including #37001 (level 17) in 37001. These mountain rooms are area terrain, not impassable map-marker mountains. | Endurance at 3. |
+| #676 [Taliccicopiid](../../areas/zon/thri.zon) | Surface `603653 W → 67600`; the ravine connects into the occupied complex. Flesh-eating ant #67656 (level 4) resets in 67602, among the many ordinary encounters. | Endurance at 4. |
+| #824 [Temple of the Sun](../../areas/zon/suntmpl.zon) | Surface `554128 E → 82493`; doe #82428 (level 20) resets directly at this entry. Deeper repeatable encounters also exist; eligibility does not depend on defeating the temple boss. | Vitality at 6. |
+
+Room/exit sources are the matching files under `areas/wld/`, plus the active
+surface/Underdark maps. Each witness is a non-shop mobile in a non-guild combat
+room, outside a recognized hometown cap. Normal `convertMob()` supplies positive
+XP even when the authored XP is zero. Ordinary appropriately leveled players
+can pass the unchanged drop/naming guards; no staff movement or guessed origin
+is required. These are authored-source access/encounter checks, not a claim of
+completed live walk/kill/save journeys.
+
+Focused verification reads the actual four authored titles into the real random
+equipment generator and checks successful naming, failed naming, fixed-material
+exclusion and origin identity under ASan/UBSan. The original 1,480 equipment cases
+and RNG sentinels remain byte-for-byte unchanged. Origin tests cover all four
+IDs, legacy visible tags and clones; real membership/tier dispatch verifies
+2/3/4/5/6 pieces and HP cleanup. An isolated `make world` differs only in these
+four header strings; all resets and the other six generated outputs are identical.
+The broader 135-record review and final gameplay/storage gates remain open.
+
 ## Implementation handoff
 
 Upstream PR #721 adds **#150 Retired Misty Chasm prototypes** as inert ownership
