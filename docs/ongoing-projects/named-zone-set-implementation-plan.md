@@ -4,8 +4,8 @@ Status: implementation in progress; ten focused implementation/test PRs are push
 and ready for review; the expanded catalog is in draft #732 for gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-native-journey`, based on
-`branch/named-zone-set-roster`.
+Working branch: `branch/named-zone-set-area-journeys`, based on
+`branch/named-zone-set-native-journey`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -738,6 +738,40 @@ Endurance cleanup and ordinary Armor ownership; it does not complete
 Bloodstone/new-area or seven-zone journeys, cross-owner/storage gates, MariaDB
 gameplay, live Redis, help publication or rollback. Keep #732 in draft until its
 remaining native catalog gates pass; keep #706 and the overall goal open.
+
+### Native area journeys (Bloodstone and Forgotten Forest passed)
+
+**Outcome/files/proof:** extend `run_named_set_wear_journey.py` with the explicit
+required zone cases, reusing its existing native client, generator, save/reboot
+and UID/origin checks. Each case checks native report/inventory, HP and effect
+thresholds, persistence and removal outside its generation zone. The first
+cases are Bloodstone #740 (Battletide at five) and wider addition Forgotten
+Forest #827 (Protection from Animals at three), followed by the seven repaired
+zones and the #300/#1350 counterparts. No new gameplay mechanism or test
+framework is needed. The snapshot fixture excludes built-in Armor and mutually
+exclusive light/darkness bits from selected candidates so set activation is
+observable; generated item content is unchanged. Commands take an optional
+explicit zone ID, for example `python3 tests/async/run_named_set_wear_journey.py 740`.
+Keep the existing private authority; previous candidates stay in native containers.
+
+**Passed:** Bloodstone #740 has no Battletide at three/four pieces, grants it
+at five with +15 HP, restores it after save/reboot, and cleans it below five.
+Its native UIDs are `27068547`, `27068841`, `27069764`, `27069794`, `27069821`.
+Forgotten Forest #827 grants Protection from Animals at three with +5 HP and
+cleans it below three; UIDs `30068536`, `30068758`, `30069373`. Both normal
+level-56 journeys run outside the generation zone, retain exact UIDs/origins/
+wear slots across reboot, verify the native report/inventory, and confirm that
+the transient effect was not stored as an ordinary character affect.
+
+Evidence stays under `bin/tests/`: `named-zone-740.log`, `named-zone-827.log`,
+the corresponding `named-zone-<id>-result.json` in the runtime, and per-zone
+transcripts. The updated driver retains every session's transcript for later
+cases. The identity-zone cases and a Tharnadia regression of the shared driver
+are now running serially through `bin/tests/run-named-identity-cases.py`; this
+driver stops on the first failure and never reseeds the authority. These cases
+are not yet claimed passed. C++ formatting/fixture compilation, Python static
+checks, `make -C src -j4` and `git diff --check` pass. Keep #732 in draft until
+the remaining required native cases pass.
 
 ## Start here
 

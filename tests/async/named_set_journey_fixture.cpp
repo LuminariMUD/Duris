@@ -81,7 +81,8 @@ int main(int argc, char **argv)
 				clean = false;
 		// Ordinary vision/protection bits do not enter calculate_hitpoints2().
 		// Avoid a built-in armor bit so the set's Armor grant is observable too.
-		clean = clean && !(item.bitvectors[0] & AFF_ARMOR);
+		clean = clean && !(item.bitvectors[0] & AFF_ARMOR) &&
+			!(item.bitvectors[3] & (AFF4_MAGE_FLAME | AFF4_GLOBE_OF_DARKNESS));
 		std::printf("%llu|%d|%d|%u|%d|%d|%s\n",
 			    static_cast<unsigned long long>(item.object_uid), zone,
 			    item.equipment_slot, item.wear_flags, clean, item.parent_index,

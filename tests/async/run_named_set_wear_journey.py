@@ -11,9 +11,27 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 import test_flatfile_combat_journey as journey
 
+# The required full-world cases; tuple = generation room, threshold, native name, ID.
+CASES = {
+    1325: (132500, 5, "armor", 1),
+    740: (74000, 5, "battletide", 395),
+    827: (82701, 3, "protection from animals", 383),
+    13: (1300, 3, "phantom armor", 400),
+    44: (4401, 3, "globe of darkness", 302),
+    204: (20400, 3, "sense life", 44),
+    808: (80800, 3, "enhance agility", 177),
+    811: (81100, 3, "protection from animals", 383),
+    814: (81400, 3, "vapor strike", 467),
+    990: (99001, 3, "scent of the bloodhound", 517),
+    300: (30000, 3, "globe of darkness", 302),
+    1350: (135001, 3, "phantom armor", 400),
+}
+zone = int(sys.argv[1]) if len(sys.argv) == 2 else 1325
+generation_room, pieces, effect, spell = CASES[zone]
 runtime = (journey.ROOT / "bin/tests/named-set-roster-world").resolve()
 state = runtime / "state"
 assert state.is_dir() and (runtime / "areas/world.zon").is_file(), (
@@ -56,6 +74,7 @@ env = dict(
 if os.environ.get("LD_LIBRARY_PATH"):
     env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
 process = client = output = None
+transcripts = []
 
 
 def boot(label):
@@ -92,6 +111,7 @@ def boot(label):
 def stop():
     global process, client, output
     if client:
+        transcripts.append(bytes(client.transcript))
         client.close()
         client = None
     if process and process.poll() is None:
@@ -136,13 +156,39 @@ def inspect():
     return [line.split("|", 6) for line in text.splitlines()]
 
 
-def armor_affects():
+def stored_affects(spell_id):
     text = subprocess.check_output([str(fixture), str(state), "affects"], text=True)
     return [
         list(map(int, line.split("|")))
         for line in text.splitlines()
-        if line.startswith("1|")
+        if line.startswith(str(spell_id) + "|")
     ]
+
+
+def expect_set(count):
+    text = expect_max_hp(baseline + max(0, count - 2) * 5)
+    if zone == 1325:
+        expected = {"armor": count >= 3, "endurance": count >= 5}
+    else:
+        expected = {effect: count >= pieces}
+    for name, present in expected.items():
+        assert (name + " (" in text) == present, (zone, count, name, text)
+    return text
+
+
+def check_report():
+    client.send("namedreport")
+    text = client.expect("Current listing of spells granted by named sets by zone.")
+    for _ in range(50):
+        marker, part = client.expect_any(("Return to continue", "Pos:"), timeout=30)
+        text += part
+        if marker == "Pos:":
+            break
+        client.send("")
+    else:
+        raise AssertionError("report pagination did not finish")
+    row = re.search(r"(?m)^\s*#" + str(zone) + r"\s+.*$", text)
+    assert row and effect in row[0].lower(), (zone, row, text)
 
 
 def gmcp(payload):
@@ -169,10 +215,14 @@ def selector(uid):
 
 
 try:
-    existing = inspect()
+    inspect()  # Validate the private synthetic authority before preparing staff access.
     journey.make_overlord(state, journey.CHARACTER)
     boot("named-generation")
-    client.send("goto 132500")
+    client.send("remove all")
+    score()
+    save()
+    existing = inspect()
+    client.send("goto " + str(generation_room))
     _, text = score()
     assert "Level: 62" in text, text
     choices = []
@@ -182,9 +232,12 @@ try:
         ("legs", 32),
         ("hands", 128),
         ("arms", 256),
-    ):
+    )[:pieces]:
         if not any(
-            row[1] == "1325" and row[4] == "1" and row[5] == "-1" and int(row[3]) & flag
+            row[1] == str(zone)
+            and row[4] == "1"
+            and row[5] == "-1"
+            and int(row[3]) & flag
             for row in existing
         ):
             client.send("randobj eq " + slot + " 56 30")
@@ -194,7 +247,7 @@ try:
         rows = [
             row
             for row in existing
-            if row[1] == "1325"
+            if row[1] == str(zone)
             and row[4] == "1"
             and row[5] == "-1"
             and int(row[3]) & flag
@@ -218,8 +271,12 @@ try:
     client.expect("Ok.")
     client.send("put all collector")
     score()
-    client.send("load obj 39130")
-    client.expect("You have created")
+    if zone == 1325:
+        client.send("load obj 39130")
+        client.expect("You have created")
+    # Wearing outside the generation zone also checks that room identity is irrelevant.
+    client.send("goto 132500")
+    score()
     save()
     stop()
     subprocess.run([str(fixture), str(state), "mortal"], check=True)
@@ -233,6 +290,9 @@ try:
     time.sleep(6)
     baseline, text = score()
     assert "Level: 56" in text, text
+    check_report()
+    client.send("inventory")
+    score()
     chosen = []
     for uid in selected:
         client.send("wear " + selector(uid))
@@ -246,11 +306,9 @@ try:
             two, _ = score()
             assert two == baseline, ("two-piece HP", baseline, two)
         if len(chosen) >= 3:
-            text = expect_max_hp(baseline + 5 * (len(chosen) - 2))
-            assert "armor (" in text, text
-            assert ("endurance (" in text) == (len(chosen) == 5), text
+            expect_set(len(chosen))
     print(
-        "Ordinary native wear: 2/3/4/5 pieces +0/+5/+10/+15 HP; Armor at 3, Endurance at 5",
+        f"#{zone}: native HP and {effect} threshold passed at {pieces} pieces",
         chosen,
         flush=True,
     )
@@ -258,15 +316,38 @@ try:
     before = inspect()
     stop()
     boot("named-mortal-reboot")
-    text = expect_max_hp(baseline + 15)
-    assert "endurance (" in text, text
+    expect_set(pieces)
     save()
     after = inspect()
     for uid in chosen:
         old = next(row for row in before if int(row[0]) == uid)
         new = next(row for row in after if int(row[0]) == uid)
         assert old[:4] == new[:4], (old, new)
-    assert not armor_affects(), "set Armor must not persist as an ordinary affect"
+    assert not stored_affects(spell), (
+        "set effect must not persist as an ordinary affect"
+    )
+    if zone != 1325:
+        client.send("remove " + selector(chosen[-1]))
+        expect_set(pieces - 1)
+        client.send("remove all")
+        expect_set(0)
+        save()
+        (runtime / f"named-zone-{zone}-result.json").write_text(
+            json.dumps(
+                {
+                    "zone": zone,
+                    "baseline": baseline,
+                    "uids": chosen,
+                    "threshold": pieces,
+                    "effect": effect,
+                }
+            )
+        )
+        print(
+            f"#{zone}: native report, inventory, wear, save/reboot identity and removal passed",
+            flush=True,
+        )
+        sys.exit(0)
     for uid in chosen[3:]:
         client.send("remove " + selector(uid))
         score()
@@ -280,28 +361,28 @@ try:
     client.expect("Bands of magic armor wrap around you!", timeout=20)
     score()
     save()
-    ordinary = armor_affects()
+    ordinary = stored_affects(1)
     assert len(ordinary) == 1, ordinary
     client.send("remove " + selector(chosen[2]))
     score()
     text = expect_max_hp(baseline)
     assert "armor (" in text, text
     save()
-    assert len(armor_affects()) == 1
+    assert len(stored_affects(1)) == 1
     # The already ordinary Armor is present before this new set application.
     client.send("wear " + selector(chosen[2]))
     expect_max_hp(baseline + 5)
     client.send("remove " + selector(chosen[2]))
     expect_max_hp(baseline)
     save()
-    saved_armor = armor_affects()
+    saved_armor = stored_affects(1)
     assert len(saved_armor) == 1 and saved_armor[0][1] <= ordinary[0][1]
     stop()
     boot("named-ordinary-reboot")
     _, text = score()
     assert "armor (" in text, text
     save()
-    assert len(armor_affects()) == 1
+    assert len(stored_affects(1)) == 1
     print(
         "Native ordinary Armor and named HP removal passed",
         flush=True,
@@ -322,9 +403,10 @@ try:
     )
 except Exception:
     if client:
-        (runtime / "named-wear-failure.txt").write_bytes(bytes(client.transcript))
+        (runtime / f"named-zone-{zone}-failure.txt").write_bytes(
+            bytes(client.transcript)
+        )
     raise
 finally:
-    if client:
-        (runtime / "named-wear-transcript.txt").write_bytes(bytes(client.transcript))
     stop()
+    (runtime / f"named-zone-{zone}-transcript.txt").write_bytes(b"\n".join(transcripts))
