@@ -92,6 +92,9 @@ with tempfile.TemporaryDirectory(prefix='duris-locker-shutdown-') as td:
             sql('CREATE DATABASE locker_recovery', None)
             sql((ROOT / 'migrations/bootstrap_multithread_safe.sql').read_text())
             sql((ROOT / 'migrations/immutable/0049_divine_boon_delivery.sql').read_text())
+            sql((ROOT / 'migrations/immutable/0002_player_item_metadata_uniqueness.sql').read_text())
+            sql((ROOT / 'migrations/immutable/0059_item_affect_slots.sql').read_text())
+            sql((ROOT / 'migrations/immutable/0060_item_instance_fields.sql').read_text())
 
             def reset():
                 sql('SET FOREIGN_KEY_CHECKS=0;' + ''.join('TRUNCATE TABLE ' + table + ';' for table in (

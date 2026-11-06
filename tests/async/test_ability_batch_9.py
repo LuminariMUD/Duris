@@ -214,7 +214,7 @@ HANDLER_CALLS = {
                                    "IS_PC(ch) && !corpse_pet_rebel_roll(live_rolls) && !globe",
                                    "corpse_pet_rebel_death(live_rolls)", "GET_AC(mob) -= create_dracolich_ac(ch)",
                                    "corpse_pet_death_delay(duration)"],
-        "spell_create_golem": ["level >= golem_flesh_level()", "level >= golem_blood_level() && clevel >= "
+        "spell_create_golem": ["level < golem_flesh_level()", "level >= golem_blood_level() && clevel >= "
                                "golem_blood_level()", "level >= golem_bone_level() && clevel >= golem_bone_level()"],
         "create_golem": ["sum + golem_data[which_type].cost > golem_power(ch)",
                          "clevel > (level + raised_undead_corpse_margin())", "life = corpse_pet_globe_life(ch)",

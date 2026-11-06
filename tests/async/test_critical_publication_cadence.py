@@ -62,6 +62,7 @@ SPY(sql_async_pulse)
 SPY(divine_trade_runtime_retire_pulse)
 SPY(sql_ship_write_pulse)
 SPY(artifact_guild_transaction_pulse)
+static void arti_cache_retry() {} // Not part of the publication order under test.
 SPY(combat_outcome_transaction_pulse)
 SPY(frag_cap_runtime_pulse)
 SPY(sql_mud_info_refresh)
