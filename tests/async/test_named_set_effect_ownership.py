@@ -36,6 +36,7 @@ harness = r'''
 Skill skills[MAX_AFFECT_TYPES+1];
 static index_data indexes[2];
 P_index obj_index=indexes;
+P_index mob_index=indexes;
 zone_data *zone_table=nullptr;
 int top_of_zone_table=-1;
 static room_data rooms[1];
@@ -44,6 +45,7 @@ P_char character_list=nullptr;
 extern const racial_data_type racial_data[LAST_RACE+1]{};
 static pc_only_data wearer_pc,companion_pc;
 static bool inherent_armor;
+static bool track_hit_points;
 static mm_ds affect_pool{},link_pool{};
 mm_ds *dead_affect_pool=&affect_pool,*dead_link_pool=&link_pool;
 link_description link_types[LNK_MAX+1];
@@ -56,6 +58,7 @@ int dice(int count,int) {return count;}
 const Rolls live_rolls={dice,number};
 int GET_CLASS(P_char ch,uint cls) {return (ch->player.m_class&cls)!=0;}
 int GET_CHAR_SKILL_P(P_char,int) {return 0;}
+int NumAttackers(P_char) {return 0;}
 float get_property(const char *,double value) {return value;}
 int get_property(const char *,int value) {return value;}
 bool grouped(P_char,P_char) {return true;}
@@ -71,6 +74,14 @@ int room_light(int,int) {return 0;}
 void unlink_char_obj_affect(P_char,affected_type *) {assert(false);}
 void clear_links(P_char,ush_int) {assert(false);}
 void all_affects(P_char ch,int add) {
+    // Model native missing-HP preservation; position classification below uses
+    // the production calculate_ch_state() body.
+    if(track_hit_points) {
+        int maximum=1000;
+        if(add) for(auto *af=ch->affected;af;af=af->next)
+            if(!(af->flags&AFFTYPE_NOAPPLY) && af->location==APPLY_HIT) maximum+=af->modifier;
+        GET_HIT(ch)+=maximum-GET_MAX_HIT(ch); GET_MAX_HIT(ch)=maximum;
+    }
     ch->specials.affected_by=ch->specials.affected_by2=ch->specials.affected_by3=0;
     ch->specials.affected_by4=ch->specials.affected_by5=0;
     if(!add) return;
@@ -82,6 +93,7 @@ void all_affects(P_char ch,int add) {
         ch->specials.affected_by5|=af->bitvector5;
     }
 }
+char affect_total(P_char ch,int) {all_affects(ch,FALSE); all_affects(ch,TRUE); return 0;}
 void send_to_char(const char *text,P_char) {if(strstr(text,"spirits of")) ++grants;}
 void wear_off_message(P_char,affected_type *) {}
 int attack_back(P_char,P_char,int) {return 0;}
@@ -157,6 +169,15 @@ for signature in ("static int song_dragons_duration(", "static int song_dragons_
                   "void bard_dragons(int l,"):
     harness += extract_function("bard.c", signature) + "\n"
 
+harness += extract_function("magic.c", "static int vitality_hit_points(") + "\n"
+harness += extract_function("magic.c", "static int vitality_duration(") + "\n"
+harness += extract_function("fight.c", "unsigned int calculate_ch_state(") + "\n"
+harness += "void update_pos(P_char ch) { ch->specials.position=GET_POS(ch)|calculate_ch_state(ch); }\n"
+# Keep unrelated Miracle components stubbed, but execute the complete native
+# Vitality body for the wounded ordinary/set transition.
+harness += extract_function("magic.c", "void spell_vitality(").replace(
+    "void spell_vitality(", "static void cast_native_vitality(", 1) + "\n"
+
 harness += "\n#define SETMSG_NONE 0\n#define SETMSG_PROTECT 1\n#define SETMSG_STRENGTH 2\n"
 harness += extract_function("specs.object.c", "static void grant_dragons_to_group(")
 harness += extract_function("specs.object.c", "void apply_zone_spell(")
@@ -180,6 +201,7 @@ static void clear_marker(obj_data &item) {
     }
 }
 static void reset() {
+    track_hit_points=false;
     for(P_char ch : {&wearer,&companion}) while(ch->affected) affect_remove(ch,ch->affected);
     for(auto &item:gear) {clear_marker(item); item={};}
     wearer={}; companion={};
@@ -223,6 +245,20 @@ int main() {
     skills[SPELL_STONE_SKIN].name="stone skin"; skills[SPELL_STONE_SKIN].spell_pointer=spell_stone_skin;
     skills[SPELL_STORNOGS_SPHERES].name="spheres"; skills[SPELL_STORNOGS_SPHERES].spell_pointer=spell_stornogs_spheres;
     skills[SONG_DRAGONS].name="song of dragons"; skills[SKILL_EPIC_STRENGTH].name="epic strength";
+    {
+        reset(); track_hit_points=true;
+        affected_type vitality{}; vitality.type=SPELL_VITALITY;
+        vitality.location=APPLY_HIT; vitality.modifier=200; vitality.duration=17;
+        {
+            named_set_grant grant(&wearer,&wearer,824,SPELL_VITALITY);
+            affect_to_char(&wearer,&vitality);
+        }
+        all_affects(&wearer,TRUE); GET_HIT(&wearer)=50;
+        cast_native_vitality(50,&wearer,nullptr,0,&wearer,nullptr);
+        assert(GET_HIT(&wearer)==50 && GET_MAX_HIT(&wearer)==1200);
+        assert(GET_STAT(&wearer)==STAT_NORMAL && IS_ALIVE(&wearer));
+        assert(count(&wearer,SPELL_VITALITY,false)==1 && count(&wearer,SPELL_VITALITY,true)==1);
+    }
     reset();
     affected_type *ordinary=nullptr;
     ordinary_armor(&ordinary); ordinary->duration=7;
