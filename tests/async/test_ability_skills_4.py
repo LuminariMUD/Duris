@@ -385,7 +385,7 @@ static void check_rolls() {
                 SAME(((int)(rating / 15) + number(0, 2)), greater_beast_life_level(rolls, rating));
             }
             // MIN rolls again, so a level near the cap can land above the page's top.
-            SAME_SLACK(MIN(50, GET_LEVEL(ch) + number(0, 8) - 4), exhume_corpse_level(rolls, ch), 4);
+            SAME_SLACK(std::min(50, GET_LEVEL(ch) + number(0, 8) - 4), exhume_corpse_level(rolls, ch), 4);
         }
     SAME(number(-5, 20), ki_strike_slow_roll(rolls));
     SAME(number(1, 101), carve_roll(rolls));

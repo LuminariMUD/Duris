@@ -317,8 +317,8 @@ PALADIN_PAGES = r"""
   Only while someone in the room is fighting.
 --- divine_force
   Melee damage: 25% more
-  Duration: 5 seconds
-  Before you can use it again: 2 minutes 30 seconds
+  Duration: 20 seconds
+  Before you can use it again: 10 minutes
   It has no lag.
 --- doorbash
   Chance: 96 in 100 at your level
@@ -834,7 +834,7 @@ static void check_rolls() {
         SAME((GET_LEVEL(ch) / 10) * GET_C_CHA(ch) + number(1, 100), lay_hands_amount(rolls, ch));
         SAME(number(70 - GET_LEVEL(ch), 100 + number(1, 200 - 2 * GET_LEVEL(ch))), summon_mount_delay(rolls, ch));
         SAME(number(70 - GET_LEVEL(ch), 70), summon_horde_delay(rolls, ch));
-        SAME(level < 6 ? (int)(level * 0.75f + number(1, 5)) : (int)(level * 0.75f + number(-5, 5)), summoned_mount_factor(rolls, ch));
+        SAME(std::max(1, level < 6 ? (int)(level * 0.75f + number(1, 5)) : (int)(level * 0.75f + number(-5, 5))), summoned_mount_factor(rolls, ch));
         for (int corpse : { 0, 10, 56 })
             SAME(corpse / 5 + number(1, 20), spawn_tier_roll(rolls, corpse));
     }
@@ -983,7 +983,7 @@ CHECKS = r'''
     HAS(lifedrain_innate_facts, "  Most it moves: 5 at your level\n");
     HAS(summon_mount_innate_facts, "  Its level: 11-15\n  Its hit points: 50-250\n");
     AT(1, 6);
-    HAS(summon_mount_innate_facts, "  Its level: 10-19\n  Its hit points: 0-450\n");
+    HAS(summon_mount_innate_facts, "  Its level: 11-19\n  Its hit points: 50-450\n");
     AT(1, 25);
     HAS(blast_innate_facts, "  Paralysis is minor at your level.\n");
     LACKS(blast_innate_facts, "Major instead");

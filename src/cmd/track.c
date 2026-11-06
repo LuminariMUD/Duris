@@ -721,7 +721,7 @@ static int farsee_track_bonus()
 	return 10;
 }
 
-int ophidian_track_penalty()
+int ophidian_track_bonus()
 {
 	return 5;
 }
@@ -836,7 +836,7 @@ void show_tracks(P_char ch, int room)
 
 	if (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_HUNTER))
 	{
-		percent += ophidian_track_penalty();
+		percent -= ophidian_track_bonus();
 	}
 
 	switch (world[room].sector_type)

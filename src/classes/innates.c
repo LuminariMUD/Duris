@@ -3560,7 +3560,7 @@ void event_lathander(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*args*
 		{
 			if IS_AFFECTED3 (tch, AFF3_ENHANCE_HEALING)
 			{
-				return;
+				continue;
 			}
 
 			level = GET_LEVEL(tch);
@@ -6423,15 +6423,15 @@ void do_aura_vigor(P_char ch, char * /*arg*/, int /*cmd*/)
 	CharWait(ch, aura_innate_lag());
 }
 
-// The two timers are short affects, and count pulses despite the property names.
+// Convert the configured seconds to short-affect pulses.
 static int divine_force_duration()
 {
-	return get_property("innate.timer.secs.divineforceAffect", 20);
+	return get_property("innate.timer.secs.divineforceAffect", 20) * WAIT_SEC;
 }
 
 static int divine_force_rest()
 {
-	return get_property("innate.timer.secs.divineforceTimer", 600);
+	return get_property("innate.timer.secs.divineforceTimer", 600) * WAIT_SEC;
 }
 
 std::string divine_force_innate_facts(P_char /*ch*/)

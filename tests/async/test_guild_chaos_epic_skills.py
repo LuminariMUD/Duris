@@ -18,15 +18,29 @@ HARNESS = r'''
 #include "core/utils.h"
 #include "combat/chaos_config.h"
 #include "magic/spells.h"
+#include "classes/paladins.h"
 #include <cassert>
 #include <cstdio>
 
 Skill skills[MAX_AFFECT_TYPES + 1];
 static bool chaos = false, curated = false;
+int get_property(const char *, int fallback) { return fallback; }
 bool chaos_mud_enabled(void) { return chaos; }
 bool chaos_starter_epic_skills_enabled(void) { return curated; }
-int GET_LVL_FOR_SKILL(P_char, int) { return 0; }
-ClassSkillInfo SKILL_DATA_ALL(P_char, int) { return {}; }
+int GET_LVL_FOR_SKILL(P_char, int skill) { return skill == SKILL_SMITE_EVIL ? 30 : 0; }
+int GET_CHAR_SKILL_P(P_char ch, int skill) { return ch->only.pc->skills[skill].learned; }
+static bool smite_scheduled;
+static int smite_starts;
+void event_smite_evil(P_char, P_char, P_obj, void *) {}
+P_nevent get_scheduled(P_char, event_func_type) { return smite_scheduled ? reinterpret_cast<P_nevent>(1) : nullptr; }
+nevent_schedule_result add_event(event_func func, int, P_char, P_char, P_obj, int, const void *, int) {
+    assert(func == event_smite_evil); smite_scheduled = true; ++smite_starts; return {};
+}
+ClassSkillInfo SKILL_DATA_ALL(P_char, int skill) {
+    ClassSkillInfo result{};
+    if (skill == SKILL_SMITE_EVIL) result.maxlearn[0] = 100;
+    return result;
+}
 
 // PRODUCTION
 
@@ -50,6 +64,14 @@ int main()
 	assert(epic_after(true, false) == 100);
 	assert(epic_after(true, true) == 25);
 	assert(epic_after(false, false) == 25);
+    chaos = false; smite_scheduled = false; smite_starts = 0;
+    pc_only_data pc{}; char_data ch{}; ch.only.pc = &pc; ch.in_room = 1;
+    ch.player.level = 29; update_skills(&ch);
+    assert(!smite_scheduled);
+    ch.player.level = 30; update_skills(&ch);
+    assert(smite_scheduled && smite_starts == 1);
+    assert(GET_CHAR_SKILL(&ch, SKILL_SMITE_EVIL) > 0);
+    update_skills(&ch); assert(smite_starts == 1);
 	std::puts("CHAOS epic skills: the guild fills them only when the curated grant is off");
 }
 '''
@@ -59,7 +81,7 @@ with tempfile.TemporaryDirectory(prefix="guild-chaos-epic-", dir=ROOT / "bin/tes
     source = Path(build) / "harness.cpp"
     binary = Path(build) / "harness"
     source.write_text(HARNESS.replace(
-        "// PRODUCTION", extract_function("guild.c", "void update_skills(P_char ch)")))
+        "// PRODUCTION", extract_function("paladins.c", "int smite_evil_interval()") + extract_function("guild.c", "void update_skills(P_char ch)")))
     subprocess.run(["g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
                     "-fsanitize=address,undefined", "-Isrc", str(source), str(HARNESS_STUBS),
                     "-o", str(binary)], cwd=ROOT, check=True)

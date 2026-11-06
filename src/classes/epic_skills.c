@@ -1256,7 +1256,8 @@ static int chant_mastery_threshold(P_char ch)
 // How well a chant goes when it fires, 0-3.
 static int chant_mastery_result(const Rolls &rolls, P_char ch)
 {
-	return MAX(0, GET_CHAR_SKILL(ch, SKILL_CHANT_MASTERY) / 40 + rolls.number(-1, 1));
+	const int result = GET_CHAR_SKILL(ch, SKILL_CHANT_MASTERY) / 40 + rolls.number(-1, 1);
+	return MAX(0, result);
 }
 
 // What each result leaves of a cast time of dura pulses: the lag and the cast time.

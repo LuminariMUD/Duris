@@ -7315,9 +7315,8 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 
 	case WALL_OF_FORCE:
-		/*if ((IS_PC(ch) && GET_PID(ch) == obj->value[5]) ||
-			    (IS_NPC(ch) && GET_RNUM(ch) == obj->value[5])) */
-		if (IS_PC(ch))
+		if ((IS_PC(ch) && GET_PID(ch) == obj->value[5]) ||
+		    (IS_NPC(ch) && GET_RNUM(ch) == obj->value[5]))
 		{
 			act("&+L$n&+L passes right through $p&+L.", TRUE, ch, obj, 0, TO_ROOM);
 			act("&+LYou pass right through $p&+L.", TRUE, ch, obj, 0, TO_CHAR);

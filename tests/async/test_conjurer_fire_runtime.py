@@ -240,6 +240,12 @@ static void roundtrip(P_char pet,P_char caster) {
     pet_restore_state state; assert(pet_restore_state_decode(encoded,&state));
     assert(summoned_pet_matches_prototype(state.kind,GET_VNUM(pet)));
     assert(state.charm_expires_at>time(nullptr) && state.death_expires_at>time(nullptr));
+    auto *charm = pet->affected;
+    while (charm && charm->type != SPELL_CHARM_PERSON) charm = charm->next;
+    assert(charm && charm->duration > 0);
+    const auto remaining = state.charm_expires_at - time(nullptr);
+    assert(remaining <= charm->duration * SECS_PER_MUD_HOUR);
+    assert(remaining >= charm->duration * SECS_PER_MUD_HOUR - 1);
     auto *restored=read_mobile(GET_VNUM(pet),REAL);
     assert(summoned_pet_apply(restored,state)); recalc_intrinsic(restored);
     assert(restored->specials.affected_by2==pet->specials.affected_by2);
@@ -251,6 +257,9 @@ static void roundtrip(P_char pet,P_char caster) {
     const auto before=delays;
     summoned_pet_restore_lifetime(restored,caster,state);
     assert(restored->only.npc->pet_charm_expires_at==state.charm_expires_at);
+    auto *restored_charm = restored->affected;
+    while (restored_charm && restored_charm->type != SPELL_CHARM_PERSON) restored_charm = restored_charm->next;
+    assert(restored_charm && restored_charm->duration == charm->duration);
     assert(restored->only.npc->pet_death_expires_at==state.death_expires_at);
     assert(!strcmp(restored->player.name,pet->player.name));
     assert(delays.size()==before.size()+1 && delays.back()>0);

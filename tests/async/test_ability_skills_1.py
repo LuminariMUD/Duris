@@ -671,7 +671,7 @@ static void check_pages() {
     HAS(parlay_facts, "  Your score: 156 (rating plus level; luck can raise the rating)\n");
     HAS(tackle_facts, "  Your lag if the target is asleep: 4 seconds (you attack it instead)\n"
                       "  Your lag if the target evades: 2 seconds\n");
-    HAS(trip_facts, "  Your lag on a hit: 9 seconds\n  Your lag on a miss: 8 seconds\n"
+    HAS(trip_facts, "  Your lag on a hit: 9 seconds\n  Your lag on a miss: 10 seconds\n"
                     "  Damage to you on a miss: 20, a 25th of your hit points\n");
     HAS(trip_facts, "  Your lag if the target is asleep: 4 seconds (you attack it instead)\n"
                     "  Your lag if the target evades: 2 seconds\n");

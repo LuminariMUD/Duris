@@ -1532,11 +1532,10 @@ void spell_restore_spirit(int level, P_char ch, char * /*arg*/, [[maybe_unused]]
 				     victim);
 			affect_join(victim, &af, FALSE, FALSE);
 			return;
-			affect_to_char_with_messages(
-				victim, &af,
-				"&+LYour life energy was drained, leaving you a bit shaken.",
-				"&+LYou manage to shake off negative effects of the restore spell.");
 		}
+		affect_to_char_with_messages(
+			victim, &af, "&+LYour life energy was drained, leaving you a bit shaken.",
+			"&+LYou manage to shake off negative effects of the restore spell.");
 	}
 }
 
@@ -4983,7 +4982,8 @@ void spell_cyclone(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 	{
 		affchance = cyclone_stun_roll(live_rolls);
 
-		if (affchance <= cyclone_stun_chance()) /* && (!check_wall(tch->in_room, door)) */
+		if (affchance > 5 &&
+		    affchance <= cyclone_stun_chance()) /* && (!check_wall(tch->in_room, door)) */
 		{
 			act("The gail force of your spell sends $N flying through the room!", FALSE,
 			    ch, 0, victim, TO_CHAR);
@@ -7779,7 +7779,8 @@ std::string aid_facts(P_char ch)
 	return fact("Shortens harmful spells by",
 		    std::to_string(aid_shortening(level)) + " game hours, to at least 1") +
 	       "  Those are curse, apocalypse, blindness, disease, paralysis and\n"
-	       "  enfeeblement, when they last by the game hour.\n" +
+	       "  enfeeblement, when they last by the game hour.\n"
+	       "  Short blindness timers are shortened by the same real time.\n" +
 	       fact("Duration", game_hours(aid_duration(level)));
 }
 
@@ -7802,6 +7803,31 @@ void spell_aid(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, 
 
 			if (af->flags & AFFTYPE_SHORT)
 			{
+				if (af->type == SPELL_BLINDNESS)
+				{
+					P_nevent event;
+					LOOP_EVENTS_CH(event, victim->nevents)
+					{
+						if (event->func == event_short_affect &&
+						    event->data &&
+						    static_cast<event_short_affect_data *>(
+							    event->data)
+								    ->af == af)
+						{
+							const int remaining = ne_event_time(event);
+							const int shortened =
+								remaining -
+								aid_shortening(level) *
+									SECS_PER_MUD_HOUR *
+									WAIT_SEC;
+							af->duration = MAX(1, shortened);
+							nevent_reschedule_after(
+								nevent_handle_from_event(event),
+								af->duration);
+							break;
+						}
+					}
+				}
 				continue;
 			}
 			if ((af->type == SPELL_CURSE) || (af->type == SPELL_APOCALYPSE) ||
@@ -8667,7 +8693,8 @@ void spell_vitalize_mana(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
 {
 	int trans;
 
-	trans = MIN(GET_VITALITY(ch), vitalize_mana_amount(live_rolls, ch));
+	trans = vitalize_mana_amount(live_rolls, ch);
+	trans = MIN(GET_VITALITY(ch), trans);
 
 	act("You feel more energized!", FALSE, ch, 0, 0, TO_CHAR);
 
@@ -9085,19 +9112,10 @@ void spell_curse(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 		if (obj->value[2] < 1)
 			obj->value[2] = 1;
 		act("&+r$p glows red.", FALSE, ch, obj, 0, TO_CHAR);
-	}
-	else if (IS_GREATER_RACE(victim) || IS_ELITE(victim))
-	{
-		if (NewSaves(victim, SAVING_SPELL, mod + 5))
-			send_to_char("Your victim has saved against your curse spell!&n\n", ch);
 		return;
 	}
-	else if (IS_NPC(victim) && NewSaves(victim, SAVING_SPELL, mod))
-	{
-		send_to_char("Your victim has saved against your curse spell!&n\n", ch);
-		return;
-	}
-	else if (IS_PC(victim) && NewSaves(victim, SAVING_SPELL, mod))
+	if (NewSaves(victim, SAVING_SPELL,
+		     mod + ((IS_GREATER_RACE(victim) || IS_ELITE(victim)) ? 5 : 0)))
 	{
 		send_to_char("Your victim has saved against your curse spell!&n\n", ch);
 		return;
@@ -10810,7 +10828,6 @@ void spell_slow(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		bzero(&af, sizeof(af));
 		af.type = SPELL_SLOW;
 		af.duration = slow_duration(level);
-		af.modifier = 2;
 		af.bitvector2 = AFF2_SLOW;
 
 		affect_to_char(victim, &af);
@@ -12441,7 +12458,7 @@ std::string lodestone_vision_facts(P_char /*ch*/)
 void spell_lodestone_vision(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			    P_char victim, P_obj /*obj*/)
 {
-	if (IS_AFFECTED5(ch, AFF5_MINE))
+	if (IS_AFFECTED5(victim, AFF5_MINE))
 	{
 		if (ch == victim)
 			send_to_char("You are already under the influence of miners sight.\r\n",
@@ -12834,12 +12851,8 @@ void spell_devitalize(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 
 	movepoints = devitalize_movement(live_rolls, level);
 
-	if ((GET_VITALITY(victim) - movepoints) < devitalize_floor())
-	{
-		GET_VITALITY(victim) = devitalize_floor();
-		return;
-	}
-	GET_VITALITY(victim) -= movepoints;
+	if (GET_VITALITY(victim) > devitalize_floor())
+		GET_VITALITY(victim) = MAX(devitalize_floor(), GET_VITALITY(victim) - movepoints);
 
 	act("&+L$n&+L drains $N's&+L stamina!", FALSE, ch, 0, victim, TO_NOTVICT);
 	act("&+LYou drain $N's &+Lstamina!", FALSE, ch, 0, victim, TO_CHAR);
@@ -16000,7 +16013,7 @@ int KludgeDuration(P_char ch, int baselevel, int baseduration)
 	/* return baseduration;
 	   this isn't really what was originally intended, but it's based on caster's
 	   level */
-	return MAX(1, (GET_LEVEL(ch) / baselevel) * baseduration);
+	return MAX(1, GET_LEVEL(ch) * baseduration / baselevel);
 }
 
 // Woodland druids harden barkskin by a quarter.
@@ -16851,7 +16864,7 @@ void spell_prot_from_undead(int /*level*/, P_char ch, char * /*arg*/, [[maybe_un
 	af.modifier = GET_LEVEL(ch);
 	af.duration = prot_from_undead_duration(ch);
 	af.bitvector5 = AFF5_PROT_UNDEAD;
-	affect_to_char(ch, &af);
+	affect_to_char(victim, &af);
 	act("&+WA field of &+Yliving energy&+W slowly forms around $N.", TRUE, ch, 0, victim,
 	    TO_CHAR);
 }
@@ -17498,7 +17511,7 @@ void spell_turn_undead(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 			{
 				act("You are powerless to affect $N!", TRUE, ch, 0, victim,
 				    TO_CHAR);
-				return;
+				continue;
 			}
 			else if (diff <= turn_undead_fear_levels())
 			{
@@ -17897,7 +17910,7 @@ void spell_single_obtenebration(int level, P_char ch, char * /*arg*/, int /*type
 		blind(ch, victim, obtenebration_blindness(live_rolls));
 	}
 
-	if (IS_ALIVE(ch) && number(1, 100) < 1)
+	if (IS_ALIVE(ch) && number(1, 100) <= 1)
 	{
 		act("&+LYou cause a rift in the spacetime continuum, which eats $N!&n", FALSE, ch,
 		    0, victim, TO_CHAR);
@@ -19150,21 +19163,18 @@ static int freedom_of_movement_roll(const Rolls &rolls, int level)
 	return (level / 2 + rolls.number(-4, 0)) * 7 / 10;
 }
 
-// About 70% of guardian spirits' player duration. MAX() evaluates the roll twice, so a
-// first roll that reaches the floor is rolled again and the second roll is kept.
+// About 70% of guardian spirits' player duration, with a three-hour minimum.
 static int freedom_of_movement_duration(const Rolls &rolls, int level)
 {
-	return MAX(3, freedom_of_movement_roll(rolls, level));
+	const int duration = freedom_of_movement_roll(rolls, level);
+	return MAX(3, duration);
 }
 
 std::string freedom_of_movement_facts(P_char ch)
 {
 	const int level = GET_LEVEL(ch);
-	const Range roll = { freedom_of_movement_roll(lowest_rolls, level),
-			     freedom_of_movement_roll(highest_rolls, level) };
-	// Below the floor on every roll, it is the floor; otherwise any roll can be kept.
-	const int high = freedom_of_movement_duration(highest_rolls, level);
-	const Range duration = high == roll.high ? roll : Range{ high, high };
+	const Range duration = { freedom_of_movement_duration(lowest_rolls, level),
+				 freedom_of_movement_duration(highest_rolls, level) };
 	const std::string at_level = " at your level, " + std::to_string(level);
 	if (duration.low == duration.high)
 		return fact("Duration", game_hours(duration.low) + at_level);
@@ -22617,12 +22627,12 @@ std::string true_seeing_facts(P_char /*ch*/)
 	return fact("Duration", game_hours(true_seeing_duration()));
 }
 
-void spell_true_seeing(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
+void spell_true_seeing(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
 	struct affected_type af;
 
-	if (affected_by_spell(ch, SPELL_TRUE_SEEING))
+	if (affected_by_spell(victim, SPELL_TRUE_SEEING))
 	{
 		struct affected_type *af1;
 
@@ -22641,9 +22651,9 @@ void spell_true_seeing(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]
 	af.bitvector4 = AFF4_SENSE_HOLINESS;
 	af.bitvector2 = AFF2_DETECT_MAGIC | AFF2_DETECT_GOOD | AFF2_DETECT_EVIL;
 	af.bitvector = AFF_SENSE_LIFE | AFF_DETECT_INVISIBLE;
-	affect_to_char(ch, &af);
+	affect_to_char(victim, &af);
 
-	send_to_char("&+MYour vision sharpens considerably.&n\n", ch);
+	send_to_char("&+MYour vision sharpens considerably.&n\n", victim);
 }
 
 // The caster's lag after blending into the forest, in pulses.
@@ -22727,7 +22737,7 @@ void spell_animal_vision(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unuse
 {
 	struct affected_type af;
 
-	if (affected_by_spell(ch, SPELL_ANIMAL_VISION))
+	if (affected_by_spell(victim, SPELL_ANIMAL_VISION))
 	{
 		struct affected_type *af1;
 
@@ -22779,11 +22789,11 @@ void spell_animal_vision(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unuse
 		af.bitvector2 = AFF2_DETECT_MAGIC | AFF2_DETECT_EVIL | AFF2_DETECT_GOOD;
 		break;
 	}
-	affect_to_char(ch, &af);
+	affect_to_char(victim, &af);
 	send_to_char("Your eyes turn &+Yj&n&+ye&+Yw&n&+ye&+Yl&n&+ye&+Yd&n like an &+yanimal&n.\n",
-		     ch);
-	act("$n's eyes turn &+Yj&n&+ye&+Yw&n&+ye&+Yl&n&+ye&+Yd&n like an &+yanimal&n!\n", FALSE, ch,
-	    0, 0, TO_ROOM);
+		     victim);
+	act("$n's eyes turn &+Yj&n&+ye&+Yw&n&+ye&+Yl&n&+ye&+Yd&n like an &+yanimal&n!\n", FALSE,
+	    victim, 0, 0, TO_ROOM);
 }
 
 static int natures_blessing_duration()
@@ -22801,7 +22811,7 @@ void spell_natures_blessing(int /*level*/, P_char ch, char * /*arg*/, [[maybe_un
 {
 	struct affected_type af;
 
-	if (affected_by_spell(ch, SPELL_NATURES_BLESSING))
+	if (affected_by_spell(victim, SPELL_NATURES_BLESSING))
 	{
 		struct affected_type *af1;
 		for (af1 = victim->affected; af1; af1 = af1->next)
@@ -22839,10 +22849,10 @@ void spell_natures_blessing(int /*level*/, P_char ch, char * /*arg*/, [[maybe_un
 		break;
 	}
 
-	affect_to_char(ch, &af);
-	send_to_char("You feel overwhelmed with the &+gwarmth &+Gof &+gnature&n.\n", ch);
-	act("$n's skin &+Gflashes green&n for a moment, and then returns to normal.\n", FALSE, ch,
-	    0, 0, TO_ROOM);
+	affect_to_char(victim, &af);
+	send_to_char("You feel overwhelmed with the &+gwarmth &+Gof &+gnature&n.\n", victim);
+	act("$n's skin &+Gflashes green&n for a moment, and then returns to normal.\n", FALSE,
+	    victim, 0, 0, TO_ROOM);
 }
 
 static int shadow_vision_duration()
@@ -22855,12 +22865,12 @@ std::string shadow_vision_facts(P_char /*ch*/)
 	return fact("Duration", game_hours(shadow_vision_duration()));
 }
 
-void spell_shadow_vision(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
+void spell_shadow_vision(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 			 P_char victim, P_obj /*obj*/)
 {
 	struct affected_type af;
 
-	if (affected_by_spell(ch, SPELL_SHADOW_VISION))
+	if (affected_by_spell(victim, SPELL_SHADOW_VISION))
 	{
 		struct affected_type *af1;
 
@@ -22878,10 +22888,10 @@ void spell_shadow_vision(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unuse
 
 	af.bitvector2 = AFF2_DETECT_MAGIC | AFF2_DETECT_GOOD | AFF2_DETECT_EVIL;
 	af.bitvector = AFF_SENSE_LIFE | AFF_DETECT_INVISIBLE;
-	affect_to_char(ch, &af);
+	affect_to_char(victim, &af);
 
-	send_to_char("&+LA dark tint covers your vision.&n\n", ch);
-	act("&+m$n's&+M eyes turn &+Lpitch black!", FALSE, ch, 0, 0, TO_ROOM);
+	send_to_char("&+LA dark tint covers your vision.&n\n", victim);
+	act("&+m$n's&+M eyes turn &+Lpitch black!", FALSE, victim, 0, 0, TO_ROOM);
 }
 
 static int rope_trick_duration()
@@ -22920,8 +22930,8 @@ void spell_rope_trick(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]]
 	{
 		LOOP_THRU_PEOPLE(temp_vict, ch)
 		{
-			if (affected_by_spell(temp_vict,
-					      SPELL_ROPE_TRICK && IS_AFFECTED(temp_vict, AFF_HIDE)))
+			if (affected_by_spell(temp_vict, SPELL_ROPE_TRICK) &&
+			    IS_AFFECTED(temp_vict, AFF_HIDE))
 				howmany++;
 		}
 		if (howmany > 2)
@@ -23004,10 +23014,10 @@ static int enlarge_duration()
 	return 3;
 }
 
-// Recasting enlarge on an enlarged target sets its duration to the cast level.
-static int enlarge_refresh_duration(int level)
+// Recasts use the same duration as the initial enlarge spell.
+static int enlarge_refresh_duration(int /*level*/)
 {
-	return level;
+	return enlarge_duration();
 }
 
 static int enlarge_str_max(P_char victim)
@@ -23144,10 +23154,10 @@ static int reduce_duration()
 	return 3;
 }
 
-// Recasting reduce on a reduced target sets its duration to the cast level.
-static int reduce_refresh_duration(int level)
+// Recasts use the same duration as the initial reduce spell.
+static int reduce_refresh_duration(int /*level*/)
 {
-	return level;
+	return reduce_duration();
 }
 
 static int reduce_str(P_char victim)
@@ -23979,14 +23989,14 @@ void spell_immolate(int /*level*/, P_char ch, char * /*arg*/, int type, P_char v
 }
 
 // Damage of a dread wave with `modifier` waves left after it, at cast level `level`.
-// MAX() evaluates the roll again when it wins, so a wave can roll a second time and fall
-// below 1; only the highest damage is a bound.
+// Roll once and preserve a minimum of one damage after level scaling.
 static int dread_wave_damage(const Rolls &rolls, P_char ch, int modifier, int level)
 {
-	int dam = MAX(1, (int)(((modifier + 2) * level) + rolls.number(-60, 0)));
+	int dam = (modifier + 2) * level + rolls.number(-60, 0);
+	dam = MAX(1, dam);
 
 	dam = (int)(dam * GET_LEVEL(ch) / 56);
-	return dam;
+	return MAX(1, dam);
 }
 
 // A target that makes both its spell and breath saves takes less of a wave.
@@ -24669,11 +24679,11 @@ void spell_starshell(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 		return;
 	}
 
-	if (get_spell_from_room(&world[ch->in_room], SPELL_STARSHELL))
+	if (auto *existing = get_spell_from_room(&world[ch->in_room], SPELL_STARSHELL))
 	{
 		send_to_room("&+WThe &+Yblazing&N&+W shell of light overhead &+REXPLODES&n!\n",
 			     ch->in_room);
-		af.duration = starshell_duration(level);
+		existing->duration = starshell_duration(level);
 		return;
 	}
 
@@ -26243,7 +26253,7 @@ void event_acidimmolate(P_char ch, P_char vict, P_obj /*obj*/, void *data)
 	}
 	acidburntime = *((int *)data);
 
-	if ((acidburntime >= 4 && number(0, acidburntime--)) || acidburntime == 7)
+	if ((acidburntime >= 4 && number(0, acidburntime)) || acidburntime >= 7)
 	{
 		act("&+GThe &+Ymo&+yrd&+Yant &+Gsubstance oozes off you!", FALSE, ch, 0, vict,
 		    TO_VICT);
@@ -28095,7 +28105,7 @@ struct sb_data
 // The caster's lag after starting a spore burst, in pulses.
 static int spore_burst_lag()
 {
-	return (int)2.5 * PULSE_VIOLENCE;
+	return PULSE_VIOLENCE * 5 / 2;
 }
 
 // The level the burst's spore cloud strikes at, from the 1-3 spores it gathered.
@@ -28650,11 +28660,12 @@ void spell_life_bolt(int level, P_char ch, char * /*arg*/, int /*type*/, P_char 
 		else
 			self_dam >>= 1;
 
-		if (GET_HIT(ch) < self_dam)
+		if (GET_HIT(ch) <= self_dam)
 		{
 			send_to_char(
 				"&+WYou're too weak to sacrifice your life force in this way! You gain no bonus.\r\n",
 				ch);
+			self_dam = 0;
 		}
 		else if (self_dam)
 		{
@@ -28662,10 +28673,8 @@ void spell_life_bolt(int level, P_char ch, char * /*arg*/, int /*type*/, P_char 
 				"&+WYou send a quick prayer to your Deity, offering your &+Rlifeforce&+W and asking for divine energy to flow through you!\r\n",
 				ch);
 
-			vamp(ch, self_dam / 6,
-			     static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
-			// if (spell_damage(ch, ch, self_dam, SPLDAM_HOLY, RAWDAM_NOKILL | SPLDAM_NOSHRUG, 0) != DAM_NONEDEAD)
-			//        return;
+			GET_HIT(ch) -= self_dam;
+			StartRegen(ch, regen_resource::hit);
 		}
 	}
 
@@ -28740,21 +28749,21 @@ void spell_mielikki_vitality(int level, P_char ch, char * /*arg*/, [[maybe_unuse
 	bool message = false;
 	int healpoints = mielikki_vitality_hit(level);
 
-	if (affected_by_spell(ch, SPELL_ESHABALAS_VITALITY) ||
-	    affected_by_spell(ch, SPELL_FALUZURES_VITALITY))
+	if (affected_by_spell(victim, SPELL_ESHABALAS_VITALITY) ||
+	    affected_by_spell(victim, SPELL_FALUZURES_VITALITY))
 	{
 		send_to_char("&+GThe blessings of the Goddess Mielikki are denied!\r\n", victim);
 		return;
 	}
 
-	if (affected_by_spell(ch, SPELL_VITALITY))
+	if (affected_by_spell(victim, SPELL_VITALITY))
 	{
 		send_to_char("&+GThe Goddess Mielikki cannot further bless your vitality...\r\n",
 			     victim);
 		return;
 	}
 
-	if (affected_by_spell(ch, SPELL_MIELIKKI_VITALITY))
+	if (affected_by_spell(victim, SPELL_MIELIKKI_VITALITY))
 	{
 		struct affected_type *af1;
 
@@ -28784,8 +28793,8 @@ void spell_mielikki_vitality(int level, P_char ch, char * /*arg*/, [[maybe_unuse
 		affect_to_char(victim, &af);
 	}
 
-	if (GET_CLASS(ch, CLASS_RANGER) && !affected_by_spell(ch, SPELL_REGENERATION) &&
-	    !affected_by_spell(ch, SPELL_ACCEL_HEALING))
+	if (GET_CLASS(ch, CLASS_RANGER) && !affected_by_spell(victim, SPELL_REGENERATION) &&
+	    !affected_by_spell(victim, SPELL_ACCEL_HEALING))
 	{
 		af.modifier = mielikki_vitality_regen(live_rolls);
 		af.location = APPLY_HIT_REG;
@@ -28803,7 +28812,7 @@ void spell_mielikki_vitality(int level, P_char ch, char * /*arg*/, [[maybe_unuse
 	}
 	*/
 
-	send_to_char("&+GYou feel the &+ywarm &+Gbreath of the Goddess Mielikki.\r\n", ch);
+	send_to_char("&+GYou feel the &+ywarm &+Gbreath of the Goddess Mielikki.\r\n", victim);
 }
 
 static int repair_one_item_condition()
@@ -30074,7 +30083,7 @@ void spell_edictum_cineris(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 	// same save as beholder fear
 	save = (int)(GET_LEVEL(ch) / 10);
 
-	if (!NewSaves(ch, SAVING_FEAR, save))
+	if (!NewSaves(victim, SAVING_FEAR, save))
 	{
 		bzero(&af, sizeof(af));
 
@@ -30105,14 +30114,14 @@ void spell_edictum_cineris(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 		af.location = APPLY_DAMROLL;
 		af.modifier = edictum_cineris_penalty(level);
 		if (-af.modifier > GET_DAMROLL(victim))
-			af.modifier = -GET_DAMROLL(victim);
+			af.modifier = -MAX(0, GET_DAMROLL(victim));
 		af.duration = edictum_cineris_duration(level);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_HITROLL;
 		af.modifier = edictum_cineris_penalty(level);
 		if (-af.modifier > GET_HITROLL(victim))
-			af.modifier = -GET_HITROLL(victim);
+			af.modifier = -MAX(0, GET_HITROLL(victim));
 		affect_to_char(victim, &af);
 
 		send_to_char("The &+Gdr&+Lag&+Gon&n god's &+Lterror&n overcomes you!\r\n", victim);

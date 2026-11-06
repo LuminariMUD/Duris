@@ -1795,10 +1795,11 @@ void spell_greater_ethereal_recharge(int level, P_char ch, char * /*arg*/, int /
 	update_pos(victim);
 }
 
-// MIN() rolls the dice again when they do not clear the cap, so that result can pass it.
+// Roll once, then cap the healing at 150.
 static int ethereal_recharge_healing(const Rolls &rolls, int level)
 {
-	return MIN(150, rolls.dice(5, level));
+	const int healing = rolls.dice(5, level);
+	return MIN(150, healing);
 }
 
 // An air conjurer healing their own air form gains at most this many hit points.
@@ -1814,8 +1815,6 @@ std::string ethereal_recharge_facts(P_char ch)
 	std::string text =
 		fact("Healing", show({ ethereal_recharge_healing(lowest_rolls, level), high }) +
 					" at your level, " + std::to_string(level));
-	if (highest_rolls.dice(5, level) > high)
-		text += "  Its dice are rolled twice, so it can sometimes pass that cap.\n";
 	if (GET_SPEC(ch, CLASS_CONJURER, SPEC_AIR))
 		text += fact("On your own air form",
 			     "at most " + std::to_string(ethereal_recharge_air_cap()) +
@@ -2275,8 +2274,7 @@ static double tempest_takedown_wind_tunnel(double takedown_chance)
 
 static double tempest_takedown_binding_wind(double takedown_chance)
 {
-	takedown_chance /= takedown_chance * 1.3;
-	return takedown_chance;
+	return takedown_chance / 1.3;
 }
 
 static double tempest_takedown_indoors(double takedown_chance)
@@ -2846,10 +2844,10 @@ static int supernova_constitution(int level)
 	return level / -10;
 }
 
-// The caster's knockout, in pulses. The integer division makes it zero.
+// The caster's brief knockout, rounded up to one pulse.
 static int supernova_knockout()
 {
-	return (1 / 10) * WAIT_SEC;
+	return MAX(1, WAIT_SEC / 10);
 }
 
 std::string supernova_facts(P_char ch)
@@ -3034,15 +3032,15 @@ void spell_ethereal_discharge(int level, P_char ch, char * /*arg*/, [[maybe_unus
 	wear_off_message(ch, afp);
 	affect_remove(ch, afp);
 
-	mod = ethereal_discharge_save_mod(GET_LEVEL(ch), GET_LEVEL(victim),
-					  GET_CHAR_SKILL(ch, SKILL_DEVOTION));
-
 	for (tch = world[ch->in_room].people; tch; tch = next_tch)
 	{
 		next_tch = tch->next_in_room;
 
 		if (grouped(tch, ch) || ch == tch)
 			continue;
+
+		mod = ethereal_discharge_save_mod(GET_LEVEL(ch), GET_LEVEL(tch),
+						  GET_CHAR_SKILL(ch, SKILL_DEVOTION));
 
 		for (afp = tch->affected; afp; afp = next_afp)
 		{

@@ -331,13 +331,12 @@ int main() {
         check(level, [=] { return number(150, (GET_LEVEL(healer) * 5)); },
               [=](const Rolls &r, int) { return heal_undead_healing(r, healer); });
     }
-    // Freedom of movement's MAX() rolls again once the first roll reaches the floor of 3, so
-    // low levels can last under 3; its page shows the exact range.
-    const std::map<int, Range> freedom = { { 1, { 3, 3 } }, { 9, { 3, 3 } }, { 10, { 0, 3 } },
-                                           { 12, { 1, 4 } }, { 16, { 2, 5 } }, { 18, { 3, 6 } },
+    // Freedom of movement rolls once and respects the three-hour floor at low levels.
+    const std::map<int, Range> freedom = { { 1, { 3, 3 } }, { 9, { 3, 3 } }, { 10, { 3, 3 } },
+                                           { 12, { 3, 4 } }, { 16, { 3, 5 } }, { 18, { 3, 6 } },
                                            { 50, { 14, 17 } }, { 56, { 16, 19 } } };
     for (const auto &[level, bounds] : freedom) {
-        same_rolls([=] { return MAX(3, (level / 2 + number(-4, 0)) * 7 / 10); },
+        same_rolls([=] { return std::max(3, (level / 2 + number(-4, 0)) * 7 / 10); },
                    [=] { return freedom_of_movement_duration(live_rolls, level); }, bounds);
         reaches([=] { return freedom_of_movement_duration(live_rolls, level); }, bounds);
         char_data reader{};

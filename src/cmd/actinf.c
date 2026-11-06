@@ -180,7 +180,7 @@ int ophidian_invisible_level()
 
 std::string ophidian_eyes_innate_facts(P_char ch)
 {
-	extern int ophidian_track_penalty();
+	extern int ophidian_track_bonus();
 	extern int track_sense_chance(int level);
 	return "  You see heat, as infravision does.\n" +
 	       fact("Farsee above level", std::to_string(ophidian_farsee_level())) +
@@ -191,7 +191,7 @@ std::string ophidian_eyes_innate_facts(P_char ch)
 	       fact("Dragon hunter: chance to sense a trace",
 		    chance_under(track_sense_chance(GET_LEVEL(ch)), 1, 100)) +
 	       fact("Dragon hunter: improved tracking roll",
-		    std::to_string(ophidian_track_penalty()) + " harder");
+		    std::to_string(ophidian_track_bonus()) + " easier");
 }
 
 extern int map_normal_modifier;
@@ -2279,10 +2279,10 @@ void do_do(P_char /*ch*/, char * /*argument*/, int /*cmd*/)
 }
 
 // A spell knowledge rating against the 1-100 roll to name a spell in a book of another
-// class; a lower rating does better.
+// class; higher ratings recognize more spells.
 bool spell_book_recognizes(int rating, int roll)
 {
-	return rating <= roll;
+	return roll <= rating;
 }
 
 // func assumes only PCs get in here

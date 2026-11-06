@@ -56,6 +56,8 @@ LABEL(event_autosave)
 LABEL(event_wait)
 #undef LABEL
 void wear_off_message(P_char, affected_type *) {}
+void grapple_heal(P_char) {}
+int number(int low, int) { return low; }
 static int published_short_affects = 0;
 void gmcp_char_affects(P_char ch) {
     published_short_affects = 0;
@@ -168,6 +170,29 @@ int main() {
     dead.specials.position = STAT_DEAD;
 
     nevent_bind_game_thread();
+    ne_dead_event_pool = &event_pool;
+    // Aid shortens short blindness by game hours converted to pulses, including a recast.
+    character_list = &caster;
+    caster.next = &ally;
+    affected_type blind{};
+    blind.type = SPELL_BLINDNESS;
+    blind.flags = AFFTYPE_SHORT;
+    blind.bitvector = AFF_BLIND;
+    blind.duration = 2000;
+    auto *short_blind = affect_to_char(&ally, &blind);
+    event_short_affect_data expiry{&ally, short_blind};
+    add_event(event_short_affect, 2000, &ally, nullptr, nullptr, 0, &expiry, sizeof(expiry));
+    caster.player.level = 10; // Do not take Aid's level-17 instant-cure path.
+    spell_aid(10, &caster, nullptr, 0, &ally, nullptr);
+    advance(400);
+    assert(affected_by_spell(&ally, SPELL_BLINDNESS));
+    spell_aid(10, &caster, nullptr, 0, &ally, nullptr);
+    advance(2);
+    assert(!affected_by_spell(&ally, SPELL_BLINDNESS));
+    clear(&ally);
+    clear(&caster);
+    caster.player.level = 0;
+
     ne_dead_event_pool = &event_pool;
     character_list = &caster;
     // Explicit non-self and invalid targets never receive any protection.
@@ -296,7 +321,7 @@ functions += [extract_function("affects.c", "void event_short_affect(").replace(
 functions += [extract_function("handler.c", "int poison_common_remove(")]
 functions += [extract_function("magic.c", signature) for signature in (
     "void spell_cure_blind(", "void spell_cure_disease(", "static int divine_warding_duration(",
-    "void spell_divine_warding(",
+    "void spell_divine_warding(", "static int aid_shortening(", "static int aid_duration(", "void spell_aid(",
     "static void purify_group_member(", "void spell_mass_purification(")]
 output = ROOT / "bin/tests/cleric-utilities"
 output.mkdir(parents=True, exist_ok=True)

@@ -167,17 +167,18 @@ void guardian_spirits_messages(P_char ch, P_char victim)
 	    FALSE, ch, 0, victim, TO_NOTVICT);
 }
 
-// Guardian spirits recast while active. MAX() evaluates its second argument again when
-// that argument wins, so this can roll twice.
+// Guardian spirits recast while active, with a four-hour minimum.
 static int guardian_spirits_renewal(const Rolls &rolls, int level)
 {
-	return MAX(4, level / 2 + rolls.number(-8, 0));
+	const int duration = level / 2 + rolls.number(-8, 0);
+	return MAX(4, duration);
 }
 
-// Guardian spirits' duration on a player or a player's pet; see the renewal's note.
+// Guardian spirits' duration on a player or a player's pet.
 static int guardian_spirits_duration(const Rolls &rolls, int level)
 {
-	return MAX(4, level / 2 + rolls.number(-4, 0));
+	const int duration = level / 2 + rolls.number(-4, 0);
+	return MAX(4, duration);
 }
 
 static int guardian_spirits_ac(const Rolls &rolls)
@@ -193,13 +194,9 @@ std::string guardian_spirits_facts(P_char ch)
 	const Range renewal = { guardian_spirits_renewal(lowest_rolls, level),
 				guardian_spirits_renewal(highest_rolls, level) };
 	std::string text;
-	// A roll that clears MAX()'s floor of 4 is rolled again and can land below it, so
-	// a duration is only exact when the floor is out of reach.
-	if (duration.low > 4)
-		text = fact("Duration", game_hours_range(duration) + " at your level, " +
-						std::to_string(level));
-	if (renewal.low > 4)
-		text += fact("Recast while active", game_hours_range(renewal));
+	text = fact("Duration",
+		    game_hours_range(duration) + " at your level, " + std::to_string(level));
+	text += fact("Recast while active", game_hours_range(renewal));
 	return text + fact("Armor class", show_signed({ guardian_spirits_ac(highest_rolls),
 							guardian_spirits_ac(lowest_rolls) }));
 }
@@ -922,7 +919,7 @@ std::string corrosive_blast_facts(P_char ch)
 	       fact("Armor class penalty if not already corroded",
 		    show({ corrosive_blast_ac(lowest_rolls, level),
 			   corrosive_blast_ac(highest_rolls, level) })) +
-	       "  No penalty if it would leave armor class above 0.\n" +
+	       "  The penalty cannot raise armor class above 0.\n" +
 	       fact("Penalty duration", game_hours(corrosive_blast_duration())) +
 	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
@@ -969,8 +966,7 @@ void spell_corrosive_blast(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 
 		int ran = corrosive_blast_ac(live_rolls, level);
 
-		if (GET_AC(victim) + ran > 0)
-			ran = MIN(GET_AC(victim) + ran, 0);
+		ran = MIN(ran, MAX(0, -GET_AC(victim)));
 
 		struct affected_type af;
 		memset(&af, 0, sizeof(af));
@@ -2379,10 +2375,9 @@ static int spirit_armor_duration(int level, P_char ch)
 	return duration;
 }
 
-// Spirit armor's armor class bonus follows its duration.
-static int spirit_armor_ac(int duration)
+static int spirit_armor_ac(int level, P_char ch)
 {
-	return -(duration);
+	return -(level + (IS_SPIRITUALIST(ch) ? GET_LEVEL(ch) : 0));
 }
 
 // Spirit armor's spell save bonus, or 0 for none.
@@ -2401,7 +2396,7 @@ std::string spirit_armor_facts(P_char ch)
 	const int duration = spirit_armor_duration(level, ch);
 	std::string text = fact("Duration",
 				game_hours(duration) + " at your level, " + std::to_string(level)) +
-			   fact("Armor class", std::to_string(spirit_armor_ac(duration)));
+			   fact("Armor class", std::to_string(spirit_armor_ac(level, ch)));
 	if (spirit_armor_save(level))
 		text += fact("Saving throw vs spells", std::to_string(spirit_armor_save(level)));
 	return text;
@@ -2412,7 +2407,6 @@ void spell_spirit_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 {
 	struct affected_type af;
 	int duration;
-	int armor = level;
 	bool shown = FALSE;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -2422,10 +2416,6 @@ void spell_spirit_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 
 	do_point(ch, victim);
 	duration = spirit_armor_duration(level, ch);
-	if (IS_SPIRITUALIST(ch))
-	{
-		armor += GET_LEVEL(ch);
-	}
 
 	if (!IS_AFFECTED(victim, AFF_ARMOR))
 	{
@@ -2434,7 +2424,7 @@ void spell_spirit_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		af.type = SPELL_SPIRIT_ARMOR;
 		af.duration = duration;
 		af.location = APPLY_AC;
-		af.modifier = spirit_armor_ac(duration);
+		af.modifier = spirit_armor_ac(level, ch);
 		af.bitvector = AFF_ARMOR;
 		affect_to_char(victim, &af);
 
@@ -3454,7 +3444,7 @@ static int elephantstrength_con_max(const Rolls &rolls, int level)
 	return (int)(level / 5) + rolls.dice(3, 3);
 }
 
-static int elephantstrength_dex(const Rolls &rolls)
+static int elephantstrength_stat_penalty(const Rolls &rolls)
 {
 	return -10 - rolls.number(0, 5);
 }
@@ -3479,8 +3469,9 @@ std::string elephantstrength_facts(P_char ch)
 			   elephantstrength_con_max(highest_rolls, level.high) })) +
 	       fact("Damroll", show({ elephantstrength_damroll(level.low),
 				      elephantstrength_damroll(level.high) })) +
-	       fact("Dexterity", show_signed({ elephantstrength_dex(highest_rolls),
-					       elephantstrength_dex(lowest_rolls) }));
+	       fact("Dexterity and agility (rolled separately)",
+		    show_signed({ elephantstrength_stat_penalty(highest_rolls),
+				  elephantstrength_stat_penalty(lowest_rolls) }));
 }
 
 void spell_elephantstrength(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -3542,12 +3533,13 @@ void spell_elephantstrength(int level, P_char ch, char * /*arg*/, [[maybe_unused
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_DEX;
-		af.modifier = elephantstrength_dex(live_rolls);
+		af.modifier = elephantstrength_stat_penalty(live_rolls);
 
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_AGI;
-		af.modifier = -10 - number(0, 5);
+		af.modifier = elephantstrength_stat_penalty(live_rolls);
+		affect_to_char(victim, &af);
 
 		af.location = APPLY_DAMROLL;
 		af.modifier = elephantstrength_damroll(level);
@@ -3737,6 +3729,11 @@ static int lionrage_agi(const Rolls &rolls)
 	return -10 + (rolls.number(-3, 3));
 }
 
+static int lionrage_str(int level)
+{
+	return (level / 5) + 1;
+}
+
 static int lionrage_damroll(int level)
 {
 	return (int)((level / 10) + 1);
@@ -3747,6 +3744,7 @@ std::string lionrage_facts(P_char ch)
 	const int level = GET_LEVEL(ch);
 	return fact("Duration", game_hours(lionrage_duration(level, ch)) + " at your level, " +
 					std::to_string(level)) +
+	       fact("Strength", std::to_string(lionrage_str(level))) +
 	       fact("Damroll", std::to_string(lionrage_damroll(level))) +
 	       fact("Agility",
 		    show_signed({ lionrage_agi(lowest_rolls), lionrage_agi(highest_rolls) }));
@@ -3811,7 +3809,8 @@ void spell_lionrage(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_STR;
-		af.modifier = (int)((level / 5) + 1);
+		af.modifier = lionrage_str(level);
+		affect_to_char(victim, &af);
 
 		af.location = APPLY_DAMROLL;
 		af.modifier = lionrage_damroll(level);
@@ -3826,7 +3825,7 @@ void spell_lionrage(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 		af.duration = 100;
 
 		af.location = APPLY_STR;
-		af.modifier = (int)((level / 5) + 1);
+		af.modifier = lionrage_str(level);
 
 		affect_to_char(victim, &af);
 
@@ -6235,7 +6234,7 @@ void event_torment_spirits(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 
 	ts = *((int *)data);
 
-	if ((ts >= 6 && number(0, ts--)) || ts == 10)
+	if ((ts >= 6 && number(0, ts)) || ts >= 10)
 	{
 		act("&+gRelief fills your &+wbones &+gas the &+Ltormenting &+gstops.&n", FALSE, ch,
 		    0, victim, TO_VICT);

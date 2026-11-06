@@ -472,6 +472,9 @@ std::string smite_evil_facts(P_char ch)
 
 void event_smite_evil(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
 {
+	if (!GET_CHAR_SKILL(ch, SKILL_SMITE_EVIL))
+		return;
+
 	P_char tch;
 
 	if (IS_AWAKE(ch) && !IS_IMMOBILE(ch) && is_wielding_paladin_sword(ch))
@@ -594,7 +597,7 @@ void spell_righteous_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 	}
 }
 
-void event_righteous_aura_check(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
+void event_righteous_aura_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
 {
 	struct affected_type af;
 
@@ -608,7 +611,7 @@ void event_righteous_aura_check(P_char ch, P_char victim, P_obj /*obj*/, void * 
 		P_char tch;
 		LOOP_THRU_PEOPLE(tch, ch)
 		{
-			if (victim != ch && affected_by_spell(tch, SPELL_BLEAK_FOEMAN) &&
+			if (tch != ch && affected_by_spell(tch, SPELL_BLEAK_FOEMAN) &&
 			    GET_OPPONENT(ch) != tch && !IS_TRUSTED(ch) && !IS_TRUSTED(tch))
 			{ // Soulshield up!
 				if (!IS_AFFECTED2(ch, AFF2_SOULSHIELD) &&
