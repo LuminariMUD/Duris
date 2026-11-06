@@ -1,6 +1,6 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; eight focused implementation PRs are pushed
+Status: implementation in progress; nine focused implementation PRs are pushed
 and ready for review in the stack below.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
@@ -35,7 +35,11 @@ contains persistent wearer cooldowns and targets the ordinary-cast branch.
 (`branch/named-zone-set-effect-qualification`, implementation commit `41f777a93`)
 contains native effect qualification and the 104 recorded piece requirements;
 it targets the cooldown branch.
-All eight PRs are ready for review; no implementation PR has been merged and no
+[PR #730](https://github.com/LuminariMUD/Duris/pull/730)
+(`branch/named-zone-set-eligibility`, implementation commit `a54b99654`)
+restores authored naming eligibility for four existing sets and targets the
+qualification branch. Its wider eligibility review remains in progress below.
+All nine PRs are ready for review; no implementation PR has been merged and no
 release has been performed.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
