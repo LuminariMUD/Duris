@@ -654,6 +654,44 @@ int main()
 	execute_sql(connection,
 		    "INSERT INTO player_pet_item_extra_descr(item_id,keyword,description) VALUES"
 		    "(3101,'detail','pet fixture')");
+	// Another owner's stale row is left out, so its unreadable origin cannot block the load.
+	execute_sql(connection,
+		    "INSERT INTO player_items(id,pid,vnum,equip_slot,container_id,quantity,weight,"
+		    "cost,timer,extra_flags,value0,value1,value2,value3,value4,value5,value6,"
+		    "value7,obj_uid,item_condition) VALUES(1004," +
+			    std::to_string(pid) +
+			    ",103,0,NULL,1,2,3,-1,0,0,0,0,0,0,0,0,0,900004,100)");
+	execute_sql(connection,
+		    "INSERT INTO item_current_owner(item_uid,root_item_uid,parent_item_uid,"
+		    "owner_type,owner_id,owner_context_id,item_revision,vnum,state) VALUES"
+		    "(900004,900004,NULL,1," +
+			    std::to_string(pid + 1) + ",0,5,103,1)");
+	execute_sql(connection, "INSERT INTO item_owner_revision(owner_type,owner_id,"
+				"owner_context_id,revision) VALUES(1," +
+					std::to_string(pid + 1) + ",0,1)");
+	execute_sql(connection,
+		    std::string("INSERT INTO player_item_extra_descr(item_id,keyword,description) "
+				"VALUES(1004,'") +
+			    SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD + "','808x')");
+	const auto foreign_origin = execute_load(connection, request, 103);
+	assert(foreign_origin.outcome == player_load_outcome::applied);
+	assert(foreign_origin.stale_item_rows == 1);
+	execute_sql(connection, "DELETE FROM player_item_extra_descr WHERE item_id=1004");
+	execute_sql(connection, "DELETE FROM player_items WHERE id=1004");
+	execute_sql(connection,
+		    "INSERT INTO player_pet_items(id,pet_id,vnum,equip_slot,container_id,weight,"
+		    "cost,timer,extra_flags,value0,value1,value2,value3,value4,value5,value6,"
+		    "value7,obj_uid,item_condition) VALUES"
+		    "(3103,3001,103,2,NULL,2,3,-1,0,0,0,0,0,0,0,0,0,900004,100)");
+	execute_sql(connection,
+		    std::string("INSERT INTO player_pet_item_extra_descr(item_id,keyword,"
+				"description) VALUES(3103,'") +
+			    SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD + "','808x')");
+	const auto foreign_pet_origin = execute_load(connection, request, 104);
+	assert(foreign_pet_origin.outcome == player_load_outcome::applied);
+	execute_sql(connection, "DELETE FROM player_pet_item_extra_descr WHERE item_id=3103");
+	execute_sql(connection, "DELETE FROM player_pet_items WHERE id=3103");
+	execute_sql(connection, "DELETE FROM item_current_owner WHERE item_uid=900004");
 	std::cout << "[PASS] player and pet trap metadata preserves the description limit\n";
 	std::cout
 		<< "[PASS] player and pet named origins preserve internal slots and reject corrupt metadata\n";
