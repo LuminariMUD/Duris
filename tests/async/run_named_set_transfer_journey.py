@@ -2,7 +2,10 @@
 """Native nested-bag transfer, reboot and effective ordinary Armor journey."""
 
 import json
+from pathlib import Path
 import re
+import sys
+import time
 import test_flatfile_combat_journey as journey
 from named_set_gameplay import (
     NamedSetGame,
@@ -16,7 +19,9 @@ from named_set_gameplay import (
 
 ACCOUNT = "Namedguest"
 RECIPIENT = "Meranen"
-game = NamedSetGame()
+assert len(sys.argv) in (2, 3), "usage: run_named_set_transfer_journey.py copied-runtime [server]"
+game = NamedSetGame(runtime=Path(sys.argv[1]), binary=Path(sys.argv[2]) if len(sys.argv) == 3 else None)
+assert game.runtime != (journey.ROOT / "bin/tests/named-set-roster-world").resolve()
 manifest = game.runtime / "named-transfer-setup.json"
 setup = json.loads(manifest.read_text()) if manifest.exists() else {}
 donor = receiver = None
@@ -200,8 +205,10 @@ try:
         put(donor, uid, setup["inner"])
     potion = load(donor, 1, 39130)
     setup["potion"] = potion
+    reference_potion = load(donor, 1, 39130)
     checkpoint()
     put(donor, potion, setup["inner"])
+    put(donor, reference_potion, setup["inner"])
     put(donor, setup["inner"], setup["outer"])
     save(donor)
     save(receiver, RECIPIENT)
@@ -239,16 +246,40 @@ try:
     assert "armor (" in text
     save(receiver, RECIPIENT)
     assert not game.affects(1, 2)
+
+    # Establish ordinary Armor alone before reactivating the same three pieces.
+    # This keeps every equipped item's own armor/stat contribution identical.
+    receiver.send("remove " + selector(receiver, setup["uids"][-1]))
+    expect_max_hp(receiver, baseline)
+    deadline = time.monotonic() + 15
+    while "armor (" in score(receiver)[1]:
+        assert time.monotonic() < deadline, "set Armor did not wear off"
+        time.sleep(0.5)
+    receiver.send("quaff " + selector(receiver, reference_potion))
+    receiver.expect("Bands of magic armor wrap around you!", timeout=30)
+    score(receiver)
+    ordinary_two_points = armor_points(receiver)
+    receiver.send("wear " + selector(receiver, setup["uids"][-1]))
+    expect_max_hp(receiver, baseline + 5)
+    points = armor_points(receiver)
+    save(receiver, RECIPIENT)
+    game.stop()
+
+    # Clear only the copied tester's ordinary buffs, then exercise set-first.
+    game.prepare_mortal(2)
+    receiver = game.boot("named-transfer-set-first", account=ACCOUNT, character=RECIPIENT)
+    assert "armor (" in expect_max_hp(receiver, baseline + 5)
     receiver.send("quaff " + selector(receiver, potion))
     receiver.expect("Bands of magic armor wrap around you!", timeout=30)
     score(receiver)
-    points = armor_points(receiver)
+    assert armor_points(receiver) == points, "overlap must match ordinary-only Armor on identical gear"
     save(receiver, RECIPIENT)
     ordinary = game.affects(1, 2)
     assert len(ordinary) == 1
     receiver.send("remove " + selector(receiver, setup["uids"][-1]))
     text = expect_max_hp(receiver, baseline)
     assert "armor (" in text
+    assert armor_points(receiver) == ordinary_two_points
     receiver.send("wear " + selector(receiver, setup["uids"][-1]))
     expect_max_hp(receiver, baseline + 5)
     assert armor_points(receiver) == points, (

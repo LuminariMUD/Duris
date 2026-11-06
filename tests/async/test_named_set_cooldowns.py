@@ -78,6 +78,8 @@ void str_free(const char *text) { free(const_cast<char *>(text)); }
 bool training_dummy_capture_target_allowed(P_char) { return true; }
 void affect_to_char_with_messages(P_char,affected_type *,const char *,const char *) { assert(false); }
 bool grouped(P_char,P_char) { return false; }
+int IS_MORPH(P_char) { return FALSE; }
+P_char un_morph(P_char) { assert(false); return nullptr; }
 void bard_dragons(int,P_char,P_char,int) { assert(false); }
 void spell_haste(int,P_char,char *,int,P_char,P_obj) { assert(false); }
 void spell_fireshield(int,P_char,char *,int,P_char,P_obj) { assert(false); }
@@ -99,6 +101,11 @@ functions = ''.join(extract_function('affects.c', signature) for signature in (
     'struct affected_type *get_spell_from_char(', 'bool affected_by_skill('))
 functions += extract_function('specs.object.c', 'static void grant_dragons_to_group(')
 functions += extract_function('specs.object.c', 'void apply_zone_spell(')
+magic = source('magic.c').read_text()
+start = magic.index('// Select active types before removal:')
+end = magic.index('\n\t\tsuccess = CheckMobRemoveableSpellBits', start)
+functions += '\nstatic void dispel_active(P_char victim) { P_char ch=victim,orig=nullptr; affected_type *af; int nosave=1,mod=0,success=0;\n'
+functions += magic[start:end] + '\n(void)orig; (void)success; }\n'
 capture = source('player_snapshot_capture.c').read_text()
 functions += capture[capture.index('struct capture_budget'):capture.index('template <typename T> bool add_status_integer')]
 functions += extract_function('player_snapshot_capture.c', 'player_snapshot_capture_result capture_affects(')
@@ -139,6 +146,11 @@ int main() {
         assert(timer && timer->modifier==spell && (timer->flags&AFFTYPE_OFFLINE));
         assert(!(timer->flags&(AFFTYPE_SET_AFFECT|AFFTYPE_NOSAVE)));
         reconcile_named_set_spell(&ch,spell); // remove gear support, keep cooldown
+        assert(named_set_cooldown_remaining(&ch,spell)==full);
+        affected_type ordinary{}; ordinary.type=SPELL_ARMOR; ordinary.duration=9;
+        affect_to_char(&ch,&ordinary);
+        dispel_active(&ch);
+        assert(!affected_by_spell(&ch,SPELL_ARMOR));
         assert(named_set_cooldown_remaining(&ch,spell)==full);
         for(int zone:{1,2,3}) apply_zone_spell(&ch,6,"Swapped",zone,&replacement,spell);
         assert(casts==1 && replacement.timer[0]==0);

@@ -56,6 +56,8 @@ void update_named_set_suspension(P_char ch, const affected_type *retiring)
 		for (const affected_type *other = ch->affected; other; other = other->next)
 			if (other != retiring &&
 			    !(other->flags & (AFFTYPE_SET_AFFECT | AFFTYPE_NOAPPLY)) &&
+			    !(other->type == SPELL_REGENERATION &&
+			      (other->flags & AFFTYPE_ARAMUS_CROWN_REGENERATION)) &&
 			    (other->type == source->type ||
 			     same_spell(other->type, source->set_spell)))
 			{
