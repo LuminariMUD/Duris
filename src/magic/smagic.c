@@ -1810,7 +1810,7 @@ void spell_single_scathing_wind(int level, P_char ch, char * /*arg*/, int /*type
 	if (IS_PC(ch) && IS_PC(victim))
 		dam = dam * get_property("spell.area.damage.to.pc", 0.5);
 
-	dam = dam * get_property("spell.area.damage.factor.scathingwind", 1.000);
+	dam = dam * get_property("spell.area.damage.factor.scathingWind", 1.000);
 
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_SCATHING_WIND);
 	if (has_innate(ch, INNATE_ELEMENTAL_POWER))
@@ -4476,7 +4476,7 @@ P_char summon_beast_common(int mobnumb, P_char ch, int max_summon, int dur, cons
 
 	if (GET_SPEC(ch, CLASS_SHAMAN, SPEC_ANIMALIST) || IS_ELITE(ch))
 	{
-		ch->points.damsizedice = (int)(1.5 * ch->points.damsizedice);
+		mob->points.damsizedice = (int)(1.5 * mob->points.damsizedice);
 	}
 
 	GET_EXP(mob) = 0;
@@ -5081,7 +5081,7 @@ static int mending_healing(const Rolls &rolls, int level, P_char ch)
 
 	if (has_innate(ch, INNATE_IMPROVED_HEAL))
 		gain += mending_improved_bonus(rolls, level);
-	return gain;
+	return MAX(1, gain);
 }
 
 std::string mending_facts(P_char ch)
@@ -5129,7 +5129,7 @@ static int greater_mending_healing(const Rolls &rolls, int level, P_char ch)
 
 	if (has_innate(ch, INNATE_IMPROVED_HEAL))
 		gain += mending_improved_bonus(rolls, level);
-	return gain;
+	return MAX(1, gain);
 }
 
 std::string greater_mending_facts(P_char ch)

@@ -51,7 +51,7 @@ vital_intercession_healing vital_intercession_pool vital_intercession_duration
 vital_intercession_facts_at vital_intercession_facts holy_intercession_level
 holy_intercession_facts vitalize_undead_hit_points vitalize_undead_duration
 vitalize_undead_facts death_blessing_facts farsee_duration farsee_facts globe_duration
-globe_refresh_duration globe_facts group_globe_facts minor_globe_duration minor_globe_facts deflect_duration
+globe_facts group_globe_facts minor_globe_duration minor_globe_facts deflect_duration
 deflect_facts earth_form_duration earth_form_facts fire_form_duration fire_form_armor_class
 fire_form_strength fire_form_dexterity fire_form_agility fire_form_constitution fire_form_facts
 water_form_duration water_form_strength water_form_dexterity water_form_agility
@@ -162,7 +162,7 @@ CALLS = {
                               "af.duration = vitalize_undead_duration(ch);",
                               "af1->duration = vitalize_undead_duration(ch);"],
     "spell_group_globe": ["spell_globe((level / 3) * 2, ch, 0, 0, gl->ch, 0);"],
-    "spell_globe": ["af.duration = globe_duration(ch);", "af1->duration = globe_refresh_duration();"],
+    "spell_globe": ["af.duration = globe_duration(ch);"],
     "spell_minor_globe": ["af.duration = minor_globe_duration();", "af1->duration = minor_globe_duration();"],
     "spell_deflect": ["af.duration = deflect_duration();"],
     "spell_earth_form": ["af.duration = earth_form_duration();"],
@@ -180,7 +180,7 @@ CALLS = {
     "spell_airy_water": ["add_event(event_airy_water_dissipate, airy_water_duration(level),"],
     "spell_barkskin": ["af1.modifier = barkskin_armor_class(ch, level);", "af1.duration = barkskin_duration();",
                        "af1->duration = barkskin_duration();"],
-    "spell_grow_spike": ["dam = grow_spike_damage(live_rolls, level);", "dam = grow_spike_saved(dam);",
+    "grow_spike": ["dam = grow_spike_damage(live_rolls, level);", "dam = grow_spike_saved(dam);",
                          "dam = grow_spike_terrain(dam, dam_flag);"],
 }
 
@@ -451,7 +451,6 @@ int main() {
     assert(vitality_duration(&npc, &npc) == 30 && vitality_duration(&npc, &ch) == 10);
     assert(vitality_duration(&ch, &npc) == 12 && summon_lag(&npc) == 2 * PULSE_VIOLENCE);
     // A globe recast never reaches its renewal: spell_globe() returns on a globed target.
-    assert(globe_refresh_duration() == 8);
 
     // Each converted spell's ID maps to its facts.
     const std::pair<int, AbilityFacts> registered[] = {
@@ -693,8 +692,11 @@ int main() {
         { air_form_facts, "8-9 game hours (10-11.25 minutes)" },
         { deflect_facts, "until it deflects a damage spell" },
         { airy_water_facts, "125 seconds at your level, 50" } };
-    for (auto [facts, duration] : durations)
-        assert(facts(&ch) == "  Duration: " + std::string(duration) + "\n");
+    for (auto [facts, duration] : durations) {
+        std::string expected = "  Duration: " + std::string(duration) + "\n";
+        if (facts == globe_facts) expected += "  It cannot be refreshed while active.\n";
+        assert(facts(&ch) == expected);
+    }
     assert(lodestone_vision_facts(&ch) == "  Shortest duration: 5-6 game hours (6.25-7.5 minutes)\n"
                                           "  Longest duration: 7-8 game hours (8.75-10 minutes)\n");
     assert(strength_facts(&ch) == "  Strength: +10\n  Duration: 50-51 game hours (62.5-63.75 minutes)\n");
@@ -714,10 +716,12 @@ int main() {
     assert(haste_facts(&ch) == "  Duration: 25-26 game hours (31.25-32.5 minutes)\n");
     assert(group_haste_facts(&ch) == "  Haste on each group member in the room:\n"
                                      "  Duration: 16-17 game hours (20-21.25 minutes)\n");
-    assert(globe_facts(&ch) == "  Duration: 15-16 game hours (18.75-20 minutes)\n");
+    assert(globe_facts(&ch) == "  Duration: 15-16 game hours (18.75-20 minutes)\n"
+           "  It cannot be refreshed while active.\n");
     assert(contains(group_globe_facts(&ch), "  Duration: 15-16 game hours (18.75-20 minutes)\n"));
     set_class(ch, CLASS_SUMMONER, 0);
-    assert(globe_facts(&ch) == "  Duration: 12-13 game hours (15-16.25 minutes)\n");
+    assert(globe_facts(&ch) == "  Duration: 12-13 game hours (15-16.25 minutes)\n"
+           "  It cannot be refreshed while active.\n");
     set_class(ch, 0, 0);
     ch.curr_stats.Str = 80;
     const std::string limit = std::to_string((CAN_CARRY_W(self) / 100) * 70);
@@ -743,7 +747,7 @@ def definitions():
 def check_handlers_use_shared_numbers():
     code = strip_comments(source("magic.c").read_text())
     for handler, calls in CALLS.items():
-        bodies = function_bodies(code, rf"\bvoid\s+{handler}\s*\(")
+        bodies = function_bodies(code, rf"\b(?:void|int)\s+{handler}\s*\(")
         assert len(bodies) == 1, handler
         body = " ".join(bodies[0].split())
         for call in calls:

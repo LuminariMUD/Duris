@@ -597,6 +597,7 @@ void convertMob(P_char ch, bool apply_mob_gold)
 
 	REMOVE_BIT(ch->specials.affected_by3, AFF3_TRACKING | AFF3_FAMINE | AFF3_SWIMMING);
 	REMOVE_BIT(ch->specials.affected_by4, AFF4_SACKING);
+	affect_from_char(ch, SPELL_MEMORY_BLOCK);
 	REMOVE_BIT(ch->specials.affected_by5, AFF5_IMPRISON | AFF5_MEMORY_BLOCK);
 
 	if (IS_SET(ch->specials.act, ACT_ELITE))

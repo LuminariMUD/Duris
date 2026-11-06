@@ -158,8 +158,8 @@ HANDLER_CALLS = {
                                         "af.modifier = enhanced_constitution_bonus(level)"],
         "spell_flesh_armor": ["af1->duration = flesh_armor_duration()", "af.duration = flesh_armor_duration()",
                               "af.modifier = flesh_armor_ac(level)"],
-        "spell_inertial_barrier": ["af1->duration = inertial_barrier_renewal(ch)",
-                                   "af.duration = inertial_barrier_duration(ch)"],
+        "spell_inertial_barrier": ["af1->duration = inertial_barrier_duration()",
+                                   "af.duration = inertial_barrier_duration()"],
         "spell_inflict_pain": ["int dam = inflict_pain_damage(live_rolls, level)", "dam = inflict_pain_saved(dam)"],
         "spell_intellect_fortress": ["af1->duration = intellect_fortress_duration()",
                                      "af.duration = intellect_fortress_duration()",
@@ -190,7 +190,7 @@ HANDLER_CALLS = {
                          "attdiff = BOUNDED(enrage_least(), attdiff, enrage_most())",
                          "berserk(victim, enrage_berserk(live_rolls, attdiff))"],
         "spell_mind_blank": ["af.duration = mind_blank_duration(level)", "af.duration = mind_blank_cooldown()"],
-        "spell_cannibalize": ["af1->duration = cannibalize_renewal(level)", "af.duration = cannibalize_duration(level)"],
+        "spell_cannibalize": ["af1->duration = cannibalize_duration(level)", "af.duration = cannibalize_duration(level)"],
         "spell_tower_iron_will": ["af1->duration = tower_iron_will_duration(level)",
                                   "af.duration = tower_iron_will_duration(level)"],
         "spell_radial_navigation": ["distance > radial_navigation_range(ch)",
@@ -202,7 +202,7 @@ HANDLER_CALLS = {
                              "CharWait(ch, ether_warp_punishment_lag())", "distance = ether_warp_range(level)",
                              "CharWait(ch, ether_warp_lag())"],
         "spell_thought_beacon": ["int duration = thought_beacon_duration(level)",
-                                 "af.duration = thought_beacon_link(duration)",
+                                 "af.duration = duration",
                                  "set_obj_affected(beacon, duration, TAG_OBJ_DECAY, 0)"],
         "spell_wormhole": ["GET_LEVEL(victim) < wormhole_protected_below()",
                            "CharWait(ch, wormhole_punishment_lag())", "distance = wormhole_range(level)",
@@ -472,7 +472,7 @@ int main() {
             for (int attdiff : { WAIT_SEC, WAIT_SEC * 7, WAIT_SEC * 15 })
                 SAME(number((2 * attdiff) / 3, (4 * attdiff) / 3), enrage_berserk(rolls, attdiff));
             int decay_timer = 0;
-            SAME(old_wormhole(ch, &decay_timer), wormhole_throughput(rolls, ch));
+            SAME(std::max(1, old_wormhole(ch, &decay_timer)), wormhole_throughput(rolls, ch));
             assert(decay_timer == wormhole_decay_timer(ch));
             SAME(number(2, 5), divine_power_bonus(rolls));
             SAME(number(80, 150), celestial_aura_ac(rolls));
@@ -506,7 +506,7 @@ int main() {
         assert(intellect_fortress_intelligence(level) == 1 + level / 5);
         assert(pyrokinesis_penalty(level) == (int)(-1 * (level / 5)));
         assert(mind_blank_duration(level) == level * 2 * WAIT_SEC);
-        assert(cannibalize_duration(level) == level && cannibalize_renewal(level) == 2 * level / 3);
+        assert(cannibalize_duration(level) == level);
         assert(tower_iron_will_duration(level) == level / 2);
         assert(thought_beacon_duration(level) == level * 4 * WAIT_MIN);
         assert(holy_sword_duration(level) == level / 2 && divine_power_duration(level) == level / 2);
@@ -533,8 +533,7 @@ int main() {
         }
         char_data ch = viewer(viewers[1], level);
         // Below 57 the old if-chain's "< 57" branch took every level.
-        assert(inertial_barrier_duration(&ch) == (level >= 57 ? 50 : 30));
-        assert(inertial_barrier_renewal(&ch) == (level >= 57 ? 50 : 30));
+        assert(inertial_barrier_duration() == 30);
         assert(mental_anguish_duration(&ch) == WAIT_SEC * (level / 2));
         assert(radial_navigation_range(&ch) == level + 10);
         assert(lend_health_most(&ch) == 25 + level * 3 / 2);
@@ -585,7 +584,7 @@ int main() {
            "  It has no effect while you have any skin spell.\n");
     assert(contains(cannibalize_facts(&ch),
                     "  Duration: 56-57 game hours (70-71.25 minutes) at your level, 56\n"
-                    "  If cast again while it lasts: 37-38 game hours (46.25-47.5 minutes)\n"
+                    "  Casting it again renews the full duration.\n"
                     "  Mana you take per hit: 18-186\n"
                     "  It rises with the damage dealt, and is taken after the damage lands.\n"
                     "  A hit must deal more than: 2\n"
@@ -708,7 +707,8 @@ int main() {
                     "  Never more than the target is missing. Healing modifiers apply.\n"
                     "  The target stops short of full health by: 1-4\n"
                     "  Refused if it would leave you below: -9 health\n"));
-    assert(memory_block_facts(&ch) == "  Chance each cast fails: 1 in 2\n"
+    assert(memory_block_facts(&ch) == "  Duration: 28 seconds\n"
+                                      "  Chance each cast fails: 1 in 2\n"
                                       "  A target that makes its power save is unaffected.\n");
     assert(contains(mental_anguish_facts(&ch), "  Duration: 28 seconds at your level, 56\n"));
     assert(contains(mind_blank_facts(&ch),
@@ -725,8 +725,9 @@ int main() {
                     "  If the target fails its power save: 70-1120\n"
                     "  If the target has left your room: a third, 18-298\n"
                     "  Mana per continuing wave: 50\n"
-                    "  Chance a target may try to shrug the first hit: 2 in 3\n"
+                    "  Chance a target may try to shrug the first hit: 1 in 3\n"
                     "  Chance it may try to shrug a wave: 1 in 3\n"
+                    "  This gates the shrug attempt; it does not change the target's shrug rating.\n"
                     "  A shrug of the first hit ends it; a shrugged wave still costs mana.\n"
                     "  Waves need the target to survive what came before.\n"
                     "  The target must be at full health when you cast it.\n"
@@ -764,7 +765,7 @@ int main() {
     assert(contains(spinal_corruption_facts(&ch), "  Slowness if not already under it: 3-4 game hours (3.75-5 minutes)\n"));
     assert(contains(thought_beacon_facts(&ch),
                     "  Beacon lasts: 224 minutes at your level, 56\n"
-                    "  Your link to it: 179-180 game hours (223.75-225 minutes)\n"));
+                    "  Your link to it: 224 minutes\n"));
     assert(tower_iron_will_facts(&ch) ==
            "  Duration: 28-29 game hours (35-36.25 minutes) at your level, 56\n"
            "  Psionic damage you take: 75% of normal\n"
@@ -821,8 +822,8 @@ int main() {
     assert(contains(divine_power_facts(&ch), "  Hit points: above level 49\n"));
     assert(contains(mental_anguish_facts(&ch), "  Duration: 0 seconds at your level, 1\n"));
     assert(contains(thought_beacon_facts(&ch), "  Beacon lasts: 4 minutes at your level, 1\n"
-                                               "  Your link to it: 3-4 game hours (3.75-5 minutes)\n"));
-    assert(contains(wormhole_facts(&ch), "  Can pass each way: no limit at your level, 1\n"));
+                                               "  Your link to it: 4 minutes\n"));
+    assert(contains(wormhole_facts(&ch), "  Can pass each way: 1 at your level, 1\n"));
     assert(contains(cannibalize_facts(&ch), "  Mana you take per hit: 0-3\n"));
     assert(contains(combat_mind_facts(&ch), "  Extra main weapon attacks: 1, or 2 above level 51\n"));
     ch = viewer(viewers[1], 51);
@@ -839,14 +840,14 @@ int main() {
     ch = viewer(viewers[1], 3);
     assert(contains(displacement_facts(&ch), "  Duration: permanent at your level, 3\n"));
     ch = viewer(viewers[1], 44);
-    assert(contains(wormhole_facts(&ch), "  Can pass each way: up to 3, or no limit on a low roll"
+    assert(contains(wormhole_facts(&ch), "  Can pass each way: 1-3"
                                          " at your level, 44\n"));
     ch = viewer(viewers[1], 49);
     assert(contains(divine_power_facts(&ch), "  Hit points: above level 49\n"));
     ch = viewer(viewers[1], 50);
     assert(contains(divine_power_facts(&ch), "  Hit points: +50\n"));
     ch = viewer(viewers[1], 57);
-    assert(contains(inertial_barrier_facts(&ch), "  Duration: 50-51 game hours (62.5-63.75 minutes)\n"));
+    assert(contains(inertial_barrier_facts(&ch), "  Duration: 30-31 game hours (37.5-38.75 minutes)\n"));
     assert(contains(awe_facts(&ch), "  Highest target level: 65 at your level, 57\n"
                                     "  Target plus charmed followers: below 500 total levels\n"
                                     "  Chance threshold: "));
@@ -946,9 +947,9 @@ BRANCHES = {
         "event_psionic_wave_blast": [r"!psionic_wave_blast_shrug_roll\(live_rolls\) && resists_spell",
                                      r"POW_DIFF\(ch, victim\)\)\)\s*dam = psionic_wave_blast_failed_save\(dam\)",
                                      r"victim->in_room\)\s*dam = psionic_wave_blast_away\(dam\)"],
-        "spell_psionic_wave_blast": [r"dam = psionic_wave_blast_damage\(live_rolls, level\);\s*if \(psionic_wave_blast_shrug_roll\(live_rolls\) && resists_spell"],
+        "spell_psionic_wave_blast": [r"dam = psionic_wave_blast_damage\(live_rolls, level\);\s*if \(!psionic_wave_blast_shrug_roll\(live_rolls\) && resists_spell"],
         "spell_ether_warp": [r"SPEC_PSYCHEPORTER\)\)\s*\{.*?\}\s*else\s*\{\s*CharWait\(ch, ether_warp_lag\(\)\)"],
-        "spell_cannibalize": [r"SPELL_CANNIBALIZE\)\s*\{\s*af1->duration = cannibalize_renewal\(level\)"],
+        "spell_cannibalize": [r"SPELL_CANNIBALIZE\)\s*\{\s*af1->duration = cannibalize_duration\(level\)"],
     },
     "avengers.c": {
         "spell_holy_sword": [r"APPLY_DAMROLL;\s*af\.modifier = holy_sword_bonus\(\)",
@@ -1034,13 +1035,8 @@ def check_sources():
     assert "strip_holy_sword(victim)" in source("actnew.c").read_text()
     assert re.search(r"ch->equipment\[WIELD\] == obj\)\s*\{\s*strip_holy_sword\(ch\)",
                      strip_comments(source("actobj.c").read_text()))
-    # The inertial barrier chains are the originals.
     psionics = strip_comments(PSIONICS)
-    for handler, last in (("inertial_barrier_renewal", 10), ("inertial_barrier_duration", 6)):
-        chain = function_bodies(psionics, rf"\bint\s+{handler}\s*\(")[0]
-        assert re.search(r">= 57\)\s*duration = 50;\s*else if \(GET_LEVEL\(ch\) < 57\)\s*duration = 30;\s*"
-                         r"else if \(GET_LEVEL\(ch\) < 50\)\s*duration = 15;\s*"
-                         rf"else if \(GET_LEVEL\(ch\) < 41\)\s*duration = {last};", chain), handler
+    assert "return 30;" in function_bodies(psionics, r"\bint\s+inertial_barrier_duration\s*\(")[0]
     # The depart page names the rooms of this macro.
     assert "world[r].number >= 5700 && world[r].number <= 5999" in source("utils.h").read_text()
     # An area cast can skip players.

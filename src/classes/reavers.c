@@ -1552,6 +1552,7 @@ std::string lliendils_stormshock_facts(P_char ch)
 		    show_landing({ lliendils_stormshock_damage(lowest_rolls, level),
 				   lliendils_stormshock_damage(highest_rolls, level) })) +
 	       "  It cannot be shrugged. Constructs are unaffected.\n"
+	       "  With lightning shield, 5% of hits deal 10% more lightning damage.\n"
 	       "  You need a one-handed sword, axe or dagger in hand.\n";
 }
 
@@ -1604,7 +1605,7 @@ void spell_lliendils_stormshock(int level, P_char ch, char * /*arg*/, [[maybe_un
 
 bool lliendils_stormshock(P_char ch, P_char victim, P_obj wpn)
 {
-	int dam;
+	double dam;
 
 	struct damage_messages messages = {
 		"&+BSearing &+Yb&+Colt&+Ys &+Bof &+Lblack &+Blig&+Whtn&+Bing &+Bflow forth from your $q, &+Bstriking $N!&n",
@@ -1627,7 +1628,7 @@ bool lliendils_stormshock(P_char ch, P_char victim, P_obj wpn)
 
 	if (IS_AFFECTED3(ch, AFF3_LIGHTNINGSHIELD) && number(1, 100) <= 5)
 	{
-		// apply some lightning effect
+		dam *= 1.1;
 		act("&+BA HUGE bolt of lightning flares forth from $n's &+Bweapon! ZAAAAP!&n",
 		    FALSE, ch, 0, victim, TO_ROOM);
 		act("&+BA HUGE bolt of lightning flares forth from your weapon! ZAAAAP!&N", FALSE,

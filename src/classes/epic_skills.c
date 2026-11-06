@@ -1192,6 +1192,7 @@ int devotion_power_roll(const Rolls &rolls)
 
 int devotion_power_level(int dev_power)
 {
+	// Intentional: an extra cast uses ten times the positive power left after its roll.
 	return 10 * dev_power;
 }
 

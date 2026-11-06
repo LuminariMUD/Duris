@@ -2175,6 +2175,9 @@ int can_raise_greater_draco(P_char ch);
 void spell_corpseform(int, P_char, char *, int, P_char, P_obj);
 void event_corpseform_wearoff(P_char, P_char, P_obj, void *);
 void spell_undead_to_death(int, P_char, char *, int, P_char, P_obj);
+bool resurrect_corpse(int level, P_char ch, P_obj corpse);
+int grow_spike(int level, P_char ch, P_char victim, int room, bool stationary_growth);
+int spike_growth_damage(int damage, int room);
 
 /* new_skills.c */
 

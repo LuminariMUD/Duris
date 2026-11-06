@@ -2752,7 +2752,7 @@ static int cosmic_vacuum_ac(int level, int victim_ac)
 // APPLY_CURSE adds its size to the target's saves, whatever its sign.
 static int cosmic_vacuum_curse(int level)
 {
-	return level / 5 - 2;
+	return MAX(0, level / 5 - 2);
 }
 
 std::string cosmic_vacuum_facts(P_char ch)
@@ -3831,10 +3831,10 @@ void static_discharge(P_char ch, P_char victim, int level, int intensity)
 		flags |= SPLDAM_NOSHRUG;
 
 	if (intensity >= 3)
-		flags &= SPLDAM_GLOBE;
+		flags &= ~SPLDAM_GRSPIRIT;
 
 	if (intensity >= 2)
-		flags &= SPLDAM_GRSPIRIT;
+		flags &= ~SPLDAM_GLOBE;
 
 	spell_damage(ch, victim, dam, SPLDAM_LIGHTNING, flags, &messages);
 }
@@ -4512,7 +4512,7 @@ std::string etheric_gust_facts(P_char ch)
 void spell_etheric_gust(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			P_obj /*obj*/)
 {
-	P_char t_ch;
+	P_char t_ch, next;
 	int tries = 0, to_room, dir;
 	int range = etheric_gust_range();
 
@@ -4580,13 +4580,17 @@ void spell_etheric_gust(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	act("&+cA strange &+Wwind &+cbegins to blow and carries $n&+c away into a &+Cvortex!&n",
 	    FALSE, victim, 0, 0, TO_ROOM);
 
+	const int from_room = victim->in_room;
 	if (IS_FIGHTING(victim))
 		stop_fighting(victim);
 
-	if (victim->in_room != NOWHERE)
-		for (t_ch = world[victim->in_room].people; t_ch; t_ch = t_ch->next)
+	if (from_room != NOWHERE)
+		for (t_ch = world[from_room].people; t_ch; t_ch = next)
+		{
+			next = t_ch->next_in_room;
 			if (IS_FIGHTING(t_ch) && GET_OPPONENT(t_ch) == victim)
 				stop_fighting(t_ch);
+		}
 
 	if (victim->in_room != to_room)
 	{

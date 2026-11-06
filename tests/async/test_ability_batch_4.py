@@ -168,14 +168,14 @@ CALLS = {
                         "spell_damage(ch, victim, judgement_smite_damage(live_rolls, ch),",
                         "(judgement_repeat_chance(ch) > number(1, 100))",
                         "j->devotion < judgement_extra_waves()"],
-    "spell_immolate": ["int dam = immolate_damage(live_rolls, ch, type);"],
+    "spell_immolate": ["int dam = immolate_damage(live_rolls, ch);"],
     "event_immolate": ["dam = immolate_burn_damage(live_rolls, ch, burntime);"],
     "event_dread_wave": ["dam = dread_wave_damage(live_rolls, ch, af->modifier, level);",
                          "dam = dread_wave_saved(dam);"],
     "spell_dread_wave": ["af->modifier = dread_wave_waves(live_rolls, ch);",
                          "af->modifier += dread_wave_added_waves(ch);"],
     "event_magma_burst": ["dam = magma_burst_damage(live_rolls, level);"],
-    "spell_magma_burst": ["af->modifier = magma_burst_flares(type);",
+    "spell_magma_burst": ["af->modifier = magma_burst_flares(ch);",
                           "af->modifier = magma_burst_recast_flares(af->modifier);"],
     "spell_single_cdoom_wave": ["int doomdam = cdoom_damage(live_rolls, level);"],
     "spell_cdoom": ["cDoomData.waves = cdoom_waves(live_rolls);"],
@@ -407,13 +407,12 @@ int main() {
                        [&](const Rolls &r) { return judgement_damage(r, c); }, Bounds::hold);
             same_rolls("judgement_smite_damage", [&] { return dice(10, GET_LEVEL(c)); },
                        [&](const Rolls &r) { return judgement_smite_damage(r, c); }, Bounds::hold);
-            for (int type : { SPELL_TYPE_SPELL, SPELL_TYPE_WAND })
-                same_rolls("immolate_damage", [&] {
-                    int dam = GET_LEVEL(c) * 4 + number(4, 20);
-                    if (type > 1)
-                        dam += dam * 0.05;
-                    return dam;
-                }, [&](const Rolls &r) { return immolate_damage(r, c, type); }, Bounds::reached);
+            same_rolls("immolate_damage", [&] {
+                int dam = GET_LEVEL(c) * 4 + number(4, 20);
+                if (GET_SPEC(c, CLASS_DRAGOON, SPEC_DRAGON_PRIEST))
+                    dam += dam * 0.05;
+                return dam;
+            }, [&](const Rolls &r) { return immolate_damage(r, c); }, Bounds::reached);
             for (int burntime = 1; burntime <= 6; ++burntime)
                 same_rolls("immolate_burn_damage", [&] {
                     int dam = (int)GET_LEVEL(c) * 2 + number(4, 20);
@@ -622,7 +621,7 @@ int main() {
         { moonwell_facts(&ch), "  People who can pass: 20\n  Stays open: 30 seconds if cast here\n" },
         { moonstone_facts(&ch), "  Duration: 160-161 game hours (200-201.25 minutes) at your level\n" },
         { spore_cloud_facts(&ch), "  Gas damage: 301-320 at your level, 50\n" },
-        { spore_burst_facts(&ch), "  Gas damage: 289-316 to each foe at your level\n  Your lag: 10 seconds\n" },
+        { spore_burst_facts(&ch), "  Gas damage: 301-352 to each foe at your level\n  Your lag: 10 seconds\n" },
         { holy_dharma_facts(&ch), "  Drawn from an opponent above full health: up to 25 hit points at a time\n" },
         { electrical_execution_facts(&ch), "  Lightning damage: 204-260 at your level, 50\n"
                                            "  First arc: 79-95\n"
@@ -638,7 +637,7 @@ int main() {
         { contain_being_facts(&ch), "  Duration: 25 seconds\n" },
         { animae_cicatrix_facts(&ch), "  Power, wisdom, agility, strength, hitroll, damroll: 10 each\n"
                                       "  Fire protection: 10\n  Max power: 5\n" },
-        { stigmata_draconica_facts(&ch), "  Duration: 10-11 game hours (12.5-13.75 minutes)\n"
+        { stigmata_draconica_facts(&ch), "  Duration: 15-16 game hours (18.75-20 minutes)\n"
                                          "  Spirit damage to yourself: 100 at your current health, before defenses\n" },
         { drakescale_aegis_facts(&ch), "  Hits it weakens: 10-12 at your level\n" },
         { igneus_vitae_facts(&ch), "  Healing to your mount: 150-250 at your level\n" },

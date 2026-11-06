@@ -153,7 +153,7 @@ CALLS = {
     "spell_dispel_magic": ["dispel_magic_wall_damage(live_rolls, level)",
                            "if (!dispel_magic_destroy_roll(live_rolls) && !IS_TRUSTED(ch))",
                            "else if ((dispel_magic_fade_roll(live_rolls) < level) || IS_TRUSTED(ch))"],
-    "spell_resurrect": ["CharWait(ch, resurrect_lag(ch, level));"],
+    "resurrect_corpse": ["CharWait(ch, resurrect_lag(ch, level));"],
     "spell_preserve": ["timePres = preserve_hours(level);"],
     "spell_lesser_resurrect": ["if (int lag = lesser_resurrect_lag(ch, level))"],
     "spell_waterbreath": ["af.duration = waterbreath_duration(level);", "af1->duration = waterbreath_duration(level);"],
@@ -602,7 +602,7 @@ def definition(magic, name):
 def check_handlers_use_shared_numbers(magic):
     code = strip_comments(magic)
     for handler, calls in CALLS.items():
-        bodies = function_bodies(code, r"\bvoid\s+" + handler + r"\s*\(")
+        bodies = function_bodies(code, r"\b(?:void|bool)\s+" + handler + r"\s*\(")
         assert len(bodies) == 1, handler
         for call in calls:
             assert call in bodies[0], (handler, call)

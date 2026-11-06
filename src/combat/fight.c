@@ -408,6 +408,7 @@ void update_dam_factors()
 	dam_factor[DF_SWASHBUCKLER_OFFENSE] = get_property("damage.increase.swashbuckler", 1.25);
 	dam_factor[DF_SANC] = get_property("damage.reduction.sanctuary", 0.8);
 	dam_factor[DF_TROLLSKIN] = get_property("damage.reduction.trollskin", 0.8);
+	// Legacy configured value; barkskin deliberately has no melee damage reduction.
 	dam_factor[DF_BARKSKIN] = get_property("damage.reduction.barkskin", 0.90);
 	dam_factor[DF_BERSERKMELEE] = get_property("damage.reduction.berserk", 0.10);
 	dam_factor[DF_SOULMELEE] = get_property("damage.reduction.soulshield.melee", 0.8);
@@ -10862,15 +10863,18 @@ int calculate_attacks(P_char ch, int attacks[])
 		if (ch->equipment[SECONDARY_WEAPON])
 		{
 			ADD_ATTACK(SECONDARY_WEAPON);
-			if (essence_of_wolf_offhand_roll(live_rolls))
+			if (extra > 0 && essence_of_wolf_offhand_roll(live_rolls))
 			{
 				extra--;
 				ADD_ATTACK(SECONDARY_WEAPON);
 			}
 		}
 
-		while (extra-- > 0)
+		while (extra > 0)
+		{
+			--extra;
 			ADD_ATTACK(PRIMARY_WEAPON);
+		}
 	}
 
 	// This is a reaver-only bonus, as it goddamned should have been originally

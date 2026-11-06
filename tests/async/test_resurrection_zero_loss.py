@@ -6,7 +6,7 @@ import tempfile
 
 from _paths import source
 
-function = source('magic.c').read_text().split('void spell_resurrect(', 1)[1]
+function = source('magic.c').read_text().split('bool resurrect_corpse(', 1)[1]
 start = function.index('\t/*\n\t * restore lost exp from death')
 block = function[start:function.index('\n\tGET_HIT(t_ch)', start)]
 prelude = r'''

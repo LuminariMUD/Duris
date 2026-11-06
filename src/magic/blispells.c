@@ -117,7 +117,8 @@ void spell_thornskin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 	}
 	if (!victim || !IS_ALIVE(victim))
 	{
-		act("$N is not a valid target.", TRUE, ch, 0, victim, TO_CHAR);
+		send_to_char("That is not a valid target.\n", ch);
+		return;
 	}
 	if (racewar(ch, victim))
 	{
@@ -586,7 +587,8 @@ void event_waves_fatigue(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 
 static int waves_fatigue_moves(const Rolls &rolls, P_char ch)
 {
-	return GET_LEVEL(ch) / 4 + rolls.number(-4, 2);
+	const int moves = GET_LEVEL(ch) / 4 + rolls.number(-4, 2);
+	return MAX(1, moves);
 }
 
 // A positive save modifier makes the save harder.
@@ -597,7 +599,7 @@ static int waves_fatigue_save(int level)
 
 static int waves_fatigue_saved(int moves)
 {
-	return moves / 4;
+	return MAX(1, moves / 4);
 }
 
 static int waves_fatigue_second_wave()
@@ -624,8 +626,6 @@ std::string waves_fatigue_facts(P_char ch)
 			     { waves_fatigue_saved(moves.low), waves_fatigue_saved(moves.high) })) +
 		fact("Waves", "one now, then after " + seconds(waves_fatigue_second_wave()) +
 				      " and " + seconds(waves_fatigue_third_wave()));
-	if (moves.low < 0)
-		text += "  A wave below 0 gives the target vitality.\n";
 	return text + "  One roll sets all three waves.\n"
 		      "  A target already suffering waves is not affected again.\n";
 }
@@ -1620,7 +1620,7 @@ static int toxic_fog_damage(const Rolls &rolls, int level)
 	return rolls.dice(4 * MIN(20, (level / 2 + 1)), 7);
 }
 
-static int toxic_fog_failed_save(int dam)
+static int toxic_fog_saved(int dam)
 {
 	dam /= 1.5;
 	return dam;
@@ -1633,8 +1633,8 @@ std::string toxic_fog_facts(P_char ch)
 	const int high = toxic_fog_damage(highest_rolls, level);
 	return fact("Gas damage",
 		    show({ low, high }) + " at your level, " + std::to_string(level)) +
-	       fact("If the target fails its save",
-		    show({ toxic_fog_failed_save(low), toxic_fog_failed_save(high) })) +
+	       fact("If the target makes its save",
+		    show({ toxic_fog_saved(low), toxic_fog_saved(high) })) +
 	       "  Globes and spirit wards do not stop it.\n"
 	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
@@ -1662,9 +1662,9 @@ void spell_toxic_fog(int level, P_char ch, char * /*arg*/, int /*type*/, P_char 
 	dam = toxic_fog_damage(live_rolls, level);
 
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_TOXIC_FOG);
-	if (!NewSaves(victim, SAVING_SPELL, mod))
+	if (NewSaves(victim, SAVING_SPELL, mod))
 	{
-		dam = toxic_fog_failed_save(dam);
+		dam = toxic_fog_saved(dam);
 	}
 
 	spell_damage(ch, victim, dam, SPLDAM_GAS, 0, &messages);
@@ -1865,11 +1865,10 @@ static int bloodstone_duration(int level)
 
 std::string bloodstone_facts(P_char ch)
 {
-	return fact("Duration", game_hours(bloodstone_duration(GET_LEVEL(ch)) / PULSES_IN_TICK) +
-					" at your level") +
+	return fact("Duration", real_time(bloodstone_duration(GET_LEVEL(ch))) + " at your level") +
 	       "  Shadow gate cast on yourself goes to the stone.\n"
 	       "  It fails in a no-teleport room or on the ocean.\n"
-	       "  Casting it again moves the stone but keeps the time left on the link.\n";
+	       "  Casting it again moves the stone and renews both the stone and its link.\n";
 }
 
 void spell_bloodstone(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -1890,26 +1889,6 @@ void spell_bloodstone(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		return;
 	}
 
-	if ((afp = get_spell_from_char(ch, SPELL_BLOODSTONE)))
-	{
-		bloodstone = get_obj_in_list_num(real_object(433), world[afp->modifier].contents);
-		if (bloodstone)
-		{
-			extract_obj(bloodstone, FALSE);
-		}
-		afp->modifier = ch->in_room;
-	}
-	else
-	{
-		memset(&af, 0, sizeof(af));
-		af.type = SPELL_BLOODSTONE;
-		af.flags = /*AFFTYPE_NOSHOW |*/ AFFTYPE_NOSAVE | AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY;
-		af.modifier = ch->in_room;
-		af.duration = duration / PULSES_IN_TICK;
-
-		affect_to_char(ch, &af);
-	}
-
 	bloodstone = read_object(real_object(433), REAL);
 
 	if (!bloodstone)
@@ -1917,6 +1896,28 @@ void spell_bloodstone(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		logit(LOG_DEBUG, "spell_bloodstone: obj 433 not loadable.");
 		return;
 	}
+
+	if ((afp = get_spell_from_char(ch, SPELL_BLOODSTONE)))
+	{
+		P_obj previous;
+		for (previous = world[afp->modifier].contents; previous;
+		     previous = previous->next_content)
+		{
+			if (previous->R_num == real_object(433) &&
+			    previous->value[0] == GET_PID(ch))
+				break;
+		}
+		if (previous)
+			extract_obj(previous, FALSE);
+		affect_from_char(ch, SPELL_BLOODSTONE);
+	}
+
+	memset(&af, 0, sizeof(af));
+	af.type = SPELL_BLOODSTONE;
+	af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY | AFFTYPE_NOSAVE;
+	af.modifier = ch->in_room;
+	af.duration = duration;
+	affect_to_char(ch, &af);
 
 	send_to_char(
 		"&+WA shimmering stone begins to take shape....\n"

@@ -584,9 +584,9 @@ static int raised_undead_late_death_roll(const Rolls &rolls)
 	return rolls.number(1, 10);
 }
 
-static int raised_undead_death_delay(int duration)
+static int raised_undead_death_delay(int duration, int grace_minutes)
 {
-	return (duration + 1) * 60 * 4;
+	return duration * PULSES_IN_TICK + (grace_minutes + 1) * WAIT_MIN;
 }
 
 // The lines every raise page ends with.
@@ -594,12 +594,12 @@ static std::string raised_undead_shared_facts(P_char ch, int level)
 {
 	std::string text = fact("Control lasts at least", game_hours(raised_undead_control(0))) +
 			   "  It lasts longer on a fresher corpse.\n" +
-			   fact("It dies after its charm's ticks as minutes, plus",
+			   fact("It dies after its charm ends, plus",
 				real_time(raised_undead_death_delay(
-					raised_undead_late_death_roll(lowest_rolls))) +
+					0, raised_undead_late_death_roll(lowest_rolls))) +
 					" to " +
 					real_time(raised_undead_death_delay(
-						raised_undead_late_death_roll(highest_rolls)))) +
+						0, raised_undead_late_death_roll(highest_rolls)))) +
 			   "  A globe of shadows or unholy alliance makes the charm permanent,\n"
 			   "  and then it does not die.\n" +
 			   fact("A globe of shadows also adds to infuse life",
@@ -1049,8 +1049,9 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	/* if the undead will stop being charmed after a bit, also make it suicide 1-10 minutes later */
 	if (duration >= 0)
 	{
-		duration += raised_undead_late_death_roll(live_rolls);
-		schedule_pet_death(undead, raised_undead_death_delay(duration));
+		schedule_pet_death(undead,
+				   raised_undead_death_delay(
+					   duration, raised_undead_late_death_roll(live_rolls)));
 	}
 }
 
@@ -1408,7 +1409,7 @@ static int corpse_pet_rebel_death(const Rolls &rolls)
 
 static int corpse_pet_death_delay(int duration)
 {
-	return (duration + 1) * 60 * WAIT_SEC;
+	return duration * PULSES_IN_TICK + WAIT_MIN;
 }
 
 // A pet with strength or dexterity below the floor gets this for both.
@@ -1467,12 +1468,12 @@ std::string call_titan_facts(P_char ch)
 	       corpse_pet_shared_facts(ch, GET_LEVEL(ch), false,
 				       corpse_pet_rebel_roll(highest_rolls),
 				       corpse_pet_rebel_roll(lowest_rolls), false) +
-	       fact("It dies after its charm's ticks as minutes, plus",
+	       fact("It dies after its charm ends, plus",
 		    real_time(raised_undead_death_delay(
-			    raised_undead_late_death_roll(lowest_rolls))) +
+			    0, raised_undead_late_death_roll(lowest_rolls))) +
 			    " to " +
 			    real_time(raised_undead_death_delay(
-				    raised_undead_late_death_roll(highest_rolls))));
+				    0, raised_undead_late_death_roll(highest_rolls))));
 }
 
 void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -1682,8 +1683,9 @@ void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		/* if the undead will stop being charmed after a bit, also make it suicide 1-10 minutes later */
 		if (duration >= 0)
 		{
-			duration += raised_undead_late_death_roll(live_rolls);
-			schedule_pet_death(mob, raised_undead_death_delay(duration));
+			schedule_pet_death(mob, raised_undead_death_delay(
+							duration,
+							raised_undead_late_death_roll(live_rolls)));
 		}
 	}
 }
@@ -1736,8 +1738,7 @@ std::string create_dracolich_facts(P_char ch)
 		    std::to_string(create_dracolich_ac(ch))) +
 	       corpse_pet_shared_facts(ch, level, false, corpse_pet_rebel_roll(highest_rolls),
 				       corpse_pet_rebel_roll(lowest_rolls), true) +
-	       fact("It dies after its charm's ticks as minutes, plus",
-		    real_time(corpse_pet_death_delay(0)));
+	       fact("It dies after its charm ends, plus", real_time(corpse_pet_death_delay(0)));
 }
 
 void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -2113,12 +2114,12 @@ std::string create_golem_facts(P_char ch)
 	       "  Its control lasts longer on a fresher corpse and with a duller pet.\n"
 	       "  A globe of shadows or unholy alliance makes the charm permanent,\n"
 	       "  and then it does not die.\n" +
-	       fact("It dies after its charm's ticks as minutes, plus",
+	       fact("It dies after its charm ends, plus",
 		    real_time(raised_undead_death_delay(
-			    raised_undead_late_death_roll(lowest_rolls))) +
+			    0, raised_undead_late_death_roll(lowest_rolls))) +
 			    " to " +
 			    real_time(raised_undead_death_delay(
-				    raised_undead_late_death_roll(highest_rolls)))) +
+				    0, raised_undead_late_death_roll(highest_rolls)))) +
 	       fact("A globe of shadows replaces infuse life with",
 		    std::to_string(corpse_pet_globe_life(ch))) +
 	       "  Safe rooms block it, and the corpse must be here. You must be able to move.\n"
@@ -2357,8 +2358,9 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	/* if the undead will stop being charmed after a bit, also make it suicide 1-10 minutes later */
 	if (duration >= 0)
 	{
-		duration += raised_undead_late_death_roll(live_rolls);
-		schedule_pet_death(mob, raised_undead_death_delay(duration));
+		schedule_pet_death(
+			mob, raised_undead_death_delay(duration,
+						       raised_undead_late_death_roll(live_rolls)));
 	}
 }
 
@@ -2380,12 +2382,12 @@ std::string call_avatar_facts(P_char ch)
 	       corpse_pet_shared_facts(ch, GET_LEVEL(ch), true,
 				       corpse_pet_rebel_roll(highest_rolls),
 				       corpse_pet_rebel_roll(lowest_rolls), false) +
-	       fact("It dies after its charm's ticks as minutes, plus",
+	       fact("It dies after its charm ends, plus",
 		    real_time(raised_undead_death_delay(
-			    raised_undead_late_death_roll(lowest_rolls))) +
+			    0, raised_undead_late_death_roll(lowest_rolls))) +
 			    " to " +
 			    real_time(raised_undead_death_delay(
-				    raised_undead_late_death_roll(highest_rolls))));
+				    0, raised_undead_late_death_roll(highest_rolls))));
 }
 
 void spell_call_avatar(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -2611,8 +2613,9 @@ void spell_call_avatar(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 		/* if the undead will stop being charmed after a bit, also make it suicide 1-10 minutes later */
 		if (duration >= 0)
 		{
-			duration += raised_undead_late_death_roll(live_rolls);
-			schedule_pet_death(mob, raised_undead_death_delay(duration));
+			schedule_pet_death(mob, raised_undead_death_delay(
+							duration,
+							raised_undead_late_death_roll(live_rolls)));
 		}
 	}
 }
@@ -2677,8 +2680,7 @@ std::string create_greater_dracolich_facts(P_char ch)
 		    std::to_string(greater_dracolich_ac(level))) +
 	       corpse_pet_shared_facts(ch, level, true, greater_dracolich_rebel_roll(highest_rolls),
 				       greater_dracolich_rebel_roll(lowest_rolls), true) +
-	       fact("It dies after its charm's ticks as minutes, plus",
-		    real_time(corpse_pet_death_delay(0)));
+	       fact("It dies after its charm ends, plus", real_time(corpse_pet_death_delay(0)));
 }
 
 void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -3499,7 +3501,7 @@ void spell_slashing_darkness(int level, P_char ch, char * /*arg*/, int /*type*/,
 			     SPLDAM_ALLGLOBES | SPLDAM_NOSHRUG, &messages);
 }
 
-// A greater or elite caster, or a pet target, takes this save modifier.
+// A greater-race, elite or player-pet target takes this save modifier.
 static int undead_to_death_fixed_save()
 {
 	return 5;
@@ -3649,7 +3651,7 @@ void spell_undead_to_death(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 		return;
 	}
 
-	if (IS_GREATER_RACE(ch) || IS_ELITE(ch) || IS_PC_PET(victim))
+	if (IS_GREATER_RACE(victim) || IS_ELITE(victim) || IS_PC_PET(victim))
 	{
 		save = undead_to_death_fixed_save();
 	}

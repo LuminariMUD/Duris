@@ -37,6 +37,7 @@ extern int get_multicast_chars(P_char leader, int m_class, int min_level);
 int fight_in_room(P_char ch);
 extern P_obj object_list;
 extern P_room world;
+extern P_nevent ne_schedule[PULSES_IN_TICK];
 extern const int top_of_world;
 extern struct minor_create_struct minor_create_name_list[];
 extern struct zone_data *zone_table;
@@ -912,7 +913,7 @@ std::string aura_of_rebirth_facts(P_char ch)
 	       fact("Afterwards, lag per corpse", seconds(aura_of_rebirth_lag(1))) +
 	       "  Each raise also lags you as resurrect does.\n" + resurrect_facts(ch) +
 	       "  It raises every player corpse in the room.\n"
-	       "  It sets your hit points even with no corpse to raise.\n"
+	       "  It charges hit points only if at least one corpse is successfully raised.\n"
 	       "  It is refused while anyone in the room is fighting.\n";
 }
 
@@ -941,12 +942,12 @@ void cast_area_resurrect(int level, P_char ch, char * /*arg*/, [[maybe_unused]] 
 		t_obj = obj->next_content;
 		if (obj->type == ITEM_CORPSE && IS_SET(obj->value[1], PC_CORPSE))
 		{
-			spell_resurrect(level, ch, 0, 0, 0, obj);
-			i++;
+			if (resurrect_corpse(level, ch, obj))
+				i++;
 		}
 	}
 
-	if (IS_TRUSTED(ch))
+	if (IS_TRUSTED(ch) || i == 0)
 		return;
 
 	GET_HIT(ch) = aura_of_rebirth_hit_points(i);
@@ -1787,7 +1788,7 @@ bool prepare_room_transmute(P_char ch, int room, int skill, int duration, int de
 }
 
 //-------------------------------------------------------------------------------
-void finish_room_transmute(P_char ch, struct grow_data *data)
+void finish_room_transmute(P_char /*ch*/, struct grow_data *data)
 {
 	struct grow_data g_data;
 	struct room_affect *af;
@@ -1810,17 +1811,21 @@ void finish_room_transmute(P_char ch, struct grow_data *data)
 
 	// find an associated event and disarm it
 	// also take original room sector/flags
-	P_nevent e;
-	for (e = get_scheduled(ch, event_transmute_bye); e;
-	     e = get_next_scheduled_char(e, event_transmute_bye))
+	for (int i = 0; i < PULSES_IN_TICK; i++)
 	{
-		struct grow_data *tmp_data = (struct grow_data *)e->data;
-		if (tmp_data->room == data->room)
+		for (P_nevent e = ne_schedule[i]; e; e = e->next_sched)
 		{
-			g_data.old_sect = tmp_data->old_sect;
-			g_data.flags = tmp_data->flags;
+			if (e->func != event_transmute_bye || !e->data)
+				continue;
+			const auto *original = static_cast<grow_data *>(e->data);
+			if (original->room != data->room)
+				continue;
+			g_data.old_sect = original->old_sect;
+			g_data.flags = original->flags;
 			nevent_cancel(nevent_handle_from_event(e));
-			break;
+			add_event(event_transmute_bye, data->duration, 0, NULL, NULL, 0, &g_data,
+				  sizeof(g_data));
+			return;
 		}
 	}
 
@@ -2679,6 +2684,30 @@ void cast_vines(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 	affect_to_char(ch, &af);
 }
 
+// Poor terrain weakens every damaging outcome, including the grow-spike hit.
+int spike_growth_damage(int damage, int room)
+{
+	switch (world[room].sector_type)
+	{
+	case SECT_FOREST:
+	case SECT_HILLS:
+	case SECT_UNDRWLD_MUSHROOM:
+	case SECT_UNDRWLD_SLIME:
+	case SECT_UNDRWLD_INSIDE:
+	case SECT_UNDRWLD_WILD:
+	case SECT_UNDRWLD_CITY:
+	case SECT_CITY:
+	case SECT_INSIDE:
+	case SECT_MOUNTAIN:
+	case SECT_ARCTIC:
+	case SECT_EARTH_PLANE:
+	case SECT_ROAD:
+		return damage;
+	default:
+		return damage * 9 / 10;
+	}
+}
+
 struct spike_growth_data
 {
 	int room;
@@ -2761,14 +2790,15 @@ std::string spike_growth_facts(P_char ch)
 	       fact("Snapped bones", show({ spike_growth_bone_damage(lowest_rolls, ch),
 					    spike_growth_bone_damage(highest_rolls, ch) })) +
 	       "  Globes and spirit wards do not stop this damage.\n"
-	       "  Leaving the room can end it early.\n"
+	       "  It stays in the original room when you move.\n"
+	       "  Poor terrain deals 10% less damage on every damaging outcome.\n"
 	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
-void event_spike_growth(P_char ch, P_char /*victim*/, P_obj obj, void *data)
+void event_spike_growth(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 {
 	struct spike_growth_data *sgd;
-	P_char tch;
+	P_char tch, next;
 	int dam, technique, duration, chance;
 	struct room_affect af;
 
@@ -2788,7 +2818,7 @@ void event_spike_growth(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 	{
 		send_to_room(
 			"The creaking of the &+yearth&n can be heard as it starts to move beneath your feet...\r\n",
-			ch->in_room);
+			sgd->room);
 		sgd->iter++;
 
 		duration = spike_growth_duration(live_rolls);
@@ -2797,7 +2827,7 @@ void event_spike_growth(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 		af.type = SPELL_SPIKE_GROWTH;
 		af.duration = duration;
 		af.ch = ch;
-		affect_to_room(ch->in_room, &af);
+		affect_to_room(sgd->room, &af);
 
 		goto spike_grow_next;
 	}
@@ -2817,8 +2847,9 @@ void event_spike_growth(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 
 	chance = spike_growth_affect_chance();
 
-	for (tch = world[sgd->room].people; tch; tch = tch->next_in_room)
+	for (tch = world[sgd->room].people; tch; tch = next)
 	{
+		next = tch->next_in_room;
 		char buf[1024];
 
 		memset(buf, 0, sizeof(buf));
@@ -2837,26 +2868,37 @@ void event_spike_growth(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 		switch (technique)
 		{
 		case 1:
-			spell_grow_spike(GET_LEVEL(ch), ch, 0, 0, tch, obj);
+			if (grow_spike(GET_LEVEL(ch), ch, tch, sgd->room, true) < DAM_NONEDEAD)
+				return;
 			break;
 		case 2:
 			act("A &+yHUGE SPIKE&n bursts from the &+yground&n and pierces you in the foot!.",
 			    FALSE, tch, 0, 0, TO_CHAR);
 			act("A &+yHUGE SPIKE&n bursts from the &+yground&n piercing&n $n's &+yfoot!&n",
 			    FALSE, tch, 0, 0, TO_NOTVICT);
-			spell_damage(ch, tch, spike_growth_foot_damage(live_rolls, ch),
-				     SPLDAM_GENERIC, 0, &message);
+			dam = spike_growth_damage(spike_growth_foot_damage(live_rolls, ch),
+						  sgd->room);
+			{
+				const int result =
+					spell_damage(ch, tch, dam, SPLDAM_GENERIC, 0, &message);
+				if (result < DAM_NONEDEAD)
+					return;
+				if (result == DAM_VICTDEAD)
+					break;
+			}
 			SET_POS(tch, POS_SITTING + GET_STAT(tch));
 			CharWait(tch, spike_growth_foot_lag());
 			break;
 		case 3:
-			dam = spike_growth_bone_damage(live_rolls, ch);
-			spell_damage(ch, tch, dam, SPLDAM_GENERIC, 0, &message);
+			dam = spike_growth_damage(spike_growth_bone_damage(live_rolls, ch),
+						  sgd->room);
+			if (spell_damage(ch, tch, dam, SPLDAM_GENERIC, 0, &message) < DAM_NONEDEAD)
+				return;
 			break;
 		}
 	}
 
-	if (!get_spell_from_room(&world[ch->in_room], SPELL_SPIKE_GROWTH))
+	if (!get_spell_from_room(&world[sgd->room], SPELL_SPIKE_GROWTH))
 	{
 		send_to_room(
 			"The spike-filled fissures in the &+yearth&n close up and smooth over.\r\n",
@@ -2961,7 +3003,7 @@ std::string awaken_forest_facts(P_char /*ch*/)
 void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 {
 	struct awaken_forest_data *awd;
-	P_char tch;
+	P_char tch, next;
 	int dam, technique, duration;
 	struct room_affect af;
 	int nCnt = 0;
@@ -2985,7 +3027,7 @@ void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 	{
 		send_to_room(
 			"The creaking of &+ytree trunks&n shifting and a low groaning sound can be heard throughout the &+Gforest&n.\r\n",
-			ch->in_room);
+			awd->room);
 		awd->iter++;
 
 		duration = awaken_forest_duration(live_rolls);
@@ -2994,7 +3036,7 @@ void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 		af.type = SPELL_AWAKEN_FOREST;
 		af.duration = duration;
 		af.ch = ch;
-		affect_to_room(ch->in_room, &af);
+		affect_to_room(awd->room, &af);
 
 		goto awaken_next;
 	}
@@ -3018,8 +3060,9 @@ void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 	// now use the nCnt to determine the chance of a hit...
 	// the more people, the less the chance.
 
-	for (tch = world[awd->room].people; tch; tch = tch->next_in_room)
+	for (tch = world[awd->room].people; tch; tch = next)
 	{
+		next = tch->next_in_room;
 		char buf[1024];
 
 		memset(buf, 0, sizeof(buf));
@@ -3069,13 +3112,14 @@ void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 			break;
 		case 3:
 			dam = awaken_forest_branch_damage(live_rolls);
-			spell_damage(ch, tch, dam, SPLDAM_GENERIC, 0, &messages);
+			if (spell_damage(ch, tch, dam, SPLDAM_GENERIC, 0, &messages) < DAM_NONEDEAD)
+				return;
 
 			break;
 		}
 	}
 
-	if (!get_spell_from_room(&world[ch->in_room], SPELL_AWAKEN_FOREST))
+	if (!get_spell_from_room(&world[awd->room], SPELL_AWAKEN_FOREST))
 	{
 		send_to_room(
 			"The flailing &+Gforest&n calms down and returns to its normal state.\r\n",
@@ -3101,25 +3145,10 @@ void cast_spike_growth(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P
 		return;
 	}
 
-	switch (world[ch->in_room].sector_type)
-	{
-	case SECT_FOREST:
-	case SECT_HILLS:
-	case SECT_UNDRWLD_MUSHROOM:
-	case SECT_UNDRWLD_SLIME:
-	case SECT_UNDRWLD_INSIDE:
-	case SECT_UNDRWLD_WILD:
-	case SECT_UNDRWLD_CITY:
-	case SECT_CITY:
-	case SECT_INSIDE:
-	case SECT_MOUNTAIN:
-	case SECT_ARCTIC:
-	case SECT_EARTH_PLANE:
-	case SECT_ROAD:
-		break;
-	default:
-		send_to_char("The ground is not suitable for forming &+yspikes&n\r\n", ch);
-	}
+	if (spike_growth_damage(100, ch->in_room) < 100)
+		send_to_char(
+			"The poor terrain weakens your spikes, reducing their damage by 10%.\r\n",
+			ch);
 
 	sgd.room = ch->in_room;
 	sgd.iter = 0;

@@ -428,6 +428,7 @@ if (IS_AFFECTED3(victim, AFF3_COLDSHIELD))
 
 if (IS_AFFECTED(victim, AFF_BARKSKIN) || IS_AFFECTED5(victim, AFF5_THORNSKIN))
 {
+	// Fire vulnerabilities add their excess above 1.0, including ironwood below.
 	dam_mod->type = dam_mod_type::More;
 	dam_mod->mod += dam_factor[DF_BARKFIRE] - 1.0;
 }

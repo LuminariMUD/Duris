@@ -72,7 +72,7 @@ extern struct str_app_type str_app[];
 extern struct zone_data *zone_table;
 extern const char *undead_type[];
 extern struct potion potion_data[];
-extern bool can_banish(P_char ch, P_char victim);
+extern bool can_banish(P_char ch, P_char victim, bool announce);
 extern unsigned long long ne_event_tick;
 extern bool has_skin_spell(P_char);
 extern bool has_wind_blade_wielded(P_char);
@@ -3700,7 +3700,7 @@ bool CastClericSpell(P_char ch, P_char victim, int helping)
 	{
 		P_char tch;
 		for (tch = world[ch->in_room].people; tch; tch = tch->next_in_room)
-			if (IS_PC_PET(tch) && can_banish(ch, tch))
+			if (IS_PC_PET(tch) && can_banish(ch, tch, false))
 			{
 				spl = SPELL_BANISH;
 				break;

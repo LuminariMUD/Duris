@@ -318,13 +318,13 @@ static int old_mending(int level, P_char ch) {
     int gain = (level * 2) + number(-20, 20);
     if (has_innate(ch, INNATE_IMPROVED_HEAL))
         gain += (int)(number((int)(level / 2), (int)(level)));
-    return gain;
+    return MAX(1, gain);
 }
 static int old_greater_mending(int level, P_char ch) {
     int gain = (level * 3) + number(-30, 30);
     if (has_innate(ch, INNATE_IMPROVED_HEAL))
         gain += (int)(number((int)(level / 2), (int)(level)));
-    return gain;
+    return MAX(1, gain);
 }
 // The animalist cast level, as wolfspeed, pantherspeed, elephantstrength and ravenflight roll it.
 static int old_animalist(int level, P_char ch) {
@@ -559,7 +559,7 @@ int main() {
     assert(contains(etherportal_facts(&ch), "  People who can pass each way: 12-16 at your level, 56\n"
                                             "  Portal lasts: up to 25 seconds\n"));
     ch = viewer(viewers[0], 1);
-    assert(contains(mending_facts(&ch), "  Healing: -18 to 22 at your level, 1\n"));
+    assert(contains(mending_facts(&ch), "  Healing: 1-22 at your level, 1\n"));
     assert(contains(spirit_sight_facts(&ch), "  Detect invisibility: not at your level\n"));
     assert(contains(etherportal_facts(&ch), "  People who can pass each way: 2-6 at your level, 1\n"));
 

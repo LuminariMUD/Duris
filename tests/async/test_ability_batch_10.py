@@ -318,12 +318,12 @@ def check_sources():
              "if (GET_LEVEL(ch) > (banish_outlevel_margin() + GET_LEVEL(victim))) { chance = banish_outlevel_chance(); }",
              "if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT)) { chance = banish_zealot_chance(chance); }",
              "if (IS_GREATER_DRACO(victim) || IS_GREATER_AVATAR(victim)) { chance = banish_greater_chance(chance); }",
-             "chance = banish_bounded_chance(chance);", "if (chance > banish_roll(live_rolls))", "extract_char(victim);"]
+             "chance = banish_bounded_chance(chance);", "if (chance >= banish_roll(live_rolls))", "extract_char(victim);"]
     places = [single.index(step) for step in order]
     assert places == sorted(places)
     assert "NewSaves" not in single
     banish = squeeze(function_bodies(magic, r"\bvoid\s+spell_banish\s*\(")[0])
-    assert banish.count("get_linked_char(tch, LNK_PET) && can_banish(ch, tch)") == 2
+    assert "can_banish(ch, tch, true)" in banish and "can_banish(ch, tch, false)" in banish
     assert "spell_single_banish(level, ch, arg, type, tch, 0);" in banish
     can = squeeze(function_bodies(magic, r"\bbool\s+can_banish\s*\(")[0])
     for rule in ("SECT_EARTH_PLANE", "SECT_FIREPLANE", "SECT_AIR_PLANE", "SECT_WATER_PLANE", "SECT_ETHEREAL",
@@ -356,8 +356,8 @@ def check_sources():
     order = ["int extra = essence_of_wolf_attacks(live_rolls);",
              "extra = MIN(extra, essence_of_wolf_attack_cap(GET_LEVEL(ch)));",
              "if (ch->equipment[SECONDARY_WEAPON]) { ADD_ATTACK(SECONDARY_WEAPON); "
-             "if (essence_of_wolf_offhand_roll(live_rolls)) { extra--; ADD_ATTACK(SECONDARY_WEAPON); } }",
-             "while (extra-- > 0) ADD_ATTACK(PRIMARY_WEAPON);"]
+             "if (extra > 0 && essence_of_wolf_offhand_roll(live_rolls)) { extra--; ADD_ATTACK(SECONDARY_WEAPON); } }",
+             "while (extra > 0) { --extra; ADD_ATTACK(PRIMARY_WEAPON); }"]
     places = [wolf.index(step) for step in order]
     assert places == sorted(places)
     handler = squeeze(function_bodies(strip_comments(source("smagic.c").read_text(encoding="utf-8", errors="replace")),
