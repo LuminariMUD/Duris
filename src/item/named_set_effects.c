@@ -10,6 +10,14 @@
 extern P_index obj_index;
 extern Skill skills[];
 
+void named_set_grant::release_wearer_output()
+{
+	holding_ = false;
+	if (created_ && !held_.empty())
+		send_to_char(held_.c_str(), wearer_);
+	held_.clear();
+}
+
 int named_set_cooldown_remaining(P_char ch, int spell)
 {
 	for (const affected_type *affect = ch->affected; affect; affect = affect->next)

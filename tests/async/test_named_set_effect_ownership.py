@@ -101,7 +101,8 @@ void all_affects(P_char ch,int add) {
 char affect_total(P_char ch,int) {all_affects(ch,FALSE); all_affects(ch,TRUE); return 0;}
 bool SanityCheck(P_char ch,const char *) {return IS_ALIVE(ch);}
 bool has_innate(P_char,int innate) {return innate_eyes && innate==INNATE_OPHIDIAN_EYES;}
-void send_to_char(const char *text,P_char) {
+void send_to_char(const char *text,P_char ch) {
+    if(named_set_grant::hold_output(ch,text)) return;
     ++output_messages;
     if(strstr(text,"spirits of")) ++grants;
     if(strstr(text,"forefathers")) ++guardian_rejections;
@@ -917,6 +918,30 @@ int main() {
     assert(!reconcile_named_set_spell(&companion,SONG_DRAGONS) && get_spell_from_char(&companion,SONG_DRAGONS)==received);
     reset();
     qualify_expansion_effects();
+    {
+        // Rejected periodic attempts print nothing, however many procs run.
+        const auto silent=[](int spell) {
+            const int messages=output_messages;
+            for(int proc=0;proc<6;++proc)
+                apply_zone_spell(&wearer,3,"Rejected",10000+spell,&gear[0],spell);
+            assert(output_messages==messages && !grants && !count(&wearer,spell,true));
+        };
+        for(int spell:{SPELL_PHANTOM_ARMOR,SPELL_VAPOR_ARMOR}) {
+            reset(); spell_armor(40,&wearer,nullptr,0,&wearer,nullptr); silent(spell);
+            reset(); inherent_armor=true; all_affects(&wearer,TRUE); silent(spell);
+        }
+        for(int blocker:{SPELL_PANTHERSPEED,SPELL_MOLEVISION}) {
+            reset();
+            affected_type other{}; other.type=blocker; other.duration=9;
+            affect_to_char(&wearer,&other);
+            silent(blocker==SPELL_PANTHERSPEED?SPELL_WOLFSPEED:SPELL_HAWKVISION);
+        }
+        // A successful attempt keeps the spell's own output and the set's line.
+        reset();
+        const int messages=output_messages;
+        apply_zone_spell(&wearer,3,"Granted",10000+SPELL_FORTITUDE,&gear[0],SPELL_FORTITUDE);
+        assert(grants==1 && output_messages==messages+2);
+    }
 }
 '''
 

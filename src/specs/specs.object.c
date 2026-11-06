@@ -13340,6 +13340,9 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 	}
 
 	named_set_grant grant(ch, ch, zone, spell);
+	// Summons and instant vitality create no set affects and have their own cooldowns.
+	if (spell != SPELL_CONJURE_ELEMENTAL && spell != SPELL_INVIGORATE)
+		grant.hold_wearer_output();
 	int message = SETMSG_NONE;
 	char buffer[512];
 
@@ -13474,6 +13477,7 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 	if (spell != SPELL_CONJURE_ELEMENTAL && spell != SPELL_INVIGORATE &&
 	    !grant.created_affects())
 		message = SETMSG_NONE;
+	grant.release_wearer_output();
 
 	if (message == SETMSG_PROTECT)
 	{

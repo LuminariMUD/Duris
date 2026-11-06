@@ -23,6 +23,7 @@
  */
 
 #include "core/prototypes.h"
+#include "item/named_set_effects.h"
 #include "world/world_singletons.h"
 #include "flatfile/flatfile_shopkeeper_restore.h"
 #include "economy/shopkeeper_boot.h"
@@ -5072,6 +5073,9 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 {
 	static bool bSwitched = FALSE;
 	static bool bWarningAdded = false;
+
+	if (named_set_grant::hold_output(ch, messg))
+		return;
 
 	if (ch && ch->desc && messg)
 	{

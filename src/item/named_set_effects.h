@@ -4,6 +4,7 @@
 #include "core/structs.h"
 #include "magic/spells.h"
 #include <array>
+#include <string>
 #include <vector>
 
 // Records only affects created during the invocation. Keep the native context
@@ -25,6 +26,18 @@ class named_set_grant
 	named_set_grant &operator=(const named_set_grant &) = delete;
 	bool created_affects() const { return created_; }
 	static bool active() { return current_ != nullptr; }
+
+	// A periodic attempt the spell rejects must stay silent: keep the wearer's output
+	// until the attempt finishes, and deliver it only if an affect was created.
+	void hold_wearer_output() { holding_ = true; }
+	void release_wearer_output();
+	static bool hold_output(P_char ch, const char *text)
+	{
+		if (!current_ || !current_->holding_ || ch != current_->wearer_ || !text)
+			return false;
+		current_->held_ += text;
+		return true;
+	}
 
 	static void mark(P_char target, affected_type *affect)
 	{
@@ -62,6 +75,8 @@ class named_set_grant
 	int zone_;
 	int spell_;
 	bool created_ = false;
+	bool holding_ = false;
+	std::string held_;
 	named_set_grant *previous_;
 	inline static thread_local named_set_grant *current_ = nullptr;
 };
