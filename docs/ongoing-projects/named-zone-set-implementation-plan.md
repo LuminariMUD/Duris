@@ -38,7 +38,8 @@ it targets the cooldown branch.
 [PR #730](https://github.com/LuminariMUD/Duris/pull/730)
 (`branch/named-zone-set-eligibility`, implementation commit `a54b99654`)
 restores authored naming eligibility for four existing sets and targets the
-qualification branch. Its wider eligibility review remains in progress below.
+qualification branch. The wider eligibility review is complete in the catalog
+checkpoint below.
 All nine PRs are ready for review; no implementation PR has been merged and no
 release has been performed.
 [PR #732](https://github.com/LuminariMUD/Duris/pull/732)
@@ -63,9 +64,9 @@ The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
 into the foundation and propagated through each dependent branch without
 rewriting history. PR #721 adds inert #150 metadata for retired Misty Chasm
 prototypes, with no rooms or resets; it does not add a playable set candidate.
-The playable Misty Vale remains #3000 in the 104-zone assignment roster. Use the
-current area registry for the remaining wider eligibility review, keeping the
-initial inventory counts distinct from the final reviewed denominator.
+The playable Misty Vale remains #3000 in the 104-zone assignment roster. The
+final reviewed roster uses this current area registry; keep the initial
+inventory counts distinct from the final reviewed denominator.
 History check: `c79fde573^:areas/zon/mist_chasm.zon` gives retired #150 the
 same normalized title as new #3000. The historical-origin correction after #722
 keeps unmarked Misty Vale gear from inheriting #3000's newly assigned effect by
