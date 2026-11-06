@@ -2782,12 +2782,9 @@ void do_summon_totem(P_char ch, char * /*arg*/, int /*cmd*/)
 
 static int summoned_mount_factor(const Rolls &rolls, P_char ch)
 {
-	if (GET_LEVEL(ch) < 6) // TODO: hack for level 1 dragoon mounts dying
-		return (int)(GET_LEVEL(ch) * get_property("mount.summoned.FactorMod", 0.750) +
-			     rolls.number(1, 5));
-	else
-		return (int)(GET_LEVEL(ch) * get_property("mount.summoned.FactorMod", 0.750) +
-			     rolls.number(-5, 5));
+	const int factor = (int)(GET_LEVEL(ch) * get_property("mount.summoned.FactorMod", 0.750) +
+				 rolls.number(GET_LEVEL(ch) < 6 ? 1 : -5, 5));
+	return MAX(1, factor);
 }
 
 static int summoned_mount_level(int factor)
@@ -3432,7 +3429,7 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 		return;
 
 	/* Test if it is an Ogre that hasn't used innate too often */
-	if (GET_RACE(ch) != RACE_OGRE)
+	if (!has_innate(ch, INNATE_OGREROAR))
 	{
 		send_to_char("Your roar doesn't impress anybody that much!\r\n", ch);
 		return;

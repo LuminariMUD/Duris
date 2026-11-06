@@ -112,8 +112,8 @@ SKILL_SAFE_FALL safe_fall falling.c
 
 # Each handler's text: the shared calls, with the rolls the pages count written out.
 HANDLER_CALLS = {
-    ("fight.c", "bool soul_trap("): ["int hps = soul_trap_hit_points(ch, GET_LEVEL(victim));", "number(1, 100) >= soul_trap_threshold(ch)",
-                                     "soul_trap_group_threshold(gl->ch) > number(1, 100)", "vamp(ch, hps, soul_trap_cap(ch))"],
+    ("fight.c", "bool soul_trap("): ["soul_trap_hit_points(ch, GET_LEVEL(victim))", "number(1, 100) >= soul_trap_threshold(ch)",
+                                     "soul_trap_group_threshold(gl->ch) > number(1, 100)", "vamp(ch, soul_trap_hit_points(ch, GET_LEVEL(victim)), soul_trap_cap(ch))"],
     ("fight.c", "bool mangleSucceed("): ["skl = mangle_chance(skl);", "number(1, 100) > skl", "mangle_damage(live_rolls)", "!mangle_disarm_roll(live_rolls)",
                                          "expert_parry_mangle_penalty(victim)", "skl < mangle_rating_needed()"],
     ("fight.c", "int try_riposte("): ["int randomnumber = number(1, 1000);", "skl = riposte_specialist_score(ch, skl);", "skl *= riposte_lucky_share();",
@@ -388,7 +388,7 @@ static void check_rolls() {
                 // MAX rolls again above 40, so a value can land below the page's floor.
                 for (uint64_t seed = 1; seed <= 40; ++seed) {
                     randomize(seed);
-                    const int expected = MAX(40, dice(3, (2 * GET_LEVEL(c)) / 3)), next = fingerprint();
+                    const int expected = std::max(40, dice(3, (2 * GET_LEVEL(c)) / 3)), next = fingerprint();
                     randomize(seed);
                     assert(tainted_blade_bleed(live_rolls, c) == expected && fingerprint() == next);
                 }
@@ -441,7 +441,7 @@ static void check_moves() {
                     assert(followup_riposte_threshold(rating) == (double)rating / 3);
                     assert(blindfighting_to_hit_penalty(c) == 40 * (120 - rating) / 100);
                     assert(blindfighting_ac_penalty(c) == (int)(40 * (120 - rating) / 100));
-                    assert(parry_blind_score(200, rating) == (int)(rating > 0 ? (200 * (rating / 200)) : (200 * 0.05)));
+                    assert(parry_blind_score(200, rating) == (int)(rating > 0 ? (200 * (rating / 200.0)) : (200 * 0.05)));
                     assert(weapon_check_skill(c, rating) == BOUNDED(level / 2, rating, 95));
                     assert(weapon_critical_check(c, rating) == rating + stat / 4);
                     assert(weapon_fumble_check(c, rating) == rating + stat / 2);
@@ -451,7 +451,7 @@ static void check_moves() {
                     assert(vicious_strike_bonus_damage(c) == static_cast<double>(1.050f) * rating);
                     assert(dodge_monk_chance(rating) == (int)(rating * 1.20));
                     assert(shield_block_monk_score(rating) == (int)(rating * 1.75));
-                    assert(expert_parry_score(333, rating) == (int)(333 * (1 + rating / 400)));
+                    assert(expert_parry_score(333, rating) == (int)(333 * (1 + rating / 400.0)));
                     assert(four_hand_threshold(c) == rating / 2 + 50 && four_hand_late_threshold(c) == rating / 2 + 45);
                     assert(ship_damage_control_reduction(333, rating) == (float)(333 * (4.0 + (float)rating / 5.0) / 100.0));
                     assert(jin_touch_rated_damage(333, rating) ==
@@ -493,7 +493,7 @@ static void check_pages() {
                                 "  Chance a critical stands: 72 in 72\n  Chance a fumble is saved: 101 in 101\n");
     EXACT(soul_trap_facts, "  Chance when you kill: 32 in 100\n  Hit points from a kill of your level: 112\n"
                            "  It can raise your hit points to: 550\n  Chance when a group member without it kills: 19 in 100\n"
-                           "    (that kill's soul heals you nothing: its amount uses the killer's rating)\n");
+                           "");
     EXACT(mangle_facts, "  Chance against an attacker of your dexterity: 5 in 100\n"
                         "    (the attacker's dexterity and expert parry move it; it never tops 5)\n"
                         "  Damage: 8-32, before the attacker's defenses\n  Chance the attacker then loses its weapon: 1 in 4\n"
@@ -508,7 +508,7 @@ static void check_pages() {
                              "  Damage to the caster: 125% of the spell's, and you take none\n"
                              "  Chance your fire shield doesn't worsen a cold spell on you: 99 in 101\n");
     EXACT(blindfighting_facts, "  To-hit against a target you can't see: -8\n  Armor class worse by, while you are blind: 8\n"
-                               "  Chance to defend against an attacker you can't see: 33 in 101\n  Your parry score while blind: 0% of normal\n");
+                               "  Chance to defend against an attacker you can't see: 33 in 101\n  Your parry score while blind: 50% of normal\n");
     HAS(tainted_blade_facts, "  Chance on each melee hit: 100 in 100, then 1 in 20\n  Raw damage from the blow: 60\n"
                              "  Raw damage each round after it: 40-111\n"
                              "    (a roll above the floor is rolled again, so it can land lower)\n  Rounds, 4 seconds apart: 5\n");
@@ -520,7 +520,7 @@ static void check_pages() {
     EXACT(quick_step_facts, "  Chance to escape a critical hit: 99 in 100\n  Chance it then misses you outright: 41 in 41\n"
                             "    (otherwise it lands as a normal hit)\n  You must be kneeling or better, not stunned and able to move.\n");
     HAS(indomitable_rage_facts, "  Chance to stop a critical hit on you: 50 in 111\n"
-                                "    (the attacker gains, 1.25 seconds: hitroll +5, damroll +5, fear saves -5)\n"
+                                "    (you gain, 1.25 seconds: hitroll +5, damroll +5, fear saves -5)\n"
                                 "  Chance to shrug off fear: 99 in 150\n");
     EXACT(devastating_critical_facts, "  Chance a critical hit is devastating: 99 in 100\n  Its damage: 266%, against 200% for a plain critical\n");
     HAS(critical_attack_facts, "  Chance on a critical hit: 99 in 100\n  One of 4 follow-ups, picked evenly:\n      Vitality the target keeps above 20: 75%\n");
@@ -537,7 +537,7 @@ static void check_pages() {
     HAS(improved_shield_combat_facts, "  Chance to slam after a block: 99 in 400\n  Damage: 40-100, before the attacker's defenses\n"
                                       "  You must be standing. A slam replaces the block, so that attack carries on.\n");
     HAS(parry_facts, "  Your parry score: 100\n");
-    HAS(expert_parry_facts, "  Your parry score: 100% of normal\n  Taken off a mangle's rating against you: 50\n"
+    HAS(expert_parry_facts, "  Your parry score: 125% of normal\n  Taken off a mangle's rating against you: 50\n"
                             "  Chance a parry shows as masterful, with no other effect: 99 in 250\n");
     HAS(dual_wield_facts, "  Chance to swing your second weapon each round: 99 in 100\n");
     HAS(improved_twoweapon_facts, "  Chance of another off-hand swing, if you swing your second weapon: 100 in 100\n");

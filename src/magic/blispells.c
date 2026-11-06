@@ -1810,7 +1810,8 @@ void spell_sap_nature(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		return;
 	}
 
-	if (affected_by_spell(ch, SPELL_FALUZURES_VITALITY) && !GET_CLASS(victim, CLASS_BLIGHTER))
+	if (affected_by_spell(victim, SPELL_FALUZURES_VITALITY) &&
+	    !GET_CLASS(victim, CLASS_BLIGHTER))
 	{
 		send_to_char("&+yFa&+Lluz&+yure refuses to help you further.&n\r\n", ch);
 		return;
@@ -1823,7 +1824,7 @@ void spell_sap_nature(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		skl_lvl = sap_nature_scourge(skl_lvl);
 	}
 
-	if ((afp = get_spell_from_char(ch, SPELL_SAP_NATURE)))
+	if ((afp = get_spell_from_char(victim, SPELL_SAP_NATURE)))
 	{
 		act("&+yYour sapping &+Genergy&+y from your surroundings is refreshed.&n", FALSE,
 		    ch, 0, victim, TO_CHAR);

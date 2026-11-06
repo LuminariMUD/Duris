@@ -794,8 +794,7 @@ P_obj ran_obj(P_char mob, ulong which)
 
 	/* Will have to make these items mortal usable, and remove certain
 	flags that are same across all objects. */
-	obj->extra_flags = obj->extra_flags & !ITEM_NOSELL & !ITEM_NOLOCATE & !ITEM_NOIDENTIFY &
-			   !ITEM_TRANSIENT;
+	obj->extra_flags &= ~(ITEM_NOSELL | ITEM_NOLOCATE | ITEM_NOIDENTIFY | ITEM_TRANSIENT);
 
 	convertObj(obj);
 	return (obj);

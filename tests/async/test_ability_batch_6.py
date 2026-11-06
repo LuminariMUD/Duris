@@ -703,8 +703,8 @@ int main() {
                     "  Intelligence: +12 at your level, 56\n"
                     "  Duration: 24-25 game hours (30-31.25 minutes)\n"));
     assert(contains(lend_health_facts(&ch),
-                    "  Healing: up to 109 at your level, 56\n"
-                    "  Your health spent: up to 109\n"
+                    "  Healing: up to 50 at your level, 56\n"
+                    "  Your health spent: up to 50\n"
                     "  Never more than the target is missing. Healing modifiers apply.\n"
                     "  The target stops short of full health by: 1-4\n"
                     "  Refused if it would leave you below: -9 health\n"));
@@ -738,7 +738,7 @@ int main() {
                     "  An elite target always takes the lower amount.\n"));
     assert(contains(psychic_crush_facts(&ch),
                     "  Penalty: -28 to power, intelligence or wisdom, at random\n"
-                    "  Penalty duration: up to 1 game hour (up to 1.25 minutes)\n"));
+                    "  Penalty duration: 3.75 seconds\n"));
     assert(psychic_crush_facts(&ch).find("Enslaver") == std::string::npos);
     assert(contains(pyrokinesis_facts(&ch),
                     "  Psionic damage: 112-560 at your level, 56\n"
@@ -904,7 +904,7 @@ int main() {
     assert(contains(wormhole_facts(&ch), "  To a non-illithid player below level 51: refused\n"
                                          "  Your lag for trying: 22.5 seconds\n"));
     ch = viewer(viewers[6], 56); // githyanki
-    assert(contains(confuse_facts(&ch), "  Extra mana for a githyanki: 50, unless the limit is reached\n"));
+    assert(contains(confuse_facts(&ch), "  Extra mana for a githyanki: 50\n"));
     puts("PASS: batch 6 shared rolls match the old code and stay in range, facts never roll");
 }
 '''

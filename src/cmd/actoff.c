@@ -2806,9 +2806,9 @@ int mounted_combat_calm_threshold(P_char rider)
 }
 
 // What advanced meditation adds to the chance threshold of fleeing while stunned.
-int advanced_meditation_stun_flee_bonus()
+int advanced_meditation_stun_flee_bonus(P_char ch)
 {
-	return (int)(SKILL_ADVANCED_MEDITATION / 10);
+	return (int)(GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) / 10);
 }
 
 // Vitality a flight costs: a player without improved flee, and a mount carrying its rider.
@@ -2902,7 +2902,7 @@ void do_flee(P_char ch, char *argument, int cmd)
 		// Advanced meditation can add 10% more.
 
 		if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) > 0)
-			stun_chance_flee += advanced_meditation_stun_flee_bonus();
+			stun_chance_flee += advanced_meditation_stun_flee_bonus(ch);
 
 		if (number(1, 100) > stun_chance_flee)
 			return;
@@ -3116,14 +3116,21 @@ void do_flee(P_char ch, char *argument, int cmd)
 			StartRegen(ch, regen_resource::vitality);
 
 			if (GET_VITALITY(ch) > 0)
-				GET_VITALITY(ch) = MAX(
-					0, (GET_VITALITY(ch) - (flee_vitality_cost(live_rolls))));
+			{
+				const int cost = flee_vitality_cost(live_rolls);
+				GET_VITALITY(ch) = MAX(0, GET_VITALITY(ch) - cost);
+			}
 		}
 		else if (GET_CLASS(ch, CLASS_ROGUE) && GET_VITALITY(ch) > 0)
-			GET_VITALITY(ch) = MAX(0, (GET_VITALITY(ch) - number(5, 15)));
+		{
+			const int cost = number(5, 15);
+			GET_VITALITY(ch) = MAX(0, GET_VITALITY(ch) - cost);
+		}
 		else if (rider && mount && GET_VITALITY(mount) > 0)
-			GET_VITALITY(mount) = MAX(
-				0, (GET_VITALITY(mount) - (flee_mount_vitality_cost(live_rolls))));
+		{
+			const int cost = flee_mount_vitality_cost(live_rolls);
+			GET_VITALITY(mount) = MAX(0, GET_VITALITY(mount) - cost);
+		}
 
 		if (succeded)
 		{
@@ -4961,7 +4968,7 @@ void do_dragon_breath(P_char ch, char *argument, int /*cmd*/)
 	if (!SanityCheck(ch, "dragon_strike"))
 		return;
 
-	if ((skl_lvl = GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR)) == 0)
+	if ((skl_lvl = GET_CHAR_SKILL(ch, SKILL_DRAGON_BREATH)) == 0)
 	{
 		send_to_char("You don't know how.\r\n", ch);
 		return;
@@ -5423,7 +5430,7 @@ void do_dragon_strike(P_char ch, char *argument, int /*cmd*/)
 	if (!SanityCheck(ch, "dragon_strike"))
 		return;
 
-	if ((skl_lvl = GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR)) == 0)
+	if ((skl_lvl = GET_CHAR_SKILL(ch, SKILL_DRAGON_STRIKE)) == 0)
 	{
 		send_to_char("You don't know how.\r\n", ch);
 		return;
@@ -5612,7 +5619,7 @@ void do_dragon_strike(P_char ch, char *argument, int /*cmd*/)
 	CharWait(ch, dragon_strike_lag());
 
 	knockdown_chance = takedown_check(ch, victim, knockdown_chance, SKILL_DRAGON_STRIKE,
-					  TAKEDOWN_ALL & !TAKEDOWN_AGI_CHECK);
+					  TAKEDOWN_ALL & ~TAKEDOWN_AGI_CHECK);
 
 	if (knockdown_chance == TAKEDOWN_CANCELLED)
 	{
@@ -10588,7 +10595,8 @@ void shieldpunch(P_char ch, P_char victim)
 		if (IS_ALIVE(victim) && IS_ALIVE(ch))
 		{
 			engage(ch, victim); // Simplified initiate combat code from above.
-			CharWait(victim, (int)get_property("skill.shieldpunch.targetlag", 0.500));
+			CharWait(victim, (int)(get_property("skill.shieldpunch.targetlag", 0.500) *
+					       PULSE_VIOLENCE));
 		}
 		else
 		{
@@ -11419,7 +11427,7 @@ void do_trample(P_char ch, char *argument, int /*cmd*/)
 	CharWait(ch, PULSE_VIOLENCE * 2);
 
 	knockdown_chance = takedown_check(ch, victim, knockdown_chance, SKILL_TRAMPLE,
-					  TAKEDOWN_ALL & !TAKEDOWN_AGI_CHECK);
+					  TAKEDOWN_ALL & ~TAKEDOWN_AGI_CHECK);
 
 	if (knockdown_chance == TAKEDOWN_CANCELLED)
 	{
@@ -12284,7 +12292,7 @@ static int trip_foiled_lag()
 
 static int trip_miss_lag()
 {
-	return PULSE_VIOLENCE * (5 / 2);
+	return PULSE_VIOLENCE * 5 / 2;
 }
 
 static int trip_lag()

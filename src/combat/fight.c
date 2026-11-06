@@ -486,6 +486,9 @@ struct affected_type *get_ward_from_char(P_char ch)
 
 int check_damage_ward(P_char attacker, P_char ch, int dam)
 {
+	if (dam <= 0)
+		return 0;
+
 	struct affected_type *paf = get_ward_from_char(ch);
 	int absorbed = 0;
 	float wardMitigation = get_property("ward.mitigation", 0.80);
@@ -709,7 +712,7 @@ int vamp(P_char ch, double fhits, double fcap, bool allow_improved_healing)
 	else if ((af = get_spell_from_char(ch, SPELL_BMANTLE)) != NULL ||
 		 (af = get_spell_from_char(ch, SPELL_FLAMESTRIKE)) != NULL)
 	{
-		blocked = (int)(MIN(hits * (GET_LEVEL(ch) / 100), af->modifier));
+		blocked = (int)(MIN(hits * (GET_LEVEL(ch) / 100.0), af->modifier));
 		hits -= blocked;
 		if (af->modifier <= blocked)
 		{
@@ -833,13 +836,11 @@ std::string soul_trap_facts(P_char ch)
 		    std::to_string(soul_trap_hit_points(ch, GET_LEVEL(ch)))) +
 	       fact("It can raise your hit points to", std::to_string(soul_trap_cap(ch))) +
 	       fact("Chance when a group member without it kills",
-		    chance_under(soul_trap_group_threshold(ch), 1, 100)) +
-	       "    (that kill's soul heals you nothing: its amount uses the killer's rating)\n";
+		    chance_under(soul_trap_group_threshold(ch), 1, 100));
 }
 
 bool soul_trap(P_char ch, P_char victim)
 {
-	int hps = soul_trap_hit_points(ch, GET_LEVEL(victim));
 	bool himself = false;
 	struct group_list *gl;
 
@@ -854,7 +855,8 @@ bool soul_trap(P_char ch, P_char victim)
 	{
 		for (gl = ch->group; gl; gl = gl->next)
 		{
-			if (GET_CHAR_SKILL(gl->ch, SKILL_SOUL_TRAP) &&
+			if (gl->ch->in_room == ch->in_room &&
+			    GET_CHAR_SKILL(gl->ch, SKILL_SOUL_TRAP) &&
 			    (notch_skill(gl->ch, SKILL_SOUL_TRAP,
 					 get_property("skill.notch.soulTrap", 100) * 3) ||
 			     soul_trap_group_threshold(gl->ch) > number(1, 100)))
@@ -867,7 +869,7 @@ bool soul_trap(P_char ch, P_char victim)
 			return false;
 	}
 
-	vamp(ch, hps, soul_trap_cap(ch));
+	vamp(ch, soul_trap_hit_points(ch, GET_LEVEL(victim)), soul_trap_cap(ch));
 
 	if (himself)
 	{
@@ -6196,7 +6198,7 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 		}
 
 		// CMD_FIRE (do_fire) handles its own hide removal.  This is important for shadow archery.
-		appear(ch, (flags & !PHSDAM_ARROW));
+		appear(ch, !(flags & PHSDAM_ARROW));
 		appear(victim);
 
 		if (victim != ch)
@@ -6291,8 +6293,7 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 		if (IS_AFFECTED5(victim, AFF5_VINES) && (flags & RAWDAM_VINES) &&
 		    (af = get_spell_from_char(victim, SPELL_VINES)))
 		{
-			bool vine_success = FALSE;
-			if (number((20 + af->modifier / 4), 100))
+			if (number(1, 100) <= 20 + af->modifier / 4)
 			{
 				act("The &+Gvines&n protecting you bear the brunt of the assault.",
 				    FALSE, ch, 0, victim, TO_VICT);
@@ -6300,25 +6301,23 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 				    FALSE, ch, 0, victim, TO_NOTVICT);
 				act("The &+Gvines&n surrounding $N bear the brunt of your attack.",
 				    FALSE, ch, 0, victim, TO_CHAR);
-				vine_success = TRUE;
-			}
 
-			af->modifier -= (int)dam;
+				af->modifier -= (int)dam;
 
-			if (af->modifier <= 0)
-			{
-				act("The &+Gvines&n surrounding you wither and die.", FALSE, ch, 0,
-				    victim, TO_VICT);
-				act("The &+Gvines&n surrounding $N wither and die.", FALSE, ch, 0,
-				    victim, TO_NOTVICT);
-				act("The &+Gvines&n surrounding $N wither and die.", FALSE, ch, 0,
-				    victim, TO_CHAR);
-				REMOVE_BIT(victim->specials.affected_by5, AFF5_VINES);
-				affect_from_char(victim, SPELL_VINES);
-			}
+				if (af->modifier <= 0)
+				{
+					act("The &+Gvines&n surrounding you wither and die.", FALSE,
+					    ch, 0, victim, TO_VICT);
+					act("The &+Gvines&n surrounding $N wither and die.", FALSE,
+					    ch, 0, victim, TO_NOTVICT);
+					act("The &+Gvines&n surrounding $N wither and die.", FALSE,
+					    ch, 0, victim, TO_CHAR);
+					REMOVE_BIT(victim->specials.affected_by5, AFF5_VINES);
+					affect_from_char(victim, SPELL_VINES);
+				}
 
-			if (vine_success)
 				return (DAM_NONEDEAD);
+			}
 		}
 
 		if (!IS_TRUSTED(victim))
@@ -6892,7 +6891,7 @@ static int blindfighting_defense_threshold(P_char opponent)
 // A blind defender's parry score from a parry score and the blindfighting rating.
 static int parry_blind_score(int learnedvictim, int blindfightskl)
 {
-	return (int)(blindfightskl > 0 ? (learnedvictim * (blindfightskl / 200)) :
+	return (int)(blindfightskl > 0 ? (learnedvictim * (blindfightskl / 200.0)) :
 					 (learnedvictim * 0.05));
 }
 
@@ -7082,10 +7081,11 @@ static int tainted_blade_damage()
 	return 60;
 }
 
-// Raw damage each round after it. MAX rolls again when the first roll beats 40.
+// Raw damage each round after it, with a floor of 40.
 static int tainted_blade_bleed(const Rolls &rolls, P_char ch)
 {
-	return MAX(40, rolls.dice(3, (2 * GET_LEVEL(ch)) / 3));
+	const int damage = rolls.dice(3, (2 * GET_LEVEL(ch)) / 3);
+	return MAX(40, damage);
 }
 
 // The count that sets its rounds; one more round runs after the count reaches 0.
@@ -7168,7 +7168,7 @@ void event_tainted_blade(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*
 	if (af->modifier-- > 0)
 	{
 		add_event(event_tainted_blade,
-			  (int)(IS_AFFECTED(victim, AFF_SLOW_POISON) ? 1.5 : 1) * PULSE_VIOLENCE,
+			  (int)((IS_AFFECTED(victim, AFF_SLOW_POISON) ? 1.5 : 1) * PULSE_VIOLENCE),
 			  ch, victim, 0, 0, 0, 0);
 	}
 	else
@@ -7736,7 +7736,7 @@ std::string indomitable_rage_facts(P_char ch)
 		return "  You need this skill for indomitable rage.\n";
 	return "  Only while you are berserk:\n" +
 	       fact("Chance to stop a critical hit on you", chance_under(rating, 50, 160)) +
-	       "    (the attacker gains, " + seconds(indomitable_rage_duration()) + ": hitroll +" +
+	       "    (you gain, " + seconds(indomitable_rage_duration()) + ": hitroll +" +
 	       std::to_string(indomitable_rage_hitroll()) + ", damroll +" +
 	       std::to_string(indomitable_rage_damroll()) + ", fear saves " +
 	       std::to_string(indomitable_rage_fear_save()) + ")\n" +
@@ -8272,15 +8272,15 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 			// hitroll
 			ir.modifier = indomitable_rage_hitroll();
 			ir.location = APPLY_HITROLL;
-			affect_to_char(ch, &ir);
+			affect_to_char(victim, &ir);
 			// damroll
 			ir.modifier = indomitable_rage_damroll();
 			ir.location = APPLY_DAMROLL;
-			affect_to_char(ch, &ir);
+			affect_to_char(victim, &ir);
 			// save fear
 			ir.modifier = indomitable_rage_fear_save();
 			ir.location = APPLY_SAVING_FEAR;
-			affect_to_char(ch, &ir);
+			affect_to_char(victim, &ir);
 		}
 	}
 
@@ -9803,7 +9803,7 @@ static int parry_wis_bonus(P_char victim)
 // Expert parry's score from a parry score; it divides in whole numbers.
 static int expert_parry_score(int learnedvictim, int expertparry)
 {
-	return (int)(learnedvictim * (1 + expertparry / 400));
+	return (int)(learnedvictim * (1 + expertparry / 400.0));
 }
 
 // A blademaster's or swashbuckler's score, and a paladin or antipaladin's holy sword score.

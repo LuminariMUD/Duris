@@ -42,6 +42,8 @@ bool cleave(P_char ch, P_char victim);
 bool is_wielding_paladin_sword(P_char);
 void spell_righteous_aura(int level, P_char ch, char *arg, int type, P_char victim, P_obj obj);
 void spell_bleak_foeman(int level, P_char ch, char *arg, int type, P_char victim, P_obj obj);
+int smite_evil_interval();
+void event_smite_evil(P_char ch, P_char victim, P_obj obj, void *data);
 void event_righteous_aura_check(P_char ch, P_char victim, P_obj obj, void *data);
 void event_bleak_foeman_check(P_char ch, P_char victim, P_obj obj, void *data);
 void spell_dread_blade(int level, P_char ch, char *arg, int type, P_char victim, P_obj obj);

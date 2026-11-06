@@ -35,7 +35,8 @@ static int scheduled, damage_calls, mana_before, removed, disarmed, moved, waite
 static int damage_result = DAM_NONEDEAD, last_damage;
 static bool release_on_damage;
 static std::string feedback;
-void send_to_char(const char *text, P_char) { feedback += text; }
+static P_char feedback_target;
+void send_to_char(const char *text, P_char ch) { feedback += text; feedback_target = ch; }
 void act(const char *, int, P_char, P_obj, void *, int) {}
 void logit(const char *, const char *, ...) {}
 void debug(const char *, ...) {}
@@ -126,6 +127,7 @@ static void wave() {
         mana_before = GET_MANA(&caster);
         int level = 50;
         event_psionic_wave_blast(&caster, &victim, nullptr, &level);
+        if (interruption == 3) assert(feedback_target == &caster);
         const bool continuing = interruption == 0;
         assert(scheduled == continuing && damage_calls == continuing);
         assert(GET_MANA(&caster) == mana_before - (continuing ? 50 : 0));
