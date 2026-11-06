@@ -520,7 +520,7 @@ static void check_pages() {
     EXACT(quick_step_facts, "  Chance to escape a critical hit: 99 in 100\n  Chance it then misses you outright: 41 in 41\n"
                             "    (otherwise it lands as a normal hit)\n  You must be kneeling or better, not stunned and able to move.\n");
     HAS(indomitable_rage_facts, "  Chance to stop a critical hit on you: 50 in 111\n"
-                                "    (the attacker gains, 1.25 seconds: hitroll +5, damroll +5, fear saves -5)\n"
+                                "    (you gain, 1.25 seconds: hitroll +5, damroll +5, fear saves -5)\n"
                                 "  Chance to shrug off fear: 99 in 150\n");
     EXACT(devastating_critical_facts, "  Chance a critical hit is devastating: 99 in 100\n  Its damage: 266%, against 200% for a plain critical\n");
     HAS(critical_attack_facts, "  Chance on a critical hit: 99 in 100\n  One of 4 follow-ups, picked evenly:\n      Vitality the target keeps above 20: 75%\n");

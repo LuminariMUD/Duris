@@ -2997,7 +2997,7 @@ std::string ethereal_discharge_facts(P_char ch)
 }
 
 void spell_ethereal_discharge(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
-			      P_char victim, P_obj /*tar_obj*/)
+			      P_char /*victim*/, P_obj /*tar_obj*/)
 {
 	int dam, mod;
 	P_char tch, next_tch;
@@ -3012,7 +3012,8 @@ void spell_ethereal_discharge(int level, P_char ch, char * /*arg*/, [[maybe_unus
 		0
 	};
 
-	if (!ch || !IS_ALIVE(ch) || !victim || !IS_ALIVE(victim))
+	// An area cast arrives with no target; every victim comes from the room.
+	if (!ch || !IS_ALIVE(ch))
 	{
 		return;
 	}
@@ -3036,12 +3037,14 @@ void spell_ethereal_discharge(int level, P_char ch, char * /*arg*/, [[maybe_unus
 	{
 		next_tch = tch->next_in_room;
 
-		if (grouped(tch, ch) || ch == tch)
+		if (!should_area_hit(ch, tch))
 			continue;
 
 		mod = ethereal_discharge_save_mod(GET_LEVEL(ch), GET_LEVEL(tch),
 						  GET_CHAR_SKILL(ch, SKILL_DEVOTION));
 
+		// Damage can remove affects itself, so finish walking the list first.
+		int strips = 0;
 		for (afp = tch->affected; afp; afp = next_afp)
 		{
 			next_afp = afp->next;
@@ -3053,13 +3056,19 @@ void spell_ethereal_discharge(int level, P_char ch, char * /*arg*/, [[maybe_unus
 				{
 					wear_off_message(tch, afp);
 					affect_remove(tch, afp);
-
-					if (spell_damage(ch, tch, dam, SPLDAM_GENERIC,
-							 RAWDAM_NOKILL | SPLDAM_NOSHRUG,
-							 &messages) != DAM_NONEDEAD)
-						break;
+					strips++;
 				}
 			}
+		}
+
+		for (; strips > 0; strips--)
+		{
+			const int result = spell_damage(ch, tch, dam, SPLDAM_GENERIC,
+							RAWDAM_NOKILL | SPLDAM_NOSHRUG, &messages);
+			if (result == DAM_CHARDEAD || result == DAM_BOTHDEAD)
+				return;
+			if (result != DAM_NONEDEAD)
+				break;
 		}
 	}
 }

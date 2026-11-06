@@ -72,6 +72,10 @@ void gmcp_char_affects(P_char ch) {
         ++published_short_affects;
     }
 }
+struct event_room_affect_data { room_affect *af; int room; };
+static int room_affects_expired = 0;
+void event_room_affect(P_char, P_char, P_obj, void *) { ++room_affects_expired; }
+void balance_affects(P_char) {}
 static void advance(int pulses) {
     for (int i = 0; i < pulses; ++i) { ne_events(); nevent_advance_tick(); }
 }
@@ -192,6 +196,31 @@ int main() {
     clear(&ally);
     clear(&caster);
     caster.player.level = 0;
+
+    // Refreshing a room affect moves its real wear-off event, and only its own.
+    room_affect refreshed{}, untouched{};
+    event_room_affect_data refreshed_data{&refreshed, 1}, untouched_data{&untouched, 1};
+    add_event(event_room_affect, 100, nullptr, nullptr, nullptr, 0, &refreshed_data, sizeof(refreshed_data));
+    add_event(event_room_affect, 100, nullptr, nullptr, nullptr, 0, &untouched_data, sizeof(untouched_data));
+    affect_room_refresh(1, &refreshed, 500);
+    advance(101);
+    assert(room_affects_expired == 1);
+    advance(400);
+    assert(room_affects_expired == 2);
+
+    // Joining a short affect counts the time it has left, not its original length.
+    affected_type buzz{};
+    buzz.type = SPELL_BLINDNESS; buzz.flags = AFFTYPE_SHORT; buzz.duration = 1000; buzz.modifier = -15;
+    auto *joined = affect_to_char(&ally, &buzz);
+    joined->wear_off_message_index = 1;
+    event_short_affect_data joined_expiry{&ally, joined};
+    add_event(event_short_affect, 1000, &ally, nullptr, nullptr, 0, &joined_expiry, sizeof(joined_expiry));
+    advance(900);
+    buzz.duration = 100;
+    affect_join(&ally, &buzz, FALSE, FALSE);
+    assert(ally.affected->duration == 200 && ally.affected->modifier == -30);
+    assert(ally.affected->wear_off_message_index == 1);
+    clear(&ally);
 
     ne_dead_event_pool = &event_pool;
     character_list = &caster;
@@ -319,6 +348,8 @@ functions += [extract_function("magic.c", "void spell_protection_from_" + name +
 functions += [extract_function("affects.c", "void event_short_affect(").replace(
     "PROFILE_START(short_affect_liveness);", "").replace("PROFILE_END(short_affect_liveness);", "")]
 functions += [extract_function("handler.c", "int poison_common_remove(")]
+functions += [extract_function("affects.c", "void affect_join("),
+              extract_function("affects.c", "void affect_room_refresh(")]
 functions += [extract_function("magic.c", signature) for signature in (
     "void spell_cure_blind(", "void spell_cure_disease(", "static int divine_warding_duration(",
     "void spell_divine_warding(", "static int aid_shortening(", "static int aid_duration(", "void spell_aid(",

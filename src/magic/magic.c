@@ -1521,21 +1521,24 @@ void spell_restore_spirit(int level, P_char ch, char * /*arg*/, [[maybe_unused]]
 		af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL;
 
 		af.location = APPLY_MOVE;
-		af.modifier = -(MIN(saved ? 7 : 15, GET_VITALITY(victim)));
+		af.modifier = -(MIN(saved ? 7 : 15, MAX(0, GET_VITALITY(victim))));
 
 		if (affected_by_spell(victim, SPELL_RESTORE_SPIRIT))
 		{
 			send_to_char(
-				"&+LThey're already affected by a restore spell - you only prolong and enhance the buzz!",
+				"&+LThey're already affected by a restore spell - you only prolong and enhance the buzz!\r\n",
 				ch);
-			send_to_char("&+LYour buzz is enhanced as another restore spell hits you!",
-				     victim);
+			send_to_char(
+				"&+LYour buzz is enhanced as another restore spell hits you!\r\n",
+				victim);
 			affect_join(victim, &af, FALSE, FALSE);
 			return;
 		}
+		send_to_char("&+LYour life energy was drained, leaving you a bit shaken.\r\n",
+			     victim);
 		affect_to_char_with_messages(
-			victim, &af, "&+LYour life energy was drained, leaving you a bit shaken.",
-			"&+LYou manage to shake off negative effects of the restore spell.");
+			victim, &af,
+			"&+LYou manage to shake off negative effects of the restore spell.", NULL);
 	}
 }
 
@@ -17898,7 +17901,8 @@ void spell_single_obtenebration(int level, P_char ch, char * /*arg*/, int /*type
 
 	dam = obtenebration_damage(live_rolls, level);
 
-	spell_damage(ch, victim, dam, SPLDAM_SOUND, 0, &messages);
+	if (spell_damage(ch, victim, dam, SPLDAM_SOUND, 0, &messages) != DAM_NONEDEAD)
+		return;
 
 	if (IS_ALIVE(ch) && obtenebration_blind_roll(live_rolls) < obtenebration_blind_chance())
 	{
@@ -24684,7 +24688,7 @@ void spell_starshell(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 	{
 		send_to_room("&+WThe &+Yblazing&N&+W shell of light overhead &+REXPLODES&n!\n",
 			     ch->in_room);
-		existing->duration = starshell_duration(level);
+		affect_room_refresh(ch->in_room, existing, starshell_duration(level));
 		return;
 	}
 
@@ -28638,7 +28642,7 @@ void spell_life_bolt(int level, P_char ch, char * /*arg*/, int /*type*/, P_char 
 		"&+w$n stretches out $s hands and &+Rdisintegrates&n $N &+w with a &+Wwhite&n&+w beam of &+Yenergy&n&+w!",
 	};
 
-	int dam, self_dam = 0;
+	int dam, self_dam = 0, result;
 
 	bool opposing_align;
 
@@ -28692,19 +28696,16 @@ void spell_life_bolt(int level, P_char ch, char * /*arg*/, int /*type*/, P_char 
 		return;
 
 	if (IS_EVIL(ch))
-		spell_damage(ch, victim, dam, SPLDAM_NEGATIVE, 0, &unholy_messages);
+		result = spell_damage(ch, victim, dam, SPLDAM_NEGATIVE, 0, &unholy_messages);
 	else if (IS_GOOD(ch))
-		spell_damage(ch, victim, dam, SPLDAM_HOLY, 0, &holy_messages);
+		result = spell_damage(ch, victim, dam, SPLDAM_HOLY, 0, &holy_messages);
 	else
-		spell_damage(ch, victim, dam, SPLDAM_HOLY, 0, &neutral_messages);
+		result = spell_damage(ch, victim, dam, SPLDAM_HOLY, 0, &neutral_messages);
 
-	if (opposing_align)
+	if (opposing_align && result == DAM_NONEDEAD)
 	{
-		if (IS_ALIVE(victim))
-			send_to_char("&+WThe beam &+Rrends&+W your soul!\r\n", victim);
-
-		if (IS_ALIVE(ch))
-			send_to_char("&+WYour victim seems to be in excruciating pain!\r\n", ch);
+		send_to_char("&+WThe beam &+Rrends&+W your soul!\r\n", victim);
+		send_to_char("&+WYour victim seems to be in excruciating pain!\r\n", ch);
 	}
 }
 

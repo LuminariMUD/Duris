@@ -2606,9 +2606,12 @@ std::string vines_facts(P_char ch)
 {
 	return fact("Damage absorbed", std::to_string(vines_absorb(1)) + " per green herb, up to " +
 					       std::to_string(vines_most_herbs()) + " herbs") +
+	       fact("Chance to absorb a blow",
+		    "20 in 100, plus 1 per 4 damage they can still absorb") +
 	       fact("Duration", game_hours(vines_duration(GET_LEVEL(ch))) + " at your level") +
 	       "  You need at least one green herb; it uses up to the most it takes.\n"
-	       "  Damage is absorbed whole, even the last hit. Moving crumbles them.\n"
+	       "  An absorbed blow is taken whole, even the last.\n"
+	       "  Other blows cost them nothing. Moving crumbles them.\n"
 	       "  A backstab that lands breaks them and deals 1.\n"
 	       "  Fist of dragon does not get through them.\n";
 }

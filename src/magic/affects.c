@@ -88,6 +88,8 @@ struct mm_ds *dead_link_pool = NULL;
 struct mm_ds *dead_obj_link_pool = NULL;
 struct mm_ds *dead_obj_affect_pool = NULL;
 
+extern P_nevent ne_schedule[PULSES_IN_TICK];
+
 struct event_room_affect_data
 {
 	struct room_affect *af;
@@ -2439,13 +2441,29 @@ bool affected_by_spell_flagged(P_char ch, int skill, uint flags)
 void affect_join(P_char ch, struct affected_type *af, int avg_dur, int avg_mod)
 {
 	struct affected_type *hjp;
-	bool found = FALSE;
 
-	for (hjp = ch->affected; !found && hjp; hjp = hjp->next)
+	for (hjp = ch->affected; hjp; hjp = hjp->next)
 	{
 		if (hjp->type == af->type)
 		{
-			af->duration += hjp->duration;
+			// A short affect keeps its original duration; its event has the time left.
+			int remaining = hjp->duration;
+			if (IS_SET(hjp->flags, AFFTYPE_SHORT))
+			{
+				P_nevent pnev;
+				LOOP_EVENTS_CH(pnev, ch->nevents)
+				{
+					if (pnev->func == event_short_affect &&
+					    pnev->data != NULL &&
+					    ((struct event_short_affect_data *)(pnev->data))->af ==
+						    hjp)
+					{
+						remaining = ne_event_time(pnev);
+						break;
+					}
+				}
+			}
+			af->duration += remaining;
 			if (avg_dur)
 				af->duration /= 2;
 
@@ -2453,13 +2471,14 @@ void affect_join(P_char ch, struct affected_type *af, int avg_dur, int avg_mod)
 			if (avg_mod)
 				af->modifier /= 2;
 
+			af->wear_off_message_index = hjp->wear_off_message_index;
 			affect_remove(ch, hjp);
 			affect_to_char(ch, af);
-			found = TRUE;
+			break;
 		}
 	}
 
-	if (!found)
+	if (!hjp)
 		affect_to_char(ch, af);
 
 	balance_affects(ch);
@@ -2581,6 +2600,30 @@ struct room_affect *affect_to_room(int room, struct room_affect *af)
 	affected_alloc->duration = 1 + af->duration / PULSES_IN_TICK;
 
 	return affected_alloc;
+}
+
+//---------------------------------------------------------------------------------
+// Make a room affect wear off `pulses` from now. Its wear-off event alone decides that.
+void affect_room_refresh(int room, struct room_affect *af, int pulses)
+{
+	if (pulses <= 0)
+		return;
+
+	af->duration = 1 + pulses / PULSES_IN_TICK;
+	for (int i = 0; i < PULSES_IN_TICK; i++)
+	{
+		for (P_nevent event = ne_schedule[i]; event; event = event->next_sched)
+		{
+			if (event->func != event_room_affect || !event->data)
+				continue;
+			const auto *data = static_cast<event_room_affect_data *>(event->data);
+			if (data->room == room && data->af == af)
+			{
+				nevent_reschedule_after(nevent_handle_from_event(event), pulses);
+				return;
+			}
+		}
+	}
 }
 
 //---------------------------------------------------------------------------------

@@ -904,7 +904,7 @@ int main() {
     assert(contains(wormhole_facts(&ch), "  To a non-illithid player below level 51: refused\n"
                                          "  Your lag for trying: 22.5 seconds\n"));
     ch = viewer(viewers[6], 56); // githyanki
-    assert(contains(confuse_facts(&ch), "  Extra mana for a githyanki: 50, unless the limit is reached\n"));
+    assert(contains(confuse_facts(&ch), "  Extra mana for a githyanki: 50\n"));
     puts("PASS: batch 6 shared rolls match the old code and stay in range, facts never roll");
 }
 '''

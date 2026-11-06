@@ -855,7 +855,8 @@ bool soul_trap(P_char ch, P_char victim)
 	{
 		for (gl = ch->group; gl; gl = gl->next)
 		{
-			if (GET_CHAR_SKILL(gl->ch, SKILL_SOUL_TRAP) &&
+			if (gl->ch->in_room == ch->in_room &&
+			    GET_CHAR_SKILL(gl->ch, SKILL_SOUL_TRAP) &&
 			    (notch_skill(gl->ch, SKILL_SOUL_TRAP,
 					 get_property("skill.notch.soulTrap", 100) * 3) ||
 			     soul_trap_group_threshold(gl->ch) > number(1, 100)))
@@ -6197,7 +6198,7 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 		}
 
 		// CMD_FIRE (do_fire) handles its own hide removal.  This is important for shadow archery.
-		appear(ch, (flags & !PHSDAM_ARROW));
+		appear(ch, !(flags & PHSDAM_ARROW));
 		appear(victim);
 
 		if (victim != ch)
@@ -6292,7 +6293,6 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 		if (IS_AFFECTED5(victim, AFF5_VINES) && (flags & RAWDAM_VINES) &&
 		    (af = get_spell_from_char(victim, SPELL_VINES)))
 		{
-			bool vine_success = FALSE;
 			if (number(1, 100) <= 20 + af->modifier / 4)
 			{
 				act("The &+Gvines&n protecting you bear the brunt of the assault.",
@@ -6301,25 +6301,23 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 				    FALSE, ch, 0, victim, TO_NOTVICT);
 				act("The &+Gvines&n surrounding $N bear the brunt of your attack.",
 				    FALSE, ch, 0, victim, TO_CHAR);
-				vine_success = TRUE;
-			}
 
-			af->modifier -= (int)dam;
+				af->modifier -= (int)dam;
 
-			if (af->modifier <= 0)
-			{
-				act("The &+Gvines&n surrounding you wither and die.", FALSE, ch, 0,
-				    victim, TO_VICT);
-				act("The &+Gvines&n surrounding $N wither and die.", FALSE, ch, 0,
-				    victim, TO_NOTVICT);
-				act("The &+Gvines&n surrounding $N wither and die.", FALSE, ch, 0,
-				    victim, TO_CHAR);
-				REMOVE_BIT(victim->specials.affected_by5, AFF5_VINES);
-				affect_from_char(victim, SPELL_VINES);
-			}
+				if (af->modifier <= 0)
+				{
+					act("The &+Gvines&n surrounding you wither and die.", FALSE,
+					    ch, 0, victim, TO_VICT);
+					act("The &+Gvines&n surrounding $N wither and die.", FALSE,
+					    ch, 0, victim, TO_NOTVICT);
+					act("The &+Gvines&n surrounding $N wither and die.", FALSE,
+					    ch, 0, victim, TO_CHAR);
+					REMOVE_BIT(victim->specials.affected_by5, AFF5_VINES);
+					affect_from_char(victim, SPELL_VINES);
+				}
 
-			if (vine_success)
 				return (DAM_NONEDEAD);
+			}
 		}
 
 		if (!IS_TRUSTED(victim))
@@ -7738,7 +7736,7 @@ std::string indomitable_rage_facts(P_char ch)
 		return "  You need this skill for indomitable rage.\n";
 	return "  Only while you are berserk:\n" +
 	       fact("Chance to stop a critical hit on you", chance_under(rating, 50, 160)) +
-	       "    (the attacker gains, " + seconds(indomitable_rage_duration()) + ": hitroll +" +
+	       "    (you gain, " + seconds(indomitable_rage_duration()) + ": hitroll +" +
 	       std::to_string(indomitable_rage_hitroll()) + ", damroll +" +
 	       std::to_string(indomitable_rage_damroll()) + ", fear saves " +
 	       std::to_string(indomitable_rage_fear_save()) + ")\n" +

@@ -133,9 +133,20 @@ static int modifier(P_char ch, int type, int location) {
     assert(false); return 0;
 }
 int get_default_save_mod(P_char, P_char, int, int) { return 0; }
+static int damage_result = DAM_NONEDEAD, damage_calls, blinded, teleported;
+static void (*damage_hook)(P_char);
 int spell_damage(P_char, P_char victim, double dam, int, uint, damage_messages *, int *) {
-    last_damage = dam; damaged = victim; return DAM_NONEDEAD;
+    last_damage = dam; damaged = victim; ++damage_calls;
+    if (damage_hook) damage_hook(victim);
+    return damage_result;
 }
+bool damage(P_char, P_char victim, double dam, int) {
+    return spell_damage(nullptr, victim, dam, 0, 0, nullptr, nullptr) != DAM_NONEDEAD;
+}
+int char_in_list(const P_char) { return 1; }
+bool blind(P_char, P_char, int) { ++blinded; return true; }
+void spell_teleport(int, P_char, char *, int, P_char, P_obj) { ++teleported; }
+bool is_wielding_paladin_sword(P_char) { return true; }
 void wear_off_message(P_char, affected_type *) {}
 void affect_remove(P_char ch, affected_type *af) {
     for (auto **p = &ch->affected; *p; p = &(*p)->next)
@@ -160,6 +171,8 @@ nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, co
 static room_affect room_effect{};
 room_affect *get_spell_from_room(P_room, int) { return room_effect.type ? &room_effect : nullptr; }
 room_affect *affect_to_room(int, room_affect *af) { room_effect = *af; return &room_effect; }
+static int refreshed_pulses;
+void affect_room_refresh(int, room_affect *, int pulses) { refreshed_pulses = pulses; }
 int sunlight = SUN_DARK;
 static void reset_rolls(std::initializer_list<int> values = {}) { rolls = values; draw = 0; }
 static char_data alive() {
@@ -195,6 +208,7 @@ FUNCTIONS = {
         "reduce_duration", "reduce_refresh_duration", "reduce_str", "reduce_con", "reduce_agi_max", "reduce_dex_max", "spell_reduce",
         "edictum_cineris_berserk_lag", "edictum_cineris_penalty", "edictum_cineris_duration", "spell_edictum_cineris",
         "life_bolt_damage", "life_bolt_unopposed", "spell_life_bolt",
+        "obtenebration_damage", "obtenebration_blind_chance", "obtenebration_blind_roll", "obtenebration_blindness", "spell_single_obtenebration",
         "mielikki_vitality_duration", "mielikki_vitality_hit", "mielikki_vitality_moves", "mielikki_vitality_regen", "spell_mielikki_vitality",
         "restore_spirit_damage", "restore_spirit_untrained", "restore_spirit_untrained_damage",
         "restore_spirit_saved", "restore_spirit_level_bonus", "restore_spirit_vamp", "spell_restore_spirit",
@@ -210,7 +224,8 @@ FUNCTIONS = {
         "psionic_wave_blast_damage", "psionic_wave_blast_shrug_roll", "psionic_wave_blast_waves", "spell_psionic_wave_blast",
     ],
     "ethermancer.c": ["ethereal_discharge_damage", "ethereal_discharge_save_mod", "ethereal_discharge_strip_roll", "spell_ethereal_discharge"],
-    "paladins.c": ["righteous_aura_interval", "righteous_aura_pc_blessing_duration", "righteous_aura_npc_blessing_duration", "righteous_aura_soulshield_alignment", "righteous_aura_dharma_delay", "righteous_aura_taunt_alignment", "event_righteous_aura_check"],
+    "paladins.c": ["righteous_aura_interval", "righteous_aura_pc_blessing_duration", "righteous_aura_npc_blessing_duration", "righteous_aura_soulshield_alignment", "righteous_aura_dharma_delay", "righteous_aura_taunt_alignment", "event_righteous_aura_check",
+                   "smite_evil_interval", "smite_evil_threshold", "smite_evil_damage", "event_smite_evil"],
     "sillusionist.c": ["stunning_visions_percent", "stunning_visions_power_bonus", "stunning_visions_deep_above", "stunning_visions_deep_stun", "stunning_visions_trance_above", "stunning_visions_trance_stun", "stunning_visions_mesmerize_above", "stunning_visions_mesmerize_stun", "stunning_visions_slight_from", "stunning_visions_slight_stun", "spell_stunning_visions"],
     "actnew.c": ["advanced_meditation_cure_threshold", "advanced_meditation_poison_rating", "advanced_meditation_poison_roll", "advanced_meditation_disease_rating", "advanced_meditation_cure_level", "advanced_meditation_interval", "event_meditation"],
     "blispells.c": ["sap_nature_amount", "sap_nature_scourge", "spell_sap_nature"],
@@ -277,9 +292,8 @@ int main() {
     assert(modifier(&target, SPELL_FEAR, APPLY_DAMROLL) == 0); clear(&target);
     rooms[1].sector_type = SECT_FIELD;
     spell_starshell(50, &caster, nullptr, 0, nullptr, nullptr);
-    room_effect.duration = 1;
     spell_starshell(50, &caster, nullptr, 0, nullptr, nullptr);
-    assert(room_effect.duration == starshell_duration(50));
+    assert(refreshed_pulses == starshell_duration(50));
     // Once the torment limit is reached, even all-zero stop rolls cannot reschedule.
     int counter = 10; scheduled = 0;
     event_torment_spirits(&caster, &target, nullptr, &counter);
@@ -323,7 +337,11 @@ int main() {
     target.player.level = 200; target.next_in_room = &other;
     saved = true;
     spell_confuse(50, &caster, nullptr, 0, &target, nullptr);
-    assert(caster.points.mana == 100 - confuse_githyanki_mana()); saved = false;
+    assert(caster.points.mana == 100 - confuse_githyanki_mana());
+    // The surcharge cannot drive mana below zero.
+    caster.points.mana = confuse_githyanki_mana() - 1;
+    spell_confuse(50, &caster, nullptr, 0, &target, nullptr);
+    assert(caster.points.mana == 0); saved = false;
     // A blessed group member at the front must not skip later members.
     group_list group{&caster, nullptr};
     caster.group = target.group = other.group = &group;
@@ -346,6 +364,11 @@ int main() {
     target.points.vitality = 100; reset_rolls();
     spell_restore_spirit(50, &caster, nullptr, 0, &target, nullptr);
     assert(affected_by_spell(&target, SPELL_RESTORE_SPIRIT)); clear(&target);
+    // Negative vitality must not turn the drain into a bonus.
+    target.points.vitality = -20; reset_rolls();
+    spell_restore_spirit(50, &caster, nullptr, 0, &target, nullptr);
+    assert(modifier(&target, SPELL_RESTORE_SPIRIT, APPLY_MOVE) == 0);
+    clear(&target); target.points.vitality = 100;
     // Acid immolate also stops at its upper event limit with all-zero stop rolls.
     counter = 7; scheduled = 0;
     event_acidimmolate(&caster, &target, nullptr, &counter);
@@ -373,11 +396,64 @@ int main() {
     blessing.type = SPELL_ETHEREAL_FORM; affect_to_char(&caster, &blessing);
     blessing.type = SPELL_ARMOR; affect_to_char(&target, &blessing); affect_to_char(&other, &blessing);
     save_mods.clear();
-    spell_ethereal_discharge(50, &caster, nullptr, 0, &target, nullptr);
+    // Players cast it as an area spell, so it arrives with no target.
+    spell_ethereal_discharge(50, &caster, nullptr, 0, nullptr, nullptr);
     assert(save_mods.size() == 2);
     assert(save_mods[0].first == &target && save_mods[1].first == &other);
     assert(save_mods[0].second != save_mods[1].second);
     clear(&caster); clear(&target); clear(&other);
+    // Damage may remove the victim's other affects; every strip still lands once.
+    reset_rolls(); damage_calls = 0; damage_hook = clear;
+    rooms[1].people = &target; target.next_in_room = nullptr;
+    blessing.type = SPELL_ETHEREAL_FORM; affect_to_char(&caster, &blessing);
+    blessing.type = SPELL_ARMOR; affect_to_char(&target, &blessing);
+    blessing.type = SPELL_BLESS; affect_to_char(&target, &blessing);
+    saved = false;
+    spell_ethereal_discharge(50, &caster, nullptr, 0, nullptr, nullptr);
+    assert(damage_calls == 2 && !target.affected); damage_hook = nullptr;
+    // The caster's death ends the discharge.
+    affect_to_char(&caster, &blessing); caster.affected->type = SPELL_ETHEREAL_FORM;
+    affect_to_char(&target, &blessing); affect_to_char(&other, &blessing);
+    target.next_in_room = &other; other.next_in_room = nullptr;
+    reset_rolls(); damage_calls = 0; damage_result = DAM_CHARDEAD;
+    spell_ethereal_discharge(50, &caster, nullptr, 0, nullptr, nullptr);
+    assert(damage_calls == 1); damage_result = DAM_NONEDEAD;
+    clear(&caster); clear(&target); clear(&other);
+    // A killed obtenebration victim is gone; a survivor still gets both rolls.
+    reset_rolls({1, 1}); damage_result = DAM_VICTDEAD;
+    spell_single_obtenebration(50, &caster, nullptr, 0, &target, nullptr);
+    assert(!blinded && !teleported); damage_result = DAM_NONEDEAD;
+    reset_rolls({1, 1});
+    spell_single_obtenebration(50, &caster, nullptr, 0, &target, nullptr);
+    assert(blinded == 1 && teleported == 1);
+    // Smite Evil survives freeing its kill, and stops if the paladin dies.
+    static char_data *smited;
+    smited = new char_data(alive());
+    smited->points.hit = 10; smited->specials.alignment = -1000; smited->next_in_room = &target;
+    target.points.hit = 10; target.points.max_hit = 500; target.specials.alignment = -1000; target.next_in_room = nullptr;
+    rooms[1].people = smited;
+    caster.group = nullptr; caster_pc.skills[SKILL_SMITE_EVIL].learned = 100;
+    damage_calls = 0; scheduled = 0;
+    damage_hook = [](P_char victim) {
+        if (victim == smited) { rooms[1].people = smited->next_in_room; delete smited; smited = nullptr; }
+    };
+    event_smite_evil(&caster, nullptr, nullptr, nullptr);
+    assert(damage_calls == 2 && scheduled == 1);
+    damage_calls = 0; scheduled = 0; damage_result = DAM_CHARDEAD;
+    static P_char smiter; smiter = &caster;
+    damage_hook = [](P_char) { smiter->specials.position = POS_STANDING + STAT_DEAD; };
+    event_smite_evil(&caster, nullptr, nullptr, nullptr);
+    assert(damage_calls == 1 && scheduled == 0); damage_result = DAM_NONEDEAD; damage_hook = nullptr;
+    caster.specials.position = POS_STANDING + STAT_NORMAL;
+    // Life bolt only talks about a target that survived.
+    caster.player.spec = 0; caster.specials.alignment = 1000; target.specials.alignment = -1000;
+    message_target = nullptr; damage_result = DAM_VICTDEAD;
+    spell_life_bolt(50, &caster, nullptr, 0, &target, nullptr);
+    assert(!message_target); damage_result = DAM_NONEDEAD;
+    spell_life_bolt(50, &caster, nullptr, 0, &target, nullptr);
+    assert(message_target == &caster);
+    caster.specials.alignment = target.specials.alignment = 0;
+    target.points.hit = target.points.max_hit = 500;
     target.specials.position = POS_STANDING + STAT_NORMAL;
     target.points.hit = 100; target.player.race = RACE_HUMAN;
     reset_rolls(); save_target = nullptr;
@@ -466,11 +542,25 @@ int main() {
     target.points.hit = 100; target.points.max_hit = 500; other.player.level = 50;
     assert(soul_trap(&caster, &other));
     assert(target.points.hit == 200);
+    // A trapper elsewhere in the world neither heals nor takes the killer's kill.
+    target.in_room = 2;
+    assert(!soul_trap(&caster, &other));
+    assert(target.points.hit == 200);
+    target.in_room = 1;
     clear(&caster); clear(&target); clear(&other);
     std::puts("PASS high-confidence gameplay: targets, refreshes, stats, costs, room loops and event limits");
 }
 '''
 
+
+# raw_damage and encounter loot are too entangled to run here; pin their exact logic.
+fight = source("fight.c").read_text()
+vines = fight[fight.index("number(1, 100) <= 20 + af->modifier / 4"):]
+vines = vines[:vines.index("return (DAM_NONEDEAD);")]
+assert "af->modifier -= (int)dam;" in vines, "only an absorbed blow may cost the vines"
+assert "appear(ch, !(flags & PHSDAM_ARROW));" in fight
+assert "obj->extra_flags &= ~(ITEM_NOSELL | ITEM_NOLOCATE | ITEM_NOIDENTIFY | ITEM_TRANSIENT);" \
+    in source("encounters.c").read_text()
 
 functions = []
 for file, names in FUNCTIONS.items():

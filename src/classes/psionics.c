@@ -3063,8 +3063,7 @@ std::string confuse_facts(P_char ch)
 		"  may resist a stun, more often the higher their level.\n";
 	if (GET_RACE(ch) == RACE_GITHYANKI)
 		text += fact("Extra mana for a githyanki",
-			     std::to_string(confuse_githyanki_mana()) +
-				     ", unless the limit is reached");
+			     std::to_string(confuse_githyanki_mana()));
 	return text;
 }
 
@@ -3167,7 +3166,7 @@ void spell_confuse(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 	}
 	// lets drain some extra mana if it's a gith. - Kvark
 	if (GET_RACE(ch) == RACE_GITHYANKI)
-		GET_MANA(ch) = (GET_MANA(ch) - confuse_githyanki_mana());
+		GET_MANA(ch) = MAX(0, GET_MANA(ch) - confuse_githyanki_mana());
 }
 
 // A target may only try to shrug pyrokinesis on a roll below the limit.

@@ -475,12 +475,13 @@ void event_smite_evil(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 	if (!GET_CHAR_SKILL(ch, SKILL_SMITE_EVIL))
 		return;
 
-	P_char tch;
+	P_char tch, next;
 
 	if (IS_AWAKE(ch) && !IS_IMMOBILE(ch) && is_wielding_paladin_sword(ch))
 	{
-		for (tch = world[ch->in_room].people; tch; tch = tch->next_in_room)
+		for (tch = world[ch->in_room].people; tch; tch = next)
 		{
+			next = tch->next_in_room;
 			if (!grouped(tch, ch) && GET_HIT(tch) < GET_MAX_HIT(tch) / 10 &&
 			    IS_ALIVE(tch) && GET_HIT(tch) < 15 && IS_EVIL(tch) &&
 			    (GET_RACEWAR(tch) != 1) &&
@@ -494,7 +495,11 @@ void event_smite_evil(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 				    FALSE, ch, 0, 0, TO_CHAR);
 				act("$n looks at you sternly, and then dives in, $s blade rushing for your heart!",
 				    FALSE, ch, 0, tch, TO_VICT);
-				damage(ch, tch, smite_evil_damage(live_rolls), SKILL_SMITE_EVIL);
+				// damage() only says that someone died; a retaliating kill may take ch.
+				if (damage(ch, tch, smite_evil_damage(live_rolls),
+					   SKILL_SMITE_EVIL) &&
+				    (!char_in_list(ch) || !IS_ALIVE(ch)))
+					return;
 			}
 		}
 	}

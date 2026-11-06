@@ -260,7 +260,8 @@ int main() {
     affected_type mantle{}; mantle.type = SPELL_BMANTLE; mantle.modifier = 10000;
     form.next = &mantle; dice_total = 50; air.points.hit = 0;
     spell_ethereal_recharge(56, &air, nullptr, 0, &air, nullptr);
-    assert(air.points.hit == 37); form.next = nullptr; dice_total = 300;
+    // 50 becomes 37 from the mantle's healing penalty, then vamp blocks 56% of that.
+    assert(air.points.hit == 17); form.next = nullptr; dice_total = 300;
     char_data pet{}; pet.specials.act = ACT_ISNPC;
     SET_POS(&pet, STAT_NORMAL + POS_STANDING); pet.points.max_hit = 1000;
     pet_fixture = &pet; owner_fixture = &air;
