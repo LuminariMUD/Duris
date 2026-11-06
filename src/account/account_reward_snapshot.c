@@ -271,8 +271,20 @@ char *account_reward_snapshot_serialize(P_obj obj)
 	}
 
 	descriptions = cJSON_AddArrayToObject(root, "extra_descriptions");
+	bool origin_seen = false;
 	for (struct extra_descr_data *ed = obj->ex_description; ed; ed = ed->next)
 	{
+		int origin = 0;
+		const auto status = sql_decode_named_set_origin(
+			ed->keyword ? ed->keyword : "", ed->description ? ed->description : "",
+			&origin);
+		if (status == sql_named_set_origin_decode_status::invalid ||
+		    (status == sql_named_set_origin_decode_status::decoded && origin_seen))
+		{
+			cJSON_Delete(root);
+			return nullptr;
+		}
+		origin_seen = origin_seen || status == sql_named_set_origin_decode_status::decoded;
 		cJSON *entry = cJSON_CreateObject();
 		if (sql_item_extra_descr_is_spellbook_marker(ed->keyword))
 			add_spellbook_snapshot(entry, ed->description);
@@ -296,9 +308,42 @@ bool account_reward_snapshot_apply(P_obj obj, const char *json, int template_ver
 	int number;
 	if (!obj || !json || template_version != ACCOUNT_REWARD_TEMPLATE_VERSION)
 		return false;
+	// Native item strings cannot represent JSON's embedded NUL character.
+	for (const char *cursor = json; *cursor; ++cursor)
+	{
+		if (*cursor != '\\')
+			continue;
+		if (!cursor[1])
+			return false;
+		++cursor;
+		if (*cursor == 'u' && !strncmp(cursor + 1, "0000", 4))
+			return false;
+	}
 	root = cJSON_Parse(json);
 	if (!root || !cJSON_IsObject(root))
 		goto fail;
+	array = cJSON_GetObjectItemCaseSensitive(root, "extra_descriptions");
+	if (!cJSON_IsArray(array))
+		goto fail;
+	{
+		bool origin_seen = false;
+		cJSON_ArrayForEach(entry, array)
+		{
+			const cJSON *keyword = cJSON_GetObjectItemCaseSensitive(entry, "keyword");
+			const cJSON *description =
+				cJSON_GetObjectItemCaseSensitive(entry, "description");
+			int origin = 0;
+			const auto status = sql_decode_named_set_origin(
+				cJSON_IsString(keyword) ? keyword->valuestring : "",
+				cJSON_IsString(description) ? description->valuestring : "",
+				&origin);
+			if (status == sql_named_set_origin_decode_status::invalid ||
+			    (status == sql_named_set_origin_decode_status::decoded && origin_seen))
+				goto fail;
+			origin_seen = origin_seen ||
+				      status == sql_named_set_origin_decode_status::decoded;
+		}
+	}
 	if (!read_int(root, "template_version", template_version, template_version, &number))
 		goto fail;
 	if (!read_int(root, "vnum", 1, INT_MAX, &number) || number != OBJ_VNUM(obj))

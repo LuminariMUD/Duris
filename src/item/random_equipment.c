@@ -16,6 +16,7 @@
 #include "core/utils.h"
 #include "item/objmisc.h"
 #include "item/random_equipment.h"
+#include "item/named_set_origin.h"
 #include "item/random_equipment_config.h"
 #include "item/weapon_actions.h"
 #include "magic/spells.h"
@@ -432,6 +433,8 @@ P_obj create_random_eq(P_char finder, int finder_level, int source_level, int re
 	const auto *zone = &zone_table[world[finder->in_room].zone];
 	random_name_style style =
 		choose_name(finder, finder_level, source_level, requested_material, zone);
+	if (style == ZONE_NAME)
+		set_named_set_origin(obj, zone->number);
 	name_item(obj, finder, slot, material, prefix, zone, style);
 	bool weapon_spell = add_name_affects(obj, style, slot, zone);
 	set_wear_and_weight(obj, slot, material, prefix);
@@ -707,6 +710,9 @@ bool identify_random(P_obj obj)
 
 	if (!obj->value[5])
 		return false;
+	const auto origin = named_set_origin(obj);
+	if (origin.zone > 0)
+		set_named_set_origin(obj, origin.zone);
 
 	for (i = 0;
 	     i < static_cast<int>(ARRAY_SIZE(spells_data)) && spells_data[i].spell != obj->value[5];

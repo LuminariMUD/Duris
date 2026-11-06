@@ -945,6 +945,25 @@ int main()
                player_load_item_materialize_outcome::invalid_snapshot);
     }
 
+    // Origins are validated for the whole ownership graph before any allocation.
+    for (int malformed : {0, 1, 2, 3}) {
+        reset_test_state();
+        test_character owner(42);
+        player_load_result result=base_result();
+        add_item(result,1,10,101,PLAYER_SNAPSHOT_NO_PARENT,0);
+        result.snapshot.items[0].extra_descriptions.push_back(
+            {SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD, malformed==0 ? "bad" : "808", false, {}});
+        if(malformed==1 || malformed==2)
+            result.snapshot.items[0].extra_descriptions.push_back(
+                {SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD, malformed==1 ? "808" : "811", false, {}});
+        if(malformed==3)
+            result.snapshot.items[0].extra_descriptions[0].description=std::string("808\0tail",8);
+        player_load_item_materialize_metrics metrics{};
+        assert(!materialize_fixture_items(&owner.character,result,&metrics));
+        assert(metrics.outcome==player_load_item_materialize_outcome::invalid_snapshot);
+        assert(allocations==0 && !owner.character.carrying && item_ownership_runtime_size()==0);
+    }
+
     // Distinct native books coexist; reordered copies are duplicate metadata.
     for (bool duplicate : {false, true}) {
         reset_test_state();

@@ -175,6 +175,7 @@ static item_transfer_result transfer_result_of(const critical_apply_result &appl
 static std::vector<player_item_snapshot> movement_items()
 {
 	player_item_snapshot root = {};
+	root.extra_descriptions.push_back({ "DURIS_NAMED_SET_ORIGIN_V1", "808", false, {} });
 	root.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
 	root.equipment_slot = -1;
 	root.object_uid = 100;
@@ -581,6 +582,8 @@ int main(int argc, char **argv)
 				missing_destination.items[0].object_uid == 100 &&
 				missing_destination.items[0].short_description ==
 					"an exact given container" &&
+				missing_destination.items[0].extra_descriptions[0].description ==
+					"808" &&
 				missing_destination.items[1].parent_index == 0,
 			"restart reconciliation did not reconstruct the exact destination transfer: " +
 				error);

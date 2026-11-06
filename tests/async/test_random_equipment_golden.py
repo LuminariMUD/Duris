@@ -24,7 +24,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from _paths import ROOT, extract_function
+from _paths import ROOT, HARNESS_STUBS, extract_function
 
 FIXTURE = ROOT / "tests/fixtures/random_equipment_golden.txt"
 RNG_FIXTURE = ROOT / "tests/fixtures/random_equipment_rng_golden.txt"
@@ -35,6 +35,7 @@ MODULE_SOURCES = [
 ]
 LINKED_SOURCES = [
     "src/core/random.c",
+    "src/item/named_set_origin.c",
     "src/core/safe_format.c",
     "src/item/random_equipment_config.c",
     "src/world/hardcore_config.c",
@@ -67,6 +68,7 @@ HARNESS = r'''
 #include "net/gmcp.h"
 #include "item/objmisc.h"
 #include "item/random_equipment.h"
+#include "item/named_set_origin.h"
 #include "item/weapon_actions.h"
 #include "magic/spells.h"
 #include "world/difficulty.h"
@@ -90,13 +92,21 @@ static room_data rooms[4];
 static index_data mob_protos[2]; // 0: an ordinary mob, 1: a shopkeeper
 struct zone_data *zone_table = zones;
 P_room world = rooms;
+int top_of_zone_table = 2;
 P_index mob_index = mob_protos;
+static index_data item_protos[VOBJ_RANDOM_WEAPON + 1];
+P_index obj_index = item_protos;
 Skill skills[MAX_SKILLS];
 enum { ROOM_COLOURED, ROOM_PLAIN, ROOM_GUILD_HALL, ROOM_TOWN };
 
 static void setup_world()
 {
+	item_protos[VOBJ_RANDOM_ARMOR].virtual_number = VOBJ_RANDOM_ARMOR;
+	item_protos[VOBJ_RANDOM_WEAPON].virtual_number = VOBJ_RANDOM_WEAPON;
 	zones[0].name = const_cast<char *>("&+rThe &+RBurning&n Wastes");
+	zones[0].number = 740;
+	zones[1].number = 1325;
+	zones[2].number = 204;
 	zones[0].difficulty = 5;
 	zones[1].name = const_cast<char *>("Quiet Hills");
 	zones[1].difficulty = 1;
@@ -124,6 +134,7 @@ item_action_start selected_random_weapon_action(P_obj, P_char, P_char, int, int)
 	return item_action_start::legacy;
 }
 char *str_dup(const char *source) { return source ? strdup(source) : nullptr; }
+void *__malloc(size_t size, const char *, const char *, int) { return calloc(1, size); }
 void __free(void *p, const char *, int) { free(p); }
 
 // Every message the module sends, in order, for the current case.
@@ -171,6 +182,13 @@ static void release(P_obj obj)
 		free(obj->short_description);
 	if (obj->str_mask & STRUNG_DESC1)
 		free(obj->description);
+	while (obj->ex_description) {
+		auto *description = obj->ex_description;
+		obj->ex_description = description->next;
+		free(description->keyword);
+		free(description->description);
+		free(description);
+	}
 	delete obj;
 }
 
@@ -181,7 +199,7 @@ bool obj_to_char(P_obj obj, P_char ch)
 	char line[64];
 	if (obj->R_num == VOBJ_RANDOM_ARMOR || obj->R_num == VOBJ_RANDOM_WEAPON)
 	{
-		assert(obj->str_mask == (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2));
+		assert((obj->str_mask & ~STRUNG_EDESC) == (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2));
 		assert(obj->R_num == (obj->wear_flags & ITEM_WIELD ? VOBJ_RANDOM_WEAPON : VOBJ_RANDOM_ARMOR));
 		given += std::string(" eq[") + obj->name + "]";
 	}
@@ -265,7 +283,7 @@ static void put_obj(P_obj o)
 		return;
 	}
 	// Generated descriptions must be owned so persistence saves them.
-	assert(o->str_mask == (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2));
+	assert((o->str_mask & ~STRUNG_EDESC) == (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2));
 	assert(o->R_num == (o->wear_flags & ITEM_WIELD ? VOBJ_RANDOM_WEAPON : VOBJ_RANDOM_ARMOR));
 	put(" %s | %s | %s | type=%d wear=%u extra=%u", o->name, o->short_description,
 	    o->description, o->type, o->wear_flags, o->extra_flags);
@@ -608,6 +626,31 @@ static void foreign_spell_name()
 	release(obj);
 }
 
+
+static void origin_generation_contract()
+{
+    person finder("Finder", 56, 160, true);
+    char *saved_title=zones[0].name;
+    const int saved_number=zones[0].number;
+    for(int zone : {13, 44, 204, 808, 811, 814, 990, 1350, 300}) {
+        zones[0].number=zone;
+        for(const char *title : {"&+WCeothia&n", "&+gNeverwind Valley&n", "&+gNeverwinter Woods&n"}) {
+            zones[0].name=const_cast<char *>(title);
+            randomize(7);
+            P_obj object=create_random_eq(&finder.ch,56,62,0,-1);
+            assert(object && named_set_origin(object).zone==zone);
+            assert(object->ex_description && (object->str_mask & STRUNG_EDESC));
+            release(object);
+        }
+    }
+    zones[0].number=saved_number;
+    zones[0].name=const_cast<char *>("Plain Title");
+    randomize(7);
+    P_obj plain=create_random_eq(&finder.ch,56,62,0,-1);
+    assert(plain && !plain->ex_description && !named_set_origin(plain).zone);
+    release(plain);
+    zones[0].name=saved_title;
+}
 int main()
 {
 	setup_world();
@@ -619,6 +662,7 @@ int main()
 	suffix_outcomes();
 	encrust_and_true_name();
 	foreign_spell_name();
+	origin_generation_contract();
 	return 0;
 }
 '''
@@ -636,7 +680,7 @@ def main():
                 "g++", "-std=c++20", "-O1", "-g", "-fsanitize=address,undefined",
                 "-fno-omit-frame-pointer", "-ffunction-sections", "-fdata-sections",
                 "-I" + str(ROOT / "src"), str(harness),
-                *[str(ROOT / path) for path in MODULE_SOURCES + LINKED_SOURCES],
+                *[str(ROOT / path) for path in MODULE_SOURCES + LINKED_SOURCES], str(HARNESS_STUBS),
                 "-Wl,--gc-sections", "-o", str(binary),
             ],
             check=True,

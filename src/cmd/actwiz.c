@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "item/named_set_origin.h"
 #include "persistence/copyover.h"
 #include "net/discord_petition.h"
 #include "account/creation_availability_config.h"
@@ -8157,9 +8158,19 @@ struct obj_data *clone_obj(P_obj obj)
 				  "clone_source_exists", "vnum=%d", OBJ_VNUM(obj));
 		return nullptr;
 	}
+	const auto origin = named_set_origin(obj);
+	if (origin.zone < 0)
+	{
+		persistence_alert(AVATAR, "named_set_origin", "clone_obj", "none", "none",
+				  "invalid_origin", "vnum=%d has invalid named set metadata",
+				  OBJ_VNUM(obj));
+		return nullptr;
+	}
 	ocopy = read_object(obj->R_num, REAL);
 	if (!ocopy)
 		return nullptr;
+	if (origin.zone > 0)
+		set_named_set_origin(ocopy, origin.zone);
 	/* copy  */
 	if (obj->name)
 	{

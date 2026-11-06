@@ -94,7 +94,7 @@ int calculate_mana(P_char)
 	return 1;
 }
 
-void extract_obj(void *obj, int)
+void extract_obj(P_obj obj, int)
 {
 	FREE(obj);
 }

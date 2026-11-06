@@ -35,6 +35,43 @@ static void require(bool condition, const char *message)
 
 int main()
 {
+	int origin = 0;
+	for (const char *valid : { "13", "808", "2147483647" })
+		require(sql_decode_named_set_origin(SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD, valid,
+						    &origin) ==
+				sql_named_set_origin_decode_status::decoded,
+			"valid named set origin was rejected");
+	for (const char *invalid :
+	     { "", "0", "-13", "+13", "013", " 13", "13 ", "13x", "2147483648" })
+		require(sql_decode_named_set_origin(SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD, invalid,
+						    &origin) ==
+				sql_named_set_origin_decode_status::invalid,
+			"invalid named set origin was accepted");
+	require(sql_decode_named_set_origin(SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD,
+					    std::string("13\0bad", 6),
+					    &origin) == sql_named_set_origin_decode_status::invalid,
+		"embedded NUL origin was accepted");
+	require(sql_decode_named_set_origin(std::string(SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD) + '\0',
+					    "13",
+					    &origin) == sql_named_set_origin_decode_status::invalid,
+		"native keyword truncation could invent an origin");
+	require(sql_decode_named_set_origin("runes", "13", &origin) ==
+			sql_named_set_origin_decode_status::not_origin,
+		"visible description was interpreted as an origin");
+	{
+		char *keyword = nullptr, *description = nullptr;
+		require(sql_encode_item_extra_descr(SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD, "808",
+						    &keyword, &description) &&
+				!strcmp(keyword, SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD) &&
+				!strcmp(description, "808"),
+			"SQL origin encoding changed its identity");
+		free(keyword);
+		free(description);
+		require(!sql_encode_item_extra_descr(SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD, "bad",
+						     &keyword, &description) &&
+				!keyword && !description,
+			"SQL encoding accepted an invalid origin");
+	}
 	char trap_state[64];
 	require(sql_encode_item_trap_state(6, 2, 0, 100, trap_state, sizeof(trap_state)),
 		"trap state did not encode");
@@ -54,6 +91,11 @@ int main()
 				sql_item_trap_state_decode_status::invalid,
 			"invalid trap state was accepted");
 	const char marker[] = { 3, 1, 3, 0 };
+	char binary_without_nul[(MAX_SKILLS + 1) / 8 + 1];
+	memset(binary_without_nul, 0xff, sizeof binary_without_nul);
+	require(sql_decode_named_set_origin(marker, binary_without_nul, &origin) ==
+			sql_named_set_origin_decode_status::not_origin,
+		"origin validation treated a native spellbook bitmap as text");
 	char bits[(MAX_SKILLS + 1) / 8 + 1] = {};
 	bits[1 / 8] |= 1 << (1 % 8);
 	bits[203 / 8] |= 1 << (203 % 8);

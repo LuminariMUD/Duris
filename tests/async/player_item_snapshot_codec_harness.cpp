@@ -49,6 +49,7 @@ static std::vector<player_item_snapshot> fixture()
 	parent.affects[0] = { 24, 25 };
 	parent.dynamic_affects.push_back({ 26, 27, 28 });
 	parent.extra_descriptions.push_back({ "runes", "glowing runes", true, { 29, 30 } });
+	parent.extra_descriptions.push_back({ "DURIS_NAMED_SET_ORIGIN_V1", "808", false, {} });
 	player_item_snapshot child = {};
 	child.parent_index = 0;
 	child.equipment_slot = -1;
@@ -112,7 +113,9 @@ int main(int argc, char **argv)
 			decoded[0].timers[0] == 12 && decoded[0].bitvectors[0] == 23 &&
 			decoded[0].affects[0][1] == 25 && decoded[0].dynamic_affects.size() == 1 &&
 			decoded[0].dynamic_affects[0].extra2 == 28 &&
-			decoded[0].extra_descriptions.size() == 1 &&
+			decoded[0].extra_descriptions.size() == 2 &&
+			decoded[0].extra_descriptions[1].keyword == "DURIS_NAMED_SET_ORIGIN_V1" &&
+			decoded[0].extra_descriptions[1].description == "808" &&
 			decoded[0].extra_descriptions[0].spell_ids ==
 				std::vector<int32_t>{ 29, 30 } &&
 			decoded[1].parent_index == 0 && decoded[1].object_uid == 101,

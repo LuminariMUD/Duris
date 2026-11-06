@@ -9,6 +9,7 @@
  */
 
 #include "persistence/persistence_log.h"
+#include "sql/item_extra_descr_codec.h"
 #include <algorithm>
 #include <cerrno>
 #include <ctype.h>
@@ -731,7 +732,8 @@ char *find_ex_description(char *word, struct extra_descr_data *list)
 	struct extra_descr_data *i;
 
 	for (i = list; i; i = i->next)
-		if (isname(word, i->keyword) && !isname("_id_name_", i->keyword) &&
+		if (i->keyword && strcmp(i->keyword, SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD) &&
+		    isname(word, i->keyword) && !isname("_id_name_", i->keyword) &&
 		    !isname("_id_short_", i->keyword) && !isname("_id_desc_", i->keyword))
 			return (i->description);
 

@@ -2927,6 +2927,7 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 				}
 				obj->ex_description = NULL;
 				int nDescs = GET_SHORT(buf);
+				bool origin_seen = false;
 				struct extra_descr_data **lastOne = &(obj->ex_description);
 				while (*lastOne)
 					lastOne = &((*lastOne)->next);
@@ -2934,8 +2935,49 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 				{
 					CREATE(ed, extra_descr_data, 1, MEM_TAG_EXDESCD);
 					ed->next = NULL;
+					char *keyword_start = buf;
 					ed->keyword = GET_STRING(buf);
+					const size_t keyword_bytes =
+						buf - keyword_start - short_size;
+					char *description_start = buf;
 					ed->description = GET_STRING(buf);
+					const size_t description_bytes =
+						buf - description_start - short_size;
+					int origin = 0;
+					const auto origin_status = sql_decode_named_set_origin(
+						ed->keyword ? std::string_view(ed->keyword,
+									       keyword_bytes) :
+							      std::string_view(),
+						ed->description ?
+							std::string_view(ed->description,
+									 description_bytes) :
+							std::string_view(),
+						&origin);
+					if (origin_status ==
+						    sql_named_set_origin_decode_status::invalid ||
+					    (origin_status ==
+						     sql_named_set_origin_decode_status::decoded &&
+					     origin_seen))
+					{
+						logit(LOG_FILE,
+						      "restoreObjects: invalid named set origin for item %d; restore refused",
+						      V_num);
+						if (ed->keyword)
+							str_free(ed->keyword);
+						if (ed->description)
+							str_free(ed->description);
+						FREE(ed);
+						if (!dummy_obj)
+							extract_obj(obj, FALSE);
+						for (const auto &container : containers)
+							if (container.first)
+								extract_obj(container.first, FALSE);
+						return nullptr;
+					}
+					origin_seen =
+						origin_seen ||
+						origin_status ==
+							sql_named_set_origin_decode_status::decoded;
 					if (sql_item_extra_descr_is_spellbook_marker(ed->keyword))
 					{
 						// Old flatfiles could put the binary native marker through
@@ -3279,6 +3321,7 @@ P_obj read_one_object(char *read_buf)
 			}
 			obj->ex_description = NULL;
 			int nDescs = GET_SHORT(buf);
+			bool origin_seen = false;
 			struct extra_descr_data **lastOne = &(obj->ex_description);
 			while (*lastOne)
 				lastOne = &((*lastOne)->next);
@@ -3286,8 +3329,39 @@ P_obj read_one_object(char *read_buf)
 			{
 				CREATE(ed, extra_descr_data, 1, MEM_TAG_EXDESCD);
 				ed->next = NULL;
+				char *keyword_start = buf;
 				ed->keyword = GET_STRING(buf);
+				const size_t keyword_bytes = buf - keyword_start - short_size;
+				char *description_start = buf;
 				ed->description = GET_STRING(buf);
+				const size_t description_bytes =
+					buf - description_start - short_size;
+				int origin = 0;
+				const auto origin_status = sql_decode_named_set_origin(
+					ed->keyword ? std::string_view(ed->keyword, keyword_bytes) :
+						      std::string_view(),
+					ed->description ? std::string_view(ed->description,
+									   description_bytes) :
+							  std::string_view(),
+					&origin);
+				if (origin_status == sql_named_set_origin_decode_status::invalid ||
+				    (origin_status == sql_named_set_origin_decode_status::decoded &&
+				     origin_seen))
+				{
+					logit(LOG_FILE,
+					      "read_one_object: invalid named set origin for item %d; restore refused",
+					      V_num);
+					if (ed->keyword)
+						str_free(ed->keyword);
+					if (ed->description)
+						str_free(ed->description);
+					FREE(ed);
+					extract_obj(obj, FALSE);
+					return nullptr;
+				}
+				origin_seen = origin_seen ||
+					      origin_status ==
+						      sql_named_set_origin_decode_status::decoded;
 				if (sql_item_extra_descr_is_spellbook_marker(ed->keyword))
 				{
 					// Old flatfiles could put the binary native marker through
@@ -3684,7 +3758,10 @@ void restoreCorpses(void)
 		return;
 	}
 #ifndef __NO_MYSQL__
-	sql_load_all_corpses();
+	if (!sql_load_all_corpses())
+		fatal_boot_error(
+			"corpse",
+			"MySQL corpse restore failed; authoritative items were not changed");
 #endif
 }
 
