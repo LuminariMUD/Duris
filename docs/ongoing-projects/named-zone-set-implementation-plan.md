@@ -1,6 +1,6 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; fifteen focused implementation/test PRs are pushed
+Status: implementation in progress; sixteen focused implementation/test PRs are pushed
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
@@ -67,6 +67,10 @@ targets #735. It is ready for review.
 (`branch/named-zone-set-edits`, implementation commit `ff7cfb214`)
 proves native visible-name edits, recursive cloning and copied/mixed outfit
 reload behavior; it targets #736 and is ready for review.
+[PR #738](https://github.com/LuminariMUD/Duris/pull/738)
+(`branch/named-zone-set-pet-storage`, implementation commit `318668bfd`)
+proves native pet-held nested items and recovery and fixes fixture bookkeeping
+retention; it targets #737 and is ready for review.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
 into the foundation and propagated through each dependent branch without
