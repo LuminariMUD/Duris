@@ -49,10 +49,13 @@ int main(int argc, char **argv)
 			if (field.field == player_status_field::base_hit)
 				field.signed_value = field.unsigned_value = 1000;
 		}
-		// Clear spell/rest buffs, retaining achievements, receipts and cooldowns.
+		// Reset ordinary buffs/potions between cases; retain named-set cooldowns and receipts.
 		std::erase_if(snapshot.affects,
-			      [](const player_affect_snapshot &affect) {
-				      return affect.type < FIRST_TAG || affect.type == TAG_RESTED ||
+			      [](const player_affect_snapshot &affect)
+			      {
+				      return affect.type < FIRST_TAG ||
+					     affect.type == TAG_POTION_TIMER ||
+					     affect.type == TAG_RESTED ||
 					     affect.type == TAG_WELLRESTED;
 			      });
 		std::vector<uint8_t> payload, bytes;

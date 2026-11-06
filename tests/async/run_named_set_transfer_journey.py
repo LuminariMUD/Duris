@@ -269,12 +269,6 @@ try:
     game.prepare_mortal(2)
     receiver = game.boot("named-transfer-set-first", account=ACCOUNT, character=RECIPIENT)
     assert "armor (" in expect_max_hp(receiver, baseline + 5)
-    deadline = time.monotonic() + 180
-    save(receiver, RECIPIENT)
-    while game.affects(2096, 2):  # Native TAG_POTION_TIMER, retained across login.
-        assert time.monotonic() < deadline, "ordinary potion cooldown did not expire"
-        time.sleep(1)
-        save(receiver, RECIPIENT)
     receiver.send("quaff " + selector(receiver, potion))
     receiver.expect("Bands of magic armor wrap around you!", timeout=30)
     score(receiver)
