@@ -85,7 +85,8 @@ void set_fighting(P_char, P_char) {}
 void StopAllAttackers(P_char) {}
 void do_action(P_char, char *, int) {}
 void do_say(P_char, char *, int) {}
-void Stun(P_char, P_char, int, bool) {}
+static int stun_duration;
+void Stun(P_char, P_char, int duration, bool) { stun_duration = duration; }
 void KnockOut(P_char, int) {}
 void event_psionic_wave_blast(P_char, P_char, P_obj, void *) {}
 static int attacks;
@@ -184,7 +185,7 @@ FUNCTIONS = {
         "corrosive_blast_damage", "corrosive_blast_ac", "corrosive_blast_duration", "spell_corrosive_blast",
     ],
     "magic.c": [
-        "KludgeDuration", "lodestone_vision_duration", "spell_lodestone_vision", "curse_duration", "curse_hitroll", "curse_saves", "spell_curse",
+        "cyclone_damage", "cyclone_stun_roll", "cyclone_stun_chance", "cyclone_stun", "cyclone_halved", "spell_cyclone", "KludgeDuration", "lodestone_vision_duration", "spell_lodestone_vision", "curse_duration", "curse_hitroll", "curse_saves", "spell_curse",
         "devitalize_movement", "devitalize_floor", "spell_devitalize",
         "true_seeing_duration", "spell_true_seeing", "animal_vision_duration", "spell_animal_vision",
         "natures_blessing_duration", "spell_natures_blessing", "shadow_vision_duration", "spell_shadow_vision",
@@ -429,6 +430,15 @@ int main() {
     spell_sap_nature(50, &caster, nullptr, 0, &target, nullptr);
     assert(target.affected->duration > 1);
     clear(&caster); clear(&target);
+    // The rare cyclone outcome is reachable without losing the ordinary stun tier.
+    target.specials.affected_by = AFF_FLY;
+    for (int roll : {1, 5, 6, 50, 51}) {
+        stun_duration = 0; reset_rolls({roll, 0});
+        spell_cyclone(50, &caster, nullptr, 0, &target, nullptr);
+        assert(stun_duration == (roll <= 5 ? PULSE_VIOLENCE : roll <= 50 ? cyclone_stun() : 0));
+    }
+    target.specials.affected_by = 0;
+    reset_rolls();
     // Nonpositive damage cannot add to innate or spell wards.
     caster.points.ward = 50;
     affected_type ward{}; ward.type = SPELL_LESSER_GUARDIAN_WARD;

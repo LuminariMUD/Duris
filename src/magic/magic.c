@@ -4945,9 +4945,10 @@ std::string cyclone_facts(P_char ch)
 		    show({ cyclone_halved(hit.low), cyclone_halved(hit.high) })) +
 	       "  Elites always take half unless you are a tempest magus.\n" +
 	       fact("A flying target that fails a save",
-		    chance_under(cyclone_stun_chance() + 1, cyclone_stun_roll(lowest_rolls),
+		    chance_under(cyclone_stun_chance() - 5 + 1, cyclone_stun_roll(lowest_rolls),
 				 cyclone_stun_roll(highest_rolls)) +
 			    " to be stunned up to " + seconds(cyclone_stun())) +
+	       "  On the lowest five rolls, a further 1-in-3 roll stuns for one round.\n"
 	       "  Globes and spirit wards do not stop it.\n"
 	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
