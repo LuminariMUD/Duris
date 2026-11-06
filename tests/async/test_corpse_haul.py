@@ -36,6 +36,7 @@ prelude = r'''
 #define USE_SPACE 0
 #define CURRENCY_DENOMINATION_COUNT 4
 #define ITEM_CORPSE 24
+#define ITEM_STORAGE 35
 #define ITEM_MONEY 1
 #define PC_CORPSE 1
 #define CORPSE_FLAGS 1
@@ -121,7 +122,9 @@ static void send_to_char(const char *s,P_char ch) { assert(ch->alive && ch->only
 static void act(const char *s,int,P_char ch,P_obj,void *,int target) {
  if(target==TO_ROOM) rooms[ch->in_room]+=s; else output+=s;
 }
-static void obj_from_obj(P_obj o) { o->location=0; }
+static void obj_from_obj_unsaved(P_obj o) { o->location=0; }
+static void currency_transaction_save_first(P_char) {}
+static void writeSavedItem(P_obj) {}
 static void obj_to_char(P_obj o,P_char ch) {
  if(fail_delivery) { objects.erase(o->obj_uid); return; }
  o->location=3; o->carrier=ch;

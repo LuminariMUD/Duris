@@ -25,6 +25,7 @@ handler = "\n".join(extract_function("world/handler.c", signature) for signature
     "bool obj_can_nest(",
     "bool obj_is_in_container(",
     "void obj_to_obj(",
+    "void obj_from_obj_unsaved(",
     "void obj_from_obj(",
     "void obj_to_room(",
     "void Decay(",

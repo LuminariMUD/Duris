@@ -102,6 +102,9 @@ void artifact_feed_to_min_sql(P_obj,int) {}
 // These pickup fixtures have no canonical artifact authority.
 bool artifact_is_canonical(P_obj) { return false; }
 void obj_from_obj(P_obj obj) { obj->loc_p=LOC_NOWHERE; }
+void obj_from_obj_unsaved(P_obj obj) { obj->loc_p=LOC_NOWHERE; }
+void currency_transaction_save_first(P_char) {}
+void writeSavedItem(P_obj) {}
 void obj_from_room(P_obj obj) { obj->loc_p=LOC_NOWHERE; }
 bool obj_to_char(P_obj obj,P_char ch) {
  assert(IS_ALIVE(ch)); ++pickups;

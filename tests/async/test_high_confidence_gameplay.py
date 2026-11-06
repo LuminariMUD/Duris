@@ -3,7 +3,7 @@
 import re
 import subprocess
 
-from _paths import ROOT, extract_function, source
+from _paths import HARNESS_STUBS, ROOT, extract_function, source
 
 
 PRELUDE = r'''
@@ -577,5 +577,5 @@ cpp.write_text(PRELUDE + "\n".join(functions) + DRIVER)
 subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                 "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
                 "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
-                "-fno-pie", "-no-pie", "-Isrc", str(cpp), "-o", str(binary)], cwd=ROOT, check=True)
+                "-fno-pie", "-no-pie", "-Isrc", str(cpp), str(HARNESS_STUBS), "-o", str(binary)], cwd=ROOT, check=True)
 subprocess.run([str(binary)], check=True, timeout=30)
