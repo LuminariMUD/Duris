@@ -63,6 +63,8 @@ static int decay_duration;
 struct Pending { P_char ch; event_func func; int delay; std::vector<char> payload; };
 static std::vector<Pending> pending;
 static int rescheduled;
+named_set_ordinary_cast::named_set_ordinary_cast(P_char, P_char, int) {}
+named_set_ordinary_cast::~named_set_ordinary_cast() {}
 bool has_innate(P_char, int) { return false; }
 int CheckMindflayerPresence(P_char) { return 0; }
 int number(int lo, int hi) {
