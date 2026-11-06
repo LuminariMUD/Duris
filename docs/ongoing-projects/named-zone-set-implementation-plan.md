@@ -1,6 +1,6 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; twenty-four focused implementation/test PRs are pushed
+Status: implementation in progress; twenty-five focused implementation/test PRs are pushed
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
@@ -115,6 +115,10 @@ it targets #744 and is ready for review.
 (`branch/named-zone-set-mariadb-storage`, implementation commit `f3c96c8c7`)
 completes native MariaDB shop and persistent-world storage round trips;
 it targets #745 and is ready for review.
+[PR #747](https://github.com/LuminariMUD/Duris/pull/747)
+(`branch/named-zone-set-rollback-proof`, proof commit `01c43fc34`)
+qualifies the recovery-only 115-row compatibility checkpoint and re-upgrade while
+preserving item identity; it targets #746 and is ready for review.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
 into the foundation and propagated through each dependent branch without
@@ -1482,7 +1486,8 @@ current -> compatibility -> current journey passes (exit 0):
 
 - Source authority contains 751 named items; the copied/generated qualification
   authority contains 791. Hashes of the original state/accounts/journals match
-  exactly before and after. No source authority or lost identity is recreated.
+  exactly before and after. The original authority is unchanged; no lost identity
+  is recreated.
 - New cohort UIDs `150068557`, `150069581`, `150069613` grant Protection from
   Animals and +5 HP from baseline 1486 on the expanded build. The spell is absent
   from ordinary stored affects.
