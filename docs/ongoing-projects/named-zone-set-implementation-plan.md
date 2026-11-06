@@ -1,6 +1,6 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; twelve focused implementation/test PRs are pushed
+Status: implementation in progress; thirteen focused implementation/test PRs are pushed
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
@@ -54,6 +54,10 @@ targets #732. This focused test chunk is ready for review.
 extends the native runner to the required areas and targets #733. All twelve
 native area/identity cases pass as recorded below. This focused runner/area-proof
 chunk is ready for review.
+[PR #735](https://github.com/LuminariMUD/Duris/pull/735)
+(`branch/named-zone-set-title-journeys`, implementation commit `397381d89`)
+completes the four existing-title native journeys, including six-piece Vitality,
+and targets #734. It is ready for review.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
 into the foundation and propagated through each dependent branch without
@@ -833,6 +837,16 @@ these reboots. All private server processes are stopped. The native runs,
 fixture compilation, `make -C src -j4`, C++ formatting, Python static checks and
 `git diff --check` pass. No product code, generated item content, production
 state, release tag or deployment was changed.
+
+**Next storage journey:** use the existing character helpers with a second
+synthetic account, retaining the current authority and real generated item UIDs.
+Transfer named gear in native nested containers, then wear/save/reboot it under
+the recipient. Keep the recipient free of the accumulated candidate pool so the
+native `attributes` Armor Points comparison cannot be masked by the existing
+armor/load caps. Compare the same worn gear after ordinary Armor and after
+removing/reapplying set support to prove effective non-stacking, alongside the
+already verified duration/source and saved-affect checks. Do not edit generated
+item identity or provenance to prepare this journey.
 
 ## Start here
 
