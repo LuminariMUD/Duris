@@ -95,7 +95,7 @@ for row in set_rows:
     for pieces, token in re.findall(r"\{(\d+),(\w+)\}", row):
         if int(pieces) and token in defines:
             homes[defines[token]].add(zone)
-for line in assignments.split("## Effect homes after both passes")[1].split("## Remaining work")[0].splitlines():
+for line in assignments.split("## Effect homes after both passes")[1].split("\n## ", 1)[0].splitlines():
     if not re.search(r"\(#\d+\)", line):
         continue
     cells = line.split("|")
