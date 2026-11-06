@@ -131,7 +131,7 @@ CALLS = {
                                       "(l>song_dragons_gas_level())&&(song_dragons_ward_roll(live_rolls))",
                                       "(l>song_dragons_acid_level())&&(song_dragons_ward_roll(live_rolls))",
                                       "(l>song_dragons_lightning_level())&&(song_dragons_ward_roll(live_rolls))"],
-    ("bard.c", "void bard_dissonance"): ["c_roll=song_dissonance_power(ch,empower)", "c_roll+=song_dissonance_disharmonist_bonus(c_roll)",
+    ("bard.c", "void bard_dissonance"): ["c_roll=song_dissonance_power(ch,GET_CHAR_SKILL(ch,SKILL_EMPOWER_SONG))", "c_roll+=song_dissonance_disharmonist_bonus(c_roll)",
                                          "c_roll+number(0,50)>t_roll+number(0,50)", "CharWait(t,song_dissonance_target_lag())", "c_roll>number(1,2000)",
                                          "add_event(event_pet_death,song_dissonance_pet_death_delay(),t,NULL,NULL,0,NULL,0)"],
     ("bard.c", "void event_bardsong"): ["intsong_level=song_learned_level(ch,song)", "set_short_affected_by(ch,TAG_BARDSONG_FAILURE,song_verse_failure_rest(song_level))",
@@ -600,7 +600,7 @@ PINS = r'''
     LACKS(song_harming_facts, "wither");
     HAS(lore_facts, "  Lowest level character you can lore: 50\n");
     ch = viewer(viewers[2], 56); // disharmonist
-    HAS(song_dissonance_facts, "  A disharmonist's strength grows for each target by: 120%\n");
+    HAS(song_dissonance_facts, "  Included disharmonist bonus: 120%\n");
     ch = viewer(viewers[6], 56); // berserker
     set_ratings(0);
     ratings[SKILL_HITALL] = 80;

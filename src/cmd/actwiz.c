@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "item/named_set_origin.h"
 #include "persistence/copyover.h"
 #include "net/discord_petition.h"
 #include "account/creation_availability_config.h"
@@ -1841,6 +1842,18 @@ void do_stat(P_char ch, char *argument, int cmd, P_obj object)
 				 "&+YKeywords: &N%s\n&+YLong description:\n%s\n",
 				 ((j->name) ? j->name : "None"),
 				 ((j->description) ? j->description : "None"));
+		const auto origin = named_set_origin(j);
+		if (origin.zone > 0)
+			checked_snprintf(o_buf + strlen(o_buf), MAX_STRING_LENGTH - strlen(o_buf),
+					 "&+YNamed set origin: &N#%d\n", origin.zone);
+		else if (origin.zone < 0)
+			strlcat(o_buf,
+				"&+RNamed set origin: invalid metadata; repair required.&n\n",
+				MAX_STRING_LENGTH);
+		else if (!origin.legacy_title.empty())
+			checked_snprintf(o_buf + strlen(o_buf), MAX_STRING_LENGTH - strlen(o_buf),
+					 "&+YNamed set origin: &Nambiguous legacy '%s' (HP only)\n",
+					 origin.legacy_title.c_str());
 
 		if (j->ex_description)
 		{
@@ -8157,9 +8170,19 @@ struct obj_data *clone_obj(P_obj obj)
 				  "clone_source_exists", "vnum=%d", OBJ_VNUM(obj));
 		return nullptr;
 	}
+	const auto origin = named_set_origin(obj);
+	if (origin.zone < 0)
+	{
+		persistence_alert(AVATAR, "named_set_origin", "clone_obj", "none", "none",
+				  "invalid_origin", "vnum=%d has invalid named set metadata",
+				  OBJ_VNUM(obj));
+		return nullptr;
+	}
 	ocopy = read_object(obj->R_num, REAL);
 	if (!ocopy)
 		return nullptr;
+	if (origin.zone > 0)
+		set_named_set_origin(ocopy, origin.zone);
 	/* copy  */
 	if (obj->name)
 	{

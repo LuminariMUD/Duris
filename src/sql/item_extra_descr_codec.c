@@ -170,6 +170,10 @@ bool sql_encode_item_extra_descr(const char *keyword, const char *description, c
 
 	*db_keyword = nullptr;
 	*db_description = nullptr;
+	int origin = 0;
+	if (sql_decode_named_set_origin(keyword, description ? description : "", &origin) ==
+	    sql_named_set_origin_decode_status::invalid)
+		return false;
 
 	const bool native_spellbook = sql_item_extra_descr_is_spellbook_marker(keyword);
 	if (native_spellbook)

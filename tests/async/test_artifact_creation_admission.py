@@ -18,6 +18,7 @@ HARNESS = r"""
 #include "world/world_recovery_codec.h"
 #include "persistence/copyover.h"
 #include "item/encumbrance_policy.h"
+#include "item/named_set_origin.h"
 #include "player/player_snapshot.h"
 #include "player/player_load_items.h"
 #include "guild/artifact_guild_state.h"
@@ -48,6 +49,8 @@ const char *equipment_types[CUR_MAX_WEAR+1] = {};
 P_room world=rooms;
 extern const int top_of_world=1;
 P_index obj_index = indexes;
+zone_data *zone_table=nullptr;
+int top_of_zone_table=-1;
 P_obj object_list = nullptr;
 mm_ds pool = {};
 mm_ds *dead_obj_pool = &pool;
@@ -705,6 +708,7 @@ source=source.replace("// RECOVERY_TREE",extract_function("world_recovery_pipeli
  extract_function("world_recovery_pipeline.c","void replace_object_text(")+"\n"+
  extract_function("world_recovery_pipeline.c","P_obj materialize_object("))
 
+source += "\n" + extract_function("utility.c", "string strip_ansi(")
 source=source.replace("// CLONE",extract_function("actwiz.c","struct obj_data *clone_obj(P_obj obj)")+"\n"+extract_function("actwiz.c","void clone_container_obj(P_obj to, P_obj obj)"))
 reset=extract_function("db.c","void reset_zone(int zone, int force_item_repop)")
 parts=[]
@@ -2064,7 +2068,7 @@ with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as dire
  subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-D__NO_MYSQL__",
   "-Isrc","-Isrc/no_mysql","-ffunction-sections","-fdata-sections","-fsanitize=address,undefined",
   "-fno-sanitize-recover=all","-fno-omit-frame-pointer",str(cpp),"src/guild/artifact_population.c",
-  "src/item/item_transfer_command.c","src/item/item_ownership_runtime.c","src/guild/artifact_guild_state.c",
+  "src/item/named_set_origin.c","src/item/random_equipment_tables.c","src/item/item_transfer_command.c","src/item/item_ownership_runtime.c","src/guild/artifact_guild_state.c",
   "src/guild/artifact_guild_command.c","src/persistence/critical_command.c","src/core/safe_format.c","src/player/player_load_topology.c","src/combat/trap_legacy.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
   "src/player/player_load_pipeline.c","src/persistence/persistence_observability.c",
   "-o",str(binary)],cwd=ROOT,check=True)

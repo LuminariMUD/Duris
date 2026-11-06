@@ -478,6 +478,7 @@ capture_item_tree(const obj_data *object, int parent_index, int equipment_slot,
 	// legacy writers saved it: the game reads only the first marker.
 	std::array<bool, MAX_SKILLS> spells = {};
 	int spellbook_index = -1;
+	bool origin_seen = false;
 	for (const extra_descr_data *description = object->ex_description; description;
 	     description = description->next)
 	{
@@ -486,6 +487,15 @@ capture_item_tree(const obj_data *object, int parent_index, int equipment_slot,
 		if (description->keyword &&
 		    !strcmp(description->keyword, SQL_ITEM_TRAP_STATE_KEYWORD))
 			continue;
+		int origin = 0;
+		const auto origin_status = sql_decode_named_set_origin(
+			description->keyword ? description->keyword : "",
+			description->description ? description->description : "", &origin);
+		if (origin_status == sql_named_set_origin_decode_status::invalid ||
+		    (origin_status == sql_named_set_origin_decode_status::decoded && origin_seen))
+			return player_snapshot_capture_result::malformed_source;
+		origin_seen = origin_seen ||
+			      origin_status == sql_named_set_origin_decode_status::decoded;
 		const bool spellbook = description->keyword && strlen(description->keyword) == 3 &&
 				       description->keyword[0] == 3 &&
 				       description->keyword[1] == 1 && description->keyword[2] == 3;

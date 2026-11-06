@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <string_view>
 
 enum class sql_spellbook_decode_status
 {
@@ -38,6 +39,47 @@ inline bool sql_item_extra_descr_is_spellbook_marker(const char *keyword)
 }
 
 constexpr const char *SQL_ITEM_TRAP_STATE_KEYWORD = "DURIS_TRAP_STATE_V1";
+
+constexpr const char *SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD = "DURIS_NAMED_SET_ORIGIN_V1";
+
+enum class sql_named_set_origin_decode_status
+{
+	not_origin,
+	decoded,
+	invalid
+};
+
+// Canonical positive virtual zone ID. String views also reject embedded NULs
+// in snapshots, before their strings become native extra descriptions.
+inline sql_named_set_origin_decode_status
+sql_decode_named_set_origin(std::string_view keyword, std::string_view description, int *zone)
+{
+	if (keyword != SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD)
+		return keyword.substr(0, keyword.find('\0')) == SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD ?
+			       sql_named_set_origin_decode_status::invalid :
+			       sql_named_set_origin_decode_status::not_origin;
+	if (!zone || description.empty() || description.front() < '1' || description.front() > '9')
+		return sql_named_set_origin_decode_status::invalid;
+	int value = 0;
+	const auto parsed =
+		std::from_chars(description.data(), description.data() + description.size(), value);
+	if (parsed.ec != std::errc() || parsed.ptr != description.data() + description.size() ||
+	    value <= 0)
+		return sql_named_set_origin_decode_status::invalid;
+	*zone = value;
+	return sql_named_set_origin_decode_status::decoded;
+}
+
+// Native spellbook descriptions are binary, so inspect the keyword before
+// constructing a text view of the description.
+inline sql_named_set_origin_decode_status
+sql_decode_named_set_origin(const char *keyword, const char *description, int *zone)
+{
+	if (!keyword || std::strcmp(keyword, SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD))
+		return sql_named_set_origin_decode_status::not_origin;
+	return sql_decode_named_set_origin(std::string_view(keyword),
+					   std::string_view(description ? description : ""), zone);
+}
 
 enum class sql_item_trap_state_decode_status
 {

@@ -222,6 +222,7 @@ metadata_validation_outcome valid_item_metadata(const player_item_snapshot &item
 			return metadata_validation_outcome::invalid;
 	std::unordered_set<std::string> descriptions;
 	bool trap_state_seen = false;
+	bool named_origin_seen = false;
 	try
 	{
 		descriptions.reserve(item.extra_descriptions.size());
@@ -232,6 +233,16 @@ metadata_validation_outcome valid_item_metadata(const player_item_snapshot &item
 			    description.description.size() > PLAYER_SNAPSHOT_MAX_STRING_BYTES)
 				return metadata_validation_outcome::invalid;
 			int16_t effect = 0, damage = 0, charges = 0, level = 0;
+			int zone = 0;
+			const auto origin = sql_decode_named_set_origin(
+				description.keyword, description.description, &zone);
+			if (origin == sql_named_set_origin_decode_status::invalid ||
+			    (origin == sql_named_set_origin_decode_status::decoded &&
+			     (named_origin_seen || description.spellbook ||
+			      !description.spell_ids.empty())))
+				return metadata_validation_outcome::invalid;
+			named_origin_seen = named_origin_seen ||
+					    origin == sql_named_set_origin_decode_status::decoded;
 			const auto trap = sql_decode_item_trap_state(
 				description.keyword.c_str(), description.description.c_str(),
 				&effect, &damage, &charges, &level);
