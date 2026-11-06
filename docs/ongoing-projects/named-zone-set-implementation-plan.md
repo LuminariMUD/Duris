@@ -1,7 +1,8 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; twenty-five focused implementation/test PRs are pushed
-and ready for review, including the expanded catalog #732 after native gameplay validation.
+Status: **PAUSED at the user's request. Implementation and integration are incomplete.**
+Twenty-five PRs remain open/non-draft; their existence is not completion or approval.
+This update records handoff state only. Do not resume implementation automatically.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
 Working branch: `branch/named-zone-set-rollback-proof`, based on
@@ -9,6 +10,89 @@ Working branch: `branch/named-zone-set-rollback-proof`, based on
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
+
+### Read this first: stopped-work handoff
+
+The user stopped this work after the 25-PR stack and excessive verification
+became an unacceptable burden. Only documentation and commit/push of completed
+work were subsequently authorized. No PR consolidation, closure, merge, history
+rewrite or additional implementation was performed during this handoff.
+
+**Primary worktree:** `/home/aiwithapex/projects/duris`, branch
+`branch/named-zone-set-rollback-proof`, PR #747. It contains the accumulated
+implementation/test work but does **not** yet integrate all later owning-branch
+review repairs. Do not treat this branch or its existing binaries as the final
+qualified deliverable.
+
+**Completed review work is already committed and pushed on separate branches:**
+
+- #717 `branch/named-zone-set-origin`: `3a4b0ed26` filters ignored metadata before
+  origin validation. Disposable MariaDB player/pet regressions and both builds pass.
+- #727 `branch/named-zone-set-ordinary-casts`: `79dcb93e6` fixes wounded Vitality
+  position evaluation; `79ba081c3` preserves Crown regeneration coexistence.
+  Focused ASan/UBSan regressions and both builds pass; both review threads resolved.
+- #728 `branch/named-zone-set-cooldowns`: `b0ffc0342` adds actual character-dispel
+  traversal to the cooldown regression. It proves ordinary Armor is dispelled
+  while all three named cooldowns survive and still prevent fresh-driver bypass.
+  The test passes. No product flag change was needed: `AFFTYPE_STORE` already
+  includes `AFFTYPE_NODISPEL`. The review-thread reply/resolution was not completed.
+- #732 `branch/named-zone-set-roster`: `0cbfd9794` suppresses ineligible automatic
+  Guardian Spirits attempts while preserving the manual rejection. All 50
+  handlers/3,000 configurations, level caps and both builds pass; thread resolved.
+- #743 `branch/named-zone-set-live-report`: `2a482448e` creates the artifact
+  directory and clears captured output for every invocation. Fresh-source
+  execution passes; removing the fallback is correctly rejected. Threads resolved.
+
+**Remaining work, not completed:**
+
+1. Integrate the scattered owning-branch repairs into a coherent review target.
+   Re-check current remote heads first: other repository work has advanced some
+   branches. The handoff observed membership `6c9eb9083`, effect ownership
+   `1cb8c7060` and historical origins `95c529986`; do not blindly replay an old
+   branch/merge script or overwrite others' changes.
+2. Address #736's unresolved effective-Armor test gap: obtain an independent
+   ordinary-only reference on identical gear, then compare overlap against it.
+   No repair to that journey was made. Use a copied authority; the old primary
+   transfer manifest refers to containers lost in the disclosed #740 setup error.
+3. Resolve the #728 thread with the already-pushed direct dispel evidence, then
+   re-check outstanding reviews. Finish focused integrated verification, release/
+   help handoff and #706 references. No final issue update/closure was posted.
+4. Refresh and re-qualify the compatibility checkpoint after integrating the
+   accepted fixes. The published initial tag below predates these review repairs
+   and is **not the final recovery recommendation**. Preserve its history.
+
+The user rejected the fragmented PR structure. A consolidation was suggested,
+but not performed or authorized as part of this documentation-only handoff.
+Keep the 25 PRs/branches and all commits intact until the next owner chooses the
+cleanup approach. All 25 PRs were rechecked as open and non-draft for this handoff.
+
+**Owned auxiliary worktrees:**
+
+- `bin/tests/named-set-review-fixes`: currently on cooldown branch `b0ffc0342`,
+  clean; this was used for repairs on their owning branches.
+- `bin/tests/named-set-rollback-source`: compatibility branch `cd3d04faa`, clean;
+  original 115-row catalog with the then-current safety code.
+
+Other worktrees, including `duris-merge-work` and `duris-715-critical`, are not this
+handoff's work; preserve them. No test process from this task remains pending.
+
+**Data/evidence:** original private runtime remains
+`bin/tests/named-set-roster-world`. Last verified retained named count is 751,
+with original UIDs `76068523`, `76068769`, `76069376` worn by mortal Meranen;
+empty persistent root `144069157` remains. The 791-item rollback qualification
+authority is a separate copy at `bin/tests/named-rollback-world-275pore8`; it did
+not alter the original state/accounts/journals. Preserve the earlier disclosed
+loss of sandbox copies `98069719/98069720/98069721` and their failure evidence;
+never fabricate those UIDs or reset authority to hide that loss.
+
+Review proof logs are `bin/tests/named-review-*`, including vitality/crown red and
+green logs, origin MariaDB/build logs, Guardian matrix/build logs and
+`named-review-cooldown-dispel.log`. Fresh-cache positive/negative evidence is in
+`bin/tests/named-cache-fresh-7ndh18sm`. These are ignored local artifacts, not
+committed player data or a claim that the final integrated branch was qualified.
+No production migration, deployment, release or PR merge was performed by this task.
+
+### Earlier chronological checkpoints
 
 **Continue with:** repair the confirmed review findings below, refresh the
 compatibility checkpoint, and finish local/review reconciliation. MariaDB player/private chest, canonical help on both
@@ -1526,24 +1610,31 @@ has been submitted. Automated review threads remain on #717, #727, #728, #732,
 #736 and #743; current source was inspected rather than treating readiness as
 approval. The following work must complete before the final handoff:
 
-- #717: validate owned player/pet origin metadata after the callback filters
-  foreign or intentionally unmaterialized rows; retain length-aware rejection
-  for metadata actually being loaded.
-- #727: finish the ordinary Vitality scope before evaluating position, so a
-  wounded wearer is not classified dead while set HP is temporarily detached.
-  Preserve the Crown's distinct regeneration affect when deciding ordinary/set
-  equivalence.
-- #728: the reported cooldown-dispel gap is not present in current source:
-  `AFFTYPE_STORE` already includes `AFFTYPE_NODISPEL`. Add/inspect direct dispel
-  proof before resolving the thread; do not add redundant product flags.
-- #732: skip automatic Guardian Spirits attempts for non-Shamans, preserving the
-  manual spell's restriction/error behavior without periodic rejection spam.
+- #717: verified the already-published `3a4b0ed26` repair on the refreshed owning
+  branch. Owned metadata remains length-validated; ignored foreign/retained rows
+  no longer block login. Real disposable MariaDB player/pet regressions and both
+  builds pass; the thread is resolved. No duplicate patch was added.
+- #727: fixed wounded Vitality in `79dcb93e6` by applying the existing native
+  affect recalculation before position evaluation. The real spell/body-state
+  regression fails before and passes after; no new lifecycle API is added.
+  `79ba081c3` preserves the Crown's independent regeneration while normal
+  Regeneration still suspends/resumes the set. Both builds and ASan/UBSan
+  ownership regressions pass, and both threads are resolved.
+- #728: `b0ffc0342` now proves the existing protection through the real character
+  dispel traversal. Ordinary Armor is removed; timers survive and fresh-driver
+  reapplication remains blocked. The test passes. Thread reply/resolution remains
+  pending; no redundant product flag was added.
+- #732: fixed in `0cbfd9794`. Non-Shaman automatic attempts are silent; the real
+  manual rejection remains. All 50 handlers/3,000 configurations, level caps and
+  both builds pass. The thread is resolved.
 - #736: strengthen the native Armor journey with an explicit ordinary-only
   reference on identical gear. Re-run against a fresh copy; its original primary
   manifest names containers lost in the separately disclosed #740 setup failure.
   Never recreate those old UIDs or overwrite the original failure evidence.
-- #743: create `bin/tests` on a fresh checkout and clear captured output before
-  each cache report invocation so every lifecycle state proves actual delivery.
+- #743: fixed in `2a482448e`: create `bin/tests` and clear each captured report.
+  A clean tracked-source export passes without a pre-existing artifact directory;
+  removing its fallback makes the strengthened test fail as required. Evidence
+  is under `bin/tests/named-cache-fresh-7ndh18sm`; both threads are resolved.
 
 Fixes will be committed to their owning PR branches and propagated forward
 without rewriting history. Use isolated review worktrees so this current handoff
