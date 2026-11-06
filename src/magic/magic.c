@@ -21175,7 +21175,7 @@ bool resurrect_corpse(int level, P_char ch, P_obj obj)
 		for (t_obj = t_ch->carrying; t_obj != NULL; t_obj = next_obj)
 		{
 			next_obj = t_obj->next_content;
-			if (IS_SET(obj->extra_flags, ITEM_TRANSIENT))
+			if (IS_SET(t_obj->extra_flags, ITEM_TRANSIENT))
 			{
 				extract_obj(t_obj, TRUE); // Transient artis?
 				t_obj = NULL;
