@@ -215,7 +215,9 @@ def selector(uid):
 
 
 try:
-    inspect()  # Validate the private synthetic authority before preparing staff access.
+    # Validate the synthetic authority and retain all earlier named identities,
+    # including gear packed into nested containers by preceding cases.
+    prior_origins = {row[0]: row[1] for row in inspect()}
     journey.make_overlord(state, journey.CHARACTER)
     boot("named-generation")
     client.send("remove all")
@@ -319,6 +321,10 @@ try:
     expect_set(pieces)
     save()
     after = inspect()
+    restored_origins = {row[0]: row[1] for row in after}
+    assert prior_origins.items() <= restored_origins.items(), (
+        "earlier named items must survive nested-container saves and reboot"
+    )
     for uid in chosen:
         old = next(row for row in before if int(row[0]) == uid)
         new = next(row for row in after if int(row[0]) == uid)

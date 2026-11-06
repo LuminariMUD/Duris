@@ -1,6 +1,6 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; ten focused implementation/test PRs are pushed
+Status: implementation in progress; eleven focused implementation/test PRs are pushed
 and ready for review; the expanded catalog is in draft #732 for gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
@@ -50,6 +50,11 @@ native gameplay gate described in its checkpoint below passes.
 adds the native Tharnadia 2/3/4/5-piece wear, ordinary Armor and reboot journey and
 targets #732. This focused test chunk is ready for review; the broader catalog
 readiness gate remains open.
+[PR #734](https://github.com/LuminariMUD/Duris/pull/734)
+(`branch/named-zone-set-area-journeys`, implementation commit `0afe7cba2`)
+extends the native runner to the required areas and targets #733. Bloodstone and
+Forgotten Forest pass; the identity cases continue below. This focused runner/
+area-proof chunk is ready for review.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
 into the foundation and propagated through each dependent branch without
@@ -767,9 +772,14 @@ Evidence stays under `bin/tests/`: `named-zone-740.log`, `named-zone-827.log`,
 the corresponding `named-zone-<id>-result.json` in the runtime, and per-zone
 transcripts. The updated driver retains every session's transcript for later
 cases. The identity-zone cases and a Tharnadia regression of the shared driver
-are now running serially through `bin/tests/run-named-identity-cases.py`; this
-driver stops on the first failure and never reseeds the authority. These cases
-are not yet claimed passed. C++ formatting/fixture compilation, Python static
+are running serially through `bin/tests/run-named-identity-cases.py`; this
+driver stops on the first failure and never reseeds the authority. Native cases
+**#13, #44, #204, #808 and #811 now pass**: effect/HP threshold, report/inventory,
+exact UID/origin/wear-slot restoration and removal. #814/#990, the counterparts
+and the shared-driver Tharnadia regression remain in progress. Later cases also
+assert that every earlier named UID/origin survives in its native container tree
+after save/reboot, not just the currently worn pieces. Per-zone result JSON and
+complete session transcripts record each run. C++ formatting/fixture compilation, Python static
 checks, `make -C src -j4` and `git diff --check` pass. Keep #732 in draft until
 the remaining required native cases pass.
 
