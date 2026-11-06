@@ -58,6 +58,7 @@ static P_char pet_master;
 static int paralyzed, restored, waited, deaths, technique, refusals, extracted;
 static std::vector<P_obj> objects;
 static bool fail_object;
+static bool kill_area_caster;
 static int decay_duration;
 struct Pending { P_char ch; event_func func; int delay; std::vector<char> payload; };
 static std::vector<Pending> pending;
@@ -88,6 +89,13 @@ void logit(const char *, const char *, ...) {}
 void debug(const char *, ...) {}
 void send_to_char(const char *text, P_char) { refusals += std::strstr(text, "plane") != nullptr; }
 void send_to_room(const char *, int) {}
+void zone_spellmessage(int, bool, const char *, const char *) {}
+void make_dry(P_char) {}
+void spell_single_firestorm(int, P_char, char *, int, P_char, P_obj) {}
+int cast_as_damage_area(P_char ch, spell_func, int, P_char, float, float) {
+    if (kill_area_caster) delete ch;
+    return 0;
+}
 void act(const char *, int, P_char, P_obj, void *, int) {}
 void appear(P_char, bool) {}
 void do_point(P_char, P_char) {}
@@ -202,7 +210,15 @@ int is_Raidable(P_char, char *, int) { return true; }
 int how_close(int, int, int) { return 0; }
 void char_from_room(P_char ch) { ch->in_room = NOWHERE; }
 bool char_to_room(P_char ch, int room, int) { ch->in_room = room; return true; }
-bool should_area_hit(P_char ch, P_char target) { return ch != target; }
+bool grouped(P_char ch, P_char target) { return ch->group && ch->group == target->group; }
+int IS_MORPH(P_char) { return false; }
+bool AdjacentInRoom(P_char, P_char) { return true; }
+P_char get_linking_char(P_char, ush_int) { return nullptr; }
+int is_char_in_room(const P_char ch, int room) {
+    for (auto *person = rooms[room].people; person; person = person->next_in_room)
+        if (person == ch) return true;
+    return false;
+}
 static room_affect room_af[4]{};
 room_affect *get_spell_from_room(P_room room, int type) {
     auto *af = &room_af[room - rooms]; return af->type == type ? af : nullptr;
@@ -238,12 +254,12 @@ static void clear(P_char ch) { while (ch->affected) affect_remove(ch, ch->affect
 
 SCALARS = {
     "fight.c": "essence_of_wolf_attacks essence_of_wolf_attack_cap essence_of_wolf_offhand_roll",
-    "utility.c": "GET_CLASS GET_PRIME_CLASS GET_SECONDARY_CLASS",
+    "utility.c": "GET_CLASS GET_PRIME_CLASS GET_SECONDARY_CLASS should_area_hit",
     "smagic.c": "mending_improved_bonus mending_healing greater_mending_healing",
     "magic.c": "aid_duration spore_burst_level stigmata_draconica_duration globe_duration spell_globe "
                "sleep_duration spell_sleep death_blessing_leader_level death_blessing_member_level "
                "spell_miracle spell_death_blessing burning_hands_damage spell_burning_hands "
-               "firestorm_room_duration immolate_damage magma_burst_flares "
+               "firestorm_room_duration spell_firestorm immolate_damage magma_burst_flares "
                "decaying_flesh_damage decaying_flesh_interval event_fleshdecay "
                "heavens_aid_slay_level heavens_aid_slay_damage heavens_aid_damage heavens_aid_pc_damage "
                "heavens_aid_factor spell_heavens_aid energy_drain_duration "
@@ -612,6 +628,49 @@ int main() {
     rooms[1].people = &target; target.next_in_room = nullptr; pet_master = &caster;
     refusals = 0; spell_banish(50, &caster, nullptr, 0, nullptr, nullptr);
     assert(refusals == 1);
+    // Moving away must preserve the real area selector's protections.
+    caster = alive(); caster.only.pc = &pc;
+    target = alive(); target.only.pc = &target_pc;
+    caster.in_room = 2; rooms[1].people = &target; rooms[1].sector_type = SECT_FOREST;
+    spike_growth_data spikes{1, 2}; awaken_forest_data woods{1, 2};
+    technique = 3; roll = 100;
+    for (int protection : {0, 1, 2, 3}) {
+        rooms[1].room_flags = protection == 0 ? ROOM_SAFE : 0;
+        target.group = protection == 1 ? &g1 : nullptr;
+        caster.group = protection == 1 ? &g1 : nullptr;
+        target.specials.z_cord = protection == 2 ? 1 : 0;
+        target.player.level = protection == 3 ? MINLVLIMMORTAL : 50;
+        room_af[1].type = SPELL_SPIKE_GROWTH; damage_calls = 0;
+        event_spike_growth(&caster, nullptr, nullptr, &spikes);
+        assert(damage_calls == 0);
+        room_af[1].type = SPELL_AWAKEN_FOREST; damage_calls = 0;
+        event_awaken_forest(&caster, nullptr, nullptr, &woods);
+        assert(damage_calls == 0);
+    }
+    rooms[1].room_flags = 0; target.group = caster.group = nullptr;
+    target.specials.z_cord = 0; target.player.level = 50;
+    // Privacy protects other targets, without blocking travel to one's own anchor.
+    portal.to_room = 1; caster.in_room = 2; consent = false; introduced = true;
+    affected_type anchor{}; anchor.type = SPELL_THOUGHT_BEACON; anchor.modifier = 1;
+    affect_to_char(&caster, &anchor);
+    caster.specials.act2 = PLR2_NOLOCATE;
+    assert(can_do_general_portal(50, &caster, &caster, &portal, nullptr));
+    caster.specials.act2 = 0; caster.specials.affected_by3 = AFF3_NON_DETECTION;
+    assert(can_do_general_portal(50, &caster, &caster, &portal, nullptr));
+    caster.specials.affected_by3 = 0; clear(&caster);
+    // Deflected area damage can extract an NPC caster before firestorm returns.
+    auto *fire_caster = new char_data(alive()); fire_caster->only.npc = &npc;
+    fire_caster->specials.act = ACT_ISNPC;
+    kill_area_caster = true;
+    spell_firestorm(50, fire_caster, nullptr, 0, nullptr, nullptr);
+    kill_area_caster = false;
+    // The count pass must not consume one-shot immunity before the hit pass.
+    caster.in_room = 1; roll = 1; technique = 3;
+    room_af[1].type = SPELL_AWAKEN_FOREST;
+    affected_type immunity{}; immunity.type = TAG_IMMUNE_AREA;
+    affect_to_char(&target, &immunity); damage_calls = 0;
+    event_awaken_forest(&caster, nullptr, nullptr, &woods);
+    assert(!target.affected && damage_calls == 0);
     std::puts("PASS #715 spell decisions: bounds, saves, flags, refreshes, memory expiry and caster resources");
 }
 '''

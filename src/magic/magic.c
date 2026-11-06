@@ -5579,6 +5579,7 @@ void spell_firestorm(int level, P_char ch, char * /*arg*/, int /*type*/, P_char 
 {
 	struct room_affect raf;
 	int room = ch->in_room;
+	const int duration = firestorm_room_duration(ch);
 	P_char tch;
 
 	send_to_char("You call a &+Rraging&n &+rfirestorm&n to engulf your foes!\n", ch);
@@ -5591,7 +5592,7 @@ void spell_firestorm(int level, P_char ch, char * /*arg*/, int /*type*/, P_char 
 
 	memset(&raf, 0, sizeof(raf));
 	raf.type = SPELL_FIRESTORM;
-	raf.duration = firestorm_room_duration(ch);
+	raf.duration = duration;
 	affect_to_room(room, &raf);
 
 	for (tch = world[room].people; tch; tch = tch->next_in_room)
@@ -27879,13 +27880,14 @@ bool can_do_general_portal(int /*level*/, P_char ch, P_char victim,
 	     //        IS_NPC(ch) ||
 	     IS_PC_PET(ch) ||
 	     // victim check
-	     (victim && (IS_TRUSTED(victim) || IS_AFFECTED3(victim, AFF3_NON_DETECTION) ||
-			 (IS_SET(victim->specials.act2, PLR2_NOLOCATE) &&
-			  !is_linked_to(ch, victim, LNK_CONSENT)) ||
-			 (IS_PC(victim) && IS_SET(victim->specials.act2, PLR2_NOLOCATE) &&
-			  !is_introd(victim, ch)) ||
-			 (racewar(ch, victim) &&
-			  !race_portal_check(ch, victim))) /* check used if victim is set */
+	     (victim && victim != ch &&
+	      (IS_TRUSTED(victim) || IS_AFFECTED3(victim, AFF3_NON_DETECTION) ||
+	       (IS_SET(victim->specials.act2, PLR2_NOLOCATE) &&
+		!is_linked_to(ch, victim, LNK_CONSENT)) ||
+	       (IS_PC(victim) && IS_SET(victim->specials.act2, PLR2_NOLOCATE) &&
+		!is_introd(victim, ch)) ||
+	       (racewar(ch, victim) &&
+		!race_portal_check(ch, victim))) /* check used if victim is set */
 	      )) /* check used if not trusted ch */
 	)
 	{

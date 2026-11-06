@@ -17,6 +17,7 @@
 #include "magic/spells.h"
 #include <stdio.h>
 #include <string.h>
+#include <vector>
 #include "combat/ctf.h"
 #include "combat/damage.h"
 #include "classes/disguise.h"
@@ -2857,9 +2858,8 @@ void event_spike_growth(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 		if (tch == ch)
 			continue;
 
-		if (ch->in_room == sgd->room)
-			if (!should_area_hit(ch, tch))
-				continue;
+		if (!should_area_hit(ch, tch))
+			continue;
 
 		if (spike_growth_affect_roll(live_rolls) < 100 - chance)
 			continue;
@@ -3003,10 +3003,11 @@ std::string awaken_forest_facts(P_char /*ch*/)
 void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 {
 	struct awaken_forest_data *awd;
-	P_char tch, next;
+	P_char tch;
 	int dam, technique, duration;
 	struct room_affect af;
 	int nCnt = 0;
+	std::vector<P_char> targets;
 
 	struct damage_messages messages = {
 		"From out of nowhere &+ybranches&n wrap themselves around $N crushing $M in their grip.",
@@ -3054,25 +3055,23 @@ void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 
 	for (tch = world[awd->room].people; tch; tch = tch->next_in_room)
 	{
-		if ((ch->in_room != awd->room) || (should_area_hit(ch, tch)))
+		if (should_area_hit(ch, tch))
+		{
+			targets.push_back(tch);
 			nCnt++;
+		}
 	}
 	// now use the nCnt to determine the chance of a hit...
 	// the more people, the less the chance.
 
-	for (tch = world[awd->room].people; tch; tch = next)
+	for (P_char target : targets)
 	{
-		next = tch->next_in_room;
+		if (!is_char_in_room(target, awd->room))
+			continue;
+		tch = target;
 		char buf[1024];
 
 		memset(buf, 0, sizeof(buf));
-
-		if (tch == ch)
-			continue;
-
-		if (ch->in_room == awd->room)
-			if (!should_area_hit(ch, tch))
-				continue;
 
 		if (awaken_forest_affect_roll(live_rolls, nCnt) > awaken_forest_pass_above())
 			continue;
