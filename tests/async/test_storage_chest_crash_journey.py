@@ -104,24 +104,23 @@ def run(binary, backend):
                 # A floor chest holds a storage chest holding a potion and a decaying corpse.
                 boot()
                 login()
-                command(client, "goto 82400")
-                command(client, "kill buck")
-                command(client, "get corpse")
-                command(client, f"goto {ROOM}")
+                for text in ("load mob 1151", "kill buck", "get corpse"):
+                    command(client, text)
+                assert "corpse" in command(client, "inventory")
                 for text in ("load obj 130", "open chest", "put corpse chest", "load obj 2800",
-                             "get potion", "put potion chest", "get chest", "load obj 115",
-                             "open huge", "put chest huge", "load obj 2800", "get potion",
-                             "put potion huge", "save"):
+                             "put potion chest", "get chest", "load obj 115", "open huge",
+                             "put chest huge", "load obj 2800", "put potion huge", "save"):
                     command(client, text)
                 inside = command(client, "look in huge")
                 assert "a storage chest" in inside and POTION in inside, inside
 
                 # The decay writes the nested chest, which must not remove it from the world.
+                # A clean stop would rewrite the outer chest, so kill the server instead.
                 time.sleep(80)
-                stop()
+                stop(signal.SIGKILL)
                 boot()
                 login()
-                assert owners("after decay and clean reboot") == ["chest"]
+                assert owners("after decay and crash") == ["chest"]
                 command(client, "get chest huge")
                 nested = command(client, "look in chest")
                 assert POTION in nested and "corpse" not in nested, nested
