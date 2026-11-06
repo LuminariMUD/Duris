@@ -1,6 +1,6 @@
 # Named zone sets: complete assignment plan and remaining work
 
-Status: 183 reviewed additions (104 original + 79 wider) installed in the implementation catalog; final gameplay/storage/publication gates pending.
+Status: 183 reviewed additions (104 original + 79 wider) integrated into the 298-set catalog. Local validation and release status are recorded in [PR #748](https://github.com/LuminariMUD/Duris/pull/748); production publication is pending.
 Date: 2026-11-06.
 Inspected `master`: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
@@ -137,8 +137,7 @@ modifiers, durations, bitvectors, provenance, repeat grants, ordinary casts in b
 orders, cleanup, expiry and dispel flags. Light exclusion/recalculation calls and
 Virtue's actual combat branch are covered. Character stat totals, room-light
 totals, output and command dispatch remain fixture boundaries; the complete
-gameplay/storage gates in the main plan still apply. No expansion row is installed
-by this qualification chunk.
+gameplay/storage evidence is recorded separately in the delivery PR.
 
 ## The 42 proposed assignments
 
@@ -320,22 +319,21 @@ The wider and final columns reconcile to the installed implementation catalog.
 | [Protection From Cold](../../src/classes/skills.c#L2308) (#97) | 2 | 0 | 1 | 3 | 0 | 3 |
 | [Water Breathing](../../src/classes/skills.c#L1571) (#85) | 4 | 0 | 1 | 5 | 2 | 7 |
 
-## Remaining work
+## Identity and title repairs
 
 **All 183 additions now have catalog rows with recorded effects and requirements.** The seven
-special identity/title repairs are implemented in the current PR stack. Their
-catalog rows and final gameplay journeys remain open; the main plan records the
-existing fixture and persistence evidence.
+special identity/title repairs and their native generation/wear/reload journeys
+are implemented. The delivery PR records validation and publication status.
 
 | Zone ID | Zone | Proposed effect | Current implementation gate |
 |---:|---|---|---|
-| 13 | [Braddistock Mansion](../../areas/zon/braddistock.zon) | [Phantom Armor](../../src/classes/sillusionist.c#L131) (#400) | Explicit #13 origin and ambiguous legacy grouping implemented; catalog/actual gameplay gate pending. |
-| 44 | [The Underworld](../../areas/zon/underworld.zon) | [Globe Of Darkness](../../src/magic/magic.c#L17667) (#302) | Explicit #44 origin and ambiguous legacy grouping implemented; catalog/actual gameplay gate pending. |
-| 204 | [Neverwind Valley](../../areas/zon/pyramid.zon) | [Sense Life](../../src/magic/magic.c#L12385) (#44) | Authored color/title fix and isolated world regeneration verified; final named-drop/activation/reload gate pending. |
-| 808 | [Ceothia](../../areas/zon/ceothia.zon) | [Enhance Agility](../../src/classes/skills.c#L944) (#177) | Separate explicit era origin and ambiguous legacy grouping implemented; catalog/actual gameplay gate pending. |
-| 811 | [Ceothia](../../areas/zon/ceopast.zon) | [Protection From Animals](../../src/magic/magic.c#L21864) (#383) | Separate explicit era origin and ambiguous legacy grouping implemented; catalog/actual gameplay gate pending. |
-| 814 | [Ceothia](../../areas/zon/ceofutur.zon) | [Vapor Strike](../../src/classes/ethermancer.c#L1134) (#467) | Separate explicit era origin and ambiguous legacy grouping implemented; catalog/actual gameplay gate pending. |
-| 990 | [Neverwinter Woods](../../areas/zon/moria.zon) | [Scent Of The Bloodhound](../../src/magic/smagic.c#L2353) (#517) | Authored color/title fix and isolated world regeneration verified; final named-drop/activation/reload gate pending. |
+| 13 | [Braddistock Mansion](../../areas/zon/braddistock.zon) | [Phantom Armor](../../src/classes/sillusionist.c#L131) (#400) | Explicit #13 origin and ambiguous legacy grouping implemented; native generation, wear, removal and reload verified. |
+| 44 | [The Underworld](../../areas/zon/underworld.zon) | [Globe Of Darkness](../../src/magic/magic.c#L17667) (#302) | Explicit #44 origin and ambiguous legacy grouping implemented; native generation, wear, removal and reload verified. |
+| 204 | [Neverwind Valley](../../areas/zon/pyramid.zon) | [Sense Life](../../src/magic/magic.c#L12385) (#44) | Authored color/title fix and isolated world regeneration verified; native named drops, activation, removal and reload verified. |
+| 808 | [Ceothia](../../areas/zon/ceothia.zon) | [Enhance Agility](../../src/classes/skills.c#L944) (#177) | Separate explicit era origin and ambiguous legacy grouping implemented; native generation, wear, removal and reload verified. |
+| 811 | [Ceothia](../../areas/zon/ceopast.zon) | [Protection From Animals](../../src/magic/magic.c#L21864) (#383) | Separate explicit era origin and ambiguous legacy grouping implemented; native generation, wear, removal and reload verified. |
+| 814 | [Ceothia](../../areas/zon/ceofutur.zon) | [Vapor Strike](../../src/classes/ethermancer.c#L1134) (#467) | Separate explicit era origin and ambiguous legacy grouping implemented; native generation, wear, removal and reload verified. |
+| 990 | [Neverwinter Woods](../../areas/zon/moria.zon) | [Scent Of The Bloodhound](../../src/magic/smagic.c#L2353) (#517) | Authored color/title fix and isolated world regeneration verified; native named drops, activation, removal and reload verified. |
 
 ## Existing plain-title set areas
 
@@ -367,7 +365,7 @@ and RNG sentinels remain byte-for-byte unchanged. Origin tests cover all four
 IDs, legacy visible tags and clones; real membership/tier dispatch verifies
 2/3/4/5/6 pieces and HP cleanup. An isolated `make world` differs only in these
 four header strings; all resets and the other six generated outputs are identical.
-The broader 135-record review and final gameplay/storage gates remain open.
+The completed broader 135-record review follows below.
 
 ## Wider area review and additional assignments
 The fresh active world has 354 records. The 115 original catalog rows are
@@ -585,19 +583,15 @@ Ceothia's three eras retain separate zone IDs and effect choices; resolving
 legacy tags must not silently collapse them into one set. Barovia and Barovia
 Continued deliberately receive the same effect, with separate zone identities.
 
-Before installing the assignments, address #706's set-identity, mixed-set cleanup,
-and report requirements, and keep set definitions separate from roaming-NPC
-spawn selection. Verify Bloodstone Keep and another new zone from named drops
-through the report and worn effects. Retain spell prerequisites, normal HP
-behavior, and the original underpowered-first effect scope.
+The integrated implementation separates set definitions from roaming-NPC spawn
+selection and preserves spell prerequisites, normal HP behavior, and the selected
+simple-effect scope. The delivery PR records identity, mixed-set cleanup,
+reporting, persistence, and native gameplay verification.
 
 Sources checked: the current issue roster, the
 [effect inventory](named-zone-set-effect-inventory.md),
 [active area registry](../../areas/AREA), assigned zone/room/mobile files, and
-[current set table](../../src/world/random.mob.c). Counts reconcile as
+[current set catalog](../../src/item/named_sets.c). Counts reconcile as
 **42 initial assignments + 62 additional assignments = 104 unique roster zones**.
-All 42 retained candidate IDs are still represented, and no proposed zone
-already has a set definition in the inspected source. The 50 reused effects'
-configured, initial-proposal, and additional-proposal home counts were reconciled
-separately. This is a documentation update; gameplay validation belongs to
-implementation.
+All 42 retained candidate IDs remain represented. The 50 reused effects' baseline,
+original-assignment, and wider-assignment home counts are recorded separately.

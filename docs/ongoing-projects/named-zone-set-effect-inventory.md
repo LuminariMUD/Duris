@@ -1,6 +1,6 @@
 # Named zone sets: effect usage and unused candidates
 
-Status: baseline effect inventory for [issue #706](https://github.com/LuminariMUD/Duris/issues/706). All 115 baseline definitions are retained; the implementation/test catalog now adds 183 reviewed areas, totaling 298 rows, 389 tiers and 106 effect IDs. Gameplay/publication gates remain open.
+Status: baseline effect inventory for [issue #706](https://github.com/LuminariMUD/Duris/issues/706). All 115 baseline definitions are retained; the integrated catalog adds 183 reviewed areas, totaling 298 rows, 389 tiers and 106 effect IDs. Validation and release status are recorded in [PR #748](https://github.com/LuminariMUD/Duris/pull/748); production publication is pending.
 Date: 2026-11-06.
 Inspected `master`: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
@@ -9,7 +9,8 @@ Proposed zone homes: [complete assignment plan](named-zone-set-first-pass-assign
 
 ## What this document counts
 
-A named set is matching random equipment with the same `from <zone>` tag.
+A named set is matching random equipment with the same virtual zone origin.
+Unresolved historical tags retain their separate HP-only legacy groups.
 Its ordinary HP bonus is separate from its configured spell bonuses: every
 piece after the second adds 5 maximum HP. This document inventories the extra
 effects that can help us choose bonuses for uncovered zones.
