@@ -4,8 +4,8 @@ Status: implementation in progress; nineteen focused implementation/test PRs are
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-mariadb-chest`, based on
-`branch/named-zone-set-locker-storage`.
+Working branch: `branch/named-zone-set-help`, based on
+`branch/named-zone-set-mariadb-chest`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -1173,6 +1173,43 @@ lifecycle, canonical help publication and compatibility rollback. The checklists
 below now distinguish already proven implementation from these remaining gates.
 No release, merge or production deployment has occurred.
 
+### Canonical named-set help checkpoint
+
+**Outcome/files:** the existing `Named Equipment Sets` and `Namedreport` entries
+in `lib/information/help_index` now explain the implemented behavior: matching
+armor/weapons and belt slots, +5 HP per piece beyond two, independent spell
+thresholds, Tharnadia's 3/5 example, capped spell power, ordinary-cast durations,
+numeric source identity, ambiguous older tags, conditional effects and wearer
+cooldowns. No second content source, generator or import option is introduced.
+
+**Ablation/proof:** this is a content-only change. Reuse the maintained flat-file
+catalog/renderer and SQL importer/cache; do not add string-matching unit tests
+that duplicate the prose. `test_flatfile_help_catalog.py`,
+`test_help_import_live_parser.py` and all three `test_help_layout.py` cases pass.
+`bin/tests/run-named-help-publication.py` copies only the edited public index to
+the private flat-file runtime, boots the normal server, and verifies every line
+through native `help named equipment sets` and `help namedreport`.
+The flat-file native publication passes; its transcript is retained at
+`bin/tests/named-set-roster-world/named-help-transcript.txt`.
+
+The same proof helper under `with_disposable_mariadb.sh` imports the two exact
+canonical bodies into a fresh schema using the maintained importer, then boots
+the normal MariaDB server and reads the pages through its help cache/render path.
+Exact SQL bodies and native rendering of every authored line pass. Artifacts are retained in
+`bin/tests/named-help-mariadb-nk_9uujc`. No owner credentials, live help pages or
+production database are used. Production publication remains part of the
+owner-authorized deployment gate; it has not occurred.
+All private servers are stopped and disposable SQL is removed. Native proof
+commands (both exit 0), followed by `git diff --check`:
+
+```sh
+python3 bin/tests/run-named-help-publication.py
+tests/async/with_disposable_mariadb.sh python3 bin/tests/run-named-help-publication.py mariadb
+```
+
+Shop/saved-world, live Redis and compatibility rollback remain the next local
+gates. Canonical help is ready for review and later authorized publication.
+
 ## Start here
 
 1. Read this plan for implementation order, compatibility decisions, and proof.
@@ -1417,7 +1454,7 @@ Owning code: `set_proc()`, `random_set()`, `check_zone_spells()`, and
 - [ ] Verify cold cache, warm cache, Redis unavailable/disabled, boot warming,
   expiry, and staff invalidation. The existing one-day cache must not keep an
   old roster after rollout; invalidate the named-report cache explicitly.
-- [ ] Update the canonical Named Equipment Sets help and its active MySQL and
+- [x] Update the canonical Named Equipment Sets help and its active MySQL and
   flat-file publication paths. Explain thresholds/HP, numeric origin identity,
   conditional effects, and ambiguous legacy items. Use
   [help_index](../../lib/information/help_index) and the existing help catalog
