@@ -1,6 +1,6 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; twenty-one focused implementation/test PRs are pushed
+Status: implementation in progress; twenty-two focused implementation/test PRs are pushed
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
@@ -91,6 +91,10 @@ it targets #741 and is ready for review.
 (`branch/named-zone-set-live-report`, implementation commit `2dbb3cd75`)
 qualifies live report cache expiry/invalidation, native boot/outage behavior and
 complete pagination; it targets #742 and is ready for review.
+[PR #744](https://github.com/LuminariMUD/Duris/pull/744)
+(`branch/named-zone-set-shop-world`, implementation commit `c4569a5ef`)
+proves native mortal flat-file shop custody, reboot, repurchase and worn set
+recovery; it targets #743 and is ready for review.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
 into the foundation and propagated through each dependent branch without
