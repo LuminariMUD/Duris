@@ -6,6 +6,13 @@ feature and one review target. Continue the existing implementation.
 **Execution scope:** integrate the feature, finish the focused proof and review,
 and deliver one PR. Production deployment remains a separate owner operation.
 
+**Status:** Implementation and local qualification are complete in
+[PR #748](https://github.com/LuminariMUD/Duris/pull/748). The full 975-case run
+passed 972 initially; three fixture integration failures were repaired and their
+focused reruns pass. Unaffected passing results are retained. Native gameplay,
+both-backend builds, and the two-player rollback/re-upgrade rehearsal pass.
+Merge and production deployment require the owner's go-ahead.
+
 ## Outcome
 
 Every reviewed eligible area produces named equipment with a durable zone ID,
@@ -115,7 +122,7 @@ The required proof is:
   Verify cold/warm/unavailable Redis, expiry, boot warming, and invalidation
   through the existing cache test. Canonical help must agree on both backends.
 
-Run the existing focused checks once on the integrated result:
+Focused checks used during integration; reuse valid results for unchanged paths:
 
 ```sh
 python3 tests/async/test_named_set_catalog.py
@@ -131,6 +138,12 @@ python3 tests/async/test_random_mob_theme_runtime.py
 make -C src PERSISTENCE_BACKEND=mariadb
 make -C src PERSISTENCE_BACKEND=flatfile
 ```
+
+The owner's final qualification is `make -j4 test-all` on the merged result.
+Repair failures and rerun the affected cases; retain unaffected passing results.
+The full database suite is not claimed green: its known baseline failures are
+`playtime`, `collector_repository`, and `collector_catalog`. Run the affected
+disposable player/pet database regression for this change.
 
 Rerun the existing MariaDB player/pet regressions affected by the loader repair,
 the corrected transfer journey, and the native wear cases affected by integrated
