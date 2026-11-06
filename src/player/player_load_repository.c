@@ -378,7 +378,7 @@ bool load_status(MYSQL *connection, const player_load_request &request, player_l
 
 template <typename Callback> bool load_rows(MYSQL *connection, const std::string &sql,
 					    player_load_result *result, Callback callback,
-					    bool item_metadata = false)
+					    const unsigned long **metadata_lengths = nullptr)
 {
 	MYSQL_RES *rows = query(connection, sql, result);
 	if (!rows)
@@ -388,28 +388,15 @@ template <typename Callback> bool load_rows(MYSQL *connection, const std::string
 	{
 		// Fixed slots are part of the item in the snapshot budget. Keep counting
 		// their wire bytes and cap their physical row count separately.
-		const bool fixed_affect = item_metadata && row[0] && row[0][0] == '0' && row[7];
+		const bool fixed_affect = metadata_lengths && row[0] && row[0][0] == '0' && row[7];
 		if (!add_result_budget(rows, row, result, fixed_affect))
 		{
 			mysql_free_result(rows);
 			result->outcome = player_load_outcome::limit_exceeded;
 			return false;
 		}
-		if (item_metadata && row[5] && !strcmp(row[5], SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD))
-		{
-			const auto *lengths = mysql_fetch_lengths(rows);
-			int origin = 0;
-			if (sql_decode_named_set_origin(
-				    std::string_view(row[5], lengths[5]),
-				    row[6] ? std::string_view(row[6], lengths[6]) :
-					     std::string_view(),
-				    &origin) != sql_named_set_origin_decode_status::decoded)
-			{
-				result->outcome = player_load_outcome::limit_exceeded;
-				mysql_free_result(rows);
-				return false;
-			}
-		}
+		if (metadata_lengths)
+			*metadata_lengths = mysql_fetch_lengths(rows);
 		if (!callback(row))
 		{
 			mysql_free_result(rows);
@@ -767,6 +754,22 @@ bool duplicate_description(const std::vector<player_item_extra_description_snaps
 	for (const player_item_extra_description_snapshot &existing : descriptions)
 		if (existing.keyword == keyword && existing.description == text)
 			return true;
+	return false;
+}
+
+// Only a kept item's origin can block the load. Read by length: a C string would hide a NUL.
+bool loaded_named_origin_is_readable(MYSQL_ROW row, const unsigned long *lengths,
+				     player_load_result *result)
+{
+	if (!row[5] || strcmp(row[5], SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD))
+		return true;
+	int origin = 0;
+	if (sql_decode_named_set_origin(std::string_view(row[5], lengths[5]),
+					row[6] ? std::string_view(row[6], lengths[6]) :
+						 std::string_view(),
+					&origin) == sql_named_set_origin_decode_status::decoded)
+		return true;
+	result->outcome = player_load_outcome::limit_exceeded;
 	return false;
 }
 
@@ -1149,6 +1152,7 @@ bool load_items(MYSQL *connection, player_load_result *result)
 		"pi.pid=" +
 		pid + " ORDER BY 1,9,2,3";
 	previous_bytes = result->metrics.byte_count;
+	const unsigned long *metadata_lengths = nullptr;
 	if (!load_rows(
 		    connection, metadata_sql, result,
 		    [&](MYSQL_ROW row)
@@ -1183,11 +1187,13 @@ bool load_items(MYSQL *connection, player_load_result *result)
 			    // Exact duplicates are semantically identical, and legacy raw
 			    // spellbook rows are normalized without reading their truncated bitmap.
 			    // A description that cannot be read is dropped, not the character.
+			    if (!loaded_named_origin_is_readable(row, metadata_lengths, result))
+				    return false;
 			    return append_loaded_extra_description(item.extra_descriptions, row[5],
 								   row[6], result) ||
 				   result->outcome != player_load_outcome::limit_exceeded;
 		    },
-		    true))
+		    &metadata_lengths))
 		return false;
 	result->item_sources = std::move(source);
 	return result->snapshot.items.size() == result->item_identities.size();
@@ -1453,6 +1459,7 @@ bool load_pets(MYSQL *connection, player_load_result *result)
 		"player_pet_item_extra_descr ed JOIN player_pet_items ppi ON ppi.id=ed.item_id "
 		"JOIN player_pets pp ON pp.id=ppi.pet_id WHERE pp.owner_pid=" +
 		pid + " ORDER BY 1,9,2,3";
+	const unsigned long *metadata_lengths = nullptr;
 	if (!load_rows(
 		    connection, metadata_sql, result,
 		    [&](MYSQL_ROW row)
@@ -1477,11 +1484,13 @@ bool load_pets(MYSQL *connection, player_load_result *result)
 					    row, item, identity,
 					    legacy_affect_counts[pet_index][item_index], result);
 			    }
+			    if (!loaded_named_origin_is_readable(row, metadata_lengths, result))
+				    return false;
 			    return append_loaded_extra_description(item.extra_descriptions, row[5],
 								   row[6], result) ||
 				   result->outcome != player_load_outcome::limit_exceeded;
 		    },
-		    true))
+		    &metadata_lengths))
 		return false;
 	result->authoritative_pet_item_count = pet_owned_count;
 	return result->snapshot.pets.size() == result->pet_identities.size();
