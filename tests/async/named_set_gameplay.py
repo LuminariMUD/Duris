@@ -74,6 +74,13 @@ def selector(client, uid):
     return selectors(client, [uid])[uid]
 
 
+def put(client, uid, bag):
+    tokens = selectors(client, [uid, bag])
+    client.send("put " + tokens[uid] + " " + tokens[bag])
+    client.expect("Ok.", timeout=30)
+    score(client)
+
+
 def score(client):
     client.send("score")
     text = client.expect("Score information for")

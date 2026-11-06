@@ -4,8 +4,8 @@ Status: implementation in progress; fourteen focused implementation/test PRs are
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-transfer`, based on
-`branch/named-zone-set-title-journeys`.
+Working branch: `branch/named-zone-set-edits`, based on
+`branch/named-zone-set-transfer`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -912,6 +912,44 @@ the effective ordinary Armor overlap check. Pets, corpses, lockers/private
 chests, shops, saved-world paths, visible-name editing/cloning, MariaDB gameplay,
 live Redis, canonical help publication and rollback remain project gates.
 No implementation PR was merged, tagged or deployed.
+
+### Native visible-name editing and recursive cloning passed
+
+**Outcome/files/proof:** add `run_named_set_edit_clone_journey.py` using the
+existing shared native I/O and receiver. Native `string obj ... short` removes
+the visible zone cues from the three original #1325 pieces. Native recursive
+`clone obj` copies their two-level bag tree, minting new UIDs while retaining
+the reserved origins. Verify names/markers, exact hierarchy after reload, clone
+wear/cleanup, a mixed original/clone outfit and exact slots after another reboot.
+The small native put helper is shared by its two actual callers. No product
+code, item-metadata edit through snapshots, new storage format or server debug
+option is needed. Keep the existing authority and record the clone UID manifest
+for repeat runs.
+
+**Passed:** the three original receiver UIDs `76068523`, `76068769`, `76069376`
+now have plain verification helm/coat/leggings descriptions with no visible zone
+cue. All keep explicit #1325 metadata. Native recursive cloning creates outer
+bag `98069717`, inner bag `98069718` and named copies **`98069719`, `98069720`,
+`98069721`**, all distinct from every previous UID. Both original and cloned
+trees preserve their exact parent links, origins and edited names after receiver
+materialization/save on reboot.
+
+At mortal level 56, the three renamed copies grant **+5 HP and Armor** from the
+1475 baseline. Removing the copied head piece cleans both; substituting the
+renamed original head restores the same set, proving mixed original/copy
+membership. A further reboot retains all six named items' exact origins, wear
+slots and wear flags. No set Armor is saved as an ordinary affect. The final
+authority holds **754 unique named UID/origin pairs** across both owners, with
+all earlier identities retained. All private servers are stopped.
+
+**Run/proof:** `python3 tests/async/run_named_set_edit_clone_journey.py` (exit 0),
+`python3 tests/async/test_named_set_origin.py` (the focused native origin/legacy/
+clone/storage checks pass), `make -C src -j4`, Python static checks, C++ formatting
+and `git diff --check` pass. Setup/result JSON and full transcripts stay under
+the existing ignored runtime. The put helper's implementation is unchanged;
+it moved to the shared I/O module for the two callers. No product code changed.
+Pets, corpses, lockers/chests, shops, saved-world paths, MariaDB gameplay, live
+Redis, help publication and rollback remain required. No deployment occurred.
 
 ## Start here
 

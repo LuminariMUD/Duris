@@ -10,7 +10,7 @@ from named_set_gameplay import (
     score,
     save,
     selector,
-    selectors,
+    put,
     expect_max_hp,
 )
 
@@ -47,13 +47,6 @@ def give(client, uid, name):
 
 def open_bag(client, uid):
     client.send("open " + selector(client, uid))
-    score(client)
-
-
-def put(client, uid, bag):
-    tokens = selectors(client, [uid, bag])
-    client.send("put " + tokens[uid] + " " + tokens[bag])
-    client.expect("Ok.", timeout=30)
     score(client)
 
 
