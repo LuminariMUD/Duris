@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 import re
 import sys
-import time
 import test_flatfile_combat_journey as journey
 from named_set_gameplay import (
     NamedSetGame,
@@ -205,10 +204,8 @@ try:
         put(donor, uid, setup["inner"])
     potion = load(donor, 1, 39130)
     setup["potion"] = potion
-    reference_potion = load(donor, 1, 39130)
     checkpoint()
     put(donor, potion, setup["inner"])
-    put(donor, reference_potion, setup["inner"])
     put(donor, setup["inner"], setup["outer"])
     save(donor)
     save(receiver, RECIPIENT)
@@ -247,43 +244,29 @@ try:
     save(receiver, RECIPIENT)
     assert not game.affects(1, 2)
 
-    # Establish ordinary Armor alone before reactivating the same three pieces.
-    # This keeps every equipped item's own armor/stat contribution identical.
-    receiver.send("remove " + selector(receiver, setup["uids"][-1]))
-    expect_max_hp(receiver, baseline)
-    deadline = time.monotonic() + 15
-    while "armor (" in score(receiver)[1]:
-        assert time.monotonic() < deadline, "set Armor did not wear off"
-        time.sleep(0.5)
-    receiver.send("quaff " + selector(receiver, reference_potion))
-    receiver.expect("Bands of magic armor wrap around you!", timeout=30)
-    score(receiver)
-    ordinary_two_points = armor_points(receiver)
-    receiver.send("wear " + selector(receiver, setup["uids"][-1]))
-    expect_max_hp(receiver, baseline + 5)
-    points = armor_points(receiver)
-    save(receiver, RECIPIENT)
-    game.stop()
-
-    # Clear only the copied tester's ordinary buffs, then exercise set-first.
-    game.prepare_mortal(2)
-    receiver = game.boot("named-transfer-set-first", account=ACCOUNT, character=RECIPIENT)
-    assert "armor (" in expect_max_hp(receiver, baseline + 5)
     receiver.send("quaff " + selector(receiver, potion))
     receiver.expect("Bands of magic armor wrap around you!", timeout=30)
     score(receiver)
-    assert armor_points(receiver) == points, "overlap must match ordinary-only Armor on identical gear"
+    overlap_points = armor_points(receiver)
     save(receiver, RECIPIENT)
     ordinary = game.affects(1, 2)
     assert len(ordinary) == 1
     receiver.send("remove " + selector(receiver, setup["uids"][-1]))
     text = expect_max_hp(receiver, baseline)
     assert "armor (" in text
-    assert armor_points(receiver) == ordinary_two_points
+    save(receiver, RECIPIENT)
+    game.stop()
+    # Two worn pieces cannot grant Armor. Reload discards transient set nodes,
+    # leaving this exact ordinary cast as the independent reference.
+    receiver = game.boot("named-transfer-ordinary-only", account=ACCOUNT, character=RECIPIENT)
+    assert "armor (" in expect_max_hp(receiver, baseline)
+    save(receiver, RECIPIENT)
+    assert game.affects(1, 2)[0][3] == ordinary[0][3]
     receiver.send("wear " + selector(receiver, setup["uids"][-1]))
     expect_max_hp(receiver, baseline + 5)
-    assert armor_points(receiver) == points, (
-        "set support must not add to ordinary Armor"
+    points = armor_points(receiver)
+    assert points == overlap_points, (
+        "overlap versus ordinary-only Armor on identical gear", overlap_points, points
     )
     save(receiver, RECIPIENT)
     worn = {int(row[0]): row[:4] for row in game.items(2)}
