@@ -4,15 +4,15 @@ Status: implementation in progress; twenty-three focused implementation/test PRs
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-world-storage`, based on
-`branch/named-zone-set-shop-world`.
+Working branch: `branch/named-zone-set-mariadb-storage`, based on
+`branch/named-zone-set-world-storage`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
 
-**Continue with:** SQL shop/world journeys, compatible rollback rehearsal and final
+**Continue with:** compatible rollback rehearsal and final
 local/review reconciliation. MariaDB player/private chest, canonical help on both
-backends, live Redis reports and native flat-file shop/world gates now pass.
+backends, live Redis reports and native shop/world gates on both backends now pass.
 The native world journey found and fixed orphaned storage descendants; preserve
 source-fix commit `265299320` in any compatibility rollback build. All three
 original #1325 pieces are worn by mortal Meranen, and saved root `144069157` is
@@ -1403,6 +1403,48 @@ python3 tests/async/run_named_set_world_journey.py
 The compatibility rollback build must retain this storage repair, rather than
 reintroducing the newly demonstrated stale-descendant defect. SQL shop/world,
 rollback and final reconciliation remain open. No production operation occurred.
+
+### MariaDB shop and saved-world extension
+
+**Outcome/files/ablation:** extend the existing
+`run_named_set_mariadb_chest_journey.py`; retain its filename and reuse the same
+native generated cohort, disposable schema, staff helper and command lifecycle.
+No new runner framework, backend adapter or product changes. The first selected
+piece gets a native unique keyword before wearing, so later finite-stock sale
+and repurchase select the exact real UID. Read-only shop queries compare its
+vnum/parent/slot/cost/origin across reboot and reject duplicate stored UIDs.
+
+After private-chest recovery, level-56 native sale at Kieta removes player
+custody, survives shop reboot and returns through a funded paid repurchase.
+The owner then packs the same three pieces into the same bag. The staff helper
+creates genuine `ITEM_STORAGE` from plain backpack #4917 in room 132500; its
+distinct `backpack` keyword avoids both carried collectors' `bottomless` alias.
+The root must exist durably with type 35 before putting the real marked tree
+inside. Queries compare the full five-UID saved-world graph and origin markers,
+require player custody to be absent, then check world reboot, native mortal
+retrieval, empty storage, exact original worn slots/Armor/+5 HP and another
+player reboot. Existing private chest and shop custody must remain empty.
+
+**Passed:** the complete extended native run (exit 0), including all original
+private-chest checks, shop sale/reboot/repurchase and saved-world storage/reboot/
+mortal retrieval/player reboot. `bin/tests/named-set-mariadb-corgzx3v/evidence.json`
+records the exact cohort UIDs `1071671`, `1072696`, `1072722`, bag `1072913`,
+storage root `6072642`, baseline HP 1486 and original worn slots. The resale keeps
+UID `1071671`, cost 980 and origin 1325; chest/shop custody are empty and saved
+world custody contains only the empty storage root after retrieval. All final
+origins/slots and Armor/+5 HP survive the last player reboot. Python compilation
+and `git diff --check` pass. Artifacts/transcripts remain separate from earlier
+private-chest proofs; the existing failure-dump path remains available on failure.
+All test servers are stopped and disposable SQL/container are removed. The retained
+flat-file authority is untouched. Direct command:
+
+```sh
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_named_set_mariadb_chest_journey.py
+```
+
+Next rehearse compatibility rollback with source fix
+`265299320` retained, reconcile final local gates and prepare the review/issue
+handoff. No merge, tag, release or production operation occurred in this chunk.
 
 ## Start here
 

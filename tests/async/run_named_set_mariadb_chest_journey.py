@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native named-set player/private-chest round trips on disposable MariaDB.
+"""Native named-set player, private-chest, shop and world storage on MariaDB.
 
 Run through with_disposable_mariadb.sh. Uses the already generated private world
 from the named-set area journeys, but creates a separate authority and accounts.
@@ -123,6 +123,39 @@ def run():
             return {int(parts[0]): [int(parts[1]), int(parts[2]), 0, parts[3]]
                     for line in rows.splitlines() if (parts := line.split("\t"))}
 
+        def shop_item(uid):
+            rows = sql("SELECT i.vnum,COALESCE(parent.obj_uid,0),i.equip_slot,i.cost,"
+                       "COALESCE(e.description,'-') FROM shopkeeper_items i "
+                       "JOIN shopkeepers s ON s.id=i.shopkeeper_id "
+                       "LEFT JOIN shopkeeper_items parent ON parent.id=i.container_id "
+                       f"LEFT JOIN shopkeeper_item_extra_descr e ON e.item_id=i.id AND e.keyword='{ORIGIN}' "
+                       f"WHERE s.room_vnum=132500 AND s.mob_vnum=132617 AND i.obj_uid={uid}")
+            if not rows:
+                return None
+            assert len(rows.splitlines()) == 1, rows
+            values = rows.split("\t")
+            return [int(value) for value in values[:4]] + [values[4]]
+
+        def world_rows():
+            rows = sql("SELECT i.obj_uid,i.vnum,COALESCE(parent.obj_uid,0),"
+                       "COALESCE(e.description,'-') FROM saved_items i "
+                       "LEFT JOIN saved_items parent ON parent.id=i.container_id "
+                       f"LEFT JOIN saved_item_extra_descr e ON e.item_id=i.id AND e.keyword='{ORIGIN}' "
+                       "WHERE i.room_vnum=132500 ORDER BY i.obj_uid")
+            result = {int(parts[0]): [int(parts[1]), int(parts[2]), 0, parts[3]]
+                      for line in rows.splitlines() if (parts := line.split("\t"))}
+            assert len(result) == len(rows.splitlines()), "duplicate saved-world UID"
+            return result
+
+        def wait_world(expected):
+            deadline = time.monotonic() + 45
+            while True:
+                rows = world_rows()
+                if rows == expected:
+                    return
+                assert time.monotonic() < deadline, (rows, expected)
+                time.sleep(.2)
+
         def bank():
             god = login(GOD, STAFF) if GOD not in clients else clients[GOD]
             act(god, "goto 16590")
@@ -182,6 +215,8 @@ def run():
                     "AND a.location IN (5,13,35,45) AND a.modifier<>0) ORDER BY i.id")
                 assert candidates, ("no HP/CON-clean native candidate", slot)
                 uid = int(candidates.splitlines()[0])
+                if not selected:
+                    act(actor, "string obj " + selector(actor, uid) + " name namedshopwitness", "Ok.")
                 act(actor, "wear " + selector(actor, uid))
                 selected.append(uid)
             save(actor)
@@ -269,6 +304,84 @@ def run():
             save(actor)
             assert {uid: player_rows()[uid] for uid in selected} == worn
             check("private chest reboot/retrieval and final player reboot retain the graph, origins and worn set")
+
+            god = login(GOD, STAFF)
+            act(god, "goto 132500")
+            act(god, "transfer " + OWNER, "Ok.")
+            act(god, "setbit char " + OWNER + " platinum 10")
+            uid = selected[0]
+            act(actor, "remove " + selector(actor, uid))
+            act(actor, "sell namedshopwitness", "gives you")
+            save(actor)
+            sold = shop_item(uid)
+            assert sold and sold[1:3] == [0, 0] and sold[4] == "1325", sold
+            assert uid not in player_rows()
+            stop()
+            boot("shop-reload")
+            actor = login()
+            assert shop_item(uid) == sold
+            act(actor, "buy namedshopwitness", "You now have")
+            save(actor)
+            assert shop_item(uid) is None and player_rows()[uid][3] == "1325"
+            act(actor, "wear " + selector(actor, uid))
+            assert "armor (" in expect_max_hp(actor, baseline + 5)
+            save(actor)
+            assert {uid: player_rows()[uid] for uid in selected} == worn
+            check("native mortal sale/shop reboot/paid repurchase retain the exact UID, origin, slots and set")
+
+            act(actor, "remove all")
+            assert "armor (" not in expect_max_hp(actor, baseline)
+            for uid in selected:
+                put(actor, uid, bag)
+            save(actor)
+            assert {uid: player_rows()[uid] for uid in tree} == tree
+            god = login(GOD, STAFF)
+            act(god, "goto 132500")
+            # A plain backpack has a distinct keyword from both carried collector
+            # bags. Native storage creation makes the floor root durable/non-takeable.
+            act(god, "storage new 4917", "This object now loads here")
+            deadline = time.monotonic() + 30
+            while True:
+                roots = sql("SELECT obj_uid FROM saved_items WHERE room_vnum=132500 "
+                            "AND vnum=4917 AND item_type=35 AND container_id IS NULL")
+                if roots:
+                    root, = map(int, roots.splitlines())
+                    break
+                assert time.monotonic() < deadline, "storage root did not become durable"
+                time.sleep(.2)
+            act(actor, "open backpack")
+            act(actor, "put " + selector(actor, bag) + " backpack", "Ok.")
+            save(actor)
+            stored = dict(tree)
+            stored[bag] = [tree[bag][0], root, 0, tree[bag][3]]
+            stored[root] = [4917, 0, 0, "-"]
+            wait_world(stored)
+            assert set(tree).isdisjoint(player_rows())
+            evidence.update(shop_uid=selected[0], shop_record=sold, world_root=root)
+            stop()
+            boot("world-reload")
+            actor = login()
+            wait_world(stored)
+            act(actor, "open backpack")
+            act(actor, "get collector backpack", "You get")
+            save(actor)
+            wait_world({root: stored[root]})
+            assert {uid: player_rows()[uid] for uid in tree} == tree
+            for uid in selected:
+                get_from_container(actor, uid, bag)
+                act(actor, "wear " + selector(actor, uid))
+            assert "armor (" in expect_max_hp(actor, baseline + 5)
+            save(actor)
+            assert {uid: player_rows()[uid] for uid in selected} == worn
+            stop()
+            boot("world-retrieved-reload")
+            actor = login()
+            assert "armor (" in expect_max_hp(actor, baseline + 5)
+            save(actor)
+            assert {uid: player_rows()[uid] for uid in selected} == worn
+            wait_world({root: stored[root]})
+            assert not chest_rows() and shop_item(selected[0]) is None
+            check("native SQL storage/world reboot/mortal retrieval/player reboot retain the complete graph and set")
         except BaseException:
             # Preserve the disposable authority before the context manager drops it.
             with (runtime / "failure.sql").open("w") as dump:
