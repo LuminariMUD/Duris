@@ -261,6 +261,33 @@ int main() {
     }
     reset();
     affected_type *ordinary=nullptr;
+    {
+        reset();
+        affected_type regeneration{}; regeneration.type=SPELL_REGENERATION;
+        regeneration.duration=17; regeneration.bitvector4=AFF4_REGENERATION;
+        affected_type *set_regeneration;
+        {
+            named_set_grant grant(&wearer,&wearer,18,SPELL_REGENERATION);
+            set_regeneration=affect_to_char(&wearer,&regeneration);
+        }
+        affected_type crown{}; crown.type=SPELL_REGENERATION;
+        crown.flags=AFFTYPE_ARAMUS_CROWN_REGENERATION;
+        crown.duration=11; crown.location=APPLY_HIT_REG; crown.modifier=70;
+        auto *crown_regeneration=affect_to_char(&wearer,&crown);
+        all_affects(&wearer,TRUE);
+        assert(!(set_regeneration->flags&AFFTYPE_SET_SUSPENDED));
+        assert(IS_AFFECTED4(&wearer,AFF4_REGENERATION));
+        assert(set_regeneration->duration==17 && crown_regeneration->duration==11);
+        regeneration.duration=5;
+        auto *ordinary_regeneration=affect_to_char(&wearer,&regeneration);
+        assert(set_regeneration->flags&AFFTYPE_SET_SUSPENDED);
+        affect_remove(&wearer,ordinary_regeneration);
+        assert(!(set_regeneration->flags&AFFTYPE_SET_SUSPENDED));
+        affect_remove(&wearer,crown_regeneration);
+        all_affects(&wearer,TRUE);
+        assert(IS_AFFECTED4(&wearer,AFF4_REGENERATION));
+    }
+    reset();
     ordinary_armor(&ordinary); ordinary->duration=7;
     apply_zone_spell(&wearer,3,"Tharnadia",1325,&gear[0],SPELL_ARMOR);
     assert(!grants && ordinary->duration==7 && !ordinary->set_zone && !ordinary->set_spell && !ordinary->set_owner);
