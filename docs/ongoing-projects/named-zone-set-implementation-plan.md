@@ -1,7 +1,7 @@
 # Named zone sets: end-to-end implementation plan
 
 Status: implementation in progress; nine focused implementation PRs are pushed
-and ready for review in the stack below.
+and ready for review; the expanded catalog is in draft #732 for gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
 Working branch: `branch/named-zone-set-roster`, based on
@@ -41,6 +41,10 @@ restores authored naming eligibility for four existing sets and targets the
 qualification branch. Its wider eligibility review remains in progress below.
 All nine PRs are ready for review; no implementation PR has been merged and no
 release has been performed.
+[Draft PR #732](https://github.com/LuminariMUD/Duris/pull/732)
+(`branch/named-zone-set-roster`, implementation commit `0ad13149a`)
+adds the complete reviewed catalog and targets #730. Keep it in draft until the
+native gameplay gate described in its checkpoint below passes.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
 into the foundation and propagated through each dependent branch without
@@ -598,7 +602,8 @@ Their authored headers now use `&+g…&n` without changing the visible wording.
 The [assignment document](named-zone-set-first-pass-assignments.md#existing-plain-title-set-areas)
 records concrete entrances, reset encounters and the Gibberling entry key.
 Existing tiers remain Spirit Ward 3/Haste 5; Endurance 3; Endurance 4; Vitality 6,
-respectively. Catalog counts remain **115 rows / 206 tiers / 64 effect IDs**.
+respectively. At that checkpoint the catalog remained **115 rows / 206 tiers /
+64 effect IDs**; the subsequent data chunk is described below.
 
 **Non-goals/files/ablation:** four authored `.zon` title lines, existing tests and
 the continuation documents only. The generator's color/naming rules, RNG, drops,
@@ -642,6 +647,8 @@ report formatter now explains Guardian Spirits, Virtue and light exclusions.
 **Passed:** both backend builds; catalog/manifest reconciliation of all 354 active
 records; all 1,480 golden equipment cases/RNG sentinels and actual title checks;
 membership/tier dispatch; all 50 real effect handlers and conditional cases.
+The documented reset witnesses also pass an upper-bound check against every
+preceding M/F reference to their prototypes; Orog dispersal is checked separately.
 Isolated world regeneration changes exactly 21 additional title strings, with
 all resets and the other six generated outputs identical. A full private flat-file
 world boot (no minimal/specials/ferry suppression) reaches the game loop, creates
