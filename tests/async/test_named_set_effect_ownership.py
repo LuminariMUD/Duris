@@ -52,6 +52,7 @@ link_description link_types[LNK_MAX+1];
 static char_data wearer,companion;
 static obj_data gear[12];
 static int grants;
+static int guardian_rejections;
 static int alias_calls;
 static bool high_roll;
 static bool innate_eyes;
@@ -99,7 +100,10 @@ void all_affects(P_char ch,int add) {
 char affect_total(P_char ch,int) {all_affects(ch,FALSE); all_affects(ch,TRUE); return 0;}
 bool SanityCheck(P_char ch,const char *) {return IS_ALIVE(ch);}
 bool has_innate(P_char,int innate) {return innate_eyes && innate==INNATE_OPHIDIAN_EYES;}
-void send_to_char(const char *text,P_char) {if(strstr(text,"spirits of")) ++grants;}
+void send_to_char(const char *text,P_char) {
+    if(strstr(text,"spirits of")) ++grants;
+    if(strstr(text,"forefathers")) ++guardian_rejections;
+}
 void wear_off_message(P_char,affected_type *) {}
 int attack_back(P_char,P_char,int) {return 0;}
 void act(const char *,int,P_char,P_obj,void *,int) {}
@@ -361,7 +365,7 @@ static void reset() {
     wearer.only.pc=&wearer_pc; companion.only.pc=&companion_pc;
     wearer.next=&companion; character_list=&wearer;
     wearer.next_in_room=&companion; rooms[0].people=&wearer;
-    grants=0; inherent_armor=false;
+    grants=0; inherent_armor=false; guardian_rejections=0;
 }
 static void wear(int item,int slot,int zone,bool weapon=false) {
     gear[item].R_num=weapon ? 1 : 0;
@@ -460,7 +464,11 @@ static void qualify_expansion_effects() {
             const int level=sample==0?30:sample==1?50:56;
             apply_zone_spell(&wearer,pieces,"Qualification",10000+entry.spell,&gear[0],entry.spell);
             if(entry.spell==SPELL_GUARDIAN_SPIRITS && !kind) {
-                assert(!wearer.affected && !grants); continue;
+                apply_zone_spell(&wearer,pieces,"Qualification",10000+entry.spell,&gear[0],entry.spell);
+                assert(!wearer.affected && !grants && !guardian_rejections);
+                entry.callback(30,&wearer,nullptr,0,&wearer,nullptr);
+                assert(!wearer.affected && guardian_rejections==1); // manual restriction remains
+                continue;
             }
             int modifiers[]={entry.modifiers[sample],entry.second_modifiers[sample]};
             int duration=entry.durations[sample];
