@@ -263,6 +263,8 @@ try:
     expect_max_hp(receiver, baseline + 5)
     points = armor_points(receiver)
     save(receiver, RECIPIENT)
+    reference = game.affects(1, 2)
+    assert len(reference) == 1
     game.stop()
 
     # Clear only the copied tester's ordinary buffs, then exercise set-first.
@@ -272,10 +274,16 @@ try:
     receiver.send("quaff " + selector(receiver, potion))
     receiver.expect("Bands of magic armor wrap around you!", timeout=30)
     score(receiver)
-    assert armor_points(receiver) == points, "overlap must match ordinary-only Armor on identical gear"
     save(receiver, RECIPIENT)
     ordinary = game.affects(1, 2)
     assert len(ordinary) == 1
+    # Native Armor rolls an extra 0-10 AC. Match the ordinary cast's strength;
+    # transient set affects are absent from these independently stored rows.
+    adjustment = ordinary[0][3] - reference[0][3]
+    points += adjustment
+    ordinary_two_points += adjustment
+    actual = armor_points(receiver)
+    assert actual == points, ("overlap versus ordinary-only Armor on identical gear", points, actual)
     receiver.send("remove " + selector(receiver, setup["uids"][-1]))
     text = expect_max_hp(receiver, baseline)
     assert "armor (" in text
