@@ -18,6 +18,7 @@ Skill skills[MAX_AFFECT_TYPES + 1];
 static room_data room{};
 P_room world = &room;
 int get_property(const char *, int fallback) { return fallback; }
+int GET_CLASS(P_char ch,uint cls) { return (ch->player.m_class&cls)!=0; }
 bool grouped(P_char, P_char) { return false; }
 bool affected_by_skill(P_char, int) { return false; }
 struct affected_type *get_spell_from_char(P_char, int, void *, int) { return nullptr; }
