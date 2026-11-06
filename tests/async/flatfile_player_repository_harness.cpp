@@ -367,6 +367,38 @@ static void inspect_world_items(const std::string &root, int argc, char **argv)
 	std::cout << "]}\n";
 }
 
+static void inspect_locker_items(const std::string &root, const std::string &name)
+{
+	std::string error;
+	flatfile_locker_record locker;
+	const auto found = flatfile_locker_find(root, name, &locker, &error);
+	require(found == flatfile_locker_result::ok || found == flatfile_locker_result::not_found,
+		"inspect locker items: " + error);
+	std::cout << "{\"items\":[";
+	bool first = true;
+	for (const auto &chest : locker.chests)
+		for (const auto &item : chest.items)
+		{
+			if (!first)
+				std::cout << ',';
+			first = false;
+			const uint64_t parent =
+				item.parent_index < 0 ?
+					0 :
+					chest.items.at(static_cast<size_t>(item.parent_index))
+						.object_uid;
+			std::cout << "{\"uid\":" << item.object_uid << ",\"vnum\":" << item.vnum
+				  << ",\"parent_uid\":" << parent
+				  << ",\"slot\":" << item.equipment_slot;
+			for (const auto &description : item.extra_descriptions)
+				if (description.keyword == "DURIS_NAMED_SET_ORIGIN_V1")
+					std::cout << ",\"named_origin\":\""
+						  << description.description << '"';
+			std::cout << '}';
+		}
+	std::cout << "]}\n";
+}
+
 static void source_id_gap_case(const fs::path &path)
 {
 	const std::string root = path.string();
@@ -2124,6 +2156,11 @@ int main(int argc, char **argv)
 	if (argc >= 4 && std::string(argv[2]) == "inspect-world-items")
 	{
 		inspect_world_items(argv[1], argc, argv);
+		return 0;
+	}
+	if (argc == 4 && std::string(argv[2]) == "inspect-locker-items")
+	{
+		inspect_locker_items(argv[1], argv[3]);
 		return 0;
 	}
 	require(argc == 2, "state root argument required");

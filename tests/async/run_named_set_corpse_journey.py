@@ -12,6 +12,7 @@ from named_set_gameplay import (
     selector,
     expect_max_hp,
     get_from_container,
+    inventory_graph,
 )
 
 ACCOUNT, CHARACTER, PID = "Namedguest", "Meranen", 2
@@ -38,11 +39,7 @@ def corpse_items():
 
 
 def graph():
-    rows = game.inventory(PID)
-    return {
-        str(row[0]): [row[1], rows[row[2]][0] if row[2] >= 0 else 0, row[3]]
-        for row in rows
-    }
+    return inventory_graph(game.inventory(PID))
 
 
 def command(client, text, expected=None):

@@ -137,6 +137,13 @@ def expect_max_hp(client, expected):
         time.sleep(0.5)
 
 
+def inventory_graph(rows):
+    return {
+        str(row[0]): [row[1], rows[row[2]][0] if row[2] >= 0 else 0, row[3]]
+        for row in rows
+    }
+
+
 class NamedSetGame:
     def __init__(self):
         self.runtime = (journey.ROOT / "bin/tests/named-set-roster-world").resolve()

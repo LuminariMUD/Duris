@@ -4,8 +4,8 @@ Status: implementation in progress; seventeen focused implementation/test PRs ar
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-corpse-storage`, based on
-`branch/named-zone-set-pet-storage`.
+Working branch: `branch/named-zone-set-locker-storage`, based on
+`branch/named-zone-set-corpse-storage`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -1053,6 +1053,68 @@ The six pieces are again under Meranen: originals worn and copies in the
 outer container; the empty cat was dismissed by the normal death pipeline.
 Next complete locker/private chest, shop/saved-world, MariaDB, live Redis,
 canonical help and rollback gates using the retained authority and real items.
+
+### Native public locker storage passed
+
+**Outcome/files/proof:** add `run_named_set_locker_journey.py` using the real
+original #1325 pieces in a native container. Native counter/enter/drop/leave
+must persist the public account locker, then a reboot/get/leave restores the
+exact UID/vnum/parent/slot graph. Verify empty locker custody and mortal set
+activation plus another reboot. Extend the maintained read-only inspector to
+list locker item coordinates and origin values. Reuse the corpse journey's
+inventory-graph conversion in the shared helper. No product code or seeded
+item payload is needed. Flat-file runtime explicitly does not offer private
+chests (`locker_private_chests_available`); that active path remains a MariaDB
+gate rather than a new feature to implement here.
+
+**Setup failure retained:** the first runner accepted the entry cost line too
+early. Even an overlord needs the fee; the bank rejected one copper and ejected
+Meranen. The subsequent drop therefore put outer `81069607` on the ordinary
+shop floor, not in locker storage. That floor was non-saving with Redis disabled;
+after shutdown the tree has no remaining item payload in player, locker, world
+or shop authority (only stale item-ownership entries remain). The lost sandbox
+tree included copied UIDs **`98069719`, `98069720`, `98069721`**, four test bags
+and four reward satchels. The three original marked pieces remained worn and
+safe. The earlier pet/corpse/edit proofs describe their completed checkpoints;
+the current retained named count is **751**, not 754.
+
+The authority was not reset, the lost UIDs were not reassigned or fabricated,
+and the failed setup/log/transcript remain under their original / `unfunded`
+names. The funded runner uses the surviving originals and a new native bag.
+It obtains the fee through native NPC currency transfer and verifies the
+locker room after the cost receipt before permitting any drop. Its separate
+`named-locker-funded-setup.json` keeps the failure evidence intact. This is a
+test setup error and expected ephemeral floor behavior, not a named-origin
+serialization defect; do not conceal it by claiming the old copies still exist.
+
+**Funded case:** native `force Kieta give 1 platinum Meranen` funds the real
+fee. New container **`125068524`** holds original UIDs `76068523`, `76068769`,
+`76069376`; no lost UID is reused. Deposit claims them into
+`account.namedguest.1.locker` and removes them from player custody. A reboot
+retains all three #1325 markers and the exact four-item UID/vnum/parent graph.
+Locker records use the unworn sentinel -1; this is checked explicitly and
+normalized to the player snapshot's unworn 0 for graph comparison. The bag is
+restored on the locker floor, so native `get collector` retrieves it.
+
+The saved retrieval case passes: locker custody becomes empty, mortal wear
+restores +5 HP/Armor from baseline 1475, and another reboot preserves the exact
+origins, slots and flags. A fresh full funded cycle also completes with exit 0
+under the correct entry validation, sentinel handling and floor retrieval.
+Failed and funded manifests/logs remain separate under the ignored runtime.
+
+**Run/proof:** build the maintained inspector, then run
+`python3 tests/async/run_named_set_locker_journey.py`. The resumed retrieval and
+fresh full cycle pass. `make -C src -j4`, warning-clean inspector/fixture builds,
+Python static checks, C++ formatting and `git diff --check` pass. All private
+servers are stopped; public locker custody is empty and the original three
+pieces are worn by Meranen. The retained named count is 751 after the documented
+unfunded setup loss; it does not include the lost copied items. No product code,
+lost identity re-creation, authority reset, release or deployment occurred.
+
+Next use disposable MariaDB for private chests and native backend journeys;
+the maintained `with_disposable_mariadb.sh` wrapper is available and its
+`mariadb:10.11` image is cached. Preserve the current authority and the original
+UIDs. Shop/saved-world, live Redis, canonical help and rollback remain open.
 
 ## Start here
 
