@@ -52,6 +52,7 @@ void CharWait(P_char, int ticks) { waited += ticks; }
 const Rolls live_rolls = { dice, number };
 ''' + '\n'.join(extract_function(path, signature) for path, signature in [
     ('magic.c', 'static int teleport_range('),
+    ('magic.c', 'static bool teleport_blocked_destination('),
     ('magic.c', 'void spell_teleport('),
     ('psionics.c', 'static int depart_range('),
     ('psionics.c', 'static int depart_free_level('),
