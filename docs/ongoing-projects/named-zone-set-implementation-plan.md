@@ -4,8 +4,8 @@ Status: implementation in progress; nine focused implementation PRs are pushed
 and ready for review in the stack below.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-eligibility`, based on
-`branch/named-zone-set-effect-qualification`.
+Working branch: `branch/named-zone-set-roster`, based on
+`branch/named-zone-set-eligibility`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -54,9 +54,9 @@ same normalized title as new #3000. The historical-origin correction after #722
 keeps unmarked Misty Vale gear from inheriting #3000's newly assigned effect by
 guessing; see the checkpoint below.
 
-The first implementation chunk extracts the **115 existing loaded set rows,
-206 tiers, and 64 effect IDs** into `src/item/named_sets.c`. No expansion rows
-have been installed. All **117 historical roaming rows**, their ordering and
+The first implementation chunk extracted the **115 existing loaded set rows,
+206 tiers, and 64 effect IDs** into `src/item/named_sets.c`. The current test build
+adds the reviewed 183 rows (see the catalog chunk below). All **117 historical roaming rows**, their ordering and
 race lists (including empty lists and stale #30/#250), remain in
 `src/world/random.mob.c`; its selection function is unchanged.
 
@@ -537,7 +537,7 @@ The next independent chunk is the wider area eligibility review, followed by
 catalog installation with the recorded thresholds and end-to-end gameplay,
 storage, report/cache, help/publication and rollback checks.
 
-### Wider eligibility review (in progress)
+### Wider eligibility review
 
 **Outcome:** classify the active world beyond the original 104 assignments,
 including plain-title areas, independently keyed duplicate-title counterparts,
@@ -568,23 +568,27 @@ its topology search includes closed/locked/secret doors but excludes closed/priv
 zones, guild rooms and map mountain barriers. Its route candidates still need
 the authored key/proc/purpose review; a graph hit alone is not final eligibility.
 
-Current next work: review disconnected/gated destinations and infrastructure
-records, finish the 135-row classification and additional assignments in the
-assignment document. The four existing plain-title sets are resolved in the
-focused chunk below. The broader checkbox remains open until all 135 records
-are classified.
+All 135 remaining records are now classified in the assignment document:
+**79 independent additions and 56 exclusions**. The 115 existing catalog rows
+and the original 104-zone queue are retained. No shared-origin grouping is added.
+All new areas have a source-reviewed entry and encounter witness. Disconnected,
+closed, control/map, staging and private infrastructure records have explicit
+exclusion reasons; owner exclusions remain intact. #300/#1350 are independent
+counterparts, not merged with #44/#13.
 
-Local continuation artifacts (research only, not release inputs):
+Local audit artifacts (research only, not release inputs):
 `bin/tests/named-set-roster-audit.py` reads the isolated generated world and writes
 `bin/tests/named-set-roster-audit.{json,txt}`; `bin/tests/roster-detail.py <IDs>`
-prints route and encounter witnesses. The route roots include Tharnadia and the
-eight explicit native planar destinations in `magic/spells.c`; a generic guessed
-teleport target is not an authored entrance. The remaining disconnected/gated
-review includes #122/#146/#203/#514/#533/#673/#904/#907/#1340/#1351/#1352/#1354/
-#1380/#1420, plus tutorial and infrastructure purpose decisions. Internal portals
-are not counted as incoming cross-zone entrances. Keep this research available
-until its reviewed decisions replace the temporary outputs in the assignment
-document; the final roster must not depend on ignored artifacts.
+prints route and encounter witnesses. Roots use declared mortal hometown/tutorial
+arrivals and eight explicit native planar destinations; guessed teleport targets
+are not entry evidence. The final route audit folds reset door states, requires
+obtainable keys for locked pickproof doors and obtainable native switches for
+blocked walls. The assignment document records the important gate dependencies.
+Full Ailvio/Wutvr outposts qualify through native onboarding routes and ordinary
+wolf encounters. Orog vipers disperse from staging room 45909 to reachable caves;
+their level 10 satisfies the hometown drop cap. The permanent catalog regression
+now reconciles all 354 active zone IDs against the reviewed document, so final
+coverage does not depend on ignored audit artifacts.
 
 ### Restore naming for four existing sets
 
@@ -619,6 +623,47 @@ python3 tests/async/test_named_set_catalog.py
 
 These are source/generator/membership checks. Actual full gameplay and storage
 journeys remain in the final gates. No deployment or release has occurred.
+
+### Reviewed catalog installation (gameplay gates in progress)
+
+**Outcome:** the implementation/test catalog now contains **298 rows, 389 tiers
+and 106 effect IDs**: all 115 original rows plus 104 original additions and 79
+wider-review additions. Every new row has one tier; the 183 additions comprise
+175 three-piece, six five-piece and two six-piece requirements. All original
+zone/effect/threshold rows and roaming data remain byte-for-byte unchanged.
+The 21 newly approved plain-title areas receive color/reset codes only; their
+visible names, resets and topology are unchanged.
+
+**Files/ablation:** extend the existing `named_sets.c` array, authored zone headers
+and existing tests. The assignment document is the reviewed data manifest; no
+runtime roster service, grouping layer or effect adapter is added. The single
+report formatter now explains Guardian Spirits, Virtue and light exclusions.
+
+**Passed:** both backend builds; catalog/manifest reconciliation of all 354 active
+records; all 1,480 golden equipment cases/RNG sentinels and actual title checks;
+membership/tier dispatch; all 50 real effect handlers and conditional cases.
+Isolated world regeneration changes exactly 21 additional title strings, with
+all resets and the other six generated outputs identical. A full private flat-file
+world boot (no minimal/specials/ferry suppression) reaches the game loop, creates
+and saves a synthetic character. The normal player's disabled-Redis `namedreport`
+pages through all 298 IDs exactly once and includes the conditional notes.
+
+**Readiness gate:** these rows are in the local implementation/test build for
+acceptance work, not deployed. Keep the catalog PR in draft until the required
+native wear/HP/ordinary-cast/save/reboot gates pass. The source/fixture evidence
+above does not replace those gameplay gates or the remaining storage, live Redis,
+help/publication and rollback work. Do not mark #706 or this goal complete.
+
+Continuation runtime: `bin/tests/named-set-roster-world` contains the generated
+full world, private flat-file authority in `state/`, and a synthetic `Taverek`
+character created by `test_flatfile_combat_journey` helpers. Its test account
+credentials come from that test module; no owner credentials were copied.
+`bin/tests/run-named-full-boot.py` boots/reconnects without reseeding the authority
+and writes `full-server.out` / `namedreport.txt`; its process is stopped after the
+check. Do not delete/reseed this state to hide a failure. Next use the native
+`randobj eq <slot> 56 <count>` staff path in this isolated world, retain the real
+generated item UIDs/origins, then exercise ordinary-player wear and persistence.
+Tharnadia, Bloodstone and the seven identity cases remain the mandatory journeys.
 
 ## Start here
 
@@ -664,13 +709,14 @@ for these checks.
 
 ## 1. Freeze the roster and first-pass balance decisions
 
-- [ ] Recheck #706, the active [area registry](../../areas/AREA), and the two
+- [x] Recheck #706, the active [area registry](../../areas/AREA), and the two
   companion documents against the implementation checkout. Preserve all 104
   planned zone IDs, the original 42 choices, and the 62 reuse choices. The
   reuse pool has 50 effects: the 42 newly selected effects and eight existing
-  simple effects. Every initially unused candidate has two or three proposed
-  homes; 60 of the 62 reuse choices favored an effect with one home at that
-  pass's start.
+  simple effects. Every initially unused candidate had two or three proposed
+  homes after those two passes; 60 of the 62 reuse choices favored an effect
+  with one home at that pass's start. Wider additions and final home counts
+  are now recorded separately.
 - [x] Give each of the 104 additions one effect tier. Start the balance review
   with **three matching pieces** as the proposed threshold, giving the existing
   +5 maximum-HP bonus at that count. Record the final threshold for every row
@@ -688,7 +734,7 @@ for these checks.
   Virtue's alignment condition, and light/darkness exclusions. Describe those
   restrictions in player-facing help/report notes so a set is not presented
   as granting a universal benefit when its spell is conditional.
-- [ ] Complete the wider area review required by #706: classify remaining
+- [x] Complete the wider area review required by #706: classify remaining
   broad-screen candidates and excluded plain-title areas as independent set,
   explicitly shared set, or excluded with a reason. Check repeatable eligible
   kills and real player access, including secret/locked paths and gated planes.
@@ -726,11 +772,10 @@ Owning code: [random.mob.c](../../src/world/random.mob.c),
   handlers. Ordinary skills and songs without explicit support must not reach
   the generic null spell-pointer call.
 
-For the currently planned cohort, the expected active catalog is **219 loaded
-zone rows** (115 existing + 104 additions), **310 zone/effect assignments**
-(206 + 104), and **106 distinct effect IDs** (64 existing + 42 newly used).
-These are baseline reconciliation targets; update them when the wider roster
-review changes the final scope. Each valid old row must survive this extraction.
+The original 104-zone cohort reconciled to 219 rows / 310 tiers / 106 effect IDs.
+The completed wider review adds 79 areas: the implementation/test catalog now
+reconciles to **298 loaded rows / 389 tiers / 106 effect IDs**. The frozen digest
+still proves every original row survives unchanged.
 
 ## 3. Give named items a durable, unambiguous origin
 

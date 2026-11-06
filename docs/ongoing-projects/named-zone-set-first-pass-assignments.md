@@ -1,13 +1,13 @@
 # Named zone sets: complete assignment plan and remaining work
 
-Status: effects and piece requirements reviewed for all 104 roster zones; catalog installation and final gameplay gates pending.
+Status: 183 reviewed additions (104 original + 79 wider) installed in the implementation catalog; final gameplay/storage/publication gates pending.
 Date: 2026-11-06.
 Inspected `master`: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 Implementation entry point: [end-to-end plan](named-zone-set-implementation-plan.md),
 including the seven-zone fixes, legacy-item policy, and verification gates.
 
-## Scope and counts
+## Initial two-pass scope and counts
 
 The initial pass used each of the **42 retained candidates** in the
 [effect inventory](named-zone-set-effect-inventory.md#unused-effects-that-could-become-set-bonuses)
@@ -21,12 +21,12 @@ on 2026-11-05 at 08:15:32 UTC. Zone numbers remain the identity keys.
 | Missing-set zones in the issue's current roster | 104 |
 | Initial assignments | 42 |
 | Additional assignments in the reuse pass | 62 |
-| Total zones with a proposed effect | 104 |
+| Initial two-pass zones with a proposed effect | 104 |
 | Zones still needing an effect choice | 0 |
 | Assigned zones with known title/naming prerequisites | 7 |
 
-**These are proposed assignments.** All 104 roster zones still lack set-table
-rows in the inspected source. Seven needed the identity/title repairs now in
+**These are proposed assignments.** All 104 original roster zones now have set-table
+rows in the implementation catalog, together with 79 wider-review additions. Seven needed the identity/title repairs now in
 the PR stack; their remaining gameplay gates are listed below. The complete
 plan covers this roster; the issue's wider world
 review can still identify other eligible areas.
@@ -263,66 +263,66 @@ Zone links identify the area; effect links follow the source inventory.
 
 ## Effect homes after both passes
 
-Only the 50 effects used by the reuse pass are shown. Current homes are
-recounted from loaded zones in the existing set table. Proposed homes become
-current homes when the assignments are implemented.
+Only the 50 effects used by the reuse pass are shown. Baseline homes refer to
+the original 115-row catalog; the two initial planning passes remain visible.
+The wider and final columns reconcile to the installed implementation catalog.
 
-| Effect (game ID) | Current loaded-zone homes | Initial proposed homes | Additional proposed homes | Combined homes after plan |
-|---|---:|---:|---:|---:|
-| [Adrenaline Control](../../src/classes/psionics.c#L412) (#157) | 0 | 1 | 1 | 2 |
-| [Agility](../../src/classes/skills.c#L2053) (#584) | 1 | 0 | 1 | 2 |
-| [Battletide](../../src/magic/magic.c#L16594) (#395) | 0 | 1 | 1 | 2 |
-| [Combat Mind](../../src/classes/psionics.c#L1094) (#163) | 0 | 1 | 1 | 2 |
-| [Comprehend Languages](../../src/magic/magic.c#L17843) (#132) | 0 | 1 | 1 | 2 |
-| [Detect Evil](../../src/magic/magic.c#L9246) (#90) | 0 | 1 | 1 | 2 |
-| [Detect Good](../../src/magic/magic.c#L9283) (#91) | 0 | 1 | 1 | 2 |
-| [Detect Illusion](../../src/classes/sillusionist.c#L1797) (#414) | 0 | 1 | 2 | 3 |
-| [Dexterity](../../src/magic/magic.c#L11563) (#73) | 0 | 1 | 1 | 2 |
-| [Displacement](../../src/classes/psionics.c#L2206) (#169) | 0 | 1 | 2 | 3 |
-| [Divine Fury](../../src/magic/magic.c#L22267) (#310) | 0 | 1 | 1 | 2 |
-| [Energy Containment](../../src/classes/psionics.c#L2405) (#173) | 0 | 1 | 1 | 2 |
-| [Enhance Agility](../../src/classes/skills.c#L944) (#177) | 1 | 0 | 1 | 2 |
-| [Enhance Armor](../../src/classes/psionics.c#L2459) (#174) | 0 | 1 | 1 | 2 |
-| [Enhance Constitution](../../src/classes/psionics.c#L2650) (#178) | 0 | 1 | 2 | 3 |
-| [Enhance Dexterity](../../src/classes/psionics.c#L2564) (#176) | 0 | 1 | 2 | 3 |
-| [Enhance Strength](../../src/classes/skills.c#L932) (#175) | 1 | 0 | 2 | 3 |
-| [Farsee](../../src/classes/skills.c#L1577) (#53) | 1 | 0 | 2 | 3 |
-| [Fortitude](../../src/magic/magic.c#L6345) (#348) | 0 | 1 | 1 | 2 |
-| [Globe Of Darkness](../../src/magic/magic.c#L17667) (#302) | 0 | 1 | 1 | 2 |
-| [Guardian Spirits](../../src/magic/smagic.c#L208) (#579) | 0 | 1 | 1 | 2 |
-| [Hawkvision](../../src/magic/smagic.c#L3281) (#204) | 0 | 1 | 1 | 2 |
-| [Holy Light](../../src/magic/magic.c#L17597) (#615) | 0 | 1 | 1 | 2 |
-| [Infravision](../../src/magic/magic.c#L22089) (#106) | 0 | 1 | 1 | 2 |
-| [Lifelust](../../src/magic/magic.c#L7776) (#321) | 0 | 1 | 1 | 2 |
-| [Lodestone Vision](../../src/magic/magic.c#L12484) (#617) | 0 | 1 | 2 | 3 |
-| [Mage Flame](../../src/magic/magic.c#L17626) (#297) | 0 | 1 | 1 | 2 |
-| [Phantom Armor](../../src/classes/sillusionist.c#L131) (#400) | 0 | 1 | 1 | 2 |
-| [Protection From Acid](../../src/magic/magic.c#L21936) (#105) | 0 | 1 | 1 | 2 |
-| [Protection From Animals](../../src/magic/magic.c#L21864) (#383) | 0 | 1 | 1 | 2 |
-| [Protection From Evil](../../src/magic/magic.c#L10975) (#34) | 0 | 1 | 2 | 3 |
-| [Protection From Fire](../../src/classes/skills.c#L2301) (#96) | 1 | 0 | 1 | 2 |
-| [Protection From Gas](../../src/magic/magic.c#L21917) (#104) | 0 | 1 | 1 | 2 |
-| [Protection From Good](../../src/magic/magic.c#L11004) (#81) | 0 | 1 | 1 | 2 |
-| [Protection From Lightning](../../src/classes/skills.c#L2347) (#98) | 1 | 0 | 1 | 2 |
-| [Pulchritude](../../src/magic/magic.c#L8075) (#347) | 0 | 1 | 1 | 2 |
-| [Scent Of The Bloodhound](../../src/magic/smagic.c#L2353) (#517) | 0 | 1 | 1 | 2 |
-| [Sense Follower](../../src/magic/magic.c#L24629) (#279) | 0 | 1 | 1 | 2 |
-| [Sense Holiness](../../src/magic/magic.c#L7067) (#316) | 0 | 1 | 1 | 2 |
-| [Sense Life](../../src/magic/magic.c#L12385) (#44) | 0 | 1 | 2 | 3 |
-| [Sense Spirit](../../src/magic/smagic.c#L4244) (#211) | 0 | 1 | 2 | 3 |
-| [Serendipity](../../src/magic/magic.c#L8284) (#352) | 0 | 1 | 2 | 3 |
-| [Slow Poison](../../src/magic/magic.c#L17814) (#130) | 0 | 1 | 2 | 3 |
-| [Vapor Armor](../../src/classes/ethermancer.c#L104) (#452) | 0 | 1 | 1 | 2 |
-| [Vapor Strike](../../src/classes/ethermancer.c#L1134) (#467) | 0 | 1 | 1 | 2 |
-| [Virtue](../../src/magic/magic.c#L6927) (#515) | 0 | 1 | 1 | 2 |
-| [Warring Zeal](../../src/magic/magic.c#L25432) (#680) | 0 | 1 | 1 | 2 |
-| [Wolfspeed](../../src/magic/smagic.c#L2683) (#193) | 0 | 1 | 1 | 2 |
-| [Protection From Cold](../../src/classes/skills.c#L2308) (#97) | 2 | 0 | 1 | 3 |
-| [Water Breathing](../../src/classes/skills.c#L1571) (#85) | 4 | 0 | 1 | 5 |
+| Effect (game ID) | Baseline homes | Initial proposed homes | Additional proposed homes | After initial two passes | Wider additions | Final catalog homes |
+|---|---:|---:|---:|---:|---:|---:|
+| [Adrenaline Control](../../src/classes/psionics.c#L412) (#157) | 0 | 1 | 1 | 2 | 1 | 3 |
+| [Agility](../../src/classes/skills.c#L2053) (#584) | 1 | 0 | 1 | 2 | 0 | 2 |
+| [Battletide](../../src/magic/magic.c#L16594) (#395) | 0 | 1 | 1 | 2 | 1 | 3 |
+| [Combat Mind](../../src/classes/psionics.c#L1094) (#163) | 0 | 1 | 1 | 2 | 2 | 4 |
+| [Comprehend Languages](../../src/magic/magic.c#L17843) (#132) | 0 | 1 | 1 | 2 | 3 | 5 |
+| [Detect Evil](../../src/magic/magic.c#L9246) (#90) | 0 | 1 | 1 | 2 | 1 | 3 |
+| [Detect Good](../../src/magic/magic.c#L9283) (#91) | 0 | 1 | 1 | 2 | 1 | 3 |
+| [Detect Illusion](../../src/classes/sillusionist.c#L1797) (#414) | 0 | 1 | 2 | 3 | 3 | 6 |
+| [Dexterity](../../src/magic/magic.c#L11563) (#73) | 0 | 1 | 1 | 2 | 1 | 3 |
+| [Displacement](../../src/classes/psionics.c#L2206) (#169) | 0 | 1 | 2 | 3 | 1 | 4 |
+| [Divine Fury](../../src/magic/magic.c#L22267) (#310) | 0 | 1 | 1 | 2 | 1 | 3 |
+| [Energy Containment](../../src/classes/psionics.c#L2405) (#173) | 0 | 1 | 1 | 2 | 1 | 3 |
+| [Enhance Agility](../../src/classes/skills.c#L944) (#177) | 1 | 0 | 1 | 2 | 0 | 2 |
+| [Enhance Armor](../../src/classes/psionics.c#L2459) (#174) | 0 | 1 | 1 | 2 | 2 | 4 |
+| [Enhance Constitution](../../src/classes/psionics.c#L2650) (#178) | 0 | 1 | 2 | 3 | 2 | 5 |
+| [Enhance Dexterity](../../src/classes/psionics.c#L2564) (#176) | 0 | 1 | 2 | 3 | 3 | 6 |
+| [Enhance Strength](../../src/classes/skills.c#L932) (#175) | 1 | 0 | 2 | 3 | 2 | 5 |
+| [Farsee](../../src/classes/skills.c#L1577) (#53) | 1 | 0 | 2 | 3 | 2 | 5 |
+| [Fortitude](../../src/magic/magic.c#L6345) (#348) | 0 | 1 | 1 | 2 | 5 | 7 |
+| [Globe Of Darkness](../../src/magic/magic.c#L17667) (#302) | 0 | 1 | 1 | 2 | 1 | 3 |
+| [Guardian Spirits](../../src/magic/smagic.c#L208) (#579) | 0 | 1 | 1 | 2 | 0 | 2 |
+| [Hawkvision](../../src/magic/smagic.c#L3281) (#204) | 0 | 1 | 1 | 2 | 2 | 4 |
+| [Holy Light](../../src/magic/magic.c#L17597) (#615) | 0 | 1 | 1 | 2 | 0 | 2 |
+| [Infravision](../../src/magic/magic.c#L22089) (#106) | 0 | 1 | 1 | 2 | 2 | 4 |
+| [Lifelust](../../src/magic/magic.c#L7776) (#321) | 0 | 1 | 1 | 2 | 0 | 2 |
+| [Lodestone Vision](../../src/magic/magic.c#L12484) (#617) | 0 | 1 | 2 | 3 | 2 | 5 |
+| [Mage Flame](../../src/magic/magic.c#L17626) (#297) | 0 | 1 | 1 | 2 | 0 | 2 |
+| [Phantom Armor](../../src/classes/sillusionist.c#L131) (#400) | 0 | 1 | 1 | 2 | 2 | 4 |
+| [Protection From Acid](../../src/magic/magic.c#L21936) (#105) | 0 | 1 | 1 | 2 | 1 | 3 |
+| [Protection From Animals](../../src/magic/magic.c#L21864) (#383) | 0 | 1 | 1 | 2 | 3 | 5 |
+| [Protection From Evil](../../src/magic/magic.c#L10975) (#34) | 0 | 1 | 2 | 3 | 2 | 5 |
+| [Protection From Fire](../../src/classes/skills.c#L2301) (#96) | 1 | 0 | 1 | 2 | 3 | 5 |
+| [Protection From Gas](../../src/magic/magic.c#L21917) (#104) | 0 | 1 | 1 | 2 | 3 | 5 |
+| [Protection From Good](../../src/magic/magic.c#L11004) (#81) | 0 | 1 | 1 | 2 | 2 | 4 |
+| [Protection From Lightning](../../src/classes/skills.c#L2347) (#98) | 1 | 0 | 1 | 2 | 0 | 2 |
+| [Pulchritude](../../src/magic/magic.c#L8075) (#347) | 0 | 1 | 1 | 2 | 1 | 3 |
+| [Scent Of The Bloodhound](../../src/magic/smagic.c#L2353) (#517) | 0 | 1 | 1 | 2 | 2 | 4 |
+| [Sense Follower](../../src/magic/magic.c#L24629) (#279) | 0 | 1 | 1 | 2 | 2 | 4 |
+| [Sense Holiness](../../src/magic/magic.c#L7067) (#316) | 0 | 1 | 1 | 2 | 3 | 5 |
+| [Sense Life](../../src/magic/magic.c#L12385) (#44) | 0 | 1 | 2 | 3 | 4 | 7 |
+| [Sense Spirit](../../src/magic/smagic.c#L4244) (#211) | 0 | 1 | 2 | 3 | 5 | 8 |
+| [Serendipity](../../src/magic/magic.c#L8284) (#352) | 0 | 1 | 2 | 3 | 2 | 5 |
+| [Slow Poison](../../src/magic/magic.c#L17814) (#130) | 0 | 1 | 2 | 3 | 0 | 3 |
+| [Vapor Armor](../../src/classes/ethermancer.c#L104) (#452) | 0 | 1 | 1 | 2 | 0 | 2 |
+| [Vapor Strike](../../src/classes/ethermancer.c#L1134) (#467) | 0 | 1 | 1 | 2 | 0 | 2 |
+| [Virtue](../../src/magic/magic.c#L6927) (#515) | 0 | 1 | 1 | 2 | 0 | 2 |
+| [Warring Zeal](../../src/magic/magic.c#L25432) (#680) | 0 | 1 | 1 | 2 | 2 | 4 |
+| [Wolfspeed](../../src/magic/smagic.c#L2683) (#193) | 0 | 1 | 1 | 2 | 1 | 3 |
+| [Protection From Cold](../../src/classes/skills.c#L2308) (#97) | 2 | 0 | 1 | 3 | 0 | 3 |
+| [Water Breathing](../../src/classes/skills.c#L1571) (#85) | 4 | 0 | 1 | 5 | 2 | 7 |
 
 ## Remaining work
 
-**No roster zone is left without an effect and piece requirement.** The seven
+**All 183 additions now have catalog rows with recorded effects and requirements.** The seven
 special identity/title repairs are implemented in the current PR stack. Their
 catalog rows and final gameplay journeys remain open; the main plan records the
 existing fixture and persistence evidence.
@@ -368,6 +368,203 @@ IDs, legacy visible tags and clones; real membership/tier dispatch verifies
 2/3/4/5/6 pieces and HP cleanup. An isolated `make world` differs only in these
 four header strings; all resets and the other six generated outputs are identical.
 The broader 135-record review and final gameplay/storage gates remain open.
+
+## Wider area review and additional assignments
+The fresh active world has 354 records. The 115 original catalog rows are
+retained, and the owner-reviewed 104-zone queue remains unchanged. The remaining
+135 records are classified below: **79 independent additions and 56 exclusions**.
+No shared-origin grouping is introduced. Separate zone IDs, including #300 and
+#1350, keep separate piece counts even when they reuse the same effect.
+
+The resulting target is **298 catalog rows, 389 effect tiers and 106 distinct
+effect IDs**: 115 old rows plus 183 additions, each with one tier. Among the 183
+additions, 175 need three pieces, six need five and two need six. The initial
+42+62 pairings and their thresholds are retained; the wider additions reuse only
+the already-qualified 50-effect pool. The home counts in the earlier table describe
+the original two passes; the home-count table also records the wider additions and final totals.
+
+Access evidence uses native mortal hometown/tutorial arrivals, explicit planar
+destinations, authored exits and placed teleport objects. Reset-locked pickproof
+doors require a reachable reset key; blocked walls require a reachable native
+switch. Openable/pickable/secret doors remain legitimate routes. Map mountains,
+closed/private zones and unreachable components are not treated as public paths.
+This is an authored-source review, not a claim that every route was live-playtested.
+
+Full Ailvio/Wutvr outposts have ordinary combat encounters and native entry through
+the Life/Chaos guide and stream. A level-11 resident can hunt a level-5 wolf within
+the unchanged level-gap rule and can roll a zone name; these full outposts are
+included. The seven-room creation introductions remain onboarding infrastructure.
+
+`ZONE_SAFE` is not a blanket PvM exclusion: normal kill/attack admission checks
+`ROOM_SAFE` through `CanDoFightMove`. Some commands and reward systems separately
+check `ZONE_SAFE`. Forgotten Forest is included; Wandering Fields is excluded for
+its staging purpose. The executable golden regression checks this distinction.
+
+### The 79 wider-review additions
+
+Witnesses below are reset mobile/room pairs reachable through the recorded entry,
+apart from the explicitly described Orog dispersal case. They exclude shopkeepers,
+guild/safe combat rooms and hometown mobs above level 25. Normal mobile conversion
+supplies positive XP; ACT_IGNORE/`_ignore_` exceptions retain their authored XP.
+
+| ID | Area | Assigned effect | Pieces | Authored access, encounter and theme |
+|---:|---|---|---:|---|
+| 16 | [Truktakyagyo](../../areas/zon/truk.zon) | [Dexterity](../../src/magic/magic.c#L11563) (#73) | 3 | 70198 exit#0 → 1655; mobile #1602 at 1604. Goblin settlement: nimble guards and sentries. |
+| 34 | [The Minor Plane of Planitude](../../areas/zon/flind.zon) | [Protection From Good](../../src/magic/magic.c#L11004) (#81) | 3 | 829678 exit#0 → 3475; mobile #3407 at 3400. Infernal/flind plane: protection from good fits its hostile priesthood. |
+| 48 | [The Monestary of Tranquility](../../areas/zon/tchan.zon) | [Sense Holiness](../../src/magic/magic.c#L7067) (#316) | 3 | 513140 exit#1 → 4800; mobile #4800 at 4808. Monastery and its priest/guard encounters: sense holiness. |
+| 57 | [Mini Zones](../../areas/zon/minizones.zon) | [Comprehend Languages](../../src/magic/magic.c#L17843) (#132) | 3 | 518898 exit#2 → 5735; mobile #5709 at 5735. Multiple small settlements and encounters: comprehension utility. |
+| 63 | [The Shadow Forest](../../areas/zon/mist.zon) | [Detect Illusion](../../src/classes/sillusionist.c#L1797) (#414) | 3 | 628063 exit#3 → 6300; mobile #6307 at 6300. Shadow forest: seeing through deceptive appearances. |
+| 64 | [The Bugger Caves](../../areas/zon/bugger.zon) | [Infravision](../../src/magic/magic.c#L22089) (#106) | 3 | 807099 exit#2 → 6400; mobile #6400 at 6400. Underground bugger caves: infravision. |
+| 65 | [The Shaughin Settlement](../../areas/zon/shaughin.zon) | [Water Breathing](../../src/classes/skills.c#L1571) (#85) | 3 | 804249 exit#2 → 6500; mobile #6500 at 6502. Underwater Shaughin settlement: water breathing. |
+| 66 | [The Shaughin Hunting Grounds](../../areas/zon/shaughin2.zon) | [Hawkvision](../../src/magic/smagic.c#L3281) (#204) | 3 | 6504 object#6500 → 6600; mobile #6600 at 6603. Shaughin hunting grounds: hawkvision for the hunt. |
+| 70 | [Traoul's Lair](../../areas/zon/traoul.zon) | [Warring Zeal](../../src/magic/magic.c#L25432) (#680) | 3 | 1622 exit#0 → 7000; mobile #7000 at 7000. Raider lair: martial accuracy from Warring Zeal. |
+| 81 | [The Temple of Laduguer](../../areas/zon/temple_laduguer.zon) | [Protection From Good](../../src/magic/magic.c#L11004) (#81) | 3 | 827455 exit#1 → 8100; mobile #8102 at 8103. Laduguer’s hostile temple: protection from good. |
+| 84 | [The Old Graveyard](../../areas/zon/grave.zon) | [Sense Life](../../src/magic/magic.c#L12385) (#44) | 3 | 593389 exit#0 → 8400; mobile #8406 at 8404. Undead graveyard: sense the living among the dead. |
+| 89 | [Ogre Raiders](../../areas/zon/raiders.zon) | [Enhance Strength](../../src/classes/skills.c#L932) (#175) | 3 | 593506 exit#0 → 8900; mobile #8905 at 8902. Ogre raiders: enhanced physical strength. |
+| 92 | [The Temple of Lizizania](../../areas/zon/asylum.zon) | [Sense Holiness](../../src/magic/magic.c#L7067) (#316) | 3 | 616249 exit#0 → 9288; mobile #9209 at 9201. Lizizania’s temple encounters: sense holiness. |
+| 101 | [The Mushroom Forest](../../areas/zon/mush1.zon) | [Protection From Gas](../../src/magic/magic.c#L21917) (#104) | 3 | 856059 exit#3 → 10100; mobile #10108 at 10223. Mushroom forest: protection from fungal gas. |
+| 107 | [Black Tunnels](../../areas/zon/black_tunnels.zon) | [Infravision](../../src/magic/magic.c#L22089) (#106) | 3 | 10693 exit#0 → 10700; mobile #10700 at 10706. Black underground tunnels: infravision. |
+| 109 | [Ant Forest](../../areas/zon/ants.zon) | [Scent Of The Bloodhound](../../src/magic/smagic.c#L2353) (#517) | 3 | 526267 exit#1 → 10900; mobile #10900 at 10901. Ant trails and forest tracking: bloodhound scent. |
+| 114 | [The Goblin Camp](../../areas/zon/goblincamp.zon) | [Enhance Dexterity](../../src/classes/psionics.c#L2564) (#176) | 3 | 617373 exit#0 → 11400; mobile #11400 at 11400. Goblin camp: nimble combatants and enhanced dexterity. |
+| 115 | [Ghore](../../areas/zon/ghore.zon) | [Fortitude](../../src/magic/magic.c#L6345) (#348) | 3 | Native hometown/tutorial arrival 11703; mobile #11505 at 11504. Ghore’s hardy inhabitants: constitution from Fortitude. |
+| 120 | [Lava Tubes](../../areas/zon/lava_tubes.zon) | [Protection From Fire](../../src/classes/skills.c#L2301) (#96) | 3 | 20973 exit#4 → 12131; mobile #12004 at 12005. Lava tubes: protection from fire. |
+| 127 | [Skulldrach](../../areas/zon/skulldrach.zon) | [Enhance Armor](../../src/classes/psionics.c#L2459) (#174) | 3 | 632637 exit#0 → 12859; mobile #12703 at 12701. Skulldrach settlement and guards: enhanced armor. |
+| 180 | [The Lost Realms of Shadowfall](../../areas/zon/wolfen.zon) | [Sense Spirit](../../src/magic/smagic.c#L4244) (#211) | 3 | 620706 exit#2 → 18000; mobile #18012 at 18035. Shadowfall’s inhabitants and spirits: sense spirit. |
+| 187 | [BogenTok](../../areas/zon/bogentok.zon) | [Combat Mind](../../src/classes/psionics.c#L1094) (#163) | 3 | 812663 exit#3 → 18700; mobile #18720 at 18700. BogenTok’s military inhabitants: Combat Mind. |
+| 190 | [The Gagga'Jobo Cave System](../../areas/zon/goblincave.zon) | [Detect Illusion](../../src/classes/sillusionist.c#L1797) (#414) | 3 | 842047 exit#1 → 19000; mobile #19009 at 19000. Goblin cave system: detect illusion in concealed tunnels. |
+| 194 | [Githyanki Hometown](../../areas/zon/gith_ht.zon) | [Adrenaline Control](../../src/classes/psionics.c#L412) (#157) | 5 | Native hometown/tutorial arrival 19428; mobile #19409 at 19423. Githyanki psionic hometown: Adrenaline Control. |
+| 198 | [Astral Plane, Side Areas](../../areas/zon/astral_areas.zon) | [Displacement](../../src/classes/psionics.c#L2206) (#169) | 3 | 19755 exit#2 → 19826; mobile #19900 at 19826. Astral side areas: displacement. |
+| 199 | [Astral Plane, Tiamat](../../areas/zon/astral_tiamat.zon) | [Protection From Gas](../../src/magic/magic.c#L21917) (#104) | 3 | 19800 exit#0 → 19928; mobile #19760 at 19928. Tiamat’s astral dragon encounters: gas protection. |
+| 206 | [Barrow of the Quiosho](../../areas/zon/elftomb.zon) | [Sense Spirit](../../src/magic/smagic.c#L4244) (#211) | 3 | 609100 exit#1 → 20600; mobile #20600 at 20601. Barrow and its dead: sense spirit. |
+| 241 | [the Mushroom Caverns](../../areas/zon/mushroom_caverns.zon) | [Protection From Gas](../../src/magic/magic.c#L21917) (#104) | 3 | 17746 exit#2 → 24108; mobile #24107 at 24102. Mushroom caverns: fungal gas protection. |
+| 292 | [Ailvio, Duris Newbie Outpost](../../areas/zon/newbie.zon) | [Fortitude](../../src/magic/magic.c#L6345) (#348) | 3 | 22806 stream_of_life after guide conversation → 29201; mobile #29265 at 29228. Full Ailvio tutorial outpost: a small constitution blessing for developing adventurers. |
+| 300 | [The Underworld](../../areas/zon/underworld3.zon) | [Globe Of Darkness](../../src/magic/magic.c#L17667) (#302) | 3 | 26272 exit#5 → 30000; mobile #30027 at 30004. Independent Underworld cave encounters: darkness. |
+| 304 | [Ard'gral, plane of dreams](../../areas/zon/ardgral.zon) | [Phantom Armor](../../src/classes/sillusionist.c#L131) (#400) | 3 | 83342 object#83141 → 30453; mobile #30401 at 30422. Plane of dreams and nightmares: phantom armor. |
+| 337 | [Miaeril Village](../../areas/zon/mril.zon) | [Comprehend Languages](../../src/magic/magic.c#L17843) (#132) | 3 | 522257 exit#3 → 33764; mobile #33714 at 33710. Miaeril village and its social encounters: comprehension. |
+| 340 | [The Basin Wastes](../../areas/zon/basin_wa.zon) | [Fortitude](../../src/magic/magic.c#L6345) (#348) | 3 | 612059 exit#5 → 34000; mobile #34005 at 34002. Harsh basin wastes: constitution and endurance. |
+| 362 | [Llzazan Ghetto of Arachdrathos](../../areas/zon/llzazan.zon) | [Sense Follower](../../src/magic/magic.c#L24629) (#279) | 3 | Native hometown/tutorial arrival 36329; mobile #36225 at 36200. Urban ghetto and followers: Sense Follower. |
+| 410 | [Dreggan Woods](../../areas/zon/dreggan_wood.zon) | [Sense Life](../../src/magic/magic.c#L12385) (#44) | 3 | 12480 exit#3 → 41001; mobile #41003 at 41009. Dreggan woodland encounters: sense life. |
+| 413 | [Southern Coastal Highway](../../areas/zon/highway.zon) | [Farsee](../../src/classes/skills.c#L1577) (#53) | 3 | 530849 exit#2 → 41837; mobile #41354 at 41307. Coastal road with dedicated bandit/creature encounters: farsee. |
+| 425 | [Lair of the Purple Worm](../../areas/zon/pworm.zon) | [Protection From Acid](../../src/magic/magic.c#L21936) (#105) | 3 | 833111 exit#0 → 42500; mobile #42500 at 42504. Purple worms and their acid: acid protection. |
+| 458 | [Orog Encampment](../../areas/zon/orogs.zon) | [Warring Zeal](../../src/magic/magic.c#L25432) (#680) | 3 | Native hometown/tutorial arrival 45906; mobile #45808 at 45801. Orog encampment: Warring Zeal. Viper #45808 wanders north from reset room 45909 into public room 45801; it is not a sentinel. |
+| 510 | [Hell, Avernus](../../areas/zon/hell_one_avernus.zon) | [Protection From Fire](../../src/classes/skills.c#L2301) (#96) | 3 | 45637 exit#0 → 51207; mobile #90701 at 51001. Avernus fire/devil encounters: fire protection. |
+| 529 | [the Lost Temple of the North](../../areas/zon/multiclass_temple.zon) | [Sense Holiness](../../src/magic/magic.c#L7067) (#316) | 3 | 511126 exit#5 → 52901; mobile #31402 at 52909. Lost temple with ice golem/dragon encounters: sense holiness. |
+| 530 | [Turolopolis Zoo](../../areas/zon/turolzoo.zon) | [Protection From Animals](../../src/magic/magic.c#L21864) (#383) | 3 | 7123 exit#3 → 53000; mobile #53011 at 53000. Zoo animals: protection from animals. |
+| 531 | [Phantasmagoric Caverns](../../areas/zon/valdrak.zon) | [Detect Illusion](../../src/classes/sillusionist.c#L1797) (#414) | 3 | 831730 exit#1 → 53100; mobile #53117 at 53100. Phantasmagoric caverns: detect illusion. |
+| 532 | [The Orcish Slave Camp](../../areas/zon/shortc.zon) | [Enhance Constitution](../../src/classes/psionics.c#L2650) (#178) | 3 | 10327 exit#1 → 53200; mobile #53200 at 53202. Orc slave camp: constitution for captives and guards. |
+| 545 | [The Tunnels of Cyric the Destroyer](../../areas/zon/cyrictunnel.zon) | [Detect Evil](../../src/magic/magic.c#L9246) (#90) | 3 | 581796 exit#5 → 54500; mobile #54502 at 54509. Cyric’s tunnels: detect evil. |
+| 678 | [The Undead Fog](../../areas/zon/shortb.zon) | [Sense Spirit](../../src/magic/smagic.c#L4244) (#211) | 3 | 569793 exit#1 → 67801; mobile #67807 at 67801. Undead fog and lost souls: sense spirit. |
+| 690 | [The Mountain Village of Tentro](../../areas/zon/tentro2.zon) | [Fortitude](../../src/magic/magic.c#L6345) (#348) | 3 | 557287 exit#1 → 69080; mobile #69000 at 69000. Mountain village: hardy constitution. |
+| 750 | [Dark Forest](../../areas/zon/dark_forest.zon) | [Scent Of The Bloodhound](../../src/magic/smagic.c#L2353) (#517) | 3 | 633650 exit#3 → 75171; mobile #75001 at 75001. Dark woodland trails: bloodhound scent. |
+| 755 | [The Dark Stone Tower of the Northern Realms](../../areas/zon/teka2.zon) | [Energy Containment](../../src/classes/psionics.c#L2405) (#173) | 3 | 75264 exit#0 → 75546; mobile #75500 at 75500. Dark Stone Tower: energy containment. |
+| 772 | [The Rice Fields](../../areas/zon/jademini.zon) | [Serendipity](../../src/magic/magic.c#L8284) (#352) | 3 | 642096 exit#0 → 77218; mobile #77205 at 77202. Rice harvest fields: serendipity. |
+| 777 | [The Hall of the Ancients](../../areas/zon/hall.zon) | [Comprehend Languages](../../src/magic/magic.c#L17843) (#132) | 3 | 813247 exit#2 → 77700; mobile #77701 at 77707. Ancient halls: comprehension of old languages. |
+| 806 | [Village of the Damned](../../areas/zon/yuan_ti2.zon) | [Protection From Evil](../../src/magic/magic.c#L10975) (#34) | 3 | 600250 exit#3 → 80600; mobile #80600 at 80605. Damned village: protection from evil. |
+| 807 | [The Clawed Caverns](../../areas/zon/clwcvrn.zon) | [Enhance Dexterity](../../src/classes/psionics.c#L2564) (#176) | 3 | 819329 exit#1 → 80700; mobile #80739 at 80700. Clawed cavern creatures: enhanced dexterity. |
+| 821 | [The Human Outpost](../../areas/zon/outpost.zon) | [Combat Mind](../../src/classes/psionics.c#L1094) (#163) | 3 | 527555 exit#1 → 82124; mobile #82102 at 82101. Military outpost: Combat Mind. |
+| 822 | [Lylr-Meop](../../areas/zon/lylr.zon) | [Pulchritude](../../src/magic/magic.c#L8075) (#347) | 3 | 540876 exit#2 → 82200; mobile #82200 at 82201. Village encounters: charisma from Pulchritude. |
+| 827 | [The Forgotten Forest](../../areas/zon/forgotten_forest.zon) | [Protection From Animals](../../src/magic/magic.c#L21864) (#383) | 3 | 516090 exit#1 → 82701; mobile #82705 at 82703. Forgotten Forest: animal protection; ZONE_SAFE does not block ordinary PvM attacks. |
+| 879 | [The Stone Tomb of Kelek](../../areas/zon/kelek.zon) | [Sense Life](../../src/magic/magic.c#L12385) (#44) | 3 | 857219 exit#5 → 87950; mobile #87950 at 87962. Kelek’s tomb: sense life among the dead. |
+| 882 | [The Temple of Blibdoolpoolp](../../areas/zon/kuotoa.zon) | [Water Breathing](../../src/classes/skills.c#L1571) (#85) | 3 | 4454 exit#1 → 88200; mobile #88201 at 88201. Kuo-toa temple: water breathing. |
+| 885 | [The Minizones of the Underdark](../../areas/zon/udmini.zon) | [Lodestone Vision](../../src/magic/magic.c#L12484) (#617) | 3 | 54811 exit#4 → 88515; mobile #88500 at 88503. Underdark minizones and mineral caverns: Lodestone Vision. |
+| 886 | [Morg's Place](../../areas/zon/morg.zon) | [Battletide](../../src/magic/magic.c#L16594) (#395) | 5 | 844836 exit#2 → 88600; mobile #88600 at 88600. Morg’s martial encounters: Battletide. |
+| 900 | [The Fog Enshrouded Wood](../../areas/zon/foggy_woods.zon) | [Hawkvision](../../src/magic/smagic.c#L3281) (#204) | 3 | 579251 exit#3 → 90000; mobile #90021 at 90001. Foggy woodlands: Hawkvision. |
+| 903 | [Tunnels of Payang](../../areas/zon/rtun.zon) | [Enhance Strength](../../src/classes/skills.c#L932) (#175) | 3 | 576997 exit#3 → 90380; mobile #90303 at 90301. Payang’s tunnel inhabitants: enhanced strength. |
+| 908 | [Valinhaven](../../areas/zon/valinhav.zon) | [Sense Follower](../../src/magic/magic.c#L24629) (#279) | 3 | 798725 exit#3 → 90800; mobile #90813 at 90801. Valinhaven inhabitants: Sense Follower. |
+| 914 | [Wutvr, Duris Newbie Outpost](../../areas/zon/wutvr.zon) | [Fortitude](../../src/magic/magic.c#L6345) (#348) | 3 | 91206 stream_of_life after guide conversation → 91401; mobile #91465 at 91428. Full Wutvr tutorial outpost: the same small constitution blessing, with an independent origin. |
+| 930 | [Treasure Caves](../../areas/zon/dungeon.zon) | [Lodestone Vision](../../src/magic/magic.c#L12484) (#617) | 3 | 36004 exit#1 → 93115; mobile #93000 at 93000. Treasure caves: mineral detection. |
+| 935 | [Wellvolen](../../areas/zon/wemic.zon) | [Wolfspeed](../../src/magic/smagic.c#L2683) (#193) | 3 | 572118 exit#1 → 93501; mobile #93503 at 93502. Wemic travelers of Wellvolen: Wolfspeed. |
+| 939 | [Shadowclave](../../areas/zon/shadowcl.zon) | [Detect Good](../../src/magic/magic.c#L9283) (#91) | 3 | 545307 exit#2 → 93900; mobile #93900 at 93904. Shadowclave’s dark inhabitants: detect good. |
+| 949 | [Llyrath Forest](../../areas/zon/llyrath.zon) | [Protection From Animals](../../src/magic/magic.c#L21864) (#383) | 3 | 26257 exit#2 → 94900; mobile #94901 at 94900. Llyrath forest creatures: protection from animals. |
+| 953 | [Darkfall Forest](../../areas/zon/darkfall.zon) | [Sense Spirit](../../src/magic/smagic.c#L4244) (#211) | 3 | 515272 exit#1 → 95300; mobile #95300 at 95303. Darkfall forest: sense spirit. |
+| 954 | [Troll Slave Compound](../../areas/zon/torture.zon) | [Enhance Constitution](../../src/classes/psionics.c#L2650) (#178) | 3 | 11529 exit#2 → 95400; mobile #95400 at 95401. Troll slave compound: constitution for endurance. |
+| 958 | [Bugentolen](../../areas/zon/bugentol.zon) | [Enhance Dexterity](../../src/classes/psionics.c#L2564) (#176) | 3 | 589071 exit#3 → 95800; mobile #95800 at 95800. Bugentolen’s stalking inhabitants: enhanced dexterity. |
+| 974 | [Arbre's Forest](../../areas/zon/sforest.zon) | [Sense Life](../../src/magic/magic.c#L12385) (#44) | 3 | 559312 exit#2 → 97400; mobile #97400 at 97401. Arbre’s forest: sense life. |
+| 986 | [Village of Refugees](../../areas/zon/ruins.zon) | [Serendipity](../../src/magic/magic.c#L8284) (#352) | 3 | 627239 exit#2 → 98600; mobile #98600 at 98601. Refugee settlement: serendipity and hope. |
+| 997 | [Lava Springs](../../areas/zon/lava.zon) | [Protection From Fire](../../src/classes/skills.c#L2301) (#96) | 3 | 565027 exit#0 → 99700; mobile #99700 at 99701. Lava springs: fire protection. |
+| 1301 | [The Reliquary Nexus of Aggression](../../areas/zon/nexus_ic.zon) | [Divine Fury](../../src/magic/magic.c#L22267) (#310) | 3 | 511534 exit#1 → 130100; mobile #130110 at 130103. Reliquary Nexus of Aggression: Divine Fury. |
+| 1302 | [The Reliquary Nexus of The Dead](../../areas/zon/nexus_uc.zon) | [Protection From Evil](../../src/magic/magic.c#L10975) (#34) | 3 | 577404 exit#2 → 130200; mobile #130200 at 130201. Reliquary Nexus of the Dead: protection from evil. |
+| 1303 | [The Reliquary Nexus of the Corsairs](../../areas/zon/nexus_island.zon) | [Farsee](../../src/classes/skills.c#L1577) (#53) | 3 | 519153 exit#0 → 130301; mobile #130302 at 130308. Corsair island nexus: farsee. |
+| 1304 | [The Reliquary Nexus of the Roper Den](../../areas/zon/nexus_roper.zon) | [Sense Spirit](../../src/magic/smagic.c#L4244) (#211) | 3 | 811645 exit#0 → 130400; mobile #130400 at 130401. Roper den: sense thinking creatures in the dark. |
+| 1320 | [The Githyanki Fortress](../../areas/zon/githyanki_fortress.zon) | [Enhance Armor](../../src/classes/psionics.c#L2459) (#174) | 3 | 19798 exit#4 → 132000; mobile #132000 at 132008. Githyanki fortress: enhanced psionic armor. |
+| 1350 | [Braddistock Mansion](../../areas/zon/brad.zon) | [Phantom Armor](../../src/classes/sillusionist.c#L131) (#400) | 3 | 132650 exit#0 → 135001; mobile #135014 at 135001. Independent Braddistock mansion: phantom armor, with separate origin/HP membership. |
+
+Important gated witnesses: #180 uses switch #15282 in 15393 and switch #18031 in
+18000; #304 uses switch #83195 in 83307 before portal #83141 in 83342; #510 uses
+key #45532 reset in 45501 and switch #45503 in 45582. These openers are obtainable
+before crossing their gates; no staff movement is used as entry evidence.
+
+### Excluded active records
+
+An exclusion does not delete content, prototypes, legacy items or roaming entries.
+Disconnected destinations may be reconsidered when an enabled authored entrance
+is added. Generic guessed teleport targets and retired surface links are not
+entrance evidence. Existing catalog rows and the owner’s original 104 choices are
+retained rather than silently dropped by the broader inventory screen.
+
+| ID | Area | Exclusion reason |
+|---:|---|---|
+| -1 | [Limbo](../../areas/zon/limbo.zon) | Control/staff/afterlife record, not an ordinary collection area. |
+| 0 | [Heaven](../../areas/zon/heavens.zon) | Control/staff/afterlife record, not an ordinary collection area. |
+| 28 | [Verzanan](../../areas/zon/verz1.zon) | Retired or empty record: no local reset encounter and no authored player entrance. |
+| 100 | [The Underworld Shafts](../../areas/zon/shafts.zon) | Underworld shaft connector; no independent reset encounter destination. |
+| 110 | [The Adventurers Guildhalls](../../areas/zon/player_castles.zon) | Guild/private infrastructure, not a public collection destination. |
+| 122 | [Northern Wilderness](../../areas/zon/northern_wilderness.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 146 | [The Wildland Trails](../../areas/zon/wildland_trails.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 150 | [Retired Misty Chasm prototypes](../../areas/zon/mist_chasm.zon) | Retired or empty record: no local reset encounter and no authored player entrance. |
+| 195 | [The Crypts of Rays](../../areas/zon/graves.zon) | Retired or empty record: no local reset encounter and no authored player entrance. |
+| 203 | [Nhavan Island](../../areas/zon/nhavan_island_one.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 228 | [The Plains of Life](../../areas/zon/newbie2.zon) | Seven-room creation/racewar introduction; its normal encounters are level 1–2 and its guides are utility NPCs. The full tutorial outpost is classified separately. |
+| 240 | [The Underdark](../../areas/zon/mobs_underdark.zon) | Roaming/patrol population staging infrastructure; its mobs serve other areas. #366 is also ZONE_SAFE. |
+| 297 | [The Guildhall of Clan BloodLust](../../areas/zon/cbl_hall.zon) | Guild/private infrastructure, not a public collection destination. |
+| 305 | [The Patrol Guard Headquarters](../../areas/zon/patrols.zon) | Roaming/patrol population staging infrastructure; its mobs serve other areas. #366 is also ZONE_SAFE. |
+| 307 | [The Potion Treasure Vault](../../areas/zon/potions.zon) | Private object/unique storage vault, with no authored public entrance. |
+| 314 | [the surface world](../../areas/zon/mobs_surf.zon) | Roaming/patrol population staging infrastructure; its mobs serve other areas. #366 is also ZONE_SAFE. |
+| 366 | [The Wandering Fields](../../areas/zon/wander.zon) | Roaming/patrol population staging infrastructure; its mobs serve other areas. #366 is also ZONE_SAFE. |
+| 380 | [Thetis's Realm](../../areas/zon/thetis.zon) | Excluded at the owner’s request in #706; preserve the recorded content decision. |
+| 384 | [The Valoisian Castle](../../areas/zon/val.zon) | Excluded at the owner’s request in #706; preserve the recorded content decision. |
+| 470 | [vehicles](../../areas/zon/vehicles.zon) | Vehicle/ship-room namespace and shipyard infrastructure; use the actual destination areas. |
+| 480 | [Guildhalls](../../areas/zon/guildhalls.zon) | Guild/private infrastructure, not a public collection destination. |
+| 514 | [Hell, Dis](../../areas/zon/hell_two_dis.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 518 | [Hell, Minauros](../../areas/zon/hell_three_minauros.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 522 | [Hell, Phlegethos](../../areas/zon/hell_four_phlegethos.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 533 | [The Forest of Serenity](../../areas/zon/newfor.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 536 | [The Great Realm of Duris](../../areas/zon/connectorzones.zon) | World connector infrastructure, rather than an independent adventure destination. |
+| 546 | [Kvark's Great Connector](../../areas/zon/kvarkpass_connector.zon) | World connector infrastructure, rather than an independent adventure destination. |
+| 600 | [The Adventurers Shipyards](../../areas/zon/ship.zon) | Vehicle/ship-room namespace and shipyard infrastructure; use the actual destination areas. |
+| 651 | [Rabble](../../areas/zon/rabble.zon) | Utility shopkeeper rooms; no non-shop collection encounter. |
+| 652 | [Adventurer's Vaults](../../areas/zon/lockers.zon) | Player storage/building/tradeskill infrastructure. |
+| 672 | [The Unique's Vault](../../areas/zon/unique.zon) | Private object/unique storage vault, with no authored public entrance. |
+| 673 | [Graendiae](../../areas/zon/sea.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 679 | [CTF Tournament](../../areas/zon/arena.zon) | CTF event arena namespace, without repeatable ordinary collection encounters. |
+| 773 | [Desolate Under Fire](../../areas/zon/desolateinv.zon) | Closed seasonal invasion record (ZONE_CLOSED); the ordinary Desolate area remains separate. |
+| 856 | [An Ancient Bridge](../../areas/zon/ancientb.zon) | World connector infrastructure, rather than an independent adventure destination. |
+| 870 | [Crakkaros' Liar](../../areas/zon/crakkaro.zon) | Keep the #706 exclusion: no enabled authored player entrance; do not restore routes as part of set work. |
+| 904 | [Towering Glacier of Dayedenvale](../../areas/zon/glacier.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 907 | [The River Styx](../../areas/zon/river_styx.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 912 | [The Plane of Chaos](../../areas/zon/chaos_intro.zon) | Seven-room creation/racewar introduction; its normal encounters are level 1–2 and its guides are utility NPCs. The full tutorial outpost is classified separately. |
+| 978 | [Buildings](../../areas/zon/buildings.zon) | Player storage/building/tradeskill infrastructure. |
+| 998 | [Olympus](../../areas/zon/olympus.zon) | God/event/generated-space infrastructure, with no authored ordinary collection entrance. |
+| 999 | [Interspace](../../areas/zon/interspa.zon) | God/event/generated-space infrastructure, with no authored ordinary collection entrance. |
+| 1000 | [Randomness](../../areas/zon/random.zon) | God/event/generated-space infrastructure, with no authored ordinary collection entrance. |
+| 1100 | [Tharnadia Rifts](../../areas/zon/tharnrifts.zon) | Global map/strategic geography record, not an independent adventure-area set. |
+| 1200 | [The Depths of Duris](../../areas/zon/surfacekeeps.zon) | Global map/strategic geography record, not an independent adventure-area set. |
+| 1340 | [The Tower of Darkness](../../areas/zon/lortower.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 1351 | [The Altar of the Firesworn](../../areas/zon/firesworn_altar.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 1352 | [The Lair of Tiamat](../../areas/zon/azhural.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 1354 | [The Spires of the Elder Eternal Evil](../../areas/zon/eternal.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 1380 | [The Ruins of Port Skythic](../../areas/zon/PortSkythic.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 1420 | [The Para-Elemental Plane of Magma](../../areas/zon/magma.zon) | Disconnected in the active world: no incoming enabled authored exit/placed portal reaches its encounter component; no native route to that destination was found. |
+| 1422 | [The Black Pearl](../../areas/zon/blackpearl.zon) | Keep the #706 exclusion: no enabled authored player entrance; do not restore routes as part of set work. |
+| 4000 | [Tradeskills](../../areas/zon/tradeskills.zon) | Player storage/building/tradeskill infrastructure. |
+| 5000 | [The Surface Realm of Duris](../../areas/zon/surface.zon) | Global map/strategic geography record, not an independent adventure-area set. |
+| 7000 | [The Twisting Tunnels of the Durian Underdark](../../areas/zon/underdark.zon) | Global map/strategic geography record, not an independent adventure-area set. |
+| 9999999 | [The End of the World](../../areas/zon/end.zon) | Control/staff/afterlife record, not an ordinary collection area. |
+
+The four categories partition all 354 active records: 115 retained catalog rows,
+104 original additions, 79 wider additions and 56 exclusions. This inventory count
+includes control/map/staging records; it is distinct from the 298-row target set
+catalog. No unresolved record is hidden behind an automatic “playable” assumption.
 
 ## Implementation handoff
 

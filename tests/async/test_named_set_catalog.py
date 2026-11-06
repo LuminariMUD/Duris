@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Preserve the old sets/spawn pool and execute real catalog/report entry points."""
 import hashlib
+import collections
 import re
 import subprocess
 import tempfile
@@ -44,6 +45,62 @@ assert digest([row for row in set_rows if int(row[1:row.index(',')]) in old_ids]
 assert digest(spawn_rows) == "d6651121125ccc52834725a969e5c5d9625396b05cd4aba7c3957b528f9313ed"
 assert len(spawn_rows) == 118
 assert "named_sets" not in extract_function("random.mob.c", "P_char create_random_mob(")
+
+# The reviewed assignment document is the data manifest. Keep every old row and
+# require one exact tier for each addition, with no unclassified active record.
+assignments = (ROOT / "docs/ongoing-projects/named-zone-set-first-pass-assignments.md").read_text()
+sections = [
+    assignments.split("## The 42 proposed assignments")[1].split("## Effect homes after both passes")[0],
+    assignments.split("### The 79 wider-review additions")[1].split("### Excluded active records")[0],
+]
+expected = {}
+for section in sections:
+    for line in section.splitlines():
+        if not re.match(r"^\| \d+ \|", line):
+            continue
+        cells = line.split("|")
+        zone, pieces = int(cells[1]), int(cells[4])
+        effect = int(re.search(r"\(#(\d+)\)", cells[3])[1])
+        assert zone not in expected
+        expected[zone] = (pieces, effect)
+assert len(expected) == 183 and not old_ids & expected.keys()
+defines = {name: int(number) for name, number in re.findall(
+    r"^#define\s+(\w+)\s+(\d+)\s*(?://[^\n]*)?$", source("spells.h").read_text(), re.M)}
+actual_ids = {int(row[1:row.index(',')]) for row in set_rows}
+assert len(set_rows) == len(actual_ids) == 298
+assert actual_ids == old_ids | expected.keys()
+for row in set_rows:
+    zone = int(row[1:row.index(',')])
+    if zone in old_ids:
+        continue
+    match = re.fullmatch(r"\{\d+,\{\{(\d+),(\w+)\}\}\}", row)
+    assert match and (int(match[1]), defines[match[2]]) == expected[zone], row
+excluded = {int(value) for value in re.findall(r"^\| (-?\d+) \|",
+    assignments.split("### Excluded active records")[1].split("## Implementation handoff")[0], re.M)}
+assert len(excluded) == 56 and not excluded & actual_ids
+loaded = set()
+for line in (ROOT / "areas/AREA").read_text().splitlines():
+    if not line.strip() or line.lstrip().startswith("*"):
+        continue
+    area = line.split()[0]
+    path = ROOT / "areas/zon" / (area + ".zon")
+    if path.exists():
+        number = int(re.search(r"^#(-?\d+)", path.read_text(encoding="latin-1"), re.M)[1])
+        loaded.add(number - 2**32 if number > 2**31 - 1 else number)
+assert loaded == actual_ids | excluded, (loaded ^ (actual_ids | excluded))
+assert len(loaded) == 354
+homes = collections.defaultdict(set)
+for row in set_rows:
+    zone = int(row[1:row.index(',')])
+    for pieces, token in re.findall(r"\{(\d+),(\w+)\}", row):
+        if int(pieces) and token in defines:
+            homes[defines[token]].add(zone)
+for line in assignments.split("## Effect homes after both passes")[1].split("## Remaining work")[0].splitlines():
+    if not re.search(r"\(#\d+\)", line):
+        continue
+    cells = line.split("|")
+    effect = int(re.search(r"\(#(\d+)\)", cells[1])[1])
+    assert int(cells[-2]) == len(homes[effect]), (effect, cells[-2], homes[effect])
 
 # Use the real registration list for handler availability and names. The callback
 # body is irrelevant to catalog validation; actual effects belong to wear tests.
@@ -124,8 +181,13 @@ int main() {
         for (const auto &tier : named_sets[i].proc_spells)
             if (tier[0]) { ++tiers; effects.insert(tier[1]); }
     }
-    assert(named_set_count == 115 && tiers == 206 && effects.size() == 64);
+    assert(named_set_count == 298 && tiers == 389 && effects.size() == 106);
     assert(validate_named_sets());
+    char *notes = generate_named_report();
+    assert(strstr(notes,"Guardian Spirits requires a Shaman wearer"));
+    assert(strstr(notes,"neutral wearers gain no bonus"));
+    assert(strstr(notes,"Globe of Darkness excludes Holy Light and Mage Flame"));
+    free(notes);
     assert(real_zone(30) == -1 && real_zone(250) == -1);
     assert(!named_set_effect_supported(-1));
     assert(!named_set_effect_supported(0));

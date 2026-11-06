@@ -262,7 +262,8 @@ int main() {
         assert(hp(1325)->modifier==5);
         // Astral Plane, Tiamat never receives the shorter Tiamat row.
         reset(); for(int i=0;i<3;++i) wear(i,i+1,199,false); process(0);
-        assert(hp(199)->modifier==5 && spells.empty());
+        assert(hp(199)->modifier==5 && spells.size()==1);
+        assert(spells[0]==std::make_tuple(SPELL_PROTECT_FROM_GAS,3,199));
     }
     // Independent refresh and removal: both orders, without raw affect pointers.
     for(int first : {740,990}) {

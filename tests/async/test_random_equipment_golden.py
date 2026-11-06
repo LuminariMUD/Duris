@@ -46,6 +46,7 @@ HELPERS = [
     ("utility.c", "string strip_ansi(const char *str)"),
     ("utility.c", "int GET_CLASS(P_char ch, uint m_class)"),
     ("utility.c", "int BOUNDED(int a, int b, int c)"),
+    ("new_skills.c", "int CanDoFightMove("),
     ("handler.c", "char *FirstWord(char *namelist)"),
     ("handler.c", "bool isname(const char *str, const char *namelist)"),
     ("handler.c", "void set_obj_extra2_flags("),
@@ -67,6 +68,7 @@ HARNESS = r'''
 #include "core/structs.h"
 #include "core/utils.h"
 #include "net/gmcp.h"
+#include "net/comm.h"
 #include "item/objmisc.h"
 #include "item/random_equipment.h"
 #include "item/named_set_origin.h"
@@ -74,6 +76,7 @@ HARNESS = r'''
 #include "magic/spells.h"
 #include "world/difficulty.h"
 #include "world/vnum.obj.h"
+#include "combat/training_dummy.h"
 
 #include <cassert>
 #include <climits>
@@ -130,6 +133,14 @@ double difficulty_multiplier(difficulty_dial dial)
 }
 
 int shop_keeper(P_char, P_char, int, char *) { return 0; }
+bool training_dummy_is(P_char) {return false;}
+bool training_dummy_target_allowed(P_char,P_char) {return true;}
+void training_dummy_retarget_nonpet(P_char,P_char) {assert(false);}
+bool ac_can_see(P_char,P_char,bool) {return true;}
+bool AdjacentInRoom(P_char,P_char) {return true;}
+P_char get_linking_char(P_char,ush_int) {return nullptr;}
+int GET_CHAR_SKILL_P(P_char,int) {return 0;}
+void debug(const char *,...) {assert(false);}
 item_action_start selected_random_weapon_action(P_obj, P_char, P_char, int, int)
 {
 	return item_action_start::legacy;
@@ -683,6 +694,29 @@ static void restored_zone_titles_contract()
     }
     zones[0].number=saved_number; zones[0].name=saved_title;
 }
+static void zone_flag_admission_contract()
+{
+    person fighter("Fighter",20,100,true), victim("Mob",20,100,false);
+    const auto saved_zone_flags=zones[0].flags;
+    const auto saved_room_flags=rooms[ROOM_COLOURED].room_flags;
+    zones[0].flags=0; rooms[ROOM_COLOURED].room_flags=0;
+    assert(CanDoFightMove(&fighter.ch,&victim.ch));
+    bool saw_drop=false;
+    for(uint64_t seed=1;seed<=64;++seed) {
+        zones[0].flags=0;
+        randomize(seed); const bool ordinary=check_random_drop(&fighter.ch,&victim.ch,false);
+        const auto ordinary_next=number(0,INT_MAX);
+        zones[0].flags=ZONE_SAFE;
+        assert(CanDoFightMove(&fighter.ch,&victim.ch));
+        randomize(seed); assert(check_random_drop(&fighter.ch,&victim.ch,false)==ordinary);
+        assert(number(0,INT_MAX)==ordinary_next);
+        saw_drop|=ordinary;
+    }
+    assert(saw_drop);
+    rooms[ROOM_COLOURED].room_flags=ROOM_SAFE;
+    assert(!CanDoFightMove(&fighter.ch,&victim.ch));
+    zones[0].flags=saved_zone_flags; rooms[ROOM_COLOURED].room_flags=saved_room_flags;
+}
 int main()
 {
 	setup_world();
@@ -696,6 +730,7 @@ int main()
 	foreign_spell_name();
 	origin_generation_contract();
 	restored_zone_titles_contract();
+	zone_flag_admission_contract();
 	return 0;
 }
 '''
@@ -712,6 +747,27 @@ def main():
             (370,"vrzawild","Crystalspyre Mountains"),
             (676,"thri","Taliccicopiid"),
             (824,"suntmpl","The Temple of the Sun"),
+            (16,"truk","Truktakyagyo"),
+            (57,"minizones","Mini Zones"),
+            (206,"elftomb","Barrow of the Quiosho"),
+            (292,"newbie","Ailvio, Duris Newbie Outpost"),
+            (340,"basin_wa","The Basin Wastes"),
+            (413,"highway","Southern Coastal Highway"),
+            (532,"shortc","The Orcish Slave Camp"),
+            (678,"shortb","The Undead Fog"),
+            (690,"tentro2","The Mountain Village of Tentro"),
+            (755,"teka2","The Dark Stone Tower of the Northern Realms"),
+            (777,"hall","The Hall of the Ancients"),
+            (806,"yuan_ti2","Village of the Damned"),
+            (807,"clwcvrn","The Clawed Caverns"),
+            (821,"outpost","The Human Outpost"),
+            (822,"lylr","Lylr-Meop"),
+            (903,"rtun","Tunnels of Payang"),
+            (914,"wutvr","Wutvr, Duris Newbie Outpost"),
+            (930,"dungeon","Treasure Caves"),
+            (935,"wemic","Wellvolen"),
+            (986,"ruins","Village of Refugees"),
+            (1320,"githyanki_fortress","The Githyanki Fortress"),
         ):
             lines=(ROOT / "areas/zon" / (area + ".zon")).read_text().splitlines()
             assert lines[0]==f"#{zone}" and lines[1].endswith("~")
