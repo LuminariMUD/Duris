@@ -96,13 +96,12 @@ runtime_manifest="$ROOT/migrations/runtime_compatibility_manifest.json"
 # Runtime compatibility is measured after the complete immutable history, not
 # merely against the convenience bootstrap snapshot.
 mapfile -t runtime_migrations < <(python3 -c 'import json,sys; [print(item["apply"]) for item in json.load(open(sys.argv[1]))["migrations"]]' "$ROOT/migrations/migration_manifest.json")
-for history_replay in 1 2; do
-    for migration in "${runtime_migrations[@]}"; do
-        target="/tmp/$(basename "$migration")"
-        docker cp "$ROOT/migrations/$migration" "$NAME:$target" >/dev/null
-        docker exec -e MYSQL_PWD="$PASSWORD" "$NAME" sh -c \
-            "mysql -h127.0.0.1 -uroot '$FRESH_DB' < '$target'" >/dev/null
-    done
+# Once, as the runner applies it: replaying 0002 after 0059 would restore a retired index.
+for migration in "${runtime_migrations[@]}"; do
+    target="/tmp/$(basename "$migration")"
+    docker cp "$ROOT/migrations/$migration" "$NAME:$target" >/dev/null
+    docker exec -e MYSQL_PWD="$PASSWORD" "$NAME" sh -c \
+        "mysql -h127.0.0.1 -uroot '$FRESH_DB' < '$target'" >/dev/null
 done
 runtime_tables=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime_table_sql_list"])' "$runtime_manifest")
 if [[ "$IMAGE" == mariadb:* ]]; then fingerprint_key=mariadb10_11; else fingerprint_key=mysql8; fi
