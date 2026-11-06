@@ -13225,6 +13225,8 @@ void spell_vitality(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 
 		affect_to_char(victim, &af);
 
+		// Apply the replacement HP before position sees the temporarily detached set.
+		affect_total(victim, FALSE);
 		update_pos(victim);
 	}
 	else
