@@ -4,8 +4,8 @@ Status: implementation in progress; nine focused implementation PRs are pushed
 and ready for review; the expanded catalog is in draft #732 for gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-roster`, based on
-`branch/named-zone-set-eligibility`.
+Working branch: `branch/named-zone-set-native-journey`, based on
+`branch/named-zone-set-roster`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -667,10 +667,67 @@ character created by `test_flatfile_combat_journey` helpers. Its test account
 credentials come from that test module; no owner credentials were copied.
 `bin/tests/run-named-full-boot.py` boots/reconnects without reseeding the authority
 and writes `full-server.out` / `namedreport.txt`; its process is stopped after the
-check. Do not delete/reseed this state to hide a failure. Next use the native
-`randobj eq <slot> 56 <count>` staff path in this isolated world, retain the real
-generated item UIDs/origins, then exercise ordinary-player wear and persistence.
-Tharnadia, Bloodstone and the seven identity cases remain the mandatory journeys.
+check. Do not delete/reseed this state to hide a failure. Continue using the native
+`randobj eq <slot> 56 <count>` staff path in this isolated world and retain the
+real generated item UIDs/origins. Tharnadia's first native journey now passes as
+recorded below; its five-piece tier, Bloodstone and the seven identity cases
+remain mandatory journeys.
+
+### Native Tharnadia wear, ordinary cast and reboot journey
+
+**Outcome/files:** `tests/async/run_named_set_wear_journey.py` uses the normal
+full-world flat-file server, existing synthetic account, and native command /
+GMCP item-selector paths. `named_set_journey_fixture.cpp` reads its saved authority
+and prepares only the synthetic tester's level/base HP and unrelated stored buffs
+while the server is stopped. It checks the private test path and character name;
+it never creates, renames, rekeys, or edits generated item content. The high base
+HP is a test buffer, not a balance claim. No product code changed in this chunk.
+
+The initial native `randobj` batches produced 24 named #1325 items among 90
+candidates. The runner selects HP/CON-clean head/body/leg pieces, retaining UIDs
+`3068497`, `3068540`, `3068564`. Ordinary vision/protection bits remain unchanged;
+pieces with built-in Armor are excluded so the set grant is observable.
+Surplus gear is packed through native `load`/`open`/`put` into ordinary containers,
+including nested backpacks, rather than being deleted or resetting the authority.
+This preparation is needed because a staff inventory can exceed the mortal
+item limit and correctly block `remove`.
+
+**Native proof:** a level-56 Human Warrior gets **+0 maximum HP at two pieces**
+and **+5 at three**, with Armor. Native save completion, disconnect/server restart
+and login retain the three exact UIDs, #1325 origins and wear slots and restore
+the +5 bonus. Removing a piece returns maximum HP to its baseline. The reserved
+origin is read from the real saved item, not inferred from the name.
+
+The native `quaff` of the existing Armor-only potion #39130 after a set grant
+creates one ordinary Armor affect. Reapplying the set with that ordinary affect
+already present covers the other order. Removing set support preserves the
+ordinary affect and its duration; a further save/reboot retains it exactly once.
+Set Armor is absent from the saved character affects before the potion. The
+native item stream supplies current session-scoped selectors; a bare stored UID
+is deliberately not accepted as a command selector.
+
+**Run:** `python3 tests/async/run_named_set_wear_journey.py` from the repository
+root. It compiles its small snapshot fixture and uses the already prepared
+`bin/tests/named-set-roster-world` and `bin/tests/named-set-flatfile-server`.
+The former is a normal isolated `make world` of the authored areas plus the
+tracked `lib` tree, private state/journals/logs, and a generated test TLS certificate.
+Initial character creation/seeding uses `test_flatfile_combat_journey` helpers;
+do not reseed the existing authority when continuing. The runner reconnects and
+preserves generated items on retries, saves `named-wear-result.json` and the last
+session transcript, and always stops its own private server. Native transcripts,
+authority and server logs stay ignored under `bin/tests/`.
+The native run, `make -C src -j4`, fixture compilation with
+`-Wall -Wextra -Werror`, C++ formatting, Python static checks and `git diff --check`
+pass. The driver waits for actual HP transitions within a bounded deadline;
+a fixed six-second cleanup delay was too short on a repeat run and was removed.
+
+**Ablation/limits:** reuse the existing client, account, snapshot codec and native
+generator. No gameplay debug command, persistence schema, test-only server option
+or separate spell simulator is added. This proves Tharnadia's 2/3 threshold and
+ordinary Armor ownership; it does not complete the five-piece Endurance tier,
+Bloodstone/new-area or seven-zone journeys, cross-owner/storage gates, MariaDB
+gameplay, live Redis, help publication or rollback. Keep #732 in draft until its
+remaining native catalog gates pass; keep #706 and the overall goal open.
 
 ## Start here
 
