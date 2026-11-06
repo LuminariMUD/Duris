@@ -59,6 +59,7 @@ static int paralyzed, restored, waited, deaths, technique, refusals, extracted;
 static std::vector<P_obj> objects;
 static bool fail_object;
 static bool kill_area_caster;
+static bool adjacent = true;
 static int decay_duration;
 struct Pending { P_char ch; event_func func; int delay; std::vector<char> payload; };
 static std::vector<Pending> pending;
@@ -221,7 +222,7 @@ void char_from_room(P_char ch) { ch->in_room = NOWHERE; }
 bool char_to_room(P_char ch, int room, int) { ch->in_room = room; return true; }
 bool grouped(P_char ch, P_char target) { return ch->group && ch->group == target->group; }
 int IS_MORPH(P_char) { return false; }
-bool AdjacentInRoom(P_char, P_char) { return true; }
+bool AdjacentInRoom(P_char, P_char) { return adjacent; }
 P_char get_linking_char(P_char, ush_int) { return nullptr; }
 int is_char_in_room(const P_char ch, int room) {
     for (auto *person = rooms[room].people; person; person = person->next_in_room)
@@ -263,7 +264,7 @@ static void clear(P_char ch) { while (ch->affected) affect_remove(ch, ch->affect
 
 SCALARS = {
     "fight.c": "essence_of_wolf_attacks essence_of_wolf_attack_cap essence_of_wolf_offhand_roll",
-    "utility.c": "GET_CLASS GET_PRIME_CLASS GET_SECONDARY_CLASS should_area_hit",
+    "utility.c": "GET_CLASS GET_PRIME_CLASS GET_SECONDARY_CLASS should_area_hit_with_position should_area_hit should_stationary_area_hit",
     "smagic.c": "mending_improved_bonus mending_healing greater_mending_healing",
     "magic.c": "aid_duration spore_burst_level stigmata_draconica_duration globe_duration spell_globe "
                "sleep_duration spell_sleep death_blessing_leader_level death_blessing_member_level "
@@ -643,12 +644,11 @@ int main() {
     caster.in_room = 2; rooms[1].people = &target; rooms[1].sector_type = SECT_FOREST;
     spike_growth_data spikes{1, 2}; awaken_forest_data woods{1, 2};
     technique = 3; roll = 100;
-    for (int protection : {0, 1, 2, 3}) {
+    for (int protection : {0, 1, 2}) {
         rooms[1].room_flags = protection == 0 ? ROOM_SAFE : 0;
         target.group = protection == 1 ? &g1 : nullptr;
         caster.group = protection == 1 ? &g1 : nullptr;
-        target.specials.z_cord = protection == 2 ? 1 : 0;
-        target.player.level = protection == 3 ? MINLVLIMMORTAL : 50;
+        target.player.level = protection == 2 ? MINLVLIMMORTAL : 50;
         room_af[1].type = SPELL_SPIKE_GROWTH; damage_calls = 0;
         event_spike_growth(&caster, nullptr, nullptr, &spikes);
         assert(damage_calls == 0);
@@ -658,6 +658,16 @@ int main() {
     }
     rooms[1].room_flags = 0; target.group = caster.group = nullptr;
     target.specials.z_cord = 0; target.player.level = 50;
+    // The caster's new altitude and single-file room do not constrain an anchored effect.
+    rooms[2].room_flags = ROOM_SINGLE_FILE;
+    caster.specials.z_cord = 1; target.specials.z_cord = 0; adjacent = false;
+    room_af[1].type = SPELL_SPIKE_GROWTH; damage_calls = 0;
+    event_spike_growth(&caster, nullptr, nullptr, &spikes);
+    assert(damage_calls == 1);
+    room_af[1].type = SPELL_AWAKEN_FOREST; damage_calls = 0;
+    event_awaken_forest(&caster, nullptr, nullptr, &woods);
+    assert(damage_calls == 1);
+    rooms[2].room_flags = 0; caster.specials.z_cord = 0; adjacent = true;
     // Privacy protects other targets, without blocking travel to one's own anchor.
     portal.to_room = 1; caster.in_room = 2; consent = false; introduced = true;
     affected_type anchor{}; anchor.type = SPELL_THOUGHT_BEACON; anchor.modifier = 1;

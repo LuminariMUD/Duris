@@ -2858,7 +2858,7 @@ void event_spike_growth(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 		if (tch == ch)
 			continue;
 
-		if (!should_area_hit(ch, tch))
+		if (!should_stationary_area_hit(ch, tch))
 			continue;
 
 		if (spike_growth_affect_roll(live_rolls) < 100 - chance)
@@ -3068,7 +3068,7 @@ void event_awaken_forest(P_char ch, P_char /*victim*/, P_obj obj, void *data)
 
 	for (tch = world[awd->room].people; tch; tch = tch->next_in_room)
 	{
-		if (should_area_hit(ch, tch))
+		if (should_stationary_area_hit(ch, tch))
 		{
 			targets.push_back(tch);
 			nCnt++;

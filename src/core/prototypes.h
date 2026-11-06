@@ -1560,6 +1560,7 @@ int can_call_woodland_beings(P_char, int);
 int can_raise_undead(P_char, int);
 int can_raise_draco(P_char, int, bool);
 bool should_area_hit(P_char, P_char);
+bool should_stationary_area_hit(P_char, P_char);
 /* True while cast_as_damage_area() is inside its victim loop (core/utility.c).
  * The damage pipeline is never told which spell it is scaling, so this is how a
  * modifier learns that the damage in front of it came from an area spell. */
