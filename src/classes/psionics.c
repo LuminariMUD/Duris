@@ -1404,7 +1404,7 @@ static int psychic_crush_saved(int dam)
 
 static int psychic_crush_penalty_duration()
 {
-	return (int).05;
+	return (int)(0.05 * SECS_PER_MUD_HOUR * WAIT_SEC);
 }
 
 static int psychic_crush_penalty(int level)
@@ -1448,7 +1448,7 @@ std::string psychic_crush_facts(P_char ch)
 	if (psychic_crush_penalty(level))
 		text += fact("Penalty", std::to_string(psychic_crush_penalty(level)) +
 						" to power, intelligence or wisdom, at random") +
-			fact("Penalty duration", game_hours(psychic_crush_penalty_duration())) +
+			fact("Penalty duration", seconds(psychic_crush_penalty_duration())) +
 			"  A target already under the penalty does not get another.\n";
 	if (GET_SPEC(ch, CLASS_PSIONICIST, SPEC_ENSLAVER))
 		text += fact("Enslaver stun",
@@ -1503,6 +1503,7 @@ void spell_psychic_crush(int level, P_char ch, char * /*arg*/, [[maybe_unused]] 
 		af.type = SPELL_PSYCHIC_CRUSH;
 		// af.duration = (int) (level / 2);
 		af.duration = psychic_crush_penalty_duration();
+		af.flags = AFFTYPE_SHORT;
 		af.modifier = psychic_crush_penalty(level);
 
 		act("$n &+msuddenly clutches their head, as if trying to shrug off some unknown malady.&n",
@@ -1965,7 +1966,7 @@ void spell_spinal_corruption(int level, P_char ch, char * /*arg*/, [[maybe_unuse
 				victim);
 			break;
 		case 2:
-			if (GET_STAT(ch) > STAT_SLEEPING && !IS_TRUSTED(ch))
+			if (GET_STAT(victim) > STAT_SLEEPING && !IS_TRUSTED(victim))
 			{
 				act("&+L$n suddenly loses control, and falls asleep.", FALSE,
 				    victim, 0, 0, TO_ROOM);
@@ -2933,7 +2934,7 @@ static float lend_health_ratio()
 // What the target gets for `hp` lent.
 static int lend_health_healing(int hp)
 {
-	return (int)lend_health_ratio() * hp;
+	return (int)(lend_health_ratio() * hp);
 }
 
 // What the caster pays for `hp` lent.
@@ -2956,7 +2957,7 @@ static int lend_health_lowest_health()
 
 std::string lend_health_facts(P_char ch)
 {
-	const int most = lend_health_most(ch);
+	const int most = MIN(50, lend_health_most(ch));
 	return fact("Healing", "up to " + std::to_string(lend_health_healing(most)) +
 				       " at your level, " + std::to_string(GET_LEVEL(ch))) +
 	       fact("Your health spent", "up to " + std::to_string(lend_health_cost(most))) +
@@ -2980,7 +2981,7 @@ void spell_lend_health(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P
 		return;
 	}
 	hp = MIN(50, GET_MAX_HIT(victim) - GET_HIT(victim));
-	hp = MIN(lend_health_most(ch), GET_MAX_HIT(victim) - GET_HIT(victim));
+	hp = MIN(lend_health_most(ch), hp);
 
 	if (hp <= 0)
 	{
@@ -3075,8 +3076,7 @@ std::string confuse_facts(P_char ch)
 		"  may resist a stun, more often the higher their level.\n";
 	if (GET_RACE(ch) == RACE_GITHYANKI)
 		text += fact("Extra mana for a githyanki",
-			     std::to_string(confuse_githyanki_mana()) +
-				     ", unless the limit is reached");
+			     std::to_string(confuse_githyanki_mana()));
 	return text;
 }
 
@@ -3120,7 +3120,7 @@ void spell_confuse(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 		if (should_area_hit(ch, tch))
 		{
 			if (max_level <= 0)
-				return;
+				break;
 			max_level -= GET_LEVEL(tch);
 
 			if (!StatSave(tch, APPLY_POW, POW_DIFF(ch, tch)))
@@ -3179,7 +3179,7 @@ void spell_confuse(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 	}
 	// lets drain some extra mana if it's a gith. - Kvark
 	if (GET_RACE(ch) == RACE_GITHYANKI)
-		GET_MANA(ch) = (GET_MANA(ch) - confuse_githyanki_mana());
+		GET_MANA(ch) = MAX(0, GET_MANA(ch) - confuse_githyanki_mana());
 }
 
 // A target may only try to shrug pyrokinesis on a roll below the limit.
@@ -3540,7 +3540,7 @@ void spell_depart(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vic
 		stop_fighting(victim);
 
 	if (victim->in_room != NOWHERE)
-		for (t_ch = world[victim->in_room].people; t_ch; t_ch = t_ch->next)
+		for (t_ch = world[victim->in_room].people; t_ch; t_ch = t_ch->next_in_room)
 			if (IS_FIGHTING(t_ch) && GET_OPPONENT(t_ch) == victim)
 				stop_fighting(t_ch);
 
@@ -3650,7 +3650,7 @@ void spell_psionic_wave_blast(int level, P_char ch, char * /*arg*/, [[maybe_unus
 	 }
 	 */
 
-	if ((int)((GET_HIT(victim) / GET_MAX_HIT(victim)) * 100) < 20)
+	if (GET_HIT(victim) * 100LL < GET_MAX_HIT(victim) * 20LL)
 	{
 		send_to_char(
 			"Your victim is in excruciating pain. You are unable to find the neural synapses to mentality assault!\r\n",
@@ -3720,8 +3720,7 @@ void event_psionic_wave_blast(P_char ch, P_char victim, P_obj /*obj*/, void *dat
 
 	if ((af->modifier)-- == 0)
 	{
-		send_to_char("You have reach the maximum capability of your mental assault.\n",
-			     victim);
+		send_to_char("You have reach the maximum capability of your mental assault.\n", ch);
 
 		if (affected_by_spell(victim, SPELL_PSIONIC_WAVE_BLAST))
 			affect_from_char(victim, SPELL_PSIONIC_WAVE_BLAST);

@@ -425,7 +425,7 @@ int main() {
             SAME(number(0, 100), conjure_air_huge_roll(rolls));
             SAME(number(150, (GET_LEVEL(ch) * 5)), greater_ethereal_recharge_healing(rolls, ch));
             // MIN() rolls again when the dice do not clear the cap, so that second roll can pass it.
-            same("ethereal_recharge_healing", [&] { return MIN(150, dice(5, level)); },
+            same("ethereal_recharge_healing", [&] { return std::min(150, dice(5, level)); },
                  [&](const Rolls &rolls) { return ethereal_recharge_healing(rolls, level); }, level * 5 <= 150);
             SAME(number(0, 100), arcane_whirlwind_roll(rolls));
             SAME(number(0, 9), induce_tupor_save_roll(rolls));
@@ -507,7 +507,7 @@ int main() {
     assert(tempest_takedown_flying(14.0) == 14.0 * 1.5);
     assert(tempest_takedown_wind_tunnel(14.0) == 14.0 * 1.3);
     assert(tempest_takedown_indoors(14.0) == 14.0 / 1.1);
-    { double chance = 14.0; chance /= chance * 1.3; assert(tempest_takedown_binding_wind(14.0) == chance); }
+    { double chance = 14.0; chance /= 1.3; assert(tempest_takedown_binding_wind(14.0) == chance); }
 
     // The bounds of the chance cosmic vacuum and supernova roll against number(1, 100).
     assert(cosmic_success_chance(1, 60) == 50 && cosmic_success_chance(60, 1) == 80);
@@ -565,7 +565,6 @@ int main() {
                                               "  Lightning breath damage: 20% less\n"));
     assert(contains(greater_ethereal_recharge_facts(&ch), "  Healing: 150-280 at your level, 56\n"));
     assert(contains(ethereal_recharge_facts(&ch), "  Healing: 5-150 at your level, 56\n"
-                                                  "  Its dice are rolled twice, so it can sometimes pass that cap.\n"
                                                   "  It also cures blindness.\n"));
     assert(contains(arcane_whirlwind_facts(&ch), "  Chance to steal each spell: 56 in 101 at your level, 56\n"));
     assert(contains(purge_facts(&ch), "  Damage: 1680 at your level, 56, less 10 per target level\n"));
@@ -583,7 +582,7 @@ int main() {
                                         "  Indoors: 140-150\n"
                                         "  Room-throw threshold: 14 of a 0-100 roll\n"
                                         "  It becomes if flying, or with a wind tunnel: 21, 18.2\n"
-                                        "  With a binding wind, or indoors: 0.769, 12.7\n"
+                                        "  With a binding wind, or indoors: 10.8, 12.7\n"
                                         "  Halved unless the target's luck over 10 reaches a roll of: 1-100\n"
                                         "  It needs an open exit in a random direction.\n"
                                         "  A thrown target's lag: 4 seconds\n"
@@ -604,7 +603,7 @@ int main() {
                                           "  Against a player: 228-248\n"
                                           "  Chance a survivor also burns: 49-79%, higher the more you outlevel the target\n"
                                           "  Its constitution: -5\n"));
-    assert(contains(supernova_facts(&ch), "  You are then knocked out: 0 seconds, left prone\n"));
+    assert(contains(supernova_facts(&ch), "  You are then knocked out: 0.25 seconds, left prone\n"));
     assert(contains(ethereal_discharge_facts(&ch), "  Damage per spell stripped: 28\n"
                                                    "  Save against each strip: +0 with your devotion, harder\n"));
     assert(planetary_alignment_facts(&ch) == "  First roll, 11 in 101: all maximum stats +15\n"
@@ -710,7 +709,7 @@ int main() {
     ch = viewer(viewers[1], 30);
     assert(ethereal_recharge_facts(&ch).find("rolled twice") == std::string::npos);
     ch = viewer(viewers[1], 31);
-    assert(ethereal_recharge_facts(&ch).find("rolled twice") != std::string::npos);
+    assert(ethereal_recharge_facts(&ch).find("rolled twice") == std::string::npos);
     ch = viewer(viewers[1], 35);
     assert(contains(faerie_sight_facts(&ch), "  Detect invisibility: not at your level\n"));
     ch = viewer(viewers[1], 50);

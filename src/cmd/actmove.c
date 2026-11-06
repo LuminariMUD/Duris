@@ -1159,8 +1159,8 @@ char *enter_message(P_char ch, P_char people, int exitnumb, char *amsg, int was_
 		{
 			if (IS_TRUSTED(people) ||
 			    (((IS_AFFECTED(people, AFF_SENSE_LIFE) ||
-			       (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
-				GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_HUNTER))) ||
+			       (has_innate(people, INNATE_OPHIDIAN_EYES) &&
+				GET_SPEC(people, CLASS_DRAGOON, SPEC_DRAGON_HUNTER))) ||
 			      IS_AFFECTED(people, AFF_SKILL_AWARE)) &&
 			     StatSave(people, APPLY_INT, -4)) ||
 			    (GET_SPEC(ch, CLASS_ROGUE, SPEC_THIEF) &&
@@ -1715,8 +1715,8 @@ revalidate_movement:
 					// TODO: MWD is logic for ophid correct here?
 					if (IS_TRUSTED(tch) ||
 					    (((IS_AFFECTED(tch, AFF_SENSE_LIFE) ||
-					       (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
-						GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_HUNTER))) ||
+					       (has_innate(tch, INNATE_OPHIDIAN_EYES) &&
+						GET_SPEC(tch, CLASS_DRAGOON, SPEC_DRAGON_HUNTER))) ||
 					      (ch->lobj && ch->lobj->Visible_Type()) ||
 					      IS_AFFECTED(tch, AFF_SKILL_AWARE)) &&
 					     StatSave(tch, APPLY_INT, -4)))
@@ -1874,8 +1874,8 @@ revalidate_movement:
 				// TODO: MWD is logic correct for ophid?
 				else if (IS_TRUSTED(tch) ||
 					 (((IS_AFFECTED(tch, AFF_SENSE_LIFE) ||
-					    (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
-					     GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_HUNTER))) ||
+					    (has_innate(tch, INNATE_OPHIDIAN_EYES) &&
+					     GET_SPEC(tch, CLASS_DRAGOON, SPEC_DRAGON_HUNTER))) ||
 					   IS_AFFECTED(tch, AFF_SKILL_AWARE)) &&
 					  StatSave(tch, APPLY_INT, -4)))
 				{
@@ -3211,7 +3211,7 @@ void do_unlock(P_char ch, char *argument, int /*cmd*/)
 // How long, in pulses, an attempt keeps the picker from another.
 static int pick_lock_rest()
 {
-	return get_property("timer.secs.pickLock", 5);
+	return get_property("timer.secs.pickLock", 5) * WAIT_SEC;
 }
 
 // The lag, in pulses, after an attempt.

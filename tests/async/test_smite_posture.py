@@ -30,7 +30,8 @@ bool notch_skill(P_char,int,int) { return false; }
 int number(int low,int) { return low; }
 int get_property(const char *,int fallback) { return fallback; }
 void act(const char *,int,P_char,P_obj,P_char,int) {}
-void damage(P_char,P_char,int,int) { ++attacks; }
+bool damage(P_char,P_char,int,int) { ++attacks; return false; }
+int char_in_list(P_char) { return 1; }
 void add_event(event_func,int,P_char,P_char,P_obj,int,void *,int) { ++scheduled; }
 struct Rolls { int (*dice)(int,int); int (*number)(int,int); };
 const Rolls live_rolls = { nullptr, number };

@@ -1356,6 +1356,7 @@ void affect_remove(P_char, struct affected_type *);
 struct affected_type *affect_to_char(P_char, struct affected_type *);
 void affect_to_char_with_messages(P_char, struct affected_type *, const char *, const char *);
 struct room_affect *affect_to_room(int, struct room_affect *);
+void affect_room_refresh(int, struct room_affect *, int);
 void affect_room_remove(int, struct room_affect *);
 char affect_total(P_char, int);
 void all_affects(P_char, int);

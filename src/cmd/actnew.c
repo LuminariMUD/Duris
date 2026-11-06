@@ -1824,7 +1824,7 @@ static int advanced_meditation_lag()
 
 std::string advanced_meditation_facts(P_char ch)
 {
-	extern int advanced_meditation_stun_flee_bonus();
+	extern int advanced_meditation_stun_flee_bonus(P_char ch);
 	const int rating = GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION);
 	if (!rating)
 		return "  You have not learned it, so it does nothing for you.\n";
@@ -1840,7 +1840,6 @@ std::string advanced_meditation_facts(P_char ch)
 	       fact("Chance to cure yourself",
 		    chance_under(advanced_meditation_cure_threshold(ch), 0, 100) + " every " +
 			    seconds(advanced_meditation_interval())) +
-	       "  One cure ends these rolls until you meditate again.\n" +
 	       fact("It cures blindness, at level",
 		    std::to_string(advanced_meditation_cure_level())) +
 	       (vitality ? fact("It cures poison, on a further",
@@ -1851,8 +1850,7 @@ std::string advanced_meditation_facts(P_char ch)
 	       fact("Chance to keep meditating as you speak or emote",
 		    chance_under(rating + 1, 1, 60)) +
 	       fact("Added to fleeing while stunned, a threshold rolled 1-100",
-		    std::to_string(advanced_meditation_stun_flee_bonus())) +
-	       "  That means the stun never stops you fleeing.\n";
+		    std::to_string(advanced_meditation_stun_flee_bonus(ch)));
 }
 
 void event_meditation(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
@@ -1866,24 +1864,23 @@ void event_meditation(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 		{
 			spell_cure_blind(advanced_meditation_cure_level(), ch, 0, 0, ch, 0);
 			notch_skill(ch, SKILL_ADVANCED_MEDITATION, 2);
-			return;
 		}
-		if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) >
-			    advanced_meditation_poison_rating() &&
-		    !advanced_meditation_poison_roll(live_rolls) && IS_AFFECTED2(ch, AFF2_POISONED))
+		else if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) >
+				 advanced_meditation_poison_rating() &&
+			 !advanced_meditation_poison_roll(live_rolls) &&
+			 IS_AFFECTED2(ch, AFF2_POISONED))
 		{
 			poison_common_remove(ch);
 			notch_skill(ch, SKILL_ADVANCED_MEDITATION, 2);
 			send_to_char("You were able to fight the poison in your body!\n", ch);
-			return;
 		}
-		if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) >
-			    advanced_meditation_disease_rating() &&
-		    (affected_by_spell(ch, SPELL_DISEASE) || affected_by_spell(ch, SPELL_PLAGUE)))
+		else if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) >
+				 advanced_meditation_disease_rating() &&
+			 (affected_by_spell(ch, SPELL_DISEASE) ||
+			  affected_by_spell(ch, SPELL_PLAGUE)))
 		{
 			spell_cure_disease(GET_LEVEL(ch), ch, NULL, SPELL_TYPE_SPELL, ch, NULL);
 			notch_skill(ch, SKILL_ADVANCED_MEDITATION, 2);
-			return;
 		}
 	}
 
@@ -4115,7 +4112,7 @@ void do_hamstring(P_char ch, char *arg, int /*cmd*/)
 
 		i = hamstring_vitality_drain(live_rolls);
 		if ((GET_VITALITY(vict) - i) < hamstring_vitality_floor())
-			i = GET_VITALITY(vict) - hamstring_vitality_floor();
+			i = MAX(0, GET_VITALITY(vict) - hamstring_vitality_floor());
 
 		GET_VITALITY(vict) -= i;
 

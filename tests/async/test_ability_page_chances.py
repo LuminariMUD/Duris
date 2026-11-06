@@ -92,7 +92,7 @@ PAGES = {
     ],
     "magic/magic.c": [
         ("anti_magic_ray_facts", ["  Cannot be shrugged: 61 in 100"]),
-        ("cyclone_facts", ["  A flying target that fails a save: 50 in 100 to be stunned up to 2 seconds"]),
+        ("cyclone_facts", ["  A flying target that fails a save: 45 in 100 to be stunned up to 2 seconds"]),
         ("entangle_facts", ["  In a forest, if it fails its save: 4 in 100 to bind it until freed instead"]),
         ("obtenebration_facts", ["  Blindness: 19 in 100, for 4 seconds to 12 seconds"]),
         ("chaos_shield_facts", ["  Chance to absorb part of a spell: 11 in 102"]),
@@ -151,7 +151,7 @@ BRANCHES = {
     },
     "magic/magic.c": {
         "void spell_anti_magic_ray(": ["if(anti_magic_ray_noshrug_roll(live_rolls)<=anti_magic_ray_noshrug_chance())noshrug=SPLDAM_NOSHRUG;"],
-        "void spell_cyclone(": ["affchance=cyclone_stun_roll(live_rolls);if(affchance<=cyclone_stun_chance())"],
+        "void spell_cyclone(": ["affchance=cyclone_stun_roll(live_rolls);if(affchance>5&&affchance<=cyclone_stun_chance())"],
         "void spell_entangle(": ["chance=entangle_bind_chance();", "SECT_FOREST&&entangle_bind_roll(live_rolls)<chance&&!IS_AFFECTED(victim,AFF_BOUND))"],
         "void spell_single_obtenebration(": ["if(IS_ALIVE(ch)&&obtenebration_blind_roll(live_rolls)<obtenebration_blind_chance())"],
         "parse_chaos_shield(": ["chance=chaos_shield_chance();if(chance<chaos_shield_roll(live_rolls))returnFALSE;"],

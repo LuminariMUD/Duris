@@ -174,7 +174,8 @@ void summoned_pet_restore_lifetime(P_char pet, P_char owner, const pet_restore_s
 		s.charm_expires_at ?
 			static_cast<int>(std::min<int64_t>(
 				INT_MAX,
-				std::max<int64_t>(0, (s.charm_expires_at - now + 59) / 60))) :
+				std::max<int64_t>(0, (s.charm_expires_at - now + SECS_PER_MUD_HOUR -
+						      1) / SECS_PER_MUD_HOUR))) :
 			-1;
 	setup_pet(pet, owner, duration, PET_NOAGGRO | PET_RESTORE);
 	// setup_pet cannot turn this saved finite charm into a permanent one merely

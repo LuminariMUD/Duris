@@ -137,7 +137,7 @@ HANDLER_CALLS = {
     "spell_greater_pythonsting": ["cast_as_damage_area(ch, spell_pythonsting, level"],
     "spell_bloodhound": ["af.duration = bloodhound_duration(level)"],
     "spell_spirit_armor": ["duration = spirit_armor_duration(level, ch)",
-                           "af.modifier = spirit_armor_ac(duration)", "int save = spirit_armor_save(level)"],
+                           "af.modifier = spirit_armor_ac(level, ch)", "int save = spirit_armor_save(level)"],
     "spell_transfer_wellness": ["to = transfer_wellness_healing(live_rolls, level, ch)",
                                 "from = transfer_wellness_cost(to)"],
     "spell_wolfspeed": ["level += animalist_level_bonus(live_rolls, ch)", "af.duration = wolfspeed_duration(level)",
@@ -161,7 +161,7 @@ HANDLER_CALLS = {
                                "af.duration = elephantstrength_duration(level)",
                                "af.modifier = elephantstrength_str_max(live_rolls, level)",
                                "af.modifier = elephantstrength_con_max(live_rolls, level)",
-                               "af.modifier = elephantstrength_dex(live_rolls)",
+                               "af.modifier = elephantstrength_stat_penalty(live_rolls)",
                                "af.modifier = elephantstrength_damroll(level)"],
     "spell_shrewtameness": ["af.duration = shrewtameness_duration()"],
     "spell_lionrage": ["duration = lionrage_duration(level, ch)", "af.modifier = lionrage_agi(live_rolls)",
@@ -455,7 +455,7 @@ int main() {
             SAME(2 + (number(0, 2)), mousestrength_strong_duration(rolls));
             SAME(level + number(0, (int)(level / 10)), bearstrength_duration(rolls, level));
             SAME((int)(level / 3 + number(0, (int)(level / 10))), bearstrength_str(rolls, level));
-            SAME(-10 - number(0, 5), elephantstrength_dex(rolls));
+            SAME(-10 - number(0, 5), elephantstrength_stat_penalty(rolls));
             SAME(-10 + (number(-3, 3)), lionrage_agi(rolls));
             SAME(old_wellness(level, ch), wellness_healing(rolls, level, ch));
             SAME(old_lesser_mending(level, ch), lesser_mending_healing(rolls, level, ch));
@@ -471,14 +471,13 @@ int main() {
             SAME(old_etherportal(ch, &decay_timer), etherportal_throughput(rolls, ch));
             assert(decay_timer == etherportal_decay_timer(ch));
         }
-    // MAX() rolls guardian spirits' durations again when they clear the floor of 4, so the
-    // second roll can land below the floor: the page shows a duration only above it.
+    // Initial and renewed guardian spirits respect their four-hour floor.
     for (int level = 1; level <= 62; ++level) {
-        const bool shown = guardian_spirits_duration(lowest_rolls, level) > 4;
-        const bool renewal_shown = guardian_spirits_renewal(lowest_rolls, level) > 4;
-        same("guardian_spirits_duration", [&] { return MAX(4, level / 2 + number(-4, 0)); },
+        const bool shown = true;
+        const bool renewal_shown = true;
+        same("guardian_spirits_duration", [&] { return std::max(4, level / 2 + number(-4, 0)); },
              [&](const Rolls &rolls) { return guardian_spirits_duration(rolls, level); }, shown);
-        same("guardian_spirits_renewal", [&] { return MAX(4, level / 2 + number(-8, 0)); },
+        same("guardian_spirits_renewal", [&] { return std::max(4, level / 2 + number(-8, 0)); },
              [&](const Rolls &rolls) { return guardian_spirits_renewal(rolls, level); },
              renewal_shown);
         char_data ch = viewer(viewers[1], level);
@@ -506,7 +505,7 @@ int main() {
                                            "  If the target fails its save: 59-266\n"));
     assert(contains(corrosive_blast_facts(&ch), "  If the target is already corroded: half\n"
                                                 "  Armor class penalty if not already corroded: 56-112\n"
-                                                "  No penalty if it would leave armor class above 0.\n"
+                                                "  The penalty cannot raise armor class above 0.\n"
                                                 "  Penalty duration: 1-2 game hours (1.25-2.5 minutes)\n"));
     assert(contains(restoration_facts(&ch), "  Healing: 184-211 at your level, 56\n"));
     assert(contains(pythonsting_facts(&ch), "  Damage: 1-160 at your level, 56\n"
@@ -520,11 +519,11 @@ int main() {
                                           "  Maximum movement: 30-32\n"));
     assert(contains(elephantstrength_facts(&ch), "  Duration: 57-58 game hours (71.25-72.5 minutes)\n"
                                                  "  Maximum strength: 7-9\n  Maximum constitution: 14-20\n"
-                                                 "  Damroll: 6\n  Dexterity: -15 to -10\n"));
+                                                 "  Damroll: 6\n  Dexterity and agility (rolled separately): -15 to -10\n"));
     assert(contains(bearstrength_facts(&ch), "  Casting level: 56\n  Duration: 56-62 game hours (70-77.5 minutes)\n"
                                              "  Strength: 18-23\n  Maximum strength: 3\n  Dexterity: -10\n"));
     assert(contains(lionrage_facts(&ch), "  Duration: 29-30 game hours (36.25-37.5 minutes) at your level, 56\n"
-                                         "  Damroll: 6\n  Agility: -13 to -7\n"));
+                                         "  Strength: 12\n  Damroll: 6\n  Agility: -13 to -7\n"));
     assert(contains(mousestrength_facts(&ch), "  Duration: 1-2 game hours (1.25-2.5 minutes)\n"
                                               "  On its two strongest results: 2-5 game hours (2.5-6.25 minutes)\n"));
     assert(contains(malison_facts(&ch), "  Duration: 19-20 game hours (23.75-25 minutes) at your level, 56\n"
@@ -584,7 +583,7 @@ int main() {
                                              "  Each person in the room rolls separately.\n");
     ch = viewer(viewers[3], 56); // spiritualist with improved heal
     assert(contains(restoration_facts(&ch), "  Healing: 280-320 at your level, 56\n"));
-    assert(contains(spirit_armor_facts(&ch), "  Armor class: -63\n"));
+    assert(contains(spirit_armor_facts(&ch), "  Armor class: -112\n"));
     assert(contains(spirit_ward_facts(&ch), "  Duration: 66-67 game hours (82.5-83.75 minutes) at your level, 56\n"));
     assert(contains(spirit_jump_facts(&ch), "  Range: 90 rooms at your level, 56\n  Your lag: 3 seconds\n"));
     assert(contains(greater_spirit_anguish_facts(&ch), "  Spirit damage: 392-1232 at your level, 56\n"

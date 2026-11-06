@@ -855,10 +855,10 @@ int spell_class(int spl)
 #define IS_CLERICSPELL(spl) ((spell_class((spl)) & 2))
 #define IS_SHAMANSPELL(spl) ((spell_class((spl)) & 4))
 
-// Whether a bystander's 1-101 roll hears a spell's real name; a higher rating does worse.
+// Whether a bystander's 1-101 roll hears a spell's real name.
 static bool spell_knowledge_hears_name(int rand, int rating)
 {
-	return rand >= rating && rating > 1;
+	return rand <= rating && rating > 1;
 }
 
 void say_spell(P_char ch, int si)
@@ -1136,13 +1136,11 @@ static std::string spell_knowledge_facts(P_char ch, int skill)
 		     chance_under(spell_knowledge_name_threshold() + 1,
 				  spell_knowledge_name_roll(lowest_rolls),
 				  spell_knowledge_name_roll(highest_rolls))) +
-		fact("Chance to hear the name when it is cast", std::to_string(heard) + " in 101") +
-		"  That chance falls as your rating rises.\n";
+		fact("Chance to hear the name when it is cast", std::to_string(heard) + " in 101");
 	if (skill != SKILL_SPELL_KNOWLEDGE_SHAMAN)
 		facts += fact("Chance to name a spell in a book not of your class",
 			      std::to_string(named) + " in 100, then " +
-				      chance_under(GET_LEVEL(ch) + 1, 1, 70)) +
-			 "  That first chance also falls as your rating rises.\n";
+				      chance_under(GET_LEVEL(ch) + 1, 1, 70));
 	if (casting_progress_skill(ch) == skill)
 		facts += GET_CLASS(ch, CLASS_PSIONICIST | CLASS_MINDFLAYER | CLASS_DRUID |
 					       CLASS_BLIGHTER) ?
@@ -2234,7 +2232,8 @@ static int spatial_focus_threshold(P_char ch)
 // How well it goes when it fires; only the best result, 3, changes the spell.
 static int spatial_focus_result(const Rolls &rolls, P_char ch)
 {
-	return MAX(0, GET_CHAR_SKILL(ch, SKILL_SPATIAL_FOCUS) / 40 + rolls.number(-1, 1));
+	const int result = GET_CHAR_SKILL(ch, SKILL_SPATIAL_FOCUS) / 40 + rolls.number(-1, 1);
+	return MAX(0, result);
 }
 
 static int spatial_focus_lag()

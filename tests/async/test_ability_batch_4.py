@@ -425,9 +425,9 @@ int main() {
                 }, [&](const Rolls &r) { return immolate_burn_damage(r, c, burntime); }, Bounds::reached);
             for (int modifier = 0; modifier <= 6; ++modifier)
                 same_rolls("dread_wave_damage", [&] {
-                    int dam = MAX(1, (int)(((modifier + 2) * level) + number(-60, 0)));
+                    int dam = std::max(1, ((modifier + 2) * level) + number(-60, 0));
                     dam = (int)(dam * GET_LEVEL(c) / 56);
-                    return dam;
+                    return std::max(1, dam);
                 }, [&](const Rolls &r) { return dread_wave_damage(r, c, modifier, level); }, Bounds::high);
             same_rolls("dread_wave_waves", [&] {
                 int modifier;
@@ -560,7 +560,7 @@ int main() {
         { true_seeing_facts(&ch), "  Duration: 72-73 game hours (90-91.25 minutes)\n" },
         { tree_facts(&ch), "  Your lag: 12 seconds\n" },
         { enlarge_facts(&ch), "  Duration: 3-4 game hours (3.75-5 minutes)\n"
-                              "  Recast while enlarged: 50-51 game hours (62.5-63.75 minutes)\n"
+                              "  Recast while enlarged: 3-4 game hours (3.75-5 minutes)\n"
                               "  On you: max strength +8, max constitution +15, agility -14, dexterity -10\n" },
         { reduce_facts(&ch), "  On you: strength -20, constitution -12, max agility +14, max dexterity +10\n" },
         { judgement_facts(&ch), "  Holy damage per strike: 20-500 at your level, 50\n"
@@ -622,7 +622,7 @@ int main() {
         { moonwell_facts(&ch), "  People who can pass: 20\n  Stays open: 30 seconds if cast here\n" },
         { moonstone_facts(&ch), "  Duration: 160-161 game hours (200-201.25 minutes) at your level\n" },
         { spore_cloud_facts(&ch), "  Gas damage: 301-320 at your level, 50\n" },
-        { spore_burst_facts(&ch), "  Gas damage: 289-316 to each foe at your level\n  Your lag: 8 seconds\n" },
+        { spore_burst_facts(&ch), "  Gas damage: 289-316 to each foe at your level\n  Your lag: 10 seconds\n" },
         { holy_dharma_facts(&ch), "  Drawn from an opponent above full health: up to 25 hit points at a time\n" },
         { electrical_execution_facts(&ch), "  Lightning damage: 204-260 at your level, 50\n"
                                            "  First arc: 79-95\n"

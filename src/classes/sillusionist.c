@@ -803,7 +803,7 @@ void spell_stunning_visions(int level, P_char ch, char * /*arg*/, int /*type*/, 
 	}
 
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_STUNNING_VISIONS);
-	if (NewSaves(ch, SAVING_SPELL, mod))
+	if (NewSaves(victim, SAVING_SPELL, mod))
 	{
 		percent /= 2;
 	}
@@ -2318,7 +2318,7 @@ void spell_imprison(int level, P_char ch, char * /*arg*/, int /*type*/, P_char v
 		return;
 	}
 
-	for (shell = world[victim->in_room].contents; shell; shell = shell->next)
+	for (shell = world[victim->in_room].contents; shell; shell = shell->next_content)
 	{
 		if (obj_index[shell->R_num].virtual_number == 1300)
 		{

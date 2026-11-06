@@ -311,11 +311,13 @@ void locker_identify_pulse()
 				notice(ch,
 				       entry); // retry writing; do not charge or discard uncertain evidence
 		}
-		if (!online && !entry.io.valid())
+		// The exact request is retained on disk, except while recording: disk still says
+		// prepared after the charge landed, and recovery would charge it again.
+		if (!online && !entry.io.valid() && entry.stage != phase::recording)
 		{
 			it = requests.erase(it);
 			continue;
-		} // the exact request is retained on disk
+		}
 		if (entry.stage == phase::showing)
 		{
 			if (owner_matches(ch, entry.value))

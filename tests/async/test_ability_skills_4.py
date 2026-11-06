@@ -136,7 +136,7 @@ HANDLER_CALLS = {
     ("classes/necromancy.c", "do_exhume"): ["affect_timer(ch, exhume_rest(skl), SKILL_EXHUME)", "CharWait(ch, exhume_lag(skl));", "obj1->value[CORPSE_LEVEL] = exhume_corpse_level(live_rolls, ch);"],
     ("classes/necromancy.c", "do_summon_host"): ["affect_timer(ch, exhume_rest(skl), SKILL_EXHUME)", "CharWait(ch, summon_host_lag(ch));", "obj1->value[CORPSE_LEVEL] = exhume_corpse_level(live_rolls, ch);"],
     ("classes/paladins.c", "cleave"): ["number(5, 100) < GET_CHAR_SKILL(ch, SKILL_CLEAVE)", "int dam = cleave_damage(live_rolls, ch);", "set_short_affected_by(victim, SKILL_CLEAVE, cleave_target_rest());"],
-    ("classes/paladins.c", "event_smite_evil"): ["GET_HIT(tch) < 15", "smite_evil_threshold(ch) > number(0, 100)", "damage(ch, tch, smite_evil_damage(live_rolls), SKILL_SMITE_EVIL);", "add_event(event_smite_evil, smite_evil_interval(),"],
+    ("classes/paladins.c", "event_smite_evil"): ["GET_HIT(tch) < 15", "smite_evil_threshold(ch) > number(0, 100)", "damage(ch, tch, smite_evil_damage(live_rolls), SKILL_SMITE_EVIL)", "add_event(event_smite_evil, smite_evil_interval(),"],
     ("account/nanny.c", "ALL"): ["add_event(event_smite_evil, smite_evil_interval(),"],
     ("classes/reavers.c", "apply_reaver_mods"): ["base_combat_round += ice_reaver_1h_bludgeon_penalty();", "base_combat_round += ice_reaver_2h_bludgeon_penalty();", "base_combat_round += flame_reaver_2h_penalty();"],
     ("classes/rogues.c", "do_slip"): ["number(1, 100)", "percent -= slip_fighting_penalty();", "check <= percent"],
@@ -385,7 +385,7 @@ static void check_rolls() {
                 SAME(((int)(rating / 15) + number(0, 2)), greater_beast_life_level(rolls, rating));
             }
             // MIN rolls again, so a level near the cap can land above the page's top.
-            SAME_SLACK(MIN(50, GET_LEVEL(ch) + number(0, 8) - 4), exhume_corpse_level(rolls, ch), 4);
+            SAME_SLACK(std::min(50, GET_LEVEL(ch) + number(0, 8) - 4), exhume_corpse_level(rolls, ch), 4);
         }
     SAME(number(-5, 20), ki_strike_slow_roll(rolls));
     SAME(number(1, 101), carve_roll(rolls));

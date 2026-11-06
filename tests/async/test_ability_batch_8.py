@@ -576,10 +576,10 @@ int main() {
     PAGE_HAS(awaken_forest, plain, 50, "  Crushing branches: 161-200");
     PAGE_HAS(hurricane, plain, 50, "  Damage to everyone it hits: 341-370 at your level, 50");
     PAGE_HAS(hurricane, plain, 50, "  Chance a target escapes: 29%");
-    PAGE_HAS(hurricane, plain, 50, "  Knockdown outdoors, if flying: 4%");
-    PAGE_HAS(hurricane, plain, 50, "  Knockdown outdoors, otherwise: never");
-    PAGE_HAS(hurricane, plain, 51, "  Knockdown outdoors, if flying: 9%");
-    PAGE_HAS(hurricane, plain, 51, "  Knockdown outdoors, otherwise: 1%");
+    PAGE_HAS(hurricane, plain, 50, "  Knockdown outdoors, if flying: 5%");
+    PAGE_HAS(hurricane, plain, 50, "  Knockdown outdoors, otherwise: 1%");
+    PAGE_HAS(hurricane, plain, 51, "  Knockdown outdoors, if flying: 10%");
+    PAGE_HAS(hurricane, plain, 51, "  Knockdown outdoors, otherwise: 2%");
     PAGE_HAS(storm_shield, plain, 50, "  Duration: 10-11 game hours (12.5-13.75 minutes) at your level");
     PAGE_HAS(storm_shield, plain, 50, "  Chance of a lightning bolt when you block: 1 in 3");
     PAGE_HAS(storm_shield, plain, 50, "  Lightning damage: 60-360 at your level, 50");

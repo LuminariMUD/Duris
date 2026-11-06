@@ -10,6 +10,7 @@
 
 #include "core/prototypes.h"
 #include "core/structs.h"
+#include "classes/paladins.h"
 #include "net/comm.h"
 #include "world/db.h"
 #include "cmd/interp.h"
@@ -163,6 +164,12 @@ void update_skills(P_char ch)
 					0, MAX(SKILL_DATA_ALL(ch, skl).maxlearn[0],
 					       SKILL_DATA_ALL(ch, skl).maxlearn[ch->player.spec]));
 		}
+	}
+
+	if (ch->in_room != NOWHERE && GET_CHAR_SKILL(ch, SKILL_SMITE_EVIL) &&
+	    !get_scheduled(ch, event_smite_evil))
+	{
+		add_event(event_smite_evil, smite_evil_interval(), ch, 0, 0, 0, 0, 0);
 	}
 }
 

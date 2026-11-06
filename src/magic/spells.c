@@ -2606,9 +2606,12 @@ std::string vines_facts(P_char ch)
 {
 	return fact("Damage absorbed", std::to_string(vines_absorb(1)) + " per green herb, up to " +
 					       std::to_string(vines_most_herbs()) + " herbs") +
+	       fact("Chance to absorb a blow",
+		    "20 in 100, plus 1 per 4 damage they can still absorb") +
 	       fact("Duration", game_hours(vines_duration(GET_LEVEL(ch))) + " at your level") +
 	       "  You need at least one green herb; it uses up to the most it takes.\n"
-	       "  Damage is absorbed whole, even the last hit. Moving crumbles them.\n"
+	       "  An absorbed blow is taken whole, even the last.\n"
+	       "  Other blows cost them nothing. Moving crumbles them.\n"
 	       "  A backstab that lands breaks them and deals 1.\n"
 	       "  Fist of dragon does not get through them.\n";
 }
@@ -3171,7 +3174,7 @@ static int hurricane_miss_below()
 	return 30;
 }
 
-// A target is knocked down outdoors when hurricane_knockdown_roll() is below this.
+// A target is knocked down outdoors when hurricane_knockdown_roll() is at most this.
 static int hurricane_knockdown_chance(bool flying, int caster_level)
 {
 	int chance;
@@ -3196,8 +3199,8 @@ std::string hurricane_facts(P_char ch)
 {
 	const int level = GET_LEVEL(ch);
 	const int first = hurricane_knockdown_roll(lowest_rolls);
-	const int flying = hurricane_knockdown_chance(true, level) - first;
-	const int grounded = hurricane_knockdown_chance(false, level) - first;
+	const int flying = hurricane_knockdown_chance(true, level) - first + 1;
+	const int grounded = hurricane_knockdown_chance(false, level) - first + 1;
 	return fact("Damage to everyone it hits", show({ hurricane_damage(lowest_rolls, level),
 							 hurricane_damage(highest_rolls, level) }) +
 							  " at your level, " +
@@ -3252,7 +3255,7 @@ void cast_hurricane(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /
 		affchance = hurricane_knockdown_roll(live_rolls);
 		if (OUTSIDE(ch))
 		{
-			if (affchance < chance)
+			if (affchance <= chance)
 			{
 				act("The gail force of your spell sends $N crashing to the ground!",
 				    FALSE, ch, 0, tch, TO_CHAR);

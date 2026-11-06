@@ -545,6 +545,41 @@ int main(int argc, char **argv)
 		assert(output.find("The identification payment failed") != std::string::npos);
 		assert(output.find("The identification payment failed") ==
 		       output.rfind("The identification payment failed"));
+		// A landed charge whose paid marker cannot be written yet must survive the owner
+		// leaving: the prepared receipt on disk would otherwise charge again at login.
+		for (const bool heal_while_offline : { true, false })
+		{
+			const unsigned before = submissions;
+			const currency_command_result before_purse = purse;
+			output.clear();
+			obj.text = "MARKER RETRY";
+			locker_identify(&ch, &obj, 1);
+			until([&] { return submissions == before + 1; });
+			fail_writes = true;
+			finish();
+			until([&] { return !requests.at(ch.pid)->io.valid(); });
+			live = nullptr;
+			for (int n = 0; n < 5; ++n)
+				tick();
+			if (heal_while_offline)
+			{
+				fail_writes = false;
+				until([] { return requests.empty(); });
+			}
+			live = &ch;
+			locker_identify_replay(&ch);
+			fail_writes = false;
+			drained();
+			assert(submissions == before + 1);
+			assert(output.find("MARKER RETRY") != std::string::npos);
+			assert(output.find("MARKER RETRY") == output.rfind("MARKER RETRY"));
+			assert(purse.wallet.amount[0] + purse.bank.amount[0] ==
+			       before_purse.wallet.amount[0] + before_purse.bank.amount[0] - 1);
+			locker_receipt marker;
+			assert(locker_receipt_read(receipt_directory, ch.pid, &marker) ==
+				       flatfile_read_result::ok &&
+			       marker.state == locker_receipt_state::delivered);
+		}
 		// Shutdown must discard queued session notifications along with requests.
 		for (auto &player : crowd)
 			locker_identify_replay(&player);

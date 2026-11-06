@@ -164,11 +164,11 @@ CALLS = {
                                            "CharWait(ch,throat_crush_miss_lag())", "melee_damage(ch,vict,throat_crush_damage(),PHSDAM_TOUCH,&messages)",
                                            "af.duration=throat_crush_silence(live_rolls)", "af.duration=throat_crush_cooldown(live_rolls)"],
     ("actnew.c", "void do_hamstring"): ["skl_lvl-=hamstring_aware_penalty()", "i=hamstring_threshold(skl_lvl,GET_C_AGI(vict))", "number(1,100)<i", "i=hamstring_vitality_drain(live_rolls)",
-                                        "(GET_VITALITY(vict)-i)<hamstring_vitality_floor()", "i=GET_VITALITY(vict)-hamstring_vitality_floor()", "afs.duration=hamstring_aware_duration()", "CharWait(ch,hamstring_lag())"],
+                                        "(GET_VITALITY(vict)-i)<hamstring_vitality_floor()", "i=MAX(0,GET_VITALITY(vict)-hamstring_vitality_floor())", "afs.duration=hamstring_aware_duration()", "CharWait(ch,hamstring_lag())"],
     ("actnew.c", "bool throw_potion"): ["CharWait(ch,throw_potion_lag())", "throw_potion_rest(IS_AFFECTED2(ch,AFF2_FLURRY),IS_AFFECTED(ch,AFF_HASTE))", "number(0,chance)",
                                         "number(1,120)<GET_CHAR_SKILL(ch,SKILL_REMIX)", "victim&&!obj&&IS_NPC(victim)"],
     ("actnew.c", "int chance_throw_potion"): ["number(1,140)>GET_C_AGI(ch)"],
-    ("actoff.c", "void do_flee"): ["stun_chance_flee+=advanced_meditation_stun_flee_bonus()"],
+    ("actoff.c", "void do_flee"): ["stun_chance_flee+=advanced_meditation_stun_flee_bonus(ch)"],
     ("actmove.c", "int do_simple_move_skipping_procs"): ["need_movement+=crippled_move_cost()"],
     ("actinf.c", "void ShowCharSpellBookSpells"): ["spell_book_recognizes(GET_CHAR_SKILL(ch,k),number(1,100))&&(GET_CHAR_SKILL(ch,k)&&number(1,70)<=GET_LEVEL(ch))"],
     ("memorize.c", "int get_circle_memtime"): ["time=time*natures_sanctity_recovery_factor()", "time=time*natures_ruin_recovery_factor()"],
@@ -272,9 +272,7 @@ FUNCTIONS
 
 static int fingerprint() { return number(0, INT_MAX); }
 
-// MAX(0, x + number(-1, 1)) rolls twice, so its second roll can land one under the page's
-// lowest result. The handlers treat that result as their lowest one.
-static int below_range = 0;
+// Single-draw clamps keep every result within the displayed bounds.
 
 static void same(const char *name, const std::function<int()> &original,
                  const std::function<int(const Rolls &)> &shared) {
@@ -285,7 +283,7 @@ static void same(const char *name, const std::function<int()> &original,
         randomize(seed);
         const int actual = shared(live_rolls), actual_next = fingerprint();
         if (actual != expected || actual_next != expected_next ||
-            actual < std::min(a, b) - below_range || actual > std::max(a, b)) {
+            actual < std::min(a, b) || actual > std::max(a, b)) {
             std::fprintf(stderr, "%s: seed %d gave %d, expected %d in %d..%d\n", name, (int)seed,
                          actual, expected, a, b);
             std::abort();
@@ -439,10 +437,8 @@ static void check_rolls() {
     char_data ch = viewer(viewers[0], 56);
     for (int rating : { 0, 39, 40, 79, 80, 100 }) {
         set_ratings(rating);
-        below_range = 1;
-        SAME(MAX(0, GET_CHAR_SKILL(&ch, SKILL_CHANT_MASTERY) / 40 + number(-1, 1)), chant_mastery_result(rolls, &ch));
-        SAME(MAX(0, GET_CHAR_SKILL(&ch, SKILL_SPATIAL_FOCUS) / 40 + number(-1, 1)), spatial_focus_result(rolls, &ch));
-        below_range = 0;
+        SAME(std::max(0, GET_CHAR_SKILL(&ch, SKILL_CHANT_MASTERY) / 40 + number(-1, 1)), chant_mastery_result(rolls, &ch));
+        SAME(std::max(0, GET_CHAR_SKILL(&ch, SKILL_SPATIAL_FOCUS) / 40 + number(-1, 1)), spatial_focus_result(rolls, &ch));
     }
 }
 
@@ -473,8 +469,8 @@ static void check_numbers() {
     assert(hitall_lag(0) == 2 * PULSE_VIOLENCE && hitall_lag(5) == 2 * PULSE_VIOLENCE && hitall_lag(6) == 3 * PULSE_VIOLENCE);
     assert(dirt_toss_blindness(100, 100, 0) == 40 && dirt_toss_blindness(100, 100, 1000) == 20 && dirt_toss_blindness(100, 100, 75) == 25);
     assert(hamstring_threshold(100, 57) == 95);
-    assert(spell_knowledge_hears_name(101, 100) && !spell_knowledge_hears_name(99, 100) && !spell_knowledge_hears_name(101, 1));
-    assert(spell_book_recognizes(30, 30) && !spell_book_recognizes(30, 29));
+    assert(!spell_knowledge_hears_name(101, 100) && spell_knowledge_hears_name(99, 100) && !spell_knowledge_hears_name(101, 1));
+    assert(spell_book_recognizes(30, 30) && !spell_book_recognizes(30, 31));
     // Each odds printer counts the results a handler's comparison passes.
     assert(chance_under(91, 1, 90) == "90 in 90" && chance_under(1, 1, 90) == "0 in 90");
     int hits = 0;
@@ -486,7 +482,11 @@ static void check_numbers() {
     assert(throw_potion_rest(true, false) == (int)((float)(1.75f * 0.5) * PULSE_VIOLENCE));
     assert(throw_potion_rest(true, true) == throw_potion_rest(true, false));
     assert(advanced_meditation_interval() == 3 * WAIT_SEC);
-    assert(advanced_meditation_stun_flee_bonus() == SKILL_ADVANCED_MEDITATION / 10);
+    for (int rating : {0, 1, 9, 10, 50, 100}) {
+        char_data meditator{};
+        ratings[SKILL_ADVANCED_MEDITATION] = rating;
+        assert(advanced_meditation_stun_flee_bonus(&meditator) == rating / 10);
+    }
 }
 
 static void check_pages() {
@@ -548,7 +548,7 @@ PINS = r'''
     blind_singer = false;
     HAS(advanced_meditation_facts, "  Hit point regeneration: +75\n  Vitality regeneration: +5\n  Your lag when you start: 2 seconds\n  Chance to cure yourself: 50 in 101 every 3 seconds\n");
     HAS(advanced_meditation_facts, "  It cures blindness, at level: 50\n  It cures poison, on a further: 1 in 3\n  It cures disease and plague.\n"
-                                   "  Chance to keep meditating as you speak or emote: 60 in 60\n  Added to fleeing while stunned, a threshold rolled 1-100: 120\n");
+                                   "  Chance to keep meditating as you speak or emote: 60 in 60\n  Added to fleeing while stunned, a threshold rolled 1-100: 10\n");
     HAS(dirt_toss_facts, "  Blindness on a target with no agility: 10 seconds\n  Blindness on the most agile target: 5 seconds\n  Your lag: 4 seconds\n");
     HAS(disarm_facts, "  Chance against a target of your dexterity and level: 49 in 100\n");
     HAS(disarm_facts, "  You must be fighting the target.\n  Time before the weapon can be wielded again: 12 seconds\n");
@@ -586,8 +586,8 @@ PINS = r'''
     HAS(spellweave_facts, "  How long a woven spell keeps: 5-6 game hours (6.25-7.5 minutes)\n  Chance it works when you call it forth: 100 in 101\n");
     assert(totemic_mastery_facts(&ch) == "  Chance to prepare a spell without its totem: 99 in 100\n  Chance to hasten a cast when you have the totem: 50 in 151\n  Cast time and lag then: 75%\n");
     HAS(spell_knowledge_magical_facts, "  Chance to recognize a spell someone starts: 100 in 101\n  You then know whether it is offensive.\n  Then the chance to know its name: 60 in 100\n"
-                                       "  Chance to hear the name when it is cast: 2 in 101\n  That chance falls as your rating rises.\n"
-                                       "  Chance to name a spell in a book not of your class: 1 in 100, then 56 in 70\n");
+                                       "  Chance to hear the name when it is cast: 100 in 101\n"
+                                       "  Chance to name a spell in a book not of your class: 100 in 100, then 56 in 70\n");
     HAS(spell_knowledge_shaman_facts, "  Chance to see how your casting is going: 100 in 100 at each step\n");
     LACKS(spell_knowledge_magical_facts, "how your casting");
     LACKS(spell_knowledge_shaman_facts, "in a book");

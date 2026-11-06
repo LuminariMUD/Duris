@@ -275,7 +275,9 @@ int setup_pet(P_char mob, P_char ch, int duration, int flag)
 	duration = af.duration;
 	if (IS_NPC(mob) && !(flag & PET_RESTORE))
 		mob->only.npc->pet_charm_expires_at =
-			duration < 0 ? 0 : time(nullptr) + static_cast<int64_t>(duration) * 60;
+			duration < 0 ?
+				0 :
+				time(nullptr) + static_cast<int64_t>(duration) * SECS_PER_MUD_HOUR;
 	/* the higher the level of the mob, the more likely it'll be aggro to the caster after charm*/
 	if (IS_NPC(mob) && !IS_SET(flag, PET_NOAGGRO) && (GET_LEVEL(mob) > number(30, 62)) &&
 	    !has_innate(ch, INNATE_UNHOLY_ALLIANCE))
@@ -2938,10 +2940,11 @@ static int summon_host_lag(P_char ch)
 	return 24 - (GET_CHAR_SKILL(ch, SKILL_EXHUME) / 10);
 }
 
-// MIN rolls again when the first roll doesn't pass the cap, so the cap can slip.
+// Roll once, then cap the corpse level at 50.
 static int exhume_corpse_level(const Rolls &rolls, P_char ch)
 {
-	return MIN(50, GET_LEVEL(ch) + rolls.number(0, 8) - 4);
+	const int level = GET_LEVEL(ch) + rolls.number(0, 8) - 4;
+	return MIN(50, level);
 }
 
 std::string exhume_facts(P_char ch)

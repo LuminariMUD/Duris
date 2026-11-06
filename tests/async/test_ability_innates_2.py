@@ -41,7 +41,7 @@ SHARED = {
     "world/handler.c": """calming_delay calming_level_gap calming_gap_roll calming_notarget_percent calming_notarget_roll
         calming_command_roll calming_chance_bonus calming_switch_threshold calming_switch_penalty
         vuln_sun_damage""".split(),
-    "cmd/track.c": "perception_track_bonus farsee_track_bonus ophidian_track_penalty track_sense_chance".split(),
+    "cmd/track.c": "perception_track_bonus farsee_track_bonus ophidian_track_bonus track_sense_chance".split(),
     "world/map.c": "eyeless_map_range forest_map_cap perception_map_bonus dayblind_infravision_bonus dayblind_underdark_range".split(),
     "cmd/actinf.c": "ophidian_farsee_level ophidian_invisible_level".split(),
     "core/utility.c": """undead_fealty_gap two_handed_sword_mastery_rating quick_thinking_percent quick_thinking_roll
@@ -570,7 +570,7 @@ HANDLER_CALLS = {
     ("cmd/interp.c", "ALL"): ["!has_innate(ch, INNATE_CALMING) || !calming_command_roll(live_rolls)", "calming_chance += calming_chance_bonus();", "(has_innate(exec_char, INNATE_CALMING) ? calming_chance_bonus() : 0)", "calming_chance >= number(1, 100)"],
     ("world/limits.c", "hit_regen"): ["regeneration_sleeping_multiple() * get_innate_regeneration(ch)", "regeneration_resting_multiple() * get_innate_regeneration(ch)"],
     ("world/map.c", "map_view_distance"): ["return eyeless_map_range();", "dayblind_infravision_bonus()", "n = dayblind_underdark_range();", "n > forest_map_cap()", "n = forest_map_cap();", "n += perception_map_bonus();"],
-    ("cmd/track.c", "show_tracks"): ["skill += perception_track_bonus();", "percent -= farsee_track_bonus();", "percent += ophidian_track_penalty();", "chance = track_sense_chance(GET_LEVEL(ch));"],
+    ("cmd/track.c", "show_tracks"): ["skill += perception_track_bonus();", "percent -= farsee_track_bonus();", "percent -= ophidian_track_bonus();", "chance = track_sense_chance(GET_LEVEL(ch));"],
     ("cmd/actinf.c", "ALL"): ["GET_LEVEL(ch) > ophidian_farsee_level()", "GET_LEVEL(ch) > ophidian_invisible_level()"],
     ("core/utility.c", "aggressive_to_at"): ["GET_LEVEL(ch) <= (GET_LEVEL(target) - undead_fealty_gap())"],
     ("core/utility.c", "GET_CHAR_SKILL_P"): ["return two_handed_sword_mastery_rating();"],
@@ -737,7 +737,7 @@ GOLDEN = """== blindsinging
   Dragon lancer: you see good and evil.
   Dragon hunter: you sense life and traces beyond the veil.
   Dragon hunter: chance to sense a trace: 29 in 100
-  Dragon hunter: improved tracking roll: 5 harder
+  Dragon hunter: improved tracking roll: 5 easier
 == dragonmind
   Chance to dodge a sneaky strike: 1 in 2
   Chance to foil a backstab: 1 in 2
