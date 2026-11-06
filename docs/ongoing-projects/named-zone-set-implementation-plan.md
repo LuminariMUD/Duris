@@ -1,6 +1,6 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; fourteen focused implementation/test PRs are pushed
+Status: implementation in progress; fifteen focused implementation/test PRs are pushed
 and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
@@ -63,6 +63,10 @@ and targets #734. It is ready for review.
 (`branch/named-zone-set-transfer`, implementation commit `ffece9482`)
 adds native cross-owner nested transfer and effective ordinary Armor proof and
 targets #735. It is ready for review.
+[PR #737](https://github.com/LuminariMUD/Duris/pull/737)
+(`branch/named-zone-set-edits`, implementation commit `ff7cfb214`)
+proves native visible-name edits, recursive cloning and copied/mixed outfit
+reload behavior; it targets #736 and is ready for review.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
 into the foundation and propagated through each dependent branch without
@@ -908,9 +912,10 @@ their complete inventories. All private servers are stopped. The native runs,
 Python static checks and `git diff --check` pass.
 
 This closes the native flat-file player/nested-container/cross-owner proof and
-the effective ordinary Armor overlap check. Pets, corpses, lockers/private
-chests, shops, saved-world paths, visible-name editing/cloning, MariaDB gameplay,
-live Redis, canonical help publication and rollback remain project gates.
+the effective ordinary Armor overlap check. Visible-name editing/cloning now
+passes in the following checkpoint. Pets, corpses, lockers/private chests,
+shops, saved-world paths, MariaDB gameplay, live Redis, canonical help publication
+and rollback remain project gates.
 No implementation PR was merged, tagged or deployed.
 
 ### Native visible-name editing and recursive cloning passed
@@ -950,6 +955,14 @@ the existing ignored runtime. The put helper's implementation is unchanged;
 it moved to the shared I/O module for the two callers. No product code changed.
 Pets, corpses, lockers/chests, shops, saved-world paths, MariaDB gameplay, live
 Redis, help publication and rollback remain required. No deployment occurred.
+
+At this checkpoint Meranen owns the original and copied pieces: the original
+head and copied body/legs are worn, the other three are carried, and the four
+test bags are empty at inventory root. The current setup/result manifests and
+snapshot fixture identify their UIDs without guessing names. For the next
+storage proof, inspect the maintained `test_pet_restart_journey.py`,
+`test_corpse_trap_restart_journey.py` and locker/shop journeys before adding
+fixtures; keep these real marked items and the existing authority.
 
 ## Start here
 
