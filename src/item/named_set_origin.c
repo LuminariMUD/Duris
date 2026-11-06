@@ -7,8 +7,20 @@
 #include "world/db.h"
 #include "world/vnum.obj.h"
 
+#include <climits>
+
 extern P_index obj_index;
 extern int top_of_zone_table;
+
+// FNV-1a, placed above every zone ID so a retired title's negative HP context never meets a zone's.
+static int retired_title_group(const std::string &title)
+{
+	constexpr unsigned int first_group = 1U << 24;
+	unsigned int hash = 2166136261U;
+	for (const unsigned char byte : title)
+		hash = (hash ^ byte) * 16777619U;
+	return static_cast<int>(hash % (INT_MAX - first_group) + first_group);
+}
 
 named_set_identity named_set_origin(const obj_data *object)
 {
@@ -51,9 +63,10 @@ named_set_identity named_set_origin(const obj_data *object)
 	constexpr const char *misty_legacy_title = "The Chasm of the Misty Vale";
 	if (title == misty_legacy_title ||
 	    (!suffix.empty() && title == std::string(misty_legacy_title) + suffix))
-		return { 0, misty_legacy_title };
+		return { 0, misty_legacy_title, 150 };
 	std::string matched_title;
 	int matches = 0;
+	int legacy_group = 0;
 	for (int i = 0; i <= top_of_zone_table; ++i)
 	{
 		if (zone_table[i].number <= 0 || !zone_table[i].name)
@@ -62,14 +75,20 @@ named_set_identity named_set_origin(const obj_data *object)
 		if (title != candidate && (suffix.empty() || title != candidate + suffix))
 			continue;
 		origin = zone_table[i].number;
+		if (!legacy_group || origin < legacy_group)
+			legacy_group = origin;
 		matched_title = matches && matched_title != candidate ? title : candidate;
 		++matches;
 	}
 	if (matches == 1)
 		return { origin, {} };
 	if (matches > 1)
-		return { 0, matched_title };
-	return {};
+		return { 0, matched_title, legacy_group };
+	// A retired title proves no zone, but its pieces still share a set's HP as they always did.
+	std::string retired_title = title;
+	if (!suffix.empty() && retired_title.ends_with(suffix))
+		retired_title.resize(retired_title.size() - suffix.size());
+	return { 0, retired_title, retired_title_group(retired_title) };
 }
 
 bool set_named_set_origin(obj_data *object, int zone)

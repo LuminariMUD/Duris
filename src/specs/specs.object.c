@@ -19,6 +19,7 @@
 
 #include "core/prototypes.h"
 #include "item/named_sets.h"
+#include "item/named_set_origin.h"
 #include "abilities/abilities.h"
 #include "item/forced_weapon_drop.h"
 #include "item/native_artifact_actions.h"
@@ -13265,37 +13266,31 @@ static int master_set_adapter(P_char ch, P_obj obj, int /*count*/, int cmd, char
 
 struct random_set_wear_off
 {
-	struct affected_type *af;
+	void *context;
+	int zone;
 	char zone_name[256];
 };
 
-void check_zone_spells(P_char ch, P_obj obj, int count, const char *zone_name);
+void check_zone_spells(P_char ch, P_obj obj, int count, int zone, const char *zone_name);
 
-void event_random_set_proc(P_char ch, P_char /*victim*/, P_obj obj, void *data)
+void event_random_set_proc(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 {
-	struct random_set_wear_off *rdata = (struct random_set_wear_off *)data;
-	struct affected_type *afp, *afpp = rdata->af;
-	char buffer[256];
-
-	for (afp = ch->affected; afp; afp = afp->next)
-	{
-		if (afp == afpp)
-		{
-			checked_snprintf(buffer, 256, "Spirits of %s no longer support you.\n",
-					 rdata->zone_name);
-			send_to_char(buffer, ch);
-			affect_remove(ch, afp);
-			check_zone_spells(ch, obj, 0, rdata->zone_name);
-		}
-	}
+	const auto *rdata = static_cast<const random_set_wear_off *>(data);
+	struct affected_type *af = get_spell_from_char(ch, TAG_SETPROC, rdata->context);
+	if (!af)
+		return;
+	char buffer[512];
+	snprintf(buffer, sizeof buffer, "Spirits of %s no longer support you.\n", rdata->zone_name);
+	send_to_char(buffer, ch);
+	affect_remove(ch, af);
+	check_zone_spells(ch, nullptr, 0, rdata->zone, rdata->zone_name);
 }
 
 #define SETMSG_NONE 0
 #define SETMSG_PROTECT 1
 #define SETMSG_STRENGTH 2
 
-void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone_index, P_obj obj,
-		      int spell)
+void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_obj obj, int spell)
 {
 	if (!named_set_effect_supported(spell))
 		return;
@@ -13419,7 +13414,7 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone_inde
 					// many group members
 					paf->duration = GET_LEVEL(ch) / 3;
 					SET_BIT(paf->flags, AFFTYPE_SET_AFFECT | AFFTYPE_NOSAVE);
-					paf->context = reinterpret_cast<void *>(zone_index);
+					paf->context = reinterpret_cast<void *>(zone);
 				}
 			}
 		}
@@ -13476,7 +13471,7 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone_inde
 			if (paf->type == spell)
 			{
 				SET_BIT(paf->flags, AFFTYPE_SET_AFFECT | AFFTYPE_NOSAVE);
-				paf->context = reinterpret_cast<void *>(zone_index);
+				paf->context = reinterpret_cast<void *>(zone);
 			}
 		}
 	}
@@ -13487,64 +13482,43 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone_inde
 #undef SETMSG_STRENGTH
 
 // Random zone eq spellups (depends on # items worn == count).
-void check_zone_spells(P_char ch, P_obj obj, int count, const char *zone_name)
+void check_zone_spells(P_char ch, P_obj obj, int count, int zone, const char *zone_name)
 {
-	int zone_room, zone_idx = -1;
-	int i;
-
-	// Find the matching zone for the random eq.
-	for (i = 0; i <= top_of_zone_table; i++)
-	{
-		if (strstr(zone_name, zone_table[i].name))
-			break;
-	}
-	// If zone not found, return.
-	if (i > top_of_zone_table)
-	{
-		return;
-	}
-
-	// Find the appropriate random_data for the zone.
-	// This calculates the starting # for the zone as in the DE.
-	zone_room = world[zone_table[i].real_bottom].number / 100;
-	// Walk the list of random eq proc'ing zones.
-	for (i = 0; i < static_cast<int>(named_set_count); i++)
-	{
-		if (named_sets[i].zone == zone_room)
+	if (zone <= 0)
+		return; // Ambiguous historical sets retain HP only.
+	const named_set_definition *set = nullptr;
+	for (size_t i = 0; i < named_set_count; ++i)
+		if (named_sets[i].zone == zone)
 		{
-			zone_idx = i;
+			set = &named_sets[i];
 			break;
 		}
-	}
-	// If random_data not found, return.
-	if (zone_idx < 0)
-	{
+	if (!set)
 		return;
-	}
 
 	bool spellsRemoved = false;
 
 	// For the three possible spellups,
-	for (i = 0; i < 3; i++)
+	for (int i = 0; i < 3; i++)
 	{
-		if (named_sets[zone_idx].proc_spells[i][0])
+		if (set->proc_spells[i][0])
 		{
 			struct affected_type *paf;
 			// If the required num of eq is met for spell
-			if (named_sets[zone_idx].proc_spells[i][0] <= count)
+			if (set->proc_spells[i][0] <= count)
 			{
 				// cast the spell on ch.
-				apply_zone_spell(ch, count, zone_name, zone_idx, obj,
-						 named_sets[zone_idx].proc_spells[i][1]);
+				apply_zone_spell(ch, count, zone_name, zone, obj,
+						 set->proc_spells[i][1]);
 			}
-			else if ((paf = get_spell_from_char(ch,
-							    named_sets[zone_idx].proc_spells[i][1],
-							    reinterpret_cast<void *>(zone_idx),
-							    AFFTYPE_SET_AFFECT)) != NULL)
+			else if ((paf = get_spell_from_char(
+					  ch, set->proc_spells[i][1],
+					  reinterpret_cast<void *>(static_cast<intptr_t>(zone)),
+					  AFFTYPE_SET_AFFECT)) != NULL)
 			{
 				// remove the spell from the character
 				wear_off_message(ch, paf);
-				affect_from_char(ch, named_sets[zone_idx].proc_spells[i][1]);
+				affect_from_char(ch, set->proc_spells[i][1]);
 				spellsRemoved = true;
 			}
 		}
@@ -13561,7 +13535,7 @@ void check_zone_spells(P_char ch, P_obj obj, int count, const char *zone_name)
 int random_set(P_char ch, P_obj obj, int count, int cmd, char * /*arg*/)
 {
 	struct affected_type af, *afp;
-	char *zone_name, buffer[256];
+	char buffer[512];
 	struct random_set_wear_off rdata;
 
 	if (cmd == CMD_SET_PERIODIC)
@@ -13574,23 +13548,22 @@ int random_set(P_char ch, P_obj obj, int count, int cmd, char * /*arg*/)
 		return FALSE;
 	}
 
-	zone_name = strstr(obj->short_description, " &+rfrom") + 9;
-	int context;
-	// Find the matching zone for the random eq.
-	for (context = 0; context <= top_of_zone_table; context++)
-	{
-		if (strstr(zone_name, zone_table[context].name))
-			break;
-	}
+	const auto identity = named_set_origin(obj);
+	if (identity.zone < 0 || (!identity.zone && identity.legacy_title.empty()))
+		return FALSE;
+	const int source = identity.zone > 0 ? identity.zone : -identity.legacy_group;
+	void *context = reinterpret_cast<void *>(static_cast<intptr_t>(source));
+	const int zone_index = identity.zone > 0 ? real_zone(identity.zone) : -1;
+	const char *zone_name = zone_index >= 0 ? zone_table[zone_index].name :
+						  identity.legacy_title.c_str();
 
-	// Why do we return true here?
 	if (count < 2)
 	{
 		return FALSE;
 	}
 
-	// Look for a random item proc..
-	afp = get_spell_from_char(ch, TAG_SETPROC, reinterpret_cast<void *>(context));
+	// Each set has its own transient HP affect.
+	afp = get_spell_from_char(ch, TAG_SETPROC, context);
 	if (!afp)
 	{
 		memset(&af, 0, sizeof(af));
@@ -13599,29 +13572,42 @@ int random_set(P_char ch, P_obj obj, int count, int cmd, char * /*arg*/)
 		af.location = APPLY_HIT;
 		// This should be indefinite: Only changes upon eq removal/wear new eq.
 		af.duration = -1;
-		af.context = reinterpret_cast<void *>(context);
+		af.context = context;
 		afp = affect_to_char(ch, &af);
 	}
 
-	// This right here creates the argument between sets of two different zones being on one char.
-	disarm_char_nevents(ch, event_random_set_proc);
-	rdata.af = afp;
-	strcpy(rdata.zone_name, zone_name);
-	// Event to remove rdata.af from ch. PULSE_MOBILE + 5 = 35 pulses = 9 sec??
-	add_event(event_random_set_proc, PULSE_MOBILE + 5, ch, 0, 0, 0, &rdata, sizeof(rdata));
+	// Refresh only this group's cleanup event; other sets keep their deadlines.
+	P_nevent pending = nullptr;
+	for (P_nevent event = ch->nevents; event; event = event->next_char_nev)
+		if (event->func == event_random_set_proc && event->data &&
+		    static_cast<random_set_wear_off *>(event->data)->context == context)
+		{
+			pending = event;
+			break;
+		}
+	if (pending)
+		nevent_reschedule_after(nevent_handle_from_event(pending), PULSE_MOBILE + 5);
+	else
+	{
+		rdata.context = context;
+		rdata.zone = identity.zone;
+		snprintf(rdata.zone_name, sizeof rdata.zone_name, "%s", zone_name);
+		add_event(event_random_set_proc, PULSE_MOBILE + 5, ch, 0, 0, 0, &rdata,
+			  sizeof(rdata));
+	}
 
-	check_zone_spells(ch, obj, count, zone_name);
+	check_zone_spells(ch, obj, count, identity.zone, zone_name);
 
 	if (afp->modifier > (count - 2) * 5)
 	{
-		snprintf(buffer, 256, "You feel some of the %s's spirits attention leave you.\n",
-			 zone_name);
+		snprintf(buffer, sizeof buffer,
+			 "You feel some of the %s's spirits attention leave you.\n", zone_name);
 		send_to_char(buffer, ch);
 	}
 	else if (afp->modifier < (count - 2) * 5)
 	{
-		snprintf(buffer, 256, "You feel invigorated as the spirits of %s bless you.\n",
-			 zone_name);
+		snprintf(buffer, sizeof buffer,
+			 "You feel invigorated as the spirits of %s bless you.\n", zone_name);
 		send_to_char(buffer, ch);
 	}
 	else
@@ -13648,7 +13634,7 @@ int set_proc(P_obj obj, P_char ch, int cmd, char *arg)
 	P_obj tobj, included[MAX_WEAR], cobj = obj;
 	int s, i = 0, j, count = 0;
 	unsigned int flag = (cmd != CMD_PERIODIC) ? ITEM2_NOPROC : ITEM2_NOTIMER;
-	char *c = NULL, *d;
+	named_set_identity identity;
 
 	// Look through the sets for the right vnum.
 	for (s = 0; sets[s].func; s++)
@@ -13679,13 +13665,11 @@ int set_proc(P_obj obj, P_char ch, int cmd, char *arg)
 		return sets[s].func(ch, obj, count, cmd, arg);
 	}
 
-	// Check random_set objs for the "<item> &+rfrom <zone>".
 	if (sets[s].func == random_set)
 	{
-		c = strstr(obj->short_description, " &+rfrom ");
-		if (!c)
+		identity = named_set_origin(obj);
+		if (identity.zone < 0 || (!identity.zone && identity.legacy_title.empty()))
 		{
-			// If not, remove the periodic timer.
 			disarm_obj_nevents(obj, event_object_proc);
 			return FALSE;
 		}
@@ -13739,12 +13723,12 @@ int set_proc(P_obj obj, P_char ch, int cmd, char *arg)
 		// If we have a random item..
 		if (sets[s].func == random_set)
 		{
-			// If !zone or zones don't match.
-			d = strstr(tobj->short_description, " &+rfrom ");
-			if (!c || !d || strcmp(c, d) != 0)
-			{
+			const auto candidate = named_set_origin(tobj);
+			if (candidate.zone != identity.zone ||
+			    candidate.legacy_title != identity.legacy_title)
 				continue;
-			}
+			if (candidate.zone > 0)
+				set_named_set_origin(tobj, candidate.zone);
 		}
 		else
 		{
