@@ -423,7 +423,7 @@ static bool publish_container_get(P_char ch, P_obj o_obj, P_obj s_obj, int showi
 	LockerMovementAudit audit(ch, s_obj, NULL, o_obj);
 	if (!audit.Ready())
 		return false;
-	obj_from_obj(o_obj);
+	obj_from_obj_unsaved(o_obj);
 
 #if USE_SPACE
 	s_obj->space -= GET_OBJ_SPACE(o_obj);
@@ -448,6 +448,12 @@ static bool publish_container_get(P_char ch, P_obj o_obj, P_obj s_obj, int showi
 	}
 	obj_to_char(o_obj, ch);
 	audit.Commit();
+	if (GET_ITEM_TYPE(s_obj) == ITEM_STORAGE)
+	{
+		// The writer keeps this order, so no crash can leave the item with neither owner.
+		currency_transaction_save_first(ch);
+		writeSavedItem(s_obj);
+	}
 	if (haul)
 	{
 		P_obj delivered = find_live_item_uid(picked_uid);
@@ -7823,7 +7829,7 @@ void start_empty(P_char actor, P_obj source, P_obj target)
 		LockerMovementAudit audit(actor, source, target, content);
 		if (!audit.Ready())
 			break;
-		obj_from_obj(content);
+		obj_from_obj_unsaved(content);
 		obj_to_obj(content, target);
 		audit.Commit();
 		if (GET_ITEM_TYPE(target) == ITEM_QUIVER)
@@ -7840,9 +7846,12 @@ void start_empty(P_char actor, P_obj source, P_obj target)
 	mark_player_dirty_components(GET_PID(actor), PLAYER_COMPONENT_STATUS |
 							     PLAYER_COMPONENT_EQUIPMENT |
 							     PLAYER_COMPONENT_INVENTORY);
+	// Commit the new owner before the source drops the moved items.
+	if (GET_ITEM_TYPE(source) == ITEM_STORAGE)
+		currency_transaction_save_first(actor);
+	save_filled_container(target);
 	if (GET_ITEM_TYPE(source) == ITEM_STORAGE)
 		writeSavedItem(source);
-	save_filled_container(target);
 }
 }
 
