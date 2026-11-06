@@ -10,8 +10,8 @@ Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
 
-**Continue with:** final
-local/review reconciliation. MariaDB player/private chest, canonical help on both
+**Continue with:** repair the confirmed review findings below, refresh the
+compatibility checkpoint, and finish local/review reconciliation. MariaDB player/private chest, canonical help on both
 backends, live Redis reports and native shop/world gates on both backends now pass.
 The native world journey found and fixed orphaned storage descendants; preserve
 source-fix commit `265299320` in any compatibility rollback build. All three
@@ -120,7 +120,11 @@ it targets #745 and is ready for review.
 qualifies the recovery-only 115-row compatibility checkpoint and re-upgrade while
 preserving item identity; it targets #746 and is ready for review.
 
-The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
+The stack includes upstream `master` through `826b5dff2`, including the November 5
+production content and migration-runner safeguards. The earlier `d4b3469c0`
+baseline note was stale; `git merge-base HEAD origin/master` resolves to
+`826b5dff2`, and all named-set branches contain it. No additional merge is needed.
+The earlier upstream updates (#711 and #721) were merged
 into the foundation and propagated through each dependent branch without
 rewriting history. PR #721 adds inert #150 metadata for retired Misty Chasm
 prototypes, with no rooms or resets; it does not add a playable set candidate.
@@ -1515,6 +1519,38 @@ The next work is requirement-by-requirement local evidence/review reconciliation
 release/help handoff and #706 references. Production publication, review/merge and
 owner deployment permission remain distinct from this local rehearsal.
 
+### Final review audit and repairs (in progress)
+
+All 25 PRs are open, non-draft and currently reported mergeable. No manual approval
+has been submitted. Automated review threads remain on #717, #727, #728, #732,
+#736 and #743; current source was inspected rather than treating readiness as
+approval. The following work must complete before the final handoff:
+
+- #717: validate owned player/pet origin metadata after the callback filters
+  foreign or intentionally unmaterialized rows; retain length-aware rejection
+  for metadata actually being loaded.
+- #727: finish the ordinary Vitality scope before evaluating position, so a
+  wounded wearer is not classified dead while set HP is temporarily detached.
+  Preserve the Crown's distinct regeneration affect when deciding ordinary/set
+  equivalence.
+- #728: the reported cooldown-dispel gap is not present in current source:
+  `AFFTYPE_STORE` already includes `AFFTYPE_NODISPEL`. Add/inspect direct dispel
+  proof before resolving the thread; do not add redundant product flags.
+- #732: skip automatic Guardian Spirits attempts for non-Shamans, preserving the
+  manual spell's restriction/error behavior without periodic rejection spam.
+- #736: strengthen the native Armor journey with an explicit ordinary-only
+  reference on identical gear. Re-run against a fresh copy; its original primary
+  manifest names containers lost in the separately disclosed #740 setup failure.
+  Never recreate those old UIDs or overwrite the original failure evidence.
+- #743: create `bin/tests` on a fresh checkout and clear captured output before
+  each cache report invocation so every lifecycle state proves actual delivery.
+
+Fixes will be committed to their owning PR branches and propagated forward
+without rewriting history. Use isolated review worktrees so this current handoff
+and the retained authority stay intact. The initial rollback tag remains an
+immutable historical rehearsal reference; a superseding checkpoint must include
+the accepted review repairs before it is offered as the final recovery build.
+
 ## Start here
 
 1. Read this plan for implementation order, compatibility decisions, and proof.
@@ -1816,7 +1852,7 @@ instead of claiming source inspection is a completed gameplay journey.
   verified build, refresh the report cache, and smoke-test named drops and
   effects. Any persistence/schema change discovered during implementation must
   be additive, guarded, and tested before a production operation.
-- [x] Keep a rollback revision and compatible persisted metadata. Rehearse a
+- [ ] Keep a rollback revision and compatible persisted metadata. Rehearse a
   rollback that retains the origin marker, removes transient set-owned character
   effects on reload, and refreshes reports; do not erase player items or guessed
   origins to recover. If an older build cannot safely interpret the new naming
