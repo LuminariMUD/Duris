@@ -1,7 +1,7 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; eleven focused implementation/test PRs are pushed
-and ready for review; the expanded catalog is in draft #732 for gameplay validation.
+Status: implementation in progress; twelve focused implementation/test PRs are pushed
+and ready for review, including the expanded catalog #732 after native gameplay validation.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
 Working branch: `branch/named-zone-set-area-journeys`, based on
@@ -41,20 +41,19 @@ restores authored naming eligibility for four existing sets and targets the
 qualification branch. Its wider eligibility review remains in progress below.
 All nine PRs are ready for review; no implementation PR has been merged and no
 release has been performed.
-[Draft PR #732](https://github.com/LuminariMUD/Duris/pull/732)
+[PR #732](https://github.com/LuminariMUD/Duris/pull/732)
 (`branch/named-zone-set-roster`, implementation commit `0ad13149a`)
-adds the complete reviewed catalog and targets #730. Keep it in draft until the
-native gameplay gate described in its checkpoint below passes.
+adds the complete reviewed catalog and targets #730. Its native catalog gameplay
+gate now passes as recorded below; it is ready for review.
 [PR #733](https://github.com/LuminariMUD/Duris/pull/733)
-(`branch/named-zone-set-native-journey`, implementation commit `4ebf192f8`)
+(`branch/named-zone-set-native-journey`, implementation commits `4ebf192f8` / `f438741b9`)
 adds the native Tharnadia 2/3/4/5-piece wear, ordinary Armor and reboot journey and
-targets #732. This focused test chunk is ready for review; the broader catalog
-readiness gate remains open.
+targets #732. This focused test chunk is ready for review.
 [PR #734](https://github.com/LuminariMUD/Duris/pull/734)
 (`branch/named-zone-set-area-journeys`, implementation commit `0afe7cba2`)
-extends the native runner to the required areas and targets #733. Bloodstone and
-Forgotten Forest pass; the identity cases continue below. This focused runner/
-area-proof chunk is ready for review.
+extends the native runner to the required areas and targets #733. All twelve
+native area/identity cases pass as recorded below. This focused runner/area-proof
+chunk is ready for review.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
 into the foundation and propagated through each dependent branch without
@@ -639,7 +638,7 @@ python3 tests/async/test_named_set_catalog.py
 These are source/generator/membership checks. Actual full gameplay and storage
 journeys remain in the final gates. No deployment or release has occurred.
 
-### Reviewed catalog installation (gameplay gates in progress)
+### Reviewed catalog installation (native catalog gates passed)
 
 **Outcome:** the implementation/test catalog now contains **298 rows, 389 tiers
 and 106 effect IDs**: all 115 original rows plus 104 original additions and 79
@@ -665,11 +664,12 @@ world boot (no minimal/specials/ferry suppression) reaches the game loop, create
 and saves a synthetic character. The normal player's disabled-Redis `namedreport`
 pages through all 298 IDs exactly once and includes the conditional notes.
 
-**Readiness gate:** these rows are in the local implementation/test build for
-acceptance work, not deployed. Keep the catalog PR in draft until the required
-native wear/HP/ordinary-cast/save/reboot gates pass. The source/fixture evidence
-above does not replace those gameplay gates or the remaining storage, live Redis,
-help/publication and rollback work. Do not mark #706 or this goal complete.
+**Review readiness:** these rows are in the local implementation/test build,
+not deployed. The required native wear/HP/ordinary-cast/save/reboot catalog gates
+now pass through #733/#734 and #732 is ready for review. Source/fixture evidence
+did not replace these journeys. Remaining storage, MariaDB gameplay, live Redis,
+help/publication and rollback work is still required. Do not mark #706 or this
+goal complete.
 
 Continuation runtime: `bin/tests/named-set-roster-world` contains the generated
 full world, private flat-file authority in `state/`, and a synthetic `Taverek`
@@ -679,9 +679,8 @@ credentials come from that test module; no owner credentials were copied.
 and writes `full-server.out` / `namedreport.txt`; its process is stopped after the
 check. Do not delete/reseed this state to hide a failure. Continue using the native
 `randobj eq <slot> 56 <count>` staff path in this isolated world and retain the
-real generated item UIDs/origins. Tharnadia's native journey now passes as
-recorded below; Bloodstone, another new area and the seven identity cases
-remain mandatory journeys.
+real generated item UIDs/origins. Tharnadia, Bloodstone, Forgotten Forest and all
+seven identity cases plus their two counterparts now pass as recorded below.
 
 ### Native Tharnadia wear, ordinary cast and reboot journey
 
@@ -741,10 +740,10 @@ generator. No gameplay debug command, persistence schema, test-only server optio
 or separate spell simulator is added. This proves Tharnadia's 2/3/4/5 thresholds,
 Endurance cleanup and ordinary Armor ownership; it does not complete
 Bloodstone/new-area or seven-zone journeys, cross-owner/storage gates, MariaDB
-gameplay, live Redis, help publication or rollback. Keep #732 in draft until its
-remaining native catalog gates pass; keep #706 and the overall goal open.
+gameplay, live Redis, help publication or rollback. The area journeys below
+complete #732's native catalog readiness gate; keep #706 and the overall goal open.
 
-### Native area journeys (Bloodstone and Forgotten Forest passed)
+### Native area and identity journeys passed
 
 **Outcome/files/proof:** extend `run_named_set_wear_journey.py` with the explicit
 required zone cases, reusing its existing native client, generator, save/reboot
@@ -772,16 +771,34 @@ Evidence stays under `bin/tests/`: `named-zone-740.log`, `named-zone-827.log`,
 the corresponding `named-zone-<id>-result.json` in the runtime, and per-zone
 transcripts. The updated driver retains every session's transcript for later
 cases. The identity-zone cases and a Tharnadia regression of the shared driver
-are running serially through `bin/tests/run-named-identity-cases.py`; this
-driver stops on the first failure and never reseeds the authority. Native cases
-**#13, #44, #204, #808 and #811 now pass**: effect/HP threshold, report/inventory,
-exact UID/origin/wear-slot restoration and removal. #814/#990, the counterparts
-and the shared-driver Tharnadia regression remain in progress. Later cases also
-assert that every earlier named UID/origin survives in its native container tree
-after save/reboot, not just the currently worn pieces. Per-zone result JSON and
-complete session transcripts record each run. C++ formatting/fixture compilation, Python static
-checks, `make -C src -j4` and `git diff --check` pass. Keep #732 in draft until
-the remaining required native cases pass.
+ran serially through `bin/tests/run-named-identity-cases.py` and completed with
+exit 0. The driver stops on the first failure and never reseeds the authority.
+Native cases **#13, #44, #204, #808, #811, #814, #990, #300 and #1350 all pass**:
+effect/HP threshold, report/inventory, exact UID/origin/wear-slot restoration and
+removal. The final #1325 regression also passes all five-piece/ordinary Armor
+checks through the shared driver, with new UIDs `60068526`, `60068799`,
+`60069704`, `60069736`, `60069767`. The ordinary spell survives removal and
+another reboot exactly once. Every private server process is stopped.
+
+Later cases additionally assert that every earlier named UID/origin survives in
+its native container tree after save/reboot, not just the currently worn pieces.
+An aggregate check of the final real saved authority finds **478 unique named
+UID/origin pairs across all twelve origins**, with no earlier marker lost during
+the checked native nested-container saves/reboots. Per-zone result JSON and
+complete session transcripts record each run. This is player/container proof;
+cross-owner transfer, pets, corpses, lockers/chests, shops, saved-world paths and
+MariaDB gameplay remain separate gates.
+
+C++ formatting/fixture compilation, Python static checks, `make -C src -j4` and
+`git diff --check` pass. #732 was marked ready for review after these native gates
+passed; no implementation PR was merged, tagged or deployed.
+
+**Next:** complete the four previously plain-title existing sets' remaining native
+journeys (#87/#370/#676/#824), then the cross-owner/storage and MariaDB journeys,
+live Redis lifecycle, canonical help publication and rollback rehearsal. Reuse
+these real generated items and the existing private authority. The six-piece
+Vitality case needs its actual spell HP bonus as well as the basic set HP formula;
+do not assume that every effect leaves maximum HP unchanged.
 
 ## Start here
 
