@@ -148,7 +148,7 @@ def run_case(binary: Path, inspector: Path, enabled: bool, react: bool, family: 
                 client = journey.MudClient(plain)
                 journey.create_character(client)
                 client.send("toggle boon")
-                client.expect("You will no longer be affected by boons.")
+                client.expect("Divine Boons apply automatically.")
                 client.send("wield mace")
                 client.expect("You wield")
                 drain(client, .3)

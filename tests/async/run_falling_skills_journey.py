@@ -191,7 +191,7 @@ S
             client = journey.MudClient(port)
             journey.create_character(client)
             client.send('toggle boon')
-            client.expect('You will no longer be affected by boons.')
+            client.expect('Divine Boons apply automatically.')
             client.send('save')
             client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
             client.send('quit')
