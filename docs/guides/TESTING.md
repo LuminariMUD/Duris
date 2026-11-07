@@ -85,7 +85,7 @@ RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
 python3 tests/async/run_migration_runner_engines.py
 ```
 
-`TEST_JOBS=0` is the default and selects up to eight workers based on available
+`TEST_JOBS=0` is the default and selects up to sixteen workers based on available
 CPUs. Test output is buffered per process so parallel failures remain readable,
 and a failing test's output is printed as soon as it fails. A test still running
 900 s after it started, or a journey 1800 s after, is ended with everything it
@@ -96,9 +96,17 @@ the tests still running. However a test ends, whatever it started and left
 running ends with it. Stopping the runner, by Ctrl-C or a SIGTERM, ends the
 tests it is running with everything they started, and starts no others.
 The runner executes every discovered `test_*.py` in a separate process and
-returns nonzero if any test fails. The journeys that boot a real server, and the
-large sanitizer harness, start together once the parallel phase is done. They
-wait on game time, not on the CPU, and they share one server build.
+returns nonzero if any test fails. Tests start longest first, by their last time in
+`bin/test-history`, so the long journeys start at once and the short tests fill the
+workers around them; a test with no recorded time starts first.
+
+Nearly every harness compiles its sources and links in one `g++` command, which
+ccache cannot cache. The runner puts `scripts/mutate/g++` first on `PATH`: it splits
+such a command into one ccache compile per source and a link, with the same flags and
+diagnostics, so a source shared by many harnesses compiles once and a rerun compiles
+only what changed. The cache is `bin/test-ccache` (10 GB, set `CCACHE_DIR` to use
+another), and a harness's random directory does not defeat it. Without ccache the
+real `g++` runs unchanged. `scripts/coverage.sh` keeps its own compiler.
 
 `make test-all` deliberately excludes Docker and externally provisioned
 database checks. `make test-db` builds the server and generates the world first, then
@@ -177,6 +185,15 @@ read-only; runtime state is never stored in the artifact directory. The
 item-prompt ASan/UBSan harness remains a separate build with its existing flags
 and the server build's 600-second ceiling. That one server build uses every
 core, and the journeys start together when it is done.
+
+The shared flat-file server runs a 125 ms game pulse instead of 250 ms
+(`FAST_PULSE_USEC`, passed to Make as `TEST_PULSE_USEC`). Game logic counts pulses,
+so a journey plays the same game twice as fast. A journey that times the game
+against the wall clock (it sleeps into a pulse window, tests a timeout in seconds,
+or restores a wall-clock deadline that the game turns into pulses at four a second)
+asks for `build_flatfile_server(..., real_clock=True)`, a separate artifact
+with the real pulse. `bin/server/dms_new`, which runs the MariaDB legs of the same
+journeys in `make test-db`, and every production build keep 250 ms.
 
 The artifact key covers all files under `src/` (including untracked files),
 test headers, the helper contract, the flat-file backend, and the inherited build

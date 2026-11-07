@@ -67,8 +67,9 @@ merely because one phase passes.
    ```
 
    `make test-db` must use its isolated Docker fixtures, never the configured game database. It
-   also runs the MariaDB journeys. Run both gates on a quiet machine: about 10 minutes for
-   `make test-all -j16 TEST_JOBS=16` and about 3½ for `make test-db`.
+   also runs the MariaDB journeys. Run both gates on a quiet machine: on 16 cores, the tests of
+   `make test-all -j16 TEST_JOBS=16` take about 9 minutes (12 after a source change) and
+   `make test-db` about 35.
 
 3. Fix every error, warning, crash, hang, flaky result, sanitizer-like symptom, or credible defect
    encountered. Find the root cause, keep fixes narrow, add or update a focused regression for

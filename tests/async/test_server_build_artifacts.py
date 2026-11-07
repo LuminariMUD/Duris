@@ -51,7 +51,7 @@ with tempfile.TemporaryDirectory() as tmp:
         '\t@touch $(DMS_BINARY)\n\t@echo -D__NO_MYSQL__ $(MAKEFLAGS)\n')
     with patch.object(artifacts, 'ROOT', root), \
          patch.object(artifacts.subprocess, 'check_output', return_value='2\n'):
-        binary, output, _ = artifacts.compile_server(root / 'bin', dict(os.environ, MAKEFLAGS=''))
+        binary, output, _ = artifacts.compile_server(root / 'bin', dict(os.environ, MAKEFLAGS=''), None)
     assert binary.is_file() and '-j2' in output, output
 
 
@@ -62,20 +62,22 @@ with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
     source.write_text("original")
     with (patch.object(artifacts, "ROOT", root),
           patch.object(artifacts, "toolchain_key", return_value="compiler-v1") as compiler):
-        original = artifacts.input_key({"CXXFLAGS": "-O1"})
-        assert original == artifacts.input_key({"CXXFLAGS": "-O1", "PWD": "/other"})
-        assert original != artifacts.input_key({"CXXFLAGS": "-O2"})
-        assert original != artifacts.input_key({"CXXFLAGS": "-O1", "BUILD_PROFILE": "production"})
+        original = artifacts.input_key({"CXXFLAGS": "-O1"}, 50000)
+        assert original == artifacts.input_key({"CXXFLAGS": "-O1", "PWD": "/other"}, 50000)
+        assert original != artifacts.input_key({"CXXFLAGS": "-O2"}, 50000)
+        assert original != artifacts.input_key({"CXXFLAGS": "-O1", "BUILD_PROFILE": "production"}, 50000)
         source.write_text("modified")
-        assert original != artifacts.input_key({"CXXFLAGS": "-O1"})
+        assert original != artifacts.input_key({"CXXFLAGS": "-O1"}, 50000)
         source.write_text("original")
         header = root / "src/untracked.h"
         header.write_text("new header")
-        assert original != artifacts.input_key({"CXXFLAGS": "-O1"})
+        assert original != artifacts.input_key({"CXXFLAGS": "-O1"}, 50000)
         header.unlink()
-        assert original == artifacts.input_key({"CXXFLAGS": "-O1"})
+        assert original == artifacts.input_key({"CXXFLAGS": "-O1"}, 50000)
         compiler.return_value = "compiler-v2"
-        assert original != artifacts.input_key({"CXXFLAGS": "-O1"})
+        assert original != artifacts.input_key({"CXXFLAGS": "-O1"}, 50000)
+        # The real-clock server is a separate artifact.
+        assert artifacts.input_key({}, None) != artifacts.input_key({}, 50000)
 
 
 with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
@@ -85,17 +87,17 @@ with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
     calls = []
     key = "source-toolchain-environment-v1"
 
-    def compile_server(directory, environment):
+    def compile_server(directory, environment, pulse):
         calls.append(directory)
         binary = directory / "server/dms_new"
         binary.parent.mkdir(parents=True)
         (directory / "objects").mkdir()
         binary.write_bytes(b"test executable " + str(len(calls)).encode())
         binary.chmod(0o755)
-        return binary, "g++ -D__NO_MYSQL__", 0.0
+        return binary, f"g++ -D__NO_MYSQL__ -DOPT_USEC={pulse} ", 0.0
 
     with (patch.object(artifacts, "ROOT", root),
-          patch.object(artifacts, "input_key", side_effect=lambda env: key),
+          patch.object(artifacts, "input_key", side_effect=lambda env, pulse: key),
           patch.object(artifacts, "compile_server", side_effect=compile_server),
           patch.dict(os.environ, {artifacts.CACHE_ENV: str(cache)})):
         first = artifacts.build_flatfile_server(build_root)
@@ -121,7 +123,7 @@ with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
         metadata = json.loads(manifest.read_text())
         metadata["directory"] = "../escape"
         manifest.write_text(json.dumps(metadata))
-        assert artifacts.verified_artifact(cache, key) is None
+        assert artifacts.verified_artifact(cache, key, artifacts.FAST_PULSE_USEC) is None
 
         key = "concurrent-build"
         context = multiprocessing.get_context("fork")
@@ -144,7 +146,7 @@ with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
         log = Path(paths[0]).parents[1] / "build.log"
         log.chmod(0o644)
         log.write_text("corrupt log")
-        assert artifacts.verified_artifact(cache, key) is None
+        assert artifacts.verified_artifact(cache, key, artifacts.FAST_PULSE_USEC) is None
 
         key = "failed-build"
         with patch.object(artifacts, "compile_server", side_effect=RuntimeError("failed")):

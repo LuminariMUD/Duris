@@ -27,7 +27,7 @@ DB=tests/async/with_disposable_mariadb.sh
 export SERVER=${DURIS_SERVER_BINARY:-bin/server/dms_new}
 started=$SECONDS
 
-# Longest first.
+# Longest first, by a measured run: a long leg that starts late runs on alone.
 xargs -P "${TEST_DB_JOBS:-12}" -L 1 bash -c '
     args=("$@")
     for i in "${!args[@]}"; do
@@ -37,115 +37,115 @@ xargs -P "${TEST_DB_JOBS:-12}" -L 1 bash -c '
     done
     run_one "${args[@]}"
 ' _ <<EOF
-player_pid_exhaustion $DB python3 tests/async/run_player_pid_exhaustion_journey.py --server SERVER_BINARY
-kept_character_ambiguous_commit $DB python3 tests/async/test_kept_character_ambiguous_commit.py --server SERVER_BINARY
-kept_character_approval $DB python3 tests/async/test_kept_character_approval_journey.py --backend mariadb --server SERVER_BINARY
-kept_character_competition $DB python3 tests/async/test_kept_character_competition.py --backend mariadb --server SERVER_BINARY
-kept_character $DB python3 tests/async/test_kept_character_journey.py --backend mariadb --server SERVER_BINARY
-kept_character_matrix $DB python3 tests/async/test_kept_character_matrix.py --backend mariadb --server SERVER_BINARY
-kept_character_chaos_matrix $DB python3 tests/async/test_kept_character_matrix.py --backend mariadb --server SERVER_BINARY --chaos
-kept_character_recovery $DB python3 tests/async/test_kept_character_recovery_journey.py --backend mariadb --server SERVER_BINARY
-kept_starter_grant $DB python3 tests/async/test_kept_starter_grant_journey.py --backend mariadb --server SERVER_BINARY
-kept_chaos_starter_grant $DB python3 tests/async/test_kept_starter_grant_journey.py --backend mariadb --server SERVER_BINARY --chaos --transport websocket
-artifact_owner_restart $DB python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server SERVER_BINARY
-divine_boon_zone $DB python3 tests/async/test_divine_boon_zone_journey.py --backend mariadb --server SERVER_BINARY
-epic_training_journey $DB python3 tests/async/test_mysql_epic_training_journey.py --server SERVER_BINARY
-locker_grant_journey $DB python3 tests/async/test_mysql_locker_grant_journey.py --server SERVER_BINARY
-nexus_journey $DB python3 tests/async/test_mysql_nexus_journey.py --server SERVER_BINARY
-hatred_journey $DB python3 tests/async/run_innate_hatred_journey.py --backend mariadb --server SERVER_BINARY
-epic_task_recovery_journey $DB python3 tests/async/test_epic_task_recovery_journey.py --server SERVER_BINARY
-epic_task_catalog $DB python3 tests/async/test_epic_task_catalog_mysql.py
-artifact_population_repository $DB python3 tests/async/test_artifact_population_repository.py
-world_recovery $DB python3 tests/async/run_world_recovery_journey.py SERVER_BINARY
-world_restart_crash $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY crash
-legacy_migration tests/async/run_legacy_migration_mysql.sh
-telemetry_repository $DB python3 tests/async/test_telemetry_repository.py --sql-fixture
-telemetry_schema_boot $DB python3 tests/async/run_telemetry_schema_boot_journey.py --server SERVER_BINARY
-telemetry_posthog_gameplay python3 tests/async/run_telemetry_player_journey.py --backend mariadb
-saved_item_allocator $DB python3 tests/async/run_saved_item_allocator_journey.py SERVER_BINARY
-mysql_combat $DB python3 tests/async/test_mysql_combat_journey.py --server SERVER_BINARY
-coin_denominations $DB python3 tests/async/test_mysql_coin_denomination_journey.py --server SERVER_BINARY
-account_recovery $DB python3 tests/async/test_account_recovery_mysql_journey.py --server SERVER_BINARY
-frag_cap $DB python3 tests/async/test_frag_cap_journey.py --backend mariadb --server SERVER_BINARY
 flight_network $DB python3 tests/async/test_flight_network_journey.py --backend mariadb --server SERVER_BINARY
-death_level_projection $DB python3 tests/async/run_death_level_projection_journey.py --backend mariadb --binary SERVER_BINARY --output bin/tests/db/death-level-projection
-world_restart_copyover $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY copyover
-world_restart_midcapture $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY midcapture
-world_restart_clean $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY restart
-world_restart_taken $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY taken
-world_restart_handover $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY handover
-world_restart_slowread $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY slowread
-saved_item_recovery $DB python3 tests/async/run_saved_item_recovery_journey.py SERVER_BINARY
-playtime $DB python3 tests/async/test_mysql_playtime_journey.py --server SERVER_BINARY
-rested_checkpoint $DB python3 tests/async/run_mysql_rested_checkpoint_journey.py --server SERVER_BINARY
-staff_poof $DB python3 tests/async/test_staff_poof_journey.py --server SERVER_BINARY
-runtime_compatibility tests/async/run_runtime_compatibility_mysql.sh
-runtime_compatibility_mariadb_11_8 env RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
-migration_runner_engines python3 tests/async/run_migration_runner_engines.py
-corpse_haul $DB python3 tests/async/run_corpse_haul_journey.py SERVER_BINARY
-corpse_haul_count_cap $DB python3 tests/async/run_corpse_haul_count_cap_journey.py SERVER_BINARY mariadb
-corpse_trap_restart $DB python3 tests/async/test_corpse_trap_restart_journey.py SERVER_BINARY mariadb
+locker_grant_journey $DB python3 tests/async/test_mysql_locker_grant_journey.py --server SERVER_BINARY
+artifact_owner_restart $DB python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server SERVER_BINARY
 legacy_traps $DB python3 tests/async/test_legacy_trap_journey.py SERVER_BINARY mariadb
-information_cache $DB python3 tests/async/test_information_cache_journey.py --backend mariadb --server SERVER_BINARY
-deletion $DB python3 tests/async/run_mysql_deletion_journey.py --server SERVER_BINARY
-hardcore_death $DB python3 tests/async/run_mysql_hardcore_death_journey.py --server SERVER_BINARY
-leaderboard_scoring $DB python3 tests/async/test_leaderboard_scoring.py
-stalled_writer tests/async/run_mysql_stalled_writer_journey.sh
-private_chest_purchase $DB python3 tests/async/run_private_chest_purchase_mysql.py
-game_loop_queries $DB python3 tests/async/test_mysql_game_loop_queries_journey.py --server SERVER_BINARY
-last_command_journey $DB python3 tests/async/run_last_command_journey.py --server SERVER_BINARY
-bank_restart $DB python3 tests/async/run_mysql_bank_restart_journey.py SERVER_BINARY
-idle_timeout $DB python3 tests/async/run_mysql_idle_timeout_journey.py SERVER_BINARY
-address_retention $DB python3 tests/async/run_address_retention_journey.py SERVER_BINARY
-level_cap $DB python3 tests/async/run_level_cap_mysql.py
-launcher_stop $DB python3 tests/async/run_launcher_stop_journey.py
-chaos_raise $DB python3 tests/async/run_chaos_raise_transient_journey.py SERVER_BINARY
-collector_intake $DB python3 tests/async/run_mysql_collector_intake_journey.py SERVER_BINARY
-world_writer_retry $DB python3 tests/async/run_world_writer_retry_journey.py SERVER_BINARY
-collector_repository tests/async/run_collector_repository_schema_mysql.sh
-account_bound_reward tests/async/run_account_bound_reward_schema_mysql.sh
-pet_repository tests/async/run_pet_repository_mysql.sh
-player_save_claim tests/async/run_player_save_claim_mysql.sh
-sql_pool_interrupt tests/async/run_sql_pool_interrupt_mysql.sh
-experience_trophy tests/async/run_experience_trophy_mysql.sh
-item_transfer tests/async/run_item_transfer_schema_mysql.sh
-collector_catalog tests/async/run_collector_catalog_schema_mysql.sh
-epic_zone_seed_mysql python3 tests/async/run_epic_zone_seed_mysql.py --image mysql:8.0
-epic_zone_seed_mariadb python3 tests/async/run_epic_zone_seed_mysql.py --image mariadb:11.4
-lookup_dataset tests/async/run_lookup_dataset_mysql.sh
-persistence_contract tests/async/run_persistence_contract_mysql.sh
-account_erasure tests/async/run_account_erasure_schema_mysql.sh
-immutable_migration_ledger tests/async/run_immutable_migration_ledger_mysql.sh
-corpse_persistence tests/async/run_corpse_persistence_schema_mysql.sh
-collector_item_owner tests/async/run_collector_item_owner_schema_mysql.sh
-output_preferences tests/async/run_output_preferences_mysql.sh
-personal_data_export tests/async/run_personal_data_export_schema_mysql.sh
-lifecycle_archive tests/async/run_lifecycle_archive_schema_mysql.sh
-telemetry_reports_mariadb python3 tests/async/run_telemetry_reports_mysql.py --image mariadb:10.11
-telemetry_reports_mysql python3 tests/async/run_telemetry_reports_mysql.py --image mysql:8.0
+mysql_combat $DB python3 tests/async/test_mysql_combat_journey.py --server SERVER_BINARY
+frag_cap $DB python3 tests/async/test_frag_cap_journey.py --backend mariadb --server SERVER_BINARY
+hatred_journey $DB python3 tests/async/run_innate_hatred_journey.py --backend mariadb --server SERVER_BINARY
+death_level_projection $DB python3 tests/async/run_death_level_projection_journey.py --backend mariadb --binary SERVER_BINARY --output bin/tests/db/death-level-projection
+epic_task_recovery_journey $DB python3 tests/async/test_epic_task_recovery_journey.py --server SERVER_BINARY
+kept_character_chaos_matrix $DB python3 tests/async/test_kept_character_matrix.py --backend mariadb --server SERVER_BINARY --chaos
+divine_boon_zone $DB python3 tests/async/test_divine_boon_zone_journey.py --backend mariadb --server SERVER_BINARY
+rested_checkpoint $DB python3 tests/async/run_mysql_rested_checkpoint_journey.py --server SERVER_BINARY
+nexus_journey $DB python3 tests/async/test_mysql_nexus_journey.py --server SERVER_BINARY
+world_recovery $DB python3 tests/async/run_world_recovery_journey.py SERVER_BINARY
+migration_runner_engines python3 tests/async/run_migration_runner_engines.py
+kept_character_matrix $DB python3 tests/async/test_kept_character_matrix.py --backend mariadb --server SERVER_BINARY
+epic_training_journey $DB python3 tests/async/test_mysql_epic_training_journey.py --server SERVER_BINARY
+telemetry_posthog_gameplay python3 tests/async/run_telemetry_player_journey.py --backend mariadb
+world_restart_crash $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY crash
+coin_denominations $DB python3 tests/async/test_mysql_coin_denomination_journey.py --server SERVER_BINARY
 critical_command_schema tests/async/run_critical_command_schema_mysql.sh
-combat_baseline_repair tests/async/run_combat_baseline_repair_mysql.sh
-collector_notification tests/async/run_collector_notification_mysql.sh
-boon_reward_zone $DB tests/async/run_boon_reward_zone_schema_mysql.sh
-divine_trade $DB tests/async/run_divine_trade_mysql.sh
-combat_outcome $DB tests/async/run_combat_outcome_schema_mysql.sh
-account_bank_delta tests/async/run_account_bank_delta_mysql.sh
-account_locker_conversion_check tests/async/run_account_locker_conversion_check_mysql.sh
-legacy_personal_locker_access_repair tests/async/run_legacy_personal_locker_access_repair_mysql.sh
-player_replacement_state tests/async/run_player_replacement_state_mysql.sh
-epic_transaction $DB tests/async/run_epic_transaction_schema_mysql.sh
-epic_stone_transaction $DB python3 tests/async/test_epic_stone_transaction.py
-auction_transaction $DB tests/async/run_auction_transaction_schema_mysql.sh
+corpse_trap_restart $DB python3 tests/async/test_corpse_trap_restart_journey.py SERVER_BINARY mariadb
+playtime $DB python3 tests/async/test_mysql_playtime_journey.py --server SERVER_BINARY
+deletion $DB python3 tests/async/run_mysql_deletion_journey.py --server SERVER_BINARY
+stalled_writer tests/async/run_mysql_stalled_writer_journey.sh
+staff_poof $DB python3 tests/async/test_staff_poof_journey.py --server SERVER_BINARY
+kept_character_recovery $DB python3 tests/async/test_kept_character_recovery_journey.py --backend mariadb --server SERVER_BINARY
+account_recovery $DB python3 tests/async/test_account_recovery_mysql_journey.py --server SERVER_BINARY
+saved_item_allocator $DB python3 tests/async/run_saved_item_allocator_journey.py SERVER_BINARY
+saved_item_recovery $DB python3 tests/async/run_saved_item_recovery_journey.py SERVER_BINARY
+kept_starter_grant $DB python3 tests/async/test_kept_starter_grant_journey.py --backend mariadb --server SERVER_BINARY
+legacy_migration tests/async/run_legacy_migration_mysql.sh
+kept_character_approval $DB python3 tests/async/test_kept_character_approval_journey.py --backend mariadb --server SERVER_BINARY
+kept_chaos_starter_grant $DB python3 tests/async/test_kept_starter_grant_journey.py --backend mariadb --server SERVER_BINARY --chaos --transport websocket
+world_restart_midcapture $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY midcapture
+corpse_haul $DB python3 tests/async/run_corpse_haul_journey.py SERVER_BINARY
+world_restart_copyover $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY copyover
+last_command_journey $DB python3 tests/async/run_last_command_journey.py --server SERVER_BINARY
+game_loop_queries $DB python3 tests/async/test_mysql_game_loop_queries_journey.py --server SERVER_BINARY
+information_cache $DB python3 tests/async/test_information_cache_journey.py --backend mariadb --server SERVER_BINARY
+chaos_raise $DB python3 tests/async/run_chaos_raise_transient_journey.py SERVER_BINARY
+world_restart_handover $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY handover
+corpse_haul_count_cap $DB python3 tests/async/run_corpse_haul_count_cap_journey.py SERVER_BINARY mariadb
+world_restart_taken $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY taken
+idle_timeout $DB python3 tests/async/run_mysql_idle_timeout_journey.py SERVER_BINARY
+runtime_compatibility tests/async/run_runtime_compatibility_mysql.sh
 auction_list $DB python3 tests/async/run_auction_list_journey.py --server SERVER_BINARY
 artifact_guild $DB tests/async/run_artifact_guild_schema_mysql.sh
-statistics $DB bash tests/async/run_statistics_mysql.sh
+world_restart_clean $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY restart
+combat_outcome $DB tests/async/run_combat_outcome_schema_mysql.sh
+collector_intake $DB python3 tests/async/run_mysql_collector_intake_journey.py SERVER_BINARY
+player_save_claim tests/async/run_player_save_claim_mysql.sh
+kept_character_ambiguous_commit $DB python3 tests/async/test_kept_character_ambiguous_commit.py --server SERVER_BINARY
+world_writer_retry $DB python3 tests/async/run_world_writer_retry_journey.py SERVER_BINARY
+kept_character_competition $DB python3 tests/async/test_kept_character_competition.py --backend mariadb --server SERVER_BINARY
+player_pid_exhaustion $DB python3 tests/async/run_player_pid_exhaustion_journey.py --server SERVER_BINARY
+divine_trade $DB tests/async/run_divine_trade_mysql.sh
+world_restart_slowread $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY slowread
+address_retention $DB python3 tests/async/run_address_retention_journey.py SERVER_BINARY
+kept_character $DB python3 tests/async/test_kept_character_journey.py --backend mariadb --server SERVER_BINARY
+auction_transaction $DB tests/async/run_auction_transaction_schema_mysql.sh
+runtime_compatibility_mariadb_11_8 env RUNTIME_DB_IMAGE=mariadb:11.8 tests/async/run_runtime_compatibility_mysql.sh
+experience_trophy tests/async/run_experience_trophy_mysql.sh
+boon_reward_zone $DB tests/async/run_boon_reward_zone_schema_mysql.sh
+epic_stone_transaction $DB python3 tests/async/test_epic_stone_transaction.py
+item_transfer tests/async/run_item_transfer_schema_mysql.sh
+epic_transaction $DB tests/async/run_epic_transaction_schema_mysql.sh
+hardcore_death $DB python3 tests/async/run_mysql_hardcore_death_journey.py --server SERVER_BINARY
+bank_restart $DB python3 tests/async/run_mysql_bank_restart_journey.py SERVER_BINARY
 session_audit $DB tests/async/run_session_audit_schema_mysql.sh
-last_command $DB python3 tests/async/test_last_command.py --mysql
-artifact_mana tests/async/run_artifact_mana_mysql.sh
+collector_repository tests/async/run_collector_repository_schema_mysql.sh
+output_preferences tests/async/run_output_preferences_mysql.sh
+epic_zone_seed_mysql python3 tests/async/run_epic_zone_seed_mysql.py --image mysql:8.0
+statistics $DB bash tests/async/run_statistics_mysql.sh
 player_load_repository $DB tests/async/run_player_load_repository_mysql.sh
-character_rename_references $DB tests/async/run_character_rename_references_mysql.sh
+pet_repository tests/async/run_pet_repository_mysql.sh
+artifact_population_repository $DB python3 tests/async/test_artifact_population_repository.py
+collector_notification tests/async/run_collector_notification_mysql.sh
+combat_baseline_repair tests/async/run_combat_baseline_repair_mysql.sh
+collector_catalog tests/async/run_collector_catalog_schema_mysql.sh
+epic_zone_seed_mariadb python3 tests/async/run_epic_zone_seed_mysql.py --image mariadb:11.4
+account_bound_reward tests/async/run_account_bound_reward_schema_mysql.sh
+level_cap $DB python3 tests/async/run_level_cap_mysql.py
+telemetry_repository $DB python3 tests/async/test_telemetry_repository.py --sql-fixture
+telemetry_schema_boot $DB python3 tests/async/run_telemetry_schema_boot_journey.py --server SERVER_BINARY
+persistence_contract tests/async/run_persistence_contract_mysql.sh
 account_character_identity $DB tests/async/run_account_character_identity_mysql.sh
 account_character_projection $DB tests/async/run_account_character_projection_mysql.sh
+account_bank_delta tests/async/run_account_bank_delta_mysql.sh
+legacy_personal_locker_access_repair tests/async/run_legacy_personal_locker_access_repair_mysql.sh
+character_rename_references $DB tests/async/run_character_rename_references_mysql.sh
+sql_pool_interrupt tests/async/run_sql_pool_interrupt_mysql.sh
+corpse_persistence tests/async/run_corpse_persistence_schema_mysql.sh
+lifecycle_archive tests/async/run_lifecycle_archive_schema_mysql.sh
+personal_data_export tests/async/run_personal_data_export_schema_mysql.sh
+player_replacement_state tests/async/run_player_replacement_state_mysql.sh
+lookup_dataset tests/async/run_lookup_dataset_mysql.sh
+account_locker_conversion_check tests/async/run_account_locker_conversion_check_mysql.sh
+immutable_migration_ledger tests/async/run_immutable_migration_ledger_mysql.sh
+account_erasure tests/async/run_account_erasure_schema_mysql.sh
+telemetry_reports_mysql python3 tests/async/run_telemetry_reports_mysql.py --image mysql:8.0
+last_command $DB python3 tests/async/test_last_command.py --mysql
+collector_item_owner tests/async/run_collector_item_owner_schema_mysql.sh
+leaderboard_scoring $DB python3 tests/async/test_leaderboard_scoring.py
+artifact_mana tests/async/run_artifact_mana_mysql.sh
+epic_task_catalog $DB python3 tests/async/test_epic_task_catalog_mysql.py
+private_chest_purchase $DB python3 tests/async/run_private_chest_purchase_mysql.py
+telemetry_reports_mariadb python3 tests/async/run_telemetry_reports_mysql.py --image mariadb:10.11
+launcher_stop $DB python3 tests/async/run_launcher_stop_journey.py
 EOF
 status=$?
 run_one world_capture "$DB" python3 tests/async/test_mysql_world_capture_journey.py \

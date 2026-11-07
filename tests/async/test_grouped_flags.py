@@ -83,6 +83,7 @@ for line in (SRC / "bard.c").read_text(encoding="utf-8").splitlines():
         harness += line + "\n"
 harness += extract_function("bard.c", "static int song_area_roll(") + "\n"
 harness += extract_function("utility.c", "bool grouped(P_char ch,") + "\n"
+harness += extract_function("utility.c", "static bool should_area_hit_with_position(") + "\n"
 harness += extract_function("utility.c", "bool should_area_hit(P_char ch,") + "\n"
 harness += "\n".join(wrappers)
 harness += r'''

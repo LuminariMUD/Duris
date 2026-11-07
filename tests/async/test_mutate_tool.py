@@ -68,10 +68,12 @@ with tempfile.TemporaryDirectory(prefix="mutate-tool-") as temporary:
     tools = root / "tools"
     tools.mkdir()
     for tool in ("g++", "python3", "as", "ld"):
-        # The tool itself, not a ccache link to it (this machine has /usr/lib/ccache first).
+        # The tool itself, not a ccache link to it (this machine has /usr/lib/ccache first),
+        # nor the wrapper that the regression runner puts first.
         found = next(Path(directory) / tool for directory in os.environ["PATH"].split(os.pathsep)
                      if (Path(directory) / tool).is_file() and
-                     Path(os.path.realpath(Path(directory) / tool)).name != "ccache")
+                     Path(os.path.realpath(Path(directory) / tool)).name != "ccache" and
+                     Path(directory).resolve() != ROOT / "scripts/mutate")
         os.symlink(found, tools / tool)
     (root / "a.c").write_text("int b();\nint main() { return b(); }\n")
     (root / "b.c").write_text("int b() { return 0; }\n")

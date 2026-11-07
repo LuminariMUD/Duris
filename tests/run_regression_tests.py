@@ -21,10 +21,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TEST_DIRECTORY = ROOT / "tests" / "async"
-MAX_AUTOMATIC_JOBS = 8
+MAX_AUTOMATIC_JOBS = 16
 # A test still running at its deadline is ended with its process group and counted as a
 # failure. A pooled test may first build a server artifact (about three minutes).
-# Long gameplay journeys run in a separate phase with their own deadline.
+# Long gameplay journeys have a deadline of their own.
 POOLED_DEADLINE_SECONDS = 900
 JOURNEY_DEADLINE_SECONDS = 1800
 # How often a line names the tests still running.
@@ -137,14 +137,27 @@ def discover_tests(match: str | None) -> list[Path]:
     return tests
 
 
+def longest_first(tests: list[Path]) -> list[Path]:
+    """Order tests by their last time in bin/test-history, longest first, so that a long test
+    does not start late and hold the run open alone. A test with no time goes first."""
+    seconds: dict[str, float] = {}
+    for record in sorted((ROOT / "bin/test-history").glob("*.json")):
+        try:
+            for test in json.loads(record.read_text())["tests"]:
+                seconds[test["path"]] = test["seconds"]
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return sorted(tests, key=lambda path: -seconds.get(relative(path), float("inf")))
+
+
 def automatic_jobs() -> int:
     return min(MAX_AUTOMATIC_JOBS, max(1, os.cpu_count() or 1))
 
 
-def partition_tests(tests: list[Path]) -> tuple[list[Path], list[Path]]:
-    parallel = [path for path in tests if path.name not in RESOURCE_INTENSIVE_TEST_NAMES]
-    resource_intensive = [path for path in tests if path.name in RESOURCE_INTENSIVE_TEST_NAMES]
-    return parallel, resource_intensive
+def deadline_for(path: Path) -> float:
+    if path.name in RESOURCE_INTENSIVE_TEST_NAMES:
+        return JOURNEY_DEADLINE_SECONDS
+    return POOLED_DEADLINE_SECONDS
 
 
 # The tests now running, so that a runner that is stopped can end them too; once it is
@@ -222,7 +235,7 @@ def parse_args() -> argparse.Namespace:
         "--jobs",
         type=int,
         default=0,
-        help="parallel workers (0: automatic, capped at 8)",
+        help="parallel workers (0: automatic, capped at 16)",
     )
     parser.add_argument(
         "--match",
@@ -282,17 +295,28 @@ def main() -> int:
         return 2
 
     os.environ.setdefault("DURIS_REGRESSION_BUILD_CACHE", str(ROOT / "bin/regression-artifacts"))
+    # Nearly every harness compiles its sources and links in one g++ command, which ccache
+    # cannot cache: most of the suite's time went to compiling the same sources again.
+    # scripts/mutate/g++ splits such a command into a cached compile per source and a link,
+    # with the flags and diagnostics unchanged. Coverage's g++ has to see every compile.
+    if "COVERAGE_DATA" not in os.environ:
+        os.environ["PATH"] = f"{ROOT / 'scripts/mutate'}{os.pathsep}{os.environ.get('PATH', '')}"
+        os.environ.setdefault("CCACHE_DIR", str(ROOT / "bin/test-ccache"))
+        os.environ.setdefault("CCACHE_MAXSIZE", "10G")
+        # Harnesses are written to random directories. Their path reaches only __FILE__
+        # (assertion text) and debug information, so it must not defeat the cache.
+        os.environ.setdefault("CCACHE_SLOPPINESS", "file_macro")
+        os.environ.setdefault("CCACHE_NOHASHDIR", "1")
     jobs = args.jobs or automatic_jobs()
-    parallel_tests, resource_intensive_tests = partition_tests(tests)
+    # One pool, longest first: the long journeys start at once and the short tests fill
+    # the workers around them, where a separate journey phase ran after the last short test.
+    ordered = longest_first(tests)
     started = time.monotonic()
     started_utc = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     failures: list[TestResult] = []
     results: list[TestResult] = []
     completed_count = 0
-    print(
-        f"Running {len(tests)} Python regression tests with {jobs} worker(s), "
-        f"then {len(resource_intensive_tests)} journey(s) with {jobs} worker(s)"
-    )
+    print(f"Running {len(tests)} Python regression tests with {jobs} worker(s), longest first")
 
     def report(result: TestResult) -> None:
         nonlocal completed_count
@@ -315,11 +339,11 @@ def main() -> int:
             print(f"--- {relative(result.path)} output ---")
             print(result.output.rstrip() or "(no output)", flush=True)
 
-    def run_all(paths: list[Path], workers: int, deadline: float) -> None:
+    def run_all(paths: list[Path], workers: int) -> None:
         with ThreadPoolExecutor(max_workers=workers) as executor:
             try:
                 futures: dict[Future[TestResult], Path] = {
-                    executor.submit(run_test, path, deadline): path for path in paths
+                    executor.submit(run_test, path, deadline_for(path)): path for path in paths
                 }
                 pending = set(futures)
                 last_progress = time.monotonic()
@@ -337,9 +361,7 @@ def main() -> int:
                 stop_running_tests()
                 raise
 
-    run_all(parallel_tests, jobs, POOLED_DEADLINE_SECONDS)
-    # Journeys also compile helpers, so keep their work inside the requested limit.
-    run_all(resource_intensive_tests, jobs, JOURNEY_DEADLINE_SECONDS)
+    run_all(ordered, jobs)
 
     write_history(results, started_utc, args.match, jobs)
     if failures:
