@@ -459,7 +459,7 @@ int main() {
 }
 '''
 
-callbacks = '\n'.join(function(ROOT / 'src/specs/specs.underworld.c', signature) for signature in (
+callbacks = function(ROOT / 'src/net/comm.c', 'void act_trio(') + '\n' + '\n'.join(function(ROOT / 'src/specs/specs.underworld.c', signature) for signature in (
     'void event_tsunamiwave(', 'int SeaKingdom_Tsunami(', 'int deflect_ioun('))
 callbacks += '\n' + function(ROOT / 'src/specs/specs.object.c', 'int living_necroplasm(')
 callbacks += '\n' + '\n'.join(function(ROOT / 'src/magic/magic.c', signature) for signature in (

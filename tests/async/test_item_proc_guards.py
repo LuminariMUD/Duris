@@ -96,7 +96,7 @@ int main()
 
 
 def main():
-    production = "\n".join(extract_function("specs.object.c", signature) for signature in (
+    production = extract_function("comm.c", "void act_trio(") + "\n".join(extract_function("specs.object.c", signature) for signature in (
         "P_char melee_proc_target(",
         "struct proc_data *defense_proc_data(",
         "int mace_of_sea(",

@@ -818,6 +818,7 @@ void initialize_logs(P_char ch, bool reset_logs);
 void clear_logs(P_char);
 void act(const char *, int, P_char, P_obj, void *, int);
 void act(const char *, int, P_char, P_obj, void *, int, const OutputContext &);
+void act_trio(const char *, const char *, const char *, int, P_char, P_obj, P_char);
 void close_socket(P_desc);
 void close_sockets(int);
 int is_desc_valid(P_desc);

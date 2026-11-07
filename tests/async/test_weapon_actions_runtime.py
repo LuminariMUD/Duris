@@ -46,6 +46,7 @@ callbacks = "\n".join([
     function(ROOT / "src/combat/training_dummy.c", "bool training_dummy_is(P_char ch)"),
     function(ROOT / "src/world/handler.c", "bool isname(const char *str, const char *namelist)"),
     function(ROOT / "src/cmd/interp.c", "bool special(P_char ch, int cmd, char *arg)"),
+    function(ROOT / "src/net/comm.c", "void act_trio("),
     function(ROOT / "src/specs/specs.object.c", "P_char melee_proc_target("),
     function(ROOT / "src/specs/specs.underworld.c", "void resolve_avernus_drain("),
     function(ROOT / "src/specs/specs.underworld.c", "int avernus("),

@@ -143,6 +143,7 @@ def production():
         ("magic.c", "static int entangle_duration("),
         ("magic.c", "void spell_entangle("),
         ("beh_magic.c", "void spell_beholder_paralyze("),
+        ("comm.c", "void act_trio("),
         ("specs.object.c", "struct proc_data *defense_proc_data("),
         ("specs.object.c", "int imprison_armor("),
         ("specs.mobile.c", "int plant_attacks_paralysis("),

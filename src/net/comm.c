@@ -5704,6 +5704,15 @@ void act(const char *str, int hide_invisible, P_char ch, P_obj obj, void *vict_o
 	act(str, hide_invisible, ch, obj, vict_obj, type, OutputContext{});
 }
 
+// One message each to ch, to vict, and to everyone else in the room.
+void act_trio(const char *to_char, const char *to_vict, const char *to_room, int hide_invisible,
+	      P_char ch, P_obj obj, P_char vict)
+{
+	act(to_char, hide_invisible, ch, obj, vict, TO_CHAR);
+	act(to_vict, hide_invisible, ch, obj, vict, TO_VICT);
+	act(to_room, hide_invisible, ch, obj, vict, TO_NOTVICT);
+}
+
 void act(const char *str, int hide_invisible, P_char ch, P_obj obj, void *vict_obj, int type,
 	 const OutputContext &context)
 {

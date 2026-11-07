@@ -30,6 +30,7 @@ for filename, signatures in [
                 "void send_to_char(const char *messg, P_char ch, int log, const OutputContext &context)",
                 "void act(const char *str, int hide_invisible, P_char ch, P_obj obj, void *vict_obj, int type)",
                 "void act(const char *str, int hide_invisible, P_char ch, P_obj obj, void *vict_obj, int type,",
+                "void act_trio(",
                 "void format_to_snoopers(char *from_string, char *to_string)\n{"]),
     ("modify.c", ["char *next_page(", "void free_paging_data(", "void show_string(", "void page_string_real("]),
     ("actcomm.c", ["void do_tell(", "void do_reply(", "int say(", "void do_gcc(", "void do_whisper(", "void do_ask("]),
