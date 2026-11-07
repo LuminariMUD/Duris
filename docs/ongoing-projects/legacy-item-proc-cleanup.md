@@ -94,7 +94,7 @@ Normalizations to take while converting:
 
 - `cmd / 1000` and the `dam` local it fills go away. `bel_sword` reuses `dam` for real damage, so it gets its own local.
 - A missing living-wielder or custody test is gained. Only the weapon that just hit receives the event, so this is invisible.
-- A victim taken from `GET_OPPONENT(ch)` or `ParseTarget` becomes the hit's payload. In melee these are the same character, and it ends the text parsing of a pointer (opportunity 7).
+- A victim taken from `GET_OPPONENT(ch)` or `ParseTarget` becomes the hit's payload. This ends the text parsing of a pointer (opportunity 7). The two differ only when a grapple misfire in `hit()` redirects an already-fighting attacker's swing onto the grappler without changing `GET_OPPONENT`. The proc then strikes the character the weapon actually hit, which is the consistent rule for a rare corner case.
 - A victim that was only null-checked also gets the liveness test. A dead character is not being hit.
 - A roll made before the target test moves after it.
 - `if (cmd == CMD_SET_PERIODIC) return FALSE;` preambles go, because the helper already refuses that event. Procs that return true there to schedule a periodic effect keep it.
