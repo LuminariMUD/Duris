@@ -703,9 +703,9 @@ def verify_recovered_loot(port: int) -> None:
         client.close()
 
 
-def build_flatfile_server(build_root: pathlib.Path) -> pathlib.Path:
+def build_flatfile_server(build_root: pathlib.Path, *, real_clock: bool = False) -> pathlib.Path:
     """Acquire the shared artifact while retaining journey-owned runtime state."""
-    return server_build_artifacts.build_flatfile_server(build_root)
+    return server_build_artifacts.build_flatfile_server(build_root, real_clock=real_clock)
 
 
 def run_journey(binary: pathlib.Path, reset_coins: bool = False,

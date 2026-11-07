@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""The g++ of scripts/mutate.py, first on its PATH.
+"""The g++ of scripts/mutate.py and tests/run_regression_tests.py, first on their PATH.
 
 A harness builds with one command that compiles several sources and links them, which
 ccache cannot cache. This splits such a command into one ccache compile per source and a
-link, so a mutant recompiles only the file it changed (and the harness, written afresh).
-Every other command goes to ccache, or to the real g++, unchanged. Without ccache it runs
-the real g++ directly: uncached, but right.
+link, so a mutant recompiles only the file it changed (and the harness, written afresh), and a
+source that many tests build compiles once. Every other command goes to ccache, or to the
+real g++, unchanged. Without ccache it runs the real g++ directly: uncached, but right.
 """
 import os
 import shutil
@@ -13,12 +13,23 @@ import subprocess
 import sys
 import tempfile
 
-# The real g++: past this directory and past a directory of ccache's g++ links, which would
-# look the compiler up on PATH again and find this wrapper.
-here = os.path.dirname(os.path.abspath(__file__))
+# The real g++: past every copy of this wrapper (the runner's, then a mutant tree's inside a
+# test) and past a directory of ccache's g++ links, which would look the compiler up on PATH
+# again and find this wrapper.
+MARK = b"The g++ of scripts/mutate.py and tests/run_regression_tests.py"
+
+
+def is_wrapper(path):
+    try:
+        with open(path, "rb") as candidate:
+            return MARK in candidate.read(256)
+    except OSError:
+        return False
+
+
 search = os.pathsep.join(
     p for p in os.environ.get("PATH", "").split(os.pathsep)
-    if p and os.path.abspath(p) != here and
+    if p and not is_wrapper(os.path.join(p, "g++")) and
     os.path.basename(os.path.realpath(os.path.join(p, "g++"))) != "ccache")
 real = shutil.which("g++", path=search)
 cached = [ccache] if (ccache := shutil.which("ccache", path=search)) else []
@@ -49,7 +60,7 @@ while index < len(args):
               or arg.endswith((".o", ".a", ".so"))):
         compile_flags.append(arg)
     index += 1
-if not sources:
+if not sources or not cached:
     os.execv(real, [real, *args])
 
 with tempfile.TemporaryDirectory(prefix="mutate-objects-") as objects:
