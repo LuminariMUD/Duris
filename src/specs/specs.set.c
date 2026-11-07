@@ -1,6 +1,6 @@
 /*****************************************************************************
- *  File: specs.zalrix.c   (Part of Duris)                                   *
- *  Usage: special procedures by Zalrix                                      *
+ *  File: specs.set.c   (Part of Duris)                                      *
+ *  Usage: named and random equipment set procedures                         *
  *  Copyright  1990, 1991 - see 'license.doc' for complete information.      *
  *  Copyright 1994 - 2008 - Duris Systems Ltd.                               *
  *****************************************************************************/
@@ -29,27 +29,13 @@
    external variables
  */
 
-extern P_char character_list;
-extern P_desc descriptor_list;
-extern P_index mob_index;
 extern P_index obj_index;
 extern P_room world;
-extern char *coin_names[];
-extern char *command[];
-extern const char *dirs[];
-// extern const char rev_dir[];
-extern const struct stat_data stat_factor[];
-extern int innate_abilities[];
-extern int planes_room_num[];
-extern int top_of_zone_table;
 extern Skill skills[];
 extern bool has_skin_spell(P_char);
 void bard_dragons(int, P_char, P_char, int);
 void event_balance_affects(P_char, P_char, P_obj, void *);
 void event_object_proc(P_char, P_char, P_obj, void *);
-extern struct command_info cmd_info[MAX_CMD_LIST];
-extern struct dex_app_type dex_app[52];
-extern struct time_info_data time_info;
 extern struct zone_data *zone;
 extern struct zone_data *zone_table;
 

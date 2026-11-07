@@ -88,8 +88,6 @@ void bard_cowardice(int, P_char, P_char, int);
 void bard_calm(int, P_char, P_char, int);
 void bard_dragons(int, P_char, P_char, int);
 
-void event_balance_affects(P_char, P_char, P_obj, void *);
-void event_object_proc(P_char, P_char, P_obj, void *);
 extern bool has_skin_spell(P_char);
 void unmulti(P_char ch, P_obj obj);
 int unmulti_altar(P_obj obj, P_char ch, int cmd, char *arg);
