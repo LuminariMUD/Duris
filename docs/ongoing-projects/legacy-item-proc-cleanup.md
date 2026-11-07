@@ -12,9 +12,15 @@ Keep this table current; a new session should be able to resume from it alone. P
 | 1. Dead code | `proc-cleanup/dead-code` | #774 | Ready for review |
 | 2. `CheckMultiProcTiming` removal and `lightning_sword` activation | `proc-cleanup/multiproc-timing` | #775 | Ready for review |
 | 3a. Pilot: event guards (`melee_proc_target`, `defense_proc_data`) in `specs.object.c` and `specs.underworld.c` | `proc-cleanup/pilot-helpers` | #776 | Ready for review |
-| 3b. Pilot: `act_trio` in the same two files | `proc-cleanup/pilot-act-trio` | (opening) | Ready for review |
+| 3b. Pilot: `act_trio` in the same two files | `proc-cleanup/pilot-act-trio` | #779 | Ready for review |
 | 3c. Pilot: `periodic_stoneskin` and the cloak/ioun deflection merge | `proc-cleanup/pilot-stoneskin-deflect` | (opening) | Ready for review |
-| 3d. Owner review of the converted pilot files before the sweep | — | — | Blocks step 4 |
+| 3d. Owner review of the converted pilot files before the sweep | — | — | **Waiting on the owner; blocks step 4** |
+| 4. Sweep of the remaining spec files | — | — | Not started (after 3d) |
+| 5. Payload parsing defects | `proc-cleanup/payload-parsing` (on 3a) | #777 | Ready for review |
+| 6a. Set execution moved to `specs.set.c` | `proc-cleanup/set-move` (on 3c) | (opening) | Ready for review |
+| 6b. `weapon_proc` packed spells | `proc-cleanup/weapon-proc` (on the plan PR) | #778 | Ready for review |
+
+Merge order: #773 → #774 → #775 → #776 → #779 → 3c → 6a; #777 after #776; #778 after #773. Retarget each PR's base to `master` as the one below it merges.
 
 Decisions made while working:
 
@@ -26,6 +32,11 @@ Decisions made while working:
 - **`act_trio` (3b)** merged 107 consecutive `TO_CHAR`/`TO_VICT`/`TO_NOTVICT` trios with the same hide flag, actor, object, and victim. They were found by a statement-level script (`act(` statements on their own lines, adjacent, six arguments, no `ACT_*` flags), so trios with flags, a null victim, or something between the calls stay as plain `act`. When all three texts are identical, the literal is hoisted to a named local (`kvasir_dagger`, `bloodfeast`, `sunblade`, `mankiller`). When two of them match (22 cases), the literal is simply passed twice, as before. Tests that compile a converted callback must also extract `void act_trio(` from `comm.c`.
 - **`periodic_stoneskin` (3c)** takes the wearer as a parameter (`bool periodic_stoneskin(P_obj obj, P_char ch, int level, int interval)`), because each item finds its wearer differently. It has seven callers, not nine: the `bloodfeast` block and the second shadow-globe block were in the deleted `THARKUN_ARTIS` halves. `dragonlord_plate` stays explicit, because it tests `affected_by_spell(SPELL_STONE_SKIN)` rather than `has_skin_spell`, which is a different rule.
 - **Deflection (3c)** is the static `deflect_spell()` in `specs.underworld.c`. Both callbacks now use `defense_proc_data`; the ioun keeps its native route first.
+- **Payload defects (5).** `proc_whirlwinds` was not a defect: `cmd == CMD_TAP &&` short-circuits before it parses. `rapier_penetration` has the same `ParseTarget` shape, but nothing binds it (its assignment is commented out), so it belongs to the winterhaven sweep, most likely as a deletion. `test_item_proc_payloads.py` fails with an ASan heap-buffer-overflow before the fix.
+- **`weapon_proc` (6b)** keeps the legacy sparse-slot count quirk and the reverse cast order, both pinned by `packed_parity()`. Making sparse slots "work" would turn on spells that never fired.
+- **Set move (6a).** The moved helpers stay non-static: five test harnesses extract and stub `random_set`, `apply_zone_spell`, and `check_zone_spells` by their current signatures. `test_world_quest_target_retries.py` used to compile `specs.set.c` whole for `master_set`; it now extracts `master_set` and its tables, like the rest of the set code. The named-set wear journey needs the prepared `bin/tests/named-set-roster-world` runtime, which does not exist on this machine. The move was proved with the full build, the four `test_named_set_*` tests, and `test_flatfile_full_world_boot.py`.
+- **Stale journeys.** `toggle boon` now replies "Divine Boons apply automatically…", so `run_weapon_actions_journey.py`, `run_device_actions_journey.py`, and `run_falling_skills_journey.py` timed out at setup. #778 fixes the expected line. Until it merges, apply that one-line change locally before running those journeys on another branch.
+- **Pilot real-server results.** On a flatfile build of 3a + 3b, `mace_of_sea` fired 7 times in 229 weapon hits, and the Avernus journey (`--family avernus --case off-hold`) passed.
 - **Tests that compile converted callbacks** must extract the helpers too: `test_world_quest_target_retries.py`, `test_word_output_integration.py`, `test_weapon_actions_runtime.py` (`melee_proc_target`), and `test_freedom_of_movement_procs.py` (`defense_proc_data`; its fixture now wears the armor). `test_item_proc_guards.py` covers the helper contracts plus `mace_of_sea` and `generic_parry_proc`.
 - **Real-server checks** use a flatfile build (`make -C src PERSISTENCE_BACKEND=flatfile DMS_BINARY=$PWD/bin/server/dms_flatfile`) and the fixture from `run_weapon_actions_journey.py`: rename the Avernus fixture vnum to the item under test (the sentinel wields it against the player) and count the victim message over a long fight. The script used is not committed; it is a few lines around `configure()` and `MudClient`.
 - **Commented-out code** was removed from the item-proc spec files (`specs.object.c`, `specs.underworld.c`, `specs.winterhaven.c`, `specs.undermountain.c`, `specs.zion.c`, `specs.ioun.c`, `specs.vecna.c`): block comments of four or more lines holding three or more statements, plus the three commented `CheckMultiProcTiming` terms. Mob, room, and assignment files were left for their own sweeps. A comment-stripped preprocessor diff of each file showed that only the intended dead blocks changed.
