@@ -539,6 +539,9 @@ def main():
     focus.add_argument('--reconnect-only', action='store_true',
                        help='qualify socket reconnect with a live paid-flight passenger')
     args = parser.parse_args()
+    if args.interruptions_only:
+        # Exit through run()'s cleanup when the route journey stops this child.
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     subprocess.run(['make', 'world'], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     (ROOT / 'bin/tests').mkdir(parents=True, exist_ok=True)
     interruptions = None
@@ -550,7 +553,11 @@ def main():
                  *(['--server', str(args.server)] if args.server else [])]
         if args.backend == 'mariadb':
             child.insert(0, str(ROOT / 'tests/async/with_disposable_mariadb.sh'))
-        interruptions = subprocess.Popen(child, cwd=ROOT)
+        # The MariaDB wrapper's bash defers SIGTERM until its command ends, so that leg
+        # gets its own process group and the signal reaches the Python child directly.
+        # A flat-file child stays in this group, where the runner's deadline kill reaches it.
+        interruptions = subprocess.Popen(child, cwd=ROOT,
+                                         process_group=0 if args.backend == 'mariadb' else None)
     try:
         with tempfile.TemporaryDirectory(prefix='flight-build-', dir=ROOT / 'bin/tests') as temporary:
             build = Path(temporary)
@@ -563,8 +570,11 @@ def main():
                 skip_interruptions=interruptions is not None)
     except BaseException:
         if interruptions:
-            # SIGTERM, so that a MariaDB leg's wrapper still removes its container.
-            interruptions.terminate()
+            # SIGTERM, so that the child and a MariaDB leg's wrapper still clean up.
+            if args.backend == 'mariadb':
+                os.killpg(interruptions.pid, signal.SIGTERM)
+            else:
+                interruptions.terminate()
             interruptions.wait()
         raise
     if interruptions:
