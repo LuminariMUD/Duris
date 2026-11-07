@@ -10,7 +10,7 @@ import tempfile
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
-objects = source("specs.object.c").read_text()
+objects = source("specs.set.c").read_text()
 prefix = objects[objects.index("typedef int (*set_func)"):objects.index("#define SETMSG_NONE")]
 sets = objects[objects.index("struct set_data\n"):objects.index("int set_proc(", objects.index("struct set_data\n"))]
 harness = r'''
@@ -105,9 +105,9 @@ bool nevent_reschedule_after(nevent_handle handle,unsigned long long delay) {
 }
 ''' + extract_function("utility.c", "string strip_ansi(") + \
     extract_function("affects.c", "struct affected_type *get_spell_from_char(") + \
-    prefix + extract_function("specs.object.c", "// Random zone eq spellups") + \
-    extract_function("specs.object.c", "int random_set(") + sets + \
-    extract_function("specs.object.c", "int set_proc(") + r'''
+    prefix + extract_function("specs.set.c", "// Random zone eq spellups") + \
+    extract_function("specs.set.c", "int random_set(") + sets + \
+    extract_function("specs.set.c", "int set_proc(") + r'''
 static void clear_marker(obj_data &object) {
     while(object.ex_description) {
         auto *entry=object.ex_description; object.ex_description=entry->next;

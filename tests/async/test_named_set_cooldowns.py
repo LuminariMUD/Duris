@@ -99,8 +99,8 @@ functions = ''.join(extract_function('affects.c', signature) for signature in (
     'void event_short_affect(', 'struct affected_type *affect_to_char(',
     'void affect_remove(', 'void affect_from_char(', 'bool affected_by_spell(',
     'struct affected_type *get_spell_from_char(', 'bool affected_by_skill('))
-functions += extract_function('specs.object.c', 'static void grant_dragons_to_group(')
-functions += extract_function('specs.object.c', 'void apply_zone_spell(')
+functions += extract_function('specs.set.c', 'static void grant_dragons_to_group(')
+functions += extract_function('specs.set.c', 'void apply_zone_spell(')
 magic = source('magic.c').read_text()
 start = magic.index('// Select active types before removal:')
 end = magic.index('\n\t\tsuccess = CheckMobRemoveableSpellBits', start)

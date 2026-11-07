@@ -36,8 +36,8 @@ bool has_skin_spell(P_char) { return false; }
 void spell_stone_skin(int level, P_char ch, char *arg, int type, P_char victim, P_obj obj) {
     record_cast(level, ch, arg, type, victim, obj);
 }
-""" + extract_function("specs.object.c", "static void grant_dragons_to_group(") + \
-    extract_function("specs.object.c", "void apply_zone_spell(") + r"""
+""" + extract_function("specs.set.c", "static void grant_dragons_to_group(") + \
+    extract_function("specs.set.c", "void apply_zone_spell(") + r"""
 int main() {
     for (int spell : {SPELL_CONJURE_ELEMENTAL, SPELL_INVIGORATE, SPELL_ENDURANCE, SPELL_STONE_SKIN}) {
         skills[spell].spell_pointer = record_cast;
