@@ -4238,6 +4238,10 @@ int treasure_chest(P_obj obj, P_char ch, int cmd, char *argument)
 			while (found > 0)
 			{
 				potion = read_object(51004, VIRTUAL);
+				if (!potion)
+				{
+					break;
+				}
 
 				obj_to_char(potion, ch);
 				act("... &+Wa glowing potion!&n", FALSE, ch, obj, NULL, TO_CHAR);
