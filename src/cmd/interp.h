@@ -915,8 +915,19 @@ extern unsigned int game_locked_level;
 #define CMD_KEPTCHAR 876
 #define CMD_COPYOVER 877
 
-/* The CMD_s below are not real commands, they are used in item special procedures to identify
- * when wearer gets hit in melee or nuked and when an item is poofing on ground.
+/* The CMD_s below are not real commands; they tell special procedures which event
+ * called them. The char * argument depends on the event, so read it only as the
+ * event's payload:
+ *   player commands     command text; TRUE consumes the command.
+ *   CMD_MELEE_HIT       the victim (P_char), sent only to the weapon that hit
+ *                       (weapon_proc, backstab, Studio); callers ignore the result.
+ *   CMD_GOTHIT          struct proc_data * with only .victim (the attacker) set, sent
+ *                       to the defender's items in proccing_slots order (fight.c);
+ *                       TRUE stops the attack and the later slots.
+ *   CMD_GOTNUKED        struct proc_data * with damage, type, flags, messages and the
+ *                       attacker in .victim; TRUE intercepts the spell damage.
+ *   CMD_SET_PERIODIC    at object creation; TRUE schedules CMD_PERIODIC events.
+ *   CMD_PERIODIC        actor and argument are NULL.
  */
 
 #define CMD_MELEE_HIT 1000
