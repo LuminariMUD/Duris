@@ -423,6 +423,10 @@ int lightning_sword(P_obj obj, P_char ch, int cmd, char *arg)
 			}
 			return TRUE;
 		}
+		// No corpse of its own: the kill still ends the proc, unless die() spared
+		// the victim (training dummies, reincarnation).
+		if (!is_char_in_room(vict, room) || !IS_ALIVE(vict))
+			return TRUE;
 	}
 
 	act("You score a CRITICAL HIT!!!!!\r\n", FALSE, ch, obj, vict, TO_CHAR);
@@ -1019,11 +1023,15 @@ int generic_drow_eq(P_obj obj, P_char ch, int cmd, char *arg)
 	if (!ch || !obj) /* If the player ain't here, why are we? */
 		return FALSE;
 
+	if (!OBJ_WORN_BY(obj, ch) && !OBJ_CARRIED_BY(obj, ch))
+		return FALSE;
+
 	if (DECAYABLE(ch->in_room))
 	{
 		act("Your $q quickly decays in the surface air!", TRUE, ch, obj, vict, TO_CHAR);
 		act("$n's $q quickly decays in the surface air!", TRUE, ch, obj, vict, TO_ROOM);
 		extract_obj(obj, TRUE); // Not an arti, but 'in game.'
+		return TRUE;
 	}
 	return FALSE;
 }
@@ -1045,7 +1053,7 @@ int elfdawn_sword(P_obj obj, P_char ch, int cmd, char *arg)
 	if (cmd == CMD_SET_PERIODIC)
 		return FALSE;
 
-	if (!OBJ_WORN(obj))
+	if (!ch || !obj || !OBJ_WORN(obj))
 	{
 		return FALSE;
 	}
@@ -1059,8 +1067,6 @@ int elfdawn_sword(P_obj obj, P_char ch, int cmd, char *arg)
 				act("$p &+Wglows brightly&N as it senses hidden life in the room.",
 				    FALSE, obj->loc.wearing, obj, vict, TO_CHAR);
 	}
-	if (!ch || !obj)
-		return FALSE;
 
 	/** Check class first off, burn em, and let em keep it **/
 
@@ -1071,6 +1077,7 @@ int elfdawn_sword(P_obj obj, P_char ch, int cmd, char *arg)
 		act("$n's &+gblade briefly flashes with &N&+Yintense light&N&+g, burning $n hand severely!&N",
 		    TRUE, ch, obj, vict, TO_ROOM);
 		GET_HIT(ch) -= 5;
+		update_pos(ch);
 		bad_owner = TRUE;
 	}
 	else

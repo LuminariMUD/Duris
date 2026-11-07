@@ -93,6 +93,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
             ("world/handler.c", "bool isname(const char *str, const char *namelist)"),
             ("world/outposts.c", "bool check_castle_walls("),
             ("combat/range.c", "int check_wall("),
+            ("core/utility.c", "int is_char_in_room("),
             ("core/utility.c", "bool ac_can_see_from("),
             ("core/utility.c", "bool has_native_planar_affinity_at("),
             ("core/utility.c", "bool aggressive_to_at("),

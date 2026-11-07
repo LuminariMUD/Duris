@@ -43,6 +43,12 @@ void act(const char *, int, P_char, P_obj, void *, int) {}
 void logit(const char *, const char *, ...) {}
 void spell_haste(int, P_char, char *, int, P_char, P_obj) {}
 void spell_chain_lightning(int, P_char, char *, int, P_char, P_obj) { ++chain_lightnings; }
+int is_char_in_room(P_char ch, int room)
+{
+    for (P_char it = world[room].people; it; it = it->next_in_room)
+        if (it == ch) return TRUE;
+    return FALSE;
+}
 
 static void put_in_room(P_obj o)
 {
@@ -119,10 +125,11 @@ static bool in_room(P_obj o)
 
 int main()
 {
-    // The kill makes no corpse: the bystander's corpse and its item stay put.
+    // The kill makes no corpse: the bystander's corpse and its item stay put,
+    // and the dead victim draws no critical hit.
     reset(false);
-    lightning_sword(&sword, &killer, CMD_MELEE_HIT, (char *) &victim);
-    assert(extracted == 0);
+    assert(lightning_sword(&sword, &killer, CMD_MELEE_HIT, (char *) &victim));
+    assert(extracted == 0 && chain_lightnings == 0);
     assert(in_room(&old_corpse) && old_corpse.contains == &old_item);
 
     // The kill makes a corpse: only that one is emptied and destroyed.

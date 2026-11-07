@@ -3236,8 +3236,9 @@ int good_evil_defenseProc(P_char ch, P_obj obj, int isGood, int mana)
 	if (number(0, 14))
 		return mana;
 
+	// value[6] also cycles the 15 fighting effects, so wrap it to the 5 defenses.
 	if (isGood)
-		rand = obj->value[6];
+		rand = obj->value[6] % 5;
 	else
 		rand = number(0, 4);
 
@@ -5866,12 +5867,12 @@ int orcus_wand(P_obj obj, P_char ch, int cmd, char *arg)
 
 		if (cmd == CMD_SACRIFICE)
 		{
-			die(victim, ch);
 			if ((GET_LEVEL(ch) >= 57) && (GET_LEVEL(ch) >= GET_LEVEL(victim)))
 			{
 				statuslog(ch->player.level, "%s was destroyed by Orcus.",
 					  GET_NAME(victim));
 			}
+			die(victim, ch);
 		}
 		else if ((cmd == CMD_TERMINATE) && (IS_PC(victim)))
 		{
@@ -6165,8 +6166,9 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		else
 		{
 			obj->value[2] -= dam;
-			damage(ch, ch, MAX(GET_LEVEL(ch) / 2, GET_DAMROLL(ch) * 2 - dam),
-			       TYPE_UNDEFINED);
+			if (damage(ch, ch, MAX(GET_LEVEL(ch) / 2, GET_DAMROLL(ch) * 2 - dam),
+				   TYPE_UNDEFINED))
+				return TRUE;
 		}
 		if (type == WALL_OUTPOST)
 			CharWait(ch, PULSE_VIOLENCE);
@@ -8897,7 +8899,7 @@ int obj_imprison(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		}
 		// obj_from_room(obj);
 		extract_obj(obj, TRUE); // Not an arti, but 'in game.'
-		return FALSE;
+		return TRUE;
 	}
 
 	// If ch isn't the right ch.
@@ -8929,7 +8931,7 @@ int obj_imprison(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 	REMOVE_BIT(ch->specials.affected_by5, AFF5_IMPRISON);
 	extract_obj(obj, TRUE); // Not an arti, but 'in game.'
 
-	return FALSE;
+	return TRUE;
 }
 
 /* this proc is the staff of blue flames proc modified, Raxxel did it, and it probably doesn't work! */
@@ -9982,9 +9984,10 @@ int sword_whirlwinds(P_obj obj, P_char ch, int cmd, char *arg)
 		 "&+b$n's&N $q &n&+rglows blue...&N", TRUE, ch, obj, victim);
 	// spell_lightning_bolt(40, ch, NULL, 0, victim, obj);
 	// spell_asphyxiate( 51, ch, NULL, 0, victim, obj);
-	spell_cyclone(46, ch, NULL, 0, victim, obj);
-	spell_cyclone(46, ch, NULL, 0, victim, obj);
-	spell_cyclone(46, ch, NULL, 0, victim, obj);
+	// Each cyclone can kill either side, so stop once one has gone.
+	int room = ch->in_room;
+	for (int i = 0; i < 3 && is_char_in_room(ch, room) && is_char_in_room(victim, room); i++)
+		spell_cyclone(46, ch, NULL, 0, victim, obj);
 	return TRUE;
 }
 
@@ -11426,6 +11429,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 					    FALSE, ch, obj, 0, TO_CHAR);
 				}
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
+				return TRUE;
 			}
 
 			return FALSE;
@@ -11453,6 +11457,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 					     0);
 
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
+				return TRUE;
 			}
 			return FALSE;
 		}
@@ -11492,6 +11497,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 				add_event(event_bleedproc, PULSE_VIOLENCE, tch, ch, 0, 0, &numb,
 					  sizeof(numb));
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
+				return TRUE;
 			}
 			return FALSE;
 		}
@@ -11511,6 +11517,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 				spell_poison(trap_poison_level(), ch, 0, 0, ch, NULL);
 
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
+				return TRUE;
 			}
 			return FALSE;
 		}

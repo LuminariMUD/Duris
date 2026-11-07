@@ -301,7 +301,8 @@ int eth2_tree_obj(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 					branch(mob, ch);
 					MobStartFight(mob, ch);
 
-					obj_from_room(o);
+					extract_obj(o, TRUE);
+					break;
 				}
 			}
 		}

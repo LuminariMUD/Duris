@@ -146,7 +146,7 @@ int snogres_flesh_golem(P_char ch, P_char pl, int cmd, char * /*arg*/)
 			logit(LOG_EXIT, "assert: error in snogres_flesh_golem() proc");
 			return FALSE;
 		}
-		char_to_room(golem, 87798, 0);
+		char_to_room(golem, real_room(87798), 0);
 		if (lich)
 			add_follower(golem, lich);
 		act("$n &+rbubbles and boils as it enters from the west, its wounds healing quickly.&n",
@@ -221,7 +221,9 @@ int hellfire_axe(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 
 		// This will nerf it for pleveling - Jexni
-		melee_damage(ch, vict, (GET_LEVEL(ch) * number(3, 5)), 0, &messages);
+		if (melee_damage(ch, vict, (GET_LEVEL(ch) * number(3, 5)), 0, &messages) !=
+		    DAM_NONEDEAD)
+			return TRUE;
 		int numb = number(2, 6);
 		add_event(event_hellfire, PULSE_VIOLENCE, vict, 0, 0, 0, &numb, sizeof(numb));
 		return TRUE;
@@ -286,6 +288,7 @@ int berserker_toss(P_char ch, P_char vict, int cmd, char * /*arg*/)
 	}
 
 	luckyPC = number(0, numbPCs - 1);
+	currPC = 0;
 
 	for (tch = world[ch->in_room].people; tch; tch = tch->next_in_room)
 	{
@@ -311,7 +314,8 @@ int berserker_toss(P_char ch, P_char vict, int cmd, char * /*arg*/)
 			"&+rFilled with &+RRAGE&n $n &+rhammers his fist into &+RYOU&n&+r, sending you &+RFLYING&N&+r!&n",
 			"&+rFilled with &+RRAGE&n $n &+rhammers his fist into &+R$N&n&+r, sending $m flying!&n",
 			FALSE, ch, 0, vict);
-		damage(ch, vict, (70 + number(0, 150)), TYPE_UNDEFINED);
+		if (damage(ch, vict, (70 + number(0, 150)), TYPE_UNDEFINED))
+			return FALSE;
 
 		int i = 0;
 		do
@@ -334,7 +338,8 @@ int berserker_toss(P_char ch, P_char vict, int cmd, char * /*arg*/)
 		    FALSE, vict, 0, victtwo, TO_CHAR);
 		act("&+R$n&n&+r's path through the air sends $m &+Rcareening violently &N&+rinto &+R$N&n&+r!&n",
 		    FALSE, vict, 0, victtwo, TO_NOTVICTROOM);
-		damage(victtwo, vict, (GET_WEIGHT(victtwo) / 2), TYPE_UNDEFINED);
+		if (damage(victtwo, vict, (GET_WEIGHT(victtwo) / 2), TYPE_UNDEFINED))
+			return FALSE;
 		Stun(vict, ch, 2 * PULSE_VIOLENCE, TRUE);
 		Stun(victtwo, ch, 2 * PULSE_VIOLENCE, TRUE);
 		stop_fighting(victtwo);
