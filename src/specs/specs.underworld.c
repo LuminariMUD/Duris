@@ -62,16 +62,8 @@ void hammer_berserk_check(P_char ch)
 
 int hammer(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	int dam = cmd / 1000;
-	P_char vict;
-
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
-
-	vict = legacy_proc_arg<P_char>(arg);
-	if (!dam || !IS_ALIVE(ch) || !IS_ALIVE(vict) || cmd != CMD_MELEE_HIT)
+	P_char vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 	{
 		return FALSE;
 	}
@@ -81,23 +73,20 @@ int hammer(P_obj obj, P_char ch, int cmd, char *arg)
 	    return (FALSE);
 	*/
 
-	if (OBJ_WORN(obj) && obj->loc.wearing == ch)
+	// 1/20 chance.
+	if (!number(0, 19))
 	{
-		// 1/20 chance.
-		if (!number(0, 19))
+		act("Your $q glows brightly as &=LBlightning bolts streak out of it.", FALSE,
+		    obj->loc.wearing, obj, 0, TO_CHAR);
+		act("$n's $q glows brightly as &=LBlightning bolts streak out of it!", FALSE,
+		    obj->loc.wearing, obj, 0, TO_ROOM);
+		spell_lightning_bolt(51, ch, 0, SPELL_TYPE_SPELL, vict, 0);
+	}
+	else
+	{
+		if (!GET_OPPONENT(ch))
 		{
-			act("Your $q glows brightly as &=LBlightning bolts streak out of it.",
-			    FALSE, obj->loc.wearing, obj, 0, TO_CHAR);
-			act("$n's $q glows brightly as &=LBlightning bolts streak out of it!",
-			    FALSE, obj->loc.wearing, obj, 0, TO_ROOM);
-			spell_lightning_bolt(51, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-		}
-		else
-		{
-			if (!GET_OPPONENT(ch))
-			{
-				set_fighting(ch, vict);
-			}
+			set_fighting(ch, vict);
 		}
 	}
 	if (GET_OPPONENT(ch))
@@ -112,16 +101,10 @@ int hammer(P_obj obj, P_char ch, int cmd, char *arg)
 
 int torment(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char vict;
 	int save;
 
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
-
-	vict = legacy_proc_arg<P_char>(arg);
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch) || !OBJ_WORN_BY(obj, ch) || !IS_ALIVE(vict))
+	P_char vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 	{
 		return FALSE;
 	}
@@ -148,7 +131,7 @@ int torment(P_obj obj, P_char ch, int cmd, char *arg)
 int dragonkind(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	P_char tchar1 = NULL, tchar2 = NULL;
-	int dam = cmd / 1000, curr_time;
+	int curr_time;
 	P_char vict;
 	P_char temp;
 	int rand;
@@ -196,8 +179,8 @@ int dragonkind(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	vict = legacy_proc_arg<P_char>(arg);
-	if (!dam || !IS_ALIVE(vict) || !GET_OPPONENT(ch))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict || !GET_OPPONENT(ch))
 	{
 		return FALSE;
 	}
@@ -490,9 +473,8 @@ int lightning(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 	}
 
-	vict = legacy_proc_arg<P_char>(arg);
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch) || !OBJ_WORN_POS(obj, WIELD) ||
-	    obj->loc.wearing != ch || !IS_ALIVE(vict))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict || !OBJ_WORN_POS(obj, WIELD))
 	{
 		return FALSE;
 	}
@@ -525,7 +507,6 @@ int lightning(P_obj obj, P_char ch, int cmd, char *arg)
 
 int dispator(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	int dam = cmd / 1000;
 	P_char vict;
 
 	if (cmd == CMD_SET_PERIODIC)
@@ -538,8 +519,8 @@ int dispator(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 	}
 
-	vict = legacy_proc_arg<P_char>(arg);
-	if (!dam || !IS_ALIVE(ch) || !IS_ALIVE(vict) || !OBJ_WORN_BY(obj, ch))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 	{
 		return FALSE;
 	}
@@ -607,54 +588,39 @@ int orb_of_the_sea(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	// Procs on hits or getting hit.. since it's a mage arti.
-	if ((cmd != CMD_GOTHIT && cmd != CMD_MELEE_HIT) || !IS_ALIVE(ch))
+	if ((data = defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg)))
 	{
-		return FALSE;
+		victim = data->victim;
 	}
-
-	// If we can't find the victim
-	if (cmd == CMD_GOTHIT)
+	else if ((victim = melee_proc_target(obj, ch, cmd, arg)))
 	{
-		if (!((data = legacy_proc_arg<struct proc_data *>(arg)) && (victim = data->victim)))
+		// Slippery when wet! 1% chance per hit after each 40 hits (Should drop after about 90 hits).
+		if (!IS_NPC(ch) && !can_prime_class_use_item(ch, obj) &&
+		    number(1, 100) <= count++ / 40)
 		{
-			debug("orb_of_the_sea: CMD_GOTHIT: no attacker.");
-			return FALSE;
-		}
-	}
-	else
-	{
-		if (!(victim = legacy_proc_arg<P_char>(arg)))
-		{
-			debug("orb_of_the_sea: CMD_MELEE_HIT: no victim.");
-			return FALSE;
-		}
-		else if (OBJ_WORN(obj) && (ch == obj->loc.wearing))
-		{
-			// Slippery when wet! 1% chance per hit after each 40 hits (Should drop after about 90 hits).
-			if (!IS_NPC(ch) && !can_prime_class_use_item(ch, obj) &&
-			    number(1, 100) <= count++ / 40)
+			for (loc = 0; loc < MAX_WEAR; loc++)
 			{
-				for (loc = 0; loc < MAX_WEAR; loc++)
+				if (obj == ch->equipment[loc])
 				{
-					if (obj == ch->equipment[loc])
-					{
-						act("&+b$p&+b slips out of your hands!&n", FALSE,
-						    ch, obj, NULL, TO_CHAR);
-						act("&+b$p&+b slips out of $n&+b's hands.&n", TRUE,
-						    ch, obj, NULL, TO_ROOM);
-						unequip_char(ch, loc);
-						obj_to_char(obj, ch);
-						count = 0;
-						return TRUE;
-					}
+					act("&+b$p&+b slips out of your hands!&n", FALSE, ch, obj,
+					    NULL, TO_CHAR);
+					act("&+b$p&+b slips out of $n&+b's hands.&n", TRUE, ch, obj,
+					    NULL, TO_ROOM);
+					unequip_char(ch, loc);
+					obj_to_char(obj, ch);
+					count = 0;
+					return TRUE;
 				}
 			}
 		}
 	}
+	else
+	{
+		return FALSE;
+	}
 
-	if (OBJ_WORN_BY(obj, ch) && IS_ALIVE(victim) && !IS_ROOM(ch->in_room, ROOM_NO_TELEPORT) &&
-	    !IS_GH_GOLEM(victim) && GET_RACE(victim) != RACE_CONSTRUCT &&
-	    !(strstr(victim->player.name, "_no_move_")))
+	if (IS_ALIVE(victim) && !IS_ROOM(ch->in_room, ROOM_NO_TELEPORT) && !IS_GH_GOLEM(victim) &&
+	    GET_RACE(victim) != RACE_CONSTRUCT && !(strstr(victim->player.name, "_no_move_")))
 	{
 		// 1/30 chance.
 		if (!number(0, 29))
@@ -755,12 +721,8 @@ int mace(P_obj obj, P_char ch, int cmd, char *arg)
 		obj
 	};
 
-	if (cmd != CMD_MELEE_HIT)
-		return FALSE;
-
-	vict = legacy_proc_arg<P_char>(arg);
-
-	if (number(0, 24))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict || number(0, 24))
 		return FALSE;
 
 	act("Your $q &+ysummons the power of the earth and rock at $N.", FALSE, obj->loc.wearing,
@@ -892,10 +854,9 @@ int flamberge(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	vict = legacy_proc_arg<P_char>(arg);
+	vict = melee_proc_target(obj, ch, cmd, arg);
 	// 1/30 chance.
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch) || number(0, 29) || !(room = ch->in_room) ||
-	    !IS_ALIVE(vict))
+	if (!vict || number(0, 29) || !(room = ch->in_room))
 	{
 		return FALSE;
 	}
@@ -965,15 +926,8 @@ int doombringer(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 
-	if (IS_FIGHTING(ch))
-	{
-		vict = GET_OPPONENT(ch);
-	}
-	else
-	{
-		vict = legacy_proc_arg<P_char>(arg);
-	}
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(vict) || !OBJ_WORN_BY(obj, ch))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 	{
 		return FALSE;
 	}
@@ -1051,15 +1005,14 @@ int unholy_avenger_bloodlust(P_obj obj, P_char ch, int cmd, char *arg)
 		obj
 	};
 
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 	{
 		return FALSE;
 	}
 
-	vict = legacy_proc_arg<P_char>(arg);
-
 	// 1/25 chance.
-	if (!number(0, 24) && IS_ALIVE(vict) && !IS_UNDEADRACE(vict))
+	if (!number(0, 24) && !IS_UNDEADRACE(vict))
 	{
 		dam = BOUNDED(0, (GET_HIT(vict) + 9), 100);
 		act("Your $q turns &+rblood red as it slashes into $N!", FALSE, ch, obj, vict,
@@ -1081,18 +1034,10 @@ int unholy_avenger_bloodlust(P_obj obj, P_char ch, int cmd, char *arg)
 
 int nightbringer(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	int dam = cmd / 1000;
-	P_char vict;
 	int save;
 
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
-
-	vict = legacy_proc_arg<P_char>(arg);
-	if (!dam || !IS_ALIVE(ch) || !OBJ_WORN_POS(obj, WIELD) || !OBJ_WORN_BY(obj, ch) ||
-	    !IS_ALIVE(vict))
+	P_char vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict || !OBJ_WORN_POS(obj, WIELD))
 	{
 		return FALSE;
 	}
@@ -1186,8 +1131,8 @@ int avernus(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 
-	vict = legacy_proc_arg<P_char>(arg);
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(vict) || !OBJ_WORN_BY(obj, ch))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 	{
 		return FALSE;
 	}
@@ -1656,16 +1601,10 @@ int random_map_room()
 
 int githyanki(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char vict;
 	P_char temp;
 
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
-
-	vict = legacy_proc_arg<P_char>(arg);
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch) || !OBJ_WORN_POS(obj, WIELD) || !IS_ALIVE(vict))
+	P_char vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict || !OBJ_WORN_POS(obj, WIELD))
 	{
 		return FALSE;
 	}
@@ -1767,164 +1706,155 @@ int githyanki(P_obj obj, P_char ch, int cmd, char *arg)
 
 int githpc_special_weap(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	int dam = cmd / 1000, i, j, k;
+	int i, j, k;
 	char last_key[256] = "\0";
-	P_char vict, t_ch;
+	P_char t_ch;
 
-	if (cmd == CMD_SET_PERIODIC)
+	P_char vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict || !OBJ_WORN_POS(obj, WIELD))
 	{
 		return FALSE;
 	}
 
-	if (!dam || !IS_ALIVE(ch) || !OBJ_WORN_POS(obj, WIELD))
+	// 1/200 chance.
+	if ((!number(0, 199)) && !CHAR_IN_JUSTICE_AREA(ch) && !CHAR_IN_TOWN(ch) &&
+	    strlen(obj->name))
 	{
-		return FALSE;
-	}
-
-	if (obj->loc.wearing == ch)
-	{
-		// 1/200 chance.
-		if ((!number(0, 199)) && !CHAR_IN_JUSTICE_AREA(ch) && !CHAR_IN_TOWN(ch) &&
-		    strlen(obj->name))
+		/* get the last keyword of the keyword list */
+		for (i = strlen(obj->name) - 1; (i >= 0) && (obj->name[i] != ' '); i--)
 		{
-			/* get the last keyword of the keyword list */
-			for (i = strlen(obj->name) - 1; (i >= 0) && (obj->name[i] != ' '); i--)
-			{
-				;
-			}
+			;
+		}
 
-			for (k = i + 1, j = 0; obj->name[k]; k++)
-			{
-				last_key[j] = obj->name[k];
-				j++;
-			}
-			last_key[j] = '\0';
+		for (k = i + 1, j = 0; obj->name[k]; k++)
+		{
+			last_key[j] = obj->name[k];
+			j++;
+		}
+		last_key[j] = '\0';
 
-			/* make sure we actually got something..  you never know */
-			if (j)
-			{
-				last_key[j - 1] = '\0'; /* get rid of extra letter */
+		/* make sure we actually got something..  you never know */
+		if (j)
+		{
+			last_key[j - 1] = '\0'; /* get rid of extra letter */
 
-				vict = get_char(last_key);
-				if (IS_ALIVE(vict) && IS_PC(vict) && (vict->in_room != ch->in_room))
+			vict = get_char(last_key);
+			if (IS_ALIVE(vict) && IS_PC(vict) && (vict->in_room != ch->in_room))
+			{
+				// 1/7 chance.
+				if (!number(0, 6))
 				{
-					// 1/7 chance.
-					if (!number(0, 6))
+					/* time to summon */
+					if (IS_FIGHTING(vict))
 					{
-						/* time to summon */
-						if (IS_FIGHTING(vict))
+						stop_fighting(vict);
+					}
+					if (vict->in_room != NOWHERE)
+					{
+						for (t_ch = world[vict->in_room].people; t_ch;
+						     t_ch = t_ch->next_in_room)
 						{
-							stop_fighting(vict);
-						}
-						if (vict->in_room != NOWHERE)
-						{
-							for (t_ch = world[vict->in_room].people;
-							     t_ch; t_ch = t_ch->next_in_room)
+							if (IS_FIGHTING(t_ch) &&
+							    (GET_OPPONENT(t_ch) == vict))
 							{
-								if (IS_FIGHTING(t_ch) &&
-								    (GET_OPPONENT(t_ch) == vict))
-								{
-									stop_fighting(t_ch);
-								}
+								stop_fighting(t_ch);
 							}
 						}
-
-						act("&+W$n suddenly disappears in a flash of light!",
-						    TRUE, vict, 0, 0, TO_ROOM);
-						send_to_char(
-							"&+WSuddenly, a flash of light obscures your vision.  You feel as though you are falling at an incredible rate, but yet you can hear nothing.  You find yourself "
-							"elsewhere...\n",
-							vict);
-						char_from_room(vict);
-						char_to_room(vict, ch->in_room, -1);
-						act("&+WIn a flash of light, $n suddenly arrives.",
-						    FALSE, vict, 0, 0, TO_ROOM);
 					}
-					else
-					{
-						act("&+WYour weapon glows with &+Bpower... &+Wthen suddenly disappears in a flash of light!",
-						    FALSE, ch, 0, 0, TO_CHAR);
-						act("&+W$n's&+W weapon glows with &+Bpower... &+Wthen suddenly disappears in a flash of light!",
-						    FALSE, ch, 0, 0, TO_ROOM);
-						obj_to_char(unequip_char(ch, WIELD), ch);
-						obj_from_char(obj);
-						if (!obj_to_char(obj, vict))
-							return TRUE;
-						act("A bright flash of light erupts from your hands!!! When the light dies down, you realize $p has returned to your posession!",
-						    FALSE, vict, 0, obj, TO_CHAR);
-						act("A bright flash of light erupts from $n's hands!!!",
-						    FALSE, vict, 0, 0, TO_ROOM);
-						return TRUE;
-					}
-				}
-				else /* let them know that it tried */
-				{
-					act("&+W$n's $q&+W flares up briefly, then returns to normal.",
-					    FALSE, ch, obj, 0, TO_ROOM);
-					act("&+WYour $q&+W flares up briefly, then returns to normal.",
-					    FALSE, ch, obj, 0, TO_CHAR);
-				}
-			}
-		}
-		else if (!number(0, 399))
-		{
-			vict = GET_OPPONENT(ch);
-			if (vict && (GET_LEVEL(vict) < 51) && !IS_TRUSTED(vict))
-			{
-				/* sword */
-				if (obj->R_num == real_object(18))
-				{
-					act("&+WIn a blinding burst of light, $n&+W's $q&+W suddenly flashes out at incredible speed, slashing at the head of $N&+W and instantly beheading $M!",
-					    FALSE, ch, obj, vict, TO_NOTVICT);
-					act("&+WIn a blinding burst of light, your $q&+W suddenly flashes out at incredible speed, slashing at the head of $N&+W and instantly beheading $M!",
-					    FALSE, ch, obj, vict, TO_CHAR);
-					act("&+WIn a blinding burst of light, $n&+W's $q&+W suddenly flashes out at incredible speed, slashing at your head and resulting in your instant beheading!",
-					    FALSE, ch, obj, vict, TO_VICT);
 
-					die(vict, ch);
+					act("&+W$n suddenly disappears in a flash of light!", TRUE,
+					    vict, 0, 0, TO_ROOM);
+					send_to_char(
+						"&+WSuddenly, a flash of light obscures your vision.  You feel as though you are falling at an incredible rate, but yet you can hear nothing.  You find yourself "
+						"elsewhere...\n",
+						vict);
+					char_from_room(vict);
+					char_to_room(vict, ch->in_room, -1);
+					act("&+WIn a flash of light, $n suddenly arrives.", FALSE,
+					    vict, 0, 0, TO_ROOM);
 				}
-				/* staff */
-				else if (obj->R_num == real_object(19))
-				{
-					act("&+WIn a blinding burst of light, $n&+W's $q&+W suddenly stabs at $N&+W's head with incredible speed, instantly beheading $M!",
-					    FALSE, ch, obj, vict, TO_NOTVICT);
-					act("&+WIn a blinding burst of light, your $q&+W suddenly stabs at $N&+W's head with incredible speed, instantly beheading $M!",
-					    FALSE, ch, obj, vict, TO_CHAR);
-					act("&+WIn a blinding burst of light, $n&+W's $q&+W suddenly stabs at your head with incredible speed, instantly beheading you!",
-					    FALSE, ch, obj, vict, TO_VICT);
-
-					die(vict, ch);
-				}
-				/* hammer */
-				else if (obj->R_num == real_object(418))
-				{
-					act("&+WIn a blinding burst of light, $n&+W's $q&+W suddenly smashes $N&+W's head with incredible speed, instantly beheading $M!",
-					    FALSE, ch, obj, vict, TO_NOTVICT);
-					act("&+WIn a blinding burst of light, your $q&+W suddenly smashes $N&+W's head with incredible speed, instantly beheading $M!",
-					    FALSE, ch, obj, vict, TO_CHAR);
-					act("&+WIn a blinding burst of light, $n&+W's $q&+W suddenly smashes your head with incredible speed, instantly beheading you!",
-					    FALSE, ch, obj, vict, TO_VICT);
-
-					die(vict, ch);
-				}
-				/* bug */
 				else
 				{
-					wizlog(MINLVLIMMORTAL,
-					       "githpc_special_weap: Item '%s' vnum (%d) not recognized.\n",
-					       obj->short_description, OBJ_VNUM(obj));
+					act("&+WYour weapon glows with &+Bpower... &+Wthen suddenly disappears in a flash of light!",
+					    FALSE, ch, 0, 0, TO_CHAR);
+					act("&+W$n's&+W weapon glows with &+Bpower... &+Wthen suddenly disappears in a flash of light!",
+					    FALSE, ch, 0, 0, TO_ROOM);
+					obj_to_char(unequip_char(ch, WIELD), ch);
+					obj_from_char(obj);
+					if (!obj_to_char(obj, vict))
+						return TRUE;
+					act("A bright flash of light erupts from your hands!!! When the light dies down, you realize $p has returned to your posession!",
+					    FALSE, vict, 0, obj, TO_CHAR);
+					act("A bright flash of light erupts from $n's hands!!!",
+					    FALSE, vict, 0, 0, TO_ROOM);
+					return TRUE;
 				}
-				return TRUE;
+			}
+			else /* let them know that it tried */
+			{
+				act("&+W$n's $q&+W flares up briefly, then returns to normal.",
+				    FALSE, ch, obj, 0, TO_ROOM);
+				act("&+WYour $q&+W flares up briefly, then returns to normal.",
+				    FALSE, ch, obj, 0, TO_CHAR);
 			}
 		}
-		else
+	}
+	else if (!number(0, 399))
+	{
+		vict = GET_OPPONENT(ch);
+		if (vict && (GET_LEVEL(vict) < 51) && !IS_TRUSTED(vict))
 		{
-			vict = legacy_proc_arg<P_char>(arg);
-
-			if (!GET_OPPONENT(ch) && vict)
+			/* sword */
+			if (obj->R_num == real_object(18))
 			{
-				set_fighting(ch, vict);
+				act("&+WIn a blinding burst of light, $n&+W's $q&+W suddenly flashes out at incredible speed, slashing at the head of $N&+W and instantly beheading $M!",
+				    FALSE, ch, obj, vict, TO_NOTVICT);
+				act("&+WIn a blinding burst of light, your $q&+W suddenly flashes out at incredible speed, slashing at the head of $N&+W and instantly beheading $M!",
+				    FALSE, ch, obj, vict, TO_CHAR);
+				act("&+WIn a blinding burst of light, $n&+W's $q&+W suddenly flashes out at incredible speed, slashing at your head and resulting in your instant beheading!",
+				    FALSE, ch, obj, vict, TO_VICT);
+
+				die(vict, ch);
 			}
+			/* staff */
+			else if (obj->R_num == real_object(19))
+			{
+				act("&+WIn a blinding burst of light, $n&+W's $q&+W suddenly stabs at $N&+W's head with incredible speed, instantly beheading $M!",
+				    FALSE, ch, obj, vict, TO_NOTVICT);
+				act("&+WIn a blinding burst of light, your $q&+W suddenly stabs at $N&+W's head with incredible speed, instantly beheading $M!",
+				    FALSE, ch, obj, vict, TO_CHAR);
+				act("&+WIn a blinding burst of light, $n&+W's $q&+W suddenly stabs at your head with incredible speed, instantly beheading you!",
+				    FALSE, ch, obj, vict, TO_VICT);
+
+				die(vict, ch);
+			}
+			/* hammer */
+			else if (obj->R_num == real_object(418))
+			{
+				act("&+WIn a blinding burst of light, $n&+W's $q&+W suddenly smashes $N&+W's head with incredible speed, instantly beheading $M!",
+				    FALSE, ch, obj, vict, TO_NOTVICT);
+				act("&+WIn a blinding burst of light, your $q&+W suddenly smashes $N&+W's head with incredible speed, instantly beheading $M!",
+				    FALSE, ch, obj, vict, TO_CHAR);
+				act("&+WIn a blinding burst of light, $n&+W's $q&+W suddenly smashes your head with incredible speed, instantly beheading you!",
+				    FALSE, ch, obj, vict, TO_VICT);
+
+				die(vict, ch);
+			}
+			/* bug */
+			else
+			{
+				wizlog(MINLVLIMMORTAL,
+				       "githpc_special_weap: Item '%s' vnum (%d) not recognized.\n",
+				       obj->short_description, OBJ_VNUM(obj));
+			}
+			return TRUE;
+		}
+	}
+	else
+	{
+		if (!GET_OPPONENT(ch))
+		{
+			set_fighting(ch, vict);
 		}
 	}
 
@@ -2410,7 +2340,6 @@ int bulette(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 
 int tiamat_stinger(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	int dam = cmd / 1000;
 	P_char vict;
 
 	if (cmd == CMD_SET_PERIODIC)
@@ -2423,8 +2352,8 @@ int tiamat_stinger(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 	}
 
-	vict = legacy_proc_arg<P_char>(arg);
-	if (!dam || !IS_ALIVE(ch) || !OBJ_WORN_BY(obj, ch) || !IS_ALIVE(vict))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 	{
 		return FALSE;
 	}
@@ -2467,45 +2396,34 @@ int holy_mace(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 	}
 
-	if (!IS_ALIVE(ch))
-	{
-		return FALSE;
-	}
-
-	if (cmd == CMD_MELEE_HIT)
+	if ((vict = melee_proc_target(obj, ch, cmd, arg)))
 	{
 		/*
 		 if (!OBJ_WORN_POS(obj, WIELD) || !OBJ_WORN_POS(obj, WIELD2))
 		   return (FALSE);
 		*/
-		vict = legacy_proc_arg<P_char>(arg);
-
-		if (OBJ_WORN_BY(obj, ch) && IS_ALIVE(vict))
+		// 1/15 chance.
+		if (!number(0, 14))
 		{
-			// 1/15 chance.
-			if (!number(0, 14))
+			act("Your $q &+Rcalls down the power of Kossuth on $N!", FALSE,
+			    obj->loc.wearing, obj, vict, TO_CHAR);
+			act("$n's $q &+Rcalls down the power of Kossuth at you!", FALSE,
+			    obj->loc.wearing, obj, vict, TO_VICT);
+			act("$n's $q &+Rcalls down the power of Kossuth on $N!", FALSE,
+			    obj->loc.wearing, obj, vict, TO_NOTVICT);
+			spell_flamestrike(60, ch, 0, SPELL_TYPE_SPELL, vict, 0);
+			if (char_in_list(vict) && char_in_list(ch))
 			{
-				act("Your $q &+Rcalls down the power of Kossuth on $N!", FALSE,
-				    obj->loc.wearing, obj, vict, TO_CHAR);
-				act("$n's $q &+Rcalls down the power of Kossuth at you!", FALSE,
-				    obj->loc.wearing, obj, vict, TO_VICT);
-				act("$n's $q &+Rcalls down the power of Kossuth on $N!", FALSE,
-				    obj->loc.wearing, obj, vict, TO_NOTVICT);
-				spell_flamestrike(60, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-				if (char_in_list(vict) && char_in_list(ch))
-				{
-					spell_full_harm(60, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-				}
+				spell_full_harm(60, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 			}
 		}
 		return FALSE;
 	}
-	else if (cmd == CMD_GOTNUKED && !number(0, 3))
+
+	data = defense_proc_data(obj, ch, cmd, CMD_GOTNUKED, arg);
+	// 1/4 chance.
+	if (data && !number(0, 3))
 	{
-		if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-		{
-			return FALSE;
-		}
 		dam = data->dam;
 
 		act("$n's $p glows brilliantly, and a healing eldritch fire surrounds $s body!",
@@ -2982,15 +2900,12 @@ int barb(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 
+	data = defense_proc_data(obj, ch, cmd, CMD_GOTNUKED, arg);
 	// 1/6 chance.
-	if ((cmd == CMD_GOTNUKED) &&
-	    (GET_RACE(ch) == RACE_MOUNTAIN || GET_RACE(ch) == RACE_DUERGAR) && (!number(0, 5)))
+	if (data && (GET_RACE(ch) == RACE_MOUNTAIN || GET_RACE(ch) == RACE_DUERGAR) &&
+	    (!number(0, 5)))
 	{
 		hammer_berserk_check(ch);
-		if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-		{
-			return FALSE;
-		}
 		vict = data->victim;
 		if (!IS_ALIVE(vict))
 		{
@@ -3094,14 +3009,8 @@ int barb(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 	}
 
-	if (cmd != CMD_MELEE_HIT)
-	{
-		return FALSE;
-	}
-
-	vict = legacy_proc_arg<P_char>(arg);
-
-	if (IS_ALIVE(vict))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (vict)
 	{
 		// 4% proc
 		if (!number(0, 24) && (GET_RACE(ch) == RACE_BARBARIAN))
@@ -4007,15 +3916,15 @@ int sevenoaks_longsword(P_obj obj, P_char ch, int cmd, char *arg)
 		obj
 	};
 
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 	{
 		return FALSE;
 	}
 
-	vict = legacy_proc_arg<P_char>(arg);
 	room = ch->in_room;
 
-	if (!IS_ALIVE(vict) || !room)
+	if (!room)
 	{
 		return FALSE;
 	}
@@ -4045,20 +3954,20 @@ int sevenoaks_longsword(P_obj obj, P_char ch, int cmd, char *arg)
 	return FALSE;
 }
 
-int dagger_of_wind(P_obj /*obj*/, P_char ch, int cmd, char *arg)
+int dagger_of_wind(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	P_char vict;
 	int room;
 
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch) || IS_NPC(ch))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict || IS_NPC(ch))
 	{
 		return FALSE;
 	}
 
-	vict = legacy_proc_arg<P_char>(arg);
 	room = ch->in_room;
 
-	if (!IS_ALIVE(vict) || !room)
+	if (!room)
 	{
 		return FALSE;
 	}
@@ -4092,41 +4001,29 @@ int dagger_of_wind(P_obj /*obj*/, P_char ch, int cmd, char *arg)
 
 int sevenoaks_mace(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	int dam = cmd / 1000;
-	P_char vict;
-
 	/*
 	   check for periodic event calls
 	 */
 	if (cmd == CMD_SET_PERIODIC)
 		return TRUE;
 
-	if (!dam) /*
-	             if dam != 0, we have been called when
-	             weapons hits someone
-	           */
-		return (FALSE);
+	P_char vict = melee_proc_target(obj, ch, cmd, arg);
 
-	if (!ch)
+	if (!vict)
 		return (FALSE);
 
 	if (!OBJ_WORN_POS(obj, WIELD))
 		return (FALSE);
 
-	vict = legacy_proc_arg<P_char>(arg);
-
-	if (OBJ_WORN_BY(obj, ch) && vict)
+	if (!number(0, 30))
 	{
-		if (!number(0, 30))
-		{
-			act("Your $q &+Bvibrates then becomes very &+Cchilly!", FALSE,
-			    obj->loc.wearing, obj, vict, TO_CHAR);
-			act("$n's $q &+Bvibrates violently, directing &+Ccold&+B energy at you!",
-			    FALSE, obj->loc.wearing, obj, vict, TO_VICT);
-			act("$n's $q &+Bvibrates violently then explodes in &+Cchilly &+Bforce!",
-			    FALSE, obj->loc.wearing, obj, vict, TO_NOTVICT);
-			spell_ice_storm(50, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-		}
+		act("Your $q &+Bvibrates then becomes very &+Cchilly!", FALSE, obj->loc.wearing,
+		    obj, vict, TO_CHAR);
+		act("$n's $q &+Bvibrates violently, directing &+Ccold&+B energy at you!", FALSE,
+		    obj->loc.wearing, obj, vict, TO_VICT);
+		act("$n's $q &+Bvibrates violently then explodes in &+Cchilly &+Bforce!", FALSE,
+		    obj->loc.wearing, obj, vict, TO_NOTVICT);
+		spell_ice_storm(50, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 	}
 	return (FALSE);
 }
@@ -4139,12 +4036,10 @@ int tendrils(P_obj obj, P_char ch, int cmd, char *arg)
 	if (cmd == CMD_SET_PERIODIC)
 		return TRUE;
 
-	if (!obj)
-		return FALSE;
-	if (cmd != CMD_GOTHIT || number(0, 7))
+	data = defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg);
+	if (!data || number(0, 7))
 		return FALSE;
 
-	data = legacy_proc_arg<struct proc_data *>(arg);
 	vict = data->victim;
 	if (GET_STAT(vict) == STAT_DEAD)
 		return FALSE;
@@ -4216,7 +4111,8 @@ int Einjar(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 	// Shield block code was updated and hits far more frequently.
 	// Einjar proc rate reduced from 33% to 20%.
-	if (cmd != CMD_GOTHIT || number(0, 4) || !(data = legacy_proc_arg<struct proc_data *>(arg)))
+	data = defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg);
+	if (!data || number(0, 4))
 	{
 		return FALSE;
 	}
