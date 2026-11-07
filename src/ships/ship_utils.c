@@ -2507,7 +2507,7 @@ bool ocean_pvp_state()
 			continue;
 		}
 
-		int contact_count = getcontacts(ship, false);
+		int contact_count = getcontacts(ship);
 		if (contact_count == 0)
 		{
 			continue;

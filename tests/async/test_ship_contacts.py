@@ -27,6 +27,7 @@ FUNCTIONS = "\n\n".join(
             "void setcontact(int i, P_ship target, P_ship ship, int x, int y)",
             "bool ship_target_in_contact(P_ship ship)", "int getcontacts(P_ship ship, bool limit_range)",
             "bool getmap(P_ship ship, bool limit_range)",
+            "bool has_no_weapons(const ShipData *ship)", "bool ocean_pvp_state()",
         )),
         ("map.c", ("unsigned int calculate_relative_room(",)),
         ("ship_control.c", ("int look_contacts(P_char ch, P_ship ship)",
@@ -266,6 +267,37 @@ static void dimensions() {
     puts("PASS small/non-square grids, fractional half-map ties, invalid/tail rooms, zones and dimensions");
 }
 
+static void pvp() {
+    setup(); place(&observer, 10, 10); place(&target, 90, 10);
+    observer.race = GOODIESHIP;
+    observer.m_class = target.m_class = SH_FRIGATE;
+    assert(!ocean_pvp_state());
+    place(&observer, 1, 10); place(&target, 199, 10);
+    assert(ocean_pvp_state());
+    target.flags |= DOCKED;
+    assert(!ocean_pvp_state());
+    target.flags = LOADED;
+    target.race = GOODIESHIP;
+    assert(!ocean_pvp_state());
+    puts("PASS ocean PvP requires opposing ships in actual contact, including across seams");
+}
+
+static void last_room() {
+    setup();
+    // top_of_world is the last valid index, not the room count.
+    const int saved_top = top_of_world;
+    top_of_world = zones[0].mapx * zones[0].mapy;
+    place(&observer, 199, 159); place(&target, 198, 159);
+    cJSON *root = json_build_ship_contacts(&observer);
+    assert(cJSON_GetObjectItemCaseSensitive(root, "worldX"));
+    assert(cJSON_GetObjectItemCaseSensitive(root, "worldY"));
+    assert(cJSON_GetObjectItemCaseSensitive(root, "worldX")->valueint == 199);
+    assert(cJSON_GetObjectItemCaseSensitive(root, "worldY")->valueint == 159);
+    cJSON_Delete(root);
+    top_of_world = saved_top;
+    puts("PASS GMCP includes coordinates for the last valid world room");
+}
+
 int main() {
     for (auto &symbol : ship_symbol) symbol = "~~";
     observer.shipobj = &hulls[0]; target.shipobj = &hulls[1];
@@ -273,7 +305,7 @@ int main() {
     observer.id = const_cast<char *>("CD"); target.id = const_cast<char *>("AB");
     target.name = const_cast<char *>("Enemy");
     assert(shipObjHash.add(&observer) && shipObjHash.add(&target));
-    edges(); thresholds(); movement(); dimensions();
+    edges(); thresholds(); movement(); dimensions(); last_room(); pvp();
 }
 '''
 

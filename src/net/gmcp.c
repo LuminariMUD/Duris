@@ -1154,7 +1154,7 @@ static cJSON *json_build_ship_contacts(struct ShipData *ship)
 	cJSON_AddNumberToObject(root, "speed", ship->speed);
 
 	/* The flush removes world position from the unverified client payload. */
-	if (ship->location >= 0 && ship->location < top_of_world)
+	if (ship->location >= 0 && ship->location <= top_of_world)
 	{
 		struct zone_data *zone = &zone_table[world[ship->location].zone];
 		if (IS_SET(zone->flags, ZONE_MAP) && zone->mapx > 0 && zone->mapy > 0)
