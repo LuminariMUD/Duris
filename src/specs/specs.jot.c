@@ -290,7 +290,7 @@ int ogrebane(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		act("Your $q &+Wglows brightly at the sight of the foul &N&+bOGRE!&N", FALSE,
 		    obj->loc.wearing, obj, 0, TO_CHAR);
-		act("$n's $q &+Wglows brightly a the sight of the foul&N&+b OGRE!&N", FALSE,
+		act("$n's $q &+Wglows brightly at the sight of the foul&N&+b OGRE!&N", FALSE,
 		    obj->loc.wearing, obj, 0, TO_ROOM);
 		spell_bigbys_clenched_fist(61, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 	}
@@ -330,7 +330,7 @@ int giantbane(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		act("Your $q &+Wglows brightly at the sight of the foul GIANT!", FALSE,
 		    obj->loc.wearing, obj, 0, TO_CHAR);
-		act("$n's $q &+Wglows brightly a the sight of the foul GIANT!", FALSE,
+		act("$n's $q &+Wglows brightly at the sight of the foul GIANT!", FALSE,
 		    obj->loc.wearing, obj, 0, TO_ROOM);
 		spell_bigbys_clenched_fist(51, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 	}
@@ -370,7 +370,7 @@ int dwarfslayer(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		act("Your $q &+mHums loudly at the sight of the Dwarf!", FALSE, obj->loc.wearing,
 		    obj, 0, TO_CHAR);
-		act("$n's $q &+Whums loudly a the sight of the Dwarf!", FALSE, obj->loc.wearing,
+		act("$n's $q &+Whums loudly at the sight of the Dwarf!", FALSE, obj->loc.wearing,
 		    obj, 0, TO_ROOM);
 
 		spell_wither(50, ch, 0, SPELL_TYPE_SPELL, vict, 0);
@@ -511,7 +511,7 @@ int reliance_pegasus(P_obj obj, P_char ch, int cmd, char *arg)
 						act("$n whinnies loudly.", FALSE, cld->linking, 0,
 						    0, TO_ROOM);
 						CharWait(ch, PULSE_VIOLENCE * 4);
-						send_to_char("You feel slighting drained.\r\n", ch);
+						send_to_char("You feel slightly drained.\r\n", ch);
 						return TRUE;
 					}
 				}
@@ -520,7 +520,7 @@ int reliance_pegasus(P_obj obj, P_char ch, int cmd, char *arg)
 				    FALSE, ch, obj, obj, TO_CHAR);
 				act("&+WA magnificent pegasus descends from the heavens to your aid.&n",
 				    FALSE, ch, obj, obj, TO_CHAR);
-				act("&+WA glorious white light pours from from &N$n's $q&+W, answering his call.&n",
+				act("&+WA glorious white light pours from &N$n's $q&+W, answering his call.&n",
 				    TRUE, ch, obj, NULL, TO_ROOM);
 				act("&+WA magnificent pegasus descends from the heavens to $n's &+Waid.&n",
 				    TRUE, ch, obj, NULL, TO_ROOM);

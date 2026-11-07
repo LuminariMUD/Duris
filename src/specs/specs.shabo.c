@@ -454,8 +454,8 @@ int shabo_trap_south(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
 				act("&+LYou hear a soft click.", TRUE, ch, 0, 0, TO_CHAR);
 				if (number(0, 20) < 5)
 				{
-					act("&+LYou get hit with a stunning force!.", TRUE, ch, 0,
-					    0, TO_CHAR);
+					act("&+LYou get hit with a stunning force!", TRUE, ch, 0, 0,
+					    TO_CHAR);
 					act("&+L$n gets hit with a stunning force!", TRUE, ch, 0, 0,
 					    TO_NOTVICT);
 					Stun(ch, ch, (dice(1, 3) * PULSE_VIOLENCE), TRUE);

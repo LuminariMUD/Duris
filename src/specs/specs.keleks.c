@@ -38,9 +38,9 @@ int deliverer_hammer(P_obj obj, P_char ch, int cmd, char *arg)
 	// 1/20 chance.
 	if (!number(0, 19))
 	{
-		act("&+WYour $q&+W is surrouned by a holy glow as it strikes $N&+W!&n", FALSE, ch,
+		act("&+WYour $q&+W is surrounded by a holy glow as it strikes $N&+W!&n", FALSE, ch,
 		    obj, victim, TO_CHAR);
-		act("&+W$n&+W's glows with a &+wholy &+Maura&+W!&n", FALSE, ch, obj, victim,
+		act("&+W$n&+W's $q&+W glows with a &+wholy &+Maura&+W!&n", FALSE, ch, obj, victim,
 		    TO_ROOM);
 		dam = number(50, 250);
 		spell_damage(ch, victim, dam, SPLDAM_HOLY, SPLDAM_NOSHRUG | SPLDAM_NODEFLECT, 0);

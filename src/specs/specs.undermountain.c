@@ -779,7 +779,7 @@ int staff_of_power(P_obj obj, P_char ch, int cmd, char *arg)
 		{
 			act_trio("&+LYour $q shoots out beams of black energy at $N.",
 				 "$n's $q &+Lradiates a bolt of black energy at you.",
-				 "$n's $q &+Lradiates a blot of black energy at $N.", FALSE,
+				 "$n's $q &+Lradiates a bolt of black energy at $N.", FALSE,
 				 obj->loc.wearing, obj, vict);
 			spell_psychic_crush(61, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 		}

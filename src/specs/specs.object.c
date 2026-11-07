@@ -2970,9 +2970,9 @@ int golem_chunk(P_obj obj, P_char ch, int cmd, char *arg)
 				af.modifier = 5;
 				af.location = APPLY_CURSE;
 				affect_to_char(ch, &af);
-				act("&+LThe Chu&Nnk &+Lon $n shakes vigoriously &+Wtossing&N them side to side then suddenly stops.&N",
+				act("&+LThe Chu&Nnk &+Lon $n shakes vigorously &+Wtossing&N them side to side then suddenly stops.&N",
 				    FALSE, ch, obj, 0, TO_ROOM);
-				act("&+LThe Chu&Nnk&+L shakes vigoriously, &+Wtossing&N you side to side, then suddenly stope.&N",
+				act("&+LThe Chu&Nnk&+L shakes vigorously, &+Wtossing&N you side to side, then suddenly stops.&N",
 				    FALSE, ch, obj, 0, TO_CHAR);
 			}
 		}
@@ -3540,7 +3540,7 @@ int good_evil_sword(P_obj obj, P_char ch, int cmd, char *arg)
 		"Slice your enemies apart with me, so that I may absorb their souls."
 	};
 	const char *g_whispers[SWORD_WHISPERINGS] = {
-		"Persue the path of goodness always.",
+		"Pursue the path of goodness always.",
 		"Study the way of 'pleasantry' that you may better love the gods.",
 		"You must destroy the non-believers.",
 		"This world shall be cleansed of evil by our power.",
@@ -3930,7 +3930,7 @@ int vigor_mask(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		vict = GET_OPPONENT(ch);
 		send_to_char(
-			"&+WThe essense of Bahamut streams of of your mask and attacks your victim!&N\n",
+			"&+WThe essence of Bahamut streams out of your mask and attacks your victim!&N\n",
 			ch);
 		if (affected_by_spell(ch, SPELL_VITALITY))
 		{
@@ -4232,7 +4232,7 @@ int treasure_chest(P_obj obj, P_char ch, int cmd, char *argument)
 		{
 			act("$n opens the &+Ytreasure &+ychest&n and finds something!&n", FALSE, ch,
 			    obj, NULL, TO_ROOM);
-			act("Your open the &+Ytreasure &+ychest&n and find something...&n", FALSE,
+			act("You open the &+Ytreasure &+ychest&n and find something...&n", FALSE,
 			    ch, obj, NULL, TO_CHAR);
 
 			while (found > 0)
@@ -5849,7 +5849,7 @@ int orcus_wand(P_obj obj, P_char ch, int cmd, char *arg)
 		act("&+bYou point your Wand at $N, and call down your power at $N.\n"
 		    "&+bThe Wand comes to life, and starts to glow with the power of the Abyss, \n"
 		    "&+bas if it had a hunger of its own for $N's heart!\n"
-		    "&+bThe Wand rips out $N's heart, stealing $S life life away...",
+		    "&+bThe Wand rips out $N's heart, stealing $S life away...",
 		    FALSE, ch, 0, victim, TO_CHAR);
 
 		act("&+b$n points at you, and whispers 'Die' to $s Wand.\n"
@@ -5860,7 +5860,7 @@ int orcus_wand(P_obj obj, P_char ch, int cmd, char *arg)
 		    FALSE, ch, 0, victim, TO_VICT);
 
 		act("&+b$n points at $N, and whispers 'Die' to $s Wand.\n"
-		    "&+bThe Wand shoots forth a beam of black light towords $N!\n"
+		    "&+bThe Wand shoots forth a beam of black light towards $N!\n"
 		    "&+b$N shudders slightly, and then falls to the ground, a withered\n"
 		    "&+bpile of flesh. $N is sacrificed to the Demon Prince, Orcus.\n",
 		    TRUE, ch, 0, victim, TO_NOTVICT);
@@ -5932,7 +5932,7 @@ int orcus_wand(P_obj obj, P_char ch, int cmd, char *arg)
 			die(ch, ch);
 			statuslog(
 				ch->player.level,
-				"%s's soul was just utterly devoured by the power of Orucs.. whee",
+				"%s's soul was just utterly devoured by the power of Orcus.. whee",
 				GET_NAME(victim));
 		}
 		return TRUE;
@@ -6955,9 +6955,9 @@ int sword_named_magik(P_obj obj, P_char ch, int cmd, char *arg)
 	// 1/30 chance.
 	if (!number(0, 29))
 	{
-		act("&+BYour $q engulfs $N  in its bright &+bblue &+Baura!&N", FALSE,
+		act("&+BYour $q engulfs $N in its bright &+bblue &+Baura!&N", FALSE,
 		    obj->loc.wearing, obj, vict, TO_CHAR);
-		act("&+B$n's $q engulfs $N  in its bright &+bblue &+Baura!&N", FALSE,
+		act("&+B$n's $q engulfs $N in its bright &+bblue &+Baura!&N", FALSE,
 		    obj->loc.wearing, obj, vict, TO_ROOM);
 		spell_dispel_magic(30, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 	}
@@ -7397,7 +7397,7 @@ int stat_pool_luc(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		return FALSE;
 
 	return stat_pool_common(obj, ch, cmd, &(ch->base_stats.Luk),
-				"&+LYour outlook on life is somewaht grimmer..\n",
+				"&+LYour outlook on life is somewhat grimmer..\n",
 				"$n doesn't look so confident in believing in his lucky stars.\n",
 				"&+WYou feel as if you could roll Triple Tiamat's at the slots..\n",
 				"$n looks to have the confidence that life is going his way.\n");
@@ -8114,8 +8114,8 @@ int tripboots(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		{
 			vict = GET_OPPONENT(ch);
 			act_trio("&NYour sweep sends $N crashing to the ground!&N",
-				 "&N$n sweep sends you crashing to the ground!&N",
-				 "&N$n sweep sends $N crashing to the ground!!&N", TRUE, ch, obj,
+				 "&N$n's sweep sends you crashing to the ground!&N",
+				 "&N$n's sweep sends $N crashing to the ground!!&N", TRUE, ch, obj,
 				 vict);
 			SET_POS(vict, POS_SITTING + GET_STAT(vict));
 			CharWait(vict, PULSE_VIOLENCE * 2);
@@ -8176,8 +8176,8 @@ int blindbadge(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 				 "&N$n's $q &+ysends out a stream of &+Ylight&+y towards $N!", TRUE,
 				 ch, obj, vict);
 			send_to_char("&+LYou have been blinded!\n", vict);
-			act("&+L$N seems to been blinded!.&N", TRUE, ch, obj, vict, TO_NOTVICT);
-			act("&+L$N seems to been blinded!.&N", TRUE, ch, obj, vict, TO_CHAR);
+			act("&+L$N seems to be blinded!&N", TRUE, ch, obj, vict, TO_NOTVICT);
+			act("&+L$N seems to be blinded!&N", TRUE, ch, obj, vict, TO_CHAR);
 			bzero(&af, sizeof(af));
 			af.type = SPELL_BLINDNESS;
 			af.bitvector = AFF_BLIND;
@@ -8189,12 +8189,12 @@ int blindbadge(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		{
 			vict = GET_OPPONENT(ch);
 			act_trio("&+yYour $q &+yfalls down over your eyes!&n",
-				 "&+y$n &+m's $q &+yfalls down over his eyes!&n",
-				 "&+y$n &+m's $q &+yfalls down over his eyes!&n", TRUE, ch, obj,
+				 "&+y$n&+m's $q &+yfalls down over $s eyes!&n",
+				 "&+y$n&+m's $q &+yfalls down over $s eyes!&n", TRUE, ch, obj,
 				 vict);
 			send_to_char("&+LYou have been blinded!\n", ch);
-			act("&+L$N seems to been blinded!.&N", TRUE, vict, obj, ch, TO_NOTVICT);
-			act("&+L$N seems to been blinded!.&N", TRUE, vict, obj, ch, TO_CHAR);
+			act("&+L$N seems to be blinded!&N", TRUE, vict, obj, ch, TO_NOTVICT);
+			act("&+L$N seems to be blinded!&N", TRUE, vict, obj, ch, TO_CHAR);
 			bzero(&af, sizeof(af));
 			af.type = SPELL_BLINDNESS;
 			af.bitvector = AFF_BLIND;
@@ -9174,7 +9174,7 @@ int totem_of_mastery(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		act_trio("&+BYour $q flashes with lightning as a bolt fires out at $N.",
 			 "$n's $q &+Bradiates a bolt of lightning out at you.",
-			 "$n's $q &+Bradiates a blot of lightning at $N.", FALSE, obj->loc.wearing,
+			 "$n's $q &+Bradiates a bolt of lightning at $N.", FALSE, obj->loc.wearing,
 			 obj, vict);
 		spell_lightning_bolt(61, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 		// Stop attack if one dies.
@@ -9253,7 +9253,7 @@ int circlet_of_light(P_obj obj, P_char ch, int cmd, char *arg)
 
 	act_trio("&+BYour $q flashes with lightning as a bolt fires out at $N.",
 		 "$n's $q &+Bradiates a bolt of lightning out at you.",
-		 "$n's $q &+Bradiates a blot of lightning at $N.", FALSE, obj->loc.wearing, obj,
+		 "$n's $q &+Bradiates a bolt of lightning at $N.", FALSE, obj->loc.wearing, obj,
 		 vict);
 	spell_lightning_bolt(61, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 	if (!IS_ALIVE(ch) || !IS_ALIVE(vict))
@@ -9428,8 +9428,8 @@ int dragon_skull_helm(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 			{
 				act_trio(
 					"&+LYour $q &+L causes your eyes to &+Rp&+ru&+Rl&+rs&+Re &+Lwith &+Bincredible &+Wenergy&+L.",
-					"&+L$n's $q &+L causes &+W$n &+Leyes to &+Rp&+ru&+Rl&+rs&+Re &+Lwith &+Bincredible &+Wenergy&+L.",
-					"&+L$n's $q &+L causes &+W$m &+Leyes to &+Rp&+ru&+Rl&+rs&+Re &+Lwith &+Bincredible &+Wenergy&+L.",
+					"&+L$n's $q &+L causes &+W$n's &+Leyes to &+Rp&+ru&+Rl&+rs&+Re &+Lwith &+Bincredible &+Wenergy&+L.",
+					"&+L$n's $q &+L causes &+W$s &+Leyes to &+Rp&+ru&+Rl&+rs&+Re &+Lwith &+Bincredible &+Wenergy&+L.",
 					TRUE, ch, obj, victim);
 				spell_destroy_undead(60, ch, NULL, 0, victim, 0);
 			}
@@ -9644,7 +9644,7 @@ int alch_bag(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		/* let those who need to know, know ya just finished doing something spiffy */
 		act("&+L$n's&N $q &+rp&+Mu&+Rl&+Ms&+res &+Lslightly and &+wgrows &+La little larger.&N",
 		    FALSE, ch, obj, 0, TO_ROOM);
-		act("&+LYour$N $q &+rp&+Mu&+Rl&+Ms&+res &+Lslightly and &+wgrows &+La little larger.&N",
+		act("&+LYour&N $q &+rp&+Mu&+Rl&+Ms&+res &+Lslightly and &+wgrows &+La little larger.&N",
 		    FALSE, ch, obj, 0, TO_CHAR);
 	}
 	return FALSE;
@@ -11595,7 +11595,7 @@ int vareena_statue(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 	case 100:
 		act("&+L$a $q &+bsurrounds you with &+Ba loving embrace.&n", TRUE, ch, obj, NULL,
 		    TO_CHAR);
-		act("&+L$a $q &+bsorrounds $n with &+Ba loving embrace.&n", TRUE, ch, obj, 0,
+		act("&+L$a $q &+bsurrounds $n with &+Ba loving embrace.&n", TRUE, ch, obj, 0,
 		    TO_ROOM);
 		return TRUE;
 	}
@@ -12090,7 +12090,7 @@ int portal_etherportal(P_obj obj, P_char ch, int cmd, char *arg)
 			/*wait stb */ "The portal hasn't re-stabilized yet...\n",
 			/*decay ch */ 0,
 			/*decay r  */ 0,
-			/*bug      */ "Bug with etherprotal!! Tell a god.\n"
+			/*bug      */ "Bug with etherportal!! Tell a god.\n"
 		};
 
 		return portal_general_internal(obj, ch, cmd, arg, &msg);
