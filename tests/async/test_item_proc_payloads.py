@@ -5,6 +5,9 @@ A melee hit carries a P_char and CMD_GOTHIT carries a proc_data *. Before the
 fix, ring_of_regeneration ran one_argument() over any payload, and
 deathseeker_mace resolved its melee target through ParseTarget(), reading the
 payload's bytes as a name. Run both with binary payloads under ASan.
+
+gauntlets_legend's periodic procs read no payload: periodic events carry no
+actor, so they act on the wearer, and its heal casts stoneskin on that wearer.
 """
 
 from pathlib import Path
@@ -16,7 +19,7 @@ from _paths import ROOT, HARNESS_STUBS, extract_function
 
 SPELLS = ("biofeedback cannibalize clairvoyance combat_mind cure_critic curse dispel_magic "
           "energy_drain fear full_harm greater_soul_disturbance invigorate lifelust "
-          "prot_from_undead shadow_shield stone_skin vitality wither heal").split()
+          "prot_from_undead shadow_shield vitality wither heal nonexistence").split()
 
 PRELUDE = r'''
 #include "core/prototypes.h"
@@ -30,7 +33,11 @@ PRELUDE = r'''
 #include <cstdlib>
 #include <cstring>
 
+static room_data rooms[1]{};
+P_room world = rooms;
 static int roll = 1;
+static P_char stoneskinned;
+void spell_stone_skin(int, P_char, char *, int, P_char victim, P_obj) { stoneskinned = victim; }
 int number(int low, int) { return roll >= low ? roll : low; }
 void act(const char *, int, P_char, P_obj, void *, int) {}
 int fill_word(char *) { return 0; }
@@ -72,6 +79,23 @@ int main()
 	char rub[] = "ring";
 	assert(ring_of_regeneration(&ring, &wearer, CMD_RUB, rub) && !(ring.extra_flags & ITEM_GLOW));
 	free(data);
+
+	// Periodic ticks act on the wearer: the 1-in-10 combat proc while fighting,
+	// otherwise the 3-minute stoneskin, cast on the wearer.
+	static obj_data gauntlets;
+	gauntlets.loc_p = LOC_WORN;
+	gauntlets.loc.wearing = &wearer;
+	wearer.equipment[WEAR_HANDS] = &gauntlets;
+	GET_MAX_HIT(&wearer) = GET_MAX_HIT(&victim) = 100;
+	GET_HIT(&wearer) = 10;
+	GET_HIT(&victim) = 20;
+	wearer.specials.fighting = &victim;
+	roll = 0;
+	assert(gauntlets_legend(&gauntlets, nullptr, CMD_PERIODIC, nullptr));
+	assert(GET_HIT(&wearer) == 22 && GET_HIT(&victim) == 16 && !stoneskinned);
+	wearer.specials.fighting = nullptr;
+	assert(gauntlets_legend(&gauntlets, nullptr, CMD_PERIODIC, nullptr));
+	assert(stoneskinned == &wearer);
 	puts("item proc payloads: combat payloads are not parsed as text");
 }
 '''
@@ -84,6 +108,7 @@ def main():
         extract_function("specs.object.c", "P_char melee_proc_target("),
         extract_function("specs.object.c", "int ring_of_regeneration("),
         extract_function("specs.winterhaven.c", "int deathseeker_mace("),
+        extract_function("specs.winterhaven.c", "int gauntlets_legend("),
     ])
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)
