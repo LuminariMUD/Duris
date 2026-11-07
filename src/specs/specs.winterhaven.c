@@ -582,8 +582,8 @@ int volo_longsword(P_obj obj, P_char ch, int cmd, char *arg)
 
 		vict = ParseTarget(ch, arg);
 		// 1/33 chance.
-		if (cmd == CMD_MELEE_HIT && IS_ALIVE(vict) && !number(0, 32) &&
-		    CheckMultiProcTiming(ch) && !IS_ELITE(vict) && !IS_GREATER_RACE(vict))
+		if (cmd == CMD_MELEE_HIT && IS_ALIVE(vict) && !number(0, 32) && !IS_ELITE(vict) &&
+		    !IS_GREATER_RACE(vict))
 		{
 			switch (number(0, 2))
 			{
@@ -711,7 +711,7 @@ int snowogre_warhammer(P_obj obj, P_char ch, int cmd, char *arg)
 	vict = GET_OPPONENT(ch);
 	// 1/33 chance.
 	if (cmd == CMD_MELEE_HIT && CanDoFightMove(ch, GET_OPPONENT(ch)) && !IS_IMMOBILE(ch) &&
-	    !number(0, 32) && CheckMultiProcTiming(ch) && !IS_ELITE(vict))
+	    !number(0, 32) && !IS_ELITE(vict))
 	{
 		if (!IS_ALIVE(vict) || ch->in_room != vict->in_room)
 		{
@@ -1080,7 +1080,7 @@ int deathseeker_mace(P_obj obj, P_char ch, int cmd, char *arg)
 	vict = ParseTarget(ch, arg);
 
 	// 1/33 chance.
-	if (cmd == CMD_MELEE_HIT && IS_ALIVE(vict) && !number(0, 32) && CheckMultiProcTiming(ch))
+	if (cmd == CMD_MELEE_HIT && IS_ALIVE(vict) && !number(0, 32))
 	{
 		switch (number(0, 2))
 		{
@@ -1266,7 +1266,7 @@ int illithid_axe(P_obj obj, P_char ch, int cmd, char *arg)
 
 	// Limiting the weapon to one proc a round since the proc is very potent.
 	// 1/35 chance.
-	if (cmd == CMD_MELEE_HIT && IS_ALIVE(vict) && !number(0, 34) && CheckMultiProcTiming(ch))
+	if (cmd == CMD_MELEE_HIT && IS_ALIVE(vict) && !number(0, 34))
 	{
 		if (room == vict->in_room)
 		{
@@ -1390,7 +1390,7 @@ int dagger_ra(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	// 1/50 chance.
-	if (cmd == CMD_MELEE_HIT && !number(0, 49) && CheckMultiProcTiming(ch))
+	if (cmd == CMD_MELEE_HIT && !number(0, 49))
 	{
 		vict = legacy_proc_arg<P_char>(arg);
 		if (!IS_ALIVE(vict))
@@ -2125,7 +2125,7 @@ int demon_slayer(P_obj obj, P_char ch, int cmd, char *arg)
 
 	vict = ParseTarget(ch, arg);
 	// 1/33 chance.
-	if (cmd == CMD_MELEE_HIT && IS_ALIVE(vict) && !number(0, 32) && CheckMultiProcTiming(ch))
+	if (cmd == CMD_MELEE_HIT && IS_ALIVE(vict) && !number(0, 32))
 	{
 		if (GET_RACE(vict) == RACE_DEMON)
 		{
@@ -2574,7 +2574,7 @@ int rapier_penetration(P_obj obj, P_char ch, int cmd, char *arg)
 		vict = ParseTarget(ch, arg);
 
 		if (cmd == CMD_MELEE_HIT && ch && vict && !number(0, 32) && // 3%
-		    CheckMultiProcTiming(ch) && !IS_ELITE(vict))
+		    !IS_ELITE(vict))
 
 		{
 			act("Your $q &+mpulsates &+Lwith energy!&n", TRUE, ch, obj, vict, TO_CHAR);
@@ -3125,7 +3125,7 @@ int gladius_backstabber(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 
 		// 1/30 chance.
-		if (cmd == CMD_MELEE_HIT && !number(0, 24) && CheckMultiProcTiming(ch))
+		if (cmd == CMD_MELEE_HIT && !number(0, 24))
 		{
 			act("&nYour $q &nbegins to &+mhum&n.", TRUE, ch, obj, vict, TO_CHAR);
 			act("&nYou quickly vanish and reappear behind $N!", TRUE, ch, obj, vict,

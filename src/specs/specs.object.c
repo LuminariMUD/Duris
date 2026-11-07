@@ -2070,7 +2070,7 @@ int bloodfeast(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	// 1/25 chance.
-	if (CheckMultiProcTiming(ch) && !number(0, 24))
+	if (!number(0, 24))
 	{
 		act("$p &+Lemits a &n&+rblood curdling &+RsCrEaM!!!&n", TRUE, ch, obj, victim,
 		    TO_CHAR);
@@ -3876,7 +3876,7 @@ int sunblade(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 	// 4% chance
-	if (!number(0, 24) && CheckMultiProcTiming(ch))
+	if (!number(0, 24))
 	{
 		act("&+r$n's&n $q &+Rexplodes&n&+r in a torrent of pure &+Rflame!&n", TRUE, ch, obj,
 		    victim, TO_CHAR);
@@ -4814,7 +4814,7 @@ int holy_weapon(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 
-	if (cmd == CMD_MELEE_HIT && !number(0, 25) && CheckMultiProcTiming(ch))
+	if (cmd == CMD_MELEE_HIT && !number(0, 25))
 	{
 		vict = legacy_proc_arg<P_char>(arg);
 
@@ -7027,7 +7027,7 @@ int rod_of_zarbon(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 	/* If we scored a _really_ nice hit, let's do some spell shit */
-	else if (CheckMultiProcTiming(ch) && !number(0, 32)) // 3%
+	else if (!number(0, 32)) // 3%
 	{
 		act("Your $q flares up upon hitting $N!", FALSE, ch, obj, vict, TO_CHAR);
 		act("$n's $q flares up upon hitting $N!", FALSE, ch, obj, vict, TO_NOTVICT);

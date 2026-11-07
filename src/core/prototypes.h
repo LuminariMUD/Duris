@@ -388,7 +388,6 @@ int itemvalue(P_obj obj);
 void do_dice(P_char ch, char *arg, int cmd);
 
 /* actoff.c */
-bool CheckMultiProcTiming(P_char);
 bool single_stab(P_char ch, P_char victim, P_obj weapon);
 bool flank(P_char ch, P_char victim);
 bool circle(P_char ch, P_char victim);
