@@ -289,7 +289,7 @@ int zion_fnf(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 	// 1/25 chance.
-	if ((cmd == CMD_MELEE_HIT) && !number(0, 24) && CheckMultiProcTiming(ch))
+	if ((cmd == CMD_MELEE_HIT) && !number(0, 24))
 	{
 		vict = legacy_proc_arg<P_char>(arg);
 		if (!IS_ALIVE(vict))
@@ -446,7 +446,7 @@ int zion_light_dark(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	// 1/25 chance.
-	if ((cmd == CMD_MELEE_HIT) && !number(0, 24) && CheckMultiProcTiming(ch))
+	if ((cmd == CMD_MELEE_HIT) && !number(0, 24))
 	{
 		if (ch->equipment[WIELD] != obj || !dam)
 		{
@@ -958,7 +958,7 @@ int zion_mace_of_earth(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	// 1/25 chance.
-	if (OBJ_WORN_BY(obj, ch) && CheckMultiProcTiming(ch) && !number(0, 24))
+	if (OBJ_WORN_BY(obj, ch) && !number(0, 24))
 	{
 		act("Your $q &+ysummons the power of the earth and rock at $N.", FALSE,
 		    obj->loc.wearing, obj, vict, TO_CHAR);

@@ -13946,20 +13946,6 @@ bool MobShouldFlee(P_char ch)
 	return false;
 }
 
-bool CheckMultiProcTiming(P_char ch)
-{
-	return true; // disabling multiproc check
-
-	if (!IS_ALIVE(ch) || affected_by_spell(ch, TAG_STOP_PROC))
-	{
-		return false;
-	}
-
-	set_short_affected_by(ch, TAG_STOP_PROC, 1);
-
-	return true;
-}
-
 extern float dreadnaught_attack_factor(const struct affected_type *paf);
 extern float dreadnaught_melee_defense(const Rolls &rolls, const struct affected_type *paf);
 extern double dreadnaught_spell_defense(const Rolls &rolls, const struct affected_type *paf);

@@ -185,7 +185,7 @@ int illesarus(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	// 1/25 chance.
-	if (!number(0, 24) && CheckMultiProcTiming(ch))
+	if (!number(0, 24))
 	{
 		// The damage
 		act("&+LYou swing&n $q &+Lwith a broad two-handed arch at&n $N.&n", FALSE, ch, obj,

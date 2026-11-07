@@ -9,12 +9,14 @@ Keep this table current; a new session should be able to resume from it alone. P
 | Step | Branch | PR | State |
 | --- | --- | --- | --- |
 | Plan | `docs/legacy-item-proc-cleanup-plan` | #773 | Ready for review |
-| 1. Dead code | `proc-cleanup/dead-code` | (opening) | Ready for review |
+| 1. Dead code | `proc-cleanup/dead-code` | #774 | Ready for review |
+| 2. `CheckMultiProcTiming` removal and `lightning_sword` activation | `proc-cleanup/multiproc-timing` | (opening) | Ready for review |
 
 Decisions made while working:
 
 - **`random_eq_proc` stays.** It is unbound, but its comment says it is kept until it is attached on purpose, and its removal would reach `selected_random_weapon_action()` and the `itemActions.randomWeapons` settings, which this project leaves alone. `test_weapon_actions_runtime.py` calls it directly.
 - **`floating_pool` and `skill_beacon` had definitions** (the research listed them as prototype-only). Neither is assigned anywhere, so their definitions were deleted as unbound callbacks.
+- **`lightning_sword` activation** is its own commit. When the bolt kills a no-corpse victim, the proc falls through to a `TO_CHAR` `act` that is passed the dead victim, but the message has no victim token and `TO_CHAR` never dereferences it, so it stays as is. Its player news belongs to the next `news-update` run after merge.
 - **Commented-out code** was removed from the item-proc spec files (`specs.object.c`, `specs.underworld.c`, `specs.winterhaven.c`, `specs.undermountain.c`, `specs.zion.c`, `specs.ioun.c`, `specs.vecna.c`): block comments of four or more lines holding three or more statements, plus the three commented `CheckMultiProcTiming` terms. Mob, room, and assignment files were left for their own sweeps. A comment-stripped preprocessor diff of each file showed that only the intended dead blocks changed.
 
 ## Objective and bar

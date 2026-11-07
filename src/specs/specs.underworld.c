@@ -126,24 +126,21 @@ int torment(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	if (CheckMultiProcTiming(ch))
+	// 1/20 chance.
+	if (!number(0, 19))
 	{
-		// 1/20 chance.
-		if (!number(0, 19))
-		{
-			act("Your $q glows dark and bites into $N's neck.", FALSE, obj->loc.wearing,
-			    obj, vict, TO_CHAR);
-			act("$n's $q glows dark as it bites into your neck.", FALSE,
-			    obj->loc.wearing, obj, vict, TO_VICT);
-			act("$n's $q glows dark and bites into $N's neck.", FALSE, obj->loc.wearing,
-			    obj, vict, TO_NOTVICT);
+		act("Your $q glows dark and bites into $N's neck.", FALSE, obj->loc.wearing, obj,
+		    vict, TO_CHAR);
+		act("$n's $q glows dark as it bites into your neck.", FALSE, obj->loc.wearing, obj,
+		    vict, TO_VICT);
+		act("$n's $q glows dark and bites into $N's neck.", FALSE, obj->loc.wearing, obj,
+		    vict, TO_NOTVICT);
 
-			save = vict->specials.apply_saving_throw[SAVING_SPELL];
-			vict->specials.apply_saving_throw[SAVING_SPELL] += 5;
-			spell_poison(GET_LEVEL(ch), ch, 0, SPELL_TYPE_SPELL, vict, 0);
-			spell_blindness(GET_LEVEL(ch), ch, 0, SPELL_TYPE_SPELL, vict, 0);
-			vict->specials.apply_saving_throw[SAVING_SPELL] = save;
-		}
+		save = vict->specials.apply_saving_throw[SAVING_SPELL];
+		vict->specials.apply_saving_throw[SAVING_SPELL] += 5;
+		spell_poison(GET_LEVEL(ch), ch, 0, SPELL_TYPE_SPELL, vict, 0);
+		spell_blindness(GET_LEVEL(ch), ch, 0, SPELL_TYPE_SPELL, vict, 0);
+		vict->specials.apply_saving_throw[SAVING_SPELL] = save;
 	}
 	return FALSE;
 }
@@ -982,7 +979,7 @@ int doombringer(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	// 1/25 chance to proc.  1/3 chance to override !multiple-procs-per-round code.
-	if (!number(0, 24) && (CheckMultiProcTiming(ch) || !number(0, 2)))
+	if (!number(0, 24))
 	{
 		act("&+LYour $q blurs as it calls upon the elements of &+Blightning, &+rfire, &+Cand ice to strike $N.",
 		    FALSE, ch, obj, vict, TO_CHAR);
@@ -1062,7 +1059,7 @@ int unholy_avenger_bloodlust(P_obj obj, P_char ch, int cmd, char *arg)
 	vict = legacy_proc_arg<P_char>(arg);
 
 	// 1/25 chance.
-	if (!number(0, 24) && CheckMultiProcTiming(ch) && IS_ALIVE(vict) && !IS_UNDEADRACE(vict))
+	if (!number(0, 24) && IS_ALIVE(vict) && !IS_UNDEADRACE(vict))
 	{
 		dam = BOUNDED(0, (GET_HIT(vict) + 9), 100);
 		act("Your $q turns &+rblood red as it slashes into $N!", FALSE, ch, obj, vict,
@@ -2483,7 +2480,7 @@ int holy_mace(P_obj obj, P_char ch, int cmd, char *arg)
 		*/
 		vict = legacy_proc_arg<P_char>(arg);
 
-		if (OBJ_WORN_BY(obj, ch) && IS_ALIVE(vict) && CheckMultiProcTiming(ch))
+		if (OBJ_WORN_BY(obj, ch) && IS_ALIVE(vict))
 		{
 			// 1/15 chance.
 			if (!number(0, 14))
@@ -3107,7 +3104,7 @@ int barb(P_obj obj, P_char ch, int cmd, char *arg)
 	if (IS_ALIVE(vict))
 	{
 		// 4% proc
-		if (!number(0, 24) && (GET_RACE(ch) == RACE_BARBARIAN) && CheckMultiProcTiming(ch))
+		if (!number(0, 24) && (GET_RACE(ch) == RACE_BARBARIAN))
 		{
 			act("Your $q &+Bcalls down the lightning of the barbarian kings on $N!",
 			    FALSE, obj->loc.wearing, obj, vict, TO_CHAR);
@@ -3131,7 +3128,7 @@ int barb(P_obj obj, P_char ch, int cmd, char *arg)
 						  ch, 0);
 			}
 		}
-		else if (!number(0, 24) && GET_RACE(ch) == RACE_OGRE && CheckMultiProcTiming(ch))
+		else if (!number(0, 24) && GET_RACE(ch) == RACE_OGRE)
 		{
 			act("Your $q &+bfills you with the &+WPOWER&+b of the ogre chieftains!",
 			    FALSE, obj->loc.wearing, obj, vict, TO_CHAR);
@@ -3167,8 +3164,7 @@ int barb(P_obj obj, P_char ch, int cmd, char *arg)
 		} // 2% proc (this can stack with the regular berserker proc if wielded by a
 		// dwarf/duergar berserker. Only one proc per round allowed, though.
 		else if ((!number(0, 49) &&
-			  (GET_RACE(ch) == RACE_MOUNTAIN || GET_RACE(ch) == RACE_DUERGAR)) &&
-			 CheckMultiProcTiming(ch))
+			  (GET_RACE(ch) == RACE_MOUNTAIN || GET_RACE(ch) == RACE_DUERGAR)))
 		{
 			act("Your $q &+Lfills you with the &+RPOWER&+L of the dwarven battleragers!",
 			    FALSE, obj->loc.wearing, obj, vict, TO_CHAR);
@@ -3252,7 +3248,7 @@ int barb(P_obj obj, P_char ch, int cmd, char *arg)
 		// return true;
 		// } // 4%
 		else if (!number(0, 24) && GET_CLASS(ch, CLASS_BERSERKER) &&
-			 GET_CHAR_SKILL(ch, SKILL_BERSERK) > 0 && CheckMultiProcTiming(ch))
+			 GET_CHAR_SKILL(ch, SKILL_BERSERK) > 0)
 		{
 			act("Your $q &+rfills you with BlOOdLUsT, causing you to strike down $N!",
 			    FALSE, obj->loc.wearing, obj, vict, TO_CHAR);

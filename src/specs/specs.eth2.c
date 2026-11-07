@@ -353,7 +353,7 @@ int eth2_godsfury(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	// 1/20 chance.
-	if (cmd == CMD_MELEE_HIT && !number(0, 19) && CheckMultiProcTiming(ch))
+	if (cmd == CMD_MELEE_HIT && !number(0, 19))
 	{
 		P_char vict = legacy_proc_arg<P_char>(arg);
 		if (!vict)
