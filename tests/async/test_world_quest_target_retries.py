@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
     object_audit = policy[policy.index("auto object_handler ="):
                           policy.index("for (P_obj object = actor->carrying;")]
     safe_procs = re.findall(r"proc == (\w+)", object_audit)
-    linked_procs = {"board", "tracks", "blood_stains", "set_proc"}
+    linked_procs = {"board", "artifact_hide", "tracks", "blood_stains", "set_proc"}
     identity_stubs = "\n".join(
         f"int {name}(P_obj, P_char, int, char *) {{ std::abort(); }}"
         for name in safe_procs if name not in linked_procs)

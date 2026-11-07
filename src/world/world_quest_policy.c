@@ -928,10 +928,10 @@ struct quest_target_request
 			// Fixed objects, including the random/crafted item blanks, pass only
 			// with audited ASK-safe identities. Other procedures remain unproven,
 			// even if a particular invocation happens to return false.
-			if (!proc || proc == board || proc == tracks || proc == blood_stains ||
-			    proc == mir_fire || proc == mob_vecna_procs || proc == vareena_statue ||
-			    proc == set_proc || proc == thrusted_eq_proc ||
-			    proc == encrusted_eq_proc)
+			if (!proc || proc == board || proc == artifact_hide || proc == tracks ||
+			    proc == blood_stains || proc == mir_fire || proc == mob_vecna_procs ||
+			    proc == vareena_statue || proc == set_proc ||
+			    proc == thrusted_eq_proc || proc == encrusted_eq_proc)
 				return true;
 			return reject(reason, obj_index[object->R_num].virtual_number);
 		};

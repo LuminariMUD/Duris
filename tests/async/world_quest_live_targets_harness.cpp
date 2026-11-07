@@ -1833,8 +1833,13 @@ int main(int argc, char **argv)
 			player.equipment[0] = nullptr;
 			rooms[3].contents = &blocker;
 			intercepted();
-			objects[0].func.obj = tracks;
-			check(status::valid); // Audited cosmetic objects still allow ASK.
+			// Audited fixed objects still allow ASK, including the fixed portal
+			// outline (object 12410) bound to artifact_hide.
+			for (auto procedure : { tracks, artifact_hide })
+			{
+				objects[0].func.obj = procedure;
+				check(status::valid);
+			}
 			rooms[3].contents = nullptr;
 			objects[0].func.obj = nullptr;
 			check(status::valid);
