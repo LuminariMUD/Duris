@@ -97,7 +97,7 @@ int faith(P_obj obj, P_char ch, int cmd, char *arg)
 		{
 			temp = t_vict->next_in_room;
 			if ((t_vict != ch) && !grouped(t_vict, ch) &&
-			    (CAN_SEE(ch, t_vict) && !number(0, 3) && !IS_TRUSTED(vict)))
+			    (CAN_SEE(ch, t_vict) && !number(0, 3) && !IS_TRUSTED(t_vict)))
 			{
 				if (GET_ALIGNMENT(ch) > 0)
 				{

@@ -4464,13 +4464,13 @@ int varon(P_obj obj, P_char ch, int cmd, char *arg)
 		act("$N's body is gone, leaving only a horrible memory behind..", TRUE, ch, 0,
 		    victim, TO_NOTVICT);
 
-		die(victim, ch);
 		if (GET_LEVEL(ch) > 50)
 		{
 			statuslog(ch->player.level,
 				  "%s got wasted by Miax's cool disruptor just now, aawww.",
 				  GET_NAME(victim));
 		}
+		die(victim, ch);
 		return TRUE;
 	}
 	return FALSE;

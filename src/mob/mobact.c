@@ -78,6 +78,7 @@ extern bool has_skin_spell(P_char);
 extern bool has_wind_blade_wielded(P_char);
 extern void event_wait(P_char ch, P_char victim, P_obj obj, void *data);
 extern P_nevent ne_schedule[PULSES_IN_TICK];
+extern P_nevent current_nevent;
 extern struct misfire_properties_struct misfire_properties;
 extern const racewar_struct racewar_color[MAX_RACEWAR + 2];
 
@@ -11012,6 +11013,10 @@ void event_mob_proc(P_char mob, P_char victim, P_obj object, void * /*data*/)
 	}
 	// Proc on PERIODIC.
 	(*mob_index[GET_RNUM(mob)].func.mob)(mob, victim, CMD_PERIODIC, 0);
+
+	/* Mob procs may extract the mob, which detaches this event before freeing it. */
+	if (!current_nevent || current_nevent->ch != mob)
+		return;
 
 	// Add another event... should check SPEC_ACT and CMD_SET_PERIODIC, but *shrug* supposedly done it once.
 	if (IS_ALIVE(mob))
