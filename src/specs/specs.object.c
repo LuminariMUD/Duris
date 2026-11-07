@@ -110,6 +110,20 @@ P_char melee_proc_target(P_obj obj, P_char ch, int cmd, char *arg)
 	return IS_ALIVE(victim) ? victim : NULL;
 }
 
+// Casts stoneskin on ch, wearer of obj, when ch has no skin spell and interval
+// seconds have passed since obj last did. Returns whether it cast.
+bool periodic_stoneskin(P_obj obj, P_char ch, int level, int interval)
+{
+	const int now = time(NULL);
+	if (has_skin_spell(ch) || obj->timer[0] + interval > now)
+	{
+		return false;
+	}
+	spell_stone_skin(level, ch, 0, SPELL_TYPE_SPELL, ch, 0);
+	obj->timer[0] = now;
+	return true;
+}
+
 // The proc_data of a CMD_GOTHIT or CMD_GOTNUKED event (whichever is passed as
 // event) reaching obj's living wearer, or NULL when it does not qualify.
 struct proc_data *defense_proc_data(P_obj obj, P_char ch, int cmd, int event, char *arg)
@@ -443,8 +457,6 @@ int artifact_biofeedback(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 // This works just fine but I don't see any reference to -1 in the code anywhere?
 int artifact_stone(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 {
-	int curr_time;
-
 	if (cmd == CMD_SET_PERIODIC)
 		return TRUE;
 
@@ -480,14 +492,7 @@ int artifact_stone(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 		return FALSE;
 	}
 
-	curr_time = time(NULL);
-
-	if (!has_skin_spell(ch) &&
-	    obj->timer[0] + (int)get_property("timer.stoneskin.generic", 60) <= curr_time)
-	{
-		spell_stone_skin(30, ch, 0, SPELL_TYPE_POTION, ch, 0);
-		obj->timer[0] = curr_time;
-	}
+	periodic_stoneskin(obj, ch, 30, (int)get_property("timer.stoneskin.generic", 60));
 
 	return FALSE;
 }
@@ -907,12 +912,9 @@ int transp_tow_misty_gloves(P_obj obj, P_char ch, int cmd, char *argument)
 			{
 				return FALSE;
 			}
-			curr_time = time(NULL);
 			// Every 30 sec.
-			if (obj->timer[0] + 30 <= curr_time && !has_skin_spell(ch))
+			if (periodic_stoneskin(obj, ch, 50, 30))
 			{
-				spell_stone_skin(50, ch, 0, SPELL_TYPE_SPELL, ch, 0);
-				obj->timer[0] = curr_time;
 				return TRUE;
 			}
 		}
@@ -2459,12 +2461,8 @@ int dragonlord_plate_oldold(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 				return TRUE;
 			}
 
-			if (obj->timer[0] + 30 <= curr_time && !has_skin_spell(temp_ch))
+			if (periodic_stoneskin(obj, temp_ch, 45, 30))
 			{
-				spell_stone_skin(45, temp_ch, 0, SPELL_TYPE_SPELL, temp_ch, 0);
-
-				obj->timer[0] = curr_time;
-
 				return TRUE;
 			}
 		}
@@ -3018,7 +3016,6 @@ int golem_chunk(P_obj obj, P_char ch, int cmd, char *arg)
 
 int good_evil_stoneOrSoulshield(P_obj obj)
 {
-	int curr_time;
 	P_char temp_ch;
 
 	temp_ch = obj->loc.wearing;
@@ -3033,11 +3030,8 @@ int good_evil_stoneOrSoulshield(P_obj obj)
 		if (!IS_AFFECTED2(temp_ch, AFF2_SOULSHIELD))
 			spell_soulshield(55, temp_ch, 0, SPELL_TYPE_SPELL, temp_ch, 0);
 	}
-	curr_time = time(NULL);
-	if (obj->timer[0] + 10 <= curr_time && !has_skin_spell(temp_ch))
+	if (periodic_stoneskin(obj, temp_ch, 55, 10))
 	{
-		spell_stone_skin(55, temp_ch, 0, SPELL_TYPE_SPELL, temp_ch, 0);
-		obj->timer[0] = curr_time;
 		return TRUE;
 	}
 
@@ -3831,8 +3825,6 @@ int dranum_mask(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 
 int sunblade(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	int curr_time;
-
 	if (cmd == CMD_SET_PERIODIC)
 	{
 		return TRUE;
@@ -3842,15 +3834,10 @@ int sunblade(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		if (OBJ_WORN(obj) && (ch = obj->loc.wearing))
 		{
-			curr_time = time(NULL);
-
-			if (!has_skin_spell(ch) &&
-			    obj->timer[0] + (int)get_property("timer.stoneskin.artifact.sunblade",
-							      30) <=
-				    curr_time)
+			if (periodic_stoneskin(
+				    obj, ch, 45,
+				    (int)get_property("timer.stoneskin.artifact.sunblade", 30)))
 			{
-				spell_stone_skin(45, ch, 0, SPELL_TYPE_POTION, ch, 0);
-				obj->timer[0] = curr_time;
 				return TRUE;
 			}
 		}
@@ -7074,7 +7061,6 @@ int trans_tower_sword(P_obj obj, P_char ch, int cmd, char *arg)
 int trans_tower_shadow_globe(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 {
 	P_char vict;
-	int curr_time = time(NULL);
 
 	if (cmd == CMD_SET_PERIODIC)
 		return TRUE;
@@ -7084,12 +7070,9 @@ int trans_tower_shadow_globe(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 
 	ch = obj->loc.wearing;
 
-	if (!has_skin_spell(ch) &&
-	    obj->timer[0] + get_property("timer.stoneskin.generic", 60) < curr_time)
+	if (periodic_stoneskin(obj, ch, 45, (int)get_property("timer.stoneskin.generic", 60)))
 	{
 		hummer(obj);
-		spell_stone_skin(45, ch, 0, SPELL_TYPE_POTION, ch, 0);
-		obj->timer[0] = curr_time;
 	}
 
 	if (IS_FIGHTING(ch))
