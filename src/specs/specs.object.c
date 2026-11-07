@@ -11219,11 +11219,10 @@ int glades_dagger(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 	}
 
-	if (!obj || !IS_ALIVE(ch))
-		if (!IS_ALIVE(ch))
-		{
-			return FALSE;
-		}
+	if (!IS_ALIVE(ch))
+	{
+		return FALSE;
+	}
 
 	if ((IS_UNDEAD(ch) || IS_UNDEADRACE(ch)) && OBJ_WORN_BY(obj, ch) && !number(0, 2))
 	{
