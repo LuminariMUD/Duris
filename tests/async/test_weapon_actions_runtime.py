@@ -48,6 +48,7 @@ callbacks = "\n".join([
     function(ROOT / "src/cmd/interp.c", "bool special(P_char ch, int cmd, char *arg)"),
     function(ROOT / "src/specs/specs.underworld.c", "void resolve_avernus_drain("),
     function(ROOT / "src/specs/specs.underworld.c", "int avernus("),
+    function(ROOT / "src/combat/fight.c", "static void cast_packed_weapon_spell("),
     function(ROOT / "src/combat/fight.c", "bool weapon_proc("),
     function(ROOT / "src/item/random_equipment.c", "int random_eq_proc("),
     function(ROOT / "src/cmd/actoff.c", "bool is_in_safe("),

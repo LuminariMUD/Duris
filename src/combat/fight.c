@@ -8712,12 +8712,23 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	return TRUE;
 }
 
+// Cast one packed weapon spell at value[6]'s level: offensive spells at the victim,
+// beneficial ones on the wielder unless already affected.
+static void cast_packed_weapon_spell(P_obj obj, P_char ch, P_char victim, int spell)
+{
+	if (!skills[spell].spell_pointer)
+		return;
+	if (IS_AGG_SPELL(spell))
+		(*skills[spell].spell_pointer)((int)obj->value[6], ch, 0, SPELL_TYPE_SPELL, victim,
+					       obj);
+	else if (!affected_by_spell(ch, spell))
+		(*skills[spell].spell_pointer)((int)obj->value[6], ch, 0, SPELL_TYPE_SPELL, ch,
+					       obj);
+}
+
 bool weapon_proc(P_obj obj, P_char ch, P_char victim)
 {
 	struct extra_descr_data *ex;
-	int spells[3];
-	int room;
-	int count;
 	// These native state machines use values[5..7] for state, not packed spells.
 	// A retained positive legacy energy value must not select the generic path.
 	if ((OBJ_VNUM(obj) == 21 || OBJ_VNUM(obj) == 22) && native_artifact_owns(OBJ_VNUM(obj)))
@@ -8756,55 +8767,27 @@ bool weapon_proc(P_obj obj, P_char ch, P_char victim)
 		else if (isname("_room_msg", ex->keyword))
 			act(ex->description, FALSE, ch, obj, victim, TO_NOTVICT | ACT_NOEOL);
 
-	count = 0;
-	room = ch->in_room;
-	if ((spells[0] = obj->value[5] % 1000))
-		count++;
-	if ((spells[1] = obj->value[5] % 1000000 / 1000))
-		count++;
-	if ((spells[2] = obj->value[5] % 1000000000 / 1000000))
-		count++;
+	// value[5] packs up to three spell numbers, three decimal digits each. Slots are
+	// read from the first one as many times as there are non-zero slots, so a gap
+	// shifts the cast set; that legacy rule is kept.
+	const int spells[3] = { obj->value[5] % 1000, obj->value[5] % 1000000 / 1000,
+				obj->value[5] % 1000000000 / 1000000 };
+	const int count = (spells[0] != 0) + (spells[1] != 0) + (spells[2] != 0);
+	const int room = ch->in_room;
 
 	if (!count)
 		return FALSE;
 
+	// Above 999999999, the tenth digit selects one random spell instead of all.
 	if (obj->value[5] > 999999999)
 	{
-		count = number(0, count - 1);
-		if (skills[spells[count]].spell_pointer)
-		{
-			if (IS_AGG_SPELL(spells[count]))
-			{
-				((*skills[spells[count]].spell_pointer)(
-					(int)obj->value[6], ch, 0, SPELL_TYPE_SPELL, victim, obj));
-			}
-			else if (!affected_by_spell(ch, spells[count]))
-			{
-				((*skills[spells[count]].spell_pointer)((int)obj->value[6], ch, 0,
-									SPELL_TYPE_SPELL, ch, obj));
-			}
-		}
+		cast_packed_weapon_spell(obj, ch, victim, spells[number(0, count - 1)]);
 	}
 	else
 	{
-		while (count-- && is_char_in_room(ch, room) && is_char_in_room(victim, room))
-		{
-			if (skills[spells[count]].spell_pointer)
-			{
-				if (IS_AGG_SPELL(spells[count]))
-				{
-					((*skills[spells[count]].spell_pointer)(
-						(int)obj->value[6], ch, 0, SPELL_TYPE_SPELL, victim,
-						obj));
-				}
-				else if (!affected_by_spell(ch, spells[count]))
-				{
-					((*skills[spells[count]].spell_pointer)(
-						(int)obj->value[6], ch, 0, SPELL_TYPE_SPELL, ch,
-						obj));
-				}
-			}
-		}
+		for (int i = count - 1;
+		     i >= 0 && is_char_in_room(ch, room) && is_char_in_room(victim, room); i--)
+			cast_packed_weapon_spell(obj, ch, victim, spells[i]);
 	}
 	return TRUE;
 }
