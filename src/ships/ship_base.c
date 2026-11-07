@@ -121,6 +121,7 @@
 #include <limits>
 #include <new>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #endif
@@ -2449,6 +2450,18 @@ void ship_activity()
 	int j, k, loc;
 	float rad;
 
+	// Validate player geometry before any hull moves. Otherwise a leading hull
+	// can move first and put an equal-speed follower briefly outside sensor range.
+	std::unordered_set<P_ship> lost_contacts;
+	ShipVisitor view;
+	for (bool fn = shipObjHash.get_first(view); fn; fn = shipObjHash.get_next(view))
+	{
+		P_ship ship = view;
+		if (SHIP_LOADED(ship) && !SHIP_SINKING(ship) && !IS_NPC_SHIP(ship) &&
+		    ship->target && !ship_target_in_contact(ship))
+			lost_contacts.insert(ship);
+	}
+
 	ShipVisitor svs;
 	for (bool fn = shipObjHash.get_first(svs); fn; fn = shipObjHash.get_next(svs))
 	{
@@ -2530,15 +2543,15 @@ void ship_activity()
 			if (ship->target != NULL)
 			{
 				int x, y;
-				bool target_lost = IS_NPC_SHIP(ship) ?
-							   (!SHIP_LOADED(ship->target) ||
-							    SHIP_DOCKED(ship->target) ||
-							    SHIP_SINKING(ship->target) ||
-							    !calculate_map_coords(
-								    ship->location,
-								    ship->target->location, x, y)) :
-							   (!ship_target_in_contact(ship) ||
-							    ship->timer[T_TARGET_IDLE] == 0);
+				bool target_lost =
+					!SHIP_LOADED(ship->target) || SHIP_DOCKED(ship->target) ||
+					SHIP_SINKING(ship->target) ||
+					(IS_NPC_SHIP(ship) ?
+						 !calculate_map_coords(ship->location,
+								       ship->target->location, x,
+								       y) :
+						 (lost_contacts.contains(ship) ||
+						  ship->timer[T_TARGET_IDLE] == 0));
 				if (target_lost)
 				{
 					ship->target = NULL;

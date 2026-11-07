@@ -2,8 +2,8 @@
 """#611: production spawn assignment, heartbeat, contacts and NPC target AI.
 
 The lower-level hull factory, captains, ammunition, steering/combat maneuvers,
-map rendering and world/persistence services are controlled. Ships stay still;
-this proves pursuit dispatch and assignment retention, not a live sailing trip.
+world/persistence services are controlled. The sailing case uses production
+map rendering and movement; other cases control the spawn map.
 """
 
 from pathlib import Path
@@ -26,9 +26,11 @@ FUNCTIONS = "\n\n".join(
             "const char *get_arc_indicator(int arc_no)",
             "float bearing(float x1, float y1, float x2, float y2)",
             "void setcontact(int i, P_ship target, P_ship ship, int x, int y)",
+            "static bool ship_contact_coords(P_ship ship, P_ship target, int &x, int &y)",
             "bool ship_target_in_contact(P_ship ship)", "int getcontacts(P_ship ship, bool limit_range)",
         )),
-        ("map.c", ("bool calculate_map_coords(int room1, int room2, int &x, int &y)",)),
+        ("map.c", ("bool calculate_map_coords(int room1, int room2, int &x, int &y)",
+                   "unsigned int calculate_relative_room(")),
         ("ship_base.c", ("void ship_activity()",)),
         ("ship_npc.c", ("P_ship try_load_npc_ship(P_ship target, NPC_AI_Type type, int level, P_char ch)",)),
         ("ship_npc_ai.c", (
@@ -40,6 +42,9 @@ FUNCTIONS = "\n\n".join(
         )),
     )
     for signature in signatures
+)
+SAILING_MAP = extract_function("ship_utils.c", "bool getmap(P_ship ship, bool limit_range)").replace(
+    "bool getmap(", "static bool sailing_map(", 1
 )
 
 HARNESS = r'''
@@ -63,9 +68,11 @@ HARNESS = r'''
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+#include <unordered_set>
 
-static room_data rooms[64]{};
+static room_data rooms[32001]{};
 P_room world = rooms;
+int top_of_world = 32000, top_of_zone_table = 2;
 static zone_data zones[3]{};
 zone_data *zone_table = zones;
 ShipObjHash shipObjHash;
@@ -76,6 +83,13 @@ const ShipTypeData ship_type_data[MAXSHIPCLASS] = {{ ._hull = 100, ._mxsail = 10
 const WeaponData weapon_data[MAXWEAPON]{};
 static int contact_bonus, basic_calls, advanced_calls, unload_calls;
 static std::vector<P_ship> allocated;
+static bool sailing;
+const char *ship_symbol[NUM_SECT_TYPES]{};
+static bool sailing_map(P_ship, bool);
+int real_room0(const int vnum) {
+    const int room = vnum - world[1].number + 1;
+    return room > 0 && room <= top_of_world ? room : 0;
+}
 
 // Only the outer spawn overload is production code: the factory creates a
 // minimal loaded hull/brain at the requested room, without world I/O or crew.
@@ -98,7 +112,8 @@ P_ship try_load_npc_ship(P_ship, NPC_AI_Type type, int, int location, P_char) {
     ship->npc_ai->type = type;
     return ship;
 }
-bool getmap(P_ship ship, bool) {
+bool getmap(P_ship ship, bool limit_range) {
+    if (sailing) return sailing_map(ship, limit_range);
     // Deterministic northward spawn cell, exactly 45 rooms from the victim.
     const int spawn = ship->location + 8;
     assert(spawn < 64);
@@ -134,10 +149,10 @@ void update_crew(P_ship) { abort(); }
 P_char captain_is_aboard(P_ship) { return nullptr; }
 int get_next_speed_change(P_ship) { abort(); }
 float get_next_heading_change(P_ship) { abort(); }
-bool is_valid_sailing_location(P_ship, int) { abort(); }
-void obj_from_room(P_obj) { abort(); }
-void obj_to_room(P_obj, int) { abort(); }
-void everyone_look_out_ship(P_ship) { abort(); }
+bool is_valid_sailing_location(P_ship, int room) { assert(sailing); return room > 0; }
+void obj_from_room(P_obj obj) { assert(sailing); world[obj->loc.room].contents = nullptr; }
+void obj_to_room(P_obj obj, int room) { assert(sailing); obj->loc.room = room; world[room].contents = obj; }
+void everyone_look_out_ship(P_ship) { assert(sailing); }
 void stop_autopilot(P_ship) { abort(); }
 void crash_land(P_ship) { abort(); }
 int dice(int, int) { abort(); }
@@ -147,7 +162,7 @@ void autopilot_activity(P_ship) { abort(); }
 bool has_eq_diplomat(const ShipData *) { return false; }
 int get_property(const char *, int fallback) { return fallback; }
 P_ship try_load_pirate_ship(P_ship) { abort(); }
-void send_to_room_f(int, const char *, ...) { abort(); }
+void send_to_room_f(int, const char *, ...) { assert(sailing); }
 
 // Captains and ammunition are available. Navigation, firing and boarding are
 // outside this fixture; count dispatch so an early AI return cannot pass it.
@@ -173,9 +188,10 @@ void NPCShipAI::cruise() {}
 bool pc_is_aboard(P_ship) { return false; }
 bool try_unload_npc_ship(P_ship) { ++unload_calls; return true; }
 void fly_ship(P_ship) { abort(); }
-''' + FUNCTIONS + r'''
+''' + FUNCTIONS + '\n' + SAILING_MAP + r'''
 
 static void reset() {
+    sailing = false;
     for (P_ship ship : allocated) {
         assert(shipObjHash.erase(ship));
         unregister_ship_runtime(ship);
@@ -318,10 +334,12 @@ static void check_unavailable() {
 
 static void check_unload_visibility() {
     for (contact_bonus = 0; contact_bonus <= 2; ++contact_bonus)
-    for (int scenario = 0; scenario < 8; ++scenario) {
+    for (int scenario = 0; scenario < 10; ++scenario) {
         reset();
         world[2].number = 600100;
         world[3].number = 600100 + (scenario < 2 ? 145 : 35 + contact_bonus);
+        if (scenario == 8) { world[2].number = 600001; world[3].number = 600999; }
+        if (scenario == 9) { world[2].number = 501100; world[3].number = 1499100; }
         P_ship ship = make_ship(NPCSHIP, 2);
         P_ship witness = make_ship(scenario == 6 ? NPCSHIP : GOODIESHIP, 3);
         if (scenario == 1 || scenario == 4) REMOVE_BIT(witness->flags, LOADED);
@@ -334,7 +352,7 @@ static void check_unload_visibility() {
         assert(ship->npc_ai->contacts_count == 1);
         ContactData saved_contacts[MAXSHIPS];
         memcpy(saved_contacts, contacts, sizeof contacts);
-        const bool visible = scenario == 2;
+        const bool visible = scenario == 2 || scenario >= 8;
         assert(ship->npc_ai->try_unload() == !visible);
         assert(unload_calls == (visible ? 0 : 1));
         assert(!memcmp(saved_contacts, contacts, sizeof contacts));
@@ -343,7 +361,7 @@ static void check_unload_visibility() {
             for (int tick = 0; tick < 25; ++tick) ship_activity();
             assert(unload_calls == 0);
             // Leaving contact must eventually allow cleanup on a heartbeat.
-            world[3].number += 110;
+            world[3].number = world[2].number + 110;
             for (int tick = 0; tick < 11 && !unload_calls; ++tick) ship_activity();
             assert(unload_calls == 1);
         }
@@ -352,12 +370,61 @@ static void check_unload_visibility() {
     puts("PASS cleanup witnesses: loaded/undocked/player, exact scout range, distant/unloaded rejection, unchanged contact buffer");
 }
 
+static void check_sailing() {
+    for (int axis = 0; axis < 2; ++axis)
+    for (int together = 0; together < 2; ++together)
+    for (int separation : {2, 35}) {
+        if (!together && separation == 35) continue;
+        reset(); sailing = true;
+        zones[0].mapx = 200; zones[0].mapy = 160;
+        for (int room = 1; room <= top_of_world; ++room) {
+            world[room].number = 499999 + room;
+            world[room].sector_type = SECT_OCEAN;
+        }
+        for (auto &symbol : ship_symbol) symbol = "~~";
+        const int row = axis ? 1 : 20;
+        const int col = axis ? 20 : 199;
+        P_ship moving = make_ship(GOODIESHIP, 1 + col + row * 200);
+        P_ship other = make_ship(EVILSHIP, 1);
+        if (separation == 35) {
+            // Put the leading ship first in the hash sweep: updating its
+            // position must not invalidate the trailing ship's equal-speed lock.
+            ShipVisitor first; assert(shipObjHash.get_first(first));
+            if (static_cast<P_ship>(first) != moving) std::swap(moving, other);
+        }
+        moving->location = 1 + col + row * 200;
+        other->location = 1 + (axis ? col : col - separation) + (axis ? row + separation : row) * 200;
+        for (P_ship ship : {moving, other}) {
+            ship->id = const_cast<char *>(ship == moving ? "AB" : "CD");
+            ship->shipobj->type = ITEM_SHIP; ship->shipobj->value[6] = 1;
+            obj_to_room(ship->shipobj, ship->location);
+            ship->target = ship == moving ? other : moving;
+            ship->timer[T_TARGET_IDLE] = 300;
+            ship->heading = ship->setheading = axis ? 0 : 90;
+        }
+        moving->speed = moving->setspeed = 10;
+        if (together) other->speed = other->setspeed = 10;
+        const int start = moving->location;
+        for (int tick = 0; tick < 80; ++tick) {
+            ship_activity();
+            assert(moving->target == other && other->target == moving);
+            assert(getcontacts(moving) == 1 && getcontacts(other) == 1);
+            assert(ship_target_in_contact(moving) && ship_target_in_contact(other));
+            assert(contacts[0].range < (separation == 35 ? 35.001 : 8));
+        }
+        assert(moving->location != start);
+    }
+    reset();
+    puts("PASS heartbeat sailing across both seams, one/two moving ships and continuous active locks/contacts");
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     if (!strcmp(argv[1], "group")) check_group();
     else if (!strcmp(argv[1], "escort")) check_escort();
     else if (!strcmp(argv[1], "unavailable")) check_unavailable();
     else if (!strcmp(argv[1], "unload-visibility")) check_unload_visibility();
+    else if (!strcmp(argv[1], "sailing")) check_sailing();
     else abort();
 }
 '''
@@ -377,7 +444,7 @@ with tempfile.TemporaryDirectory(prefix="npc-ship-targeting-", dir=build_root) a
              str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(binary)],
             cwd=ROOT, check=True,
         )
-        for case in ("group", "escort", "unavailable", "unload-visibility"):
+        for case in ("group", "escort", "unavailable", "unload-visibility", "sailing"):
             print(f"{backend}: {case}", flush=True)
             result = subprocess.run([str(binary), case], timeout=30)
             if result.returncode:

@@ -101,6 +101,7 @@ void check_contraband(P_ship ship,int) {++customs_calls;if(ship==blocked_ship)SE
 #include <cstring>
 #include <cmath>
 #include <set>
+#include <unordered_set>
 #include <string>
 
 static room_data rooms[32] = {};
@@ -111,6 +112,11 @@ static int contact_x, contact_y, contact_bonus;
 static bool same_map = true;
 bool calculate_map_coords(int, int, int &x, int &y) {
     x = contact_x; y = contact_y; return same_map;
+}
+// Geometry is controlled here; test_ship_contacts.py and test_npc_ship_targeting.py
+// execute the production wrapped geometry with real room/zone fixtures.
+static bool ship_contact_coords(P_ship, P_ship, int &x, int &y) {
+    x = 50 + contact_x; y = 50 - contact_y; return same_map;
 }
 int ShipCrew::get_contact_range_mod() const { return contact_bonus; }
 static index_data objects[3] = {};
