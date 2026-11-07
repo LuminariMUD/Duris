@@ -2528,6 +2528,12 @@ int gauntlets_legend(P_obj obj, P_char ch, int cmd, char *arg)
 		hummer(obj);
 	}
 
+	// Periodic events carry no actor; the wearer is the subject.
+	if (cmd == CMD_PERIODIC)
+	{
+		ch = OBJ_WORN(obj) ? obj->loc.wearing : NULL;
+	}
+
 	if (!IS_ALIVE(ch) || !OBJ_WORN_BY(obj, ch))
 	{
 		return FALSE;
@@ -2535,6 +2541,51 @@ int gauntlets_legend(P_obj obj, P_char ch, int cmd, char *arg)
 
 	if (cmd == CMD_PERIODIC)
 	{
+		vict = GET_OPPONENT(ch);
+		// 1/10 chance in combat.
+		if (IS_FIGHTING(ch) && IS_ALIVE(vict) && vict->in_room == ch->in_room &&
+		    !number(0, 9))
+		{
+			const char *glow = "$q &nbegin to &+mglow&n.";
+			act_trio(glow, glow, glow, TRUE, ch, obj, vict);
+
+			if (GET_HIT(ch) < (GET_MAX_HIT(ch) / 4))
+			{
+				act_trio("$q &nsend a &+csoothing &nsensation up your arm.&n.",
+					 "$n looks healthier.", "$n looks healthier.", TRUE, ch,
+					 obj, vict);
+				GET_HIT(ch) += (GET_MAX_HIT(ch) / 8);
+			}
+			else if (GET_HIT(ch) < (GET_MAX_HIT(ch) / 2))
+			{
+				act_trio("$q &nsend a &+csoothing &nsensation up your arm.&n.",
+					 "$n looks healthier.", "$n looks healthier.", TRUE, ch,
+					 obj, vict);
+				GET_HIT(ch) += (GET_MAX_HIT(ch) / 12);
+			}
+			if (GET_HIT(vict) < (GET_MAX_HIT(vict) / 4) &&
+			    GET_HIT(vict) > (GET_MAX_HIT(vict) / 20))
+			{
+				act_trio(
+					"A &+rpulse &nof &+Menergy &nshoots from&n $q&+M, striking&n $N &+Min the chest&n.",
+					"A &+rpulse &nof &+Menergy &nshoots from&n $q, &+Mstriking you in the chest&n.",
+					"A &+rpulse &nof &+Menergy &nshoots from&n $q&+M, striking&n $N &+Min the chest&n.",
+					TRUE, ch, obj, vict);
+				GET_HIT(vict) -= (GET_MAX_HIT(vict) / 25);
+			}
+			else if (GET_HIT(vict) < (GET_MAX_HIT(vict) / 2) &&
+				 GET_HIT(vict) > (GET_MAX_HIT(vict) / 10))
+			{
+				act_trio(
+					"A &+rpulse &nof &+Menergy &nshoots from $q, striking $N in the chest&n.",
+					"A &+rpulse &nof &+Menergy &nshoots from $q, striking you in the chest&n.",
+					"A &+rpulse &nof &+Menergy &nshoots from $q, striking $N in the chest&n.",
+					TRUE, ch, obj, vict);
+				GET_HIT(vict) -= (GET_MAX_HIT(vict) / 15);
+			}
+			return TRUE;
+		}
+
 		if (!CHAR_IN_NO_MAGIC_ROOM(ch))
 		{
 			// 3 min timer.
@@ -2549,7 +2600,7 @@ int gauntlets_legend(P_obj obj, P_char ch, int cmd, char *arg)
 					act("$n&+L's $q &+Mhums &nsoftly.", TRUE, ch, obj, 0,
 					    TO_ROOM);
 
-					spell_stone_skin(60, ch, 0, SPELL_TYPE_SPELL, 0, 0);
+					spell_stone_skin(60, ch, 0, SPELL_TYPE_SPELL, ch, 0);
 					return TRUE;
 				}
 			}
