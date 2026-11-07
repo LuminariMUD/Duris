@@ -2828,7 +2828,7 @@ void half_chop(char *string, char *arg1, char *arg2)
 
 bool special(P_char ch, int cmd, char *arg)
 {
-	P_obj i;
+	P_obj i, next_obj;
 	P_char k;
 	int j;
 
@@ -2858,8 +2858,10 @@ bool special(P_char ch, int cmd, char *arg)
 	/*
 	 * special in inventory?
 	 */
-	for (i = ch->carrying; i; i = i->next_content)
+	// A proc may extract its own object, so read the next one first.
+	for (i = ch->carrying; i; i = next_obj)
 	{
+		next_obj = i->next_content;
 		if ((i->R_num >= 0) && obj_index[i->R_num].func.obj)
 			if ((*obj_index[i->R_num].func.obj)(i, ch, cmd, arg))
 				return (1);
@@ -2899,10 +2901,13 @@ bool special(P_char ch, int cmd, char *arg)
 	/*
 	 * special in object present?
 	 */
-	for (i = world[ch->in_room].contents; i; i = i->next_content)
+	for (i = world[ch->in_room].contents; i; i = next_obj)
+	{
+		next_obj = i->next_content;
 		if ((i->R_num >= 0) && obj_index[i->R_num].func.obj)
 			if ((*obj_index[i->R_num].func.obj)(i, ch, cmd, arg))
 				return (1);
+	}
 
 	return (0);
 }

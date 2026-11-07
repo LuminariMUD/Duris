@@ -421,6 +421,30 @@ static int carried_rub(P_obj source, P_char, int command, char *argument) {
     return true;
 }
 
+// A proc that extracts its own object, as huntsman_ward and generic_drow_eq do.
+static int self_extract(P_obj source, P_char ch, int, char *) {
+    ch->carrying = source->next_content;
+    delete source;
+    return false;
+}
+
+static void self_extracting_dispatch() {
+    wind_scene s;
+    P_index saved = obj_index;
+    index_data index[3]{};
+    index[0] = obj_index[0]; index[1].func.obj = self_extract; index[2].func.obj = carried_rub;
+    obj_index = index;
+    obj_data carried{}; carried.R_num = 2;
+    carried.name = const_cast<char *>("amethyst orb");
+    auto *doomed = new obj_data{}; doomed->R_num = 1; doomed->next_content = &carried;
+    s.actor->carrying = doomed; carried_rubs = 0;
+    char argument[] = "amethyst";
+    // The next object is read before the proc frees the current one.
+    assert(special(s.actor, CMD_RUB, argument) && carried_rubs == 1);
+    s.actor->carrying = nullptr;
+    obj_index = saved;
+}
+
 static void wind_rub_dispatch() {
     for (bool safe : {false, true}) {
         wind_scene s;
@@ -540,7 +564,7 @@ int main() {
     nevent_bind_game_thread(); ne_dead_event_pool = &test_pool;
     fake_clock_ns = 1000000000ULL; ne_events();
     avernus_parity(); cancellation_and_payment(); packed_parity(); random_parity(); suppression_measurement();
-    wind_artifact_cases(); wind_rub_dispatch();
+    wind_artifact_cases(); wind_rub_dispatch(); self_extracting_dispatch();
     std::puts("Weapon actions: real selection callbacks, parity, payment, targets, cancellation and timing passed");
     std::puts("Wind artifacts: sphere melee/whirlwind policy and cooldown, NPC auto-wield and player escape passed");
     std::puts("Wind rub dispatch: real command routing and name matching preserve other carried-item procs");

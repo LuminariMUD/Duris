@@ -1023,15 +1023,11 @@ int generic_drow_eq(P_obj obj, P_char ch, int cmd, char *arg)
 	if (!ch || !obj) /* If the player ain't here, why are we? */
 		return FALSE;
 
-	if (!OBJ_WORN_BY(obj, ch) && !OBJ_CARRIED_BY(obj, ch))
-		return FALSE;
-
 	if (DECAYABLE(ch->in_room))
 	{
 		act("Your $q quickly decays in the surface air!", TRUE, ch, obj, vict, TO_CHAR);
 		act("$n's $q quickly decays in the surface air!", TRUE, ch, obj, vict, TO_ROOM);
 		extract_obj(obj, TRUE); // Not an arti, but 'in game.'
-		return TRUE;
 	}
 	return FALSE;
 }
