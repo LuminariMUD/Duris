@@ -8,6 +8,7 @@ payload's bytes as a name. Run both with binary payloads under ASan.
 
 gauntlets_legend's periodic procs read no payload: periodic events carry no
 actor, so they act on the wearer, and its heal casts stoneskin on that wearer.
+tripboots follows the same rule and trips the wearer's opponent.
 """
 
 from pathlib import Path
@@ -55,6 +56,8 @@ void hummer(P_obj) {}
 bool damage(P_char, P_char, double, int) { return false; }
 int get_property(const char *, int fallback) { return fallback; }
 void set_obj_extra_flags(P_obj obj, unsigned int flags) { obj->extra_flags = flags; }
+static P_char waited;
+void CharWait(P_char ch, int) { waited = ch; }
 ''' + "".join(f"void spell_{name}(int, P_char, char *, int, P_char, P_obj) {{}}\n" for name in SPELLS)
 
 DRIVER = r'''
@@ -112,6 +115,15 @@ int main()
 	wearer.equipment[WEAR_SHIELD] = &buckler;
 	healed = nullptr;
 	assert(buckler_saints(&buckler, nullptr, CMD_PERIODIC, nullptr) && healed == &wearer);
+
+	// tripboots' periodic tick sweeps the wearer's opponent off their feet.
+	static obj_data boots;
+	boots.loc_p = LOC_WORN;
+	boots.loc.wearing = &wearer;
+	wearer.equipment[WEAR_FEET] = &boots;
+	wearer.specials.fighting = &victim;
+	assert(tripboots(&boots, nullptr, CMD_PERIODIC, nullptr));
+	assert(GET_POS(&victim) == POS_SITTING && waited == &victim);
 	puts("item proc payloads: combat payloads are not parsed as text");
 }
 '''
@@ -127,6 +139,7 @@ def main():
         extract_function("specs.winterhaven.c", "int deathseeker_mace("),
         extract_function("specs.winterhaven.c", "int gauntlets_legend("),
         extract_function("specs.winterhaven.c", "int buckler_saints("),
+        extract_function("specs.object.c", "int tripboots("),
     ])
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)

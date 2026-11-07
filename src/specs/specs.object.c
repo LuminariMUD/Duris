@@ -8094,8 +8094,13 @@ int tripboots(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		return TRUE;
 	}
 
-	if (!IS_ALIVE(ch) || !OBJ_WORN_POS(obj, WEAR_FEET) || cmd != CMD_PERIODIC ||
-	    ch != obj->loc.wearing)
+	// Periodic ticks come without a character, so act for the wearer.
+	if (!OBJ_WORN_POS(obj, WEAR_FEET) || ch || cmd != CMD_PERIODIC)
+	{
+		return FALSE;
+	}
+	ch = obj->loc.wearing;
+	if (!IS_ALIVE(ch))
 	{
 		return FALSE;
 	}
@@ -8143,8 +8148,13 @@ int blindbadge(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		return TRUE;
 	}
 
-	if (!OBJ_WORN_POS(obj, GUILD_INSIGNIA) || !IS_ALIVE(ch) || ch != obj->loc.wearing ||
-	    cmd != CMD_PERIODIC)
+	// Periodic ticks come without a character, so act for the wearer.
+	if (!OBJ_WORN_POS(obj, GUILD_INSIGNIA) || ch || cmd != CMD_PERIODIC)
+	{
+		return FALSE;
+	}
+	ch = obj->loc.wearing;
+	if (!IS_ALIVE(ch))
 	{
 		return FALSE;
 	}
@@ -8237,8 +8247,13 @@ int fumblegaunts(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		return TRUE;
 	}
 
-	if (!OBJ_WORN_POS(obj, WEAR_HANDS) || !IS_ALIVE(ch) || ch != obj->loc.wearing ||
-	    cmd != CMD_PERIODIC)
+	// Periodic ticks come without a character, so act for the wearer.
+	if (!OBJ_WORN_POS(obj, WEAR_HANDS) || ch || cmd != CMD_PERIODIC)
+	{
+		return FALSE;
+	}
+	ch = obj->loc.wearing;
+	if (!IS_ALIVE(ch))
 	{
 		return FALSE;
 	}
@@ -9338,8 +9353,13 @@ int dragon_skull_helm(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 		return TRUE;
 	}
 
-	if (cmd != CMD_PERIODIC || !IS_ALIVE(ch) || !OBJ_WORN(obj) || (ch != obj->loc.wearing) ||
-	    !OBJ_WORN_POS(obj, WEAR_HEAD))
+	// Periodic ticks come without a character, so act for the wearer.
+	if (cmd != CMD_PERIODIC || ch || !OBJ_WORN_POS(obj, WEAR_HEAD))
+	{
+		return FALSE;
+	}
+	ch = obj->loc.wearing;
+	if (!IS_ALIVE(ch))
 	{
 		return FALSE;
 	}
@@ -9527,12 +9547,14 @@ int alch_bag(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		return TRUE;
 	}
 
-	if (cmd != CMD_PERIODIC)
+	// Periodic ticks come without a character, so act for the wearer.
+	if (cmd != CMD_PERIODIC || ch || !OBJ_WORN(obj))
 	{
 		return FALSE;
 	}
 
-	if (!IS_ALIVE(ch) || !OBJ_WORN(obj) || ch != obj->loc.wearing)
+	ch = obj->loc.wearing;
+	if (!IS_ALIVE(ch))
 	{
 		return FALSE;
 	}
@@ -9543,8 +9565,9 @@ int alch_bag(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		return FALSE;
 	}
 
+	// Refill only an empty pouch, so it cannot pile up ingredients.
 	curr_time = time(NULL);
-	if (obj->timer[0] + 60 + number(0, 30) <= curr_time)
+	if (!obj->contains && obj->timer[0] + 60 + number(0, 30) <= curr_time)
 	{
 		/* if this somehow works, it is a MIRACLE as I had nothing to copy from */
 		/* should add a full set of ingredients into the pouch! */

@@ -239,13 +239,11 @@ int berserker_toss(P_char ch, P_char vict, int cmd, char * /*arg*/)
 	P_obj obj;
 	int numbPCs = 0, luckyPC = 0, currPC = 0;
 
-	/*
-	 * check for periodic event calls
-	 */
+	// It tosses on its periodic tick while fighting, like the flesh golem.
 	if (cmd == CMD_SET_PERIODIC)
-		return FALSE;
+		return TRUE;
 
-	if (cmd)
+	if (cmd != CMD_PERIODIC)
 		return FALSE;
 
 	if (!IS_FIGHTING(ch))
