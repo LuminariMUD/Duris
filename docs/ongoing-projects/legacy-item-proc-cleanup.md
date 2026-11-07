@@ -1,30 +1,38 @@
 # Legacy weapon and gear proc cleanup
 
-Research date: 2026-11-07. Source baseline: `896ff7b28`. Status: every delivery step is implemented as a stacked PR awaiting review and merge; see the progress log below.
+Research date: 2026-11-07. Source baseline: `896ff7b28`. Status: complete. Every delivery step is merged to master (2026-11-07); the only open item is player news, below.
 
 ## Progress log
 
-Keep this table current; a new session should be able to resume from it alone. PRs are stacked: each branch is based on the one above it, so merge them in order.
+Every PR below was adversarially reviewed, its findings fixed on the branch, and merged; the branches are deleted. Each review comment on the PR lists the findings and fixing commits.
 
 | Step | Branch | PR | State |
 | --- | --- | --- | --- |
-| Plan | `docs/legacy-item-proc-cleanup-plan` | #773 | Ready for review |
-| 1. Dead code | `proc-cleanup/dead-code` | #774 | Ready for review |
-| 2. `CheckMultiProcTiming` removal and `lightning_sword` activation | `proc-cleanup/multiproc-timing` | #775 | Ready for review |
-| 3a. Pilot: event guards (`melee_proc_target`, `defense_proc_data`) in `specs.object.c` and `specs.underworld.c` | `proc-cleanup/pilot-helpers` | #776 | Ready for review |
-| 3b. Pilot: `act_trio` in the same two files | `proc-cleanup/pilot-act-trio` | #779 | Ready for review |
-| 3c. Pilot: `periodic_stoneskin` and the cloak/ioun deflection merge | `proc-cleanup/pilot-stoneskin-deflect` | #780 | Ready for review |
-| 3d. Owner review of the converted pilot files | — | — | Requested on #776/#779/#780; the sweep proceeds as stacked PRs, so review can happen alongside |
-| 4a. Sweep A: `specs.winterhaven.c`, `specs.vecna.c`, `specs.zion.c` | `proc-cleanup/sweep-a` (on #777) | #783 | Ready for review |
-| 4b/4c. Sweep B: `specs.undermountain.c`, `specs.jot.c`, the eleven small files, and the leftover `OBJ_WORN_BY` spellings | `proc-cleanup/sweep-b` (on #783) | #784 | Ready for review |
+| Plan | `docs/legacy-item-proc-cleanup-plan` | #773 | Merged |
+| 1. Dead code | `proc-cleanup/dead-code` | #774 | Merged |
+| 2. `CheckMultiProcTiming` removal and `lightning_sword` activation | `proc-cleanup/multiproc-timing` | #775 | Merged |
+| 3a. Pilot: event guards (`melee_proc_target`, `defense_proc_data`) in `specs.object.c` and `specs.underworld.c` | `proc-cleanup/pilot-helpers` | #776 | Merged |
+| 3b. Pilot: `act_trio` in the same two files | `proc-cleanup/pilot-act-trio` | #779 | Merged |
+| 3c. Pilot: `periodic_stoneskin` and the cloak/ioun deflection merge | `proc-cleanup/pilot-stoneskin-deflect` | #780 | Merged |
+| 3d. Owner review of the converted pilot files | — | — | Not held before merging; the owner can still review on #776/#779/#780 |
+| 4a. Sweep A: `specs.winterhaven.c`, `specs.vecna.c`, `specs.zion.c` | `proc-cleanup/sweep-a` (on #777) | #783 | Merged |
+| 4b/4c. Sweep B: `specs.undermountain.c`, `specs.jot.c`, the eleven small files, and the leftover `OBJ_WORN_BY` spellings | `proc-cleanup/sweep-b` (on #783) | #784 | Merged |
+| 5. Payload parsing defects | `proc-cleanup/payload-parsing` (on 3a) | #777 | Merged |
+| 6a. Set execution moved to `specs.set.c` | `proc-cleanup/set-move` (on 3c) | #781 | Merged |
+| 6b. `weapon_proc` packed spells | `proc-cleanup/weapon-proc` (on the plan PR) | #778 | Merged |
+| Tracing note: event payloads beside the pseudo-command constants | `proc-cleanup/event-notes` (on the plan PR) | #782 | Merged |
+| Follow-up: say text no longer passed as a victim in `totem_of_mastery`/`circlet_of_light` | `fix/totem-say-victim` | #786 | Merged |
 
-With 4b merged, every item-proc spec file is on the shared helpers. The plan's delivery sequence is then complete; what remains is review and merging.
-| 5. Payload parsing defects | `proc-cleanup/payload-parsing` (on 3a) | #777 | Ready for review |
-| 6a. Set execution moved to `specs.set.c` | `proc-cleanup/set-move` (on 3c) | #781 | Ready for review |
-| 6b. `weapon_proc` packed spells | `proc-cleanup/weapon-proc` (on the plan PR) | #778 | Ready for review |
-| Tracing note: event payloads beside the pseudo-command constants | `proc-cleanup/event-notes` (on the plan PR) | #782 | Ready for review |
+Every item-proc spec file is on the shared helpers, and the delivery sequence is complete.
 
-Merge order: #773 → #774 → #775 → #776 → #779 → #780 → #781 → #777 → #783 → #784; #778 and #782 after #773. Retarget each PR's base to `master` as the one below it merges.
+Merge order used: #773, #774, #775, #782, #778, #776, #779, #780, #781, #777, #783, #784, #786. Retarget a stacked PR to `master` *before* merging its base: deleting a base branch closes every PR on it.
+
+**Owed: player news.** Run `news-update` (or let the next deployment do it) and announce these gameplay changes:
+- The lightning sword (vnum 41915) proc now fires, about 1 hit in 33.
+- Procs that never ran now do. Heals and skins: gauntlets of legend (stoneskin every 3 minutes while hurt, plus a 1-in-10 combat pulse), buckler of the saints (heal every 3 minutes while hurt), deathseeker mace and illithid axe (cure or invigorate on about half of all periodic ticks). Other effects: demon slayer drains undead wearers (to 1 HP at most), Vecna's stone mist strips stoneskin, tripboots, blindbadge, fumblegaunts, the dragon skull helm, the alchemist's bag (refills only when empty), and the snogres berserker's toss.
+- Several fixes players can notice: a staff of blue flames lag of 2.75 rounds, the shabo traps, the good/evil swords' flurry and group buffs, the dragonslayer level cap, the vigor mask, the treasure chest, and message fixes.
+
+**Live check (2026-11-07, local master `8af411f11`).** Wielding the deathseeker mace (55211) on the local server gave "vibrates softly" and "You feel MUCH better!" four times in 75 seconds, which is the revived periodic path at its coded 50%. There were no errors in the game logs.
 
 Decisions made while working:
 
