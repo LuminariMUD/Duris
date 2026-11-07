@@ -381,8 +381,7 @@ int lightning_sword(P_obj obj, P_char ch, int cmd, char *arg)
 
 	vict = legacy_proc_arg<P_char>(arg);
 	// 1/33 chance.
-	if (!IS_ALIVE(ch) || !IS_FIGHTING(ch) || !IS_ALIVE(vict) || !OBJ_WORN(obj) ||
-	    CheckMultiProcTiming(ch) || number(0, 32))
+	if (!IS_ALIVE(ch) || !IS_FIGHTING(ch) || !IS_ALIVE(vict) || !OBJ_WORN(obj) || number(0, 32))
 	{
 		return FALSE;
 	}
