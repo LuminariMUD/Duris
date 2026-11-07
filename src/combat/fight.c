@@ -11427,7 +11427,8 @@ int pv_common(P_char ch, P_char opponent, const P_obj wpn, int *damAccumulator)
 {
 	int room, success = FALSE, wpn_skill, spell;
 	P_obj item;
-	struct proc_data data;
+	// CMD_GOTHIT sets only .victim; the other fields stay zero.
+	struct proc_data data = {};
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(opponent))
 		return FALSE;
