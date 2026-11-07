@@ -901,10 +901,6 @@ int pet_shops(int /*room*/, P_char ch, int cmd, char *arg)
 	}
 	else if (cmd == CMD_RENT)
 	{
-#if 0
-    send_to_char("Stables are out of order temporarily.\r\n", ch);
-    return TRUE;
-#endif
 		one_argument(arg, name);
 		if (!*name)
 			return FALSE;
@@ -1003,13 +999,8 @@ int pet_shops(int /*room*/, P_char ch, int cmd, char *arg)
 		{
 			return FALSE;
 		}
-#if 0
-    /* This is cost per real life day */
-    val = ((ticket->value[3] - time(NULL) / SECS_PER_REAL_DAY) * ticket->value[0]);
-#else
 		/* and this is the flat rate price */
 		val = ticket->value[0];
-#endif
 		if (GET_MONEY(ch) < val)
 		{
 			send_to_char("Ye dont have enough cash!\r\n", ch);

@@ -53,8 +53,8 @@ def bindings():
     path = ROOT/'src/specs/specs.assign.c'
     raw = re.sub(r'/\*.*?\*/|//[^\n]*', '', path.read_text(), flags=re.S)
     literal = {int(v) for v in re.findall(SLOT, raw)}
-    # Use the compiler's selected configuration, including THARKUN_ARTIS and
-    # disabled branches. Resolve chained assignments in their execution order.
+    # Use the compiler's selected configuration, including disabled
+    # branches. Resolve chained assignments in their execution order.
     pre = subprocess.run(['g++', '-E', '-P', '-x', 'c++', '-std=c++20',
         '-I'+str(ROOT/'src'), str(path)], check=True, text=True, capture_output=True).stdout
     pre = pre[pre.index('void assign_objects(void)\n{'):]
@@ -90,7 +90,7 @@ def inventory():
             'default-off pilot: '+PILOTS[vnum] if vnum in PILOTS else
             'retain legacy; outside initial migration wave; requires individual contract and measured budget')
     return dict(corpus='Tracked areas/AREA in file order; artifact flag in object template extra_flags',
-        liveAvailabilityVerified=False, configuration='Compiler defaults; THARKUN_ARTIS enabled',
+        liveAvailabilityVerified=False, configuration='Compiler defaults',
         counts=dict(templates=len(rows), literalBindings=sum(bool(r['literalCallback']) for r in rows),
             callbacks=len({r['literalCallback'] for r in rows if r['literalCallback']}),
             withoutLiteralBinding=sum(not r['literalCallback'] for r in rows),

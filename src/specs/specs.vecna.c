@@ -248,23 +248,6 @@ int vecna_deathportal(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		if (isname(arg, "portal") || isname(arg, "death"))
 		{
-			/* round-robin portals
-			if ((obj->value[5] >= 0) && (obj->value[5] < 3))
-			{
-				obj->value[0] = rooms[obj->value[5]];
-				obj->value[5]++;
-			}
-			else
-			{
-				debug("Error with vecna_deathportal() using an invalid index number for the room[] array.  Resetting portal.");
-				obj->value[5] = 0;
-				return TRUE;
-			}
-			if (obj->value[5] >= 3 || obj->value[5] <= 0)
-			{
-				obj->value[5] = 0;
-			}
-			*/
 			obj->value[0] = rooms[number(0, 2)];
 			return FALSE;
 		}

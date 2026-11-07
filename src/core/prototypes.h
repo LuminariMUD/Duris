@@ -2475,7 +2475,6 @@ const char *get_god_name(P_char);
 void assign_mobiles(void);
 void assign_objects(void);
 void assign_rooms(void);
-void item_procs(void);
 void room_procs(void);
 
 /* specials.c */

@@ -49,31 +49,6 @@ extern struct time_info_data time_info;
 extern struct zone_data *zone;
 extern struct zone_data *zone_table;
 
-/*
-static void hummer(P_obj obj);
-
-void
-hummer(P_obj obj)
-{
-  if (!obj || number(0,9))
-    return;
-  if (OBJ_WORN(obj) || OBJ_CARRIED(obj)) {
-    act("&+LA faint hum can be heard from&N $p&+L carried by $n&n.",
-        FALSE, obj->loc.wearing, obj, 0, TO_ROOM);
-    act("&+LA faint hum can be heard from&N $p&+L you are carrying.",
-        FALSE, obj->loc.wearing, obj, 0, TO_CHAR);
-  } else if (OBJ_ROOM(obj)) {
-    act("&+LA strange humming sound comes from&N $p&+L.",
-        0, world[obj->loc.room].people, obj, 0, TO_ROOM);
-    act("&+LA strange humming sound comes from&N $p&+L.",
-        0, world[obj->loc.room].people, obj, 0, TO_ROOM);
-
-  }
-  return;
-}
-
-*/
-
 /***** Objects *****/
 int blade_of_paladins(P_obj obj, P_char ch, int cmd, char *arg)
 {

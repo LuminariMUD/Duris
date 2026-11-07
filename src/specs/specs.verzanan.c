@@ -4524,43 +4524,6 @@ int gesen(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 }
 
-int secret_door(P_obj obj, P_char ch, int cmd, char *arg)
-{
-	int dam = obj->value[1];
-	char Gbuf1[MAX_STRING_LENGTH];
-
-	/*
-	   check for periodic event calls
-	 */
-	if (cmd == CMD_SET_PERIODIC)
-		return FALSE;
-
-	if (!obj || !ch || !arg)
-		return (FALSE);
-
-	if (cmd != CMD_ENTER)
-		return (FALSE);
-
-	one_argument(arg, Gbuf1);
-	if (!isname(Gbuf1, obj->name))
-		return (FALSE);
-
-	act("You step through the $q.", FALSE, ch, obj, 0, TO_CHAR);
-	act("$n steps through the $q.", FALSE, ch, obj, 0, TO_ROOM);
-
-	if (!IS_TRUSTED(ch))
-	{
-		if (GET_HIT(ch) > dam)
-			GET_HIT(ch) -= dam;
-		else
-			GET_HIT(ch) = dam;
-		StartRegen(ch, regen_resource::hit);
-	}
-	teleport_to(ch, real_room(obj->value[0]), 0);
-
-	return (TRUE);
-}
-
 int verzanan_portal(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	int dam = obj->value[1];

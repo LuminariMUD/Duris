@@ -3033,11 +3033,6 @@ int get_ival_from_proc(obj_proc_type proc)
 	{
 		return 85;
 	}
-	// 1/16 chance on hit to proc disintegrate.
-	if (proc == orb_of_destruction)
-	{
-		return 115;
-	}
 	// armor/bless invoke proc every 5 min.
 	if (proc == sanguine)
 	{

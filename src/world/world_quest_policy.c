@@ -924,14 +924,13 @@ struct quest_target_request
 			    proc == lightning_armor || proc == lightning_sword ||
 			    proc == mace_dragondeath || proc == mace_of_sea ||
 			    proc == madman_shield || proc == mob_vecna_procs || proc == neg_orb ||
-			    proc == orb_of_destruction || proc == orb_of_the_sea ||
-			    proc == righteous_blade || proc == serpent_blade ||
-			    proc == sevenoaks_longsword || proc == sword_whirlwinds ||
-			    proc == tendrils || proc == torment || proc == transparent_blade ||
-			    proc == unholy_avenger_bloodlust || proc == vecna_boneaxe ||
-			    proc == vecna_death_mask || proc == vecna_dispel ||
-			    proc == vecna_minifist || proc == vecna_pestilence ||
-			    proc == xmas_cap ||
+			    proc == orb_of_the_sea || proc == righteous_blade ||
+			    proc == serpent_blade || proc == sevenoaks_longsword ||
+			    proc == sword_whirlwinds || proc == tendrils || proc == torment ||
+			    proc == transparent_blade || proc == unholy_avenger_bloodlust ||
+			    proc == vecna_boneaxe || proc == vecna_death_mask ||
+			    proc == vecna_dispel || proc == vecna_minifist ||
+			    proc == vecna_pestilence || proc == xmas_cap ||
 			    // Legacy damage-command guards.
 			    proc == alch_rod || proc == brainripper || proc == confusionsword ||
 			    proc == critical_attack_proc || proc == demo_scimitar ||

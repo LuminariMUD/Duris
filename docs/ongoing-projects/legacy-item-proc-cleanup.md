@@ -1,6 +1,21 @@
 # Legacy weapon and gear proc cleanup
 
-Research date: 2026-11-07. Source baseline: `896ff7b28`. Status: plan; no production code has been changed for this work.
+Research date: 2026-11-07. Source baseline: `896ff7b28`. Status: in progress; see the progress log below.
+
+## Progress log
+
+Keep this table current; a new session should be able to resume from it alone. PRs are stacked: each branch is based on the one above it, so merge them in order.
+
+| Step | Branch | PR | State |
+| --- | --- | --- | --- |
+| Plan | `docs/legacy-item-proc-cleanup-plan` | #773 | Ready for review |
+| 1. Dead code | `proc-cleanup/dead-code` | (opening) | Ready for review |
+
+Decisions made while working:
+
+- **`random_eq_proc` stays.** It is unbound, but its comment says it is kept until it is attached on purpose, and its removal would reach `selected_random_weapon_action()` and the `itemActions.randomWeapons` settings, which this project leaves alone. `test_weapon_actions_runtime.py` calls it directly.
+- **`floating_pool` and `skill_beacon` had definitions** (the research listed them as prototype-only). Neither is assigned anywhere, so their definitions were deleted as unbound callbacks.
+- **Commented-out code** was removed from the item-proc spec files (`specs.object.c`, `specs.underworld.c`, `specs.winterhaven.c`, `specs.undermountain.c`, `specs.zion.c`, `specs.ioun.c`, `specs.vecna.c`): block comments of four or more lines holding three or more statements, plus the three commented `CheckMultiProcTiming` terms. Mob, room, and assignment files were left for their own sweeps. A comment-stripped preprocessor diff of each file showed that only the intended dead blocks changed.
 
 ## Objective and bar
 
