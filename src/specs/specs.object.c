@@ -9895,24 +9895,20 @@ int ring_of_regeneration(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	one_argument(arg, first_arg);
-
-	if (cmd == CMD_RUB && !strcmp("ring", first_arg))
+	if (cmd == CMD_RUB)
 	{
-		if (!IS_SET(obj->extra_flags, ITEM_GLOW))
+		one_argument(arg, first_arg);
+		if (strcmp("ring", first_arg) || !IS_SET(obj->extra_flags, ITEM_GLOW))
 		{
 			return FALSE;
 		}
-		else
-		{
-			act("$n's $q &nhums softly.", TRUE, ch, obj, 0, TO_VICT);
-			act("$n's $q &nhums softly.", TRUE, ch, obj, 0, TO_NOTVICT);
-			act("Your $q &nhums softly.", TRUE, ch, obj, 0, TO_CHAR);
-			obj->timer[0] = curr_time;
-			set_obj_extra_flags(obj, obj->extra_flags & ~ITEM_GLOW);
-			spell_heal(60, ch, 0, 0, ch, 0);
-			return TRUE;
-		}
+		act("$n's $q &nhums softly.", TRUE, ch, obj, 0, TO_VICT);
+		act("$n's $q &nhums softly.", TRUE, ch, obj, 0, TO_NOTVICT);
+		act("Your $q &nhums softly.", TRUE, ch, obj, 0, TO_CHAR);
+		obj->timer[0] = curr_time;
+		set_obj_extra_flags(obj, obj->extra_flags & ~ITEM_GLOW);
+		spell_heal(60, ch, 0, 0, ch, 0);
+		return TRUE;
 	}
 
 	if (cmd == CMD_PERIODIC && !IS_SET(obj->extra_flags, ITEM_GLOW) &&
