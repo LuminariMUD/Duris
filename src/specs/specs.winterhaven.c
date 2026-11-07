@@ -526,6 +526,10 @@ int volo_longsword(P_obj obj, P_char ch, int cmd, char *arg)
 			{
 				curr_time = time(NULL);
 				vict = ParseTarget(ch, arg);
+				if (!IS_ALIVE(vict))
+				{
+					return FALSE;
+				}
 				// 10 min timer.
 				if (obj->timer[0] + 600 <= curr_time)
 				{
@@ -1010,8 +1014,11 @@ int deathseeker_mace(P_obj obj, P_char ch, int cmd, char *arg)
 			}
 		}
 
-		half_chop(arg, Command, viewperson);
-		if (*Command && (cmd == CMD_SAY))
+		if (arg && cmd == CMD_SAY)
+		{
+			half_chop(arg, Command, viewperson);
+		}
+		if (cmd == CMD_SAY && arg && *Command)
 		{
 			if (!strcmp(Command, "seek") && *viewperson)
 			{
@@ -1189,11 +1196,14 @@ int illithid_axe(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 	}
 
-	half_chop(arg, Command, Toperson);
+	if (arg && cmd == CMD_SAY)
+	{
+		half_chop(arg, Command, Toperson);
+	}
 
 	if (!IS_FIGHTING(ch))
 	{
-		if (*Command && (cmd == CMD_SAY))
+		if (cmd == CMD_SAY && arg && *Command)
 		{
 			curr_time = time(NULL);
 			if (!strcmp(Command, "warp") && *Toperson)
@@ -1823,6 +1833,10 @@ int demon_slayer(P_obj obj, P_char ch, int cmd, char *arg)
 			{
 				curr_time = time(NULL);
 				vict = ParseTarget(ch, arg);
+				if (!IS_ALIVE(vict))
+				{
+					return FALSE;
+				}
 
 				// 800 sec timer == 13 min 20 sec, and 10 min timer.
 				if (obj->timer[0] + 800 <= curr_time &&
@@ -2244,6 +2258,10 @@ int helmet_vampires(P_obj obj, P_char ch, int cmd, char *arg)
 			{
 				curr_time = time(NULL);
 				vict = ParseTarget(ch, arg);
+				if (!IS_ALIVE(vict))
+				{
+					return FALSE;
+				}
 				// 15 min timer.
 				if (obj->timer[0] + 900 <= curr_time)
 				{
@@ -2593,7 +2611,7 @@ int gauntlets_legend(P_obj obj, P_char ch, int cmd, char *arg)
 			{
 				obj->timer[1] = curr_time2;
 
-				if (GET_HIT(ch) < GET_MAX_HIT(ch))
+				if (GET_HIT(ch) < GET_MAX_HIT(ch) && !has_skin_spell(ch))
 				{
 					act("&+LYour $q &+Mhums &nsoftly and fills your soul with a warm feeling.",
 					    TRUE, ch, obj, 0, TO_CHAR);

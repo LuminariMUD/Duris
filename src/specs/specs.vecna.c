@@ -212,11 +212,11 @@ int vecna_deathaltar(P_obj /*obj*/, P_char /*ch*/, int cmd, char *arg)
 	if (cmd == CMD_SET_PERIODIC || cmd == CMD_PERIODIC)
 		return FALSE;
 
-	if (cmd == CMD_TOUCH || arg)
+	if (cmd == CMD_TOUCH && arg)
 	{
 		if (isname(arg, "hecate") || isname(arg, "altar"))
 		{
-			if ((hecate = world[real_room(130044)].people) &&
+			if ((hecate = world[real_room(130044)].people) && IS_NPC(hecate) &&
 			    hecate->only.npc->R_num == real_mobile(130015))
 			{
 				char_from_room(hecate);
@@ -549,7 +549,7 @@ int vecna_boneaxe(P_obj obj, P_char ch, int cmd, char *arg)
 	if (number(0, 100) <= 6)
 	{
 		act_trio("&+LYour large &+Wbone &+Laxe shrieks in &+rrage &+Lat the sight of $N!",
-			 "&n's &+Llarge &+Wbone &+Laxe shrieks in &+rrage &+Lat the sight of you!",
+			 "$n's &+Llarge &+Wbone &+Laxe shrieks in &+rrage &+Lat the sight of you!",
 			 "$n's &+Llarge &+Wbone &+Laxe shrieks in &+rrage &+Lat the sight of $N!",
 			 FALSE, ch, NULL, victim);
 		spell_arieks_shattering_iceball(51, ch, 0, SPELL_TYPE_SPELL, victim, 0);
@@ -1439,7 +1439,7 @@ int mob_vecna_procs(P_obj obj, P_char ch, int cmd, char *arg)
 			send_to_char(
 				"&+yYou feel extremely tired and fatigued. &+WCysts form on your skin!\r\n",
 				victim);
-			act("$n &+ysuddenly looks tired and fatigued. &+WCysts &+ystart to form on $m skin",
+			act("$n &+ysuddenly looks tired and fatigued. &+WCysts &+ystart to form on $s skin",
 			    FALSE, victim, 0, 0, TO_ROOM);
 
 			bzero(&af, sizeof(af));

@@ -256,7 +256,7 @@ int zion_fnf(P_obj obj, P_char ch, int cmd, char *arg)
 	// 1/25 chance.
 	if (vict && !number(0, 24))
 	{
-		act_trio("Your $q &+rsummons the power of fire and flames at at $N.",
+		act_trio("Your $q &+rsummons the power of fire and flames at $N.",
 			 "$n's $q &+rsummons the power of fire and flames at you.",
 			 "$n's $q &+rsummons the power of fire and flames at $N.", FALSE, ch, obj,
 			 vict);
