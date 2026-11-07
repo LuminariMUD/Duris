@@ -334,8 +334,8 @@ harness += extract_function("magic.c", "void spell_vitality(").replace(
     "void spell_vitality(", "static void cast_native_vitality(", 1) + "\n"
 
 harness += "\n#define SETMSG_NONE 0\n#define SETMSG_PROTECT 1\n#define SETMSG_STRENGTH 2\n"
-harness += extract_function("specs.object.c", "static void grant_dragons_to_group(")
-harness += extract_function("specs.object.c", "void apply_zone_spell(")
+harness += extract_function("specs.set.c", "static void grant_dragons_to_group(")
+harness += extract_function("specs.set.c", "void apply_zone_spell(")
 harness += extract_function("fight.c", "bool decrease_skin_counter(")
 # Run the production character-dispel traversal with a deterministic self-cast
 # save boundary. Object magic, permanent-NPC bits and retaliation are separate.

@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
     mobile = repo_source("specs.mobile.c").read_text()
     payment_context = mobile[mobile.index("enum class world_quest_payment_action"):
                              mobile.index("static void world_quest_report_creation_failure")]
-    objects = repo_source("specs.object.c").read_text()
+    objects = repo_source("specs.set.c").read_text()
     set_context = objects[objects.index("typedef int (*set_func)"):
                           objects.index("void event_random_set_proc(")]
     set_table = objects[objects.index("struct set_data\n"):
@@ -72,8 +72,10 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         'void event_random_set_proc(P_char, P_char, P_obj, void *);\n'
         'void event_balance_affects(P_char, P_char, P_obj, void *);\n'
         'void event_object_proc(P_char, P_char, P_obj, void *);\n'
-        + set_context + extract_function("specs.object.c", "int random_set(")
-        + set_table + extract_function("specs.object.c", "int set_proc(")
+        + set_context + extract_function("specs.set.c", "int random_set(")
+        + objects[objects.index("const int set_master_vnum[]"):objects.index("int master_set(")]
+        + extract_function("specs.set.c", "int master_set(")
+        + set_table + extract_function("specs.set.c", "int set_proc(")
         + identity_stubs
         + payment_context + "\n".join(extract_function(file, signature) for file, signature in (
             ("comm.c", "void act_trio("),
@@ -157,7 +159,7 @@ void run_map_payment(P_char player, int fee)
         "tests/async/world_quest_live_targets_harness.cpp", str(HARNESS_STUBS),
         "src/world/world_quest_policy.c", "src/combat/forced_movement.c", "src/combat/trap.c",
         "src/core/safe_format.c",
-        "src/specs/specs.set.c", "src/item/named_set_origin.c", "src/item/named_sets.c",
+        "src/item/named_set_origin.c", "src/item/named_sets.c",
         "src/item/random_equipment_tables.c",
         "-Wl,--gc-sections",
     ]
