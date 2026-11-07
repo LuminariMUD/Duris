@@ -16,6 +16,10 @@
 #define WALL_OF_BONES 13
 #define WALL_OF_AIR 14
 
+/* Event guards shared by item procs (specs.object.c). */
+P_char melee_proc_target(P_obj obj, P_char ch, int cmd, char *arg);
+struct proc_data *defense_proc_data(P_obj obj, P_char ch, int cmd, int event, char *arg);
+
 int player_council_room(int, P_char, int, char *);
 int cage_room1(int, P_char, int, char *);
 int cage_room2(int, P_char, int, char *);

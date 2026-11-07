@@ -143,6 +143,7 @@ def production():
         ("magic.c", "static int entangle_duration("),
         ("magic.c", "void spell_entangle("),
         ("beh_magic.c", "void spell_beholder_paralyze("),
+        ("specs.object.c", "struct proc_data *defense_proc_data("),
         ("specs.object.c", "int imprison_armor("),
         ("specs.mobile.c", "int plant_attacks_paralysis("),
         ("new_skills.c", "void do_unbind("),
@@ -222,6 +223,7 @@ static void soulshield() {
 }
 static void armor() {
     reset(); obj_data armor{}; proc_data data{}; data.victim = &target;
+    armor.loc_p = LOC_WORN; armor.loc.wearing = &caster;
     for (int i = 0; i < 5; ++i) {
         assert(imprison_armor(&armor, &caster, CMD_GOTHIT, reinterpret_cast<char *>(&data)));
         auto *af = target.affected;
