@@ -7,8 +7,8 @@ feature and one review target. Continue the existing implementation.
 and deliver one PR. Production deployment remains a separate owner operation.
 
 **Status:** Merged in [PR #748](https://github.com/LuminariMUD/Duris/pull/748) as
-`88a3375a0`, and #706 is closed. Production deployment is still pending and needs
-the owner's go-ahead. The delivery and superseded branches are preserved as
+`88a3375a0`, #706 is closed, and the feature shipped to production in the
+November 7 release. The delivery and superseded branches are preserved as
 `archive/named-zone-set-*-20261106` tags.
 
 ## Outcome
