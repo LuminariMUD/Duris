@@ -19,6 +19,7 @@
 /* Event guards shared by item procs (specs.object.c). */
 P_char melee_proc_target(P_obj obj, P_char ch, int cmd, char *arg);
 struct proc_data *defense_proc_data(P_obj obj, P_char ch, int cmd, int event, char *arg);
+bool periodic_stoneskin(P_obj obj, P_char ch, int level, int interval);
 
 int player_council_room(int, P_char, int, char *);
 int cage_room1(int, P_char, int, char *);

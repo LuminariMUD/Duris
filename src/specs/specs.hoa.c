@@ -140,7 +140,7 @@ int trap_tower2_sleep(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
 int illesarus(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	P_char vict;
-	int limb, curr_time;
+	int limb;
 	struct affected_type af;
 
 	struct damage_messages messages = {
@@ -168,13 +168,8 @@ int illesarus(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	curr_time = time(NULL);
-
-	if (!has_skin_spell(ch) &&
-	    obj->timer[0] + (int)get_property("timer.stoneskin.generic", 60) <= curr_time)
+	if (periodic_stoneskin(obj, ch, 30, (int)get_property("timer.stoneskin.generic", 60)))
 	{
-		spell_stone_skin(30, ch, 0, SPELL_TYPE_POTION, ch, 0);
-		obj->timer[0] = curr_time;
 		return FALSE;
 	}
 
