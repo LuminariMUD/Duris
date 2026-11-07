@@ -10,13 +10,21 @@ Keep this table current; a new session should be able to resume from it alone. P
 | --- | --- | --- | --- |
 | Plan | `docs/legacy-item-proc-cleanup-plan` | #773 | Ready for review |
 | 1. Dead code | `proc-cleanup/dead-code` | #774 | Ready for review |
-| 2. `CheckMultiProcTiming` removal and `lightning_sword` activation | `proc-cleanup/multiproc-timing` | (opening) | Ready for review |
+| 2. `CheckMultiProcTiming` removal and `lightning_sword` activation | `proc-cleanup/multiproc-timing` | #775 | Ready for review |
+| 3a. Pilot: event guards (`melee_proc_target`, `defense_proc_data`) in `specs.object.c` and `specs.underworld.c` | `proc-cleanup/pilot-helpers` | (opening) | Ready for review |
+| 3b. Pilot: `act_trio` | — | — | Next |
+| 3c. Pilot: `periodic_stoneskin` and the cloak/ioun deflection merge | — | — | After 3b |
+| 3d. Owner review of the converted pilot files before the sweep | — | — | Blocks step 4 |
 
 Decisions made while working:
 
 - **`random_eq_proc` stays.** It is unbound, but its comment says it is kept until it is attached on purpose, and its removal would reach `selected_random_weapon_action()` and the `itemActions.randomWeapons` settings, which this project leaves alone. `test_weapon_actions_runtime.py` calls it directly.
 - **`floating_pool` and `skill_beacon` had definitions** (the research listed them as prototype-only). Neither is assigned anywhere, so their definitions were deleted as unbound callbacks.
 - **`lightning_sword` activation** is its own commit. When the bolt kills a no-corpse victim, the proc falls through to a `TO_CHAR` `act` that is passed the dead victim, but the message has no victim token and `TO_CHAR` never dereferences it, so it stays as is. Its player news belongs to the next `news-update` run after merge.
+- **Pilot split.** The pilot ships as stacked PRs, one helper family each (3a–3c), so each can be reviewed alone. The sweep (step 4) waits for the owner's review of the pilot files.
+- **Event guards (3a).** 75 callbacks use the helpers: 53 in `specs.object.c` and 22 in `specs.underworld.c`. Left on their old guards on purpose: `artifact_biofeedback` (periodic and melee share one victimless body), `good_evil_sword` (the actor is `obj->loc.wearing` and the melee path reads no victim), `vapor` (its `CMD_GOTHIT` branch also acts when the item is only carried), `vareena_statue` (`cmd / 1000` there filters room objects, not melee), and `elvenkind_cloak`/`deflect_ioun` (merged in 3c). `doombringer` now targets the hit's victim instead of `GET_OPPONENT`; in melee they are the same character. `circlet_of_light` and other non-weapon gear that "handle" melee hits never receive them: only `weapon_proc`, backstab, and Studio send `CMD_MELEE_HIT`, always to the wielded weapon. `circlet_of_light`'s branch (whose roll reads as 14 in 15) is therefore dead either way.
+- **Tests that compile converted callbacks** must extract the helpers too: `test_world_quest_target_retries.py`, `test_word_output_integration.py`, `test_weapon_actions_runtime.py` (`melee_proc_target`), and `test_freedom_of_movement_procs.py` (`defense_proc_data`; its fixture now wears the armor). `test_item_proc_guards.py` covers the helper contracts plus `mace_of_sea` and `generic_parry_proc`.
+- **Real-server checks** use a flatfile build (`make -C src PERSISTENCE_BACKEND=flatfile DMS_BINARY=$PWD/bin/server/dms_flatfile`) and the fixture from `run_weapon_actions_journey.py`: rename the Avernus fixture vnum to the item under test (the sentinel wields it against the player) and count the victim message over a long fight. The script used is not committed; it is a few lines around `configure()` and `MudClient`.
 - **Commented-out code** was removed from the item-proc spec files (`specs.object.c`, `specs.underworld.c`, `specs.winterhaven.c`, `specs.undermountain.c`, `specs.zion.c`, `specs.ioun.c`, `specs.vecna.c`): block comments of four or more lines holding three or more statements, plus the three commented `CheckMultiProcTiming` terms. Mob, room, and assignment files were left for their own sweeps. A comment-stripped preprocessor diff of each file showed that only the intended dead blocks changed.
 
 ## Objective and bar
