@@ -366,13 +366,24 @@ int magebane_falchion(P_obj obj, P_char ch, int cmd, char *arg)
 	return FALSE;
 }
 
+static P_obj first_corpse_in_room(int room)
+{
+	for (P_obj o = world[room].contents; o; o = o->next_content)
+	{
+		if (GET_ITEM_TYPE(o) == ITEM_CORPSE)
+		{
+			return o;
+		}
+	}
+	return NULL;
+}
+
 int lightning_sword(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	P_char vict;
-	P_obj corpse, next_obj, temp;
+	P_obj corpse, old_corpse, next_obj, temp;
 	char e_pos;
-	int dam, vict_level;
-	bool hasCorpse;
+	int dam, vict_level, room;
 
 	if (cmd != CMD_MELEE_HIT)
 	{
@@ -415,50 +426,40 @@ int lightning_sword(P_obj obj, P_char ch, int cmd, char *arg)
 		    FALSE, vict, 0, 0, TO_CHAR);
 
 		vict_level = GET_LEVEL(vict);
-		hasCorpse = !IS_NOCORPSE(vict);
+		room = ch->in_room;
+		// die() files a new corpse ahead of the corpses already here, and makes
+		// none for arena players, training dummies, reincarnations and the like.
+		// Only a changed first corpse belongs to this kill.
+		old_corpse = first_corpse_in_room(room);
 		die(vict, ch);
-
-		// Only destroy the corpse if it makes one.
-		if (hasCorpse)
+		corpse = first_corpse_in_room(room);
+		if (corpse && corpse != old_corpse)
 		{
-			// It will be the first corpse in the room.
-			for (corpse = world[ch->in_room].contents; corpse; corpse = next_obj)
+			for (temp = corpse->contains; temp; temp = next_obj)
 			{
-				next_obj = corpse->next_content;
-				if (GET_ITEM_TYPE(corpse) == ITEM_CORPSE)
+				next_obj = temp->next_content;
+				obj_from_obj(temp);
+				obj_to_room(temp, room);
+				if (IS_SET(corpse->value[1], PC_CORPSE))
 				{
-					for (temp = corpse->contains; temp; temp = next_obj)
-					{
-						next_obj = temp->next_content;
-						obj_from_obj(temp);
-						obj_to_room(temp, ch->in_room);
-						if (IS_SET(corpse->value[1], PC_CORPSE))
-						{
-							logit(LOG_CORPSE,
-							      "%s dropped item %s [%d] in room %d.",
-							      corpse->short_description,
-							      temp->short_description,
-							      obj_index[temp->R_num].virtual_number,
-							      ROOM_VNUM(ch->in_room));
-						}
-					}
-					if (IS_SET(corpse->value[1], PC_CORPSE))
-					{
-						logit(LOG_CORPSE,
-						      "%s destroyed by Lightning Sword in %d.",
-						      corpse->short_description,
-						      ROOM_VNUM(ch->in_room));
-					}
-					extract_obj(corpse, TRUE); // Empy corpse, but 'in game.'
-
-					if (vict_level > (GET_LEVEL(ch) - 10))
-					{
-						spell_chain_lightning(16, ch, NULL,
-								      SPELL_TYPE_SPELL, 0, 0);
-					}
-					return TRUE;
+					logit(LOG_CORPSE, "%s dropped item %s [%d] in room %d.",
+					      corpse->short_description, temp->short_description,
+					      obj_index[temp->R_num].virtual_number,
+					      ROOM_VNUM(room));
 				}
 			}
+			if (IS_SET(corpse->value[1], PC_CORPSE))
+			{
+				logit(LOG_CORPSE, "%s destroyed by Lightning Sword in %d.",
+				      corpse->short_description, ROOM_VNUM(room));
+			}
+			extract_obj(corpse, TRUE); // Empy corpse, but 'in game.'
+
+			if (vict_level > (GET_LEVEL(ch) - 10))
+			{
+				spell_chain_lightning(16, ch, NULL, SPELL_TYPE_SPELL, 0, 0);
+			}
+			return TRUE;
 		}
 	}
 
