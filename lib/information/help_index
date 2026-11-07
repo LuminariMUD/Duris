@@ -1286,10 +1286,9 @@ Cumulative:     No
 Duration:       Dependent on proficiency of caster
 Type of spell:  Protection
 
-This spell causes the victim's skin to toughen and harden to the consistency 
-of bark, granting a significant armor class improvement and slight 
-protection from melee damage. This also means there is a somewhat higher 
-increase in damage from fire.
+Barkskin toughens the victim's skin and improves armor class. It does not
+reduce melee damage directly. It increases damage taken from fire; the
+fire penalties from Barkskin and Ironwood combine when both are active.
 ===========================================================================
 
 #
@@ -3966,8 +3965,8 @@ Cumulative:     No
 Duration:       Dependent on proficiency of caster
 Type of spell:  Enchantment
 
-This potent spell grants all those grouped with the caster "Vitality" and
-"Protection from Living" spells.
+This spell grants Vitalize Undead and Protection from Living to the caster's
+group members in the caster's room. Groupmates elsewhere are unaffected.
 ===========================================================================
 See also: VITALITY, "PROTECTION FROM LIVING"
 
@@ -5441,7 +5440,7 @@ them, thus nullifying the full potential of that energy.
 Area of effect: <victim>
 Aggressive:     Yes
 Cumulative:     Yes
-Duration:       Permanent
+Duration:       Immediate damage; lingering recovery penalty up to 5 seconds
 Type of spell:  Generic
 
 "Energy Drain" literally drains the lifeblood from the victim, as it feeds 
@@ -8158,11 +8157,11 @@ and type 'group <playername> rear' to send a group member to the rear
 ranks.  Your position in the ranks determines how much damage you inflict 
 (and receive) from spells and physical attacks.
 
-Players that form a group still get the FULL amount of experience points 
-when they kill a monster. This means there is no reason not to group with
-another player if you only look at the experience factor. Everyone gets exp
-regardless if they participate in the fight or not. In addition, frags are
-divided among grouped players. 
+Kill experience is shared according to group size and relative levels
+among eligible players in the same room, with other modifiers afterward.
+You need not land the killing blow to receive your group share.
+The group-size limit is separate from this calculation; see 'help group cap'.
+Frags are also divided among eligible grouped players.
 
 If you find yourself in need of a group, you may implement the "Group
 Needed" toggle.
@@ -9369,7 +9368,7 @@ See also: SLEEP
 Area of effect: <caster>
 Aggressive:     N/A
 Cumulative:     No
-Duration:       3 hours
+Duration:       30 game hours; casting again renews the duration
 Type of spell:  Enchantment
 
 "Inertial Barrier" causes the caster to be enveloped in a low powered
@@ -10705,8 +10704,10 @@ Area of effect:	<victim>
 Aggressive:	Yes
 Cumulative:	N/A
 
-"Memory block" causes the victim to forget how to cast, purging the
-memory of spells from the victim's mind.
+Memory Block gives a victim who fails the power save a 50% chance to
+fail each cast. It lasts half the caster's level in real seconds,
+rounded down, with a minimum of one second. It does not erase learned
+spells. The casting restriction ends when the effect expires.
 ===========================================================================
 
 #
@@ -10926,7 +10927,8 @@ Duration:       Dependent on proficiency of caster
 Type of spell:  Enchantment
 
 "Miracle" is just that, a miracle. Casting this potent spell grants 
-everyone in the Cleric's group the spells "Vitality", "Armor", and "Bless".
+the Cleric's groupmates in the same room Vitality, Armor and Bless.
+Groupmates elsewhere are unaffected.
 ===========================================================================
 See also: "VITALITY", "ARMOR", "BLESS"
 
@@ -28254,3 +28256,91 @@ Reading a page does not cast, activate, train or spend an ability.
 ==See also==
 
 Spells, Skills, Innate
+
+#
+Group Cap
+The current group-size threshold is 20 for either racewar side. GROUP
+enforces the leader's side limit when adding players; pet admission has
+separate rules. This is not an experience exemption for smaller groups.
+Kill experience is shared according to group size and relative levels
+among eligible players in the same room, with other modifiers afterward.
+Read 'help group' for joining, consent and group commands.
+
+#
+Levitation
+Read 'help levitate' for the spell and racial levitation abilities.
+Use 'spells info levitate' or 'innate info levitate' for your applicable
+requirements and mechanics. 'innates' lists your available innates.
+
+#
+Summon Spell
+Read 'help summon' for bringing a creature to you. Summon Beast,
+Conjure Elemental and other summoning spells have separate rules;
+use 'spells info <spell name>' for the specific spell you mean.
+
+#
+Exp Loss
+Ordinary non-arena deaths can cost experience from level 30 onward,
+and that loss can lower your level. Below level 30, ordinary death
+does not remove experience. Liches have separate level-loss rules.
+The normal base penalty is 15% of the next-level experience amount;
+active difficulty and experience settings can modify it.
+Hardcore counted lives are a separate rule: read 'help hardcore'.
+Read 'help death', 'help experience' and 'help resurrect' for recovery.
+
+#
+Frostmage
+Read 'help frost magus' for the Ethermancer ice specialization and its
+requirements, spells, skills and innate abilities. 'spells frost magus'
+lists its spell progression; a listed spell still needs to be learned
+and prepared as appropriate.
+
+#
+Scoundrel Skills
+Read 'help bard skills' for the base Bard songs and skills, and
+'help scoundrel' for specialization additions and changed skill caps.
+Use 'skills info <skill name>' for your access and the skill's mechanics.
+
+#
+Ship Weapon List
+At a shipwright, use 'list weapons' to see available ship weapons,
+prices, weight, ammunition, range and damage. Read 'help ship weapons'
+for the full guide. This is separate from personal weapon skill lists.
+
+#
+Class List
+Read 'help classes' for classes, 'help <class name>' for a class profile
+and 'help <class name> skills' for its base progression.
+Specializations add or remove abilities; consult their own help too.
+Normal character-creation choices depend on race and alignment.
+
+#
+Path of the Frost
+Read 'help path of frost' for the Frost Magus spell. Use
+'spells info path of frost' for its requirements and current mechanics.
+
+#
+Shaman Spells
+Read 'help shaman skills' for spell circles and base skills, and
+'help shaman' for the class and specializations. 'spells shaman'
+browses its base spell progression. Totems and preparation still
+follow the rules in 'help totems' and 'help commune'.
+
+#
+Tharn Map
+Read 'help tharnadia' for the city overview and 'help moves' for
+movement commands. This guide does not supply a Tharnadia street map
+or a walkthrough. Use the area's visible exits as you explore.
+
+#
+Max Level
+Read 'help level cap' for the shared progression limit and requirements
+above experience-earned levels. A level or spell-circle registration
+does not override the current cap. 'score' shows your current level.
+
+#
+Tight Quarters
+Single-file rooms restrict who you can reach. Most room-wide area
+spells cannot be cast there; single-target room spells require an
+adjacent target unless you are casting on yourself. Ranged spells
+have their own checks. Read 'help group' for group ranks and positions.

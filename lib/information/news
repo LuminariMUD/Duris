@@ -4,10 +4,190 @@
 &+R                   PWIPE HAPPENED &+YOCT 28TH 1800 UTC!&n
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
 &+W======================================================================&n
-&+WUpdated: November 05, 2026&n
+&+WUpdated: November 07, 2026&n
 
-Welcome back! Read your abilities and keep your hard-earned gear.
+Welcome back! Collect matching gear and catch up on your abilities.
 Newest first; later updates replace older rules. Longer archive on web.
+
+&+R11/06/26 - 11/07/26&n &+L-&n &+YMore sets, sharper spells&n
+&+W----------------------------------------------------------------------&n
+
+&+CMatching gear across the world&n
+&+Y-&n Named equipment now supports &+Y298 area sets&n, including &+Y183 newly&n
+  supported areas. Use &+C'namedreport'&n for each area's spells and piece
+  requirements; read &+C'help named equipment sets'&n before assembling one.
+&+Y-&n Named drops return to Gibberling King, Crystalspyre Mountains,
+  Taliccicopiid and Temple of the Sun with their existing set bonuses.
+&+Y-&n Sets follow an item's original zone through renaming, trading, pets,
+  shops, corpses and storage. Similar zone names no longer mix their
+  spells. Uncertain older tags keep their same-title HP bonus only.
+&+Y-&n Separate worn sets keep their own HP bonuses and cleanup. A shared
+  spell remains while another qualifying set supports it; ordinary
+  casts keep their own duration when you equip or remove matching gear.
+&+Y-&n Re-equipping, trading or reconnecting does not reset your one-minute
+  Stoneskin/Invigorate or five-minute Conjure Elemental set cooldown.
+  A weaker Vitality cast no longer replaces a stronger set grant.
+&+Y-&n Song of Dragons can return after its set effect expires. Guardian
+  Spirits keeps its Shaman restriction; conflicting light effects and
+  other refused set bonuses no longer repeat failure messages.
+
+&+CStorage and locker inspections&n
+&+Y-&n Taking an item from storage no longer loses it when a crash interrupts
+  that transfer. Nested storage follows its outer container's owner.
+  Restoring saved ground storage no longer revives removed contents.
+&+Y-&n Pets held after an interrupted save become available again when their
+  saved state can be read. Encounter loot retains its other item flags.
+&+Y-&n Bare &+C'stat'&n inside a locker again shows your attributes. Use
+  &+C'stat <item>'&n for paid identification and &+C'stat receipt'&n to reread
+  the latest paid description without another charge.
+&+Y-&n Reconnecting does not repeat an already-delivered locker receipt.
+  Paid locker identification adds no fixed lore-recovery wait.
+
+&+CCombat, skills and innates&n
+&+Y-&n Dragon Breath and Dragon Strike check their own learned skills;
+  Dragon Strike and Trample apply the intended knockdown defenses.
+&+Y-&n A missed Trip waits two-and-a-half combat rounds. Shieldpunch's target
+  lag lasts its full combat-round interval, and lock-picking recovery
+  uses real seconds rather than quarter-seconds.
+&+Y-&n Expert Parry and blind parrying use their fractional skill bonuses.
+  Indomitable Rage grants its critical-hit bonuses to the defender.
+&+Y-&n Soul Trap can heal from a nearby groupmate's kill using the recipient's
+  skill; groupmates outside the killer's room cannot receive that heal.
+&+Y-&n Advanced Meditation continues its cure checks after a successful cure.
+  Its stunned-flee benefit follows your learned rating; fleeing cannot
+  overdraw your or your mount's remaining movement.
+&+Y-&n Tainted and Holy Blade keep their damage floor; Slow Poison stretches
+  later pulses. Blackmantle and Flame Strike now block their share of
+  vampiric healing.
+&+Y-&n Higher spell-knowledge ratings improve recognition of cast spells.
+  Chant Mastery and Spatial Focus cannot roll negative benefits;
+  Devitalize and Hamstring cannot give movement back to depleted targets.
+&+Y-&n Newly learned Smite Evil starts during the same login. Snow Ogres
+  can use their assigned roar, and low-level summoned mounts survive
+  their creation roll.
+&+Y-&n Dragon Hunters receive their own tracking and hidden-movement detection
+  benefits. Lathander's blessing continues to eligible groupmates.
+&+Y-&n Divine Force lasts &+Y20 seconds&n with a &+Y10-minute&n recovery. Damage
+  reveals hiding normally; arrows retain their separate hiding rules.
+
+&+CBuffs, healing and protection&n
+&+Y-&n True Seeing, Animal Vision, Shadow Vision, Nature's Blessing and
+  Protection from Undead affect the intended recipient. Lodestone Vision,
+  Sap Nature and Mielikki's Vitality check that recipient's existing buffs.
+&+Y-&n Miracle and Death Blessing apply all their group buffs only in the
+  caster's room. Lend Health transfers health correctly and limits the
+  caster's sacrifice to &+Y50 HP&n and the target's missing health.
+&+Y-&n Guardian Spirits lasts at least four game hours; Freedom of Movement
+  lasts at least three. Duration scaling no longer drops fractional
+  level progress, and Spirit Armor's armor bonus follows cast level.
+&+Y-&n Lionrage applies its Strength bonus; Elephantstrength applies its
+  Agility penalty as well as Dexterity. Enlarge and Reduce renew the
+  same duration as their initial casts.
+&+Y-&n Ethereal Recharge heals at most &+Y150 HP&n before normal modifiers.
+  Mending and Greater Mending always start with at least one point of
+  healing. Vitalize Mana cannot spend more movement than you possess.
+&+Y-&n Aid lasts six game hours at cast level 56, with a three-hour minimum
+  at lower levels, and really shortens brief Blindness effects.
+  Starshell recasts renew the room's actual expiry.
+&+Y-&n Memory Block expires after half the caster's level in real seconds,
+  rounded down, minimum one; failed saves still cause a &+Y50%&n cast-failure
+  chance. Energy Drain renews its recovery penalties for at most five
+  seconds instead of repeatedly extending them.
+&+Y-&n Inertial Barrier casts and recasts last &+Y30 game hours&n. Cannibalize
+  renews its full duration. Sleep recasts replace their duration instead
+  of adding it; Globe cannot be refreshed while active.
+&+Y-&n Stigmata Draconica lasts &+Y15-35 game hours&n as Shaman spell knowledge
+  rises from 0 to 100, replacing the old ten-hour ceiling.
+
+&+CSpells that strike their proper targets&n
+&+Y-&n Curse can affect elite and greater-race targets that fail their save.
+  Stunning Visions, Spinal Corruption, Edictum Cineris and Undead to Death
+  use the intended victim's save or eligibility checks.
+&+Y-&n Edictum Cineris cannot turn a penalty into a hitroll or damroll bonus.
+  Corrosive Blast applies its armor penalty up to, but never beyond, zero.
+  Dread Wave retains at least one point of base damage after level scaling.
+&+Y-&n Ethereal Discharge works for player area casts and checks each target's
+  save. Torment Spirits and Acid Immolate finish within their intended
+  limits; departing or gusting someone clears the right opponents.
+&+Y-&n Vines roll their absorption chance instead of stopping every blow.
+  Unabsorbed hits do not consume the vines. Hurricane includes its final
+  knockdown chance, and Cyclone's rare one-round stun can occur.
+&+Y-&n Psychic Crush's brief stat penalty now lasts &+Y3.75 seconds&n.
+  Supernova briefly knocks its caster out for one quarter-second.
+  Psionic Wave Blast correctly checks its 20%-health requirement and gives
+  each hit a one-in-three chance to attempt a shrug.
+&+Y-&n Binding Wind reduces Tempest's calculated knockdown chance by about
+  &+Y23%&n. Wave Blast's completion message goes to its caster.
+&+Y-&n Only Dragon Priests receive the special Burning Hands and Immolate
+  damage bonuses, longer Firestorm and extra Magma Burst flare; using
+  an item alone no longer grants those specialization benefits.
+&+Y-&n With Lightning Shield, Lliendil's Stormshock has a &+Y5%&n chance to deal
+  &+Y10%&n extra lightning damage. Spore Burst gains four cast levels for
+  each spore beyond the first.
+&+Y-&n Static Discharge retains its no-deflection protection and strongest
+  no-shrug rule while bypassing only the wards appropriate to its power.
+  Toxic Fog reduces damage on a successful save rather than a failed one.
+&+Y-&n Waves of Fatigue removes at least one movement point, even on a save.
+  Decaying Flesh can bring a target down to one HP, but cannot kill it.
+  Heaven's Aid applies its low-level paralysis to the correct targets.
+&+Y-&n Templars pay Life Bolt's sacrifice in HP; it grants no sacrifice bonus
+  if the payment would exhaust their health. Restore Spirit applies its
+  lingering movement penalty instead of granting a free restoration.
+&+Y-&n Obtenebration's rare extra effect can occur. Obtenebration, Heaven's
+  Aid, Firestorm, Smite Evil and Wave Blast avoid crashes when their
+  damage removes a target or caster. Imprison finds existing room shells.
+
+&+CForests stay where you cast them&n
+&+Y-&n Spike Growth and Awaken Forest stay in their original room after you
+  leave; your later height or position does not move their effects.
+  They retain target protections and handle dying occupants safely.
+&+Y-&n Spike Growth deals &+Y10% less damage&n on unsuitable terrain, including
+  its Grow Spike hits. Entangle checks the victim's terrain.
+&+Y-&n Awaken Forest expires even after the terrain changes and stops waiting
+  if its supporting Grow ends. Repeated transmutations restore the true
+  original terrain and room flags when the final effect expires.
+&+Y-&n Thornskin stops after rejecting an invalid target instead of applying
+  anyway. Righteous Aura checks each opponent's Bleak Foeman effect;
+  Turn Undead continues checking other eligible room targets.
+
+&+CTravel, summons and returning from death&n
+&+Y-&n Group Teleport chooses one destination for everyone present without
+  lengthy repeated searches. It respects no-magic destinations and
+  five-exit limits in restricted zones, and removes each traveler's hide.
+&+Y-&n Radial Navigation accepts positive distances and safely defaults to
+  the caster. Rope Trick counts hidden occupants correctly. Portals
+  enforce target privacy and travel restrictions for ordinary targets too;
+  travel to your own anchor remains available under its normal rules.
+&+Y-&n Thought Beacon and Bloodstone renew their object and travel link
+  together. Replacements preserve your old anchor if creation fails and
+  cannot remove another caster's matching object.
+&+Y-&n Wormholes always have a positive, limited passenger capacity.
+  Lucubration restores the preparation resource your class actually uses,
+  with mana users excluded and the highest spell circle still excluded.
+&+Y-&n Summon Beast's damage bonus strengthens the beast, not its caster.
+  Exhume and Summon Host respect their level-50 corpse cap; Create Golem
+  refuses casters below its minimum instead of selecting an invalid form.
+&+Y-&n Saved pet charm times use full game hours. Raised undead, titans,
+  avatars, golems and dracoliches keep their proper charm duration before
+  their existing death grace period; permanent charms keep their exception.
+&+Y-&n Banish uses its stated percentage and prints one plane refusal per
+  rejected target. Essence of the Wolf preserves its extra-attack count.
+&+Y-&n Resurrect checks each item's own temporary flag when restoring
+  belongings. Aura of Rebirth costs HP only after a successful raise.
+
+&+CRead the rule you need&n
+&+Y-&n Dissonance checks each eligible target once; the Disharmonist bonus
+  does not grow with every bystander. Songs and Riff handle removed
+  targets safely, and the song details show the corrected strength.
+&+Y-&n Ability details clarify Devotion's extra-cast power, Mental Anguish's
+  effective-skill cap of 10, Flicker's permanent twilight, Asphyxiate's
+  level scaling and Barkskin's armor and fire-vulnerability rules.
+&+Y-&n New help includes &+C'group cap'&n, &+C'exp loss'&n, &+C'tight quarters'&n,
+  &+C'class list'&n, &+C'shaman spells'&n and &+C'scoundrel skills'&n.
+  Also try &+C'levitation'&n, &+C'frostmage'&n, &+C'path of the frost'&n,
+  &+C'summon spell'&n, &+C'ship weapon list'&n, &+C'tharn map'&n or &+C'max level'&n.
+&+Y-&n Use &+C'spells info <spell>'&n, &+C'skills info <skill>'&n and
+  &+C'innate info <name>'&n for your character's current mechanics.
 
 &+R11/04/26 - 11/05/26&n &+L-&n &+YKnow your abilities, guard your gear&n
 &+W----------------------------------------------------------------------&n

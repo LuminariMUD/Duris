@@ -2812,17 +2812,16 @@ Bark (target name) = *WOOOOF*  You bark at Colean.
 #0
 
 Barkskin
-Barkskin - Last Edited: 2007-04-19 19:17:09 by Unknown
+Barkskin - Last Edited: 2026-11-07
 ======================================================
 * Area of effect: <victim>
 * Aggressive:     No
 * Cumulative:     No
 * Duration:       Dependent on proficiency of caster
 * Type of spell:  Protection
-This spell causes the victim"s skin to toughen and harden to the consistency
-of bark, granting a significant armor class improvement and slight
-protection from melee damage. This also means there is a somewhat higher
-increase in damage from fire.
+Barkskin toughens the victim's skin and improves armor class. It does not
+reduce melee damage directly. It increases damage taken from fire; the
+fire penalties from Barkskin and Ironwood combine when both are active.
 
 ==See also==
 
@@ -6557,15 +6556,15 @@ also lose "Frags".
 #0
 
 Death Blessing
-Death Blessing - Last Edited: 2007-04-20 14:02:09 by Unknown
+Death Blessing - Last Edited: 2026-11-07
 ============================================================
 * Area of effect: <group>
 * Aggressive:     No
 * Cumulative:     No
 * Duration:       Dependent on proficiency of caster
 * Type of spell:  Enchantment
-This potent spell grants all those grouped with the caster "Vitality" and
-"Protection from Living" spells.
+This spell grants Vitalize Undead and Protection from Living to the caster's
+group members in the caster's room. Groupmates elsewhere are unaffected.
 	See also:protectionfromliving ,vitality
 
 #0
@@ -8733,12 +8732,12 @@ thrown at them, thus nullifying the full potential of that energy.
 #0
 
 Energy Drain
-Energy Drain - Last Edited: 2015-07-16 00:53:27 by ashyel
+Energy Drain - Last Edited: 2026-11-07
 =========================================================
 * Area of effect: <victim>
 * Aggressive:     Yes
 * Cumulative:     Yes
-* Duration:       Permanent
+* Duration:       Immediate damage; lingering recovery penalty up to 5 seconds
 * Type of spell:  Negative
 "Energy Drain" literally drains the lifeblood from the victim, as it feeds
 on the energy for itself. Although it does not do much damage to the
@@ -12622,12 +12621,10 @@ Grouping offers important benefits like the following:
    zone trophy experienced by the group will be the average of your trophy, and
    your friends.  It's a good idea to group with those who haven't done the zone
    your in as it will increase the XP you gain.
-3. Experience is not shared when you and your friends kill a monster.  In other words,
-   if you kill a monster on your own and receive 1000 xp, you still receive 1000 xp
-   if you kill the same monster with five other group members.  However, if there are
-   too many people in your group and you exceed the "group cap," you will not
-   receive this favourable arrangement.  Note that grouped pets do not add to the
-   group cap.
+3. Kill experience is shared according to group size and relative levels
+   among eligible players in the same room, with other modifiers afterward.
+   You need not land the killing blow to receive your group share.
+   The group-size limit is separate; read 'help group cap'.
 If you find yourself in need of a group, you may implement the "Group Needed" toggle.
 There is also a way to split coins within the group.
 The social command Beckon is sometimes used by players to request a person to
@@ -14614,12 +14611,12 @@ spell wears off or the victim is awakened by battle.
 #0
 
 Inertial Barrier
-Inertial Barrier - Last Edited: 2007-04-20 14:02:09 by Unknown
+Inertial Barrier - Last Edited: 2026-11-07
 ==============================================================
 * Area of effect: <caster>
 * Aggressive:     N/A
 * Cumulative:     No
-* Duration:       3 hours
+* Duration:       30 game hours; casting again renews the duration
 * Type of spell:  Enchantment
 "Inertial Barrier" causes the caster to be enveloped in a low powered
 gravitational field that significantly reduces the effectiveness of
@@ -16573,12 +16570,15 @@ mob, tracking, Dimension Door
 #0
 
 Memory block
-Memory block - Last Edited: 2008-11-16 03:10:03 by Blaize
+Memory block - Last Edited: 2026-11-07
 =========================================================
 * Area of effect:	<victim>
 * Aggressive:	Yes
 * Cumulative:	N/A
-"Memory block" causes the victim to occasionally forget how to cast.
+Memory Block gives a victim who fails the power save a 50% chance to
+fail each cast. It lasts half the caster's level in real seconds,
+rounded down, with a minimum of one second. It does not erase learned
+spells. The casting restriction ends when the effect expires.
 
 ==See Also==
 
@@ -16945,7 +16945,7 @@ Image:mirforrest.jpg
 #0
 
 Miracle
-Miracle - Last Edited: 2007-04-19 19:17:13 by Unknown
+Miracle - Last Edited: 2026-11-07
 =====================================================
 * Area of effect: <group>
 * Aggressive:     No
@@ -16953,7 +16953,8 @@ Miracle - Last Edited: 2007-04-19 19:17:13 by Unknown
 * Duration:       Dependent on proficiency of caster
 * Type of spell:  Enchantment
 "Miracle" is just that, a miracle. Casting this potent spell grants
-everyone in the Cleric"s group the spells "Vitality", "Armor", and "Bless".
+the Cleric's groupmates in the same room Vitality, Armor and Bless.
+Groupmates elsewhere are unaffected.
 	See also:vitality ,armor ,bless
 
 Clerics receive Miracle at level 36 (eighth circle).
