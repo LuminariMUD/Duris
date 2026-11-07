@@ -76,6 +76,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         + set_table + extract_function("specs.object.c", "int set_proc(")
         + identity_stubs
         + payment_context + "\n".join(extract_function(file, signature) for file, signature in (
+            ("comm.c", "void act_trio("),
             ("specs.object.c", "P_char melee_proc_target("),
             ("specs.object.c", "int mace_of_sea("),
             ("specs.object.c", "int serpent_blade("),
