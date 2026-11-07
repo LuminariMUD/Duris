@@ -8935,10 +8935,8 @@ int obj_imprison(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 /* this proc is the staff of blue flames proc modified, Raxxel did it, and it probably doesn't work! */
 int totem_of_mastery(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char vict;
+	P_char vict = NULL;
 	char e_pos;
-
-	vict = legacy_proc_arg<P_char>(arg);
 
 	if (cmd == CMD_SET_PERIODIC)
 	{
@@ -9157,9 +9155,7 @@ int totem_of_mastery(P_obj obj, P_char ch, int cmd, char *arg)
 
 int circlet_of_light(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char vict;
-
-	vict = legacy_proc_arg<P_char>(arg);
+	P_char vict = NULL;
 
 	if (cmd == CMD_SET_PERIODIC)
 	{
