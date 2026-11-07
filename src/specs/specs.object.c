@@ -2696,7 +2696,7 @@ int living_necroplasm(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 			{
 				if (GET_RACE(ch) == RACE_CENTAUR)
 					slot = WEAR_HORSE_BODY;
-				if (GET_RACE(ch) == RACE_DRIDER)
+				else if (GET_RACE(ch) == RACE_DRIDER)
 					slot = WEAR_SPIDER_BODY;
 				else
 					slot = WEAR_BODY;
@@ -3310,8 +3310,8 @@ int good_evil_defenseProc(P_char ch, P_obj obj, int isGood, int mana)
 				next = tar_ch->next_in_room;
 				if (tar_ch->group == ch->group)
 				{
-					spell_armor(50, ch, 0, 0, ch, 0);
-					spell_bless(50, ch, 0, 0, ch, 0);
+					spell_armor(50, ch, 0, 0, tar_ch, 0);
+					spell_bless(50, ch, 0, 0, tar_ch, 0);
 				}
 			}
 			break;
@@ -3528,7 +3528,6 @@ int good_evil_sword(P_obj obj, P_char ch, int cmd, char *arg)
 	int slot, mana, i;
 	char tmp_buf[300];
 	char curWhisper[300];
-	static int num_attacks = 0;
 	const char **whisperings;
 #define SWORD_WHISPERINGS 7
 	const char *e_whispers[SWORD_WHISPERINGS] = {
@@ -3763,9 +3762,9 @@ int good_evil_sword(P_obj obj, P_char ch, int cmd, char *arg)
 			obj->value[6] = (obj->value[6] + 1) % 15;
 			good_evil_fightingProc(ch, obj, bIsGood, mana);
 		}
-		else if (!num_attacks && !number(0, 3))
+		else if (!number(0, 3))
 		{
-			num_attacks = number(3, 5);
+			int num_attacks = number(3, 5);
 			act_trio("$p &+Wflares up, slashing your opponent with incredible speed!&n",
 				 "&+W$n's&N $p&+W flares up, slashing YOU with incredible speed!&n",
 				 "&+W$n's&N $p&+W flares up, slashing $N with incredible speed!&n",
@@ -3881,24 +3880,18 @@ int vigor_mask(P_obj obj, P_char ch, int cmd, char *arg)
 	if (!OBJ_WORN_POS(obj, WEAR_FACE))
 		return (FALSE);
 
-	if (ch || cmd)
-		return (FALSE);
-
-	if (cmd == CMD_REMOVE)
+	// Taking the mask off takes its vitality with it; the remove itself goes ahead.
+	if (cmd == CMD_REMOVE && OBJ_WORN_BY(obj, ch) && arg)
 	{
 		if (isname(arg, "mask") || isname(arg, "bahamut") || isname(arg, "vigor") ||
 		    isname(arg, "unique"))
-		{
-			for (af = ch->affected; af; af = af->next)
-			{
-				if (af->type == SPELL_VITALITY)
-				{
-					break;
-				}
-			}
-			affect_remove(ch, af);
-		}
+			affect_from_char(ch, SPELL_VITALITY);
+		return FALSE;
 	}
+
+	if (ch || cmd)
+		return (FALSE);
+
 	ch = obj->loc.wearing;
 
 	if (!number(0, 9) && cmd == CMD_PERIODIC)
@@ -4179,10 +4172,11 @@ int sanguine(P_obj obj, P_char ch, int cmd, char *argument)
 
 // for 51 potions
 
-int treasure_chest(P_obj obj, P_char ch, int cmd, char * /*argument*/)
+int treasure_chest(P_obj obj, P_char ch, int cmd, char *argument)
 {
 	int found, chance1, chance2;
 	P_obj potion;
+	char buf[MAX_INPUT_LENGTH];
 
 	chance1 = 10;
 	chance2 = 1;
@@ -4193,11 +4187,11 @@ int treasure_chest(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 		return FALSE;
 	}
 
-	if (IS_TRUSTED(ch) || !CAN_SEE_OBJ(ch, obj))
+	if (!ch || !obj || !OBJ_ROOM(obj))
 	{
 		return FALSE;
 	}
-	if (!ch || !obj)
+	if (IS_TRUSTED(ch) || !CAN_SEE_OBJ(ch, obj))
 	{
 		return FALSE;
 	}
@@ -4217,6 +4211,13 @@ int treasure_chest(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 	 */
 	if (cmd == CMD_OPEN)
 	{
+		// Only opening this chest, not any door or container in the room.
+		one_argument(argument, buf);
+		if (obj != get_obj_in_list_vis(ch, buf, world[ch->in_room].contents))
+		{
+			return FALSE;
+		}
+
 		if (number(0, 100) < chance1)
 		{
 			found++;
@@ -4230,7 +4231,7 @@ int treasure_chest(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 		if (found)
 		{
 			act("$n opens the &+Ytreasure &+ychest&n and finds something!&n", FALSE, ch,
-			    obj, NULL, TO_NOTVICTROOM);
+			    obj, NULL, TO_ROOM);
 			act("Your open the &+Ytreasure &+ychest&n and find something...&n", FALSE,
 			    ch, obj, NULL, TO_CHAR);
 
@@ -4247,8 +4248,8 @@ int treasure_chest(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 		act("&+yA &+Ytreasure &+ychest crumbles into &ndust.", FALSE, ch, obj, NULL,
 		    TO_CHAR);
 		act("&+yA &+Ytreasure &+ychest crumbles into &ndust.", FALSE, ch, obj, NULL,
-		    TO_NOTVICTROOM);
-		obj_from_room(obj);
+		    TO_ROOM);
+		extract_obj(obj, TRUE); // Not an arti, but 'in game.'
 		return TRUE;
 	}
 
@@ -4807,9 +4808,8 @@ int holy_weapon(P_obj obj, P_char ch, int cmd, char *arg)
 				// If tch is attacking someone in ch's group.
 				if (grouped(ch, GET_OPPONENT(tch)) && IS_CASTER(GET_OPPONENT(tch)))
 				{
-					tmpper = (GET_HIT(GET_OPPONENT(tch)) /
-						  GET_MAX_HIT(GET_OPPONENT(tch))) *
-						 100;
+					tmpper = (GET_HIT(GET_OPPONENT(tch)) * 100) /
+						 GET_MAX_HIT(GET_OPPONENT(tch));
 					if (tmpper < pcnt)
 					{
 						attacker = tch;
@@ -7182,7 +7182,7 @@ int stat_pool_common(P_obj obj, P_char ch, int cmd, sh_int *statPtr, const char 
 				act("$n reels in pain as $e takes a drink from $p!", FALSE, ch, obj,
 				    0, TO_ROOM);
 
-				damage(ch, ch, TYPE_UNDEFINED, 50);
+				damage(ch, ch, 50, TYPE_UNDEFINED);
 
 				return TRUE;
 			}
@@ -8747,7 +8747,21 @@ int dragonslayer(P_obj obj, P_char ch, int cmd, char *arg)
 		act("&+GYour $q drops to the ground with a soft thud.", TRUE, ch, obj, 0, TO_CHAR);
 		act("&+G$n's $q drops to the ground with a soft thud.", TRUE, ch, obj, 0,
 		    TO_NOTVICT);
-		obj_from_char(obj);
+		if (OBJ_WORN(obj))
+		{
+			for (int pos = 0; pos < MAX_WEAR; pos++)
+			{
+				if (ch->equipment[pos] == obj)
+				{
+					unequip_char(ch, pos);
+					break;
+				}
+			}
+		}
+		else
+		{
+			obj_from_char(obj);
+		}
 		obj_to_room(obj, ch->in_room);
 		return FALSE;
 	}
@@ -9217,7 +9231,7 @@ int circlet_of_light(P_obj obj, P_char ch, int cmd, char *arg)
 
 	// Past here, and you're fighting.. 1/15 chance.
 	vict = melee_proc_target(obj, ch, cmd, arg);
-	if (!vict || !number(0, 14))
+	if (!vict || number(0, 14))
 	{
 		return FALSE;
 	}
@@ -9845,7 +9859,7 @@ int out_of_god_bp(P_obj obj, P_char ch, int cmd, char *arg)
 	if (!isname(whee, "flap"))
 		return FALSE;
 
-	target = real_room(world[ch->specials.was_in_room].number);
+	target = real_room0(ch->specials.was_in_room);
 
 	if (isname(whee, "flap"))
 	{ // we have a winner!
@@ -9861,7 +9875,7 @@ int out_of_god_bp(P_obj obj, P_char ch, int cmd, char *arg)
 			    obj, tch, TO_CHAR);
 
 			char_from_room(ch);
-			char_to_room(ch, real_room(target), -1);
+			char_to_room(ch, target, -1);
 
 			act("$n quickly climbs out of &+ya large leather backpack&N, closing the flap behind $m.",
 			    FALSE, ch, obj, 0, TO_ROOM);

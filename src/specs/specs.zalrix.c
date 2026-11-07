@@ -241,9 +241,9 @@ int squelcher(P_obj obj, P_char ch, int cmd, char *arg)
 	if (IS_FIGHTING(ch) && (cmd == CMD_REMOVE))
 	{
 		act("You stop using $p&n.", TRUE, ch, obj, 0, TO_CHAR);
-		act("$n stops using $p&n.", TRUE, 0, obj, ch, TO_NOTVICT);
+		act("$n stops using $p&n.", TRUE, ch, obj, 0, TO_ROOM);
 		act("$p&n jumps back into your hands!", TRUE, ch, obj, 0, TO_CHAR);
-		act("$p&n jumps back into $n's hands!", TRUE, 0, obj, ch, TO_NOTVICT);
+		act("$p&n jumps back into $n's hands!", TRUE, ch, obj, 0, TO_ROOM);
 		return TRUE;
 	}
 	if (IS_FIGHTING(ch) && (cmd == CMD_FLEE))

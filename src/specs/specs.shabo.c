@@ -313,7 +313,7 @@ int tower_summoning(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
 	if (cmd == CMD_SET_PERIODIC)
 		return FALSE;
 
-	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) == !STAT_NORMAL))
+	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) != STAT_NORMAL))
 		return FALSE;
 
 	if (IS_NPC(ch) && !IS_PC_PET(ch))
@@ -395,7 +395,7 @@ int shabo_trap_north(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
 	if (cmd == CMD_SET_PERIODIC)
 		return FALSE;
 
-	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) == !STAT_NORMAL))
+	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) != STAT_NORMAL))
 		return FALSE;
 
 	if (IS_PC_PET(ch))
@@ -430,7 +430,7 @@ int shabo_trap_south(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
 	if (cmd == CMD_SET_PERIODIC)
 		return FALSE;
 
-	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) == !STAT_NORMAL))
+	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) != STAT_NORMAL))
 		return FALSE;
 
 	if (IS_NPC(ch) && !IS_PC_PET(ch))
@@ -474,7 +474,7 @@ int shabo_trap_south_two(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
 	if (cmd == CMD_SET_PERIODIC)
 		return FALSE;
 
-	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) == !STAT_NORMAL))
+	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) != STAT_NORMAL))
 		return FALSE;
 
 	if (IS_NPC(ch) && !IS_PC_PET(ch))
@@ -509,7 +509,7 @@ int shabo_trap_down(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
 	if (cmd == CMD_SET_PERIODIC)
 		return FALSE;
 
-	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) == !STAT_NORMAL))
+	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) != STAT_NORMAL))
 		return FALSE;
 
 	if (IS_NPC(ch) && !IS_PC_PET(ch))
@@ -544,7 +544,7 @@ int shabo_trap_up(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 	if (cmd == CMD_SET_PERIODIC)
 		return FALSE;
 
-	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) == !STAT_NORMAL))
+	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) != STAT_NORMAL))
 		return FALSE;
 
 	if (IS_NPC(ch) && !IS_PC_PET(ch))
@@ -589,7 +589,7 @@ int shabo_trap_up_two(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
 	if (cmd == CMD_SET_PERIODIC)
 		return FALSE;
 
-	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) == !STAT_NORMAL))
+	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) != STAT_NORMAL))
 		return FALSE;
 
 	if (IS_NPC(ch) && !IS_PC_PET(ch))
@@ -635,7 +635,7 @@ int shabo_trap_north_two(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
 	if (cmd == CMD_SET_PERIODIC)
 		return FALSE;
 
-	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) == !STAT_NORMAL))
+	if (!ch || !IS_AWAKE(ch) || (GET_POS(ch) == POS_SITTING) || (GET_STAT(ch) != STAT_NORMAL))
 		return FALSE;
 
 	if (IS_NPC(ch) && !IS_PC_PET(ch))
@@ -656,7 +656,6 @@ int shabo_trap_north_two(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
 				return FALSE;
 			else
 			{
-				act("&+LYou hear a soft click.", TRUE, ch, 0, 0, TO_CHAR);
 				trapmob = read_mobile(14, VIRTUAL); // load a temporary mob
 				if (!trapmob)
 				{

@@ -76,7 +76,7 @@ int blade_of_paladins(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		act("&+BThe blade briefly flashes with &N&+Yintense light&N&+B, burning your hand severely!&N",
 		    TRUE, ch, obj, 0, TO_CHAR);
-		act("$N screams in pain as $S blade burns into $S skin!", FALSE, ch, obj, 0,
+		act("$n screams in pain as $s blade burns into $s skin!", FALSE, ch, obj, 0,
 		    TO_ROOM);
 		GET_HIT(ch) -= 5;
 		update_pos(ch);
@@ -1001,7 +1001,7 @@ int staff_of_blue_flames(P_obj obj, P_char ch, int cmd, char *arg)
 			act("&+bArcs of &-L&+Blightning &+bleap from $q&+B!", FALSE, ch, obj, 0,
 			    TO_ROOM);
 			cast_as_area(ch, SPELL_CHAIN_LIGHTNING, 46, 0);
-			CharWait(ch, (int)2.75 * PULSE_VIOLENCE);
+			CharWait(ch, (int)(2.75 * PULSE_VIOLENCE));
 			return TRUE;
 		}
 	}
@@ -1074,7 +1074,7 @@ int elfdawn_sword(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		act("&+gThe blade briefly flashes with &N&+Yintense light&N&+g, burning your hand severely!&N",
 		    TRUE, ch, obj, vict, TO_CHAR);
-		act("$n's &+gblade briefly flashes with &N&+Yintense light&N&+g, burning $n hand severely!&N",
+		act("$n's &+gblade briefly flashes with &N&+Yintense light&N&+g, burning $s hand severely!&N",
 		    TRUE, ch, obj, vict, TO_ROOM);
 		GET_HIT(ch) -= 5;
 		update_pos(ch);

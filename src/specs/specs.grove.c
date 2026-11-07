@@ -1220,7 +1220,7 @@ int shimmering_longsword(P_obj obj, P_char ch, int cmd, char *arg)
 		    FALSE, obj->loc.wearing, obj, vict, TO_VICT);
 		act("As $n's $q slashes $N's armor, a &+Bbright blue force "
 		    "of mystic power streaks out the blade&n, bombarding $N's body!",
-		    FALSE, obj->loc.wearing, obj, vict, TO_ROOM);
+		    FALSE, obj->loc.wearing, obj, vict, TO_NOTVICT);
 		spell_lightning_bolt(30, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 		return TRUE;
 	}
