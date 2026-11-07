@@ -14,6 +14,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -100,7 +101,7 @@ def command(client, text, timeout=20):
     return bytes(client.transcript[start:]).decode(errors='replace')
 
 
-def run(binary, backend, interruptions_only=False, reconnect_only=False):
+def run(binary, backend, interruptions_only=False, reconnect_only=False, skip_interruptions=False):
     inspector = journey.INSPECTOR
     if backend == 'flatfile':
         subprocess.run(['python3', 'tests/async/test_flatfile_player_repository.py',
@@ -433,7 +434,8 @@ def run(binary, backend, interruptions_only=False, reconnect_only=False):
                 assert 'Kimordril' in command(player, 'list')
                 evidence['return_after_logout'] = True
                 print(backend + ': immobile ticket retained and empty return survived logout', flush=True)
-                qualify_interruptions()
+                if not skip_interruptions:
+                    qualify_interruptions()
                 # Dedicated services do not discover anything and keep their level gates.
                 for room, keyword, destination, fare in (
                     (619771, 'krrlytstalarryn', 'Cavern', 50),
@@ -539,14 +541,34 @@ def main():
     args = parser.parse_args()
     subprocess.run(['make', 'world'], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     (ROOT / 'bin/tests').mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='flight-build-', dir=ROOT / 'bin/tests') as temporary:
-        build = Path(temporary)
-        if args.server:
-            binary = args.server.resolve()
-        else:
-            assert args.backend == 'flatfile', 'pass a MariaDB binary with --server'
-            binary = journey.build_flatfile_server(build / 'server')
-        run(binary, args.backend, args.interruptions_only, args.reconnect_only)
+    interruptions = None
+    if not (args.interruptions_only or args.reconnect_only):
+        # The interruptions need only two discovered stops and take half of the route's
+        # real-time flying: qualify them beside it, in a world of their own. Two migration
+        # runs cannot share one MariaDB server, so a MariaDB leg gets its own container.
+        child = [sys.executable, __file__, '--interruptions-only', '--backend', args.backend,
+                 *(['--server', str(args.server)] if args.server else [])]
+        if args.backend == 'mariadb':
+            child.insert(0, str(ROOT / 'tests/async/with_disposable_mariadb.sh'))
+        interruptions = subprocess.Popen(child, cwd=ROOT)
+    try:
+        with tempfile.TemporaryDirectory(prefix='flight-build-', dir=ROOT / 'bin/tests') as temporary:
+            build = Path(temporary)
+            if args.server:
+                binary = args.server.resolve()
+            else:
+                assert args.backend == 'flatfile', 'pass a MariaDB binary with --server'
+                binary = journey.build_flatfile_server(build / 'server', real_clock=True)
+            run(binary, args.backend, args.interruptions_only, args.reconnect_only,
+                skip_interruptions=interruptions is not None)
+    except BaseException:
+        if interruptions:
+            # SIGTERM, so that a MariaDB leg's wrapper still removes its container.
+            interruptions.terminate()
+            interruptions.wait()
+        raise
+    if interruptions:
+        assert interruptions.wait() == 0, 'flight interruption qualification failed'
 
 
 if __name__ == '__main__':

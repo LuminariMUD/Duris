@@ -550,5 +550,5 @@ if __name__ == "__main__":
     build_root = ROOT / "bin/tests"
     build_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="gmcp-control-", dir=build_root) as build:
-        run(args.server.resolve() if args.server else build_flatfile_server(Path(build)), args.evidence)
+        run(args.server.resolve() if args.server else build_flatfile_server(Path(build), real_clock=True), args.evidence)
     print("booted GMCP control/time/session and combat state journey passed")

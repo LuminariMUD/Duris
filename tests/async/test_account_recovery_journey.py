@@ -318,9 +318,9 @@ def generate_certificate(run_root: pathlib.Path) -> None:
     (run_root / "duris.key").chmod(0o600)
 
 
-def build_flatfile_server(build_root: pathlib.Path) -> pathlib.Path:
+def build_flatfile_server(build_root: pathlib.Path, *, real_clock: bool = False) -> pathlib.Path:
     """Acquire the shared artifact while retaining journey-owned runtime state."""
-    return server_build_artifacts.build_flatfile_server(build_root)
+    return server_build_artifacts.build_flatfile_server(build_root, real_clock=real_clock)
 
 
 class IsolatedServer:
