@@ -37,7 +37,6 @@ int demon_slayer(P_obj, P_char, int, char *);
 int helmet_vampires(P_obj, P_char, int, char *);
 int buckler_saints(P_obj, P_char, int, char *);
 // int boots_abyss(P_obj, P_char, int, char *);
-int rapier_penetration(P_obj, P_char, int, char *);
 int sword_random(P_obj, P_char, int, char *);
 int gauntlets_legend(P_obj, P_char, int, char *);
 int poseidon_trident(P_obj, P_char, int, char *);

@@ -227,25 +227,20 @@ int storm_legplates(P_obj obj, P_char ch, int cmd, char *arg)
 			}
 		}
 
+		data = defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg);
 		// 1/30 chance.
-		if (cmd == CMD_GOTHIT && !number(0, 29))
+		if (data && !number(0, 29))
 		{
-			if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-			{
-				return FALSE;
-			}
 			vict = data->victim;
 			if (!IS_ALIVE(vict))
 			{
 				return FALSE;
 			}
 
-			act("$q &+wsizzles with &+Yenergy &+was $N tries to hit you.&n", TRUE, ch,
-			    obj, vict, TO_CHAR);
-			act("$q &+wsizzles with &+Yenergy &+was you try to hit $n.&n", TRUE, ch,
-			    obj, vict, TO_VICT);
-			act("$q &+wsizzles with &+Yenergy &+was $N &+wtries to hit $n&+w.&n", TRUE,
-			    ch, obj, vict, TO_NOTVICT);
+			act_trio("$q &+wsizzles with &+Yenergy &+was $N tries to hit you.&n",
+				 "$q &+wsizzles with &+Yenergy &+was you try to hit $n.&n",
+				 "$q &+wsizzles with &+Yenergy &+was $N &+wtries to hit $n&+w.&n",
+				 TRUE, ch, obj, vict);
 
 			spell_lightning_bolt(50, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 			spell_lightning_bolt(50, ch, 0, SPELL_TYPE_SPELL, vict, 0);
@@ -411,14 +406,10 @@ int blur_shortsword(P_obj obj, P_char ch, int cmd, char *arg)
 			}
 		}
 
+		data = defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg);
 		// 1/25 chance.
-		if (cmd == CMD_GOTHIT && !number(0, 24))
+		if (data && !number(0, 24))
 		{
-			// important! can do this cast (next line) ONLY if cmd was CMD_GOTHIT or CMD_GOTNUKED
-			if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-			{
-				return FALSE;
-			}
 			vict = data->victim;
 			if (!IS_ALIVE(vict) || vict != GET_OPPONENT(ch))
 			{
@@ -587,12 +578,11 @@ int volo_longsword(P_obj obj, P_char ch, int cmd, char *arg)
 			switch (number(0, 2))
 			{
 			case 0:
-				act("&+LYour $q &+Lsinks deep into &n$N&+L's &+rfl&+Re&+rsh&+L!&n",
-				    TRUE, ch, obj, vict, TO_CHAR);
-				act("$n's $q &+Lsinks deep into &n$N&+L's &+rfl&+Re&+rsh&+L!&n",
-				    TRUE, ch, obj, vict, TO_NOTVICT);
-				act("$n's $q &+Lsinks deep into your &+rfl&+Re&+rsh&+L!&n", TRUE,
-				    ch, obj, vict, TO_VICT);
+				act_trio(
+					"&+LYour $q &+Lsinks deep into &n$N&+L's &+rfl&+Re&+rsh&+L!&n",
+					"$n's $q &+Lsinks deep into your &+rfl&+Re&+rsh&+L!&n",
+					"$n's $q &+Lsinks deep into &n$N&+L's &+rfl&+Re&+rsh&+L!&n",
+					TRUE, ch, obj, vict);
 
 				spell_energy_drain(GET_LEVEL(ch), ch, 0, SPELL_TYPE_SPELL, vict, 0);
 				break;
@@ -707,12 +697,12 @@ int snowogre_warhammer(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 
-	vict = GET_OPPONENT(ch);
+	vict = melee_proc_target(obj, ch, cmd, arg);
 	// 1/33 chance.
-	if (cmd == CMD_MELEE_HIT && CanDoFightMove(ch, GET_OPPONENT(ch)) && !IS_IMMOBILE(ch) &&
-	    !number(0, 32) && !IS_ELITE(vict))
+	if (vict && CanDoFightMove(ch, vict) && !IS_IMMOBILE(ch) && !number(0, 32) &&
+	    !IS_ELITE(vict))
 	{
-		if (!IS_ALIVE(vict) || ch->in_room != vict->in_room)
+		if (ch->in_room != vict->in_room)
 		{
 			return FALSE;
 		}
@@ -720,12 +710,11 @@ int snowogre_warhammer(P_obj obj, P_char ch, int cmd, char *arg)
 		switch (number(0, 4))
 		{
 		case 0:
-			act("$p &+Wsuddenly unleashes the &+wF&+ru&+Rr&+Ly &+Wof the &+LV&+rol&+Rc&+ran&+Lo&n",
-			    TRUE, ch, obj, vict, TO_CHAR);
-			act("$p &+Wsuddenly unleashes the &+wF&+ru&+Rr&+Ly &+Wof the &+LV&+rol&+Rc&+ran&+Lo&n",
-			    TRUE, ch, obj, vict, TO_NOTVICT);
-			act("$p &+Wsuddenly unleashes the &+wF&+ru&+Rr&+Ly &+Wof the &+LV&+rol&+Rc&+ran&+Lo &+Wupon you!&n",
-			    TRUE, ch, obj, vict, TO_VICT);
+			act_trio(
+				"$p &+Wsuddenly unleashes the &+wF&+ru&+Rr&+Ly &+Wof the &+LV&+rol&+Rc&+ran&+Lo&n",
+				"$p &+Wsuddenly unleashes the &+wF&+ru&+Rr&+Ly &+Wof the &+LV&+rol&+Rc&+ran&+Lo &+Wupon you!&n",
+				"$p &+Wsuddenly unleashes the &+wF&+ru&+Rr&+Ly &+Wof the &+LV&+rol&+Rc&+ran&+Lo&n",
+				TRUE, ch, obj, vict);
 
 			if (affected_by_spell(ch, SPELL_COLDSHIELD))
 			{
@@ -768,71 +757,62 @@ int snowogre_warhammer(P_obj obj, P_char ch, int cmd, char *arg)
 			return TRUE;
 			break;
 		case 1:
-			act("$p &+Wsuddenly unleashes the &+wF&+yu&+Yr&+wy &+Wof the &+wD&+ye&+Yse&+yr&+wt&n",
-			    TRUE, ch, obj, vict, TO_CHAR);
-			act("$p &+Wsuddenly unleashes the &+wF&+yu&+Yr&+wy &+Wof the &+wD&+ye&+Yse&+yr&+wt&n",
-			    TRUE, ch, obj, vict, TO_NOTVICT);
-			act("$p &+Wsuddenly unleashes the &+wF&+yu&+Yr&+wy &+Wof the &+wD&+ye&+Yse&+yr&+wt &+Wupon you!&n",
-			    TRUE, ch, obj, vict, TO_VICT);
+			act_trio(
+				"$p &+Wsuddenly unleashes the &+wF&+yu&+Yr&+wy &+Wof the &+wD&+ye&+Yse&+yr&+wt&n",
+				"$p &+Wsuddenly unleashes the &+wF&+yu&+Yr&+wy &+Wof the &+wD&+ye&+Yse&+yr&+wt &+Wupon you!&n",
+				"$p &+Wsuddenly unleashes the &+wF&+yu&+Yr&+wy &+Wof the &+wD&+ye&+Yse&+yr&+wt&n",
+				TRUE, ch, obj, vict);
 
-			act("A powerful &+Ysand&+ystorm &npummels $N!&n", TRUE, ch, obj, vict,
-			    TO_CHAR);
-			act("A powerful &+Ysand&+ystorm &npummels $N!&n", TRUE, ch, obj, vict,
-			    TO_NOTVICT);
-			act("A powerful &+Ysand&+ystorm &npummels you!&n", TRUE, ch, obj, vict,
-			    TO_VICT);
+			act_trio("A powerful &+Ysand&+ystorm &npummels $N!&n",
+				 "A powerful &+Ysand&+ystorm &npummels you!&n",
+				 "A powerful &+Ysand&+ystorm &npummels $N!&n", TRUE, ch, obj, vict);
 
 			if (affected_by_spell(vict, SPELL_STONE_SKIN))
 			{
-				act("&+yThe &+Ysand&+ystorm grinds away $N&+y's &+Lstone skin&+y!&n",
-				    TRUE, ch, obj, vict, TO_NOTVICT);
-				act("&+yThe &+Ysand&+ystorm grinds away your &+Lstone skin&+y!",
-				    TRUE, ch, obj, vict, TO_VICT);
-				act("&+yThe &+Ysand&+ystorm grinds away $N&+y's &+Lstone skin&+y!",
-				    TRUE, ch, obj, vict, TO_CHAR);
+				act_trio(
+					"&+yThe &+Ysand&+ystorm grinds away $N&+y's &+Lstone skin&+y!",
+					"&+yThe &+Ysand&+ystorm grinds away your &+Lstone skin&+y!",
+					"&+yThe &+Ysand&+ystorm grinds away $N&+y's &+Lstone skin&+y!&n",
+					TRUE, ch, obj, vict);
 				affect_from_char(vict, SPELL_STONE_SKIN);
 			}
 			if (affected_by_spell(vict, SPELL_SHADOW_SHIELD))
 			{
-				act("&+yThe &+Ysand&+ystorm grinds away $N&+y's &+Lshadow shield&+y!&n",
-				    TRUE, ch, obj, vict, TO_NOTVICT);
-				act("&+yThe &+Ysand&+ystorm grinds away your &+Lshadow shield&+y!",
-				    TRUE, ch, obj, vict, TO_VICT);
-				act("&+yThe &+Ysand&+ystorm grinds away $N&+y's &+Lshadow shield&+y!",
-				    TRUE, ch, obj, vict, TO_CHAR);
+				act_trio(
+					"&+yThe &+Ysand&+ystorm grinds away $N&+y's &+Lshadow shield&+y!",
+					"&+yThe &+Ysand&+ystorm grinds away your &+Lshadow shield&+y!",
+					"&+yThe &+Ysand&+ystorm grinds away $N&+y's &+Lshadow shield&+y!&n",
+					TRUE, ch, obj, vict);
 				affect_from_char(vict, SPELL_SHADOW_SHIELD);
 			}
 
 			if (affected_by_spell(vict, SPELL_BIOFEEDBACK))
 			{
-				act("&+yThe &+Ysand&+ystorm grinds away $N&+y's &+Gbiofeedback&+y!&n",
-				    TRUE, ch, obj, vict, TO_NOTVICT);
-				act("&+yThe &+Ysand&+ystorm grinds away your &+Gbiofeedback&+y!",
-				    TRUE, ch, obj, vict, TO_VICT);
-				act("&+yThe &+Ysand&+ystorm grinds away $N&+y's &+Gbiofeedback&+y!",
-				    TRUE, ch, obj, vict, TO_CHAR);
+				act_trio(
+					"&+yThe &+Ysand&+ystorm grinds away $N&+y's &+Gbiofeedback&+y!",
+					"&+yThe &+Ysand&+ystorm grinds away your &+Gbiofeedback&+y!",
+					"&+yThe &+Ysand&+ystorm grinds away $N&+y's &+Gbiofeedback&+y!&n",
+					TRUE, ch, obj, vict);
 				affect_from_char(vict, SPELL_BIOFEEDBACK);
 			}
 
 			if (affected_by_spell(vict, SPELL_GLOBE))
 			{
-				act("&+yThe &+Ysand&+ystorm shatters $N&+y's &+rglobe of invulnerability&+y!&n",
-				    TRUE, ch, obj, vict, TO_NOTVICT);
-				act("&+yThe &+Ysand&+ystorm shatters your &+rglobe of invulnerability&+y!",
-				    TRUE, ch, obj, vict, TO_VICT);
-				act("&+yThe &+Ysand&+ystorm shatters $N&+y's &+rglobe of invulnerability&+y!",
-				    TRUE, ch, obj, vict, TO_CHAR);
+				act_trio(
+					"&+yThe &+Ysand&+ystorm shatters $N&+y's &+rglobe of invulnerability&+y!",
+					"&+yThe &+Ysand&+ystorm shatters your &+rglobe of invulnerability&+y!",
+					"&+yThe &+Ysand&+ystorm shatters $N&+y's &+rglobe of invulnerability&+y!&n",
+					TRUE, ch, obj, vict);
 				affect_from_char(vict, SPELL_GLOBE);
 			}
 			return TRUE;
 			break;
 		case 2:
-			act("$p &+Wsuddenly unleashes the &+wF&+cu&+Cr&+wy &+Wof the &+wgl&+ca&+Cc&+ci&+wer&n",
-			    TRUE, ch, obj, vict, TO_CHAR);
-			act("$p &+Wsuddenly unleashes the &+wF&+cu&+Cr&+wy &+Wof the &+wgl&+ca&+Cc&+ci&+wer&n",
-			    TRUE, ch, obj, vict, TO_NOTVICT);
-			act("$p suddenly unleashes the &+wF&+cu&+Cr&+wy &+Wof the &+wgl&+ca&+Cc&+ci&+wer &+Wupon you!&n",
-			    TRUE, ch, obj, vict, TO_VICT);
+			act_trio(
+				"$p &+Wsuddenly unleashes the &+wF&+cu&+Cr&+wy &+Wof the &+wgl&+ca&+Cc&+ci&+wer&n",
+				"$p suddenly unleashes the &+wF&+cu&+Cr&+wy &+Wof the &+wgl&+ca&+Cc&+ci&+wer &+Wupon you!&n",
+				"$p &+Wsuddenly unleashes the &+wF&+cu&+Cr&+wy &+Wof the &+wgl&+ca&+Cc&+ci&+wer&n",
+				TRUE, ch, obj, vict);
 
 			if (affected_by_spell(ch, SPELL_FIRESHIELD))
 			{
@@ -875,12 +855,11 @@ int snowogre_warhammer(P_obj obj, P_char ch, int cmd, char *arg)
 			return TRUE;
 			break;
 		case 3:
-			act("&+W$p &+Win your hands which suddenly unleashes the &+lF&+Bu&+Cr&+By &+Wof the &+bs&+Bq&+Cua&+Bl&+bl&n",
-			    TRUE, ch, obj, vict, TO_CHAR);
-			act("$p &+Wsuddenly unleashes the &+lF&+Bu&+Cr&+By &+Wof the &+bs&+Bq&+Cua&+Bl&+bl&n",
-			    TRUE, ch, obj, vict, TO_NOTVICT);
-			act("$p &+Wsuddenly unleashes the &+lF&+Bu&+Cr&+By &+Wof the &+bs&+Bq&+Cua&+Bl&+bl &+Wupon you!&n",
-			    TRUE, ch, obj, vict, TO_VICT);
+			act_trio(
+				"&+W$p &+Win your hands which suddenly unleashes the &+lF&+Bu&+Cr&+By &+Wof the &+bs&+Bq&+Cua&+Bl&+bl&n",
+				"$p &+Wsuddenly unleashes the &+lF&+Bu&+Cr&+By &+Wof the &+bs&+Bq&+Cua&+Bl&+bl &+Wupon you!&n",
+				"$p &+Wsuddenly unleashes the &+lF&+Bu&+Cr&+By &+Wof the &+bs&+Bq&+Cua&+Bl&+bl&n",
+				TRUE, ch, obj, vict);
 
 			switch (number(0, 3))
 			{
@@ -1084,12 +1063,11 @@ int deathseeker_mace(P_obj obj, P_char ch, int cmd, char *arg)
 		switch (number(0, 2))
 		{
 		case 0:
-			act("&+LYour $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+rSc&+RRe&+raM&+L!&n",
-			    TRUE, ch, obj, vict, TO_CHAR);
-			act("&+W$n's $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+rSc&+RRe&+raM&+L!&n",
-			    TRUE, ch, obj, vict, TO_VICT);
-			act("&+W$n's $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+rSc&+RRe&+raM&+L!$n",
-			    TRUE, ch, obj, vict, TO_NOTVICT);
+			act_trio(
+				"&+LYour $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+rSc&+RRe&+raM&+L!&n",
+				"&+W$n's $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+rSc&+RRe&+raM&+L!&n",
+				"&+W$n's $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+rSc&+RRe&+raM&+L!$n",
+				TRUE, ch, obj, vict);
 
 			spell_full_harm(55, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 			if (!IS_ALIVE(ch) || !IS_ALIVE(vict))
@@ -1113,12 +1091,11 @@ int deathseeker_mace(P_obj obj, P_char ch, int cmd, char *arg)
 			}
 			break;
 		case 1:
-			act("&+LYour $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+RSc&+rRe&+RaM&+L!&n",
-			    TRUE, ch, obj, vict, TO_CHAR);
-			act("&+W$n's $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+RSc&+rRe&+RaM&+L!&n",
-			    TRUE, ch, obj, vict, TO_VICT);
-			act("&+W$n's $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+RSc&+rRe&+RaM&+L!&n",
-			    TRUE, ch, obj, vict, TO_NOTVICT);
+			act_trio(
+				"&+LYour $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+RSc&+rRe&+RaM&+L!&n",
+				"&+W$n's $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+RSc&+rRe&+RaM&+L!&n",
+				"&+W$n's $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+RSc&+rRe&+RaM&+L!&n",
+				TRUE, ch, obj, vict);
 
 			spell_greater_soul_disturbance(55, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 			if (!IS_ALIVE(ch) || !IS_ALIVE(vict))
@@ -1142,12 +1119,11 @@ int deathseeker_mace(P_obj obj, P_char ch, int cmd, char *arg)
 			}
 			break;
 		case 2:
-			act("&+LYour $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+mSc&+RRe&+ma&+rM&+L!&n",
-			    TRUE, ch, obj, vict, TO_CHAR);
-			act("&+W$n's $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+mSc&+RRe&+ma&+rM&+L!&n",
-			    TRUE, ch, obj, vict, TO_VICT);
-			act("&+W$n's $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+mSc&+RRe&+ma&+rM&+L!$n",
-			    TRUE, ch, obj, vict, TO_NOTVICT);
+			act_trio(
+				"&+LYour $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+mSc&+RRe&+ma&+rM&+L!&n",
+				"&+W$n's $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+mSc&+RRe&+ma&+rM&+L!&n",
+				"&+W$n's $q &+Llets loose a &+rPo&+RWe&+rRF&+ruL &+mSc&+RRe&+ma&+rM&+L!$n",
+				TRUE, ch, obj, vict);
 
 			spell_energy_drain(55, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 			if (!IS_ALIVE(ch) || !IS_ALIVE(vict))
@@ -1272,15 +1248,14 @@ int illithid_axe(P_obj obj, P_char ch, int cmd, char *arg)
 			switch (number(0, 1))
 			{
 			case 0:
-				act("&+LYour $q &+Rvi&+rci&+Rou&+rsl&+Ry &+Lgrabs $N &+Lwith a &+Mm&+me&+Mn&+mt&+Ma&+ml &+Lattack hurling them against the wall!&n\r\n"
-				    "&n$N &nfalls to $s knees!&n",
-				    TRUE, obj->loc.wearing, obj, vict, TO_CHAR);
-				act("$n's $q &+Rvi&+rci&+Rou&+rsl&+Ry &+Lgrabs you with a &+Mm&+me&+Mn&+mt&+Ma&+ml &+Lattack sending you flying against the wall!&n\r\n"
-				    "&nYou fall to your knees!&n",
-				    TRUE, obj->loc.wearing, obj, vict, TO_VICT);
-				act("$n's $q &+Rvi&+rci&+Rou&+rsl&+Ry &+Lgrabs $N &+Lwith a &+Mm&+me&+Mn&+mt&+Ma&+ml &+Lattack hurling them against the wall!&n\r\n"
-				    "&n$N &nfalls to $s knees!&n",
-				    TRUE, obj->loc.wearing, obj, vict, TO_NOTVICT);
+				act_trio(
+					"&+LYour $q &+Rvi&+rci&+Rou&+rsl&+Ry &+Lgrabs $N &+Lwith a &+Mm&+me&+Mn&+mt&+Ma&+ml &+Lattack hurling them against the wall!&n\r\n"
+					"&n$N &nfalls to $s knees!&n",
+					"$n's $q &+Rvi&+rci&+Rou&+rsl&+Ry &+Lgrabs you with a &+Mm&+me&+Mn&+mt&+Ma&+ml &+Lattack sending you flying against the wall!&n\r\n"
+					"&nYou fall to your knees!&n",
+					"$n's $q &+Rvi&+rci&+Rou&+rsl&+Ry &+Lgrabs $N &+Lwith a &+Mm&+me&+Mn&+mt&+Ma&+ml &+Lattack hurling them against the wall!&n\r\n"
+					"&n$N &nfalls to $s knees!&n",
+					TRUE, obj->loc.wearing, obj, vict);
 
 				SET_POS(vict, POS_SITTING + GET_STAT(vict));
 				stop_fighting(vict);
@@ -1288,12 +1263,11 @@ int illithid_axe(P_obj obj, P_char ch, int cmd, char *arg)
 				break;
 			case 1:
 
-				act("&+LYour $q &+rt&+Rea&+rr&+Rs &+Linto $N&+L's &+mth&+Mo&+Cug&+Mh&+mts &+Land unleashes a &+Rvi&+rci&+Rou&+rs &+Lmental &+ra&+Rtt&+ra&+Rck&+L!&n",
-				    TRUE, obj->loc.wearing, obj, vict, TO_CHAR);
-				act("$n's $q &+rt&+Rea&+rr&+Rs &+Linto your &+mth&+Mo&+Cug&+Mh&+mts &+Land unleashes a &+Rvi&+rci&+Rou&+rs &+Lmental &+ra&+Rtt&+ra&+Rck&+L!&n",
-				    TRUE, obj->loc.wearing, obj, vict, TO_VICT);
-				act("$n's $q &+rt&+Rea&+rr&+Rs &+Linto $N&+L's &+mth&+Mo&+Cug&+Mh&+mts &+Land unleashes a &+Rvi&+rci&+Rou&+rs &+Lmental &+ra&+Rtt&+ra&+Rck&+L!&n",
-				    TRUE, obj->loc.wearing, obj, vict, TO_NOTVICT);
+				act_trio(
+					"&+LYour $q &+rt&+Rea&+rr&+Rs &+Linto $N&+L's &+mth&+Mo&+Cug&+Mh&+mts &+Land unleashes a &+Rvi&+rci&+Rou&+rs &+Lmental &+ra&+Rtt&+ra&+Rck&+L!&n",
+					"$n's $q &+rt&+Rea&+rr&+Rs &+Linto your &+mth&+Mo&+Cug&+Mh&+mts &+Land unleashes a &+Rvi&+rci&+Rou&+rs &+Lmental &+ra&+Rtt&+ra&+Rck&+L!&n",
+					"$n's $q &+rt&+Rea&+rr&+Rs &+Linto $N&+L's &+mth&+Mo&+Cug&+Mh&+mts &+Land unleashes a &+Rvi&+rci&+Rou&+rs &+Lmental &+ra&+Rtt&+ra&+Rck&+L!&n",
+					TRUE, obj->loc.wearing, obj, vict);
 
 				spell_psychic_crush(GET_LEVEL(ch), ch, 0, SPELL_TYPE_SPELL, vict,
 						    0);
@@ -1388,21 +1362,15 @@ int dagger_ra(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
+	vict = melee_proc_target(obj, ch, cmd, arg);
 	// 1/50 chance.
-	if (cmd == CMD_MELEE_HIT && !number(0, 49))
+	if (vict && !number(0, 49))
 	{
-		vict = legacy_proc_arg<P_char>(arg);
-		if (!IS_ALIVE(vict))
-		{
-			return FALSE;
-		}
-
-		act("&+LYour $q &+Lchannels the &+Wb&+Yro&+Wke&+Yn &+Wr&+Ya&+Wy&+Ys &+Lof &+Wm&+Yor&+Wni&+Yng &+rS&+Ru&+rnr&+Ri&+rs&+Re &+Lat&n $N&+L.&n",
-		    TRUE, ch, obj, vict, TO_CHAR);
-		act("$n's $q &+Lchannels the &+Wb&+Yro&+Wke&+Yn &+Wr&+Ya&+Wy&+Ys &+Lof &+Wm&+Yor&+Wni&+Yng &+rS&+Ru&+rnr&+Ri&+rs&+Re &+Lat&n you&+L.&n",
-		    TRUE, ch, obj, vict, TO_VICT);
-		act("$n's $q &+Lchannels the &+Wb&+Yro&+Wke&+Yn &+Wr&+Ya&+Wy&+Ys &+Lof &+Wm&+Yor&+Wni&+Yng &+rS&+Ru&+rnr&+Ri&+rs&+Re &+Lat&n $N&+L.&n",
-		    TRUE, ch, obj, vict, TO_NOTVICT);
+		act_trio(
+			"&+LYour $q &+Lchannels the &+Wb&+Yro&+Wke&+Yn &+Wr&+Ya&+Wy&+Ys &+Lof &+Wm&+Yor&+Wni&+Yng &+rS&+Ru&+rnr&+Ri&+rs&+Re &+Lat&n $N&+L.&n",
+			"$n's $q &+Lchannels the &+Wb&+Yro&+Wke&+Yn &+Wr&+Ya&+Wy&+Ys &+Lof &+Wm&+Yor&+Wni&+Yng &+rS&+Ru&+rnr&+Ri&+rs&+Re &+Lat&n you&+L.&n",
+			"$n's $q &+Lchannels the &+Wb&+Yro&+Wke&+Yn &+Wr&+Ya&+Wy&+Ys &+Lof &+Wm&+Yor&+Wni&+Yng &+rS&+Ru&+rnr&+Ri&+rs&+Re &+Lat&n $N&+L.&n",
+			TRUE, ch, obj, vict);
 
 		switch (number(0, 10))
 		{
@@ -1922,12 +1890,9 @@ int demon_slayer(P_obj obj, P_char ch, int cmd, char *arg)
 								     vict, 0);
 						break;
 					}
-					act("&+LThe ghostly image of &+RBel &+Lfades out of existence and the world slowly returns to normal.&n",
-					    TRUE, ch, obj, vict, TO_CHAR);
-					act("&+LThe ghostly image of &+RBel &+Lfades out of existence and the world slowly returns to normal.&n",
-					    TRUE, ch, obj, vict, TO_NOTVICT);
-					act("&+LThe ghostly image of &+RBel &+Lfades out of existence and the world slowly returns to normal.&n",
-					    TRUE, ch, obj, vict, TO_VICT);
+					const char *fade =
+						"&+LThe ghostly image of &+RBel &+Lfades out of existence and the world slowly returns to normal.&n";
+					act_trio(fade, fade, fade, TRUE, ch, obj, vict);
 
 					CharWait(ch, PULSE_VIOLENCE * 2);
 					obj->timer[0] = curr_time;
@@ -2131,12 +2096,11 @@ int demon_slayer(P_obj obj, P_char ch, int cmd, char *arg)
 			switch (number(0, 2))
 			{
 			case 0:
-				act("&+LYour $q &+rfl&+Rar&+res &+Las it channels the powers of &+rBel &+Lupon your foe!&n",
-				    TRUE, ch, obj, vict, TO_CHAR);
-				act("&+L$n's $q &+rfl&+Rar&+res &+Las it channels the powers of &+rBel &+Lupon you!&n",
-				    TRUE, ch, obj, vict, TO_VICT);
-				act("&+L$n's $q &+rfl&+Rar&+res &+Las it channels the powers of &+rBel &+Lupon $N!&n",
-				    TRUE, ch, obj, vict, TO_NOTVICT);
+				act_trio(
+					"&+LYour $q &+rfl&+Rar&+res &+Las it channels the powers of &+rBel &+Lupon your foe!&n",
+					"&+L$n's $q &+rfl&+Rar&+res &+Las it channels the powers of &+rBel &+Lupon you!&n",
+					"&+L$n's $q &+rfl&+Rar&+res &+Las it channels the powers of &+rBel &+Lupon $N!&n",
+					TRUE, ch, obj, vict);
 
 				spell_sunray(40, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 				/*  spell_sunray(40, ch, 0, SPELL_TYPE_SPELL, vict, 0);
@@ -2144,23 +2108,21 @@ int demon_slayer(P_obj obj, P_char ch, int cmd, char *arg)
 					  spell_sunray(40, ch, 0, SPELL_TYPE_SPELL, vict, 0);*/
 				break;
 			case 1:
-				act("&+LYour $q &+bbl&+Cu&+brs &+Las it channels the powers of &+rEuronymous &+Lupon your foe!&n",
-				    TRUE, ch, obj, vict, TO_CHAR);
-				act("&+L$n's $q &+bbl&+Cu&+brs &+Las it channels the powers of &+rEuronymous &+Lupon you!&n",
-				    TRUE, ch, obj, vict, TO_VICT);
-				act("&+L$n's $q &+bbl&+Cu&+brs &+Las it channels the powers of &+rEuronymous &+Lupon $N!&n",
-				    TRUE, ch, obj, vict, TO_NOTVICT);
+				act_trio(
+					"&+LYour $q &+bbl&+Cu&+brs &+Las it channels the powers of &+rEuronymous &+Lupon your foe!&n",
+					"&+L$n's $q &+bbl&+Cu&+brs &+Las it channels the powers of &+rEuronymous &+Lupon you!&n",
+					"&+L$n's $q &+bbl&+Cu&+brs &+Las it channels the powers of &+rEuronymous &+Lupon $N!&n",
+					TRUE, ch, obj, vict);
 
 				spell_bigbys_crushing_hand(50, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 				/* spell_bigbys_crushing_hand(50, ch, 0, SPELL_TYPE_SPELL, vict, 0);*/
 				break;
 			case 2:
-				act("&+LYour $q &+ggl&+Go&+gws &+Las it channels the powers of &+rJuiblex &+Lupon your foe!&n",
-				    TRUE, ch, obj, vict, TO_CHAR);
-				act("&+L$n's $q &+ggl&+Go&+gws &+Las it channels the powers of &+rJuiblex &+Lupon you!&n",
-				    TRUE, ch, obj, vict, TO_VICT);
-				act("&+L$n's $q &+ggl&+Go&+gws &+Las it channels the powers of &+rJuiblex &+Lupon $N!&n",
-				    TRUE, ch, obj, vict, TO_NOTVICT);
+				act_trio(
+					"&+LYour $q &+ggl&+Go&+gws &+Las it channels the powers of &+rJuiblex &+Lupon your foe!&n",
+					"&+L$n's $q &+ggl&+Go&+gws &+Las it channels the powers of &+rJuiblex &+Lupon you!&n",
+					"&+L$n's $q &+ggl&+Go&+gws &+Las it channels the powers of &+rJuiblex &+Lupon $N!&n",
+					TRUE, ch, obj, vict);
 				spell_full_heal(50, ch, 0, SPELL_TYPE_SPELL, ch, 0);
 				break;
 			}
@@ -2170,33 +2132,30 @@ int demon_slayer(P_obj obj, P_char ch, int cmd, char *arg)
 			switch (number(0, 2))
 			{
 			case 0:
-				act("&+LYour $q &+rfl&+Rar&+res &+Las it channels the powers of &+rBel &+Lupon your foe!&n",
-				    TRUE, ch, obj, vict, TO_CHAR);
-				act("&+L$n's $q &+rfl&+Rar&+res &+Las it channels the powers of &+rBel &+Lupon you!&n",
-				    TRUE, ch, obj, vict, TO_VICT);
-				act("&+L$n's $q &+rfl&+Rar&+res &+Las it channels the powers of &+rBel &+Lupon $N!&n",
-				    TRUE, ch, obj, vict, TO_NOTVICT);
+				act_trio(
+					"&+LYour $q &+rfl&+Rar&+res &+Las it channels the powers of &+rBel &+Lupon your foe!&n",
+					"&+L$n's $q &+rfl&+Rar&+res &+Las it channels the powers of &+rBel &+Lupon you!&n",
+					"&+L$n's $q &+rfl&+Rar&+res &+Las it channels the powers of &+rBel &+Lupon $N!&n",
+					TRUE, ch, obj, vict);
 
 				spell_immolate(50, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 				break;
 			case 1:
-				act("&+LYour $q &+bbl&+Cu&+brs &+Las it channels the powers of &+rEuronymous &+Lupon your foe!&n",
-				    TRUE, ch, obj, vict, TO_CHAR);
-				act("&+L$n's $q &+bbl&+Cu&+brs &+Las it channels the powers of &+rEuronymous &+Lupon you!&n",
-				    TRUE, ch, obj, vict, TO_VICT);
-				act("&+L$n's $q &+bbl&+Cu&+brs &+Las it channels the powers of &+rEuronymous &+Lupon $N!&n",
-				    TRUE, ch, obj, vict, TO_NOTVICT);
+				act_trio(
+					"&+LYour $q &+bbl&+Cu&+brs &+Las it channels the powers of &+rEuronymous &+Lupon your foe!&n",
+					"&+L$n's $q &+bbl&+Cu&+brs &+Las it channels the powers of &+rEuronymous &+Lupon you!&n",
+					"&+L$n's $q &+bbl&+Cu&+brs &+Las it channels the powers of &+rEuronymous &+Lupon $N!&n",
+					TRUE, ch, obj, vict);
 
 				spell_immolate(50, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 
 				break;
 			case 2:
-				act("&+LYour $q &+ggl&+Go&+gws &+Las it channels the powers of &+rJubliex &+Lupon your foe!&n",
-				    TRUE, ch, obj, vict, TO_CHAR);
-				act("&+L$n's $q &+ggl&+Go&+gws &+Las it channels the powers of &+rJuiblex &+Lupon you!&n",
-				    TRUE, ch, obj, vict, TO_VICT);
-				act("&+L$n's $q &+ggl&+Go&+gws &+Las it channels the powers of &+rJuiblex &+Lupon $N!&n",
-				    TRUE, ch, obj, vict, TO_NOTVICT);
+				act_trio(
+					"&+LYour $q &+ggl&+Go&+gws &+Las it channels the powers of &+rJubliex &+Lupon your foe!&n",
+					"&+L$n's $q &+ggl&+Go&+gws &+Las it channels the powers of &+rJuiblex &+Lupon you!&n",
+					"&+L$n's $q &+ggl&+Go&+gws &+Las it channels the powers of &+rJuiblex &+Lupon $N!&n",
+					TRUE, ch, obj, vict);
 
 				spell_heal(56, ch, 0, SPELL_TYPE_SPELL, ch, 0);
 				break;
@@ -2523,13 +2482,9 @@ int buckler_saints(P_obj obj, P_char ch, int cmd, char *arg)
 
 	if (IS_FIGHTING(ch))
 	{
-		if (cmd == CMD_GOTHIT && !number(0, 24))
+		data = defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg);
+		if (data && !number(0, 24))
 		{
-			// important! can do this cast (next line) ONLY if cmd was CMD_GOTHIT or CMD_GOTNUKED
-			if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-			{
-				return FALSE;
-			}
 			vict = data->victim;
 			if (!IS_ALIVE(vict))
 			{
@@ -2551,213 +2506,6 @@ int buckler_saints(P_obj obj, P_char ch, int cmd, char *arg)
 			{
 				spell_dispel_evil(30, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 			}
-			return TRUE;
-		}
-	}
-	return FALSE;
-}
-
-int rapier_penetration(P_obj obj, P_char ch, int cmd, char *arg)
-{
-	P_char vict;
-	struct affected_type *af;
-
-	if (cmd == CMD_SET_PERIODIC)
-		return TRUE;
-
-	if (!obj)
-		return FALSE;
-
-	if (IS_FIGHTING(ch))
-	{
-		vict = ParseTarget(ch, arg);
-
-		if (cmd == CMD_MELEE_HIT && ch && vict && !number(0, 32) && // 3%
-		    !IS_ELITE(vict))
-
-		{
-			act("Your $q &+mpulsates &+Lwith energy!&n", TRUE, ch, obj, vict, TO_CHAR);
-
-			act("$n&+L's $q &+mpulsates &+Lwith energy!&n", TRUE, ch, obj, vict,
-			    TO_NOTVICT);
-
-			act("$n&+L's $q &+mpulsates &+Lwith energy!&n", TRUE, ch, obj, vict,
-			    TO_VICT);
-
-			if (number(1, 10) > 5)
-			{
-				if (affected_by_spell(vict, SPELL_STONE_SKIN))
-				{
-					act("$N's &+Lstone skin &ncrumbles to the ground!&n", TRUE,
-					    ch, obj, vict, TO_CHAR);
-
-					act("$N's &+Lstone skin &ncrumbles to the ground!&n", TRUE,
-					    ch, obj, vict, TO_NOTVICT);
-
-					act("&nYour &+Lstone skin &ncrumbles to the ground!&n",
-					    TRUE, ch, obj, vict, TO_VICT);
-
-					af = get_spell_from_char(vict, SPELL_STONE_SKIN);
-					if (af)
-					{
-						wear_off_message(vict, af);
-						affect_remove(vict, af);
-					}
-				}
-			}
-
-			if (number(1, 10) > 5)
-			{
-				if (affected_by_spell(vict, SPELL_GLOBE))
-				{
-					act("$N's &+Rglobe of invulnerability &nshatters to pieces!&n",
-					    TRUE, ch, obj, vict, TO_CHAR);
-
-					act("$N's &+Rglobe of invulnerability &nshatters to pieces!&n",
-					    TRUE, ch, obj, vict, TO_NOTVICT);
-
-					act("&nYour &+Rglobe of invulnerability &nshatters to pieces!&n",
-					    TRUE, ch, obj, vict, TO_VICT);
-
-					af = get_spell_from_char(vict, SPELL_GLOBE);
-					if (af)
-					{
-						wear_off_message(vict, af);
-						affect_remove(vict, af);
-					}
-				}
-			}
-
-			if (number(1, 10) > 5)
-			{
-				if (affected_by_spell(vict, SPELL_SHADOW_SHIELD))
-				{
-					act("&nWaves of energy destroy $N's &+Lshadow shield&n!",
-					    TRUE, ch, obj, vict, TO_CHAR);
-
-					act("&nWaves of energy destroy $N's &+Lshadow shield&n!",
-					    TRUE, ch, obj, vict, TO_NOTVICT);
-
-					act("&nWaves of energy destroy your &+Lshadow shield&n!",
-					    TRUE, ch, obj, vict, TO_VICT);
-
-					af = get_spell_from_char(vict, SPELL_SHADOW_SHIELD);
-					if (af)
-					{
-						wear_off_message(vict, af);
-						affect_remove(vict, af);
-					}
-				}
-			}
-
-			if (number(1, 10) > 5)
-			{
-				if (affected_by_spell(vict, SPELL_BIOFEEDBACK))
-				{
-					act("The thick &+Ggreen &+gmist &nsurrounding $N turns pale and fades away.",
-					    TRUE, ch, obj, vict, TO_CHAR);
-
-					act("The thick &+Ggreen &+gmist &nsurrounding $N turns pale and fades away.",
-					    TRUE, ch, obj, vict, TO_NOTVICT);
-
-					act("The thick &+Ggreen &+gmist &nsurrounding you turns pale and fades away.",
-					    TRUE, ch, obj, vict, TO_VICT);
-
-					af = get_spell_from_char(vict, SPELL_BIOFEEDBACK);
-					if (af)
-					{
-						wear_off_message(vict, af);
-						affect_remove(vict, af);
-					}
-				}
-			}
-
-			if (number(1, 10) > 5)
-			{
-				if (affected_by_spell(vict, SPELL_FIRESHIELD))
-				{
-					act("The &+rflames &nsurrounding $N flicker out of existence.&n",
-					    TRUE, ch, obj, vict, TO_CHAR);
-
-					act("The &+rflames &nsurrounding $N flicker out of existence.&n",
-					    TRUE, ch, obj, vict, TO_NOTVICT);
-
-					act("The &+rflames &nsurrounding you flicker out of existence.&n",
-					    TRUE, ch, obj, vict, TO_VICT);
-
-					af = get_spell_from_char(vict, SPELL_FIRESHIELD);
-					if (af)
-					{
-						wear_off_message(vict, af);
-						affect_remove(vict, af);
-					}
-				}
-			}
-
-			if (number(1, 10) > 5)
-			{
-				if (affected_by_spell(vict, SPELL_COLDSHIELD))
-				{
-					act("The &+Bice &nsurrounding $N melt away.&n", TRUE, ch,
-					    obj, vict, TO_CHAR);
-
-					act("The &+Bice &nsurrounding $N melt away.&n", TRUE, ch,
-					    obj, vict, TO_NOTVICT);
-
-					act("The &+Bice &nsurrounding you melt away.&n", TRUE, ch,
-					    obj, vict, TO_VICT);
-
-					af = get_spell_from_char(vict, SPELL_COLDSHIELD);
-					if (af)
-					{
-						wear_off_message(vict, af);
-						affect_remove(vict, af);
-					}
-				}
-			}
-
-			switch (number(0, 3))
-			{
-			case 0:
-				spell_chill_touch(30, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-
-				break;
-			case 1:
-				spell_burning_hands(30, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-
-				break;
-			case 2:
-				spell_shocking_grasp(30, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-
-				break;
-			case 3:
-				spell_acid_blast(30, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-				break;
-			default:
-				break;
-			}
-
-			switch (number(0, 3))
-			{
-			case 0:
-				spell_chill_touch(30, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-
-				break;
-			case 1:
-				spell_burning_hands(30, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-
-				break;
-			case 2:
-				spell_shocking_grasp(30, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-
-				break;
-			case 3:
-				spell_acid_blast(30, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-				break;
-			default:
-				break;
-			}
-
 			return TRUE;
 		}
 	}
@@ -2805,60 +2553,6 @@ int gauntlets_legend(P_obj obj, P_char ch, int cmd, char *arg)
 					return TRUE;
 				}
 			}
-		}
-		return TRUE;
-	}
-
-	// 1/10 chance.
-	if (IS_FIGHTING(ch) && (cmd == CMD_PERIODIC) && !number(0, 9))
-	{
-		vict = ParseTarget(ch, arg);
-
-		act("$q &nbegin to &+mglow&n.", TRUE, ch, obj, vict, TO_CHAR);
-		act("$q &nbegin to &+mglow&n.", TRUE, ch, obj, vict, TO_NOTVICT);
-		act("$q &nbegin to &+mglow&n.", TRUE, ch, obj, vict, TO_VICT);
-
-		if (GET_HIT(ch) < (GET_MAX_HIT(ch) / 4))
-		{
-			act("$q &nsend a &+csoothing &nsensation up your arm.&n.", TRUE, ch, obj,
-			    vict, TO_CHAR);
-			act("$n looks healthier.", TRUE, ch, obj, vict, TO_NOTVICT);
-			act("$n looks healthier.", TRUE, ch, obj, vict, TO_VICT);
-
-			GET_HIT(ch) += (GET_MAX_HIT(ch) / 8);
-		}
-		else if (GET_HIT(ch) < (GET_MAX_HIT(ch) / 2))
-		{
-			act("$q &nsend a &+csoothing &nsensation up your arm.&n.", TRUE, ch, obj,
-			    vict, TO_CHAR);
-			act("$n looks healthier.", TRUE, ch, obj, vict, TO_NOTVICT);
-			act("$n looks healthier.", TRUE, ch, obj, vict, TO_VICT);
-
-			GET_HIT(ch) += (GET_MAX_HIT(ch) / 12);
-		}
-		if (GET_HIT(vict) < (GET_MAX_HIT(vict) / 4) &&
-		    GET_HIT(vict) > (GET_MAX_HIT(vict) / 20))
-		{
-			act("A &+rpulse &nof &+Menergy &nshoots from&n $q&+M, striking&n $N &+Min the chest&n.",
-			    TRUE, ch, obj, vict, TO_CHAR);
-			act("A &+rpulse &nof &+Menergy &nshoots from&n $q&+M, striking&n $N &+Min the chest&n.",
-			    TRUE, ch, obj, vict, TO_NOTVICT);
-			act("A &+rpulse &nof &+Menergy &nshoots from&n $q, &+Mstriking you in the chest&n.",
-			    TRUE, ch, obj, vict, TO_VICT);
-
-			GET_HIT(vict) -= (GET_MAX_HIT(vict) / 25);
-		}
-		else if (GET_HIT(vict) < (GET_MAX_HIT(vict) / 2) &&
-			 GET_HIT(vict) > (GET_MAX_HIT(vict) / 10))
-		{
-			act("A &+rpulse &nof &+Menergy &nshoots from $q, striking $N in the chest&n.",
-			    TRUE, ch, obj, vict, TO_CHAR);
-			act("A &+rpulse &nof &+Menergy &nshoots from $q, striking $N in the chest&n.",
-			    TRUE, ch, obj, vict, TO_NOTVICT);
-			act("A &+rpulse &nof &+Menergy &nshoots from $q, striking you in the chest&n.",
-			    TRUE, ch, obj, vict, TO_VICT);
-
-			GET_HIT(vict) -= (GET_MAX_HIT(vict) / 15);
 		}
 		return TRUE;
 	}
@@ -3170,25 +2864,21 @@ int damnation_staff(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		return FALSE;
 	}
+	data = defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg);
 	// 1/20 chance.
-	if (cmd == CMD_GOTHIT && !number(0, 19))
+	if (data && !number(0, 19))
 	{
-		if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-		{
-			return FALSE;
-		}
 		vict = data->victim;
 		if (!IS_ALIVE(vict))
 		{
 			return FALSE;
 		}
 
-		act("&+LYour $q &+mflares &+rbril&+Rli&+rantly &+Las it intercepts &n$N's &+Lattack and &+rsav&+Rag&+rely &+Lstrikes back!&n",
-		    TRUE, ch, obj, vict, TO_CHAR);
-		act("$n's $q &+mflares &+rbril&+Rli&+rantly &+Las it intercepts &nyour &+Lattack and &+rsav&+Rag&+rely &+Lstrikes back!&n",
-		    TRUE, ch, obj, vict, TO_VICT);
-		act("$n's $q &+mflares &+rbril&+Rli&+rantly &+Las it intercepts &n$N's &+Lattack and &+rsav&+Rag&+rely &+Lstrikes back!&n",
-		    TRUE, ch, obj, vict, TO_NOTVICT);
+		act_trio(
+			"&+LYour $q &+mflares &+rbril&+Rli&+rantly &+Las it intercepts &n$N's &+Lattack and &+rsav&+Rag&+rely &+Lstrikes back!&n",
+			"$n's $q &+mflares &+rbril&+Rli&+rantly &+Las it intercepts &nyour &+Lattack and &+rsav&+Rag&+rely &+Lstrikes back!&n",
+			"$n's $q &+mflares &+rbril&+Rli&+rantly &+Las it intercepts &n$N's &+Lattack and &+rsav&+Rag&+rely &+Lstrikes back!&n",
+			TRUE, ch, obj, vict);
 
 		switch (number(0, 2))
 		{
@@ -3261,25 +2951,21 @@ int nuke_damnation(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		return FALSE;
 	}
+	data = defense_proc_data(obj, ch, cmd, CMD_GOTNUKED, arg);
 	// 1/20 chance.
-	if (cmd == CMD_GOTNUKED && !number(0, 19))
+	if (data && !number(0, 19))
 	{
-		if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-		{
-			return FALSE;
-		}
 		vict = data->victim;
 		if (!IS_ALIVE(vict))
 		{
 			return FALSE;
 		}
 
-		act("&+LYour $q &+mflares &+rbril&+Rli&+rantly &+Las &n$N's &+Lspell is tranformed and deflected!&n",
-		    TRUE, ch, obj, vict, TO_CHAR);
-		act("$n's $q &+mflares &+rbril&+Rli&+rantly &+Las your spell is tranformed and deflected back at you!&n",
-		    TRUE, ch, obj, vict, TO_VICT);
-		act("$n's $q &+mflares &+rbril&+Rli&+rantly &+Las &n$N's &+Lspell is tranformed and deflected!&n",
-		    TRUE, ch, obj, vict, TO_NOTVICT);
+		act_trio(
+			"&+LYour $q &+mflares &+rbril&+Rli&+rantly &+Las &n$N's &+Lspell is tranformed and deflected!&n",
+			"$n's $q &+mflares &+rbril&+Rli&+rantly &+Las your spell is tranformed and deflected back at you!&n",
+			"$n's $q &+mflares &+rbril&+Rli&+rantly &+Las &n$N's &+Lspell is tranformed and deflected!&n",
+			TRUE, ch, obj, vict);
 
 		switch (number(0, 1))
 		{
@@ -3896,26 +3582,10 @@ int lanella_heart(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 
 int weapon_vampire(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char vict;
 	char e_pos;
-	int in_battle;
 
-	vict = legacy_proc_arg<P_char>(arg);
-	in_battle = cmd / 1000;
-
-	if (cmd == CMD_SET_PERIODIC) /*
-	                   Events have priority
-	                 */
-		return FALSE;
-
-	if (!ch || !obj) /*
-	                    If the player ain't here, why are we?
-	                  */
-		return FALSE;
-
-	if (!OBJ_WORN(obj)) /*
-	                       Most things don't work in a sack...
-	                     */
+	P_char vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 		return FALSE;
 
 	/*
@@ -3927,22 +3597,14 @@ int weapon_vampire(P_obj obj, P_char ch, int cmd, char *arg)
 	if (!e_pos)
 		return FALSE;
 
-	if (!in_battle) /*
-	                   Past here, and you're fighting
-	                 */
-		return FALSE;
+	int heal = BOUNDED(0, (GET_HIT(vict) + 9), number(1, 8));
 
-	in_battle = BOUNDED(0, (GET_HIT(vict) + 9), number(1, 8));
+	// act("&+rBlood is around the corner", FALSE, ch, 0, 0, TO_CHAR);
 
-	if ((obj->loc.wearing == ch) && vict)
+	if (GET_MAX_HIT(ch) - GET_HIT(ch) >= 0)
 	{
-		// act("&+rBlood is around the corner", FALSE, ch, 0, 0, TO_CHAR);
-
-		if (GET_MAX_HIT(ch) - GET_HIT(ch) >= 0)
-		{
-			GET_HIT(ch) += in_battle;
-			// GET_HIT(vict) -= in_battle;
-		}
+		GET_HIT(ch) += heal;
+		// GET_HIT(vict) -= heal;
 	}
 	return FALSE;
 }
