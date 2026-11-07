@@ -72,7 +72,7 @@ def run(binary, backend):
                 assert "Spell speed  : 1.220x casting time\r\n" in barbarian
                 tiefling = command(client, "race info tiefling")
                 assert "Spell speed  : 0.875x casting time\r\n" in tiefling
-                illithid = command(client, "race info planetbound illithid")
+                illithid = command(client, "race info illithid")
                 assert "Spell speed  : 0.025x casting time\r\n" in illithid
                 goblin = command(client, "race info goblin")
                 assert "Warrior     : Swordsman, Guardian" in goblin

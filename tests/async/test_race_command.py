@@ -121,8 +121,8 @@ int main() {
     }
     spell_pulse_data[RACE_BARBARIAN] = 1.22f;
     assert(run("info barbarian").find("    Spell speed  : 1.220x casting time\n") != std::string::npos);
-    spell_pulse_data[RACE_PILLITHID] = 0.025f;
-    assert(run("info planetbound illithid").find("    Spell speed  : 0.025x casting time\n") !=
+    spell_pulse_data[RACE_ILLITHID] = 0.025f;
+    assert(run("info illithid").find("    Spell speed  : 0.025x casting time\n") !=
            std::string::npos);
     auto goblin = run("info goblin");
     assert(goblin.find("    Warrior     : Swordsman, Guardian\n") != std::string::npos);
