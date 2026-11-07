@@ -137,13 +137,12 @@ int main()
 
 
 def main():
-    production = "\n".join(
-        extract_function("specs/specs.undermountain.c", signature)
-        for signature in (
-            "static P_obj first_corpse_in_room(int room)",
-            "int lightning_sword(P_obj obj, P_char ch, int cmd, char *arg)",
-        )
-    )
+    production = "\n".join([
+        extract_function("specs/specs.object.c", "P_char melee_proc_target("),
+        extract_function("specs/specs.undermountain.c", "static P_obj first_corpse_in_room(int room)"),
+        extract_function("specs/specs.undermountain.c",
+                         "int lightning_sword(P_obj obj, P_char ch, int cmd, char *arg)"),
+    ])
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="lightning-sword-", dir=build) as directory:
