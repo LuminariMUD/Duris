@@ -580,10 +580,9 @@ int volo_longsword(P_obj obj, P_char ch, int cmd, char *arg)
 			}
 		}
 
-		vict = ParseTarget(ch, arg);
+		vict = melee_proc_target(obj, ch, cmd, arg);
 		// 1/33 chance.
-		if (cmd == CMD_MELEE_HIT && IS_ALIVE(vict) && !number(0, 32) && !IS_ELITE(vict) &&
-		    !IS_GREATER_RACE(vict))
+		if (vict && !number(0, 32) && !IS_ELITE(vict) && !IS_GREATER_RACE(vict))
 		{
 			switch (number(0, 2))
 			{
@@ -1077,10 +1076,10 @@ int deathseeker_mace(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 
-	vict = ParseTarget(ch, arg);
+	vict = melee_proc_target(obj, ch, cmd, arg);
 
 	// 1/33 chance.
-	if (cmd == CMD_MELEE_HIT && IS_ALIVE(vict) && !number(0, 32))
+	if (vict && !number(0, 32))
 	{
 		switch (number(0, 2))
 		{
@@ -1262,11 +1261,11 @@ int illithid_axe(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	room = ch->in_room;
-	vict = ParseTarget(ch, arg);
+	vict = melee_proc_target(obj, ch, cmd, arg);
 
 	// Limiting the weapon to one proc a round since the proc is very potent.
 	// 1/35 chance.
-	if (cmd == CMD_MELEE_HIT && IS_ALIVE(vict) && !number(0, 34))
+	if (vict && !number(0, 34))
 	{
 		if (room == vict->in_room)
 		{
@@ -2123,9 +2122,9 @@ int demon_slayer(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 
-	vict = ParseTarget(ch, arg);
+	vict = melee_proc_target(obj, ch, cmd, arg);
 	// 1/33 chance.
-	if (cmd == CMD_MELEE_HIT && IS_ALIVE(vict) && !number(0, 32))
+	if (vict && !number(0, 32))
 	{
 		if (GET_RACE(vict) == RACE_DEMON)
 		{
@@ -3118,14 +3117,14 @@ int gladius_backstabber(P_obj obj, P_char ch, int cmd, char *arg)
 
 	if (IS_FIGHTING(ch))
 	{
-		vict = ParseTarget(ch, arg);
-		if (!IS_ALIVE(vict) || !CanDoFightMove(ch, vict) || GET_POS(ch) < POS_STANDING)
+		vict = melee_proc_target(obj, ch, cmd, arg);
+		if (!vict || !CanDoFightMove(ch, vict) || GET_POS(ch) < POS_STANDING)
 		{
 			return FALSE;
 		}
 
-		// 1/30 chance.
-		if (cmd == CMD_MELEE_HIT && !number(0, 24))
+		// 1/25 chance.
+		if (!number(0, 24))
 		{
 			act("&nYour $q &nbegins to &+mhum&n.", TRUE, ch, obj, vict, TO_CHAR);
 			act("&nYou quickly vanish and reappear behind $N!", TRUE, ch, obj, vict,
