@@ -101,6 +101,7 @@ void check_contraband(P_ship ship,int) {++customs_calls;if(ship==blocked_ship)SE
 #include <cstring>
 #include <cmath>
 #include <set>
+#include <unordered_set>
 #include <string>
 
 static room_data rooms[32] = {};
