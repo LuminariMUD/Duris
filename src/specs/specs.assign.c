@@ -942,7 +942,6 @@ void assign_mobiles(void)
 	/*
 	bogentok
 	*/
-	//  obj_index[real_object0(18744)].func.obj = betrayal;
 
 	/*
 	   negative material plan
@@ -1227,7 +1226,6 @@ void assign_objects(void)
 	obj_index[real_object0(32833)].func.obj = pesky_imp_chest;
 	obj_index[real_object0(32822)].func.obj = holy_weapon;
 	obj_index[real_object0(32836)].func.obj = mox_totem;
-	// obj_index[real_object0(32807)].func.obj = monitor_trident;
 	obj_index[real_object0(32816)].func.obj = flayed_mind_mask;
 	obj_index[real_object0(67281)].func.obj = stalker_cloak;
 	obj_index[real_object0(32837)].func.obj = finslayer_air;

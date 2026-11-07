@@ -3483,11 +3483,6 @@ int get_ival_from_proc(obj_proc_type proc)
 	{
 		return 225;
 	}
-	// Procs coldshield/fireshield on invoke when lit.
-	if (proc == frost_elb_dagger)
-	{
-		return 85;
-	}
 	// Procs feeblemind on backstab.
 	if (proc == dagger_submission)
 	{
@@ -3607,11 +3602,6 @@ int get_ival_from_proc(obj_proc_type proc)
 	if (proc == barb)
 	{
 		return 550;
-	}
-	// 1/10 chance to proc harm.
-	if (proc == gesen)
-	{
-		return 85;
 	}
 	// Labelas god proc.
 	if (proc == labelas)

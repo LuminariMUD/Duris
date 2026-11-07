@@ -26,33 +26,22 @@ using namespace std;
 
 int barovia_undead_necklace(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	struct proc_data *data;
-	P_char victim;
-
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
+	struct proc_data *data = defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg);
 	// 1/20 chance.
-	if (cmd != CMD_GOTHIT || number(0, 19))
+	if (!data || number(0, 19))
 	{
 		return FALSE;
 	}
-	if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-	{
-		return FALSE;
-	}
-	victim = data->victim;
+	P_char victim = data->victim;
 	if (!IS_ALIVE(victim) || !IS_UNDEAD(victim))
 	{
 		return FALSE;
 	}
-	act("&+WBright white light surrounds $n's $q, &+Wand it sends out a wave of holy energy!&N",
-	    TRUE, ch, obj, victim, TO_NOTVICT);
-	act("&+WBright white light surrounds $n's $q, &+Wand it sends out a wave of holy energy!&N",
-	    TRUE, ch, obj, victim, TO_VICT);
-	act("&+WBright white light surrounds your $q, &+Wand it sends out a wave of holy energy!&N",
-	    TRUE, ch, obj, victim, TO_CHAR);
+	act_trio(
+		"&+WBright white light surrounds your $q, &+Wand it sends out a wave of holy energy!&N",
+		"&+WBright white light surrounds $n's $q, &+Wand it sends out a wave of holy energy!&N",
+		"&+WBright white light surrounds $n's $q, &+Wand it sends out a wave of holy energy!&N",
+		TRUE, ch, obj, victim);
 	switch (number(0, 2))
 	{
 	case 0:

@@ -83,7 +83,6 @@ int shaboath_necromancy_tower(int room, P_char ch, int cmd, char *argument);
 
 int pesky_imp_chest(P_obj obj, P_char ch, int cmd, char *arg);
 int mox_totem(P_obj obj, P_char ch, int cmd, char *argument);
-int monitor_trident(P_obj obj, P_char ch, int cmd, char *arg);
 int flayed_mind_mask(P_obj obj, P_char ch, int cmd, char *argument);
 int stalker_cloak(P_obj obj, P_char ch, int cmd, char *argument);
 int finslayer_air(P_obj obj, P_char ch, int cmd, char *argument);
@@ -167,7 +166,6 @@ int crossbow_ambusher(P_char, P_char, int, char *);
 int blowgunner(P_char, P_char, int, char *);
 
 /* specs.snikzone.c */
-int frost_elb_dagger(P_obj, P_char, int, char *);
 int dagger_submission(P_obj, P_char, int, char *);
 int demon_chick(P_char, P_char, int, char *);
 int wristthrow_and_gore(P_char, P_char, int, char *);
@@ -860,7 +858,6 @@ int icicle_cloak(P_obj obj, P_char ch, int cmd, char *arg);
 int ogrebane(P_obj, P_char, int, char *);
 int giantbane(P_obj, P_char, int, char *);
 int dwarfslayer(P_obj, P_char, int, char *);
-int betrayal(P_obj, P_char, int, char *);
 int mindbreaker(P_obj, P_char, int, char *);
 int holy_mace(P_obj, P_char, int, char *);
 int staff_of_blue_flames(P_obj, P_char, int, char *);
@@ -903,7 +900,6 @@ int drunk_two(P_char, P_char, int, char *);
 int farmer_one(P_char, P_char, int, char *);
 int fisherman_one(P_char, P_char, int, char *);
 int fisherman_two(P_char, P_char, int, char *);
-int gesen(P_obj obj, P_char, int, char *);
 int guard_one(P_char, P_char, int, char *);
 int guard_two(P_char, P_char, int, char *);
 int guild_guard_eight(P_char, P_char, int, char *);

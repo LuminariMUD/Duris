@@ -26,6 +26,7 @@
 #include "item/objmisc.h"
 #include "ships/ships.h"
 #include "magic/spells.h"
+#include "world/specs.prototypes.h"
 
 extern P_room world;
 extern P_desc descriptor_list;
@@ -35,9 +36,10 @@ int adjacent_room_nesw(P_char ch, int num_rooms);
 P_ship leviathan_find_ship(P_char leviathan, int room, int num_rooms);
 
 // This is an old proc for Lohrr's eq..
-int proc_lohrr(P_obj obj, P_char ch, int cmd, char * /*argument*/)
+int proc_lohrr(P_obj obj, P_char ch, int cmd, char *argument)
 {
 	int locwearing;
+	P_char vict;
 
 	if (cmd == CMD_SET_PERIODIC)
 		return TRUE;
@@ -81,10 +83,10 @@ int proc_lohrr(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 	case WIELD3:
 	case WIELD4:
 		// RAWR!  On a 4, 5 or 6 proc bigbys hand!
-		if ((cmd == CMD_MELEE_HIT) && GET_OPPONENT(ch) && (dice(1, 6) > 3))
+		vict = melee_proc_target(obj, ch, cmd, argument);
+		if (vict && (dice(1, 6) > 3))
 		{
-			spell_bigbys_crushing_hand(60, ch, NULL, SPELL_TYPE_SPELL, GET_OPPONENT(ch),
-						   0);
+			spell_bigbys_crushing_hand(60, ch, NULL, SPELL_TYPE_SPELL, vict, 0);
 			return TRUE;
 		}
 		break;
@@ -96,49 +98,6 @@ int proc_lohrr(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 
 	return FALSE;
 }
-
-/*
-// It's a percentage chance to make them attack a few extra times.
-// It's size dependdent: < medium = 10, medium/large = 6, > large = 4
-void dagger_of_wind( P_obj obj, P_char ch, int cmd, char *argument )
-{
-   int numhits = 0;
-   int i = 0;
-
-   // Verify that obj is dagger of wind and being wielded by ch.
-   if( cmd != CMD_MELEE_HIT || !ch || !obj || !OBJ_WORN(obj) || obj->loc.wearing != ch )
-      return;
-   // Verify that ch is in battle with someone.
-   if( !IS_FIGHTING(ch) || !GET_OPPONENT(ch) )
-      return;
-
-   // 50% chance to proc.
-   if( number(1,100) > 50 )
-   {
-       act("You move with a blur of speed!",
-          FALSE, ch, obj, 0, TO_CHAR);
-       act("$n moves with a blur of speed!",
-          FALSE, ch, obj, 0, TO_ROOM);
-
-      // Calculate number of hits based on size.
-      if( GET_SIZE(ch) < SIZE_MEDIUM )
-         numhits = 10;
-      else if( GET_SIZE(ch) == SIZE_MEDIUM || GET_SIZE(ch) == SIZE_LARGE )
-         numhits = 6;
-      else
-         numhits = 4;
-
-      while( i < numhits )
-      {
-         // Stop hitting if no one to hit.
-         if( !GET_OPPONENT(ch) )
-            break;
-         hit(ch, GET_OPPONENT(ch), obj );
-         i++;
-      }
-   }
-}
-*/
 
 int sphinx_prefect_crown(P_obj obj, P_char ch, int cmd, char *arg)
 {

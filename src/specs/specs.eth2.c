@@ -27,6 +27,7 @@
 #include <time.h>
 #include "combat/damage.h"
 #include "magic/spells.h"
+#include "world/specs.prototypes.h"
 
 extern P_room world;
 extern P_index mob_index;
@@ -352,21 +353,14 @@ int eth2_godsfury(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 	}
 
+	P_char vict = melee_proc_target(obj, ch, cmd, arg);
 	// 1/20 chance.
-	if (cmd == CMD_MELEE_HIT && !number(0, 19))
+	if (vict && !number(0, 19))
 	{
-		P_char vict = legacy_proc_arg<P_char>(arg);
-		if (!vict)
-		{
-			return FALSE;
-		}
-
-		act("Your $q calls down the &+rfury&n of the Gods on $N!", FALSE, ch, obj, vict,
-		    TO_CHAR);
-		act("$n's $q calls down the &+rfury&n of the Gods on you!", FALSE, ch, obj, vict,
-		    TO_VICT);
-		act("$n's $q calls down the &+rfury&n of the Gods on $N!", FALSE, ch, obj, vict,
-		    TO_NOTVICT);
+		act_trio("Your $q calls down the &+rfury&n of the Gods on $N!",
+			 "$n's $q calls down the &+rfury&n of the Gods on you!",
+			 "$n's $q calls down the &+rfury&n of the Gods on $N!", FALSE, ch, obj,
+			 vict);
 
 		int save = vict->specials.apply_saving_throw[SAVING_SPELL];
 		vict->specials.apply_saving_throw[SAVING_SPELL] += 15;

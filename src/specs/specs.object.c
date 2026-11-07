@@ -7766,7 +7766,7 @@ int staff_of_air_conjuration(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	if (!IS_ALIVE(ch) || !OBJ_WORN(obj) || (obj->loc.wearing != ch))
+	if (!IS_ALIVE(ch) || !OBJ_WORN_BY(obj, ch))
 	{
 		return FALSE;
 	}
@@ -7826,7 +7826,7 @@ int serpent_of_miracles(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 	}
 
-	if (!IS_ALIVE(ch) || !OBJ_WORN(obj) || (obj->loc.wearing != ch))
+	if (!IS_ALIVE(ch) || !OBJ_WORN_BY(obj, ch))
 	{
 		return FALSE;
 	}
@@ -8020,7 +8020,7 @@ int madman_mangler(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	if (!IS_ALIVE(ch) || !OBJ_WORN(obj) || (obj->loc.wearing != ch))
+	if (!IS_ALIVE(ch) || !OBJ_WORN_BY(obj, ch))
 	{
 		return FALSE;
 	}

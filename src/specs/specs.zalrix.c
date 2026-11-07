@@ -159,8 +159,6 @@ int dragonarmor(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	P_char Dragon_Mob;
 
-	if (cmd == CMD_SET_PERIODIC)
-		return FALSE;
 	if (!obj)
 		return FALSE;
 	if (!ch)
@@ -184,9 +182,9 @@ int dragonarmor(P_obj obj, P_char ch, int cmd, char *arg)
 	    return TRUE;
 	  }
 	*/
-	if (cmd == CMD_GOTNUKED)
+	struct proc_data *data = defense_proc_data(obj, ch, cmd, CMD_GOTNUKED, arg);
+	if (data)
 	{
-		struct proc_data *data = legacy_proc_arg<struct proc_data *>(arg);
 		P_char nuker = data->victim;
 
 		if ((GET_RACE(nuker) != RACE_DRAGON && GET_RACE(nuker) != RACE_DRAGONKIN) ||
@@ -196,12 +194,10 @@ int dragonarmor(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		if (data->flags & SPLDAM_BREATH)
 		{
-			act("$n's $p flares brightly as it absorbs $N's breath.", FALSE, ch, obj,
-			    nuker, TO_NOTVICT);
-			act("Your $p flares brightly as it absorbs $N's breath.", FALSE, ch, obj,
-			    nuker, TO_CHAR);
-			act("$n's $p flares brightly as it absorbs your breath.", FALSE, ch, obj,
-			    nuker, TO_VICT);
+			act_trio("Your $p flares brightly as it absorbs $N's breath.",
+				 "$n's $p flares brightly as it absorbs your breath.",
+				 "$n's $p flares brightly as it absorbs $N's breath.", FALSE, ch,
+				 obj, nuker);
 			return TRUE;
 		}
 		else
@@ -235,11 +231,8 @@ int dragonarmor(P_obj obj, P_char ch, int cmd, char *arg)
 /* proc for a hammer named 'squelcher' */
 int squelcher(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	int dam = cmd / 1000;
 	P_char vict;
 
-	if (cmd == CMD_SET_PERIODIC)
-		return FALSE;
 	if (!ch)
 		return FALSE;
 	if (!OBJ_WORN_BY(obj, ch))
@@ -258,9 +251,7 @@ int squelcher(P_obj obj, P_char ch, int cmd, char *arg)
 		act("The $p&n in your hands beckons you to fight on!", FALSE, ch, obj, 0, TO_CHAR);
 		return TRUE;
 	}
-	if (!dam)
-		return FALSE;
-	vict = legacy_proc_arg<P_char>(arg);
+	vict = melee_proc_target(obj, ch, cmd, arg);
 	if (!vict)
 		return FALSE;
 	if (obj->loc.wearing->equipment[WIELD] != obj)
