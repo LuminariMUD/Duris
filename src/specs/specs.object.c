@@ -8928,7 +8928,7 @@ int obj_imprison(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		}
 		// obj_from_room(obj);
 		extract_obj(obj, TRUE); // Not an arti, but 'in game.'
-		return TRUE;
+		return FALSE;
 	}
 
 	// If ch isn't the right ch.
@@ -8960,7 +8960,7 @@ int obj_imprison(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 	REMOVE_BIT(ch->specials.affected_by5, AFF5_IMPRISON);
 	extract_obj(obj, TRUE); // Not an arti, but 'in game.'
 
-	return TRUE;
+	return FALSE;
 }
 
 /* this proc is the staff of blue flames proc modified, Raxxel did it, and it probably doesn't work! */
@@ -11466,7 +11466,6 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 					    FALSE, ch, obj, 0, TO_CHAR);
 				}
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
-				return TRUE;
 			}
 
 			return FALSE;
@@ -11494,7 +11493,6 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 					     0);
 
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
-				return TRUE;
 			}
 			return FALSE;
 		}
@@ -11534,7 +11532,6 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 				add_event(event_bleedproc, PULSE_VIOLENCE, tch, ch, 0, 0, &numb,
 					  sizeof(numb));
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
-				return TRUE;
 			}
 			return FALSE;
 		}
@@ -11554,7 +11551,6 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 				spell_poison(trap_poison_level(), ch, 0, 0, ch, NULL);
 
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
-				return TRUE;
 			}
 			return FALSE;
 		}
