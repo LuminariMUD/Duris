@@ -76,6 +76,7 @@ harness = r'''
 #include "sql/sql_work.h"
 #include "sql/sql.h"
 #include "sql/item_extra_descr_codec.h"
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
