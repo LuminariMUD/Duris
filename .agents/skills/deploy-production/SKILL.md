@@ -278,8 +278,9 @@ promptly on failure, retain the records, and report each file's actual result.
 
 Use the account credentials in `.env` to log in over the configured game
 connection and select the Overlord character **Veridian**. Handle the account
-menu, reconnect, and pager prompts. Check `time` for an existing staff shutdown;
-do not silently replace another operator's schedule.
+menu, reconnect, and pager prompts. After every Veridian login, run `vis 0` so
+players can see him, including during post-reboot verification. Check `time` for
+an existing staff shutdown; do not silently replace another operator's schedule.
 
 Issue exactly:
 
@@ -291,9 +292,9 @@ The numeric argument is **minutes**: `3` means the requested **180 seconds**.
 Confirm the game's countdown/message and follow
 [the countdown requirement](#player-countdown-for-every-cutover) until disconnect.
 
-Keep Veridian logged in through the reboot. Answer any questions asked to you
-on any of the channels to the best of your ability, but add a little note
-that you are an AI Agent.
+Keep Veridian logged in through the reboot. Answer questions directed to you on
+any channel using `nchat a <response to whoever>`, addressing the player and
+adding a brief note that you are an AI Agent.
 
 ## 5. Watch the logs and verify the game returns
 
