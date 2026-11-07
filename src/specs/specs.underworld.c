@@ -2407,137 +2407,74 @@ int holy_mace(P_obj obj, P_char ch, int cmd, char *arg)
 	return FALSE;
 }
 
-int elvenkind_cloak(P_obj obj, P_char ch, int cmd, char *arg)
+// Redirect a spell aimed at ch, the wearer of obj, to a random mortal bystander.
+// Returns whether it was deflected.
+static bool deflect_spell(P_obj obj, P_char ch, const struct proc_data &data, const char *to_char,
+			  const char *to_vict, const char *to_room)
 {
-	struct proc_data *data;
-	P_char tch;
-	int count, it;
-
-	if (cmd == CMD_SET_PERIODIC)
+	int count = 0;
+	for (P_char tch = world[ch->in_room].people; tch; tch = tch->next_in_room)
 	{
-		return FALSE;
-	}
-
-	// 1/4 chance to deflect nuke
-	if (cmd != CMD_GOTNUKED || number(0, 3))
-	{
-		return FALSE;
-	}
-
-	data = legacy_proc_arg<struct proc_data *>(arg);
-
-	if (!data || ch == data->victim)
-	{
-		return FALSE;
-	}
-
-	for (tch = world[ch->in_room].people, count = 0; tch; tch = tch->next_in_room)
-	{
-		if (!IS_TRUSTED(tch))
+		if (tch != ch && !IS_TRUSTED(tch))
 		{
 			count++;
 		}
 	}
+	if (!count)
+	{
+		return false;
+	}
 
-	if (count < 2)
+	int pick = number(0, count - 1);
+	for (P_char tch = world[ch->in_room].people; tch; tch = tch->next_in_room)
+	{
+		if (tch != ch && !IS_TRUSTED(tch) && !pick--)
+		{
+			act_trio(to_char, to_vict, to_room, FALSE, ch, obj, tch);
+			spell_damage(ch, tch, data.dam, data.attacktype,
+				     data.flags | SPLDAM_NODEFLECT, data.messages);
+			return true;
+		}
+	}
+	return false;
+}
+
+int elvenkind_cloak(P_obj obj, P_char ch, int cmd, char *arg)
+{
+	struct proc_data *data = defense_proc_data(obj, ch, cmd, CMD_GOTNUKED, arg);
+	// 1/4 chance to deflect nuke
+	if (!data || number(0, 3) || ch == data->victim)
 	{
 		return FALSE;
 	}
-
-	it = number(0, count - 2);
-
-	for (tch = world[ch->in_room].people, count = 0; tch; tch = tch->next_in_room)
-	{
-		if ((tch == ch) || IS_TRUSTED(tch))
-		{
-			continue;
-		}
-		if (count++ == it)
-		{
-			break;
-		}
-	}
-
-	if (tch)
-	{
-		act_trio(
-			"Your $q &+gflashes brilliantly and suddenly flares in front of the spell, deflecting it to $N!",
-			"$n's $q &+gflashes brilliantly and suddenly flares in front of the spell, deflecting it to YOU!",
-			"$n's $q &+gflashes brilliantly and suddenly flares in front of the spell, deflecting it to $N!",
-			FALSE, ch, obj, tch);
-		spell_damage(ch, tch, data->dam, data->attacktype, data->flags | SPLDAM_NODEFLECT,
-			     data->messages);
-		return TRUE;
-	}
-
-	return FALSE;
+	return deflect_spell(
+		obj, ch, *data,
+		"Your $q &+gflashes brilliantly and suddenly flares in front of the spell, deflecting it to $N!",
+		"$n's $q &+gflashes brilliantly and suddenly flares in front of the spell, deflecting it to YOU!",
+		"$n's $q &+gflashes brilliantly and suddenly flares in front of the spell, deflecting it to $N!");
 }
 
 int deflect_ioun(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	struct proc_data *data;
-	P_char tch;
-	int count, it;
-
-	if (cmd == CMD_SET_PERIODIC)
+	struct proc_data *data = defense_proc_data(obj, ch, cmd, CMD_GOTNUKED, arg);
+	// 1/4 chance to deflect nuke
+	if (!data || number(0, 3))
 	{
 		return FALSE;
 	}
-
-	if (cmd != CMD_GOTNUKED || number(0, 3))
-	{
-		return FALSE;
-	}
-
-	data = legacy_proc_arg<struct proc_data *>(arg);
 	if (native_artifact_owns(922))
-		return data && intercept_mirrored_ioun(obj, ch, *data);
-
-	if (!data || ch == data->victim || !ch->in_room)
+	{
+		return intercept_mirrored_ioun(obj, ch, *data);
+	}
+	if (ch == data->victim)
 	{
 		return FALSE;
 	}
-
-	for (tch = world[ch->in_room].people, count = 0; tch; tch = tch->next_in_room)
-	{
-		if (!IS_TRUSTED(tch))
-		{
-			count++;
-		}
-	}
-
-	if (count < 2)
-	{
-		return FALSE;
-	}
-
-	it = number(0, count - 2);
-
-	for (tch = world[ch->in_room].people, count = 0; tch; tch = tch->next_in_room)
-	{
-		if ((tch == ch) || IS_TRUSTED(tch))
-		{
-			continue;
-		}
-		if (count++ == it)
-		{
-			break;
-		}
-	}
-
-	if (tch)
-	{
-		act_trio(
-			"Your $p flashes brilliantly and suddenly darts in front of the spell, deflecting it to $N!",
-			"$n's $p flashes brilliantly and suddenly darts in front of the spell, deflecting it to YOU!",
-			"$n's $p flashes brilliantly and suddenly darts in front of the spell, deflecting it to $N!",
-			FALSE, ch, obj, tch);
-		spell_damage(ch, tch, data->dam, data->attacktype, data->flags | SPLDAM_NODEFLECT,
-			     data->messages);
-		return TRUE;
-	}
-
-	return FALSE;
+	return deflect_spell(
+		obj, ch, *data,
+		"Your $p flashes brilliantly and suddenly darts in front of the spell, deflecting it to $N!",
+		"$n's $p flashes brilliantly and suddenly darts in front of the spell, deflecting it to YOU!",
+		"$n's $p flashes brilliantly and suddenly darts in front of the spell, deflecting it to $N!");
 }
 
 struct _BarbProcArtiData

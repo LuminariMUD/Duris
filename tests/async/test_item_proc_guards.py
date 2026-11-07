@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Execute the shared item-proc event guards and one converted callback each.
+"""Execute the shared item-proc helpers and one converted callback each.
 
-melee_proc_target() and defense_proc_data() are compiled from specs.object.c with
-mace_of_sea (melee) and generic_parry_proc (CMD_GOTHIT), so the test covers both
-the guard contracts and their wiring into real callbacks.
+The event guards, act_trio, periodic_stoneskin and the spell deflection selector
+are compiled from source with mace_of_sea (melee), generic_parry_proc (CMD_GOTHIT)
+and elvenkind_cloak (CMD_GOTNUKED), so the test covers the helper contracts and
+their wiring into real callbacks.
 """
 
 from pathlib import Path
@@ -20,11 +21,23 @@ PRELUDE = r'''
 #include "cmd/interp.h"
 #include "magic/spells.h"
 #include "net/comm.h"
+#include "combat/damage.h"
 #include "world/specs.prototypes.h"
 #include <cassert>
 #include <cstdio>
 
-static int roll, acts, spells;
+static room_data rooms[1]{};
+P_room world = rooms;
+static int roll, acts, spells, skins;
+static bool skinned;
+static P_char damaged;
+bool has_skin_spell(P_char) { return skinned; }
+void spell_stone_skin(int, P_char, char *, int, P_char, P_obj) { ++skins; }
+int spell_damage(P_char, P_char vict, double, int, uint, struct damage_messages *, int *)
+{
+	damaged = vict;
+	return 0;
+}
 int number(int low, int) { return roll >= low ? roll : low; }
 void act(const char *, int, P_char, P_obj, void *, int) { ++acts; }
 void spell_dread_wave(int, P_char, char *, int, P_char, P_obj) { ++spells; }
@@ -41,7 +54,9 @@ static void reset()
 		SET_POS(ch, POS_STANDING + STAT_NORMAL);
 	item.loc_p = LOC_WORN;
 	item.loc.wearing = &wearer;
-	roll = acts = spells = 0;
+	roll = acts = spells = skins = 0;
+	skinned = false;
+	damaged = nullptr;
 }
 
 static char *payload(void *p) { return static_cast<char *>(p); }
@@ -90,7 +105,44 @@ int main()
 	reset();
 	assert(!generic_parry_proc(&item, &wearer, CMD_MELEE_HIT, payload(&victim)) && !acts);
 
-	puts("item proc guards: melee and defensive contracts and wiring passed");
+	// periodic_stoneskin: casts once per interval, never over another skin spell.
+	reset();
+	assert(periodic_stoneskin(&item, &wearer, 30, 60) && skins == 1 && item.timer[0]);
+	assert(!periodic_stoneskin(&item, &wearer, 30, 60) && skins == 1);
+	item.timer[0] = 0;
+	skinned = true;
+	assert(!periodic_stoneskin(&item, &wearer, 30, 60) && skins == 1);
+
+	// elvenkind_cloak: 1/4 on CMD_GOTNUKED redirects to a uniformly chosen mortal
+	// bystander, skipping the wearer and staff; nothing without a bystander.
+	static char_data staff, second;
+	reset();
+	staff = char_data{};
+	second = char_data{};
+	for (P_char p : {&staff, &second})
+		SET_POS(p, POS_STANDING + STAT_NORMAL);
+	staff.player.level = MAXLVLMORTAL + 1;
+	rooms[0].people = &wearer;
+	wearer.next_in_room = &staff;
+	staff.next_in_room = &other;
+	other.next_in_room = &second;
+	data.victim = &victim;
+	roll = 0;
+	assert(elvenkind_cloak(&item, &wearer, CMD_GOTNUKED, payload(&data)) && damaged == &other);
+	damaged = nullptr;
+	roll = 1;
+	assert(!elvenkind_cloak(&item, &wearer, CMD_GOTNUKED, payload(&data)) && !damaged);
+	other.next_in_room = nullptr;
+	staff.next_in_room = &second;
+	second.next_in_room = &other;
+	roll = 0;
+	assert(elvenkind_cloak(&item, &wearer, CMD_GOTNUKED, payload(&data)) && damaged == &second);
+	wearer.next_in_room = &staff;
+	staff.next_in_room = nullptr;
+	damaged = nullptr;
+	assert(!elvenkind_cloak(&item, &wearer, CMD_GOTNUKED, payload(&data)) && !damaged);
+
+	puts("item proc helpers: guards, stoneskin and deflection contracts and wiring passed");
 }
 '''
 
@@ -101,7 +153,9 @@ def main():
         "struct proc_data *defense_proc_data(",
         "int mace_of_sea(",
         "int generic_parry_proc(",
-    ))
+        "bool periodic_stoneskin(",
+    )) + extract_function("specs.underworld.c", "static bool deflect_spell(") \
+        + extract_function("specs.underworld.c", "int elvenkind_cloak(")
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="item-proc-guards-", dir=build) as directory:
