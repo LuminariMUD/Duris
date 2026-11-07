@@ -62,7 +62,7 @@ int snogres_lich_shout(P_char ch, P_char tch, int cmd, char * /*arg*/)
 
 #define FLESH_GOLEM_HELPER_LIMIT 6
 
-int snogres_flesh_golem(P_char ch, P_char pl, int cmd, char * /*arg*/)
+int snogres_flesh_golem(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 {
 	P_char i;
 	P_char golem, lich = NULL;
@@ -104,7 +104,8 @@ int snogres_flesh_golem(P_char ch, P_char pl, int cmd, char * /*arg*/)
 		{
 			if (number(1, 100) < 50)
 			{
-				golem = read_mobile(87734, VIRTUAL);
+				// 87743 is the short-lived helper golem counted above.
+				golem = read_mobile(87743, VIRTUAL);
 				if (!golem)
 				{
 					logit(LOG_EXIT,
@@ -115,7 +116,8 @@ int snogres_flesh_golem(P_char ch, P_char pl, int cmd, char * /*arg*/)
 				    "&+rThe piece of flesh suddenly sprouts four arms and two legs, and begins shambling towards &-L&+RYOU&+R!&n&n\r\n",
 				    FALSE, ch, 0, golem, TO_ROOM);
 				char_to_room(golem, ch->in_room, 0);
-				MobStartFight(golem, pl);
+				if (GET_OPPONENT(ch))
+					MobStartFight(golem, GET_OPPONENT(ch));
 				add_event(event_snogres_golem_helper, number(100, 500), golem, NULL,
 					  NULL, 0, NULL, 0);
 				return TRUE;
@@ -383,7 +385,7 @@ int illithid_whip(P_obj obj, P_char ch, int cmd, char *arg)
 		act("&+mYour $p &+mwraps about $N&+m's legs, tripping $M up!\n&N", FALSE, ch, obj,
 		    vict, TO_CHAR);
 		act("&+m$n&+m's $p &+mwraps about $N&+m's legs, tripping $M up!\n&N", FALSE, ch,
-		    obj, vict, TO_ROOM);
+		    obj, vict, TO_NOTVICT);
 		act("&+m$n&+m's $p wraps about your legs, tripping you up!\n&N", FALSE, ch, obj,
 		    vict, TO_VICT);
 		Stun(vict, ch, PULSE_VIOLENCE * 1, TRUE);
