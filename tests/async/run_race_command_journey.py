@@ -67,6 +67,13 @@ def run(binary, backend):
                 assert "Anti-Paladin" not in classes and "Dragoon" not in classes
                 assert "Warrior     : Swordsman, Guardian, Swashbuckler" in classes
                 assert "100% is the baseline" in human
+                barbarian = command(client, "race info barbarian")
+                assert "Combat speed : 18.250 pulses\r\n" in barbarian
+                assert "Spell speed  : 1.220x casting time\r\n" in barbarian
+                tiefling = command(client, "race info tiefling")
+                assert "Spell speed  : 0.875x casting time\r\n" in tiefling
+                illithid = command(client, "race info planetbound illithid")
+                assert "Spell speed  : 0.025x casting time\r\n" in illithid
                 goblin = command(client, "race info goblin")
                 assert "Warrior     : Swordsman, Guardian" in goblin
                 assert "Rogue       : Assassin, Thief" in goblin
@@ -97,7 +104,8 @@ def run(binary, backend):
                 (ROOT / "bin/tests" / ("race-roster-" + backend + ".txt")).write_text(roster)
                 (ROOT / "bin/tests" / ("race-info-goblin-" + backend + ".txt")).write_text(goblin)
                 print("PASS: " + backend + " mortal command dispatch, faction roster/colors, live lore, "
-                      "race/class/spec restrictions, future/passive racial innates and command help", flush=True)
+                      "numeric racial timing, race/class/spec restrictions, future/passive racial innates "
+                      "and command help", flush=True)
             except Exception:
                 print(output_path.read_text(errors="replace")[-5000:])
                 if client:

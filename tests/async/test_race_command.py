@@ -57,8 +57,12 @@ static std::string run(std::string arguments) {
     return plain(output);
 }
 static void check_classes(int race) {
+    combat_by_race[race][0] = 18.25f;
+    spell_pulse_data[race] = 0.875f;
     auto text = run("info " + std::string(race_names_table[race].normal));
     assert(text.find("[ " + std::string(race_names_table[race].normal) + " ]") != std::string::npos);
+    assert(text.find("    Combat speed : 18.250 pulses\n") != std::string::npos);
+    assert(text.find("    Spell speed  : 0.875x casting time\n") != std::string::npos);
     const auto start = text.find("Valid classes (current character creation rules)\n");
     const auto end = text.find("Racial stat factors", start);
     assert(start != std::string::npos && end != std::string::npos);
@@ -115,6 +119,11 @@ int main() {
         run("innates " + std::string(race_names_table[race].normal));
         assert(innate_race == race);
     }
+    spell_pulse_data[RACE_BARBARIAN] = 1.22f;
+    assert(run("info barbarian").find("    Spell speed  : 1.220x casting time\n") != std::string::npos);
+    spell_pulse_data[RACE_PILLITHID] = 0.025f;
+    assert(run("info planetbound illithid").find("    Spell speed  : 0.025x casting time\n") !=
+           std::string::npos);
     auto goblin = run("info goblin");
     assert(goblin.find("    Warrior     : Swordsman, Guardian\n") != std::string::npos);
     assert(goblin.find("    Rogue       : Assassin, Thief\n") != std::string::npos);
@@ -149,7 +158,7 @@ int main() {
     assert(run("info human").find("    Warrior") == std::string::npos);
     assert(run("info gnome").find("Disabled in character creation") != std::string::npos);
     assert(run("list").find("*Gnome") != std::string::npos);
-    puts("PASS: all 37 race profiles/innate routes, race-specific specializations, "
+    puts("PASS: all 37 race profiles/innate routes, numeric racial timing, race-specific specializations, "
          "creation restrictions and overrides, faction colors, ASCII panels and name resolution");
 }
 '''
