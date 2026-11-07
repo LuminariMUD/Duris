@@ -932,6 +932,12 @@ int deathseeker_mace(P_obj obj, P_char ch, int cmd, char *arg)
 		hummer(obj);
 	}
 
+	// Periodic events carry no actor; the wearer is the subject.
+	if (cmd == CMD_PERIODIC)
+	{
+		ch = OBJ_WORN(obj) ? obj->loc.wearing : NULL;
+	}
+
 	if (!IS_ALIVE(ch) || !OBJ_WORN(obj))
 	{
 		return FALSE;
@@ -1168,7 +1174,13 @@ int illithid_axe(P_obj obj, P_char ch, int cmd, char *arg)
 
 	if (cmd == CMD_SET_PERIODIC)
 	{
-		return FALSE;
+		return TRUE;
+	}
+
+	// Periodic events carry no actor; the wearer is the subject.
+	if (cmd == CMD_PERIODIC)
+	{
+		ch = OBJ_WORN(obj) ? obj->loc.wearing : NULL;
 	}
 
 	if (!IS_ALIVE(ch) || IS_NPC(ch) || !OBJ_WORN(obj))
@@ -1788,6 +1800,12 @@ int demon_slayer(P_obj obj, P_char ch, int cmd, char *arg)
 		hummer(obj);
 	}
 
+	// Periodic events carry no actor; the wearer is the subject.
+	if (cmd == CMD_PERIODIC)
+	{
+		ch = OBJ_WORN(obj) ? obj->loc.wearing : NULL;
+	}
+
 	if (!IS_ALIVE(ch) || !OBJ_WORN(obj))
 	{
 		return FALSE;
@@ -1802,7 +1820,8 @@ int demon_slayer(P_obj obj, P_char ch, int cmd, char *arg)
 			act("An aura of &+Ldeath &ndrains you of your strength.", TRUE, ch, obj,
 			    vict, TO_CHAR);
 
-			GET_HIT(ch) -= 75;
+			// The drain weakens but never kills: there is no death path here.
+			GET_HIT(ch) = MAX(1, GET_HIT(ch) - 75);
 			update_pos(ch);
 			return TRUE;
 		}
@@ -2374,6 +2393,12 @@ int buckler_saints(P_obj obj, P_char ch, int cmd, char *arg)
 		hummer(obj);
 	}
 
+	// Periodic events carry no actor; the wearer is the subject.
+	if (cmd == CMD_PERIODIC)
+	{
+		ch = OBJ_WORN(obj) ? obj->loc.wearing : NULL;
+	}
+
 	if (!IS_ALIVE(ch) || !OBJ_WORN(obj))
 	{
 		return FALSE;
@@ -2400,7 +2425,7 @@ int buckler_saints(P_obj obj, P_char ch, int cmd, char *arg)
 					act("$n&+L's $q &+Mhums &nsoftly.", TRUE, ch, obj, 0,
 					    TO_ROOM);
 
-					spell_heal(60, ch, 0, SPELL_TYPE_SPELL, 0, 0);
+					spell_heal(60, ch, 0, SPELL_TYPE_SPELL, ch, 0);
 
 					return TRUE;
 				}
