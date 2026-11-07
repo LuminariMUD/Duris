@@ -26,6 +26,9 @@ WARNING_FLAGS = -Wall -Wextra -Wpedantic -Werror \
 # profile or the feature defines below.
 EXTRA_CFLAGS =
 EXTRA_LDFLAGS =
+# Microseconds per game pulse in a development build; empty keeps 250000 (config.h).
+# tests/async/server_build_artifacts.py shortens it for the journeys' flat-file server.
+TEST_PULSE_USEC =
 PERSISTENCE_BACKEND ?= mariadb
 BUILD_PROFILE ?= development
 
@@ -34,7 +37,7 @@ BUILD_PROFILE ?= development
 # code and reports what -Og does not see, so `make test-all` builds both.
 CFLAGS = -g -std=c++20 $(HARDENING_FLAGS) $(WARNING_FLAGS)
 ifeq ($(BUILD_PROFILE),development)
-CFLAGS += -Og -DTEST_MUD
+CFLAGS += -Og -DTEST_MUD $(if $(TEST_PULSE_USEC),-DOPT_USEC=$(TEST_PULSE_USEC))
 else ifeq ($(BUILD_PROFILE),production)
 CFLAGS += -O2
 else

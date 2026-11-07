@@ -75,7 +75,9 @@
 
 /* time factors */
 #define MAX_ARENA_CORPSE_TIME 1200 /*   5 RL minutes */
+#ifndef OPT_USEC
 #define OPT_USEC 250000 /* time delay corresponding to 4 pulses/sec */
+#endif
 #define OVL_PULSE 18 /* anti-spam repeated input limit period */
 #define PULSE_BARD_UPDATE 35 /* 15 sec */
 #define PULSE_MOBILE 30 /* 10 seconds */

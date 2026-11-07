@@ -301,7 +301,7 @@ def connection_churn(server: IsolatedServer, legitimate: MudClient) -> None:
 
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="duris-connection-limit-build-") as build:
-        binary = build_flatfile_server(Path(build))
+        binary = build_flatfile_server(Path(build), real_clock=True)
         with IsolatedServer(binary, {"DURIS_WEBSOCKET": "TRUE",
                                      "DURIS_TRUSTED_PROXY_IP": PROXY}, ban) as server:
             port = server.plain_port

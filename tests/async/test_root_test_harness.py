@@ -141,9 +141,8 @@ sample_tests = [
     Path("test_information_cache_journey.py"),
     Path("test_creation_prompt_journey.py"),
 ]
-parallel_tests, resource_intensive_tests = runner.partition_tests(sample_tests)
-assert parallel_tests == [Path("test_fast.py")]
-assert resource_intensive_tests == sample_tests[1:]
+assert runner.deadline_for(Path("test_fast.py")) == runner.POOLED_DEADLINE_SECONDS
+assert all(runner.deadline_for(path) == runner.JOURNEY_DEADLINE_SECONDS for path in sample_tests[1:])
 
 
 def gone(pid: int) -> bool:

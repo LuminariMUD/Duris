@@ -14,6 +14,13 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 CACHE_ENV = "DURIS_REGRESSION_BUILD_CACHE"
+# The journeys' server runs a 125 ms pulse, not 250 ms: game logic counts pulses, so a journey
+# plays the same game twice as fast. (Five times as fast also shortened deadlines that the game
+# counts in pulses, such as a character load's, until they expired under load.) A journey that
+# times the game against the wall clock, including a wall-clock deadline that the game converts
+# at four pulses a second, asks for real_clock=True. bin/server/dms_new, which make test-db's
+# MariaDB legs of the same journeys use, and every production build keep 250 ms.
+FAST_PULSE_USEC = 125000
 # Only observation/runtime controls are excluded; build variables remain inputs.
 IGNORED_ENV = {
     CACHE_ENV, "PWD", "OLDPWD", "SHLVL", "_",
@@ -32,7 +39,7 @@ def file_hash(path):
     return digest.hexdigest()
 
 
-def input_key(environment):
+def input_key(environment, pulse):
     """Hash source contents (including untracked headers), tools and environment."""
     digest = hashlib.sha256()
 
@@ -40,7 +47,7 @@ def input_key(environment):
         digest.update(json.dumps(value, sort_keys=True).encode() + b"\0")
 
     add({key: value for key, value in environment.items() if key not in IGNORED_ENV})
-    add({"contract": 1, "backend": "flatfile", "timeout": 600})
+    add({"contract": 1, "backend": "flatfile", "timeout": 600, "pulse": pulse})
     add(str(ROOT))  # Absolute source paths are embedded in compiler debug info.
     # Do not depend on Git: exported source trees and dirty worktrees are valid.
     paths = list((ROOT / "src").rglob("*"))
@@ -140,33 +147,36 @@ def toolchain_key(environment):
     return digest.hexdigest()
 
 
-def compile_server(build_root, environment):
+def compile_server(build_root, environment, pulse):
     binary = build_root / "server/dms_new"
     started = time.monotonic()
     jobs = int(subprocess.check_output(['nproc'], env=environment, text=True))
     build = subprocess.run(
         ["make", "-C", "src", "PERSISTENCE_BACKEND=flatfile",
          f"BIN_ROOT={build_root}", f"OBJDIR={build_root / 'objects/server'}",
-         f"SERVER_BIN_DIR={binary.parent}", f"DMS_BINARY={binary}", f"-j{jobs}"],
+         f"SERVER_BIN_DIR={binary.parent}", f"DMS_BINARY={binary}", f"-j{jobs}",
+         f"TEST_PULSE_USEC={pulse or ''}"],
         cwd=ROOT, env=environment, text=True, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, timeout=600,
     )
     if build.returncode:
         raise AssertionError("flat-file server build failed:\n" + build.stdout[-8000:])
-    validate_log(build.stdout)
+    validate_log(build.stdout, pulse)
     return binary, build.stdout, time.monotonic() - started
 
 
-def validate_log(output):
+def validate_log(output, pulse):
     if "-D__NO_MYSQL__" not in output:
         raise AssertionError("flat build did not select __NO_MYSQL__")
     if "-I/usr/include/mysql" in output:
         raise AssertionError("flat build used system MySQL headers")
     if "-lmysqlclient" in output:
         raise AssertionError("flat build linked the MySQL client")
+    if ("-DOPT_USEC=" in output) != bool(pulse) or (pulse and f"-DOPT_USEC={pulse} " not in output):
+        raise AssertionError(f"flat build did not select the {pulse or 'default'} pulse")
 
 
-def verified_artifact(cache, key):
+def verified_artifact(cache, key, pulse):
     try:
         metadata = json.loads((cache / f"{key}.json").read_text())
         directory = cache / metadata["directory"]
@@ -178,40 +188,41 @@ def verified_artifact(cache, key):
                 binary.stat().st_mode & 0o222 or not os.access(binary, os.X_OK) or
                 file_hash(binary) != metadata["binary"] or file_hash(log) != metadata["log"]):
             return None
-        validate_log(log.read_text())
+        validate_log(log.read_text(), pulse)
         return binary
     except (OSError, ValueError, KeyError, TypeError, AssertionError):
         return None
 
 
-def build_flatfile_server(build_root, *, legacy_cache=None):
+def build_flatfile_server(build_root, *, legacy_cache=None, real_clock=False):
     """Return a read-only executable; callers own every runtime fixture and process."""
     started = time.monotonic()
+    pulse = None if real_clock else FAST_PULSE_USEC
     environment = dict(os.environ)
     cache_value = environment.get(CACHE_ENV)
     if not cache_value and legacy_cache:
         cache_value = str(legacy_cache) + ".artifacts"
     if not cache_value or cache_value == "off":
-        binary, _, elapsed = compile_server(Path(build_root), environment)
+        binary, _, elapsed = compile_server(Path(build_root), environment, pulse)
         print(f"SERVER_BUILD built build={elapsed:.3f}s lookup=0.000s", flush=True)
         return binary
     cache = Path(cache_value).resolve()
     if not cache.is_relative_to((ROOT / "bin").resolve()):
         raise ValueError("server artifact cache must be below bin/")
     cache.mkdir(parents=True, exist_ok=True)
-    key = input_key(environment)
+    key = input_key(environment, pulse)
     # Serialize publication across independent runners. Never replace an inode
     # that another journey may still be executing, even after corruption.
     with (cache / f"{key}.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        binary = verified_artifact(cache, key)
+        binary = verified_artifact(cache, key, pulse)
         if binary:
             print(f"SERVER_BUILD reused build=0.000s lookup={time.monotonic() - started:.3f}s", flush=True)
             return binary
         directory = Path(tempfile.mkdtemp(prefix="artifact-", dir=cache))
         try:
-            binary, output, elapsed = compile_server(directory, environment)
-            if input_key(environment) != key:
+            binary, output, elapsed = compile_server(directory, environment, pulse)
+            if input_key(environment, pulse) != key:
                 raise RuntimeError("server build inputs changed during compilation; retry")
             log = directory / "build.log"
             log.write_text(output)

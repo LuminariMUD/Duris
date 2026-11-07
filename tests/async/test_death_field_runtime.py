@@ -343,6 +343,7 @@ def main():
     functions = [
         ('magic.c', 'const char *elemental_form_failure_message('),
         ('magic.c', 'const char *elemental_summon_failure_message('),
+        ('utility.c', 'static bool should_area_hit_with_position('),
         ('utility.c', 'bool should_area_hit(P_char ch, P_char victim)'),
         ('utility.c', 'int cast_as_damage_area(P_char ch, void (*spell_func)(int, P_char, char *, int, P_char, P_obj),\n\t\t\tint level, P_char victim, float min_chance, float /*chance_step*/,\n\t\t\tbool (*select_func)(P_char, P_char))'),
         ('utility.c', 'int cast_as_damage_area(P_char ch, void (*spell_func)(int, P_char, char *, int, P_char, P_obj),\n\t\t\tint level, P_char victim, float min_chance, float chance_step)'),

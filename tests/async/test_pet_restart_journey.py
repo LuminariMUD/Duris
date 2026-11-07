@@ -225,4 +225,4 @@ if __name__ == "__main__":
     else:
         (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="pet-restart-build-", dir=ROOT / "bin/tests") as build:
-            run(journey.build_flatfile_server(Path(build)))
+            run(journey.build_flatfile_server(Path(build), real_clock=True))
