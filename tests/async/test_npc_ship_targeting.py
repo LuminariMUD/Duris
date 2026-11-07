@@ -26,6 +26,7 @@ FUNCTIONS = "\n\n".join(
             "const char *get_arc_indicator(int arc_no)",
             "float bearing(float x1, float y1, float x2, float y2)",
             "void setcontact(int i, P_ship target, P_ship ship, int x, int y)",
+            "static bool ship_contact_coords(P_ship ship, P_ship target, int &x, int &y)",
             "bool ship_target_in_contact(P_ship ship)", "int getcontacts(P_ship ship, bool limit_range)",
         )),
         ("map.c", ("bool calculate_map_coords(int room1, int room2, int &x, int &y)",)),
@@ -66,6 +67,7 @@ HARNESS = r'''
 
 static room_data rooms[64]{};
 P_room world = rooms;
+int top_of_world = 63, top_of_zone_table = 2;
 static zone_data zones[3]{};
 zone_data *zone_table = zones;
 ShipObjHash shipObjHash;
@@ -318,10 +320,12 @@ static void check_unavailable() {
 
 static void check_unload_visibility() {
     for (contact_bonus = 0; contact_bonus <= 2; ++contact_bonus)
-    for (int scenario = 0; scenario < 8; ++scenario) {
+    for (int scenario = 0; scenario < 10; ++scenario) {
         reset();
         world[2].number = 600100;
         world[3].number = 600100 + (scenario < 2 ? 145 : 35 + contact_bonus);
+        if (scenario == 8) { world[2].number = 600001; world[3].number = 600999; }
+        if (scenario == 9) { world[2].number = 501100; world[3].number = 1499100; }
         P_ship ship = make_ship(NPCSHIP, 2);
         P_ship witness = make_ship(scenario == 6 ? NPCSHIP : GOODIESHIP, 3);
         if (scenario == 1 || scenario == 4) REMOVE_BIT(witness->flags, LOADED);
@@ -334,7 +338,7 @@ static void check_unload_visibility() {
         assert(ship->npc_ai->contacts_count == 1);
         ContactData saved_contacts[MAXSHIPS];
         memcpy(saved_contacts, contacts, sizeof contacts);
-        const bool visible = scenario == 2;
+        const bool visible = scenario == 2 || scenario >= 8;
         assert(ship->npc_ai->try_unload() == !visible);
         assert(unload_calls == (visible ? 0 : 1));
         assert(!memcmp(saved_contacts, contacts, sizeof contacts));
@@ -343,7 +347,7 @@ static void check_unload_visibility() {
             for (int tick = 0; tick < 25; ++tick) ship_activity();
             assert(unload_calls == 0);
             // Leaving contact must eventually allow cleanup on a heartbeat.
-            world[3].number += 110;
+            world[3].number = world[2].number + 110;
             for (int tick = 0; tick < 11 && !unload_calls; ++tick) ship_activity();
             assert(unload_calls == 1);
         }

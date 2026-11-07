@@ -88,6 +88,7 @@
 #include "abilities/abilities.h"
 
 extern int top_of_world;
+extern int top_of_zone_table;
 
 char buf[MAX_STRING_LENGTH];
 
@@ -985,12 +986,48 @@ void assignid(P_ship ship, const char *id, bool npc)
 	}
 }
 
+/* Nearest same-map image of target in ship's north-positive tactical coordinates.
+ * Include the sub-room positions when choosing the image; at an exact half-map
+ * tie retain the raw direction. Never fold tail/dispersement rooms into the grid.
+ */
+static bool ship_contact_coords(P_ship ship, P_ship target, int &x, int &y)
+{
+	const int from = ship->location, to = target->location;
+	if (from < 0 || from > top_of_world || to < 0 || to > top_of_world ||
+	    world[from].zone > top_of_zone_table || world[from].zone != world[to].zone)
+		return false;
+	const zone_data &zone = zone_table[world[from].zone];
+	if (!IS_SET(zone.flags, ZONE_MAP) || zone.mapx <= 0 || zone.mapy <= 0 ||
+	    zone.real_bottom < 0 || zone.real_bottom > top_of_world)
+		return false;
+	const int start = world[zone.real_bottom].number;
+	const int v1 = world[from].number - start, v2 = world[to].number - start;
+	if (v1 < 0 || v2 < 0 || v1 / zone.mapx >= zone.mapy || v2 / zone.mapx >= zone.mapy)
+		return false;
+
+	x = v2 % zone.mapx - v1 % zone.mapx;
+	y = v1 / zone.mapx - v2 / zone.mapx;
+	const double dx = x + double(target->x) - ship->x;
+	const double dy = y + double(target->y) - ship->y;
+	if (dx > zone.mapx / 2.0)
+		x -= zone.mapx;
+	else if (dx < -zone.mapx / 2.0)
+		x += zone.mapx;
+	if (dy > zone.mapy / 2.0)
+		y -= zone.mapy;
+	else if (dy < -zone.mapy / 2.0)
+		y += zone.mapy;
+	x += 50;
+	y += 50;
+	return true;
+}
+
 /*
  * Fill indices 0..99 of the global tactical_map[101][101] buffer with the
  * ocean around `ship`.
  *
  * This is the ship system's scratch view of the world and MUST be called
- * before anything reads tactical_map -- getcontacts(), the autopilot, the
+ * before anything reads tactical_map -- the autopilot, the
  * NPC AI and the on-screen tactical display all depend on it, and they all
  * share the one buffer, so the map is only valid until the next call.
  *
@@ -1010,8 +1047,9 @@ bool getmap(P_ship ship, bool limit_range)
 	P_obj obj;
 	float rng = 35 + ship->crew.get_contact_range_mod();
 
-	if (!IS_MAP_ROOM(ship->location))
+	if (!ship_contact_coords(ship, ship, x, y))
 		return FALSE;
+	const zone_data &zone = zone_table[world[ship->location].zone];
 
 	for (y = 0; y < 100; y++)
 	{
@@ -1024,7 +1062,8 @@ bool getmap(P_ship ship, bool limit_range)
 	{
 		for (x = 0; x < 100; x++)
 		{
-			rroom = calculate_relative_room(ship->location, x - 50, y - 50);
+			rroom = calculate_relative_room(ship->location, (x - 50) % zone.mapx,
+							(y - 50) % zone.mapy);
 			tactical_map[x][y].rroom = rroom;
 			if ((world[rroom].sector_type < NUM_SECT_TYPES) &&
 			    (world[rroom].sector_type > -1))
@@ -1045,6 +1084,11 @@ bool getmap(P_ship ship, bool limit_range)
 					{
 						P_ship temp = shipObjHash.find(obj);
 						if (temp == NULL)
+							continue;
+						int contact_x, contact_y;
+						if (!ship_contact_coords(ship, temp, contact_x,
+									 contact_y) ||
+						    contact_x != x || contact_y != 100 - y)
 							continue;
 						if (!limit_range ||
 						    (ship_range(ship, temp, x, 100 - y) <= rng))
@@ -1136,6 +1180,22 @@ void setcontact(int i, P_ship target, P_ship ship, int x, int y)
 								   (contacts[i].bearing + 180))));
 }
 
+/* Check only the locked target, without overwriting the global contacts[] buffer.
+ * Use the same map coordinates and 3-D contact range as getcontacts(). */
+bool ship_target_in_contact(P_ship ship)
+{
+	if (ship->target == NULL)
+		return false;
+	if (!SHIP_LOADED(ship->target) || SHIP_SINKING(ship->target) || SHIP_DOCKED(ship->target))
+		return false;
+
+	int x, y;
+	if (!ship_contact_coords(ship, ship->target, x, y))
+		return false;
+
+	return ship_range(ship, ship->target, x, y) <= 35 + ship->crew.get_contact_range_mod();
+}
+
 /*
  * Fill the global contacts[] array with every other ship `ship` can see, and
  * return how many were found.
@@ -1147,26 +1207,8 @@ void setcontact(int i, P_ship target, P_ship ship, int x, int y)
  *
  * `limit_range` true -- the default -- keeps only ships within the crew's
  * contact range (35 rooms plus the crew's scout bonus).  Pass false to
- * enumerate every ship sharing the map patch regardless of distance.
+ * enumerate every ship sharing the map grid regardless of distance.
  */
-/* Check only the locked target, without overwriting the global contacts[] buffer.
- * Use the same map coordinates and 3-D contact range as getcontacts(). */
-bool ship_target_in_contact(P_ship ship)
-{
-	if (ship->target == NULL)
-		return false;
-	if (!SHIP_LOADED(ship->target) || SHIP_SINKING(ship->target) || SHIP_DOCKED(ship->target))
-		return false;
-
-	int x, y;
-	if (!calculate_map_coords(ship->location, ship->target->location, x, y))
-		return false;
-
-	x = 50 + x;
-	y = 50 - y;
-	return ship_range(ship, ship->target, x, y) <= 35 + ship->crew.get_contact_range_mod();
-}
-
 int getcontacts(P_ship ship, bool limit_range)
 {
 	int counter = 0;
@@ -1184,12 +1226,9 @@ int getcontacts(P_ship ship, bool limit_range)
 			continue;
 
 		int x, y;
-		if (!calculate_map_coords(ship->location, vict->location, x, y))
+		if (!ship_contact_coords(ship, vict, x, y))
 			continue;
 
-		// somehow (0,0) is represented by (50,50)
-		x = 50 + x;
-		y = 50 - y;
 		if (limit_range && ship_range(ship, vict, x, y) > max_range)
 			continue;
 
