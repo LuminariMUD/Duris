@@ -450,11 +450,10 @@ int vecna_mob_rebirth(P_char ch, P_char /*tch*/, int cmd, char * /*arg*/)
 	return FALSE;
 }
 
-int vecna_pestilence(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
+int vecna_pestilence(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char victim;
-
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch))
+	P_char victim = melee_proc_target(obj, ch, cmd, arg);
+	if (!victim)
 	{
 		return FALSE;
 	}
@@ -468,20 +467,13 @@ int vecna_pestilence(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
 
 	if (number(0, 100) <= 30 && GET_ALIGNMENT(ch) < -750)
 	{
-		victim = GET_OPPONENT(ch);
-		if (!IS_ALIVE(victim))
-		{
-			return FALSE;
-		}
-
 		if (GET_ALIGNMENT(victim) > 250)
 		{
-			act("&+LYour &+Runholy&+L sword&+y pestilence &+Lcrackles with &+revil magic &+Las it attacks $N&n",
-			    FALSE, ch, NULL, victim, TO_CHAR);
-			act("&+L$n&+L's &+runholy &+Lsword &+ypestilence &+Lcrackles with &+revil magic &+Las it attacks you!&n",
-			    FALSE, ch, NULL, victim, TO_VICT);
-			act("&+L$n&+L's &+runholy &+Lsword &+ypestilence &+Lcrackles with &+revil magic &+Las it attacks $N!&n",
-			    FALSE, ch, NULL, victim, TO_NOTVICT);
+			act_trio(
+				"&+LYour &+Runholy&+L sword&+y pestilence &+Lcrackles with &+revil magic &+Las it attacks $N&n",
+				"&+L$n&+L's &+runholy &+Lsword &+ypestilence &+Lcrackles with &+revil magic &+Las it attacks you!&n",
+				"&+L$n&+L's &+runholy &+Lsword &+ypestilence &+Lcrackles with &+revil magic &+Las it attacks $N!&n",
+				FALSE, ch, NULL, victim);
 			spell_dispel_good(51, ch, 0, SPELL_TYPE_SPELL, victim, 0);
 			if (IS_ALIVE(victim) && IS_ALIVE(ch))
 			{
@@ -497,11 +489,10 @@ int vecna_pestilence(P_obj /*obj*/, P_char ch, int cmd, char * /*arg*/)
 	return FALSE;
 }
 
-int vecna_minifist(P_obj obj, P_char ch, int cmd, char * /*arg*/)
+int vecna_minifist(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char victim;
-
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch) || !OBJ_WORN_POS(obj, WIELD))
+	P_char victim = melee_proc_target(obj, ch, cmd, arg);
+	if (!victim || !OBJ_WORN_POS(obj, WIELD))
 	{
 		return FALSE;
 	}
@@ -509,71 +500,58 @@ int vecna_minifist(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 	// 5% chance to proc.
 	if (number(1, 100) <= 5)
 	{
-		victim = GET_OPPONENT(ch);
-		if (!IS_ALIVE(victim))
-		{
-			return FALSE;
-		}
 		if (IS_OGRE(victim) || IS_CENTAUR(victim) || IS_SGIANT(victim) ||
 		    IS_MINOTAUR(victim))
 		{
 			return FALSE;
 		}
 
-		act("&+LYour &+Gtwisted longsword &+Lshrieks in &+rrage &+Lat the sight of $N!&n",
-		    FALSE, ch, NULL, victim, TO_CHAR);
-		act("&n$n's &+Gtwisted longsword &+Lshrieks in &+rrage &+Lat the sight of you!&n",
-		    FALSE, ch, NULL, victim, TO_VICT);
-		act("$n's &+Gtwisted longsword &+Lshrieks in &+rrage &+Lat the sight of $N!&n",
-		    FALSE, ch, NULL, victim, TO_NOTVICT);
+		act_trio(
+			"&+LYour &+Gtwisted longsword &+Lshrieks in &+rrage &+Lat the sight of $N!&n",
+			"&n$n's &+Gtwisted longsword &+Lshrieks in &+rrage &+Lat the sight of you!&n",
+			"$n's &+Gtwisted longsword &+Lshrieks in &+rrage &+Lat the sight of $N!&n",
+			FALSE, ch, NULL, victim);
 		spell_bigbys_clenched_fist(41, ch, 0, SPELL_TYPE_SPELL, victim, 0);
 		return TRUE;
 	}
 	return FALSE;
 }
 
-int vecna_dispel(P_obj obj, P_char ch, int cmd, char * /*arg*/)
+int vecna_dispel(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char victim;
-
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch) || !OBJ_WORN_POS(obj, WIELD))
+	P_char victim = melee_proc_target(obj, ch, cmd, arg);
+	if (!victim || !OBJ_WORN_POS(obj, WIELD))
 	{
 		return FALSE;
 	}
 
 	if (number(0, 100) <= 5)
 	{
-		victim = GET_OPPONENT(ch);
-		act("&+LYour &+rrazor-edged dagger &+Lglows with motes of &+rcrimson &+Llight as it attacks $N's &+c m&+Cagi&+cc!",
-		    FALSE, ch, NULL, victim, TO_CHAR);
-		act("$n's &+rrazor-edged dagger &+Lglows with motes of &+rcrimson &+Llight as it attacks your &+cm&+Cagi&+cc!",
-		    FALSE, ch, NULL, victim, TO_VICT);
-		act("$n's &+rrazor-edged dagger &+Lglows with motes of &+rcrimson &+Llight as it attacks $N's &+cm&+Cagi&+cc!",
-		    FALSE, ch, NULL, victim, TO_NOTVICT);
+		act_trio(
+			"&+LYour &+rrazor-edged dagger &+Lglows with motes of &+rcrimson &+Llight as it attacks $N's &+c m&+Cagi&+cc!",
+			"$n's &+rrazor-edged dagger &+Lglows with motes of &+rcrimson &+Llight as it attacks your &+cm&+Cagi&+cc!",
+			"$n's &+rrazor-edged dagger &+Lglows with motes of &+rcrimson &+Llight as it attacks $N's &+cm&+Cagi&+cc!",
+			FALSE, ch, NULL, victim);
 		spell_dispel_magic(51, ch, 0, SPELL_TYPE_SPELL, victim, 0);
 		return TRUE;
 	}
 	return FALSE;
 }
 
-int vecna_boneaxe(P_obj obj, P_char ch, int cmd, char * /*arg*/)
+int vecna_boneaxe(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char victim;
-
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(ch) || !OBJ_WORN_POS(obj, WIELD))
+	P_char victim = melee_proc_target(obj, ch, cmd, arg);
+	if (!victim || !OBJ_WORN_POS(obj, WIELD))
 	{
 		return FALSE;
 	}
 
 	if (number(0, 100) <= 6)
 	{
-		victim = GET_OPPONENT(ch);
-		act("&+LYour large &+Wbone &+Laxe shrieks in &+rrage &+Lat the sight of $N!", FALSE,
-		    ch, NULL, victim, TO_CHAR);
-		act("&n's &+Llarge &+Wbone &+Laxe shrieks in &+rrage &+Lat the sight of you!",
-		    FALSE, ch, NULL, victim, TO_VICT);
-		act("$n's &+Llarge &+Wbone &+Laxe shrieks in &+rrage &+Lat the sight of $N!", FALSE,
-		    ch, NULL, victim, TO_NOTVICT);
+		act_trio("&+LYour large &+Wbone &+Laxe shrieks in &+rrage &+Lat the sight of $N!",
+			 "&n's &+Llarge &+Wbone &+Laxe shrieks in &+rrage &+Lat the sight of you!",
+			 "$n's &+Llarge &+Wbone &+Laxe shrieks in &+rrage &+Lat the sight of $N!",
+			 FALSE, ch, NULL, victim);
 		spell_arieks_shattering_iceball(51, ch, 0, SPELL_TYPE_SPELL, victim, 0);
 		return TRUE;
 	}
@@ -772,9 +750,9 @@ int vecna_staffoaken(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	// Ok, past all the periodic stuff, time for attack procs
-	victim = GET_OPPONENT(ch);
+	victim = melee_proc_target(obj, ch, cmd, arg);
 	// 10% chance to proc.
-	if (IS_ALIVE(victim) && cmd == CMD_MELEE_HIT && number(0, 100) < 10)
+	if (victim && number(0, 100) < 10)
 	{
 		if (number(0, 2) && !affected_by_spell(victim, SPELL_ENTANGLE))
 		{
@@ -791,12 +769,11 @@ int vecna_staffoaken(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		else if (number(0, 100) >= 50)
 		{
-			act("&+yYou draw&+Y energy&+y from &+gworld&+y around you into $p&+y and release them at $N&n.",
-			    TRUE, ch, obj, victim, TO_CHAR);
-			act("$n&+y releases pent up&+Y energy&+y from $p&+y to blast&+y you.&n",
-			    TRUE, ch, obj, victim, TO_VICT);
-			act("$n&+y releases pent up &+Yenergy&+y from $p&+y to blast $N&+y.&n",
-			    TRUE, ch, obj, victim, TO_NOTVICT);
+			act_trio(
+				"&+yYou draw&+Y energy&+y from &+gworld&+y around you into $p&+y and release them at $N&n.",
+				"$n&+y releases pent up&+Y energy&+y from $p&+y to blast&+y you.&n",
+				"$n&+y releases pent up &+Yenergy&+y from $p&+y to blast $N&+y.&n",
+				TRUE, ch, obj, victim);
 			spell_sunray(GET_LEVEL(ch), ch, 0, SPELL_TYPE_SPELL, victim, NULL);
 			return TRUE;
 		}
@@ -1283,16 +1260,11 @@ int krindor_illusionist(P_obj obj, P_char ch, int /*cmd*/, char *arg)
 // Lucrot June09
 int vecna_death_mask(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	struct proc_data *data;
 	P_char victim = NULL;
 	int num = 0, random = 0;
 
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
-
-	if (!IS_ALIVE(ch) || !OBJ_WORN_BY(obj, ch) || cmd != CMD_GOTHIT)
+	struct proc_data *data = defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg);
+	if (!data)
 	{
 		return FALSE;
 	}
@@ -1306,12 +1278,8 @@ int vecna_death_mask(P_obj obj, P_char ch, int cmd, char *arg)
 		num = number(0, 99); // 1% for players
 	}
 
-	if (cmd == CMD_GOTHIT && !num)
+	if (!num)
 	{
-		if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-		{
-			return FALSE;
-		}
 		victim = data->victim;
 		if (!IS_ALIVE(victim) || victim->in_room != ch->in_room)
 		{
@@ -1392,27 +1360,18 @@ int vecna_death_mask(P_obj obj, P_char ch, int cmd, char *arg)
 
 int mob_vecna_procs(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	struct proc_data *data;
 	struct affected_type af;
 	P_char victim;
 	int dam;
 
-	if (cmd != CMD_GOTHIT)
-	{
-		return FALSE;
-	}
-
-	if (!IS_ALIVE(ch) || !OBJ_WORN_BY(obj, ch))
+	struct proc_data *data = defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg);
+	if (!data)
 	{
 		return FALSE;
 	}
 
 	if (!number(0, 40) && !IS_PC(ch) && !IS_PC_PET(ch))
 	{
-		if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-		{
-			return FALSE;
-		}
 		victim = data->victim;
 		if (!IS_ALIVE(victim) || victim->in_room != ch->in_room)
 		{
@@ -1450,12 +1409,11 @@ int mob_vecna_procs(P_obj obj, P_char ch, int cmd, char *arg)
 		// Insta-kill undead PC pets.
 		if (IS_PC_PET(victim) && IS_UNDEADRACE(victim))
 		{
-			act("$N groans an unearthly sound and crumbles to dust!&n", TRUE, ch, 0,
-			    victim, TO_CHAR);
-			act("$n &+Ltouch extinguishes your life force. Vecna's power is too mighty!!!&n",
-			    TRUE, ch, 0, victim, TO_VICT);
-			act("$n grasps $N! $N moans an unearthly sound and crumbles to dust!&n",
-			    TRUE, ch, 0, victim, TO_NOTVICT);
+			act_trio(
+				"$N groans an unearthly sound and crumbles to dust!&n",
+				"$n &+Ltouch extinguishes your life force. Vecna's power is too mighty!!!&n",
+				"$n grasps $N! $N moans an unearthly sound and crumbles to dust!&n",
+				TRUE, ch, 0, victim);
 			die(victim, ch);
 			return TRUE;
 		}
@@ -1530,12 +1488,11 @@ int mob_vecna_procs(P_obj obj, P_char ch, int cmd, char *arg)
 
 		if (strstr(ch->player.name, "knight"))
 		{
-			act("Your dark eyes find $N's soul, and you begin to extinguish it...&n",
-			    TRUE, ch, 0, victim, TO_CHAR);
-			act("$n's &+Ldark eyes&n lock on to something within you. You feel your life rush from your body!&n",
-			    TRUE, ch, 0, victim, TO_VICT);
-			act("$n's &+Ldark eyes &+yburn&n into $N's soul!&n", TRUE, ch, 0, victim,
-			    TO_NOTVICT);
+			act_trio(
+				"Your dark eyes find $N's soul, and you begin to extinguish it...&n",
+				"$n's &+Ldark eyes&n lock on to something within you. You feel your life rush from your body!&n",
+				"$n's &+Ldark eyes &+yburn&n into $N's soul!&n", TRUE, ch, 0,
+				victim);
 
 			if (IS_AFFECTED2(victim, AFF2_SOULSHIELD))
 			{
@@ -1555,9 +1512,9 @@ int mob_vecna_procs(P_obj obj, P_char ch, int cmd, char *arg)
 
 		if (strstr(ch->player.name, "dracolich"))
 		{
-			act("Your massive claw slams into $N.&n", TRUE, ch, 0, victim, TO_CHAR);
-			act("$n's massive claw shreds you!&n", TRUE, ch, 0, victim, TO_VICT);
-			act("$n's massive claw shreds $N!&n", TRUE, ch, 0, victim, TO_NOTVICT);
+			act_trio("Your massive claw slams into $N.&n",
+				 "$n's massive claw shreds you!&n",
+				 "$n's massive claw shreds $N!&n", TRUE, ch, 0, victim);
 
 			dam = number(400, 600);
 			dam /= 4;
@@ -1569,9 +1526,8 @@ int mob_vecna_procs(P_obj obj, P_char ch, int cmd, char *arg)
 
 		if (strstr(ch->player.name, "wight"))
 		{
-			act("You trip up $N!&n", TRUE, ch, 0, victim, TO_CHAR);
-			act("$n trips up $N!&n", TRUE, ch, 0, victim, TO_VICT);
-			act("$n trips up $N!&n", TRUE, ch, 0, victim, TO_NOTVICT);
+			act_trio("You trip up $N!&n", "$n trips up $N!&n", "$n trips up $N!&n",
+				 TRUE, ch, 0, victim);
 
 			if (IS_FIGHTING(victim))
 			{
@@ -1583,9 +1539,8 @@ int mob_vecna_procs(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		if (strstr(ch->player.name, "ghoul"))
 		{
-			act("You brush up against $N.&n", TRUE, ch, 0, victim, TO_CHAR);
-			act("$n &+Lbrushes up against you!&n", TRUE, ch, 0, victim, TO_VICT);
-			act("$n &+Lbrushes up against $N!&n", TRUE, ch, 0, victim, TO_NOTVICT);
+			act_trio("You brush up against $N.&n", "$n &+Lbrushes up against you!&n",
+				 "$n &+Lbrushes up against $N!&n", TRUE, ch, 0, victim);
 
 			if (IS_FIGHTING(victim))
 			{
@@ -1599,12 +1554,11 @@ int mob_vecna_procs(P_obj obj, P_char ch, int cmd, char *arg)
 		if (strstr(ch->player.name, "shadow") || strstr(ch->player.name, "ghost") ||
 		    strstr(ch->player.name, "wraith"))
 		{
-			act("Your negative essence flows out to engulf $N!&n", TRUE, ch, 0, victim,
-			    TO_CHAR);
-			act("A &+Lpitch black tendril&n flows out from $n and into you!&n", TRUE,
-			    ch, 0, victim, TO_VICT);
-			act("Something sinister, &+Lblack&n, and deathly flows from $n into $N!&n",
-			    TRUE, ch, 0, victim, TO_NOTVICT);
+			act_trio(
+				"Your negative essence flows out to engulf $N!&n",
+				"A &+Lpitch black tendril&n flows out from $n and into you!&n",
+				"Something sinister, &+Lblack&n, and deathly flows from $n into $N!&n",
+				TRUE, ch, 0, victim);
 
 			dam = (int)(GET_HIT(victim) * 0.85);
 			spell_damage(ch, victim, dam, SPLDAM_GENERIC,
@@ -1616,12 +1570,10 @@ int mob_vecna_procs(P_obj obj, P_char ch, int cmd, char *arg)
 		if (strstr(ch->player.name, "vampire") && GET_POS(ch) == POS_STANDING &&
 		    !IS_STUNNED(ch))
 		{
-			act("You leap at $N and sink your teeth into $S flesh!&n", TRUE, ch, 0,
-			    victim, TO_CHAR);
-			act("$n leaps into you, and sinks $s teeth deep into your flesh!&n", TRUE,
-			    ch, 0, victim, TO_VICT);
-			act("$n bears $s large fangs, growls, and leap at $N!&n", TRUE, ch, 0,
-			    victim, TO_NOTVICT);
+			act_trio("You leap at $N and sink your teeth into $S flesh!&n",
+				 "$n leaps into you, and sinks $s teeth deep into your flesh!&n",
+				 "$n bears $s large fangs, growls, and leap at $N!&n", TRUE, ch, 0,
+				 victim);
 
 			dam = number(200, 300);
 			dam /= 4;

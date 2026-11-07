@@ -80,6 +80,7 @@ int main()
 def main():
     production = "\n".join([
         extract_function("interp.c", "char *one_argument("),
+        extract_function("comm.c", "void act_trio("),
         extract_function("specs.object.c", "P_char melee_proc_target("),
         extract_function("specs.object.c", "int ring_of_regeneration("),
         extract_function("specs.winterhaven.c", "int deathseeker_mace("),

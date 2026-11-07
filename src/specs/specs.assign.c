@@ -1843,7 +1843,6 @@ void assign_objects(void)
 	//  obj_index[real_object0(55307)].func.obj = platemail_fame;
 	//  obj_index[real_object0(55338)].func.obj = poseidon_trident;
 	//  obj_index[real_object0(55341)].func.obj = sword_random;
-	//  obj_index[real_object0(55340)].func.obj = rapier_penetration;
 	obj_index[real_object0(55362)].func.obj = attribute_scroll;
 	obj_index[real_object0(97923)].func.obj = elemental_wand;
 	obj_index[real_object0(55361)].func.obj = earring_powers;

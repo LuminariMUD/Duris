@@ -95,66 +95,41 @@ int Baltazo(P_char ch, P_char /*victim*/, int cmd, char *arg)
 
 int zion_shield_absorb_proc(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char vict = NULL;
-	struct proc_data *data = NULL;
-	int percent = number(1, 10);
-
-	if (cmd == CMD_SET_PERIODIC)
+	struct proc_data *data = defense_proc_data(obj, ch, cmd, CMD_GOTNUKED, arg);
+	if (!data)
 	{
 		return FALSE;
 	}
-
-	if (!IS_ALIVE(ch) || !OBJ_WORN_BY(obj, ch))
+	P_char vict = data->victim;
+	if (!IS_ALIVE(vict))
 	{
 		return FALSE;
 	}
 
 	// 1/10-1/100 chance?
-	if ((cmd == CMD_GOTNUKED) && percent > number(1, 100))
+	if (number(1, 10) > number(1, 100))
 	{
-		if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-		{
-			return FALSE;
-		}
-		vict = data->victim;
-		if (!IS_ALIVE(vict))
-		{
-			return FALSE;
-		}
-
-		act("&+L$N&+L's $q &+Labsorbs $n&+L's spell!", FALSE, vict, obj, ch, TO_NOTVICT);
-		act("&+LYour spell is absorbed by $N&+L's $q&+L!", FALSE, vict, obj, ch, TO_CHAR);
-		act("&+L$n&+L's spell is absorbed by your $q&+L!", FALSE, vict, obj, ch, TO_VICT);
+		act_trio("&+LYour spell is absorbed by $N&+L's $q&+L!",
+			 "&+L$n&+L's spell is absorbed by your $q&+L!",
+			 "&+L$N&+L's $q &+Labsorbs $n&+L's spell!", FALSE, vict, obj, ch);
 
 		return TRUE;
 	}
 
 	// 1/20 chance.
-	if ((cmd == CMD_GOTNUKED) && !number(0, 19) && !affected_by_spell(ch, SPELL_BLINDNESS))
+	if (!number(0, 19) && !affected_by_spell(ch, SPELL_BLINDNESS))
 	{
-		if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-		{
-			return FALSE;
-		}
-		vict = data->victim;
-		if (!IS_ALIVE(vict))
-		{
-			return FALSE;
-		}
+		act_trio(
+			"&+L$N&+L's $q &+Lbegins to crackle around the edges, as it siphons the magic of your&+L spell!",
+			"&+LYour $q &+Lbegins to crackle around the edges, as it siphons the magic of $n&+L's spell!",
+			"&+L$N&+L's $q &+Lbegins to crackle around the edges, as it siphons the magic of $n&+L's spell!",
+			FALSE, vict, obj, ch);
 
-		act("&+L$N&+L's $q &+Lbegins to crackle around the edges, as it siphons the magic of $n&+L's spell!",
-		    FALSE, vict, obj, ch, TO_NOTVICT);
-		act("&+LYour $q &+Lbegins to crackle around the edges, as it siphons the magic of $n&+L's spell!",
-		    FALSE, vict, obj, ch, TO_VICT);
-		act("&+L$N&+L's $q &+Lbegins to crackle around the edges, as it siphons the magic of your&+L spell!",
-		    FALSE, vict, obj, ch, TO_CHAR);
-
-		act("&+L$n's $q &+Llashes out with the stored magical energies, blasting $N &+Lwith pure eldritch power!&n",
-		    FALSE, ch, obj, vict, TO_NOTVICT);
-		act("&+LYour $q &+Llashes out with the stored magical energies, blasting $N &+Lwith pure eldritch power!&n",
-		    FALSE, ch, obj, vict, TO_CHAR);
-		act("&+L$n's $q &+Llashes out with the stored magical energies, blasting you &+Lwith pure eldritch power!&n",
-		    FALSE, ch, obj, vict, TO_VICT);
+		act_trio(
+			"&+LYour $q &+Llashes out with the stored magical energies, blasting $N &+Lwith pure eldritch power!&n",
+			"&+L$n's $q &+Llashes out with the stored magical energies, blasting you &+Lwith pure eldritch power!&n",
+			"&+L$n's $q &+Llashes out with the stored magical energies, blasting $N &+Lwith pure eldritch power!&n",
+			FALSE, ch, obj, vict);
 
 		blind(vict, ch, number(4, 10) * WAIT_SEC);
 		damage(ch, vict, (80 + number(0, 40)), TYPE_UNDEFINED);
@@ -171,15 +146,8 @@ int zion_shield_absorb_proc(P_obj obj, P_char ch, int cmd, char *arg)
 
 int generic_shield_block_proc(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	struct proc_data *data;
-	P_char vict;
-
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
-
-	if (!IS_ALIVE(ch) || !OBJ_WORN_BY(obj, ch) || cmd != CMD_GOTHIT)
+	struct proc_data *data = defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg);
+	if (!data)
 	{
 		return FALSE;
 	}
@@ -187,11 +155,7 @@ int generic_shield_block_proc(P_obj obj, P_char ch, int cmd, char *arg)
 	// 1/5 chance.
 	if (!number(0, 4))
 	{
-		if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-		{
-			return FALSE;
-		}
-		vict = data->victim;
+		P_char vict = data->victim;
 		if (!IS_ALIVE(vict))
 		{
 			return FALSE;
@@ -288,21 +252,14 @@ int zion_fnf(P_obj obj, P_char ch, int cmd, char *arg)
 			}
 		}
 	}
+	vict = melee_proc_target(obj, ch, cmd, arg);
 	// 1/25 chance.
-	if ((cmd == CMD_MELEE_HIT) && !number(0, 24))
+	if (vict && !number(0, 24))
 	{
-		vict = legacy_proc_arg<P_char>(arg);
-		if (!IS_ALIVE(vict))
-		{
-			return FALSE;
-		}
-
-		act("Your $q &+rsummons the power of fire and flames at at $N.", FALSE, ch, obj,
-		    vict, TO_CHAR);
-		act("$n's $q &+rsummons the power of fire and flames at you.", FALSE, ch, obj, vict,
-		    TO_VICT);
-		act("$n's $q &+rsummons the power of fire and flames at $N.", FALSE, ch, obj, vict,
-		    TO_NOTVICT);
+		act_trio("Your $q &+rsummons the power of fire and flames at at $N.",
+			 "$n's $q &+rsummons the power of fire and flames at you.",
+			 "$n's $q &+rsummons the power of fire and flames at $N.", FALSE, ch, obj,
+			 vict);
 
 		switch (number(0, 2))
 		{
@@ -324,12 +281,11 @@ int zion_fnf(P_obj obj, P_char ch, int cmd, char *arg)
 			return FALSE;
 		}
 
-		act("&+RYour $q &+Rcalls upon the pure power of the plane of fire, directing it at $N!&n",
-		    FALSE, ch, obj, vict, TO_CHAR);
-		act("$n's $q &+Rcalls upon the pure power of the plane of fire, directing it at you!&n",
-		    FALSE, ch, obj, vict, TO_VICT);
-		act("$n's $q &+Rcalls upon the pure power of the plane of fire, directing it at $N!&n",
-		    FALSE, ch, obj, vict, TO_NOTVICT);
+		act_trio(
+			"&+RYour $q &+Rcalls upon the pure power of the plane of fire, directing it at $N!&n",
+			"$n's $q &+Rcalls upon the pure power of the plane of fire, directing it at you!&n",
+			"$n's $q &+Rcalls upon the pure power of the plane of fire, directing it at $N!&n",
+			FALSE, ch, obj, vict);
 
 		switch (number(0, 6))
 		{
@@ -364,7 +320,6 @@ int zion_fnf(P_obj obj, P_char ch, int cmd, char *arg)
 
 int zion_light_dark(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	int dam = cmd / 1000;
 	int curr_time;
 	P_char vict;
 	struct damage_messages messages = {
@@ -445,27 +400,22 @@ int zion_light_dark(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 
+	vict = melee_proc_target(obj, ch, cmd, arg);
 	// 1/25 chance.
-	if ((cmd == CMD_MELEE_HIT) && !number(0, 24))
+	if (vict && !number(0, 24))
 	{
-		if (ch->equipment[WIELD] != obj || !dam)
-		{
-			return FALSE;
-		}
-		vict = legacy_proc_arg<P_char>(arg);
-		if (!IS_ALIVE(vict))
+		if (ch->equipment[WIELD] != obj)
 		{
 			return FALSE;
 		}
 
 		if (GET_RACEWAR(ch) == RACEWAR_GOOD)
 		{
-			act("$n's $q &+Wflares with pure light, unleashing the virtue of the gods at $N!&n",
-			    TRUE, ch, obj, vict, TO_NOTVICT);
-			act("Your $q &+Wflares with pure light, unleashing the virtue of the gods at $N!&n",
-			    TRUE, ch, obj, vict, TO_CHAR);
-			act("$n's $q &+Wflares with pure light, unleashing the virtue of the gods at _YOU_!&n",
-			    TRUE, ch, obj, vict, TO_VICT);
+			act_trio(
+				"Your $q &+Wflares with pure light, unleashing the virtue of the gods at $N!&n",
+				"$n's $q &+Wflares with pure light, unleashing the virtue of the gods at _YOU_!&n",
+				"$n's $q &+Wflares with pure light, unleashing the virtue of the gods at $N!&n",
+				TRUE, ch, obj, vict);
 			spell_damage(ch, vict, 480, SPLDAM_HOLY, SPLDAM_NOSHRUG | SPLDAM_NODEFLECT,
 				     &messages);
 			if (GET_C_LUK(ch) > number(0, 500))
@@ -475,12 +425,11 @@ int zion_light_dark(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		else if (GET_RACEWAR(ch) == RACEWAR_EVIL)
 		{
-			act("$n's $q &+Lflares with darkness, unleashing the wrath of the underworld upon $N!&n",
-			    TRUE, ch, obj, vict, TO_NOTVICT);
-			act("Your $q &+Lflares with darkness, unleashing the wrath of the underworld upon $N!&n",
-			    TRUE, ch, obj, vict, TO_CHAR);
-			act("$n's $q &+Lflares with darkness, unleashing the wrath of the underworld upon _YOU_!&n",
-			    TRUE, ch, obj, vict, TO_VICT);
+			act_trio(
+				"Your $q &+Lflares with darkness, unleashing the wrath of the underworld upon $N!&n",
+				"$n's $q &+Lflares with darkness, unleashing the wrath of the underworld upon _YOU_!&n",
+				"$n's $q &+Lflares with darkness, unleashing the wrath of the underworld upon $N!&n",
+				TRUE, ch, obj, vict);
 			spell_damage(ch, vict, 480, SPLDAM_COLD, SPLDAM_NOSHRUG | SPLDAM_NODEFLECT,
 				     &messages);
 			if (GET_C_LUK(ch) > number(0, 500))
@@ -490,12 +439,11 @@ int zion_light_dark(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		else
 		{
-			act("$n's $q &+Wglows white&n, unleashing a massive ball of ice towards $N!",
-			    TRUE, ch, obj, vict, TO_NOTVICT);
-			act("Your $q &+Wglows white&n, unleashing a massive ball of ice towards $N!",
-			    TRUE, ch, obj, vict, TO_CHAR);
-			act("$n's $q &+Wglows white&n, unleashing a massive ball of ice towards _YOU_!",
-			    TRUE, ch, obj, vict, TO_VICT);
+			act_trio(
+				"Your $q &+Wglows white&n, unleashing a massive ball of ice towards $N!",
+				"$n's $q &+Wglows white&n, unleashing a massive ball of ice towards _YOU_!",
+				"$n's $q &+Wglows white&n, unleashing a massive ball of ice towards $N!",
+				TRUE, ch, obj, vict);
 			spell_harm(50, ch, NULL, 0, vict, obj);
 			if (!IS_ALIVE(vict) || !IS_ALIVE(ch))
 			{
@@ -695,7 +643,7 @@ int zion_dispator(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 	}
 
-	if (cmd == CMD_GOTHIT && !number(0, 19) && has_item_wielded)
+	if (defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg) && !number(0, 19) && has_item_wielded)
 	{
 		if (!IS_AFFECTED4(ch, AFF4_HELLFIRE))
 		{
@@ -928,12 +876,9 @@ int zion_mace_of_earth(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 
-	if ((cmd == CMD_GOTHIT) && !number(0, 50) && !has_skin_spell(ch) && IS_ALIVE(ch))
+	data = defense_proc_data(obj, ch, cmd, CMD_GOTHIT, arg);
+	if (data && !number(0, 50) && !has_skin_spell(ch))
 	{
-		if (!(data = legacy_proc_arg<struct proc_data *>(arg)))
-		{
-			return FALSE;
-		}
 		vict = data->victim;
 		if (!IS_ALIVE(vict))
 		{
@@ -951,21 +896,14 @@ int zion_mace_of_earth(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	vict = legacy_proc_arg<P_char>(arg);
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(vict))
-	{
-		return FALSE;
-	}
-
+	vict = melee_proc_target(obj, ch, cmd, arg);
 	// 1/25 chance.
-	if (OBJ_WORN_BY(obj, ch) && !number(0, 24))
+	if (vict && !number(0, 24))
 	{
-		act("Your $q &+ysummons the power of the earth and rock at $N.", FALSE,
-		    obj->loc.wearing, obj, vict, TO_CHAR);
-		act("$n's $q &+ysummons the power of the earth and rock at you.", FALSE,
-		    obj->loc.wearing, obj, vict, TO_VICT);
-		act("$n's $q &+ysummons the power of the earth and rock at $N.", FALSE,
-		    obj->loc.wearing, obj, vict, TO_NOTVICT);
+		act_trio("Your $q &+ysummons the power of the earth and rock at $N.",
+			 "$n's $q &+ysummons the power of the earth and rock at you.",
+			 "$n's $q &+ysummons the power of the earth and rock at $N.", FALSE,
+			 obj->loc.wearing, obj, vict);
 		if (char_in_list(vict))
 		{
 			spell_earthquake(60, ch, 0, SPELL_TYPE_SPELL, vict, 0);
