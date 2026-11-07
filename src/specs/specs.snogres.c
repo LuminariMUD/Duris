@@ -201,8 +201,6 @@ void event_hellfire(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 
 int hellfire_axe(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char vict = NULL;
-	int dam = cmd / 1000;
 	struct damage_messages messages = {
 		"&+mYour &+Maxe &N&+mvibrates as it strikes $N&N&+m, causing a &+rsevere &+Rgash &N&+mand great &+Rblood &N&+rloss.&n",
 		"&+mA wicked cut from $n&N&+m's &+Maxe &n&+mcauses you to &+Rbleed &N&+rprofusely.&n",
@@ -213,22 +211,11 @@ int hellfire_axe(P_obj obj, P_char ch, int cmd, char *arg)
 		0
 	};
 
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
-	if (!obj || !IS_ALIVE(ch))
-	{
-		return FALSE;
-	}
-
+	P_char vict = melee_proc_target(obj, ch, cmd, arg);
 	// 1/50 chance.
-	if (cmd == CMD_MELEE_HIT && !number(0, 49))
+	if (vict && !number(0, 49))
 	{
-		vict = legacy_proc_arg<P_char>(arg);
-
-		if (obj->loc.wearing->equipment[WIELD] != obj || !dam || !IS_ALIVE(vict) ||
-		    !IS_HUMANOID(vict))
+		if (obj->loc.wearing->equipment[WIELD] != obj || !IS_HUMANOID(vict))
 		{
 			return FALSE;
 		}
@@ -319,12 +306,11 @@ int berserker_toss(P_char ch, P_char vict, int cmd, char * /*arg*/)
 
 	if (!number(0, 2))
 	{
-		act("&+rFilled with &+RRAGE&n $n &+rhammers his fist into &+R$N&n&+r, sending $m flying!&n",
-		    FALSE, ch, 0, vict, TO_NOTVICT);
-		act("&+rFilled with &+RRAGE&n $n &+rhammers his fist into &+RYOU&n&+r, sending you &+RFLYING&N&+r!&n",
-		    FALSE, ch, 0, vict, TO_VICT);
-		act("&+rFilled with &+RRAGE&n&+r, you hammer your fist into &+R$N&n&+r sending $m flying!&n",
-		    FALSE, ch, 0, vict, TO_CHAR);
+		act_trio(
+			"&+rFilled with &+RRAGE&n&+r, you hammer your fist into &+R$N&n&+r sending $m flying!&n",
+			"&+rFilled with &+RRAGE&n $n &+rhammers his fist into &+RYOU&n&+r, sending you &+RFLYING&N&+r!&n",
+			"&+rFilled with &+RRAGE&n $n &+rhammers his fist into &+R$N&n&+r, sending $m flying!&n",
+			FALSE, ch, 0, vict);
 		damage(ch, vict, (70 + number(0, 150)), TYPE_UNDEFINED);
 
 		int i = 0;
@@ -379,24 +365,12 @@ int remo_burn(P_char vict, P_char ch, int cmd, char * /*arg*/)
 
 int illithid_whip(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char vict = NULL;
-	int dam = cmd / 1000;
-
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
-	if (!OBJ_WORN(obj) || !IS_ALIVE(ch))
-	{
-		return FALSE;
-	}
+	P_char vict = melee_proc_target(obj, ch, cmd, arg);
 	// 1/30 chance.
-	if ((cmd == CMD_MELEE_HIT) && !number(0, 29))
+	if (vict && !number(0, 29))
 	{
-		vict = legacy_proc_arg<P_char>(arg);
-
-		if (obj->loc.wearing->equipment[WIELD] != obj || !dam || !IS_ALIVE(vict) ||
-		    !IS_HUMANOID(vict) || GET_POS(vict) < POS_STANDING)
+		if (obj->loc.wearing->equipment[WIELD] != obj || !IS_HUMANOID(vict) ||
+		    GET_POS(vict) < POS_STANDING)
 		{
 			return FALSE;
 		}

@@ -4476,54 +4476,6 @@ int varon(P_obj obj, P_char ch, int cmd, char *arg)
 	return FALSE;
 }
 
-/*
-   item proc
- */
-int gesen(P_obj obj, P_char ch, int cmd, char *arg)
-{
-	P_char vict;
-
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
-
-	vict = legacy_proc_arg<P_char>(arg);
-	if (cmd == CMD_MELEE_HIT || !IS_ALIVE(ch) || !OBJ_WORN_POS(obj, WIELD) ||
-	    obj->loc.wearing != ch || !IS_ALIVE(vict))
-	{
-		return FALSE;
-	}
-
-	// 1/10 chance.
-	if (!number(0, 9))
-	{
-		act("&+YThe hammer glows and flies from your hand, striking &n$N&+Y with a crash!\r\n"
-		    "&+yTwirling wildly, it arcs back around and returns to your hand..",
-		    FALSE, ch, obj, vict, TO_CHAR);
-		act("&+Y$n's hammer glows and flies through the air, striking &n$N&+Y with a crash!\r\n"
-		    "&+yTwirling around in the air, it arcs and returns to $n's grasp.",
-		    FALSE, ch, obj, vict, TO_ROOM);
-		spell_harm(51, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-	}
-	else
-	{
-		if (!GET_OPPONENT(ch))
-		{
-			set_fighting(ch, vict);
-		}
-	}
-	// Do the normal hit damage as well.
-	if (GET_OPPONENT(ch))
-	{
-		return FALSE;
-	}
-	else
-	{
-		return TRUE;
-	}
-}
-
 int verzanan_portal(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	int dam = obj->value[1];

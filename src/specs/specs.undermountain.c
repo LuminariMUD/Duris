@@ -54,22 +54,13 @@ int blade_of_paladins(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	P_char vict, tmp_vict;
 	char e_pos;
-	int in_battle, bad_owner;
-
-	vict = legacy_proc_arg<P_char>(arg);
-	in_battle = cmd / 1000;
-
-	/*
-	   check for periodic event calls
-	 */
-	if (cmd == CMD_SET_PERIODIC)
-		return FALSE;
+	int bad_owner;
 
 	if (!ch || !obj)
 		return FALSE;
 
 	/** Who's in the room? Careful here, or it will spam player **/
-	if (!in_battle && OBJ_WORN(obj))
+	if (cmd != CMD_MELEE_HIT && OBJ_WORN(obj))
 	{
 		LOOP_THRU_PEOPLE(tmp_vict, ch)
 		{
@@ -84,7 +75,7 @@ int blade_of_paladins(P_obj obj, P_char ch, int cmd, char *arg)
 	if ((!GET_CLASS(ch, CLASS_PALADIN) || (GET_ALIGNMENT(ch) != 1000)) && OBJ_WORN_BY(obj, ch))
 	{
 		act("&+BThe blade briefly flashes with &N&+Yintense light&N&+B, burning your hand severely!&N",
-		    TRUE, ch, obj, vict, TO_CHAR);
+		    TRUE, ch, obj, 0, TO_CHAR);
 		act("$N screams in pain as $S blade burns into $S skin!", FALSE, ch, obj, 0,
 		    TO_ROOM);
 		GET_HIT(ch) -= 5;
@@ -94,10 +85,8 @@ int blade_of_paladins(P_obj obj, P_char ch, int cmd, char *arg)
 	else
 		bad_owner = FALSE;
 
-	if (cmd < 1000)
-		return FALSE;
-
-	if (!OBJ_WORN(obj))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 		return FALSE;
 
 	e_pos = ((obj->loc.wearing->equipment[WIELD] == obj)		? WIELD :
@@ -139,26 +128,20 @@ int blade_of_paladins(P_obj obj, P_char ch, int cmd, char *arg)
 
 int iron_flindbar(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char vict;
 	char e_pos;
 	int vict_equip;
 
-	if (cmd == CMD_SET_PERIODIC)
+	P_char vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict || IS_PC(ch) || IS_PC_PET(ch))
 	{
 		return FALSE;
 	}
 
-	if (!IS_ALIVE(ch) || IS_PC(ch) || IS_PC_PET(ch) || !OBJ_WORN(obj))
-	{
-		return FALSE;
-	}
-
-	vict = legacy_proc_arg<P_char>(arg);
 	// If it must be wielded, use this
 	e_pos = ((obj->loc.wearing->equipment[WIELD] == obj)		? WIELD :
 		 (obj->loc.wearing->equipment[SECONDARY_WEAPON] == obj) ? SECONDARY_WEAPON :
 									  0);
-	if (!e_pos || !IS_ALIVE(vict) || !IS_FIGHTING(ch) || ch->in_room != vict->in_room)
+	if (!e_pos || !IS_FIGHTING(ch) || ch->in_room != vict->in_room)
 	{
 		return FALSE;
 	}
@@ -191,16 +174,6 @@ int fade_drusus(P_obj obj, P_char ch, int cmd, char *argument)
 {
 	P_char vict;
 	char e_pos, arg[MAX_STRING_LENGTH];
-	int in_battle;
-
-	/*  vict = legacy_proc_arg<P_char>(arg);*/
-
-	in_battle = cmd / 1000;
-
-	if (cmd == CMD_SET_PERIODIC) /*
-	                   Events have priority
-	                 */
-		return FALSE;
 
 	if (!ch || !obj) /*
 	                    If the player ain't here, why are we?
@@ -247,15 +220,12 @@ int fade_drusus(P_obj obj, P_char ch, int cmd, char *argument)
 		}
 	}
 
-	if (!in_battle) /* Past here, and you're fighting */
+	vict = melee_proc_target(obj, ch, cmd, argument); /* Past here, and you're fighting */
+	if (!vict)
 		return FALSE;
 
 	if (!number(0, 30))
 	{
-		vict = GET_OPPONENT(ch);
-		if (!vict)
-			return FALSE; /* can't be too careful */
-
 		act("&=LWYou score a CRITICAL HIT!!!!!&n", TRUE, ch, 0, 0, TO_CHAR);
 		act("&+LA wisp of black shadow shoots forth, striking $N &+Lin the eyes!&N", TRUE,
 		    ch, 0, vict, TO_CHAR);
@@ -274,8 +244,6 @@ int magebane_falchion(P_obj obj, P_char ch, int cmd, char *arg)
 	P_char vict, tmp_vict;
 	char e_pos;
 	int i;
-
-	vict = legacy_proc_arg<P_char>(arg);
 
 	if (cmd == CMD_SET_PERIODIC)
 		return TRUE;
@@ -328,9 +296,8 @@ int magebane_falchion(P_obj obj, P_char ch, int cmd, char *arg)
 	   okay.. if we are this far, its NOT a periodic call.
 	 */
 
-	if (cmd < 1000) /*
-	                   Umm...
-	                 */
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 		return FALSE;
 
 	/*
@@ -385,14 +352,9 @@ int lightning_sword(P_obj obj, P_char ch, int cmd, char *arg)
 	char e_pos;
 	int dam, vict_level, room;
 
-	if (cmd != CMD_MELEE_HIT)
-	{
-		return FALSE;
-	}
-
-	vict = legacy_proc_arg<P_char>(arg);
+	vict = melee_proc_target(obj, ch, cmd, arg);
 	// 1/33 chance.
-	if (!IS_ALIVE(ch) || !IS_FIGHTING(ch) || !IS_ALIVE(vict) || !OBJ_WORN(obj) || number(0, 32))
+	if (!vict || !IS_FIGHTING(ch) || number(0, 32))
 	{
 		return FALSE;
 	}
@@ -475,14 +437,8 @@ int woundhealer_scimitar(P_obj obj, P_char ch, int cmd, char *arg)
 	char e_pos;
 	int in_battle, hits;
 
-	vict = legacy_proc_arg<P_char>(arg);
-
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
-
-	if (!IS_ALIVE(ch) || !OBJ_WORN_BY(obj, ch) || !(cmd / 1000))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 	{
 		return FALSE;
 	}
@@ -509,26 +465,17 @@ int woundhealer_scimitar(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	if ((obj->loc.wearing == ch) && vict)
-	{
-		// act("&+rBlood is around the corner", FALSE, ch, 0, 0, TO_CHAR);
-		GET_HIT(ch) += in_battle;
-		// GET_HIT(vict) -= in_battle;
-	}
+	// act("&+rBlood is around the corner", FALSE, ch, 0, 0, TO_CHAR);
+	GET_HIT(ch) += in_battle;
+	// GET_HIT(vict) -= in_battle;
 	return FALSE;
 }
 
 int flame_of_north_sword(P_obj obj, P_char ch, int cmd, char *arg)
 {
 	char e_pos;
-	bool in_battle, working;
+	bool working;
 	P_char vict;
-
-	vict = legacy_proc_arg<P_char>(arg);
-	in_battle = cmd / 1000;
-
-	if (cmd == CMD_SET_PERIODIC)
-		return FALSE;
 
 	if (!IS_ALIVE(ch) || !obj)
 		return FALSE;
@@ -555,11 +502,11 @@ int flame_of_north_sword(P_obj obj, P_char ch, int cmd, char *arg)
 		if ((isname(arg, "fly")) && working)
 			if (time_info.day != obj->timer[0])
 			{
-				act("You say 'fly'", FALSE, ch, 0, vict, TO_CHAR);
+				act("You say 'fly'", FALSE, ch, 0, 0, TO_CHAR);
 				act("&+YThe flames of your&N $q &+Yintensify.&N", FALSE, ch, obj,
 				    obj, TO_CHAR);
 				act("$n says 'fly' to $p.", FALSE, ch, obj, obj, TO_ROOM);
-				act("$n's&N $q &+Yglows intently!", TRUE, ch, obj, vict, TO_ROOM);
+				act("$n's&N $q &+Yglows intently!", TRUE, ch, obj, 0, TO_ROOM);
 				spell_fly(50, ch, 0, SPELL_TYPE_SPELL, ch, 0);
 				obj->timer[0] = time_info.day;
 				return TRUE;
@@ -567,7 +514,7 @@ int flame_of_north_sword(P_obj obj, P_char ch, int cmd, char *arg)
 		if (isname(arg, "light"))
 			if (!IS_OBJ_STAT(obj, ITEM_LIT))
 			{
-				act("$n says 'light' to $p.", FALSE, ch, obj, vict, TO_ROOM);
+				act("$n says 'light' to $p.", FALSE, ch, obj, 0, TO_ROOM);
 				act("You say 'light'", FALSE, ch, 0, 0, TO_CHAR);
 				act("$p &+Rflares up!&N", FALSE, ch, obj, 0, TO_CHAR);
 				act("$n's $q &+Rflares up!&N", FALSE, ch, obj, 0, TO_ROOM);
@@ -577,7 +524,7 @@ int flame_of_north_sword(P_obj obj, P_char ch, int cmd, char *arg)
 		if (isname(arg, "dark"))
 			if (IS_OBJ_STAT(obj, ITEM_LIT))
 			{
-				act("$n says 'dark' to $p.", FALSE, ch, obj, vict, TO_ROOM);
+				act("$n says 'dark' to $p.", FALSE, ch, obj, 0, TO_ROOM);
 				act("You say 'dark'", FALSE, ch, 0, 0, TO_CHAR);
 				act("The flames covering $p die down.", FALSE, ch, obj, 0, TO_CHAR);
 				act("The flames covering $n's $q die down.", FALSE, ch, obj, 0,
@@ -588,7 +535,8 @@ int flame_of_north_sword(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 
 	// Past here, and you're fighting.
-	if (!in_battle)
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 		return FALSE;
 
 	if ((!number(0, 30)) && working)
@@ -605,8 +553,6 @@ int staff_of_power(P_obj obj, P_char ch, int cmd, char *arg)
 	P_char vict;
 	char e_pos;
 	int working, curr_time;
-
-	vict = legacy_proc_arg<P_char>(arg);
 
 	if (cmd == CMD_SET_PERIODIC)
 	{
@@ -821,17 +767,16 @@ int staff_of_power(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 
-	if (IS_ALIVE(vict) && cmd == CMD_MELEE_HIT)
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (vict)
 	{
 		// 1/16 chance.
 		if (!number(0, 15))
 		{
-			act("&+LYour $q shoots out beams of black energy at $N.", FALSE,
-			    obj->loc.wearing, obj, vict, TO_CHAR);
-			act("$n's $q &+Lradiates a bolt of black energy at you.", FALSE,
-			    obj->loc.wearing, obj, vict, TO_VICT);
-			act("$n's $q &+Lradiates a blot of black energy at $N.", FALSE,
-			    obj->loc.wearing, obj, vict, TO_NOTVICT);
+			act_trio("&+LYour $q shoots out beams of black energy at $N.",
+				 "$n's $q &+Lradiates a bolt of black energy at you.",
+				 "$n's $q &+Lradiates a blot of black energy at $N.", FALSE,
+				 obj->loc.wearing, obj, vict);
 			spell_psychic_crush(61, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 		}
 	}
@@ -1218,24 +1163,17 @@ bool trident_charm(P_char ch, P_char victim)
 
 int undead_trident(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char vict;
 	char e_pos;
 	bool bad_owner;
 
-	vict = legacy_proc_arg<P_char>(arg);
-
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
-
-	if (!IS_ALIVE(ch) || !OBJ_WORN(obj) || cmd < 1000)
+	P_char vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 	{
 		return FALSE;
 	}
 
 	/** Check class first off, burn em, and let em keep it **/
-	if (GET_ALIGNMENT(ch) != -1000 && OBJ_WORN_BY(obj, ch))
+	if (GET_ALIGNMENT(ch) != -1000)
 	{
 		/*  act("&+LThe trident briefly flashes with &N&+Yintense light&N&+L, burning your hand severely!&N", TRUE, ch, obj, vict, TO_CHAR);
 		   act("$n screams in pain, as $s blade burns into $s skin!", FALSE, ch, obj,
@@ -1252,7 +1190,7 @@ int undead_trident(P_obj obj, P_char ch, int cmd, char *arg)
 		 (obj->loc.wearing->equipment[SECONDARY_WEAPON] == obj) ? SECONDARY_WEAPON :
 									  0);
 	/* must be wielded */
-	if (!e_pos || !IS_ALIVE(vict) || vict == ch)
+	if (!e_pos || vict == ch)
 	{
 		return FALSE;
 	}
@@ -1316,13 +1254,6 @@ int martelo_mstar(P_obj obj, P_char ch, int cmd, char *arg)
 	char e_pos;
 	int bad_owner;
 
-	vict = legacy_proc_arg<P_char>(arg);
-
-	if (cmd == CMD_SET_PERIODIC)
-	{
-		return FALSE;
-	}
-
 	if (!IS_ALIVE(ch) || !obj)
 	{
 		return FALSE;
@@ -1365,10 +1296,10 @@ int martelo_mstar(P_obj obj, P_char ch, int cmd, char *arg)
 		{
 			if (time_info.day != obj->value[0])
 			{
-				act("You say 'martelo'", FALSE, ch, 0, vict, TO_CHAR);
+				act("You say 'martelo'", FALSE, ch, 0, 0, TO_CHAR);
 				act("$n says 'martelo' to $p.", FALSE, ch, obj, obj, TO_ROOM);
 				spell_full_heal(50, ch, 0, SPELL_TYPE_SPELL, ch, 0);
-				act("$n's&N $q &+Yglows intently!", TRUE, ch, obj, vict, TO_ROOM);
+				act("$n's&N $q &+Yglows intently!", TRUE, ch, obj, 0, TO_ROOM);
 				obj->value[0] = time_info.day;
 				return TRUE;
 			}
@@ -1379,7 +1310,8 @@ int martelo_mstar(P_obj obj, P_char ch, int cmd, char *arg)
 		OBJ_WORN_POS(obj, SECONDARY_WEAPON) ? SECONDARY_WEAPON :
 						      0;
 
-	if (cmd < 1000 || !OBJ_WORN(obj) || !e_pos)
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict || !e_pos)
 	{
 		return FALSE;
 	}
@@ -2045,11 +1977,9 @@ int malodine_one(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 	{
 		vict = GET_OPPONENT(ch);
 
-		act("$n rises slowly into the air, and turns to face $N.", 1, ch, 0, vict,
-		    TO_NOTVICT);
-		act("$n rises slowly into the air, and turns to face YOU!", 1, ch, 0, vict,
-		    TO_VICT);
-		act("You rise slowly into the air, and turn to face $N.", 1, ch, 0, vict, TO_CHAR);
+		act_trio("You rise slowly into the air, and turn to face $N.",
+			 "$n rises slowly into the air, and turns to face YOU!",
+			 "$n rises slowly into the air, and turns to face $N.", 1, ch, 0, vict);
 		act("A gem it uses for a tooth, begins to glow, as a &+Yray of light shoots forth!",
 		    1, ch, 0, vict, TO_NOTVICT);
 		act("A gem it uses for a tooth, begins to glow, as a &+Yray of light shoots forth!",

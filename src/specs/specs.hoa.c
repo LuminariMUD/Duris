@@ -173,8 +173,8 @@ int illesarus(P_obj obj, P_char ch, int cmd, char *arg)
 		return FALSE;
 	}
 
-	vict = legacy_proc_arg<P_char>(arg);
-	if (cmd != CMD_MELEE_HIT || !IS_ALIVE(vict))
+	vict = melee_proc_target(obj, ch, cmd, arg);
+	if (!vict)
 	{
 		return FALSE;
 	}
@@ -183,12 +183,10 @@ int illesarus(P_obj obj, P_char ch, int cmd, char *arg)
 	if (!number(0, 24))
 	{
 		// The damage
-		act("&+LYou swing&n $q &+Lwith a broad two-handed arch at&n $N.&n", FALSE, ch, obj,
-		    vict, TO_CHAR);
-		act("$n &+Lswings&n $q &+Lwith a broad two-handed arch at you.&n", FALSE, ch, obj,
-		    vict, TO_VICT);
-		act("$n &+Lswings&n $q &+Lwith a broad two-handed arch at&n $N.&n", FALSE, ch, obj,
-		    vict, TO_NOTVICT);
+		act_trio("&+LYou swing&n $q &+Lwith a broad two-handed arch at&n $N.&n",
+			 "$n &+Lswings&n $q &+Lwith a broad two-handed arch at you.&n",
+			 "$n &+Lswings&n $q &+Lwith a broad two-handed arch at&n $N.&n", FALSE, ch,
+			 obj, vict);
 		raw_damage(ch, vict, (BOUNDED(0, (GET_HIT(vict) + 9), 100) * 4), RAWDAM_DEFAULT,
 			   &messages);
 
@@ -201,12 +199,10 @@ int illesarus(P_obj obj, P_char ch, int cmd, char *arg)
 			switch (limb)
 			{
 			case LIMB_ARM:
-				act("$N &+Lgasps as your vorpal sword nearly severs $S arm!&n",
-				    FALSE, ch, obj, vict, TO_CHAR);
-				act("$q &+Lnearly severs your arm from your body!&n", FALSE, ch,
-				    obj, vict, TO_VICT);
-				act("$N &+Lgasps as the vorpal sword nearly severs $S arm!&n",
-				    FALSE, ch, obj, vict, TO_NOTVICT);
+				act_trio("$N &+Lgasps as your vorpal sword nearly severs $S arm!&n",
+					 "$q &+Lnearly severs your arm from your body!&n",
+					 "$N &+Lgasps as the vorpal sword nearly severs $S arm!&n",
+					 FALSE, ch, obj, vict);
 				if (!IS_TARMLOCK(vict))
 				{
 					af.type = TAG_ARMLOCK;
@@ -217,12 +213,10 @@ int illesarus(P_obj obj, P_char ch, int cmd, char *arg)
 				}
 				break;
 			case LIMB_LEG:
-				act("$N g&+Lasps as your vorpal sword nearly severs $S leg!&n",
-				    FALSE, ch, obj, vict, TO_CHAR);
-				act("$q &+Lnearly severs your leg from your body!&n", FALSE, ch,
-				    obj, vict, TO_VICT);
-				act("$N &+Lgasps as the vorpal sword nearly severs $S leg!&n",
-				    FALSE, ch, obj, vict, TO_NOTVICT);
+				act_trio("$N g&+Lasps as your vorpal sword nearly severs $S leg!&n",
+					 "$q &+Lnearly severs your leg from your body!&n",
+					 "$N &+Lgasps as the vorpal sword nearly severs $S leg!&n",
+					 FALSE, ch, obj, vict);
 				if (!IS_TLEGLOCK(vict))
 				{
 					af.type = TAG_LEGLOCK;
