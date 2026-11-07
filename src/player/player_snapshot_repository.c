@@ -325,7 +325,7 @@ query_result apply_world_quest_history(MYSQL *connection, const player_snapshot 
 	     (snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) !=
 		     (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)))
 		return { false, EINVAL };
-	world_quest_history_match match;
+	world_quest_history_match match = world_quest_history_match::absent;
 	const auto found = find_world_quest_history(connection, snapshot, &match);
 	if (!found.ok || match == world_quest_history_match::same)
 		return found;
@@ -1361,7 +1361,7 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 		if (query.ok && snapshot.pending_world_quest.present &&
 		    !snapshot.pending_world_quest.fallback_only)
 		{
-			world_quest_history_match match;
+			world_quest_history_match match = world_quest_history_match::absent;
 			query = find_world_quest_history(connection, snapshot, &match);
 			if (query.ok && match != world_quest_history_match::same)
 			{
@@ -1387,7 +1387,7 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	if (query.ok && snapshot.pending_world_quest.present &&
 	    snapshot.pending_world_quest.fallback_only)
 	{
-		world_quest_history_match match;
+		world_quest_history_match match = world_quest_history_match::absent;
 		query = find_world_quest_history(connection, snapshot, &match);
 		if (query.ok && match == world_quest_history_match::same)
 		{
