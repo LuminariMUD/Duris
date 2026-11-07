@@ -459,8 +459,8 @@ int main() {
 }
 '''
 
-callbacks = function(ROOT / 'src/net/comm.c', 'void act_trio(') + '\n' + '\n'.join(function(ROOT / 'src/specs/specs.underworld.c', signature) for signature in (
-    'void event_tsunamiwave(', 'int SeaKingdom_Tsunami(', 'int deflect_ioun('))
+callbacks = function(ROOT / 'src/net/comm.c', 'void act_trio(') + '\n' + function(ROOT / 'src/specs/specs.object.c', 'struct proc_data *defense_proc_data(') + '\n' + '\n'.join(function(ROOT / 'src/specs/specs.underworld.c', signature) for signature in (
+    'void event_tsunamiwave(', 'int SeaKingdom_Tsunami(', 'static bool deflect_spell(', 'int deflect_ioun('))
 callbacks += '\n' + function(ROOT / 'src/specs/specs.object.c', 'int living_necroplasm(')
 callbacks += '\n' + '\n'.join(function(ROOT / 'src/magic/magic.c', signature) for signature in (
     'static int vampire_duration(', 'static int vampire_str_max(', 'static int vampire_con_max(',
