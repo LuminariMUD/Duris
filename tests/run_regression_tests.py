@@ -301,8 +301,10 @@ def main() -> int:
     # with the flags and diagnostics unchanged. Coverage's g++ has to see every compile.
     if "COVERAGE_DATA" not in os.environ:
         os.environ["PATH"] = f"{ROOT / 'scripts/mutate'}{os.pathsep}{os.environ.get('PATH', '')}"
-        os.environ.setdefault("CCACHE_DIR", str(ROOT / "bin/test-ccache"))
-        os.environ.setdefault("CCACHE_MAXSIZE", "10G")
+        if "CCACHE_DIR" not in os.environ:
+            # Size only the runner's own cache; never trim a developer's.
+            os.environ["CCACHE_DIR"] = str(ROOT / "bin/test-ccache")
+            os.environ.setdefault("CCACHE_MAXSIZE", "10G")
         # Harnesses are written to random directories. Their path reaches only __FILE__
         # (assertion text) and debug information, so it must not defeat the cache.
         os.environ.setdefault("CCACHE_SLOPPINESS", "file_macro")
