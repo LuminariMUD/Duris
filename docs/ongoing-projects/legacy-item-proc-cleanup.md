@@ -19,8 +19,9 @@ Keep this table current; a new session should be able to resume from it alone. P
 | 5. Payload parsing defects | `proc-cleanup/payload-parsing` (on 3a) | #777 | Ready for review |
 | 6a. Set execution moved to `specs.set.c` | `proc-cleanup/set-move` (on 3c) | #781 | Ready for review |
 | 6b. `weapon_proc` packed spells | `proc-cleanup/weapon-proc` (on the plan PR) | #778 | Ready for review |
+| Tracing note: event payloads beside the pseudo-command constants | `proc-cleanup/event-notes` (on the plan PR) | #782 | Ready for review |
 
-Merge order: #773 → #774 → #775 → #776 → #779 → #780 → #781; #777 after #776; #778 after #773. Retarget each PR's base to `master` as the one below it merges.
+Merge order: #773 → #774 → #775 → #776 → #779 → #780 → #781; #777 after #776; #778 and #782 after #773. Retarget each PR's base to `master` as the one below it merges.
 
 Decisions made while working:
 
