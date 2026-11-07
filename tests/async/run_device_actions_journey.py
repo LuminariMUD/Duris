@@ -82,7 +82,7 @@ def run_case(binary: Path, inspector: Path, kind: str, enabled: bool, abort: boo
                     time.sleep(.1)
                 client = journey.MudClient(plain)
                 journey.create_character(client)
-                client.send("toggle boon"); client.expect("You will no longer be affected by boons.")
+                client.send("toggle boon"); client.expect("Divine Boons apply automatically.")
                 client.send("drop all"); client.expect("You drop a steel long sword.", timeout=20)
                 client.send(f"get {kind}"); client.expect(f"You get the regression {kind}")
                 if kind != "scroll":
