@@ -360,7 +360,7 @@ int vecna_gorge(P_obj obj, P_char /*ch*/, int cmd, char * /*arg*/)
 	return FALSE;
 }
 
-int vecna_stonemist(P_obj obj, P_char ch, int cmd, char * /*arg*/)
+int vecna_stonemist(P_obj obj, P_char /*ch*/, int cmd, char * /*arg*/)
 {
 	P_char target;
 	struct affected_type *af;
@@ -370,7 +370,7 @@ int vecna_stonemist(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		return TRUE;
 	}
 
-	if (!OBJ_ROOM(obj) || number(0, 5) || cmd != CMD_PERIODIC || !IS_ALIVE(ch))
+	if (!OBJ_ROOM(obj) || number(0, 5) || cmd != CMD_PERIODIC)
 	{
 		return FALSE;
 	}
