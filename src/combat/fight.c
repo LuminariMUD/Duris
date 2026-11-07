@@ -10429,16 +10429,26 @@ int calculate_attacks(P_char ch, int attacks[])
 	{
 		bool fighting_pc = GET_OPPONENT(ch) ? IS_PC(GET_OPPONENT(ch)) : FALSE;
 		int num_atts = MonkNumberOfAttacks(ch);
-		int weight_threshold = GET_C_STR(ch) / 2;
 
-		if (!IS_TRUSTED(ch) && (total_carried_weight(ch) >= weight_threshold) && IS_PC(ch))
+		if (IS_PC(ch) && !IS_TRUSTED(ch))
 		{
-			num_atts -= MIN(num_atts - 1, (int)((total_carried_weight(ch) - 30) / 10));
+			int equipped_weight = 0;
+			// Match equip_char's per-item half-weight rounding.
+			for (int slot = 0; slot < MAX_WEAR; slot++)
+				if (ch->equipment[slot])
+					equipped_weight += GET_OBJ_WEIGHT(ch->equipment[slot]) / 2;
 
-			// if (!number(0, 4))
-			send_to_char(
-				"&+LYou feel weighed down, which is causing you to lose attacks.&n\r\n",
-				ch);
+			const int weight_threshold = GET_C_STR(ch) / 2;
+			const int excess_weight = MAX(0, equipped_weight - weight_threshold);
+			const int lost_attacks = MIN(num_atts - 1, excess_weight / 10);
+
+			if (lost_attacks > 0)
+			{
+				num_atts -= lost_attacks;
+				send_to_char(
+					"&+LYour equipped gear weighs you down, causing you to lose attacks.&n\r\n",
+					ch);
+			}
 		}
 
 		if (IS_AFFECTED2(ch, AFF2_SLOW) && num_atts > 1)

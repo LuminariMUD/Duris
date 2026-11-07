@@ -518,13 +518,13 @@ int MonkAcBonus(P_char ch)
 	if (GET_CLASS(ch, CLASS_MONK))
 	{
 		/*
-		   base bonus level * 2
+		   base bonus level * 4
 		 */
 		b = -(4 * GET_LEVEL(ch));
 		// Bonus based on martial arts skill
 		b -= GET_CHAR_SKILL(ch, SKILL_MARTIAL_ARTS);
 		/*
-		   4x penalty for encumbering worn items with a small allowance for low levels
+		   3x penalty for encumbering worn items with a small allowance for low levels
 		 */
 		b += MAX(0, (3 * (wornweight(ch) - ((60 - GET_LEVEL(ch)) / 6))));
 
@@ -751,12 +751,16 @@ std::string martial_arts_facts(P_char ch)
 	const int rolled = MIN(monk_attack_roll_limit(), monk_attack_rolls(lowest_rolls, ch));
 	std::string text =
 		fact("Armor class", std::to_string(MonkAcBonus(ch))) +
-		"    (from your level and rating, less a penalty for worn weight)\n" +
+		"    (level and rating, less a penalty for full equipped weight)\n" +
 		fact("Bare-hand damage added", std::to_string(monk_damage_bonus(rating))) +
+		"    (full equipped weight above level * STR / 100 reduces base damage)\n" +
 		fact("Attacks each round",
 		     show({ monk_attack_count(ch, 0),
 			    monk_attack_count(ch, rating > 1 ? rolled : 0) })) +
-		"    (1 with anything wielded or held; carrying too much weight costs attacks)\n";
+		"    (1 with a weapon, shield, held item, or equipped light)\n"
+		"    (sum half of each equipped item's weight, rounded down)\n"
+		"    (lose 1 per full 10 lb above STR / 2; at least 1 remains)\n"
+		"    (inventory ignored; worn bags include their effective contents)\n";
 	if (rating)
 		text += fact("Chance to counter a blow",
 			     show({ monk_riposte_chance(rating, -100000),

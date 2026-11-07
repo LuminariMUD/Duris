@@ -16325,13 +16325,56 @@ Requirements are registration values, not automatic learning or preparation. Bas
 #0
 
 Martial Arts
-Martial Arts - Last Edited: 2007-04-22 22:12:53 by Unknown
+Martial Arts - Last Edited: 2026-11-07
 ==========================================================
-This skill measures how adept a monk is at using his body as a weapon. Until his martial arts skill is well practiced, he will not be able to deal out as much damage with his bare hands and feet.
+Martial arts improves a monk's bare-hand damage, armor class and base
+attacks. Your level and martial-arts rating determine the base attack range;
+weight and other combat effects can change the final number of attacks.
+
+==Hands==
+
+An item in your wield, secondary weapon, hold, shield or light slot limits
+you to one base monk attack. For bare-hand damage, occupying wield,
+secondary weapon, hold or shield also reduces your monk damage dice to 1d1.
+An equipped light limits attacks but does not reduce those damage dice.
+
+==Weight==
+
+These monk penalties use equipped items, not loose inventory. A worn
+container includes its effective contents weight, after any bag weight
+reduction. Normal carrying limits and general encumbrance still apply.
+STR means your current Strength. Divisions below discard fractions.
+
+Armor class: start with -4 times your level, minus your martial-arts rating.
+Your free full-weight allowance is (60 - level) / 6 pounds. Every pound
+above it adds 3 to this AC adjustment, making your AC worse. The monk
+adjustment is limited to -400 through +50. Strength does not increase
+this AC weight allowance.
+
+Bare-hand damage: your free full-weight allowance is level * STR / 100
+pounds. Every pound above it subtracts 1 from rolled monk damage after
+the martial-arts damage bonus. This cannot reduce that base damage below
+1; damroll and other combat adjustments apply afterward.
+
+Attacks: add half of each equipped item's weight, rounding each item down
+before adding. Your free allowance is STR / 2 pounds. Every full 10 pounds
+above it costs one base monk attack. Weight cannot add attacks or reduce
+you below one base monk attack. You are warned only when attacks are lost.
+NPC monks and trusted staff are exempt from this attack-weight penalty.
+
+At 100 STR with no other equipped weight, a 119-pound worn back container
+counts as 59 for attacks: no loss. At 120 pounds it counts as 60 and costs
+one base monk attack.
+A separate 1-pound equipped item counts as zero. Inventory does not change
+these results; putting that inventory inside a worn bag can change them.
+Other combat modifiers and bonus attacks still apply afterward.
+
+Most items also have a per-item equip weight limit; see Monk.
 
 ==See also==
 
-Monk, Monk Skills
+* Monk
+* Monk Skills
 
 #0
 
@@ -17137,7 +17180,7 @@ against undead.
 #0
 
 Monk
-Monk - Last Edited: 2026-10-18
+Monk - Last Edited: 2026-11-07
 ============================================================
 Unarmed martial arts and disciplined physical combat.
 
@@ -17147,6 +17190,26 @@ alignment.
 Equipment follows each item's class/race restrictions and the character's body
 slots. There is no blanket permission to equip every item of a weapon or armor
 type.
+
+==Equipment and weight==
+
+Monk weight rules use your current Strength (STR). Each item is normally
+limited to STR / 10 pounds, rounded down, when equipping it. The back slot
+is exempt from that item limit, but still counts toward worn weight.
+
+Armor class and bare-hand damage use the full weight of equipped items.
+For attacks, add half of each equipped item's weight, rounding each item
+down first. The free attack allowance is STR / 2, rounded down. Every full
+10 pounds above that allowance costs one base monk attack, leaving at least
+one. You are warned only when equipment weight actually costs an attack.
+
+Loose inventory does not count toward these monk weight penalties. Worn
+containers include their effective contents weight, after any bag weight
+reduction. Normal carrying limits and general encumbrance still apply.
+
+Keep your wield, secondary weapon, hold, shield and light slots free for
+your normal martial-arts attacks. See Martial Arts for the AC and damage
+allowances and the full combat rules.
 
 ==Allowed races==
 
@@ -17169,6 +17232,7 @@ specialization/multiclass state. Type specialize to see personal choices.
 ==See also==
 
 * Monk Skills
+* Martial Arts
 * Classes
 * Specialization
 * Multiclass
@@ -17176,7 +17240,7 @@ specialization/multiclass state. Type specialize to see personal choices.
 #0
 
 Monk Skills
-Monk Skills - Last Edited: 2026-10-18
+Monk Skills - Last Edited: 2026-11-07
 ============================================================
 The following is a list of all skills and spells available to the Monk class:
 These are base-class grants before specialization changes.
@@ -17205,6 +17269,7 @@ None.
 ==See also==
 
 * Monk
+* Martial Arts
 * Specialization
 * Spell circle
 

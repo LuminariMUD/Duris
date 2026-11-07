@@ -2525,3 +2525,29 @@ checks saved race/class/faction/alignment and all five equipped Monk kit items
 with stable UIDs across save/restart/relogin. It does not exercise teacher-led
 specialization or a loaded production world. Keep both help import sources in
 sync with `python3 tests/async/test_class_helpfiles_contract.py`.
+
+## Monk equipped-weight attack penalty
+
+Monk attack encumbrance uses only equipped items, with each item's effective
+weight halved and rounded down before summing. Loose inventory and linked
+riders are excluded. Preserve the `STR / 2` allowance, one attack lost per
+full 10 pounds above it, at least one remaining base attack, and warnings
+only when the penalty removes attacks. NPC and trusted-staff exemptions
+remain in place. Worn bag contents count through their effective bag weight.
+The full-weight AC and bare-hand damage penalties remain separate; their
+rules are documented in [Player classes](../reference/CLASSES.md#monk-equipment-and-weight).
+
+`python3 tests/async/test_monk_attack_weight.py` compiles the production monk
+attack branch and weight propagation under ASan/UBSan. It covers heavy and
+empty inventory with the same equipment, low and odd Strength, each threshold
+boundary, per-item half-weight rounding, the one-attack floor, warning
+suppression, a bag moved from worn equipment into inventory, growing bag
+contents, linked riders, staff/NPC exemptions, and slow after the penalty.
+
+`python3 tests/async/test_ability_skills_2.py` checks the live martial-arts facts
+and their 79-column layout. `python3 tests/async/test_class_helpfiles_contract.py`
+checks the mirrored Monk pages; `python3 tests/async/test_flatfile_help_catalog.py`
+loads both maintained help sources through the runtime catalog. Also run
+`python3 scripts/format_help_topics.py`, `python3 tests/async/test_help_layout.py`,
+and `make -C src` after changing these rules. Source-help verification does not
+publish a database-backed catalog; publication follows the help-system procedure.

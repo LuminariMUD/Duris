@@ -36,6 +36,17 @@ int main(int argc, char **argv)
 			hardcore->text.find("Arena deaths do not consume a life") !=
 				std::string::npos,
 		"Hardcore help did not publish the three-life policy");
+	const flatfile_help_entry *monk = flatfile_help_catalog_find(catalog, "Monk");
+	require(monk && monk->text.find("Loose inventory does not count") != std::string::npos &&
+			monk->text.find("free attack allowance is STR / 2") != std::string::npos,
+		"Monk help did not publish equipment-only attack encumbrance");
+	const flatfile_help_entry *martial = flatfile_help_catalog_find(catalog, "Martial Arts");
+	require(martial &&
+			martial->text.find("Attacks: add half of each equipped item's weight") !=
+				std::string::npos &&
+			martial->text.find("rounding each item down") != std::string::npos &&
+			martial->text.find("Weight cannot add attacks") != std::string::npos,
+		"Martial Arts help did not publish weight rounding and attack limits");
 
 	const auto matches = flatfile_help_catalog_search(catalog, "celest", 101);
 	require(matches.size() > 1, "substring search did not find multiple topics");

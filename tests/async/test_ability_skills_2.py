@@ -601,7 +601,12 @@ static void check_pages() {
     HAS(tiger_palm_facts, "  Chance: 101 in 101\n  Duration: 50 seconds\n  Psionic spell damage you take: 65% of normal, added to other factors\n");
     HAS(fist_of_dragon_facts, "  Chance: 100 in 101\n  Duration: 56 seconds\n  Chance a melee hit ignores armor that helps the target: 1 in 3\n");
     HAS(martial_arts_facts, "  Armor class: -324\n");
-    HAS(martial_arts_facts, "  Bare-hand damage added: 9\n  Attacks each round: 2-7\n");
+    HAS(martial_arts_facts, "  Bare-hand damage added: 9\n");
+    HAS(martial_arts_facts, "    (full equipped weight above level * STR / 100 reduces base damage)\n");
+    HAS(martial_arts_facts, "  Attacks each round: 2-7\n");
+    HAS(martial_arts_facts, "    (sum half of each equipped item's weight, rounded down)\n"
+                            "    (lose 1 per full 10 lb above STR / 2; at least 1 remains)\n"
+                            "    (inventory ignored; worn bags include their effective contents)\n");
     HAS(martial_arts_facts, "  Chance to counter a blow: 4-15 in 150\n");
     HAS(martial_arts_facts, "  Chance a knockdown lets you roll back up: 99 in 1000, then 99 in 100\n");
     ch = viewer(viewers[5], 36); // way of the snake

@@ -18,6 +18,7 @@ classes; its point estimates are distinct from these implemented rules.
 - [Learning, spell circles, and resources](#learning-spell-circles-and-resources)
 - [Multiclassing](#multiclassing)
 - [Stats, equipment, and identity](#stats-equipment-and-identity)
+  - [Monk equipment and weight](#monk-equipment-and-weight)
 - [Unavailable commands and temporary forms](#unavailable-commands-and-temporary-forms)
 - [Implementation map](#implementation-map)
 - [Verification and maintenance](#verification-and-maintenance)
@@ -427,6 +428,53 @@ stats used by an ability, rather than assuming a single universal best stat.
   and displayed/disguised race also differ. The definitions in
   [utility.c](../../src/core/utility.c), [utils.h](../../src/core/utils.h), and
   `innates.c` determine which identity each feature uses.
+
+### Monk equipment and weight
+
+Use `help monk`, `help martial arts`, and `skills info martial arts` for the
+player-facing rules. Keep their prose in both maintained help sources in sync.
+The following rules use current Strength (`STR`), level (`L`), and martial-arts
+rating (`M`). All integer divisions discard fractional remainders.
+
+`W` is the full effective weight of all equipped items. For the attack check,
+`E` is the sum of each equipped item's weight divided by two, rounding each
+item down before summing. This matches the equipment contribution maintained
+by `equip_char`; it is not `W / 2`. Loose inventory and linked riders do not
+enter these monk-specific weight calculations. Worn containers include their
+effective contents weight after bag reductions. Normal carrying capacity,
+movement costs, and general encumbrance still use the ordinary carried load.
+
+- **Per-item equip limit:** `wear` in [actobj.c](../../src/cmd/actobj.c) rejects
+  a player monk's item if its weight exceeds
+  `STR / monk.weight.str.modifier.denominator`. The checked-in divisor is 10.
+  The back slot is exempt from this admission limit, but still contributes to
+  all worn-weight calculations. Item masks and body-slot rules also apply.
+- **Armor class:** `MonkAcBonus` in
+  [new_skills.c](../../src/classes/new_skills.c) contributes
+  `clamp(-400, -4*L - M + 3*max(0, W - (60-L)/6), 50)` to calculated AC.
+  Lower AC is better. This uses full equipped weight; Strength does not
+  increase its low-level weight allowance.
+- **Bare-hand damage:** `MonkDamage` subtracts
+  `max(0, W - L*STR/100)` from rolled monk damage including its martial-arts
+  bonus, with a minimum result of 1. Damroll and subsequent combat modifiers
+  apply afterward. This also uses full equipped weight.
+- **Base attacks:** the monk branch of `calculate_attacks` in
+  [fight.c](../../src/combat/fight.c) subtracts one attack per full 10 pounds
+  by which `E` exceeds `STR / 2`. It cannot add attacks or remove the last
+  base attack, and warns only on a positive reduction. NPC monks and trusted
+  staff retain their exemption from this attack-weight penalty. Later combat
+  modifiers and bonus attacks still apply.
+
+At 100 STR with no other equipped weight, a 119-pound worn back container
+contributes 59 to `E` and costs no attacks. At 120 pounds it contributes 60
+and costs one base attack. Each separate 1-pound item contributes zero to `E`.
+Carrying the same container in loose inventory removes it from all three worn-weight
+penalties, while its ordinary encumbrance remains.
+
+The hand restriction is separate from weight. A weapon in wield or secondary,
+an item in hold, a shield, or an equipped light limits the player monk to one
+base attack. Occupying wield, secondary, hold, or shield also changes monk
+bare-hand dice to 1d1; a light alone does not change those dice.
 
 ## Unavailable commands and temporary forms
 
