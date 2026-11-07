@@ -42,7 +42,7 @@ for filename, signatures in [
                   "void show_exits_to_char(", "void display_room_auras("]),
     ("weather.c", ["void send_to_weather_sector("]),
     ("fight.c", ["void dam_message(", "static combat_outcome_participant *combat_outcome_add_participant("]),
-    ("specs.object.c", ["int totem_of_mastery(", "int circlet_of_light("]),
+    ("specs.object.c", ["P_char melee_proc_target(", "int totem_of_mastery(", "int circlet_of_light("]),
     ("prompt.c", ["void make_prompt("]),
     ("player_load_materialize.c", ["bool apply_string("]),
     ("json_utils.c", ["char *json_build_comm_channel("]),
