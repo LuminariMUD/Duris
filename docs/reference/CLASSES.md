@@ -461,8 +461,10 @@ movement costs, and general encumbrance still use the ordinary carried load.
 - **Base attacks:** the monk branch of `calculate_attacks` in
   [fight.c](../../src/combat/fight.c) subtracts one attack per full 10 pounds
   by which `E` exceeds `STR / 2`. It cannot add attacks or remove the last
-  base attack, and warns only on a positive reduction. NPC monks and trusted
-  staff retain their exemption from this attack-weight penalty. Later combat
+  base attack, and warns only on a positive base reduction, before slow or
+  PvP special-hit conversion. Later rounding can leave the final swing count
+  unchanged. NPC monks and trusted staff retain their exemption from this
+  attack-weight penalty. Later combat
   modifiers and bonus attacks still apply.
 
 At 100 STR with no other equipped weight, a 119-pound worn back container

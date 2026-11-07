@@ -10572,7 +10572,8 @@ the martial-arts damage bonus. This cannot reduce that base damage below
 Attacks: add half of each equipped item's weight, rounding each item down
 before adding. Your free allowance is STR / 2 pounds. Every full 10 pounds
 above it costs one base monk attack. Weight cannot add attacks or reduce
-you below one base monk attack. You are warned only when attacks are lost.
+you below one base monk attack. The weight warning reports this base loss,
+before slow and other combat modifiers, which can hide the final swing loss.
 NPC monks and trusted staff are exempt from this attack-weight penalty.
 
 At 100 STR with no other equipped weight, a 119-pound worn back container
@@ -11106,7 +11107,8 @@ Armor class and bare-hand damage use the full weight of equipped items.
 For attacks, add half of each equipped item's weight, rounding each item
 down first. The free attack allowance is STR / 2, rounded down. Every full
 10 pounds above that allowance costs one base monk attack, leaving at least
-one. You are warned only when equipment weight actually costs an attack.
+one. The weight warning reports lost base attacks before slow or other
+combat modifiers; the final swing count can be unchanged after rounding.
 
 Loose inventory does not count toward these monk weight penalties. Worn
 containers include their effective contents weight, after any bag weight

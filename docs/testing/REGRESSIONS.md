@@ -2538,11 +2538,17 @@ The full-weight AC and bare-hand damage penalties remain separate; their
 rules are documented in [Player classes](../reference/CLASSES.md#monk-equipment-and-weight).
 
 `python3 tests/async/test_monk_attack_weight.py` compiles the production monk
-attack branch and weight propagation under ASan/UBSan. It covers heavy and
-empty inventory with the same equipment, low and odd Strength, each threshold
+attack branch, the real martial-arts attack count, and weight propagation under
+ASan/UBSan. It covers heavy and empty inventory with the same equipment,
+low and odd Strength, each threshold
 boundary, per-item half-weight rounding, the one-attack floor, warning
 suppression, a bag moved from worn equipment into inventory, growing bag
-contents, linked riders, staff/NPC exemptions, and slow after the penalty.
+contents, linked riders, negative-weight magical bags, all five occupied-hand
+slots, low-skill/level attack floors, staff/NPC exemptions, and the penalty
+applying to staff emulating mortals. Slow and PvP conversion happen after
+the penalty. A 120,900-state sweep checks that
+more equipment weight never adds attacks, more Strength never removes them,
+and warnings describe positive base-attack reductions.
 
 `python3 tests/async/test_ability_skills_2.py` checks the live martial-arts facts
 and their 79-column layout. `python3 tests/async/test_class_helpfiles_contract.py`

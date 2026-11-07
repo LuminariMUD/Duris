@@ -760,6 +760,7 @@ std::string martial_arts_facts(P_char ch)
 		"    (1 with a weapon, shield, held item, or equipped light)\n"
 		"    (sum half of each equipped item's weight, rounded down)\n"
 		"    (lose 1 per full 10 lb above STR / 2; at least 1 remains)\n"
+		"    (weight reduces base attacks before slow and other modifiers)\n"
 		"    (inventory ignored; worn bags include their effective contents)\n";
 	if (rating)
 		text += fact("Chance to counter a blow",

@@ -606,6 +606,7 @@ static void check_pages() {
     HAS(martial_arts_facts, "  Attacks each round: 2-7\n");
     HAS(martial_arts_facts, "    (sum half of each equipped item's weight, rounded down)\n"
                             "    (lose 1 per full 10 lb above STR / 2; at least 1 remains)\n"
+                            "    (weight reduces base attacks before slow and other modifiers)\n"
                             "    (inventory ignored; worn bags include their effective contents)\n");
     HAS(martial_arts_facts, "  Chance to counter a blow: 4-15 in 150\n");
     HAS(martial_arts_facts, "  Chance a knockdown lets you roll back up: 99 in 1000, then 99 in 100\n");

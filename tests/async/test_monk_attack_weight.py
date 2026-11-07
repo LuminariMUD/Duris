@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute monk attacks with half-weight equipment and unrestricted inventory."""
+"""Execute real martial-arts attacks with equipment-only weight penalties."""
 
 from pathlib import Path
 import subprocess
@@ -15,18 +15,23 @@ monk_branch = monk_branch.split("\n\telse\n\t{ // not MONK", 1)[0]
 PRELUDE = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "abilities/abilities.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
 
-static int base_attacks, warnings;
+static int warnings, martial_rating = 100;
 static P_char rider;
-int MonkNumberOfAttacks(P_char) { return base_attacks; }
 int GET_CLASS(P_char ch, unsigned int cls) { return ch->player.m_class & cls; }
-int number(int, int high) { return high; }
+int GET_CHAR_SKILL_P(P_char, int) { return martial_rating; }
+bool notch_skill(P_char, int, float) { return false; }
+int number(int low, int high) { return high == 100 ? low : high; }
+static int roll_dice(int count, int) { return count; }
+const Rolls live_rolls = {roll_dice, number};
+int BOUNDED(int low, int value, int high) { return std::min(high, std::max(low, value)); }
 P_char get_linking_char(P_char, unsigned short) { return rider; }
 void send_to_char(const char *message, P_char) {
-    assert(strstr(message, "causing you to lose attacks"));
+    assert(strstr(message, "reduces your base monk attacks"));
     ++warnings;
 }
 
@@ -42,13 +47,14 @@ MONK_BRANCH
 
 int main() {
     char_data monk{}, opponent{}, passenger{};
-    pc_only_data pc{};
-    obj_data bag{}, second_item{}, inventory{}, contents{};
+    pc_only_data pc{}, other_pc{};
+    obj_data bag{}, second_item{}, inventory{}, contents{}, hand_item{};
     monk.only.pc = &pc;
     monk.player.m_class = CLASS_MONK;
     monk.player.level = 50;
     monk.specials.fighting = &opponent;
     opponent.specials.act = ACT_ISNPC;
+    opponent.only.pc = &other_pc;
     monk.equipment[WEAR_BACK] = &bag;
     monk.equipment[WEAR_FINGER_L] = &second_item;
     monk.carrying = &inventory;
@@ -72,7 +78,7 @@ int main() {
             bag.weight = test.attack_weight * 2;
             inventory.weight = inventory_weight;
             monk.specials.carry_weight = test.attack_weight + inventory_weight;
-            base_attacks = test.before;
+            monk.equipment[WEAR_LIGHT] = test.before == 1 ? &hand_item : nullptr;
             warnings = 0;
             const int actual = monk_attacks(&monk, slots);
             if (actual != test.after || warnings != (test.after < test.before)) {
@@ -82,12 +88,12 @@ int main() {
                         test.before, actual, test.after, warnings);
                 return 1;
             }
-            assert(actual >= 1 && actual <= base_attacks);
+            assert(actual >= 1 && actual <= test.before);
         }
     }
 
     // Round each equipped item down before summing, not the combined weight.
-    base_attacks = 5;
+    monk.equipment[WEAR_LIGHT] = nullptr;
     monk.curr_stats.Str = 100;
     bag.weight = 119;
     second_item.weight = 1;
@@ -130,6 +136,20 @@ int main() {
     assert(monk_attacks(&monk, slots) == 5 && warnings == 0);
     rider = nullptr;
 
+    // Negative-weight magical bags have zero effective equipment weight.
+    monk.equipment[WEAR_BACK] = &bag;
+    bag.weight = -100;
+    monk.specials.carry_weight = 500;
+    assert(monk_attacks(&monk, slots) == 5 && warnings == 0);
+
+    // The real hand restriction leaves one base attack and suppresses warnings.
+    bag.weight = 1000;
+    for (int hand : {WIELD, SECONDARY_WEAPON, HOLD, WEAR_SHIELD, WEAR_LIGHT}) {
+        monk.equipment[hand] = &hand_item;
+        assert(monk_attacks(&monk, slots) == 1 && warnings == 0);
+        monk.equipment[hand] = nullptr;
+    }
+
     // Trusted staff and NPC monks retain their existing weight exemptions.
     monk.equipment[WEAR_BACK] = &bag;
     bag.weight = 1000;
@@ -137,17 +157,69 @@ int main() {
     monk.specials.carry_weight = 500;
     monk.player.level = MAXLVLMORTAL + 1;
     warnings = 0;
-    assert(monk_attacks(&monk, slots) == 5 && warnings == 0);
+    const int staff_attacks = MonkNumberOfAttacks(&monk);
+    assert(monk_attacks(&monk, slots) == staff_attacks && warnings == 0);
+    // Staff emulating a mortal must receive the same penalty as other players.
+    monk.specials.act = PLR_MORTAL;
+    assert(monk_attacks(&monk, slots) == 1 && warnings == 1);
     monk.player.level = 50;
     monk.specials.act = ACT_ISNPC;
+    warnings = 0;
     assert(monk_attacks(&monk, slots) == 5 && warnings == 0);
 
-    // Slow still applies after the weight reduction.
+    // The warning describes base attacks: slow can hide the final swing loss.
     monk.specials.act = 0;
-    bag.weight = 60;
-    monk.specials.carry_weight = 30;
     monk.specials.affected_by2 = AFF2_SLOW;
+    bag.weight = 0;
+    assert(monk_attacks(&monk, slots) == 2 && warnings == 0);
+    bag.weight = 60;
     assert(monk_attacks(&monk, slots) == 2 && warnings == 1);
+
+    // PvP consumes pairs of base attacks for a special hit after weight applies.
+    monk.specials.affected_by2 = 0;
+    opponent.specials.act = 0;
+    bag.weight = 0;
+    warnings = 0;
+    assert(monk_attacks(&monk, slots) == 3 && warnings == 0);
+    assert(slots[0] == WEAR_NONE && slots[1] == WEAR_NONE && slots[2] == PRIMARY_WEAPON);
+    bag.weight = 60;
+    assert(monk_attacks(&monk, slots) == 2 && warnings == 1);
+    assert(slots[0] == WEAR_NONE && slots[1] == WEAR_NONE);
+
+    // Real low-skill and high-level attack floors survive weight and inventory.
+    opponent.specials.act = ACT_ISNPC;
+    struct rating_case { int level, rating, unweighted; };
+    for (const auto &test : {rating_case{1, 100, 1}, {30, 100, 3}, {50, 1, 1},
+                             {51, 100, 6}, {56, 0, 2}, {56, 100, 7}}) {
+        monk.player.level = test.level;
+        martial_rating = test.rating;
+        bag.weight = 0;
+        monk.specials.carry_weight = 500;
+        warnings = 0;
+        assert(monk_attacks(&monk, slots) == test.unweighted && warnings == 0);
+        bag.weight = 1000;
+        assert(monk_attacks(&monk, slots) == 1);
+        assert(warnings == (test.unweighted > 1));
+    }
+
+    // Adversarial properties: more equipped weight cannot add attacks; more
+    // Strength cannot remove them. Include zero/negative effective bag weights.
+    monk.player.level = 50;
+    martial_rating = 100;
+    int previous_strength[403]{};
+    for (int strength = 1; strength <= 300; ++strength) {
+        monk.curr_stats.Str = strength;
+        int previous_weight = 5;
+        for (int weight = -2; weight <= 400; ++weight) {
+            bag.weight = weight;
+            warnings = 0;
+            const int actual = monk_attacks(&monk, slots);
+            assert(actual >= 1 && actual <= previous_weight);
+            assert(actual >= previous_strength[weight + 2]);
+            assert(warnings == (actual < 5));
+            previous_weight = previous_strength[weight + 2] = actual;
+        }
+    }
     puts("monk equipped half-weight, inventory, bags, thresholds, warnings and exemptions passed");
 }
 '''
@@ -162,6 +234,10 @@ with tempfile.TemporaryDirectory(prefix="monk-weight-", dir=directory) as tempor
             extract_function("utility.c", "int total_carried_weight("),
             extract_function("handler.c", "static void encumbrance_adjust("),
             extract_function("handler.c", "void add_weight(P_obj obj, int weight)\n{"),
+            extract_function("new_skills.c", "static int monk_attack_rolls("),
+            extract_function("new_skills.c", "static int monk_attack_count("),
+            extract_function("new_skills.c", "static int monk_attack_roll_limit("),
+            extract_function("new_skills.c", "int MonkNumberOfAttacks("),
         ]))
     )
     subprocess.run([

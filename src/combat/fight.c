@@ -10446,7 +10446,7 @@ int calculate_attacks(P_char ch, int attacks[])
 			{
 				num_atts -= lost_attacks;
 				send_to_char(
-					"&+LYour equipped gear weighs you down, causing you to lose attacks.&n\r\n",
+					"&+LYour equipped gear reduces your base monk attacks.&n\r\n",
 					ch);
 			}
 		}
