@@ -6,12 +6,10 @@ feature and one review target. Continue the existing implementation.
 **Execution scope:** integrate the feature, finish the focused proof and review,
 and deliver one PR. Production deployment remains a separate owner operation.
 
-**Status:** Implementation and local qualification are complete in
-[PR #748](https://github.com/LuminariMUD/Duris/pull/748). The full 975-case run
-passed 972 initially; three fixture integration failures were repaired and their
-focused reruns pass. Unaffected passing results are retained. Native gameplay,
-both-backend builds, and the two-player rollback/re-upgrade rehearsal pass.
-Merge and production deployment require the owner's go-ahead.
+**Status:** Merged in [PR #748](https://github.com/LuminariMUD/Duris/pull/748) as
+`88a3375a0`, #706 is closed, and the feature shipped to production in the
+November 7 release. The delivery and superseded branches are preserved as
+`archive/named-zone-set-*-20261106` tags.
 
 ## Outcome
 
@@ -50,7 +48,7 @@ not a request to redesign the effect system.
 The delivery branch is `branch/named-zone-set-expansion`, with one consolidated
 [PR #748](https://github.com/LuminariMUD/Duris/pull/748) against `master`. It retains
 the accumulated implementation, accepted review repairs, and landed upstream
-changes. Existing commits and branches are preserved.
+changes. Existing commits are preserved under the archive tags.
 
 The integration includes these existing repairs or their verified equivalents:
 
@@ -62,7 +60,7 @@ The integration includes these existing repairs or their verified equivalents:
 - `2a482448e`: require fresh captured output for each report-cache state.
 
 The final diff is reconciled with `master`. Superseded unmerged PRs are closed and
-point to #748; their branches and commits remain intact. Address concrete review
+point to #748; their commits remain under the archive tags. Address concrete review
 findings on the single delivery branch.
 
 A weaker ordinary cast still replaces a level-scaled set grant for its duration. This
