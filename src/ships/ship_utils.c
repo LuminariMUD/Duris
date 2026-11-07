@@ -2519,6 +2519,10 @@ bool ocean_pvp_state()
 				continue;
 			if (SHIP_DOCKED(contacts[i].ship) || contacts[i].ship->race == NPCSHIP)
 				continue;
+			if (SHIP_CLASS(contacts[i].ship) == SH_SLOOP ||
+			    (SHIP_CLASS(contacts[i].ship) == SH_YACHT &&
+			     has_no_weapons(contacts[i].ship)))
+				continue;
 
 			// If they're two non-NPC ships (handled above) that have different races.
 			if (contacts[i].ship->race != ship->race)

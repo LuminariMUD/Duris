@@ -279,6 +279,17 @@ static void pvp() {
     target.flags = LOADED;
     target.race = GOODIESHIP;
     assert(!ocean_pvp_state());
+    target.race = EVILSHIP;
+    for (P_ship small : {&observer, &target}) {
+        small->m_class = SH_SLOOP;
+        assert(!ocean_pvp_state());
+        small->m_class = SH_YACHT;
+        assert(!ocean_pvp_state());
+        small->slot[0].type = SLOT_WEAPON;
+        assert(ocean_pvp_state());
+        small->slot[0].type = 0;
+        small->m_class = SH_FRIGATE;
+    }
     puts("PASS ocean PvP requires opposing ships in actual contact, including across seams");
 }
 
