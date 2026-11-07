@@ -1213,7 +1213,7 @@ int shimmering_longsword(P_obj obj, P_char ch, int cmd, char *arg)
 	if (!number(0, 29))
 	{
 		act("As $p slashes $N's armor, a &+Bbright blue force of "
-		    "mystic power streaks out the blade&n, bombarding $N body!",
+		    "mystic power streaks out the blade&n, bombarding $N's body!",
 		    FALSE, obj->loc.wearing, obj, vict, TO_CHAR);
 		act("As $n's $q slashes your armor, a &+Bbright blue force "
 		    "of mystic power streaks out the blade&n, bombarding your body!",

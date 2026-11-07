@@ -4451,8 +4451,8 @@ int varon(P_obj obj, P_char ch, int cmd, char *arg)
 		act("glimpse of thought, you realize that death has won this day... ", FALSE, ch, 0,
 		    victim, TO_VICT);
 
-		act("$n points his disruptor at $N, and pulls the trigger with a grin.", TRUE, ch,
-		    0, victim, TO_NOTVICT);
+		act("$n points $s disruptor at $N, and pulls the trigger with a grin.", TRUE, ch, 0,
+		    victim, TO_NOTVICT);
 		act("The disruptor glows and blasts forth a bright beam of radiant energy.", TRUE,
 		    ch, 0, victim, TO_NOTVICT);
 		act("The beam strikes $N in the chest, who screams in unbelievable ", TRUE, ch, 0,

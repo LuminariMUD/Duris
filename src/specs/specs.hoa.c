@@ -214,7 +214,7 @@ int illesarus(P_obj obj, P_char ch, int cmd, char *arg)
 				}
 				break;
 			case LIMB_LEG:
-				act_trio("$N g&+Lasps as your vorpal sword nearly severs $S leg!&n",
+				act_trio("$N &+Lgasps as your vorpal sword nearly severs $S leg!&n",
 					 "$q &+Lnearly severs your leg from your body!&n",
 					 "$N &+Lgasps as the vorpal sword nearly severs $S leg!&n",
 					 FALSE, ch, obj, vict);

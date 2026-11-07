@@ -61,7 +61,7 @@ int barovia_undead_necklace(P_obj obj, P_char ch, int cmd, char *arg)
 			    FALSE, ch, 0, victim, TO_CHAR);
 			act("&+wSeeing the first attempt fail, $n &n&+wsends a new wave of &+Wholy energy&n&+w at $N.",
 			    TRUE, ch, 0, victim, TO_NOTVICT);
-			act("&+wSeeing the first attempt fail, $n &n&+wsends a new wave of &+Wholy energy&n&+w at you!.",
+			act("&+wSeeing the first attempt fail, $n &n&+wsends a new wave of &+Wholy energy&n&+w at you!",
 			    TRUE, ch, 0, victim, TO_VICT);
 			spell_destroy_undead(20, ch, NULL, 0, victim, 0);
 		}

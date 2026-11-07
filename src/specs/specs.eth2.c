@@ -257,17 +257,17 @@ int eth2_tree_obj(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 
 		if (IS_TRUSTED(ch))
 		{
-			act("Above in you in the &+Ldarkness&n, leaves and branches start to creak and groan\n"
+			act("Above you in the &+Ldarkness&n, leaves and branches start to creak and groan\n"
 			    "but then become quiet again.\n",
 			    FALSE, ch, 0, 0, TO_CHAR);
 			return FALSE;
 		}
 
-		act("Above in you in the &+Ldarkness&n, leaves and branches start to creak and groan\n"
+		act("Above you in the &+Ldarkness&n, leaves and branches start to creak and groan\n"
 		    "as the &+gforest &+Gceiling&n comes alive!\n",
 		    FALSE, ch, 0, 0, TO_ROOM);
 
-		act("Above in you in the &+Ldarkness&n, leaves and branches start to creak and groan\n"
+		act("Above you in the &+Ldarkness&n, leaves and branches start to creak and groan\n"
 		    "as the &+gforest &+Gceiling&n comes alive!\n",
 		    FALSE, ch, 0, 0, TO_CHAR);
 
