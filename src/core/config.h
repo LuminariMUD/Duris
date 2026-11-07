@@ -29,7 +29,6 @@
 /* configurable options */
 
 #define ENABLE_TERSE 1
-#define THARKUN_ARTIS 1
 
 #define MEMCHK 1 /* Memory debugger, 1 for simple, 2 for long */
 #define DB_NOTIFYoff /* Logs when it can't find shit in area files */

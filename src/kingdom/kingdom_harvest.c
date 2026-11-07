@@ -1333,10 +1333,7 @@ static void kingdom_node_reload_event(P_char /*ch*/, P_char /*victim*/, P_obj, v
  * SELF-EXTRACTION IS SAFE HERE, and it is worth saying why, because it is not
  * safe everywhere. The periodic driver is event_object_proc() (world/db.c),
  * which re-reads current_nevent after calling the proc and stops if the object
- * has gone -- extract_obj() detaches an object's events before free_obj(). The
- * OTHER driver, item_procs() (specs/specs.assign.c), walks object_list and
- * would read i->next out of freed memory; it is dead code with no callers
- * anywhere in the tree.
+ * has gone -- extract_obj() detaches an object's events before free_obj().
  */
 static int kingdom_node_proc(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 {

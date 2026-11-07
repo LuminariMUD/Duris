@@ -363,13 +363,6 @@ void assign_mobiles(void)
 	mob_index[real_mobile0(93611)].func.mob = sleezy_prostitute;
 	mob_index[real_mobile0(93613)].func.mob = tired_young_man;
 
-#if 0
-  /* Northern Verzanan */
-/*   mob_index[real_mobile0 (3080)].func.mob = jailkeeper; */
-  mob_index[real_mobile0(3081)].func.mob = cityguard;
-  mob_index[real_mobile0(3082)].func.mob = verzanan_guard_three;
-  mob_index[real_mobile0(3083)].func.mob = cityguard;
-#endif
 	mob_index[real_mobile0(1250)].func.mob = archer;
 	mob_index[real_mobile0(1251)].func.mob = archer;
 	mob_index[real_mobile0(1252)].func.mob = archer;
@@ -466,85 +459,6 @@ void assign_mobiles(void)
 	/* images */
 	mob_index[real_mobile0(250)].func.mob = imageproc;
 
-#if 0
-  mob_index[real_mobile0(2811)].func.mob = rogue_one;
-  mob_index[real_mobile0(2812)].func.mob = mercenary_two;
-  mob_index[real_mobile0(2813)].func.mob = youth_one;
-  mob_index[real_mobile0(2814)].func.mob = thief;
-  mob_index[real_mobile0(2815)].func.mob = homeless_two;
-  mob_index[real_mobile0(2816)].func.mob = homeless_one;
-  mob_index[real_mobile0(2818)].func.mob = prostitute_one;
-  mob_index[real_mobile0(2820)].func.mob = dog_two;
-  mob_index[real_mobile0(2824)].func.mob = guild_guard_thirteen;
-  mob_index[real_mobile0(2825)].func.mob = assassin_one;
-  mob_index[real_mobile0(2827)].func.mob = mercenary_three;
-  mob_index[real_mobile0(2829)].func.mob = youth_two;
-  mob_index[real_mobile0(2830)].func.mob = brigand_one;
-  mob_index[real_mobile0(2831)].func.mob = thief;
-  mob_index[real_mobile0(2832)].func.mob = commoner_four;
-  mob_index[real_mobile0(2833)].func.mob = commoner_five;
-  mob_index[real_mobile0(2834)].func.mob = commoner_six;
-  mob_index[real_mobile0(2835)].func.mob = mercenary_three;
-  mob_index[real_mobile0(2836)].func.mob = drunk_two;
-  /*
-     Northern Verzanan
-   */
-  mob_index[real_mobile0(3006)].func.mob = drunk_two;
-  mob_index[real_mobile0(3007)].func.mob = homeless_one;
-  mob_index[real_mobile0(3008)].func.mob = crier_one;
-  mob_index[real_mobile0(3009)].func.mob = merchant_one;
-  mob_index[real_mobile0(3010)].func.mob = farmer_one;
-  mob_index[real_mobile0(3011)].func.mob = baker_one;
-  mob_index[real_mobile0(3012)].func.mob = baker_two;
-  mob_index[real_mobile0(3014)].func.mob = mage_one;
-  mob_index[real_mobile0(3018)].func.mob = warrior_one;
-  mob_index[real_mobile0(3024)].func.mob = guild_guard_nine;
-  mob_index[real_mobile0(3025)].func.mob = guild_guard_ten;
-  mob_index[real_mobile0(3026)].func.mob = guild_guard_twelve;
-  mob_index[real_mobile0(3027)].func.mob = guild_guard_eleven;
-  mob_index[real_mobile0(3030)].func.mob = cleric_one;
-  mob_index[real_mobile0(3035)].func.mob = verzanan_guard_two;
-  mob_index[real_mobile0(3038)].func.mob = commoner_one;
-  mob_index[real_mobile0(3039)].func.mob = commoner_two;
-  mob_index[real_mobile0(3042)].func.mob = money_changer;
-  mob_index[real_mobile0(3062)].func.mob = dog_one;
-  mob_index[real_mobile0(3064)].func.mob = drunk_one;
-  mob_index[real_mobile0(3065)].func.mob = homeless_one;
-  mob_index[real_mobile0(3066)].func.mob = cat_one;
-  mob_index[real_mobile0(3068)].func.mob = blob;
-  mob_index[real_mobile0(3069)].func.mob = jester;
-  mob_index[real_mobile0(3070)].func.mob = verzanan_guard_one;
-  mob_index[real_mobile0(3090)].func.mob = cat_one;
-
-  /*
-     Central Verzanan
-   */
-  mob_index[real_mobile0(3201)].func.mob = mercenary_one;
-  mob_index[real_mobile0(3203)].func.mob = drunk_three;
-  mob_index[real_mobile0(3204)].func.mob = casino_one;
-  mob_index[real_mobile0(3205)].func.mob = casino_two;
-  mob_index[real_mobile0(3206)].func.mob = casino_four;
-  mob_index[real_mobile0(3207)].func.mob = casino_three;
-  mob_index[real_mobile0(3210)].func.mob = mercenary_one;
-  mob_index[real_mobile0(3211)].func.mob = piergeiron;
-  mob_index[real_mobile0(3212)].func.mob = guard_two;
-  mob_index[real_mobile0(3215)].func.mob = park_one;
-  mob_index[real_mobile0(3216)].func.mob = park_two;
-  mob_index[real_mobile0(3217)].func.mob = park_three;
-  mob_index[real_mobile0(3219)].func.mob = park_four;
-  mob_index[real_mobile0(3220)].func.mob = park_five;
-  mob_index[real_mobile0(3221)].func.mob = park_six;
-  mob_index[real_mobile0(3229)].func.mob = guard_one;
-  mob_index[real_mobile0(3231)].func.mob = dog_two;
-  mob_index[real_mobile0(3232)].func.mob = youth_one;
-  mob_index[real_mobile0(3234)].func.mob = tailor_one;
-  mob_index[real_mobile0(3235)].func.mob = shopper_one;
-  mob_index[real_mobile0(3236)].func.mob = drunk_three;
-  mob_index[real_mobile0(3240)].func.mob = shopper_two;
-  mob_index[real_mobile0(3242)].func.mob = mercenary_two;
-  mob_index[real_mobile0(3243)].func.mob = mercenary_three;
-  mob_index[real_mobile0(3244)].func.mob = piergeiron_guard;
-#endif
 	/*
 	   Mt. Skelenak (New Moria)
 	 */
@@ -563,12 +477,6 @@ void assign_mobiles(void)
 	mob_index[real_mobile0(4510)].func.mob = underdark_track;
 	mob_index[real_mobile0(550)].func.mob = underdark_track;
 	mob_index[real_mobile0(551)].func.mob = underdark_track;
-
-#if 0
-  mob_index[real_mobile0(210000)].func.mob = undeadcont_track;
-  mob_index[real_mobile0(210001)].func.mob = undeadcont_track;
-  mob_index[real_mobile0(210002)].func.mob = undeadcont_track;
-#endif
 
 	// Newbie guards! - Kvark
 	mob_index[real_mobile0(910)].func.mob = newbie_guard_north;
@@ -598,57 +506,9 @@ void assign_mobiles(void)
 	   Alterian Region
 	 */
 
-#if 0
-  /* Verzanan Harbor */
-  mob_index[real_mobile0(5300)].func.mob = fisherman_one;
-  mob_index[real_mobile0(5302)].func.mob = fisherman_two;
-  mob_index[real_mobile0(5303)].func.mob = sailor_one;
-  mob_index[real_mobile0(5305)].func.mob = seaman_one;
-  mob_index[real_mobile0(5307)].func.mob = naval_one;
-  mob_index[real_mobile0(5308)].func.mob = naval_two;
-  mob_index[real_mobile0(5310)].func.mob = merchant_two;
-  mob_index[real_mobile0(5311)].func.mob = naval_three;
-  mob_index[real_mobile0(5313)].func.mob = lighthouse_one;
-  mob_index[real_mobile0(5315)].func.mob = lighthouse_two;
-  mob_index[real_mobile0(1210)].func.mob = commoner_three;
-  mob_index[real_mobile0(5317)].func.mob = seabird_one;
-  mob_index[real_mobile0(5318)].func.mob = seabird_two;
-  mob_index[real_mobile0(5320)].func.mob = naval_four;
-  mob_index[real_mobile0(5321)].func.mob = artillery_one;
-
-  /* The Guilds of Verzanan */
-  mob_index[real_mobile0(5500)].func.mob = guild_guard_one;
-  mob_index[real_mobile0(5504)].func.mob = young_paladin_one;
-  mob_index[real_mobile0(5505)].func.mob = guild_guard_two;
-  mob_index[real_mobile0(5507)].func.mob = wrestler_one;
-  mob_index[real_mobile0(5508)].func.mob = young_mercenary_one;
-  mob_index[real_mobile0(5511)].func.mob = guild_guard_three;
-  mob_index[real_mobile0(5514)].func.mob = young_monk_one;
-  mob_index[real_mobile0(5516)].func.mob = selune_one;
-  mob_index[real_mobile0(5517)].func.mob = selune_two;
-  mob_index[real_mobile0(5518)].func.mob = selune_three;
-  mob_index[real_mobile0(5519)].func.mob = selune_four;
-  mob_index[real_mobile0(5520)].func.mob = selune_five;
-  mob_index[real_mobile0(5521)].func.mob = selune_six;
-  mob_index[real_mobile0(5523)].func.mob = bouncer_four;
-  mob_index[real_mobile0(5524)].func.mob = guild_guard_four;
-  mob_index[real_mobile0(5527)].func.mob = prostitute_one;
-  mob_index[real_mobile0(5528)].func.mob = guild_guard_five;
-  mob_index[real_mobile0(5531)].func.mob = guild_guard_six;
-  mob_index[real_mobile0(5533)].func.mob = young_druid_one;
-  mob_index[real_mobile0(5535)].func.mob = guild_guard_seven;
-  mob_index[real_mobile0(5537)].func.mob = guild_guard_eight;
-  mob_index[real_mobile0(5538)].func.mob = young_necro_one;
-  mob_index[real_mobile0(5541)].func.mob = bouncer_two;
-  mob_index[real_mobile0(5542)].func.mob = bouncer_three;
-  mob_index[real_mobile0(5543)].func.mob = bouncer_one;
-#endif
 	/*
 	   dlsc (snik's zone) - temporary for testing
 	 */
-#if 0
-  mob_index[real_mobile0(5400)].func.mob = wristthrow_and_gore;
-#endif
 
 	/*
 	   Western Realms
@@ -1125,28 +985,6 @@ void assign_mobiles(void)
 	   undermountain
 	 */
 
-#if 0
-  mob_index[real_mobile0()].func.mob = um_durnan;
-  mob_index[real_mobile0()].func.mob = um_mhaere;
-  mob_index[real_mobile0()].func.mob = um_regular;
-  mob_index[real_mobile0()].func.mob = um_gambler;
-  mob_index[real_mobile0()].func.mob = um_tamsil;
-  mob_index[real_mobile0(92020)].func.mob = um_kevlar;
-  mob_index[real_mobile0(92021)].func.mob = um_thorn;
-  mob_index[real_mobile0(92022)].func.mob = um_korelar;
-  mob_index[real_mobile0()].func.mob = um_essra;
-  mob_index[real_mobile0()].func.mob = um_mezzoloth;
-  mob_index[real_mobile0()].func.mob = um_goblin_leader;
-  mob_index[real_mobile0()].func.mob = animated_sword;
-  mob_index[real_mobile0()].func.mob = malodine_one;
-  mob_index[real_mobile0()].func.mob = malodine_two;
-  mob_index[real_mobile0()].func.mob = malodine_three;
-  mob_index[real_mobile0()].func.mob = black_pudding;
-  mob_index[real_mobile0(92047)].func.mob = flying_dagger;
-  mob_index[real_mobile0(92058)].func.mob = ochre_jelly;
-  mob_index[real_mobile0(92062)].func.mob = helmed_horror;
-#endif
-
 	/* elemental plane bosses shout */
 	mob_index[real_mobile0(12400)].func.mob = menzellon_shout;
 	mob_index[real_mobile0(23806)].func.mob = ogremoch_shout;
@@ -1307,12 +1145,6 @@ void assign_objects(void)
 	obj_index[real_object0(VOBJ_UNDEAD_FERRY)].func.obj = charon_ship;
 
 	/* Olympus */
-#if 0
-  obj_index[real_object0(99801)].func.obj = olympus_portal;
-  obj_index[real_object0(99803)].func.obj = olympus_portal;
-  obj_index[real_object0(99805)].func.obj = olympus_portal;
-  obj_index[real_object0(99807)].func.obj = olympus_portal;
-#endif
 
 	obj_index[real_object0(67280)].func.obj = obj_index[real_object0(16263)].func.obj =
 		obj_index[real_object0(16268)].func.obj = obj_index[real_object0(26653)].func.obj =
@@ -1354,7 +1186,6 @@ void assign_objects(void)
 	obj_index[real_object0(7371)].func.obj = nexus;
 
 	/* Negative Plane */
-	obj_index[real_object0(26662)].func.obj = orb_of_destruction;
 	obj_index[real_object0(26621)].func.obj = sanguine;
 	obj_index[real_object0(26662)].func.obj = neg_orb;
 
@@ -1655,12 +1486,6 @@ void assign_objects(void)
 
 	/* dlsc - in for testing currently */
 
-#if 0
-  obj_index[real_object0(5484)].func.obj = frost_elb_dagger;
-  obj_index[real_object0(5436)].func.obj = dagger_submission;
-  mob_index[real_mobile0(5411)].func.mob = demon_chick;
-#endif
-
 	/* transparent tower */
 	obj_index[real_object0(16262)].func.obj = trans_tower_shadow_globe;
 	// obj_index[real_object0(16242)].func.obj = trans_tower_sword;
@@ -1744,15 +1569,6 @@ void assign_objects(void)
 	obj_index[real_object0(17)].func.obj = barb;
 
 	/* Alterian Wilderness */
-
-#if 0
-  /* Verzanan Harbor */
-  obj_index[real_object0(5316)].func.obj = gesen;
-
-  /* The Guilds of Verzanan */
-  obj_index[real_object0(5515)].func.obj = verzanan_portal;
-  obj_index[real_object0(5516)].func.obj = verzanan_portal;
-#endif
 
 	/* Western Realms */
 	//  obj_index[real_object0(5731)].func.obj = ship;
@@ -1843,15 +1659,6 @@ void assign_objects(void)
 	obj_index[real_object0(12474)].func.obj = teleporting_pool;
 	obj_index[real_object0(12476)].func.obj = teleporting_pool;
 	obj_index[real_object0(45536)].func.obj = teleporting_pool;
-#if 0
-  obj_index[real_object0(12462)].func.obj = teleporting_pool;
-  obj_index[real_object0(12464)].func.obj = teleporting_pool;
-  obj_index[real_object0(12466)].func.obj = teleporting_pool;
-  obj_index[real_object0(12478)].func.obj = teleporting_pool;
-  obj_index[real_object0(12480)].func.obj = teleporting_pool;
-  obj_index[real_object0(12482)].func.obj = teleporting_pool;
-  obj_index[real_object0(12484)].func.obj = teleporting_pool;
-#endif
 
 	/* illusionist dream plane */
 
@@ -2374,44 +2181,6 @@ void assign_rooms(void)
 
 	world[real_room0(13714)].funct = inn;
 
-#if 0
-  /* Realms Master */
-  world[real_room0(11100)].funct = ship_exit_room;
-  world[real_room0(11101)].funct = ship_look_out_room;
-  world[real_room0(11102)].funct = ship_look_out_room;
-  world[real_room0(11103)].funct = ship_look_out_room;
-  world[real_room0(11104)].funct = ship_look_out_room;
-  world[real_room0(11105)].funct = ship_look_out_room;
-  world[real_room0(11108)].funct = ship_look_out_room;
-  world[real_room0(11117)].funct = ship_look_out_room;
-  world[real_room0(11118)].funct = ship_look_out_room;
-  world[real_room0(11119)].funct = ship_look_out_room;
-  world[real_room0(11120)].funct = ship_look_out_room;
-  world[real_room0(11121)].funct = ship_look_out_room;
-  world[real_room0(11123)].funct = ship_look_out_room;
-
-  /* Silver Lady */
-  world[real_room0(11300)].funct = ship_exit_room;
-  world[real_room0(11301)].funct = ship_look_out_room;
-  world[real_room0(11302)].funct = ship_look_out_room;
-  world[real_room0(11303)].funct = ship_look_out_room;
-  world[real_room0(11304)].funct = ship_look_out_room;
-  world[real_room0(11305)].funct = ship_look_out_room;
-  world[real_room0(11308)].funct = ship_look_out_room;
-  world[real_room0(11317)].funct = ship_look_out_room;
-  world[real_room0(11318)].funct = ship_look_out_room;
-  world[real_room0(11319)].funct = ship_look_out_room;
-  world[real_room0(11320)].funct = ship_look_out_room;
-  world[real_room0(11321)].funct = ship_look_out_room;
-  world[real_room0(11323)].funct = ship_look_out_room;
-
-  /*
-     Sylvan Wind
-   */
-  world[real_room0(11000)].funct = ship_exit_room;
-  world[real_room0(11009)].funct = ship_look_out_room;
-#endif
-
 	/*
 	   Morning Star
 	 */
@@ -2569,13 +2338,4 @@ void room_procs(void)
 	for (i = 0; i < top_of_world; i++)
 		if (world[i].funct)
 			(*world[i].funct)(i, NULL, 0, NULL);
-}
-
-void item_procs(void)
-{
-	P_obj i;
-
-	for (i = object_list; i; i = i->next)
-		if (obj_index[i->R_num].func.obj)
-			(*obj_index[i->R_num].func.obj)(i, NULL, 0, NULL);
 }

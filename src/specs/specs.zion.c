@@ -90,50 +90,6 @@ int Baltazo(P_char ch, P_char /*victim*/, int cmd, char *arg)
 		}
 	}
 
-	/* if(cmd == CMD_DEATH)
-	 {
-	    act("$n &+Lraises $s arms and $s &+reyes &+Rflash &+Lwith an inner &+Rfire&+L.", FALSE, ch, 0, 0, TO_ROOM);
-	    act("&+LA deep voice seems to echo from within $m, '&+GFool mortal trash.  Your insolence&n", FALSE, ch, 0, 0, TO_ROOM);
-	    act("&+Gwill be repaid one thousand times over.  &+RHollow Heart &+Gdoes not forgive...'&n", FALSE, ch, 0, 0, TO_ROOM);
-	    act("&+YThe image of the man is replaced by a gaping &+Lshadowrift&+Y, which pulses rapidly...&n", FALSE, ch, 0, 0, TO_ROOM);
-	    for(j = 0;j < 11;j++)
-	    {
-	       i = 90702;
-	       if(!number(0, 1))
-	       {
-	          i += number(0, 4);
-	       }
-	       devil2load = BOUNDED(90702, i, 90706);
-	       P_char devil = read_mobile(devil2load, VIRTUAL);
-	       if (!devil)
-	       {
-	         logit(LOG_DEBUG, "Baltazo failed to load a mob, specs.zion.c");
-	         continue;
-	       }
-	       SET_BIT(devil->specials.act, ACT_SENTINEL);
-	       if(affected_by_spell(devil, AFF_INVISIBLE))
-	         affect_from_char(devil, AFF_INVISIBLE);
-	       char_to_room(devil, ch->in_room, -1);
-	       act("$n &+rsteps through the &+Lshadowrift&+r, and does not look pleased...&n", FALSE, devil, 0, 0, TO_ROOM);
-
-	       P_char tch, temp;
-	       for(tch = world[real_room0(devil->in_room)].people; tch; tch = temp)
-	       {
-	          temp = tch->next_in_room;
-	          wizlog(56, "tch is %s", GET_NAME(tch));
-	          if(IS_TRUSTED(tch))
-	            continue;
-	          if(IS_PC(tch))// && number(0, 2))
-	          {
-	            MobStartFight(tch, devil);
-	            break;
-	          }
-	       }
-	    }
-	    char_to_room(ch, 500, -2);
-	    return FALSE;
-	 }*/
-
 	return FALSE;
 }
 
@@ -598,18 +554,6 @@ void event_zion_dispator(P_char ch, P_char /*victim*/, [[maybe_unused]] P_obj ob
 	{
 		return;
 	}
-	/* Shortened this up a good bit.
-	  for( int i = 0; i < NUM_PROCCING_SLOTS; i++ )
-	  {
-	    P_obj item = ch->equipment[proccing_slots[i]];
-
-	    if( item && obj_index[item->R_num].func.obj == zion_dispator )
-	    {
-	      has_item = true;
-	      break;
-	    }
-	  }
-	*/
 	if (ch->equipment[WIELD] &&
 	    obj_index[ch->equipment[WIELD]->R_num].func.obj == zion_dispator)
 	{

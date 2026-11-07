@@ -1,7 +1,7 @@
 {
   "corpus": "Tracked areas/AREA in file order; artifact flag in object template extra_flags",
   "liveAvailabilityVerified": false,
-  "configuration": "Compiler defaults; THARKUN_ARTIS enabled",
+  "configuration": "Compiler defaults",
   "counts": {
     "templates": 171,
     "literalBindings": 80,
