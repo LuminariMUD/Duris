@@ -1,6 +1,6 @@
 # Legacy weapon and gear proc cleanup
 
-Research date: 2026-11-07. Source baseline: `896ff7b28`. Status: in progress; see the progress log below.
+Research date: 2026-11-07. Source baseline: `896ff7b28`. Status: every delivery step is implemented as a stacked PR awaiting review and merge; see the progress log below.
 
 ## Progress log
 
@@ -16,7 +16,7 @@ Keep this table current; a new session should be able to resume from it alone. P
 | 3c. Pilot: `periodic_stoneskin` and the cloak/ioun deflection merge | `proc-cleanup/pilot-stoneskin-deflect` | #780 | Ready for review |
 | 3d. Owner review of the converted pilot files | — | — | Requested on #776/#779/#780; the sweep proceeds as stacked PRs, so review can happen alongside |
 | 4a. Sweep A: `specs.winterhaven.c`, `specs.vecna.c`, `specs.zion.c` | `proc-cleanup/sweep-a` (on #777) | #783 | Ready for review |
-| 4b/4c. Sweep B: `specs.undermountain.c`, `specs.jot.c`, the eleven small files, and the leftover `OBJ_WORN_BY` spellings | `proc-cleanup/sweep-b` (on #783) | (opening) | Ready for review |
+| 4b/4c. Sweep B: `specs.undermountain.c`, `specs.jot.c`, the eleven small files, and the leftover `OBJ_WORN_BY` spellings | `proc-cleanup/sweep-b` (on #783) | #784 | Ready for review |
 
 With 4b merged, every item-proc spec file is on the shared helpers. The plan's delivery sequence is then complete; what remains is review and merging.
 | 5. Payload parsing defects | `proc-cleanup/payload-parsing` (on 3a) | #777 | Ready for review |
@@ -24,7 +24,7 @@ With 4b merged, every item-proc spec file is on the shared helpers. The plan's d
 | 6b. `weapon_proc` packed spells | `proc-cleanup/weapon-proc` (on the plan PR) | #778 | Ready for review |
 | Tracing note: event payloads beside the pseudo-command constants | `proc-cleanup/event-notes` (on the plan PR) | #782 | Ready for review |
 
-Merge order: #773 → #774 → #775 → #776 → #779 → #780 → #781 → #777 → sweep PRs; #778 and #782 after #773. Retarget each PR's base to `master` as the one below it merges.
+Merge order: #773 → #774 → #775 → #776 → #779 → #780 → #781 → #777 → #783 → #784; #778 and #782 after #773. Retarget each PR's base to `master` as the one below it merges.
 
 Decisions made while working:
 
