@@ -147,7 +147,7 @@ def run(binary):
 
             def save_player():
                 clients[PLAYERS[0]].send("save")
-                clients[PLAYERS[0]].expect(f"Save complete for {PLAYERS[0]}.", timeout=30)
+                clients[PLAYERS[0]].expect(f"Saving {PLAYERS[0]}.", timeout=30)
                 command(clients[PLAYERS[0]], "look")
 
             def object_state(key):
@@ -229,7 +229,7 @@ def run(binary):
                     base.create_character(client, account=account(name), character=name,
                                           email=name.lower() + "@example.invalid")
                     client.send("save")
-                    client.expect(f"Save complete for {name}.", timeout=30)
+                    client.expect(f"Saving {name}.", timeout=30)
                     print(f"castle journey: created {name}", flush=True)
                 stop()
                 base.make_overlord(state, STAFF)

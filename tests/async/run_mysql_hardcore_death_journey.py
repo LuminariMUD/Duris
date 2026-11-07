@@ -108,7 +108,7 @@ def run(binary):
                     client = journey.MudClient(plain)
                     journey.create_character(client, hardcore=True)
                     client.send("save")
-                    client.expect("Save complete for " + journey.CHARACTER + ".")
+                    client.expect("Saving " + journey.CHARACTER + ".")
                     pid = int(sql("SELECT pid FROM player_data WHERE name='" + journey.CHARACTER + "'"))
                     deaths = f"SELECT numb_deaths FROM player_data WHERE pid={pid}"
                     settle(deaths, 0)

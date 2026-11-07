@@ -126,7 +126,7 @@ def run(binary, evidence_path):
                     journey.create_character(client, expected_room=None, account=account,
                                              character=name, email=name.lower() + '@example.invalid')
                     client.send('save')
-                    client.expect('Save complete for ' + name + '.', timeout=60)
+                    client.expect('Saving ' + name + '.', timeout=60)
                 stop()
                 journey.make_overlord(Path(env['FLATFILE_STATE_DIR']), GOD)
                 boot()
@@ -283,7 +283,7 @@ def run(binary, evidence_path):
 
                 visit(300000)
                 player.send('save')
-                player.expect(f'Save complete for {PLAYER}.', timeout=60)
+                player.expect(f'Saving {PLAYER}.', timeout=60)
                 stop()
                 boot()
                 god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)

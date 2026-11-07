@@ -236,7 +236,7 @@ def run(binary, baseline, evidence_path):
                     journey.create_character(client, expected_room=None, account=account,
                                              character=name, email=name.lower() + '@example.invalid')
                     client.send('save')
-                    client.expect('Save complete for ' + name + '.', timeout=60)
+                    client.expect('Saving ' + name + '.', timeout=60)
                 stop()
                 journey.make_overlord(Path(env['FLATFILE_STATE_DIR']), GOD)
                 for phase in (('first',) if baseline else ('first', 'restart')):

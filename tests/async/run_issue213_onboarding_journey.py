@@ -152,7 +152,7 @@ def run(binary, backend, output_path):
 
             def save(client, name):
                 client.send('save')
-                client.expect('Save complete for ' + name + '.', timeout=45)
+                client.expect('Saving ' + name + '.', timeout=45)
 
             def stat(name):
                 text = command(god, 'stat char ' + name)

@@ -165,7 +165,7 @@ def run(binary, backend):
 
             def save(client, name):
                 client.send("save")
-                client.expect("Save complete for " + name + ".", timeout=45)
+                client.expect("Saving " + name + ".", timeout=45)
                 if sql and name == PLAYER:
                     assert sql(f"SELECT COUNT(*) FROM player_affects WHERE pid=(SELECT pid FROM player_data WHERE name='{PLAYER}') AND type={HATRED}") == "0"
 

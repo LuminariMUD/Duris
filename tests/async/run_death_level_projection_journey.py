@@ -228,7 +228,7 @@ def run(binary, backend, output):
                         class_name="w" if name == GOD else "k", hometown="p",
                         email=name.lower() + "@example.invalid")
                     client.send("save")
-                    client.expect("Save complete for " + name + ".", timeout=30)
+                    client.expect("Saving " + name + ".", timeout=30)
                     client.close()
                 print("SETUP", backend, "four disposable characters saved", flush=True)
                 stop()

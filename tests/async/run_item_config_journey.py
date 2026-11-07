@@ -31,7 +31,7 @@ def run(binary, inspector):
         try:
             server.start(); operator=server.client=journey.MudClient(server.port)
             journey.create_character(operator)
-            operator.send('save'); operator.expect(f'Save complete for {journey.CHARACTER}.')
+            operator.send('save'); operator.expect(f'Saving {journey.CHARACTER}.')
             server.stop()
             subprocess.run([str(inspector),str(state),'seed-item-operator'],check=True)
             server.start(); operator=server.client=journey.reconnect_character(server.port)

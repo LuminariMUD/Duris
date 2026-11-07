@@ -109,7 +109,7 @@ def held(inspector, state):
 def save_and_wait(actor, inspector, state, done, timeout=30):
     """Save, then wait for the asynchronous writer to land a file that satisfies done."""
     actor.send("save")
-    actor.expect(f"Save complete for {journey.CHARACTER}.", timeout=20)
+    actor.expect(f"Saving {journey.CHARACTER}.", timeout=20)
     actor.expect("Pos: standing >")
     deadline = time.monotonic() + timeout
     while True:
@@ -271,7 +271,7 @@ def run(binary, chaos, class_name="Warrior"):
                 journey.require("starter kit is being prepared" not in text, "nonempty inventory regranted")
                 journey.require(held(inspector, state) == saved, "saved kit identities changed across reload")
                 actor.send("save")
-                actor.expect(f"Save complete for {journey.CHARACTER}.", timeout=20)
+                actor.expect(f"Saving {journey.CHARACTER}.", timeout=20)
                 actor.expect("Pos: standing >")
                 journey.require(saved_items(inspector, state) == saved_snapshot,
                                 "saved item flags or spellbook contents changed across reload")

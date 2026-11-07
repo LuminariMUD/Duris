@@ -271,7 +271,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                 else:
                     raise AssertionError('isolated Redis did not start')
             boot(); client = Client(port); journey.create_character(client)
-            client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.')
+            client.send('save'); client.expect(f'Saving {journey.CHARACTER}.')
             client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)
             stop()
             if redis_failures:
@@ -323,7 +323,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                         runtime / 'logs/log/sys').read_text(errors='replace')
                     # Let the SQL boot finish its bounded artifact retries.
                     client.send('save')
-                    client.expect(f'Save complete for {journey.CHARACTER}.')
+                    client.expect(f'Saving {journey.CHARACTER}.')
                     time.sleep(6)
                 print('two real execs replaced every Redis socket', flush=True)
                 valid = runtime / 'bin/server/fixture-replacement'
@@ -347,7 +347,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
             client.expect('Copyover FAILED', timeout=60)
             assert not path.exists() and process.poll() is None
             client.send('look'); client.expect('The Regression Arena')
-            client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
+            client.send('save'); client.expect(f'Saving {journey.CHARACTER}.', timeout=30)
             if compressed: assert client.inflater is not None and client.compressed_bytes > 0
             boot_log = (runtime / 'logs/log/status').read_text(errors='replace')
             assert 'copyover: cant open' in boot_log, 'copyover never reached the injected file-open failure'
@@ -362,7 +362,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                 client.expect('Copyover cancelled: prior recovery state needs review', timeout=30)
                 assert pending.read_bytes() == b'retained fixture evidence'
                 assert process.poll() is None
-                client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
+                client.send('save'); client.expect(f'Saving {journey.CHARACTER}.', timeout=30)
                 pending.unlink()  # explicit disposition of this test's synthetic image
             # A terminal writer failure must preserve the live character and publish nothing.
             command(client, 'load obj 15')
@@ -381,7 +381,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                 assert 'domain=player_save action=write_failed' in file_log
             finally:
                 original_snapshot.replace(snapshot)
-            client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.')
+            client.send('save'); client.expect(f'Saving {journey.CHARACTER}.')
 
             active_inode = active.stat().st_ino
             staged.unlink()
@@ -419,7 +419,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                         assert data, 'WebSocket closed after failed exec'
                         buffered.extend(data)
             client.send('look'); client.expect('The Regression Arena')
-            client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
+            client.send('save'); client.expect(f'Saving {journey.CHARACTER}.', timeout=30)
             assert process.poll() is None and not path.exists() and not claimed.exists()
             assert active.stat().st_ino == active_inode, 'failed promotion left the broken binary active'
             shutil.copy2(active, staged)
@@ -443,7 +443,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                     command(client, 'give pizza Sarel')
                     assert 'pizza' in command(other, 'inventory').lower()
                     other.send('save')
-                    other.expect('Save complete for Sarel.')
+                    other.expect('Saving Sarel.')
                 finally:
                     other.close()
                 client.expect('has lost', timeout=15)
@@ -522,7 +522,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                         lambda state: state['process'] == resumed['process'])
             print('copyover retained the entry key and changed only the process revision baseline', flush=True)
             client.send('look'); client.expect('The Regression Arena')
-            client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
+            client.send('save'); client.expect(f'Saving {journey.CHARACTER}.', timeout=30)
             assert not path.exists() and not claimed.exists() and process.poll() is None
             assert (runtime / 'server.out').read_text().count('Entering game loop.') == 2
             boot_log = (runtime / 'logs/log/status').read_text(errors='replace')

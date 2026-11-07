@@ -130,11 +130,11 @@ def run(binary):
         try:
             boot()
             admin = journey.MudClient(port); journey.create_character(admin)
-            admin.send('save'); admin.expect(f'Save complete for {journey.CHARACTER}.')
+            admin.send('save'); admin.expect(f'Saving {journey.CHARACTER}.')
             admin.send('quit'); admin.expect('ACCOUNT MENU', timeout=30)
             player = journey.MudClient(port)
             journey.create_character(player, account='Purgeacct', character='Purgemortal', email='purge@example.invalid')
-            player.send('save'); player.expect('Save complete for Purgemortal.')
+            player.send('save'); player.expect('Saving Purgemortal.')
             player.send('quit'); player.expect('ACCOUNT MENU', timeout=30)
             stop()
             subprocess.run([str(fixture), str(state)], check=True)
@@ -155,7 +155,7 @@ def run(binary):
                 player.send('look'); player.expect('The Regression Arena')
                 assert process.poll() is None
                 print(f'cycle {cycle + 1}: verified live combat, purged opponent, cleared combat reference, full reset', flush=True)
-            player.send('save'); player.expect('Save complete for Purgemortal.', timeout=30)
+            player.send('save'); player.expect('Saving Purgemortal.', timeout=30)
             stop(); boot(); player = reconnect_player()
             player.send('look'); player.expect('The Regression Arena')
             print('two-player purge/reset, save and restart journey passed', flush=True)

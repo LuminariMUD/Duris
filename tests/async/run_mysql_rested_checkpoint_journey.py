@@ -129,7 +129,7 @@ def run(server):
 
             def saved():
                 recipient.send("save")
-                recipient.expect(f"Save complete for {RECIPIENT}.", timeout=30)
+                recipient.expect(f"Saving {RECIPIENT}.", timeout=30)
                 return affects()
 
             def seed(tag, duration, offline=0):
@@ -153,12 +153,12 @@ def run(server):
                 caster = journey.MudClient(plain)
                 journey.create_character(caster)
                 caster.send("save")
-                caster.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+                caster.expect(f"Saving {journey.CHARACTER}.", timeout=30)
                 recipient = journey.MudClient(plain, source_host="127.0.0.2")
                 journey.create_character(recipient, account=RECIPIENT_ACCOUNT, character=RECIPIENT,
                                          email="rested@example.invalid")
                 recipient.send("save")
-                recipient.expect(f"Save complete for {RECIPIENT}.", timeout=30)
+                recipient.expect(f"Saving {RECIPIENT}.", timeout=30)
                 pid = int(sql(f"SELECT pid FROM player_data WHERE name='{RECIPIENT}'"))
                 stop()
                 sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{journey.CHARACTER}'")

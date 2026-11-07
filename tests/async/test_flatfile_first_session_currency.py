@@ -26,7 +26,7 @@ def verify_first_session(client, port, state_root, populated_bank):
     client.send("get coins")
     client.expect("There were: 3 silver coins.", timeout=20)
     client.send("save")
-    client.expect(f"Save complete for {CHARACTER}.", timeout=20)
+    client.expect(f"Saving {CHARACTER}.", timeout=20)
     credited = inspect_authority(state_root)
     require(credited["wallet"] == [0, 3, 0, 0],
             f"the save did not write the credited wallet: {credited}")
@@ -35,7 +35,7 @@ def verify_first_session(client, port, state_root, populated_bank):
     # Repeating the pickup and saving cannot credit the absent pile again.
     client.send("get coins")
     client.send("save")
-    client.expect(f"Save complete for {CHARACTER}.", timeout=20)
+    client.expect(f"Saving {CHARACTER}.", timeout=20)
     client.send("quit")
     client.expect("ACCOUNT MENU", timeout=30)
     client.send("0")
@@ -44,7 +44,7 @@ def verify_first_session(client, port, state_root, populated_bank):
     try:
         reloaded.send("get coins")
         reloaded.send("save")
-        reloaded.expect(f"Save complete for {CHARACTER}.", timeout=20)
+        reloaded.expect(f"Saving {CHARACTER}.", timeout=20)
         after = inspect_authority(state_root)
         for key in ("wallet", "bank", "bank_revision"):
             require(after[key] == credited[key], f"retry/reload changed {key}: {after}")
@@ -52,7 +52,7 @@ def verify_first_session(client, port, state_root, populated_bank):
         reloaded.send("drop 1 silver")
         reloaded.expect("OK.", timeout=20)
         reloaded.send("save")
-        reloaded.expect(f"Save complete for {CHARACTER}.", timeout=20)
+        reloaded.expect(f"Saving {CHARACTER}.", timeout=20)
         spent = inspect_authority(state_root)
         require(spent["wallet"] == [0, 2, 0, 0] and spent["bank"] == bank
                 and spent["bank_revision"] == revision,

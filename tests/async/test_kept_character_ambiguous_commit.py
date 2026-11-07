@@ -138,7 +138,7 @@ def run(binary):
                     client.send("")
                     client.expect("Your starter kit is ready", timeout=30)
                     client.expect("Pos: standing >")
-                    creation.reply(client, "save", "Save complete for Taverek.")
+                    creation.reply(client, "save", "Saving Taverek.")
                     assert saved_character(server, sql, None) == (before[0], 1, before[2])
                     assert sql(f"SELECT COUNT(*) FROM account_characters WHERE pid={before[0]} AND deleted_at IS NULL") == "1"
                     server.shutdown()

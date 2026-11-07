@@ -118,7 +118,7 @@ def run(binary: Path, baseline: bool) -> dict:
             server.client = staff
             journey.create_character(staff)
             staff.send("save")
-            staff.expect("Save complete for Taverek.")
+            staff.expect("Saving Taverek.")
             staff.send("quit")
             staff.expect("ACCOUNT MENU")
             server.stop()
@@ -307,7 +307,7 @@ def run(binary: Path, baseline: bool) -> dict:
             after_decay = hp(staff, "Matealpha")[0]
             assert cap < after_decay < before_decay <= cap + 500
             fighter.send("save")
-            fighter.expect("Save complete for Matealpha.", timeout=30)
+            fighter.expect("Saving Matealpha.", timeout=30)
             fighter.send("quit")
             fighter.expect("ACCOUNT MENU", timeout=30)
             for client in clients:

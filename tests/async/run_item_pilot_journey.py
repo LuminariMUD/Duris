@@ -173,7 +173,7 @@ def run_case(binary,inspector,family,enabled,abort):
             client.send('drop all'); weapon.drain(client,.5)
             name={'tsunami':'trident','ioun':'mirrored','studio':'prism'}[family]
             if family!='studio':
-                client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.')
+                client.send('save'); client.expect(f'Saving {journey.CHARACTER}.')
                 server.stop()
                 subprocess.run([str(inspector),str(state),'seed-item',str(root/'pilot.item')],check=True)
                 server.start(); client=server.client=journey.reconnect_character(server.port)
@@ -263,7 +263,7 @@ def run_case(binary,inspector,family,enabled,abort):
                 # Area-debugger mode deliberately skips restoring floor custody.
                 # Use the empty refuge for new post-restart room transfers.
                 client.send('put prism bag'); client.expect('Ok.',timeout=10)
-            client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.')
+            client.send('save'); client.expect(f'Saving {journey.CHARACTER}.')
             server.stop(); stopped=mana_rows(state)
             server.start(); client=server.client=journey.reconnect_character(server.port,
                 expected_room='The Regression Refuge' if family=='studio' and abort!='crash' else 'The Regression Arena')
@@ -295,7 +295,7 @@ def run_case(binary,inspector,family,enabled,abort):
                 journey.attack_until_death(client); client.expect('ACCOUNT MENU',timeout=45)
                 client.close(); client=server.client=journey.reconnect_character(server.port,'You rejoin the land of the living')
                 client.send(f'get trident {journey.CHARACTER}'); client.expect('You get ',timeout=15)
-                client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.')
+                client.send('save'); client.expect(f'Saving {journey.CHARACTER}.')
                 authority=json.loads(subprocess.check_output([str(inspector),str(state),'inspect','1'],text=True))
                 assert any(item['uid']==uid and item['vnum']==31514 for item in authority['player_items']),authority
                 assert mana_rows(state)==before_death,(before_death,mana_rows(state))

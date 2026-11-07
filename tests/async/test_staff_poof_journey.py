@@ -69,7 +69,7 @@ def run(server):
 
             def save(client, name=STAFF):
                 client.send('save')
-                client.expect('Save complete for ' + name + '.', timeout=30)
+                client.expect('Saving ' + name + '.', timeout=30)
                 command(client, 'look')
 
             def relog(client):

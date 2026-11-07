@@ -210,7 +210,7 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
                     for row in rows:
                         self.assertEqual(row["final_save"], "acknowledged")
                         clients[row["name"]].command.assert_awaited_once_with(
-                            "save", expected=f"Save complete for {row['name']}.")
+                            "save", expected=f"Saving {row['name']}.")
                 finally:
                     await staff.close()
 

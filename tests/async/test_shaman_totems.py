@@ -67,7 +67,7 @@ def run(binary):
                                                  email=name.lower() + "@example.invalid",
                                                  class_name=class_key)
                         client.send("save")
-                        client.expect("Save complete for " + name + ".", timeout=30)
+                        client.expect("Saving " + name + ".", timeout=30)
 
                 journey.make_overlord(Path(env["FLATFILE_STATE_DIR"]), GOD)
                 with ExitStack() as stack:

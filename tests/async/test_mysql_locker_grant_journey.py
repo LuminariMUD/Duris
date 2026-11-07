@@ -162,7 +162,7 @@ def run(binary):
                     time.sleep(.1)
 
             def funds(name):
-                act(name, 'save', 'Save complete for ' + name + '.')
+                act(name, 'save', 'Saving ' + name + '.')
                 values = sql("SELECT p.copper+10*p.silver+100*p.gold+1000*p.platinum,"
                              "b.bank_copper+10*b.bank_silver+100*b.bank_gold+1000*b.bank_platinum "
                              "FROM player_data p JOIN account_banks b ON b.account_name=p.account_name "
@@ -170,7 +170,7 @@ def run(binary):
                 return tuple(map(int, values.split('\t')))
 
             def inventory_uids(name, vnum=677):
-                act(name, 'save', 'Save complete for ' + name + '.')
+                act(name, 'save', 'Saving ' + name + '.')
                 return set(sql("SELECT i.obj_uid FROM player_items i JOIN player_data p ON p.pid=i.pid "
                                f"WHERE p.name='{name}' AND i.vnum={vnum}").splitlines())
 
@@ -195,7 +195,7 @@ def run(binary):
                     clients[name] = client
                     journey.create_character(client, expected_room=None, account=account,
                                              character=name, email=name.lower() + '@example.invalid')
-                    act(name, 'save', 'Save complete for ' + name + '.')
+                    act(name, 'save', 'Saving ' + name + '.')
                 stop()
                 sql(f"UPDATE player_data SET level=62,highest_level=62,platinum=5000 WHERE name='{GOD}'")
                 sql(f"UPDATE player_data SET level=20,highest_level=20,platinum=50 "
@@ -410,7 +410,7 @@ def run(binary):
                 leave(VISITOR)
                 check('named and canonical owner entry, revocation, account visitor grant, optional canonical suffix')
 
-                act(VISITOR, 'save', 'Save complete for ' + VISITOR + '.')
+                act(VISITOR, 'save', 'Saving ' + VISITOR + '.')
                 command(clients[GOD], 'goto 16558')  # The real Woodseer inn handles mortal logout.
                 assert 'Ok.' in command(clients[GOD], 'transfer ' + VISITOR)
                 act(VISITOR, 'rent', 'ACCOUNT MENU')
@@ -426,7 +426,7 @@ def run(binary):
                 # a distinct account/character name and one newly deposited UID.
                 command(clients[GOD], 'load obj 677')
                 act(GOD, 'give mace ' + OWNER, 'Ok.')
-                act(OWNER, 'save', 'Save complete for ' + OWNER + '.')
+                act(OWNER, 'save', 'Saving ' + OWNER + '.')
                 marker_uid = sql("SELECT pi.obj_uid FROM player_items pi JOIN player_data p "
                                  f"ON p.pid=pi.pid WHERE p.name='{OWNER}' AND pi.vnum=677")
                 assert marker_uid.isdecimal(), marker_uid
@@ -599,7 +599,7 @@ def run(binary):
 
                 # Guild creation requires level 25; the actor remains a mortal.
                 command(clients[GOD], f'setbit char {OWNER} level 30')
-                act(OWNER, 'save', 'Save complete for ' + OWNER + '.')
+                act(OWNER, 'save', 'Saving ' + OWNER + '.')
                 assert sql(f"SELECT level FROM player_data WHERE name='{OWNER}'") == '30'
                 act(GOD, f'supervise found {OWNER} n Lockerjourney', 'new association is set up')
                 deadline = time.monotonic() + 30
@@ -649,7 +649,7 @@ def run(binary):
                 command(clients[GOD], 'load obj 677')
                 act(GOD, 'give mace ' + OWNER, 'Ok.')
                 crash_uid, = inventory_uids(OWNER, 677)
-                act(OWNER, 'save', 'Save complete for ' + OWNER + '.')
+                act(OWNER, 'save', 'Saving ' + OWNER + '.')
                 assert sql(f"SELECT COUNT(*) FROM player_items WHERE obj_uid={crash_uid}") == '1'
                 enter(OWNER, items=2)
                 act(OWNER, 'open vault', "You open the 'vault' chest")
@@ -665,10 +665,10 @@ def run(binary):
                 act(OWNER, 'put mace vault', 'Ok.')
                 assert 'mace' not in command(clients[OWNER], 'inventory').lower()
                 save_start = len(clients[OWNER].transcript)
-                act(OWNER, 'save', 'Save queued for ' + OWNER + '.')
+                clients[OWNER].send('save')
                 time.sleep(2)
                 command(clients[OWNER], 'score')
-                assert b'Save complete for ' + OWNER.encode() not in clients[OWNER].transcript[save_start:]
+                assert b'Saving ' + OWNER.encode() not in clients[OWNER].transcript[save_start:]
                 assert sql(f"SELECT COUNT(*) FROM player_items WHERE obj_uid={crash_uid}") == '1'
                 assert sql(f"SELECT COUNT(*) FROM locker_items WHERE obj_uid={crash_uid}") == '0'
                 process.kill()

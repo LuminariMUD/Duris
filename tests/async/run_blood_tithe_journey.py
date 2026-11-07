@@ -118,7 +118,7 @@ def run(server_binary: Path) -> None:
             clients.append(staff)
             journey.create_character(staff)
             staff.send("save")
-            staff.expect("Save complete for Taverek.")
+            staff.expect("Saving Taverek.")
             staff.send("quit")
             staff.expect("ACCOUNT MENU", timeout=30)
             stop()

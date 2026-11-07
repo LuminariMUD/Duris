@@ -50,13 +50,13 @@ def run(binary, backend):
                 clients.append(staff)
                 journey.create_character(staff)
                 staff.send('save')
-                staff.expect('Save complete for ' + journey.CHARACTER + '.', timeout=60)
+                staff.expect('Saving ' + journey.CHARACTER + '.', timeout=60)
                 player = journey.MudClient(server.port, source_host='127.0.0.2')
                 clients.append(player)
                 journey.create_character(player, account=PLAYER, character=PLAYER,
                                          email='aura@example.invalid')
                 player.send('save')
-                player.expect('Save complete for ' + PLAYER + '.', timeout=60)
+                player.expect('Saving ' + PLAYER + '.', timeout=60)
                 for client in clients:
                     client.close()
                 clients.clear()

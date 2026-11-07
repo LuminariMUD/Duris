@@ -77,13 +77,13 @@ def run(binary, backend, transport):
                         creation.reply(client, "1", "Taverek")
                         creation.reply(client, "Taverek", "(Y/N)")
                         creation.reply(client, "y", "Pos: standing >")
-                    creation.reply(client, "save", "Save complete for Taverek.")
+                    creation.reply(client, "save", "Saving Taverek.")
                 else:
                     client.command("enter", {"character": "Taverek"}, "gmcp")
                     if first:
                         websocket_text(client, "Your starter kit is ready")
                     client.command("game", "save", "text")
-                    websocket_text(client, "Save complete for Taverek.")
+                    websocket_text(client, "Saving Taverek.")
 
             try:
                 if transport == "telnet":

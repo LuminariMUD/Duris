@@ -201,7 +201,7 @@ def run(binary, inspector, method, *, legacy=False, full_world=False):
                 require(rooms and rooms[-1] == 22800, f"new character missed the selected tutorial: {rooms}")
             save = client.command("game", "save", "text")
             deadline = time.monotonic() + 15
-            while "Save complete for Taverek" not in json.dumps(save):
+            while "Saving Taverek" not in json.dumps(save):
                 require(time.monotonic() < deadline, "no durable save acknowledgement")
                 save = client.receive()
             # The initial entry snapshot precedes detached kit publication. The
@@ -244,7 +244,7 @@ def run(binary, inspector, method, *, legacy=False, full_world=False):
             # The saved-character path must load unchanged stats and bypass method choice.
             save = client.command("game", "save", "text")
             deadline = time.monotonic() + 15
-            while "Save complete for Taverek" not in json.dumps(save):
+            while "Saving Taverek" not in json.dumps(save):
                 require(time.monotonic() < deadline, "no save after reload")
                 save = client.receive()
             require(inspect_stats(server, inspector) == before, "saved base stats changed across restart/relogin")
@@ -280,7 +280,7 @@ def run_telnet(binary, inspector, method, *, full_world=False):
             telnet.play_saved_character(client)
             telnet.reply(client, "", "Your starter kit is ready")
             client.expect("Pos: standing >")
-            telnet.reply(client, "save", "Save complete for Taverek.")
+            telnet.reply(client, "save", "Saving Taverek.")
             before = inspect_stats(server, inspector)
             low, high = (87, 90) if method == "default" else (80, 95)
             for index, value in enumerate(before):
@@ -298,7 +298,7 @@ def run_telnet(binary, inspector, method, *, full_world=False):
             telnet.reply(client, "1", "Taverek")
             telnet.reply(client, "1", "(Y/N)")
             telnet.reply(client, "y", "Pos: standing >")
-            telnet.reply(client, "save", "Save complete for Taverek.")
+            telnet.reply(client, "save", "Saving Taverek.")
             require(inspect_stats(server, inspector) == before,
                     "Telnet saved stats changed across restart/relogin")
             server.shutdown()

@@ -87,7 +87,7 @@ def run(binary, baseline):
             staff = server.client = journey.MudClient(server.port)
             journey.create_character(staff)
             staff.send("save")
-            staff.expect(f"Save complete for {journey.CHARACTER}.")
+            staff.expect(f"Saving {journey.CHARACTER}.")
             server.stop()
             journey.make_overlord(state, journey.CHARACTER)
             server.start()
@@ -139,7 +139,7 @@ def run(binary, baseline):
             assert coins and tuple(map(int, coins.groups())) == (0, 0, 0, 0), wallet
             result["checks"].append("the mortal pays exactly 100 platinum")
             player.send("save")
-            player.expect(f"Save complete for {CHARACTER}.")
+            player.expect(f"Saving {CHARACTER}.")
             player.send("quit")
             player.expect("ACCOUNT MENU", timeout=45)
             player.close()

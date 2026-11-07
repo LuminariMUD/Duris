@@ -142,7 +142,7 @@ def run(server):
 
                 def save():
                     client.send('save')
-                    client.expect('Save complete for ' + journey.CHARACTER + '.', timeout=30)
+                    client.expect('Saving ' + journey.CHARACTER + '.', timeout=30)
 
                 try:
                     boot()

@@ -90,7 +90,7 @@ def leave(client):
     client.send("north")
     client.expect("applying magic locks", timeout=30)
     client.send("save")
-    client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+    client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
     client.send("quit")
     client.expect("ACCOUNT MENU", timeout=30)
     client.send("0")

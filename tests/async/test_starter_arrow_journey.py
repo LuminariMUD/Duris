@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
 
 
 def saved(client, inspector, state):
-    command(client, "save", f"Save complete for {journey.CHARACTER}.")
+    command(client, "save", f"Saving {journey.CHARACTER}.")
     return [list(map(int, line.split())) for line in subprocess.check_output(
         [str(inspector), str(state)], text=True).splitlines()]
 

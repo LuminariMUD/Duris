@@ -181,7 +181,7 @@ def run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state):
 
     def inspect():
         victim.send("save")
-        victim.expect("Save complete for Venomtarget.", timeout=30)
+        victim.expect("Saving Venomtarget.", timeout=30)
         return subprocess.check_output([str(snapshot_fixture), str(state), "inspect"], text=True)
 
     def give(vnum, keyword, person):
@@ -511,7 +511,7 @@ PH 0 0 -1
                     journey.create_character(client, account=account, character=character,
                                              email=character.lower() + "@example.invalid")
                     client.send("save")
-                    client.expect("Save complete for " + character + ".")
+                    client.expect("Saving " + character + ".")
                 stop()
                 subprocess.run([str(snapshot_fixture), str(state), "audit"], check=True)
                 boot(output)

@@ -418,7 +418,7 @@ def run(binary: pathlib.Path) -> None:
                 create_character(client, CHARACTER)
                 # Creation refuses god_list names, so the god is an ordinary
                 # character raised to OVERLORD while the server is down.
-                command(client, "save", f"Save complete for {CHARACTER}.")
+                command(client, "save", f"Saving {CHARACTER}.")
                 client.send("quit")
                 client.expect("ACCOUNT MENU", timeout=30)
                 client.close()

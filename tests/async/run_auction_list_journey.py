@@ -84,7 +84,7 @@ def run(binary):
                     print('PASS:', text, flush=True)
                 assert sql('SELECT COUNT(*) FROM auctions') == '2'
                 client.send('save')
-                client.expect('Save complete for ' + PLAYER + '.', timeout=60)
+                client.expect('Saving ' + PLAYER + '.', timeout=60)
                 client.close()
                 client = None
                 process.send_signal(signal.SIGTERM)

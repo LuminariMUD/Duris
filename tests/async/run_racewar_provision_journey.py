@@ -148,7 +148,7 @@ async def verify_controls(staff, clients, rows, directory):
     observed = await bystander.command("score", expected="Hit points:")
     assert "Pos: standing" in observed, observed
     for player in (enemy, fighter, caster):
-        await player.command("save", expected=f"Save complete for {player.label}.")
+        await player.command("save", expected=f"Saving {player.label}.")
     # Seed the actual legacy repeating effect through the staff's native spell.
     # The controller is not in the stopped roster: incoming references matter.
     for spell in ("acidimmolate", "magma burst"):
@@ -228,7 +228,7 @@ async def provision(server, pool, directory, room=None, prepare=False, probe=Fal
                    "groups": groups, "probe": probe}
         (Path(directory) / "summary.json").write_text(json.dumps(summary, indent=2))
         for row in rows:
-            await clients[row["name"]].command("save", expected=f"Save complete for {row['name']}.")
+            await clients[row["name"]].command("save", expected=f"Saving {row['name']}.")
         return summary
     finally:
         await asyncio.gather(*(client.close() for client in clients.values()), return_exceptions=True)
@@ -253,14 +253,14 @@ def run(binary, output, prepare=False, probe=False, controls=False, combat=False
             server.start()
             staff = server.client = journey.MudClient(server.port)
             journey.create_character(staff)
-            staff.send("save"); staff.expect(f"Save complete for {journey.CHARACTER}.")
+            staff.send("save"); staff.expect(f"Saving {journey.CHARACTER}.")
             staff.send("quit"); staff.expect("ACCOUNT MENU")
             if combat:
                 observer = journey.MudClient(server.port)
                 try:
                     journey.create_character(observer, account="Raceobserver", character="Raceobserver",
                                              email="raceobserver@example.invalid")
-                    observer.send("save"); observer.expect("Save complete for Raceobserver.")
+                    observer.send("save"); observer.expect("Saving Raceobserver.")
                     observer.send("quit"); observer.expect("ACCOUNT MENU")
                 finally:
                     observer.close()

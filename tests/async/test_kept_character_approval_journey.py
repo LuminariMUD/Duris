@@ -51,7 +51,7 @@ def run(binary, backend):
                 creation.play_saved_character(staff, STAFF)
                 creation.reply(staff, "", "Your starter kit is ready")
                 staff.expect("Pos: standing >")
-                creation.reply(staff, "save", f"Save complete for {STAFF}.")
+                creation.reply(staff, "save", f"Saving {STAFF}.")
                 server.shutdown()
                 staff.close()
                 if sql:
@@ -118,7 +118,7 @@ def run(binary, backend):
                 creation.reply(mortal, "y", "PRESS RETURN")
                 creation.reply(mortal, "", "Your starter kit is ready")
                 mortal.expect("Pos: standing >")
-                creation.reply(mortal, "save", "Save complete for Taverek.")
+                creation.reply(mortal, "save", "Saving Taverek.")
                 after = saved_character(server, sql, inspector)
                 assert after == (before[0], 1, before[2]), (before, after)
                 server.shutdown()
@@ -162,7 +162,7 @@ def run(binary, backend):
                 creation.reply(mortal, "y", "PRESS RETURN")
                 creation.reply(mortal, "", "Your starter kit is ready")
                 mortal.expect("Pos: standing >")
-                creation.reply(mortal, "save", "Save complete for Nariven.")
+                creation.reply(mortal, "save", "Saving Nariven.")
                 assert saved_character(server, sql, inspector, "Nariven") == (accepted_before[0], 1, accepted_before[2])
                 server.shutdown()
             except Exception:

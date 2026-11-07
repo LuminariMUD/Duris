@@ -221,7 +221,6 @@ struct bulk_get_state
 	std::vector<std::string> rejections;
 	std::string corpse_name = {};
 	std::vector<std::string> haul = {};
-	bool announced = false;
 	bool count_limit_reported = false;
 };
 
@@ -301,17 +300,6 @@ static bulk_get_state *corpse_bulk_get(P_char actor, uint64_t container_uid)
 		       NULL;
 }
 
-static void announce_corpse_bulk_get(P_char actor, bulk_get_state &state, P_obj container)
-{
-	if (state.announced || state.corpse_name.empty())
-		return;
-	state.announced = true;
-	const std::string line = "You begin pulling things from " + state.corpse_name + ".\r\n";
-	send_to_char(line.c_str(), actor);
-	if (container && actor->in_room == state.room)
-		act("$n begins pulling things from $p.", TRUE, actor, container, 0, TO_ROOM);
-}
-
 // NPCs and characters without a persistent identity do not use the player transaction
 // facade. Check the whole vector before changing any denomination.
 static bool change_nonpersistent_coins(P_char actor, const currency_vector &delta)
@@ -379,7 +367,11 @@ static bool take_coins(P_char actor, P_obj money, P_obj container, int showit,
 		money->value[index] -= got[index];
 	audit.Commit();
 	if (bulk_get_state *haul = container ? corpse_bulk_get(actor, container->obj_uid) : NULL)
+	{
 		haul->haul.push_back(coins);
+		if (showit && actor->in_room == haul->room)
+			act("$n gets some coins from $P.", TRUE, actor, 0, container, TO_ROOM);
+	}
 	else
 	{
 		send_to_char(("You get " + coins + ".\r\n").c_str(), actor);
@@ -458,7 +450,11 @@ static bool publish_container_get(P_char ch, P_obj o_obj, P_obj s_obj, int showi
 	{
 		P_obj delivered = find_live_item_uid(picked_uid);
 		if (delivered && OBJ_CARRIED_BY(delivered, ch))
+		{
 			haul->haul.push_back(picked_name);
+			if (showit && !slip && ch->in_room == haul->room)
+				act("$n gets $p from $P.", TRUE, ch, delivered, s_obj, TO_ROOM);
+		}
 		else
 		{
 			haul->failed = true;
@@ -1387,18 +1383,12 @@ static bool bulk_get_source_matches(const bulk_get_state &state, P_obj container
 
 static void report_bulk_get(P_char actor, const bulk_get_state &state)
 {
-	if (state.announced && !state.corpse_name.empty())
+	if (!state.corpse_name.empty() && !state.haul.empty())
 	{
-		const bool incomplete = state.failed || !state.rejections.empty();
-		const std::string line =
-			"You finish sorting your haul from " + state.corpse_name +
-			(incomplete ? ".\r\nSome contents were not acquired.\r\nHaul:\r\n" :
-				      ".\r\nHaul:\r\n");
-		send_to_char(line.c_str(), actor);
-		if (state.haul.empty())
-			send_to_char("  Nothing acquired.\r\n", actor);
 		for (const std::string &item : state.haul)
-			send_to_char(("  " + item + "\r\n").c_str(), actor);
+			send_to_char(
+				("You get " + item + " from " + state.corpse_name + ".\r\n").c_str(),
+				actor);
 	}
 	else if (state.total > 1)
 	{
@@ -1465,10 +1455,7 @@ static bool take_bulk_get_items(P_char actor, bulk_get_state &state, P_obj conta
 		if (selected.scrap)
 		{
 			if (MakeScrap(actor, object))
-			{
-				announce_corpse_bulk_get(actor, state, container);
 				++state.total;
-			}
 			else
 			{
 				state.failed = true;
@@ -1499,8 +1486,6 @@ static bool take_bulk_get_items(P_char actor, bulk_get_state &state, P_obj conta
 			return false;
 		if (item_get_rejected)
 			state.failed = true;
-		else
-			announce_corpse_bulk_get(actor, state, container);
 	}
 	return get_can_continue(actor, runtime_id, state.room, container, state.container_uid);
 }

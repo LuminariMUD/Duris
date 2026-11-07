@@ -85,7 +85,7 @@ def run(binary):
 
             def save():
                 player.send('save')
-                player.expect('Save complete for ' + PLAYER + '.', timeout=60)
+                player.expect('Saving ' + PLAYER + '.', timeout=60)
 
             def training_baseline(missing):
                 # Staff edits queue a derived-stat refresh. Restore computes it
@@ -106,7 +106,7 @@ def run(binary):
                     journey.create_character(client, expected_room=None, account=account,
                                              character=name, email=name.lower() + '@example.invalid')
                     client.send('save')
-                    client.expect('Save complete for ' + name + '.', timeout=60)
+                    client.expect('Saving ' + name + '.', timeout=60)
                 stop()
                 sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
                 sql(f"UPDATE player_data SET level=29,highest_level=31,epics=10000,platinum=12000,gold=0,silver=0,copper=0 WHERE name='{PLAYER}'")

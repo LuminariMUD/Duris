@@ -74,7 +74,7 @@ def run(binary):
             server.start()
             staff = server.client = journey.MudClient(server.port)
             journey.create_character(staff)
-            staff.send("save"); staff.expect(f"Save complete for {journey.CHARACTER}.")
+            staff.send("save"); staff.expect(f"Saving {journey.CHARACTER}.")
             staff.send("quit"); staff.expect("ACCOUNT MENU")
             server.stop()
             journey.make_overlord(state, journey.CHARACTER)
@@ -142,7 +142,7 @@ def run(binary):
                 assert "You have memorized" in spells and spell in spells, spells
                 command(client, "stand")
                 client.send("save")
-                client.expect(f"Save complete for {name}.", timeout=30)
+                client.expect(f"Saving {name}.", timeout=30)
                 print(f"{name}: level 56, queued spell ready, native save complete", flush=True)
                 client.close()
                 clients.remove(client)

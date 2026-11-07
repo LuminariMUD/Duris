@@ -292,7 +292,7 @@ def run(binary):
                 player = journey.MudClient(port)
                 journey.create_character(player, account=name, character=name,
                                          email=f"{name.lower()}@example.invalid")
-                command(player, "save", f"Save complete for {name}.")
+                command(player, "save", f"Saving {name}.")
                 player.send("quit")
                 player.expect("ACCOUNT MENU", timeout=30)
                 player.close()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run production corpse bulk gets: selection, coins, publication and the haul report.
+"""Run production corpse bulk gets: selection, coins, publication and legacy messages.
 
 The world and wallet are stubs, not a substitute for a server journey. Real
 selection, pickup and reporting functions execute under ASan and UBSan.
@@ -181,6 +181,7 @@ static void do_get_finalize_container_success(P_char ch,P_char,P_obj container,P
   // The production finalizer takes a selected corpse pile in memory.
   item_get_rejected=!(options && options->has_amount_limit &&
                       take_coins(ch,object,container,TRUE,*options));
+  if(item_get_rejected) report_coin_get_rejection(ch,container);
   return;
  }
  publish_container_get(ch,object,container,TRUE,false); ++total; found=true;
@@ -267,12 +268,11 @@ int main() {
  for(bool player_corpse : {false,true}) {
   reset(); char_data actor; obj_data corpse,dagger,coins; setup(&actor,&corpse,&dagger,&coins);
   start_bulk_get(&actor,&corpse,nullptr,player_corpse);
-  assert(output.find("You begin pulling") == 0 && !rooms[1].empty());
+  assert(rooms[1].find("$n gets $p from $P.")!=std::string::npos);
+  assert(rooms[1].find("$n gets some coins from $P.")!=std::string::npos);
   assert(OBJ_CARRIED_BY(&dagger,&actor) && coin_attempts==1 && wallet==expected_wallet);
-  assert(output.find("You finish sorting your haul from the corpse of a frost giant.")!=std::string::npos);
-  assert(output.find("Haul:\r\n  a dagger\r\n")!=std::string::npos);
-  assert(output.find("  0p 4g 0s 0c")!=std::string::npos);
-  assert(output.find("Some contents were not acquired.")==std::string::npos);
+  assert(output=="You get a dagger from the corpse of a frost giant.\r\n"
+                 "You get 0p 4g 0s 0c from the corpse of a frost giant.\r\n");
   assert(bulk_gets.empty());
  }
  // A refused scrap stays in place and is reported as incomplete.
@@ -307,7 +307,7 @@ int main() {
   objects[53]=&second_item;
   start_bulk_get(&full_actor,&full_corpse,nullptr,player_corpse);
   assert(coin_attempts==1 && wallet==expected_wallet);
-  assert(output.find("  0p 4g 0s 0c")!=std::string::npos);
+  assert(output.find("You get 0p 4g 0s 0c from the corpse of a frost giant.")!=std::string::npos);
   assert(output.find("You can't carry any more.\r\n")!=std::string::npos);
   assert(output.find("You can't carry any more.\r\n") ==
          output.rfind("You can't carry any more.\r\n"));
@@ -328,18 +328,20 @@ int main() {
  start_bulk_get(&cycle_actor,&cycle_corpse,nullptr,false);
  assert(output=="You can't carry any more.\r\n" && bulk_gets.empty());
  assert(OBJ_INSIDE(&visible_root) && OBJ_INSIDE(&hidden_root));
- // A failed live delivery is never listed in the haul.
+ // A failed live delivery never reports a successful pickup to the player or room.
  reset(); setup(&actor,&corpse,&dagger,nullptr); fail_delivery=true;
  start_bulk_get(&actor,&corpse,nullptr,false);
- assert(output.find("  a dagger")==std::string::npos);
- // Coin-only and mixed operations take the selected coins in memory and list them
- // in the one haul report.
+ assert(output.find("You get ")==std::string::npos && rooms[1].empty());
+ assert(output.find("could not be delivered")!=std::string::npos);
+ // Coin-only and mixed operations take the selected coins in memory and report
+ // only what was acquired with the original per-pickup wording.
  for(bool mixed : {false,true}) {
   reset(); setup(&actor,&corpse,&dagger,&coins);
   if(!mixed) corpse.contains=&coins;
   start_bulk_get(&actor,&corpse,nullptr,false);
   assert(coin_attempts==1 && wallet==expected_wallet);
-  assert(output.find("  0p 4g 0s 0c")!=std::string::npos && bulk_gets.empty());
+  assert(output.find("You get 0p 4g 0s 0c from the corpse of a frost giant.")!=std::string::npos && bulk_gets.empty());
+  assert(output.find("Haul:")==std::string::npos && output.find("pulling things")==std::string::npos);
  }
  // A later pile with nothing to take keeps the delivered equipment and first pile,
  // reports once, and never lists the rejected second pile.
@@ -348,8 +350,9 @@ int main() {
  coins.next_content=&later; objects[53]=&later;
  start_bulk_get(&actor,&corpse,nullptr,false);
  assert(coin_attempts==2 && wallet==expected_wallet);
- assert(output.find("  a dagger")!=std::string::npos && output.find("  0p 4g 0s 0c")!=std::string::npos);
- assert(output.find("Some contents were not acquired.")!=std::string::npos && bulk_gets.empty());
+ assert(output.find("You get a dagger from ")!=std::string::npos &&
+        output.find("You get 0p 4g 0s 0c from ")!=std::string::npos);
+ assert(output.find("The coin transfer could not start; nothing changed.")!=std::string::npos && bulk_gets.empty());
  // The helper is PC-only. The strict PID macro above aborts for a real NPC,
  // so this also protects every container/coin/artifact publication caller.
  reset(); char_data scavenger; scavenger.npc=true; obj_data npc_bag,npc_loot;
@@ -371,9 +374,10 @@ parts = [prelude, take('struct synchronous_get_item')+';', take('struct bulk_get
          take('struct coin_get_submission_options')+';',
          'static std::unordered_map<uint32_t,bulk_get_state> bulk_gets;',
          take('static bulk_get_state *corpse_bulk_get('),
-         take('static void announce_corpse_bulk_get('), take_coins,
+         take_coins,
          take('static bool get_can_continue('),
-         take('static bool publish_container_get('), finalizers]
+         take('static bool publish_container_get('),
+         take('static void report_coin_get_rejection('), finalizers]
 for name in ['static bool bulk_get_source_matches(', 'static void report_bulk_get(',
              'static void finish_bulk_get(', 'static P_obj resolve_synchronous_get_item(',
              'static bool take_bulk_get_items(', 'static void reject_bulk_get_object(',

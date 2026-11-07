@@ -70,7 +70,7 @@ def run(binary):
                 c = journey.MudClient(server.port); clients.append(c)
                 journey.create_character(c, account=name, character=name,
                                          email=name.lower() + '@example.invalid')
-                c.send('save'); c.expect('Save complete for ' + name + '.')
+                c.send('save'); c.expect('Saving ' + name + '.')
                 c.send('quit'); c.expect('ACCOUNT MENU')
             for c in clients: c.close()
             clients.clear(); server.stop()

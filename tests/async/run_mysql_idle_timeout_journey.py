@@ -80,7 +80,7 @@ def run(server):
 
             def save():
                 client.send('save')
-                client.expect('Save complete for ' + journey.CHARACTER + '.', timeout=30)
+                client.expect('Saving ' + journey.CHARACTER + '.', timeout=30)
 
             def saved_items():
                 return int(sql("SELECT COUNT(*) FROM player_items items JOIN player_data player "

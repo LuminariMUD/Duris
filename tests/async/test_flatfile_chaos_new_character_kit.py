@@ -704,7 +704,7 @@ def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> 
                         "put all bottomless moved worn Chaos equipment:\n" + equipment,
                     )
                     client.send("save")
-                    client.expect(f"Save complete for {CHARACTER}.", timeout=120)
+                    client.expect(f"Saving {CHARACTER}.", timeout=120)
                     saved_spellbooks = assert_saved_kit(inspector, state_root, class_name)
 
                     process.send_signal(signal.SIGTERM)
@@ -815,7 +815,7 @@ def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> 
                                 "reloaded starter wearable authority was not a player root",
                             )
                             reload_client.send("save")
-                            reload_client.expect(f"Save complete for {CHARACTER}.", timeout=120)
+                            reload_client.expect(f"Saving {CHARACTER}.", timeout=120)
                             reloaded_spellbooks = assert_saved_kit(inspector, state_root, class_name)
                             require(reloaded_spellbooks == saved_spellbooks,
                                     f"{class_name}: spellbook UIDs or spell IDs changed across reload")
