@@ -2192,12 +2192,9 @@ bool circle(P_char ch, P_char victim)
 	if (!notch_skill(ch, SKILL_CIRCLE, get_property("skill.notch.offensive", 7)) &&
 	    skill < number(1, 100))
 	{
-		act("Damn! You weren't quite stealthy enough, and $N noticed your attempt to circle $M!",
-		    FALSE, ch, 0, victim, TO_CHAR);
-		act("$n clumsily tries to sneak behind $N, but $N notices $m anyway.", FALSE, ch, 0,
-		    victim, TO_NOTVICT);
-		act("You notice $n attempting to maneuver behind you, and take a more defensive stance. Who is $e fooling?",
-		    FALSE, ch, 0, victim, TO_VICT);
+		act("You fail to maneuver behind $N.", FALSE, ch, 0, victim, TO_CHAR);
+		act("$n tries to maneuver behind $N, but fails.", FALSE, ch, 0, victim, TO_NOTVICT);
+		act("$n tries to maneuver behind you, but fails.", FALSE, ch, 0, victim, TO_VICT);
 		return 0;
 	}
 
