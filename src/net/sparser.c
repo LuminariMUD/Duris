@@ -1092,11 +1092,11 @@ void SpellCastShow(P_char ch, int spl)
 		act(Gbuf1, TRUE, ch, 0, tch, TO_VICT);
 
 		if (idok == 1)
-			notch_skill(ch, SKILL_SPELL_KNOWLEDGE_MAGICAL, 1);
+			notch_skill(tch, SKILL_SPELL_KNOWLEDGE_MAGICAL, 1);
 		else if (idok == 2)
-			notch_skill(ch, SKILL_SPELL_KNOWLEDGE_CLERICAL, 1);
+			notch_skill(tch, SKILL_SPELL_KNOWLEDGE_CLERICAL, 1);
 		else if (idok == 3)
-			notch_skill(ch, SKILL_SPELL_KNOWLEDGE_SHAMAN, 1);
+			notch_skill(tch, SKILL_SPELL_KNOWLEDGE_SHAMAN, 1);
 	}
 }
 
@@ -2512,22 +2512,26 @@ bool check_disruptive_blow(P_char ch)
 
 		if (skl && success)
 		{
-			if (notch_skill(ch, SKILL_DISRUPTIVE_BLOW, 17))
+			if (notch_skill(tch, SKILL_DISRUPTIVE_BLOW, 17))
 				success = 100;
 
 			if (success > disruptive_blow_stop_margin())
 			{
-				if (melee_damage(tch, ch, disruptive_blow_damage(live_rolls), 0,
-						 &messages) == DAM_NONEDEAD)
+				const int result = melee_damage(
+					tch, ch, disruptive_blow_damage(live_rolls), 0, &messages);
+				if (result == DAM_NONEDEAD)
 				{
 					StopCasting(ch);
 					return TRUE;
 				}
+				return result != DAM_CHARDEAD;
 			}
 			else if (success > disruptive_blow_hit_margin())
 			{
-				melee_damage(tch, ch, disruptive_blow_damage(live_rolls), 0,
-					     &messages2);
+				const int result = melee_damage(
+					tch, ch, disruptive_blow_damage(live_rolls), 0, &messages2);
+				if (result != DAM_NONEDEAD)
+					return result != DAM_CHARDEAD;
 			}
 			else
 			{

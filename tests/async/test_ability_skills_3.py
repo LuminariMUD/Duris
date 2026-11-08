@@ -570,7 +570,7 @@ PINS = r'''
                            "  Chance a steady throw goes astray, to anyone or the floor: 1 in 101\n  Your lag: 3 seconds\n  Before you can throw again: 7 seconds\n"
                            "  With haste: 5.5 seconds\n  With flurry: 3.5 seconds\n");
     HAS(trap_facts, "  Your lag when you hide and arm a trap: 4 seconds\n  How long it stays armed: 30 minutes\n  Chance it springs as someone tries to leave: 2 in 3\n");
-    HAS(trap_facts, "  Dart trap damage, with no reductions: 5-25\n  Poison trap's level: 56\n  Crippling trap's limp: 10 seconds, 5 more vitality per move\n  Its bleeding: 3-7 rounds and 2 more, each 3-18\n");
+    HAS(trap_facts, "  Dart trap damage, with no reductions: 5-25\n  Poison trap's level: 56\n  Crippling trap's limp: 10 seconds, 5 more vitality per move\n  Its bleeding: 3-7 rounds, each 3-18\n");
     HAS(war_cry_facts, "  Hit points: +50\n  Hitroll and damroll: +5\n  Duration in a group: 5-6 game hours (6.25-7.5 minutes)\n  Duration alone: 2-3 game hours (2.5-3.75 minutes)\n  Your lag: 8 seconds\n");
     assert(chant_mastery_facts(&ch) == "  Chance on each cast: 15 in 101\n  Best result: cast time 0.25 seconds, lag 0.25 seconds\n"
                                        "  Good result: cast time 0.25 seconds, lag 50%\n  Fair result: cast time 60%, lag 80%\n");

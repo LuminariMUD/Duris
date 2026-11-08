@@ -123,7 +123,7 @@ HANDLER_CALLS = {
     ("fight.c", "int spell_damage("): ["number(1, 100) < arcane_riposte_threshold(skill_lvl)", "arcane_riposte_damage(skill_lvl, dam)",
                                        "GET_CHAR_SKILL(victim, SKILL_DISPERSE_FLAMES) > number(0, 100)", "!disperse_flames_roll(live_rolls)",
                                        "disperse_flames_level_roll(live_rolls) <= GET_LEVEL(victim)", "GET_CHAR_SKILL(victim, SKILL_FLAME_MASTERY) > number(0, 100)",
-                                       "!flame_mastery_roll(live_rolls)", "flame_mastery_level_roll(live_rolls) <= GET_LEVEL(ch)", "flame_mastery_damage(victim, dam)"],
+                                       "!flame_mastery_roll(live_rolls)", "flame_mastery_level_roll(live_rolls) <= GET_LEVEL(victim)", "flame_mastery_damage(victim, dam)"],
     ("fight.c", "int melee_damage("): ["!fist_of_dragon_roll(live_rolls)"],
     ("fight.c", "int chance_to_hit("): ["to_hit -= blindfighting_to_hit_penalty(ch);", "victim_ac += blindfighting_ac_penalty(victim);"],
     ("fight.c", "void event_tainted_blade("): ["tainted_blade_bleed(live_rolls, ch)"],
@@ -504,7 +504,7 @@ static void check_pages() {
                                   "  Chance of a second blow after that: 34 in 101\n  Its damage: 20-120\n  The target's defenses apply after.\n");
     HAS(arcane_riposte_facts, "  Chance to hurl a spell back: 24 in 100\n  Damage to the caster: 100% of the spell's, and you take none\n");
     HAS(disperse_flames_facts, "  Chance to stop a fire spell: 100 in 101, then 1 in 3, then 56 in 56\n");
-    HAS(flame_mastery_facts, "  Chance to hurl a fire spell back: 100 in 101, then 1 in 11\n    (and then the caster's level in 56)\n"
+    HAS(flame_mastery_facts, "  Chance to hurl a fire spell back: 100 in 101, then 1 in 11\n    (and then your level in 56)\n"
                              "  Damage to the caster: 125% of the spell's, and you take none\n"
                              "  Chance your fire shield doesn't worsen a cold spell on you: 99 in 101\n");
     EXACT(blindfighting_facts, "  To-hit against a target you can't see: -8\n  Armor class worse by, while you are blind: 8\n"
