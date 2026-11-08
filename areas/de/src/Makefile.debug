@@ -13,8 +13,9 @@ ifdef USE_SHARED
 endif
 
 OPTS     = -O2
-CCFLAGS  = -D__UNIX__ -Wno-deprecated -D_DE_ -DGODMODE=1
-CFLAGS   = -D__UNIX__ -D_DE_ -DGODMODE=1
+CXX_STANDARD = -std=c++20
+CCFLAGS  = $(CXX_STANDARD) -D__UNIX__ -Wno-deprecated -D_DE_ -DGODMODE=1
+CFLAGS   = $(CXX_STANDARD) -D__UNIX__ -D_DE_ -DGODMODE=1
 INCLUDES = -I. -I../../../src
 LIBS     = -lncurses -lstdc++
 
