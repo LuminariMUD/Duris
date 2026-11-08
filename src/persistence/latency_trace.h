@@ -39,7 +39,8 @@ typedef struct
 	uint64_t count;
 } latency_section;
 
-#define LATENCY_MAX_SECTIONS 32
+/* Tick phases and their individual recurring persistence jobs share each window. */
+#define LATENCY_MAX_SECTIONS 64
 
 typedef struct
 {

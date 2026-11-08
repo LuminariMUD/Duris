@@ -75,7 +75,7 @@ if loop:
         "the stall report still names every measured section",
         all(contains(loop, f'{label}_us=%')
             for label in ("connections", "activities", "combat", "commands",
-                          "ne_events", "prompts", "affect_and_points"))
+                          "ne_events", "persistence", "prompts", "affect_and_points"))
     ))
     checks.append((
         "the stall report splits aff/pts into affect_update and point_update",

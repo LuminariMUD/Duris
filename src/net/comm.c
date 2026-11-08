@@ -1518,8 +1518,9 @@ static void prepare_descriptor_latency_event(command_latency_event *event,
 
 class scoped_command_latency
 {
-    public:
-	scoped_command_latency(command_latency_tracker *tracker, const command_latency_event *event)
+public:
+	scoped_command_latency(command_latency_tracker * tracker,
+			       const command_latency_event *event)
 		: tracker_(tracker)
 		, event_(event)
 		, started_us_(loop_monotonic_us())
@@ -1527,7 +1528,10 @@ class scoped_command_latency
 	{
 	}
 
-	~scoped_command_latency() { finish(); }
+	~scoped_command_latency()
+	{
+		finish();
+	}
 
 	void finish()
 	{
@@ -1539,9 +1543,9 @@ class scoped_command_latency
 	}
 
 	scoped_command_latency(const scoped_command_latency &) = delete;
-	scoped_command_latency &operator=(const scoped_command_latency &) = delete;
+	scoped_command_latency &operator = (const scoped_command_latency &) = delete;
 
-    private:
+private:
 	command_latency_tracker *tracker_;
 	const command_latency_event *event_;
 	uint64_t started_us_;
@@ -1610,6 +1614,7 @@ struct game_loop_pulse_context
 	uint64_t command_sweep_us = 0;
 	uint64_t prompts_us = 0;
 	uint64_t ne_events_us = 0;
+	uint64_t persistence_us = 0;
 	uint64_t activities_us = 0;
 	uint64_t combat_us = 0;
 	uint64_t affect_us = 0;
@@ -2410,39 +2415,77 @@ static void run_event_phase(game_loop_pulse_context &ctx)
 static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 {
 	const uint64_t loop_tick = ctx.loop_tick;
-	const uint64_t gmcp_begin_us = !(pulse % 2) ? loop_monotonic_us() : 0;
+	const uint64_t persistence_begin_us = loop_monotonic_us();
+	const uint64_t gmcp_begin_us = !(pulse % 2) ? persistence_begin_us : 0;
+	uint64_t job_begin_us = persistence_begin_us;
+	const auto record_job = [&ctx, &job_begin_us, loop_tick](const char *name)
+	{
+		const uint64_t duration_us =
+			latency_trace_elapsed_us(job_begin_us, loop_monotonic_us());
+		latency_trace_record(name, duration_us, loop_tick);
+		if (duration_us != LATENCY_TRACE_DURATION_INVALID && duration_us >= 50000)
+		{
+			char tick_buffer[LATENCY_TRACE_TICK_STRING_LENGTH];
+			logit(LOG_STATUS,
+			      "PERSISTENCE JOB SLOW: boot=%s tick=%s pulse_start_mono_us=%" PRIu64
+			      " job=%s duration_us=%" PRIu64,
+			      latency_trace_boot_id(),
+			      latency_trace_format_tick(loop_tick, tick_buffer),
+			      ctx.loop_start_mono_us, name, duration_us);
+		}
+		// Keep trace and report emission out of the next job's measurement.
+		job_begin_us = loop_monotonic_us();
+	};
 
 	/* Flush dirty room GMCP updates every 2 pulses (~500ms) */
 	if (!(pulse % 2))
 	{
 		gmcp_flush_initial_states();
+		record_job("gmcp_flush_initial_states");
 		gmcp_flush_dirty_rooms();
+		record_job("gmcp_flush_dirty_rooms");
 		gmcp_flush_dirty_ship_contacts();
+		record_job("gmcp_flush_dirty_ship_contacts");
 		gmcp_flush_dirty_ship_info();
+		record_job("gmcp_flush_dirty_ship_info");
 		latency_trace_record("gmcp_protocol",
 				     latency_trace_elapsed_us(gmcp_begin_us, loop_monotonic_us()),
 				     loop_tick);
+		job_begin_us = loop_monotonic_us();
 		flush_pending_ship_saves();
+		record_job("flush_pending_ship_saves");
 		retry_unplaced_ships();
+		record_job("retry_unplaced_ships");
 		locker_async_pulse();
+		record_job("locker_async_pulse");
 	}
 	// Publish ready results each pulse, after events and before save capture.
 	critical_completion critical_completions[64] = {};
 	const size_t critical_completion_count =
 		critical_command_coordinator_pulse(critical_completions, 64);
+	record_job("critical_command_coordinator_pulse");
 	critical_gameplay_handle_completions(critical_completions, critical_completion_count);
+	record_job("critical_gameplay_handle_completions");
 	combat_outcome_transaction_pulse();
+	record_job("combat_outcome_transaction_pulse");
 	if (!(pulse % 2))
 	{
 		critical_gameplay_publish_outbox();
+		record_job("critical_gameplay_publish_outbox");
 		player_save_pipeline_pulse();
+		record_job("player_save_pipeline_pulse");
 		divine_boon_runtime_pulse();
+		record_job("divine_boon_runtime_pulse");
 		frag_cap_runtime_pulse();
+		record_job("frag_cap_runtime_pulse");
 		divine_boon_selection_pulse(static_cast<int64_t>(time(nullptr)));
+		record_job("divine_boon_selection_pulse");
 		persistence_pulse_character_saves();
+		record_job("persistence_pulse_character_saves");
 		player_load_result load_completions[32] = {};
 		const size_t load_completion_count =
 			player_load_pipeline_pulse(load_completions, 32);
+		record_job("player_load_pipeline_pulse");
 		for (size_t index = 0; index < load_completion_count; ++index)
 		{
 			bool delivered = false;
@@ -2459,34 +2502,58 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 			if (!delivered && !player_load_offline_complete(load_completions[index]))
 				player_load_pipeline_note_stale();
 		}
+		record_job("player_load_delivery");
 		information_cache_pulse();
+		record_job("information_cache_pulse");
 		help_cache_pulse();
+		record_job("help_cache_pulse");
 		collector_catalog_cache_pulse();
+		record_job("collector_catalog_cache_pulse");
 		collector_maintenance_pulse();
+		record_job("collector_maintenance_pulse");
 		collector_presence_pulse();
+		record_job("collector_presence_pulse");
 		collector_service_pulse();
+		record_job("collector_service_pulse");
 		account_recovery_pulse();
+		record_job("account_recovery_pulse");
 		redis_world_recovery_pulse();
+		record_job("redis_world_recovery_pulse");
 		latency_trace_record("gmcp_flush",
 				     latency_trace_elapsed_us(gmcp_begin_us, loop_monotonic_us()),
 				     loop_tick);
+		job_begin_us = loop_monotonic_us();
 	}
 	sql_async_pulse();
+	record_job("sql_async_pulse");
 	divine_trade_runtime_retire_pulse();
+	record_job("divine_trade_runtime_retire_pulse");
 #ifndef __NO_MYSQL__
 	sql_ship_write_pulse();
+	record_job("sql_ship_write_pulse");
 #endif
 	artifact_guild_transaction_pulse();
+	record_job("artifact_guild_transaction_pulse");
 #ifndef __NO_MYSQL__
 	if (!(pulse % WAIT_SEC))
+	{
 		arti_cache_retry();
+		record_job("arti_cache_retry");
+	}
 #endif
 	if (!(pulse % (WAIT_SEC * 60)))
+	{
 		sql_mud_info_refresh();
+		record_job("sql_mud_info_refresh");
+	}
 	maintenance_result maintenance_results[MAINTENANCE_COMPLETION_MAX] = {};
 	const size_t maintenance_count = maintenance_scheduler_pulse(
 		ne_event_tick, maintenance_results, MAINTENANCE_COMPLETION_MAX);
+	record_job("maintenance_scheduler_pulse");
 	maintenance_handle_completions(maintenance_results, maintenance_count);
+	record_job("maintenance_handle_completions");
+	ctx.persistence_us = latency_trace_elapsed_us(persistence_begin_us, loop_monotonic_us());
+	latency_trace_record("recurring_persistence", ctx.persistence_us, loop_tick);
 }
 
 static void run_activity_phase(game_loop_pulse_context &ctx)
@@ -2651,7 +2718,7 @@ static void run_pulse_reset_phase(game_loop_pulse_context &ctx)
 	if (loop_us != LATENCY_TRACE_DURATION_INVALID && loop_us >= 250000) // 4 ticks a sec
 	{
 		char tick_buffer[LATENCY_TRACE_TICK_STRING_LENGTH];
-		char duration_buffers[9][LATENCY_TRACE_TICK_STRING_LENGTH];
+		char duration_buffers[10][LATENCY_TRACE_TICK_STRING_LENGTH];
 		statuslog(
 			56,
 			"MUD TICK TOOK TOO LONG - loop time - %f: boot=%s tick=%s pulse_start_mono_us=%" PRIu64
@@ -2660,6 +2727,7 @@ static void run_pulse_reset_phase(game_loop_pulse_context &ctx)
 			" combat_us=%s"
 			" commands_us=%s"
 			" ne_events_us=%s"
+			" persistence_us=%s"
 			" prompts_us=%s"
 			" affect_and_points_us=%s"
 			" affect_update_us=%s"
@@ -2671,10 +2739,11 @@ static void run_pulse_reset_phase(game_loop_pulse_context &ctx)
 			latency_trace_format_duration(combat_us, duration_buffers[2]),
 			latency_trace_format_duration(command_sweep_us, duration_buffers[3]),
 			latency_trace_format_duration(ne_events_us, duration_buffers[4]),
-			latency_trace_format_duration(prompts_us, duration_buffers[5]),
-			latency_trace_format_duration(affect_and_points_us, duration_buffers[6]),
-			latency_trace_format_duration(affect_us, duration_buffers[7]),
-			latency_trace_format_duration(point_us, duration_buffers[8]));
+			latency_trace_format_duration(ctx.persistence_us, duration_buffers[5]),
+			latency_trace_format_duration(prompts_us, duration_buffers[6]),
+			latency_trace_format_duration(affect_and_points_us, duration_buffers[7]),
+			latency_trace_format_duration(affect_us, duration_buffers[8]),
+			latency_trace_format_duration(point_us, duration_buffers[9]));
 	}
 	latency_trace_record("total_tick", loop_us, loop_tick);
 	if (!(tics % 300))
@@ -3827,7 +3896,7 @@ void close_socket(struct descriptor_data *d)
 		FREE(d->storage);
 
 #endif
-		/* I really don't wanna crash it  */
+	/* I really don't wanna crash it  */
 #ifdef USE_ACCOUNT
 	if (d->account)
 		d->account = free_account(d->account);
