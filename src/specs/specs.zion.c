@@ -132,7 +132,8 @@ int zion_shield_absorb_proc(P_obj obj, P_char ch, int cmd, char *arg)
 			FALSE, ch, obj, vict);
 
 		blind(vict, ch, number(4, 10) * WAIT_SEC);
-		damage(ch, vict, (80 + number(0, 40)), TYPE_UNDEFINED);
+		if (damage(ch, vict, (80 + number(0, 40)), TYPE_UNDEFINED))
+			return TRUE;
 
 		act("&+rThe swift drain of magical energies from $q &+Lcauses $n &+Lto look queasy!&n",
 		    FALSE, ch, obj, 0, TO_ROOM);

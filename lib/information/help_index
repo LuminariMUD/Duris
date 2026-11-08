@@ -6758,7 +6758,8 @@ Duration:       Instantaneous
 Type of spell:  Cold
 
 "Frostbite" generates an icy blast which engulfs its victim, chilling
-him down to the bone.
+him down to the bone. A victim who fails its saving throw is weakened,
+losing Strength, even if it shrugged off or absorbed the blast itself.
 ===========================================================================
 
 #
@@ -10712,14 +10713,14 @@ MEDITATE (Skill)
 ===========================================================================
 Syntax:         meditate (while resting)
 
-"Meditate" allows the player to memorize/pray for spells with a chance of
-halving the time. A single proficiency check is made at the half way point
-for each spell. If successful, the spell will be memorized/prayed for at
-that time. If unsuccessful, the spell will take the normal time before it
-is memorized/prayed. Because meditate is the focusing of the mind, most
-actions will stop the meditation.
+"Meditate" can shorten spell preparation by skipping an additional wait.
+For Tupor, it can also halve a newly calculated recovery interval. These
+are separate checks, so it does not guarantee that the entire recovery
+will take half the time. It can help later slots as well as the first.
+Tupor estimates allow for the remaining scheduled wait, but do not predict
+future Meditation successes. Most actions will stop the meditation.
 ===========================================================================
-See also: PRAY, MEMORIZE
+See also: PRAY, MEMORIZE, TUPOR
 
 #
 MEMORIZE PRAY FORGET (General Information)
@@ -19048,6 +19049,9 @@ Syntax:         tupor (while resting, reclined, or asleep)
 
 Allows a Harpy or Ethermancer to recover spell slots. Use tupor while
 resting or asleep; recovery proceeds from the highest incomplete circle.
+The displayed estimate is for all missing slots together. During recovery
+it shows the estimated time remaining, including progress on the current
+slot. Meditation can shorten the estimate; future successes are not assumed.
 Waking or changing posture voluntarily ends the recovery without a shock,
 while forced interruptions can briefly stagger you.
 ===========================================================================

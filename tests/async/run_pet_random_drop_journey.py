@@ -90,7 +90,19 @@ def run(binary):
                 for attempt in range(8):
                     start = len(client.transcript)
                     client.send("order executioner kill raoul")
-                    client.expect("is dead! R.I.P.", timeout=30)
+                    deadline = time.monotonic() + 30
+                    while True:
+                        remaining = deadline - time.monotonic()
+                        assert remaining > 0, "pet did not finish the fight"
+                        outcome, _ = client.expect_any(
+                            ("is dead! R.I.P.", "seems a bit busy at the moment, try later."),
+                            timeout=remaining)
+                        if outcome == "is dead! R.I.P.":
+                            break
+                        # After a stone substitution, the previous fight's action
+                        # cooldown may still be active. Retry only its explicit refusal.
+                        time.sleep(.5)
+                        client.send("order executioner kill raoul")
                     command(client, "look in corpse")
                     feedback = bytes(client.transcript[start:]).decode(errors="replace")
                     salvage = "It appears you were able to salvage a piece of equipment"

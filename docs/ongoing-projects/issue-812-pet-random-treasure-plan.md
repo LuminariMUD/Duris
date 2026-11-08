@@ -1,7 +1,8 @@
 # Issue #812: owner-based random treasure for pet kills
 
-Status: implemented and qualified locally on
-`branch/issue-812-pet-random-treasure`; final commit/PR delivery in progress.
+Status: implemented and locally qualified on `branch/issue-812-pet-random-treasure`.
+Review: [PR #825](https://github.com/LuminariMUD/Duris/pull/825), open with label `bug`.
+No implementation work remains; deployment has not been performed.
 Date: 2026-11-08.
 Issue: [#812 — Pet finishing blows ignore the owner's luck and Hardcore random-drop bonus](https://github.com/LuminariMUD/Duris/issues/812).
 Source inspected: local `master` at `628dfce559c81c484d88dcf139e93c7a2569fe7d`.
@@ -215,6 +216,23 @@ coherent change. Deployment is separate.
 
 ## Implementation handoff
 
+- Fix committed/pushed as `f6181f3fb`; PR #825 targets `master`. The initial
+  PR conflicted with newly landed #813 only in the golden test's final result
+  message. The merge from `origin/master` at `92bb07f6a` preserves #813's
+  victim-home-zone difficulty bonus and both regression sets. The ownership
+  regression now also gives its victim a real difficulty-5 birthplace, covering
+  that bonus with remote-owner and moved-kill-room cases. The reference explains
+  the distinction between birthplace scaling and generation at the kill room.
+  All six focused checks and both builds passed on this combined state:
+  `bin/tests/issue812-integrated-focused.log`, `issue812-integrated-build.log`,
+  and `issue812-integrated-flat-build.log`. Final gameplay and staged formatting /
+  clang-tidy checks also passed on the integrated code: `issue812-integrated-journey.log`,
+  `issue812-integrated-format.log`, and `issue812-integrated-tidy.log`.
+  The journey now retries an explicitly refused order after the pet's ordinary
+  action cooldown if a stone substitution requires another fight. It still
+  uses real combat and requires one message/item with no duplicate corpse loot.
+  The integrated change is delivered through the existing PR; no dependent
+  implementation stack, release tag, migration, or deployment is needed.
 - Worktree: `C:/Users/apexw/.codex/worktrees/issue-812-pet-random-treasure/duris`.
   The plan moved here from the original checkout; use this copy as the reference.
 - Plan committed/pushed as `d3a8eebc8`. Production change is limited to the

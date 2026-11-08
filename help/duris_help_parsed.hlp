@@ -16557,16 +16557,16 @@ Meditate
 Meditate - Last Edited: 2007-04-19 19:17:13 by Unknown
 ======================================================
 Syntax:         meditate (while resting)
-"Meditate" allows the player to memorize/pray for spells with a chance of
-halving the time. A single proficiency check is made at the half way point
-for each spell. If successful, the spell will be memorized/prayed for at
-that time. If unsuccessful, the spell will take the normal time before it
-is memorized/prayed. Because meditate is the focusing of the mind, most
-actions will stop the meditation.
+"Meditate" can shorten spell preparation by skipping an additional wait.
+For Tupor, it can also halve a newly calculated recovery interval. These
+are separate checks, so it does not guarantee that the entire recovery
+will take half the time. It can help later slots as well as the first.
+Tupor estimates allow for the remaining scheduled wait, but do not predict
+future Meditation successes. Most actions will stop the meditation.
 
 ==See also==
 
-pray, memorize, commune, spells, forget
+pray, memorize, commune, spells, forget, tupor
 
 #0
 
@@ -17212,6 +17212,18 @@ reduction. Normal carrying limits and general encumbrance still apply.
 Keep your wield, secondary weapon, hold, shield and light slots free for
 your normal martial-arts attacks. See Martial Arts for the AC and damage
 allowances and the full combat rules.
+
+==Glove magic==
+
+Some gloves activate magic on a monk's barehand strikes when worn on the
+primary hands. Only gloves made for this purpose do so; wearing any other
+pair does not add an offensive proc. All monk specializations and secondary
+monks follow the same rule. A weapon strike uses its weapon's magic.
+
+A resolved punch, barehand counterattack or pressure-point strike can give
+one opportunity. Misses and blows that already kill the victim give none.
+The second pair of gloves gives no extra opportunity. Removing or changing
+the selected gloves cancels their unfinished magic.
 
 ==Allowed races==
 

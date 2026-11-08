@@ -103,8 +103,17 @@ P_index obj_index = item_protos;
 Skill skills[MAX_SKILLS];
 enum { ROOM_COLOURED, ROOM_PLAIN, ROOM_GUILD_HALL, ROOM_TOWN };
 
+// Birthplaces are virtual room numbers, not indexes. Zero is unset here.
+int real_room(const int vnum)
+{
+    for (int i = 0; i < 4; ++i)
+        if (rooms[i].number == vnum) return i;
+    return -1;
+}
+
 static void setup_world()
 {
+	for (int i = 0; i < 4; ++i) rooms[i].number = 80000 + i;
 	item_protos[VOBJ_RANDOM_ARMOR].virtual_number = VOBJ_RANDOM_ARMOR;
 	item_protos[VOBJ_RANDOM_WEAPON].virtual_number = VOBJ_RANDOM_WEAPON;
 	zones[0].name = const_cast<char *>("&+rThe &+RBurning&n Wastes");
@@ -354,6 +363,9 @@ static void owner_reward_contract()
 	person owner("Owner",32,160,true,ROOM_GUILD_HALL);
 	person pet("Pet",1,60,false,ROOM_COLOURED);
 	person victim("victim",34,100,false,ROOM_COLOURED);
+	// Preserve #813's victim-home difficulty bonus on both reward routes,
+	// including when the pet later fights outside the victim's home zone.
+	GET_BIRTHPLACE(&victim.ch)=80000+ROOM_COLOURED;
 	pet_owner=&owner.ch; owned_pet=&pet.ch;
 
 	// The RNG sentinel proves both the result and the path/draw count agree.
@@ -902,6 +914,77 @@ static void zone_flag_admission_contract()
     assert(!CanDoFightMove(&fighter.ch,&victim.ch));
     zones[0].flags=saved_zone_flags; rooms[ROOM_COLOURED].room_flags=saved_room_flags;
 }
+// Exercise the real drop decision against independently specified multipliers,
+// including rounding, unchanged material RNG, and the neutral early win.
+static void home_zone_drop_contract()
+{
+    person fighter("Finder",40,100,true,ROOM_PLAIN), victim("Mob",40,100,false,ROOM_PLAIN);
+    GET_BIRTHPLACE(&victim.ch)=80000 + ROOM_COLOURED;
+    const int saved_difficulty=zones[0].difficulty;
+    const struct { int difficulty; float multiplier; } cases[] = {
+        {0,1.0f}, {1,1.0f}, {2,1.1f}, {3,1.141421356f},
+        {5,1.2f}, {10,1.3f}, {11,1.3f}
+    };
+    int improved=0;
+    for (const auto &entry : cases) {
+        zones[0].difficulty=entry.difficulty;
+        for (bool piece : {false,true})
+        for (bool hardcore : {false,true})
+        for (bool neutral : {false,true})
+        for (double dial : {1.0,1.5}) {
+            fighter.ch.specials.act2=hardcore ? PLR2_HARDCORE_CHAR : 0;
+            fighter.ch.player.racewar=neutral ? RACEWAR_NEUTRAL : RACEWAR_GOOD;
+            loot_drops_dial=dial;
+            for (uint64_t seed=1;seed<=256;++seed) {
+                randomize(seed);
+                bool expected=neutral && !number(0,9);
+                if (!expected) {
+                    float chance=50.0f + number(-5,5);
+                    if (hardcore) chance*=1.5f;
+                    chance*=piece ? 0.15 : 0.08;
+                    const float baseline=chance * static_cast<float>(dial);
+                    if (piece) chance*=entry.multiplier;
+                    chance*=static_cast<float>(dial);
+                    const int roll=number(1,100);
+                    expected=static_cast<int>(chance+.5)>=roll;
+                    if (expected && static_cast<int>(baseline+.5)<roll) ++improved;
+                }
+                const int next=number(0,INT_MAX);
+                randomize(seed);
+                assert(check_random_drop(&fighter.ch,&victim.ch,piece)==expected);
+                assert(number(0,INT_MAX)==next);
+            }
+        }
+    }
+    assert(improved>0);
+    fighter.ch.specials.act2=0;
+    fighter.ch.player.racewar=RACEWAR_GOOD;
+    loot_drops_dial=1.0;
+    // Home difficulty 1 and absent home both stay unboosted even when the kill
+    // happens in a difficulty-10 zone; birthplace must never be a room index.
+    zones[0].difficulty=10;
+    fighter.ch.in_room=victim.ch.in_room=ROOM_COLOURED;
+    for (uint64_t seed=1;seed<=256;++seed) {
+        GET_BIRTHPLACE(&victim.ch)=80000 + ROOM_PLAIN;
+        randomize(seed); const bool baseline=check_random_drop(&fighter.ch,&victim.ch,true);
+        const int next=number(0,INT_MAX);
+        for (int missing : {0,99999}) {
+            GET_BIRTHPLACE(&victim.ch)=missing;
+            randomize(seed); assert(check_random_drop(&fighter.ch,&victim.ch,true)==baseline);
+            assert(number(0,INT_MAX)==next);
+        }
+    }
+    // A difficulty bonus must not bypass the level-gap refusal.
+    GET_BIRTHPLACE(&victim.ch)=80000 + ROOM_COLOURED;
+    victim.ch.player.level=29;
+    for (uint64_t seed=1;seed<=64;++seed) {
+        randomize(seed); const int next=number(0,INT_MAX);
+        randomize(seed); assert(!check_random_drop(&fighter.ch,&victim.ch,true));
+        assert(number(0,INT_MAX)==next);
+    }
+    zones[0].difficulty=saved_difficulty;
+}
+
 int main()
 {
 	setup_world();
@@ -917,6 +1000,7 @@ int main()
 	origin_generation_contract();
 	restored_zone_titles_contract();
 	zone_flag_admission_contract();
+	home_zone_drop_contract();
 	return 0;
 }
 '''
@@ -996,7 +1080,8 @@ def main():
         if failures:
             raise SystemExit("\n".join(failures))
         print(f"random equipment golden test passed: {len(run.stdout.splitlines())} cases"
-              " and RNG sentinels, plus owner/pet rewards, suffix totals, template identity and rejected kills")
+              " and RNG sentinels, plus owner/pet rewards, suffix totals, template identity,"
+              " rejected kills and home-zone drop scaling")
 
 
 main()

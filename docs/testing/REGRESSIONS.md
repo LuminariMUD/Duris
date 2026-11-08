@@ -2223,7 +2223,8 @@ and their sentinels deliberately changed for #812; the other 1,476 cases are unc
 The gameplay journey boots a private minimal flat-file server, creates a synthetic
 staff owner, links a pet through `givepet`, and orders it to kill an NPC. Private drop
 settings force the equipment roll and suppress materials; stone substitution retains
-its normal roll. It verifies one owner salvage message, loots the generated item from
+its normal roll; a subsequent fight waits through an explicitly refused busy order
+while the pet's normal action cooldown clears. It verifies one owner salvage message, loots the generated item from
 the corpse, checks that a second get finds no duplicate, and sees the item in inventory.
 It never reads checkout `.env` or operates on an existing game. Evidence belongs under
 `bin/tests/issue812-pet-*`; the journey is separate from probability qualification.

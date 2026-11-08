@@ -1518,9 +1518,10 @@ int mob_vecna_procs(P_obj obj, P_char ch, int cmd, char *arg)
 
 			dam = number(400, 600);
 			dam /= 4;
-			melee_damage(ch, victim, dam,
-				     PHSDAM_TOUCH | PHSDAM_NOREDUCE | PHSDAM_NOPOSITION, 0);
-			CharWait(victim, PULSE_VIOLENCE * 2);
+			if (melee_damage(ch, victim, dam,
+					 PHSDAM_TOUCH | PHSDAM_NOREDUCE | PHSDAM_NOPOSITION,
+					 0) == DAM_NONEDEAD)
+				CharWait(victim, PULSE_VIOLENCE * 2);
 			return TRUE;
 		}
 
@@ -1561,9 +1562,9 @@ int mob_vecna_procs(P_obj obj, P_char ch, int cmd, char *arg)
 				TRUE, ch, 0, victim);
 
 			dam = (int)(GET_HIT(victim) * 0.85);
-			spell_damage(ch, victim, dam, SPLDAM_GENERIC,
-				     SPLDAM_NOSHRUG | SPLDAM_NODEFLECT, 0);
-			CharWait(victim, PULSE_VIOLENCE * 1);
+			if (spell_damage(ch, victim, dam, SPLDAM_GENERIC,
+					 SPLDAM_NOSHRUG | SPLDAM_NODEFLECT, 0) == DAM_NONEDEAD)
+				CharWait(victim, PULSE_VIOLENCE * 1);
 			return TRUE;
 		}
 
@@ -1577,8 +1578,10 @@ int mob_vecna_procs(P_obj obj, P_char ch, int cmd, char *arg)
 
 			dam = number(200, 300);
 			dam /= 4;
-			melee_damage(ch, victim, dam,
-				     PHSDAM_TOUCH | PHSDAM_NOREDUCE | PHSDAM_NOPOSITION, 0);
+			if (melee_damage(ch, victim, dam,
+					 PHSDAM_TOUCH | PHSDAM_NOREDUCE | PHSDAM_NOPOSITION,
+					 0) != DAM_NONEDEAD)
+				return TRUE;
 
 			if (GET_POS(victim) == POS_STANDING && GET_SIZE(ch) >= GET_SIZE(victim))
 			{

@@ -2506,9 +2506,10 @@ void do_dragon_punch(P_char ch, char *argument, int /*cmd*/)
 	}
 	else
 	*/
-	melee_damage(ch, vict, dam, PHSDAM_TOUCH, &messages);
+	const int result = melee_damage(ch, vict, dam, PHSDAM_TOUCH, &messages);
 
-	CharWait(ch, dragon_punch_lag());
+	if (result != DAM_CHARDEAD && result != DAM_BOTHDEAD)
+		CharWait(ch, dragon_punch_lag());
 }
 
 void do_OLD_bandage(P_char ch, char *arg, int /*cmd*/)

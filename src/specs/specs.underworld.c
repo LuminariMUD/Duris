@@ -2026,9 +2026,8 @@ int tiamat(P_char ch, P_char pl, int cmd, char * /*arg*/)
 			};
 
 			// Damage 10 to 300, average 160
-			melee_damage(ch, vict, dice(10, 30), PHSDAM_NOREDUCE, &msgs);
-
-			if (IS_ALIVE(vict))
+			if (melee_damage(ch, vict, dice(10, 30), PHSDAM_NOREDUCE, &msgs) ==
+			    DAM_NONEDEAD)
 			{
 				spell_poison(59, ch, 0, 0, vict, NULL);
 			}
@@ -2999,6 +2998,8 @@ int barb(P_obj obj, P_char ch, int cmd, char *arg)
 					do_action(ch, 0, CMD_ROAR);
 					return DAM_VICTDEAD;
 				}
+				if (result != DAM_NONEDEAD)
+					return true;
 			}
 			update_pos(vict);
 			/* Disabling this for now. It seems that no messages are provided.
@@ -3066,13 +3067,15 @@ int barb(P_obj obj, P_char ch, int cmd, char *arg)
 			hammer_berserk_check(ch);
 			if (is_char_in_room(vict, ch->in_room))
 			{
-				spell_damage(ch, vict, 200, SPLDAM_GENERIC,
-					     SPLDAM_NOSHRUG | SPLDAM_NODEFLECT, 0);
-
 				if (!has_skin_spell(ch))
 				{
 					spell_stone_skin(GET_LEVEL(ch), ch, 0, 0, ch, 0);
 				}
+
+				if (spell_damage(ch, vict, 200, SPLDAM_GENERIC,
+						 SPLDAM_NOSHRUG | SPLDAM_NODEFLECT,
+						 0) != DAM_NONEDEAD)
+					return FALSE;
 			}
 			// Adding this to prevent perpetual stunning with mauls.
 			if (!number(0, 2) && MIN_POS(vict, POS_STANDING + STAT_NORMAL))

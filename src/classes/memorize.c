@@ -1480,13 +1480,26 @@ void do_assimilate(P_char ch, char *argument, int cmd)
 		if (available != max_spells_in_circle(ch, circle))
 		{
 			need_mem = circle;
-			checked_snprintf(Gbuf1 + strlen(Gbuf1), MAX_STRING_LENGTH - strlen(Gbuf1),
-					 "   (%4d seconds)",
-					 (get_circle_memtime(ch, circle, true) *
-					  (max_spells_in_circle(ch, circle) - available)) /
-						 WAIT_SEC);
+			if (cmd != CMD_TUPOR)
+				checked_snprintf(Gbuf1 + strlen(Gbuf1),
+						 MAX_STRING_LENGTH - strlen(Gbuf1),
+						 "   (%4d seconds)",
+						 (get_circle_memtime(ch, circle, true) *
+						  (max_spells_in_circle(ch, circle) - available)) /
+							 WAIT_SEC);
 		}
 		strcat(Gbuf1, "\n");
+	}
+	if (cmd == CMD_TUPOR && need_mem)
+	{
+		bool active = false;
+		const int64_t pulses = spell_preparation_estimate(ch, active);
+		checked_snprintf(
+			Gbuf1 + strlen(Gbuf1), MAX_STRING_LENGTH - strlen(Gbuf1),
+			"Estimated total recovery %s: %lld seconds.\n"
+			"Higher circles recover first. Meditation may shorten this estimate.\n",
+			active ? "remaining" : "if started now",
+			static_cast<long long>((pulses + WAIT_SEC - 1) / WAIT_SEC));
 	}
 
 	if (IS_DRAGOON(ch))

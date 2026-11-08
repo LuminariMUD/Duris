@@ -55,6 +55,13 @@ chance = chance x Hardcore multiplier x roll percentage x loot-drops dial
 win when round(chance) >= a roll of 1..100
 ```
 
+The equipment roll additionally receives the home-zone difficulty multiplier
+`1 + 0.10 x sqrt(difficulty - 1)`, with difficulty clamped to 1–10, after the
+roll percentage and before the loot-drops dial. It uses the victim's birthplace,
+so moving the victim or owner does not move that bonus. A missing birthplace
+adds no bonus. Materials and the neutral early win do not receive this multiplier.
+This bonus applies equally to direct and pet kills.
+
 `divisor` is `drop.luck.divisor` (4.0) and `base` is `drop.base.chance` (50), so a
 killer with 100 luck and a level ratio of 1 starts at 50 whatever the divisor. From
 killer level 15 up, the level ratio is mob level divided by killer level. Below 15 a

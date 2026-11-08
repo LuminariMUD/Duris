@@ -21,7 +21,7 @@ python3 scripts/migration_runner.py run
 ```
 
 The current head is `0054_full_group_combat_results` (sequence 55), and the contract
-describes 200 current tables: the 170-table baseline plus the post-baseline runtime tables created
+describes 201 current tables: the 170-table baseline plus the post-baseline runtime tables created
 by immutable migrations. Migration 0029 adds the replay-safe
 `critical_operation_inbox.failure_stage` receipt field as `SMALLINT UNSIGNED NOT
 NULL DEFAULT 0` immediately after `result_code`; it creates no table. A legacy clone
