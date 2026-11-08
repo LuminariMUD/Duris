@@ -27,12 +27,15 @@ zone_data *zone_table = zones;
 const int top_of_world = 1;
 int bfs_cur_marker = 1;
 int STAT_INDEX(int stat) { return stat; }
+int BOUNDED(int low, int value, int high) { return value < low ? low : value > high ? high : value; }
 int get_property(const char *, int fallback) { return fallback; }
 float get_property(const char *, double fallback) { return fallback; }
 static char_data master{};
 static bool mastered, shrug;
 static int scheduled, damage_calls, mana_before, removed, disarmed, moved, waited, golem_calls, golem_type;
 static int damage_result = DAM_NONEDEAD, last_damage;
+static int innate_checks, disease_calls;
+static bool bite_saved = true, diseased_bite;
 static bool release_on_damage;
 static std::string feedback;
 static P_char feedback_target;
@@ -46,7 +49,13 @@ int number(int low, int) { return low; }
 int dice(int count, int size) { return count * size; }
 const Rolls live_rolls = {dice, number};
 bool resists_spell(P_char, P_char) { return shrug; }
-bool StatSave(P_char, int, int) { return true; }
+bool StatSave(P_char, int, int) { return bite_saved; }
+bool has_innate(P_char ch, int) {
+    assert(IS_ALIVE(ch));
+    ++innate_checks;
+    return diseased_bite;
+}
+void spell_disease(int, P_char, char *, int, P_char, P_obj) { ++disease_calls; }
 bool affected_by_spell(P_char ch, int type) { return ch->affected && ch->affected->type == type; }
 void affect_from_char(P_char ch, int) {
     ++removed;
@@ -69,6 +78,9 @@ int spell_damage(P_char ch, P_char victim, double amount, int, uint, damage_mess
         if (damage_result == DAM_CHARDEAD || damage_result == DAM_BOTHDEAD) delete ch;
     }
     return damage_result;
+}
+int melee_damage(P_char ch, P_char victim, double amount, int, damage_messages *, int *) {
+    return spell_damage(ch, victim, amount, 0, 0, nullptr, nullptr);
 }
 void spell_minor_paralysis(int, P_char, char *, int, P_char, P_obj) {}
 void create_golem(int, P_char, P_char, P_obj, int type) {
@@ -129,6 +141,11 @@ affected_type *affect_to_char(P_char, affected_type *) { ++weakened; return null
     ('magic.c', 'static int call_lightning_more_strikes('),
     ('magic.c', 'static int call_lightning_interval('),
     ('magic.c', 'void event_call_lightning('),
+    ('innates.c', 'static int parasite_bite_damage('),
+    ('innates.c', 'static int parasite_bite_saved('),
+    ('innates.c', 'static int parasite_bite_disease_roll('),
+    ('innates.c', 'static int parasite_bite_lag('),
+    ('innates.c', 'int parasitebite('),
 ]) + r'''
 static char_data alive() {
     char_data ch{};
@@ -136,6 +153,26 @@ static char_data alive() {
     ch.points.mana = 500;
     ch.player.level = 50;
     return ch;
+}
+static void parasite_bite() {
+    release_on_damage = true;
+    for (bool saved : {false, true}) {
+        bite_saved = saved;
+        for (int result : {DAM_NONEDEAD, DAM_VICTDEAD, DAM_CHARDEAD, DAM_BOTHDEAD}) {
+            auto attacker = new char_data(alive()), victim = new char_data(alive());
+            damage_result = result;
+            damage_calls = innate_checks = disease_calls = waited = 0;
+            diseased_bite = true;
+            parasitebite(attacker, victim);
+            assert(damage_calls == 1);
+            assert(last_damage == (saved ? 120 : 240));
+            assert(innate_checks == (result == DAM_NONEDEAD));
+            assert(disease_calls == (result == DAM_NONEDEAD));
+            assert(waited == (result == DAM_NONEDEAD || result == DAM_VICTDEAD ? PULSE_VIOLENCE : 0));
+            if (result != DAM_CHARDEAD && result != DAM_BOTHDEAD) delete attacker;
+            if (result != DAM_VICTDEAD && result != DAM_BOTHDEAD) delete victim;
+        }
+    }
 }
 static void wave() {
     for (int interruption : {0, 1, 2, 3}) {
@@ -315,6 +352,7 @@ int main(int argc, char **argv) {
     else if (!std::strcmp(argv[1], "heavens")) heavens();
     else if (!std::strcmp(argv[1], "frostbite")) frostbite();
     else if (!std::strcmp(argv[1], "lightning")) call_lightning();
+    else if (!std::strcmp(argv[1], "parasite")) parasite_bite();
     else assert(false);
     std::printf("PASS critical spell safety: %s\n", argv[1]);
 }
@@ -329,5 +367,5 @@ with tempfile.TemporaryDirectory(prefix='critical-spells-', dir=out) as temporar
                     '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
                     '-g', '-Isrc', str(cpp), '-o', str(binary)], cwd=ROOT, check=True)
     results = [subprocess.run([str(binary), case], timeout=30).returncode
-               for case in ('wave', 'golem', 'radial', 'heavens', 'frostbite', 'lightning')]
+               for case in ('wave', 'golem', 'radial', 'heavens', 'frostbite', 'lightning', 'parasite')]
     assert not any(results), results

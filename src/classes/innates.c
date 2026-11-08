@@ -2060,7 +2060,7 @@ std::string diseased_bite_innate_facts(P_char ch)
 
 int parasitebite(P_char ch, P_char victim)
 {
-	int level, damage, mod = 0;
+	int level, damage, result, mod = 0;
 
 	struct damage_messages messages = { "You leap towards $N and bite $M savagely.",
 					    "$n leaps towards you and bites you savagely!",
@@ -2087,14 +2087,17 @@ int parasitebite(P_char ch, P_char victim)
 		      latch(ch, victim);
 		    }
 		    else FOR LATER USE*/
-		melee_damage(ch, victim, damage, 0, &messages);
+		result = melee_damage(ch, victim, damage, 0, &messages);
 	}
 	else
 	{
-		melee_damage(ch, victim, parasite_bite_saved(damage), 0, &messages);
+		result = melee_damage(ch, victim, parasite_bite_saved(damage), 0, &messages);
 	}
 
-	if (IS_ALIVE(victim) && has_innate(ch, INNATE_DISEASED_BITE) &&
+	if (result == DAM_CHARDEAD || result == DAM_BOTHDEAD)
+		return 0;
+
+	if (result == DAM_NONEDEAD && has_innate(ch, INNATE_DISEASED_BITE) &&
 	    !parasite_bite_disease_roll(live_rolls, mod))
 		spell_disease(level, ch, 0, SPELL_TYPE_SPELL, victim, 0);
 
@@ -2487,8 +2490,8 @@ struct shift_prime_destination
 	bool random_in_zone = false;
 };
 
-template <size_t N>
-static int select_shift_prime_room(P_char ch, const shift_prime_destination (&destinations)[N])
+template<size_t N> static int
+select_shift_prime_room(P_char ch, const shift_prime_destination (&destinations)[N])
 {
 	std::vector<int> rooms[N];
 	int available_slots[N];

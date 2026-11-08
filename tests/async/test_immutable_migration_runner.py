@@ -49,8 +49,65 @@ class FakeExecutor:
 
 
 class ImmutableMigrationRunnerTest(unittest.TestCase):
-    def test_online_item_fields_scope_and_lock_mode(self):
+    def test_online_zone_story_parts_scope_and_lock_mode(self):
         manifest = runner.load_manifest()
+        step = manifest.migrations[-1]
+        environment = {
+            "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
+            "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
+            "DB_ALLOWED_TARGETS": "127.0.0.1/duris",
+        }
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(os.environ, environment, clear=True):
+            backup = self.make_production_backup(Path(temporary))
+            for target, path in ((None, backup), ("127.0.0.1/other", backup), ("127.0.0.1/duris", None)):
+                with self.assertRaises(runner.MigrationContractError):
+                    runner.MysqlExecutor(manifest, target, path, online_zone_story_parts=True)
+            for field in ("apply_checksum", "verify_checksum"):
+                steps = manifest.migrations[:-1] + (runner.replace(step, **{field: "0" * 64}),)
+                with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
+                    runner.MysqlExecutor(runner.replace(manifest, migrations=steps),
+                                         "127.0.0.1/duris", backup, online_zone_story_parts=True)
+            with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
+                runner.MysqlExecutor(runner.replace(manifest, migrations=manifest.migrations[:-1]),
+                                     "127.0.0.1/duris", backup, online_zone_story_parts=True)
+            with self.assertRaisesRegex(runner.MigrationContractError, "select only one"):
+                runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup,
+                                     online_zone_story_parts=True, online_item_fields=True)
+            executor = runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup,
+                                           online_zone_story_parts=True)
+            original = step.apply_path.read_bytes()
+            with mock.patch.object(executor, "sql", side_effect=["11.8.6-MariaDB", "InnoDB", ""]) as sql:
+                executor.apply(step)
+                self.assertIn("TABLE_NAME='zone_story_quest_state'", sql.call_args_list[1].args[0])
+                self.assertEqual(sql.call_args.args[1],
+                                 b"SET SESSION alter_algorithm='INSTANT';\n"
+                                 b"SET SESSION lock_wait_timeout=1;\n"
+                                 b"SET SESSION innodb_lock_wait_timeout=1;\n" + original)
+            for response in (["10.11.14-MariaDB"], ["11.8.6-MariaDB", "MyISAM"],
+                             ["11.8.6-MariaDB", "InnoDB", runner.MigrationContractError("lock timeout")]):
+                with mock.patch.object(executor, "sql", side_effect=response):
+                    with self.assertRaises(runner.MigrationContractError):
+                        executor.apply(step)
+            with mock.patch.object(executor, "acquire_lock"), \
+                    mock.patch.object(executor, "release_lock"), \
+                    mock.patch.object(executor, "require_baseline"), \
+                    mock.patch.object(executor, "applied", return_value=[
+                        runner.AppliedMigration(item.migration_id, item.sequence, item.description,
+                                                item.apply_checksum, item.verify_checksum,
+                                                item.compatibility, manifest.runner_version)
+                        for item in manifest.migrations[:-2]]), \
+                    mock.patch.object(executor, "sql") as sql:
+                with self.assertRaisesRegex(runner.MigrationContractError, "only reviewed"):
+                    runner.run_pending(manifest, executor)
+                sql.assert_not_called()
+        result = subprocess.run([sys.executable, str(ROOT / "scripts/migration_runner.py"),
+                                 "inspect", "--online-zone-story-parts"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("requires run", result.stderr)
+
+    def test_online_item_fields_scope_and_lock_mode(self):
+        current = runner.load_manifest()
+        manifest = runner.replace(current, migrations=current.migrations[:61])
         environment = {
             "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
             "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",

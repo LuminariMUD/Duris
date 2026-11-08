@@ -12,8 +12,8 @@ and UBSan.
 
 Each case seeds the RNG from its own name, so a failure names one case and adding a
 case moves no other. The output must equal tests/fixtures/random_equipment_golden.txt,
-written once from the code of 2026-10-10 and never edited: a change that moves, adds
-or drops a single roll changes the output. The fixtures remain frozen across module
+written from the code of 2026-10-10. Issue #812 intentionally updates only the four
+pet-kill cases to use owner rewards; all other cases remain frozen across module
 refactors. A companion fixture records a sentinel roll after each
 case to detect terminal draws that leave the current item unchanged. Direct assertions
 also cover every suffix total, blank template identity and rejected kill contexts
@@ -215,8 +215,17 @@ static void release(P_obj obj)
 
 // What the kill drop puts on the victim.
 static std::string given;
+static bool capture_rewards = false;
+static int equipment_count, material_count, stone_count;
+static std::string reward_state;
+static void capture_reward(P_obj obj);
 bool obj_to_char(P_obj obj, P_char ch)
 {
+	if (capture_rewards)
+	{
+		assert(std::string(GET_NAME(ch)) == "victim");
+		capture_reward(obj);
+	}
 	char line[64];
 	if (obj->R_num == VOBJ_RANDOM_ARMOR || obj->R_num == VOBJ_RANDOM_WEAPON)
 	{
@@ -326,6 +335,185 @@ static void put_obj(P_obj o)
 		put("%s%d:%d", i ? "," : "", o->affected[i].location, o->affected[i].modifier);
 }
 
+// Full generated state for paired direct/pet kills, without changing golden output.
+static void capture_reward(P_obj obj)
+{
+	const auto saved = current;
+	current.clear();
+	if (obj->R_num == VOBJ_RANDOM_ARMOR || obj->R_num == VOBJ_RANDOM_WEAPON)
+	{
+		++equipment_count;
+		put_obj(obj);
+		put(" origin=%d", named_set_origin(obj).zone);
+	}
+	else
+	{
+		if (obj->R_num >= 400000 && obj->R_num <= 400209)
+			++material_count;
+		else
+			++stone_count;
+		put(" vnum=%d", obj->R_num);
+	}
+	reward_state += current;
+	current = saved;
+}
+
+static void owner_reward_contract()
+{
+	person owner("Owner",32,160,true,ROOM_GUILD_HALL);
+	person pet("Pet",1,60,false,ROOM_COLOURED);
+	person victim("victim",34,100,false,ROOM_COLOURED);
+	// Preserve #813's victim-home difficulty bonus on both reward routes,
+	// including when the pet later fights outside the victim's home zone.
+	GET_BIRTHPLACE(&victim.ch)=80000+ROOM_COLOURED;
+	pet_owner=&owner.ch; owned_pet=&pet.ch;
+
+	// The RNG sentinel proves both the result and the path/draw count agree.
+	auto decision = [&](bool by_pet, bool piece, uint64_t seed) {
+		const int room=owner.ch.in_room;
+		if (!by_pet) owner.ch.in_room=pet.ch.in_room;
+		randomize(seed);
+		const bool won=check_random_drop(by_pet ? &pet.ch : &owner.ch,&victim.ch,piece);
+		const int next=number(0,INT_MAX);
+		owner.ch.in_room=room;
+		return std::make_pair(won,next);
+	};
+	for (int level : {14,15,25,26,32})
+	for (int mob_level : {level-10,level-11,34,35,36,37,38,39,40,41})
+	for (int luck : {60,160})
+	for (bool hardcore : {false,true})
+	for (bool neutral : {false,true})
+	{
+		owner.ch.player.level=level; owner.ch.curr_stats.Luk=luck;
+		owner.ch.specials.act2=hardcore ? PLR2_HARDCORE_CHAR : 0;
+		owner.ch.player.racewar=neutral ? RACEWAR_NEUTRAL : RACEWAR_GOOD;
+		pet.ch.player.racewar=neutral ? RACEWAR_GOOD : RACEWAR_NEUTRAL;
+		victim.ch.player.level=mob_level;
+		for (int pet_level : {1,62})
+		for (bool piece : {false,true})
+		for (uint64_t seed=1;seed<=64;++seed)
+		{
+			pet.ch.player.level=pet_level;
+			pet.ch.curr_stats.Luk=220-luck;
+			pet.ch.specials.act2=PLR2_HARDCORE_CHAR; // NPC flag cannot grant a bonus.
+			assert(decision(false,piece,seed)==decision(true,piece,seed));
+			if (level-mob_level>10) assert(!decision(true,piece,seed).first);
+		}
+	}
+	owner.ch.player.level=32; victim.ch.player.level=34;
+	owner.ch.player.racewar=RACEWAR_GOOD;
+	for (bool piece : {false,true})
+	{
+		bool luck_changes=false, hardcore_changes=false;
+		for (uint64_t seed=1;seed<=512;++seed)
+		{
+			owner.ch.curr_stats.Luk=60; owner.ch.specials.act2=0;
+			const bool ordinary=decision(true,piece,seed).first;
+			owner.ch.curr_stats.Luk=160;
+			luck_changes |= ordinary!=decision(true,piece,seed).first;
+			const bool lucky=decision(true,piece,seed).first;
+			owner.ch.specials.act2=PLR2_HARDCORE_CHAR;
+			hardcore_changes |= lucky!=decision(true,piece,seed).first;
+		}
+		assert(luck_changes && hardcore_changes);
+	}
+	// Neutral early wins bypass all scaling; fallthrough still uses ordinary draws.
+	owner.ch.player.racewar=RACEWAR_NEUTRAL;
+	loot_drops_dial=0;
+	bool early=false, fallthrough=false;
+	for (uint64_t seed=1;seed<=64;++seed)
+	{
+		randomize(seed);
+		const bool early_win=number(0,9)==0;
+		const int next=number(0,INT_MAX);
+		for (bool piece : {false,true})
+		{
+			const auto direct=decision(false,piece,seed), linked=decision(true,piece,seed);
+			assert(direct==linked && linked.first==early_win);
+			if (early_win) { assert(linked.second==next); early=true; }
+			else fallthrough=true;
+		}
+	}
+	assert(early && fallthrough); loot_drops_dial=1;
+
+	owner.ch.player.racewar=RACEWAR_GOOD;
+	owner.ch.specials.act2=PLR2_HARDCORE_CHAR;
+	owner.ch.player.level=56; owner.ch.curr_stats.Luk=160;
+	victim.ch.player.level=62;
+	owner.ch.player.m_class=CLASS_ALCHEMIST;
+	int outcomes=0; bool saw_stone=false, saw_named=false, saw_owner=false, saw_alchemist=false;
+	capture_rewards=true;
+	auto kill = [&](bool by_pet, uint64_t seed) {
+		const int room=owner.ch.in_room;
+		if (!by_pet) owner.ch.in_room=pet.ch.in_room;
+		owner.pc.spell_bind_used=100;
+		sent.clear(); given.clear(); reward_state.clear();
+		equipment_count=material_count=stone_count=0;
+		randomize(seed);
+		random_equipment_kill_drop(by_pet ? &pet.ch : &owner.ch,&victim.ch);
+		assert(equipment_count+material_count+stone_count<=2);
+		const std::string salvage="It appears you were able to salvage";
+		const auto first=sent.find(salvage);
+		assert(first==std::string::npos || sent.find(salvage,first+1)==std::string::npos);
+		assert(sent.find("msg(Pet)")==std::string::npos);
+		outcomes |= 1 << ((equipment_count ? 1 : 0) | (material_count ? 2 : 0));
+		saw_stone |= stone_count>0;
+		saw_named |= reward_state.find("origin=740")!=std::string::npos;
+		saw_owner |= reward_state.find(" Owner")!=std::string::npos;
+		saw_alchemist |= owner.pc.spell_bind_used<100;
+		const auto result=reward_state+sent+std::to_string(owner.pc.spell_bind_used)+
+			" rng="+std::to_string(number(0,INT_MAX));
+		owner.ch.in_room=room;
+		return result;
+	};
+	for (int luck : {60,100,160})
+	{
+		owner.ch.curr_stats.Luk=luck;
+		for (uint64_t seed=1;seed<=2048;++seed)
+			assert(kill(false,seed)==kill(true,seed));
+	}
+	assert(outcomes==15 && saw_stone && saw_named && saw_owner && saw_alchemist);
+
+	// Remote owner room never changes town/guild eligibility or named-zone generation.
+	for (int owner_room : {ROOM_COLOURED,ROOM_PLAIN,ROOM_GUILD_HALL,ROOM_TOWN})
+	for (int kill_room : {ROOM_COLOURED,ROOM_PLAIN,ROOM_GUILD_HALL,ROOM_TOWN})
+	for (int mob_level : {25,26,62})
+	{
+		owner.ch.in_room=owner_room; pet.ch.in_room=kill_room;
+		owner.ch.player.level=32; victim.ch.player.level=mob_level;
+		for (uint64_t seed=1;seed<=64;++seed)
+			assert(kill(false,seed)==kill(true,seed));
+	}
+	// The owner need not be alive/grouped/present; only the actual killer must be alive.
+	owner.ch.in_room=ROOM_PLAIN; pet.ch.in_room=ROOM_COLOURED;
+	owner.ch.player.level=32; victim.ch.player.level=34;
+	for (uint64_t seed=1;seed<=64;++seed)
+	{
+		SET_POS(&owner.ch,STAT_NORMAL+POS_STANDING);
+		const auto alive=kill(true,seed);
+		SET_POS(&owner.ch,STAT_DEAD+POS_STANDING);
+		assert(alive==kill(true,seed));
+	}
+	// Existing rejection gates must consume no rolls and create no rewards/messages.
+	SET_POS(&owner.ch,STAT_NORMAL+POS_STANDING);
+	for (int context=0;context<5;++context)
+	{
+		pet_owner=context==0 ? nullptr : &owner.ch;
+		if (context==1) SET_BIT(owner.ch.specials.act,ACT_ISNPC);
+		if (context==2) SET_POS(&pet.ch,STAT_DEAD+POS_STANDING);
+		victim.ch.points.curr_exp=context==3 ? 0 : 1000;
+		victim.npc.R_num=context==4 ? 1 : 0;
+		randomize(1234); const int next=number(0,INT_MAX);
+		const auto result=kill(true,1234);
+		assert(reward_state.empty() && sent.empty());
+		assert(result=="100 rng="+std::to_string(next));
+		REMOVE_BIT(owner.ch.specials.act,ACT_ISNPC);
+		SET_POS(&pet.ch,STAT_NORMAL+POS_STANDING);
+	}
+	capture_rewards=false;
+	pet_owner=owned_pet=nullptr;
+}
+
 // ---- Drop decision ----
 enum drop_condition { PLAIN, ELITE, NEUTRAL, HARDCORE, TOWN, GUILD, NO_EXP, SHOPKEEPER, DIAL };
 static const char *condition_names[] = { "plain", "elite", "neutral", "hardcore", "town",
@@ -388,7 +576,7 @@ static void kill_case(bool by_pet, int killer_level, int mob_level, int luck)
 	person pet("wolf companion", killer_level, luck, false, ROOM_PLAIN);
 	if (by_pet)
 	{
-		// Only the message goes to the owner. Drop rolls and generation use the pet.
+		// #812: rewards use this owner, while the kill still takes place outside the guild.
 		owner.ch.player.level = 62;
 		owner.ch.curr_stats.Luk = 60;
 		owner.ch.in_room = ROOM_GUILD_HALL;
@@ -800,6 +988,7 @@ static void home_zone_drop_contract()
 int main()
 {
 	setup_world();
+	owner_reward_contract();
 	drop_decision();
 	kill_drop();
 	rejected_kills();
@@ -818,7 +1007,9 @@ int main()
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix="duris-random-equipment-golden-") as directory:
+    output_root = ROOT / "bin/tests/random-equipment"
+    output_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="golden-", dir=output_root) as directory:
         work = Path(directory)
         harness = work / "harness.cpp"
         helpers = class_groups() + "\n".join(extract_function(name, signature) for name, signature in HELPERS)
@@ -870,6 +1061,7 @@ def main():
         run = subprocess.run([str(binary)], env=env, capture_output=True, text=True)
         if run.returncode:
             raise SystemExit(f"FAILED: the harness exited {run.returncode}\n{run.stderr}")
+        failures = []
         for fixture, actual in ((FIXTURE, run.stdout), (RNG_FIXTURE, run.stderr)):
             expected = fixture.read_text()
             if actual == expected:
@@ -883,10 +1075,13 @@ def main():
             for i in differing[:3]:
                 print("expected:", expected_lines[i] if i < len(expected_lines) else "(none)")
                 print("actual:  ", actual_lines[i] if i < len(actual_lines) else "(none)")
-            raise SystemExit(f"FAILED: {fixture.name}: {len(differing)} of {len(expected_lines)}"
-                             f" cases differ; the whole output is in {output}")
+            failures.append(f"FAILED: {fixture.name}: {len(differing)} of {len(expected_lines)}"
+                            f" cases differ; the whole output is in {output}")
+        if failures:
+            raise SystemExit("\n".join(failures))
         print(f"random equipment golden test passed: {len(run.stdout.splitlines())} cases"
-              " and RNG sentinels, plus suffix totals, template identity, rejected kills and home-zone drop scaling")
+              " and RNG sentinels, plus owner/pet rewards, suffix totals, template identity,"
+              " rejected kills and home-zone drop scaling")
 
 
 main()

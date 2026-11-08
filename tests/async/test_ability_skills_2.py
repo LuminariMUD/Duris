@@ -399,8 +399,8 @@ static void check_rolls() {
                      improved_shield_combat_damage(rolls, c));
                 SAME(number(0, 3), critical_attack_roll(rolls));
                 SAME(number(0, 2), critical_attack_disarm_roll(rolls));
-                SAME(number(1, get_property("skill.arcane.block.dam.reduction", .4) *
-                                   GET_CHAR_SKILL(c, SKILL_ARCANE_BLOCK)),
+                SAME(number(1, MAX(1, (int)(get_property("skill.arcane.block.dam.reduction", .4) *
+                                   GET_CHAR_SKILL(c, SKILL_ARCANE_BLOCK)))),
                      arcane_block_reduction(rolls, c));
                 SAME(number(4, 16) * get_property("archery.enchantArrows.damage.mod", 1), enchant_arrow_damage(rolls));
                 SAME(number(0, GET_CHAR_SKILL(c, SKILL_ARCHERY) / 25), archery_skill_damage(rolls, c));

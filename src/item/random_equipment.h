@@ -77,7 +77,9 @@ void random_equipment_kill_drop(P_char killer, P_char victim);
 
 // random_equipment.c: the item generator, salvage materials, encrust stones and the
 // affect helpers other code borrows.
-P_obj create_random_eq(P_char finder, int finder_level, int source_level, int slot, int material);
+// source_room keeps remote pet rewards in the kill zone; NOWHERE uses the finder's room.
+P_obj create_random_eq(P_char finder, int finder_level, int source_level, int slot, int material,
+		       int source_room = NOWHERE);
 P_obj create_material(int index);
 P_obj create_material(P_char finder, int finder_level, int source_level);
 P_obj create_stones(void);

@@ -28,7 +28,6 @@ FREEDOM = extract_function("magic.c", "bool check_freedom_of_movement(P_char ch)
 GRASP = "\n".join(
     extract_function("smagic.c", signature)
     for signature in (
-        "static int earthen_grasp_level(",
         "static int earthen_grasp_damage(",
         "static int earthen_grasp_saved_damage(",
         "void earthen_grasp(int level, P_char ch, P_char victim, bool greater)",

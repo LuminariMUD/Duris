@@ -48,6 +48,8 @@ bool check_random_drop(P_char ch, P_char mob, bool piece)
 	{
 		return FALSE;
 	}
+	// Reward attributes belong to the player; room restrictions stay at the kill.
+	P_char finder = IS_PC_PET(ch) ? GET_MASTER(ch) : ch;
 
 	if (!GET_EXP(mob) || IS_SHOPKEEPER(mob))
 	{
@@ -59,7 +61,7 @@ bool check_random_drop(P_char ch, P_char mob, bool piece)
 		return FALSE;
 	}
 
-	char_lvl = (float)GET_LEVEL(ch);
+	char_lvl = (float)GET_LEVEL(finder);
 	mob_lvl = (float)GET_LEVEL(mob);
 
 	if (CHAR_IN_TOWN(ch) && (mob_lvl > 25))
@@ -73,7 +75,7 @@ bool check_random_drop(P_char ch, P_char mob, bool piece)
 	}
 
 	// Neutral players have an early, unscaled win at the configured odds.
-	if (IS_PC(ch) && (GET_RACEWAR(ch) == RACEWAR_NEUTRAL) &&
+	if (IS_PC(finder) && (GET_RACEWAR(finder) == RACEWAR_NEUTRAL) &&
 	    !number(0, config->drop_neutral_roll_max))
 		return TRUE;
 
@@ -87,7 +89,7 @@ bool check_random_drop(P_char ch, P_char mob, bool piece)
 
 	// At ratio 1 and luck 100 this starts at the configured base chance. The
 	// jitter, low-level bonus and elite bonus are drawn in that order.
-	chance = (GET_C_LUK(ch) / luck_divisor) * char_mob_lvl_div +
+	chance = (GET_C_LUK(finder) / luck_divisor) * char_mob_lvl_div +
 		 (config->drop_base_chance - 100. / luck_divisor);
 	chance += (float)number(config->drop_jitter_min, config->drop_jitter_max);
 
@@ -99,7 +101,7 @@ bool check_random_drop(P_char ch, P_char mob, bool piece)
 	if (IS_ELITE(mob))
 		chance += (float)number(config->drop_elite_bonus_min, config->drop_elite_bonus_max);
 
-	if (IS_HARDCORE(ch))
+	if (IS_HARDCORE(finder))
 	{
 		chance *= hardcore_config_get()->bonus_random_equipment_multiplier;
 	}
@@ -139,7 +141,7 @@ void random_equipment_kill_drop(P_char killer, P_char victim)
 
 	if ((IS_PC(killer) || IS_PC_PET(killer)) && IS_NPC(victim) && IS_ALIVE(killer))
 	{
-		// A pet's kill is reported to its owner; the pet has no one to read it.
+		// A pet earns its owner's rewards at the pet's combat location.
 		P_char credited_killer = IS_PC_PET(killer) ? GET_MASTER(killer) : killer;
 
 		if (check_random_drop(killer, victim, TRUE))
@@ -150,17 +152,20 @@ void random_equipment_kill_drop(P_char killer, P_char victim)
 			}
 			else
 			{
-				if (GET_LEVEL(killer) > 0)
+				if (GET_LEVEL(credited_killer) > 0)
 				{
-					tempobj = create_random_eq(killer, GET_LEVEL(killer),
-								   GET_LEVEL(victim), -1, -1);
+					tempobj = create_random_eq(credited_killer,
+								   GET_LEVEL(credited_killer),
+								   GET_LEVEL(victim), -1, -1,
+								   killer->in_room);
 					send_to_char(
 						"It appears you were able to salvage a piece of equipment from your enemy.\n",
 						credited_killer);
 				}
 				else
 				{
-					tempobj = create_material(killer, GET_LEVEL(killer),
+					tempobj = create_material(credited_killer,
+								  GET_LEVEL(credited_killer),
 								  GET_LEVEL(victim));
 					send_to_char(
 						"It appears you were able to salvage a piece of material from your enemy.\n",
@@ -175,7 +180,8 @@ void random_equipment_kill_drop(P_char killer, P_char victim)
 			if (!number(0, STONE_ROLL_MAX))
 				tempobj = create_stones();
 			else
-				tempobj = create_material(killer, GET_LEVEL(killer),
+				tempobj = create_material(credited_killer,
+							  GET_LEVEL(credited_killer),
 							  GET_LEVEL(victim));
 
 			if (tempobj)
