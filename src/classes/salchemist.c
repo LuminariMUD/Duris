@@ -1216,6 +1216,12 @@ void do_encrust(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
+	if (IS_MONK_PROC_GLOVE(item))
+	{
+		send_to_char("A jewel would disrupt the magic bound into these gloves.\r\n", ch);
+		return;
+	}
+
 	if (item->type != ITEM_WEAPON && item->type != ITEM_ARMOR && item->type != ITEM_SHIELD &&
 	    item->type != ITEM_WORN && item->type != ITEM_LIGHT && item->type != ITEM_INSTRUMENT)
 	{

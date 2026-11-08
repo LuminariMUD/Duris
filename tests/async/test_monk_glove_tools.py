@@ -85,3 +85,9 @@ import re
 names = re.findall(r'\{ "([A-Z_]+)"', common)
 assert names[16:20] == ["TRANSPARENT", "ACCOUNT_BOUND", "ENHANCED", "MONK_PROC"]
 print("extra2 flag names retain their numeric positions")
+
+encrust = (ROOT / "src/classes/salchemist.c").read_text().split("void do_encrust", 1)[1]
+refusal = encrust.index("if (IS_MONK_PROC_GLOVE(item))")
+assert refusal < encrust.index("extract_obj(item)")
+assert refusal < encrust.index("new_item->value[5] = jewel->value[6]")
+print("encrust refuses opted-in gloves before consuming them")
