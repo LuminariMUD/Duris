@@ -16,11 +16,11 @@ A locked door that can be picked, or a pickproof door that is unlocked, can stil
 
 Imagine two rooms separated by one of those protected doors. You have passdoor magic active. Trying to walk through the door fails, as intended.
 
-A successful Tempest knockback can nevertheless throw you into the other room. The ability checks the doorway differently and then moves you directly.
+A successful Squall knockback can nevertheless throw you into the other room. The ability checks the doorway differently and then moves you directly.
 
 The same problem appears in:
 
-- Tempest knockback.
+- Squall knockback.
 - A nexus guardian energy burst.
 - A conjured golem throwing a small opponent.
 - The knockback branch used by Judgement.
