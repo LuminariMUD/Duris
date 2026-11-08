@@ -115,9 +115,9 @@ PROPERTIES = {
     "innate.timer.dura.godCall.Tempus.Cleric": 5, "innate.timer.dura.godCall.Tempus.Other": 3,
     "innate.timer.secs.divineforceAffect": 20, "innate.timer.secs.divineforceTimer": 600,
     "innate.charge.base.chance": 65, "innate.bodyslam.base.chance": 60,
-    "mount.summoned.FactorMod": 0.75, "innate.timer.bite": None,
-    "innate.timer.secs.stampede": None, "innate.fade.secs.duration": None,
-    "innate.shapechange.memory.time": None,
+    "mount.summoned.FactorMod": 0.75, "innate.timer.secs.bite": 12,
+    "innate.timer.secs.stampede": None, "innate.fade.secs.duration": 180,
+    "innate.shapechange.memory.time": 500,
 }
 
 # (file, handler): calls the handler's body must make, whitespace removed before matching.
@@ -682,7 +682,7 @@ void randomize(uint64_t seed);
 static std::map<int, int> ratings;
 int GET_CHAR_SKILL_P(P_char, int skill) { auto it = ratings.find(skill); return it == ratings.end() ? 0 : it->second; }
 
-static const std::map<std::string, double> properties = {
+static std::map<std::string, double> properties = {
 PROPERTIES
 };
 // An innate's own timer and uses look their keys up by name, so absent ones fall through;
@@ -1066,6 +1066,12 @@ CHECKS = r'''
     assert(innate_rest_seconds(INNATE_STONE, stone_skin_innate_rest()) == 300);
     assert(innate_rest_seconds(INNATE_WEB_SPRAY, web_spray_rest()) == 300);
     assert(innate_rest_seconds(INNATE_BITE, bite_innate_rest()) == 12);
+    properties["innate.timer.secs.bite"] = 37;
+    assert(bite_innate_rest() == 37);
+    assert(innate_rest_seconds(INNATE_BITE, bite_innate_rest()) == 37);
+    properties["innate.timer.secs.bite"] = -1;
+    assert(bite_innate_rest() == 12);
+    properties["innate.timer.secs.bite"] = 12;
     assert(innate_rest_seconds(INNATE_STAMPEDE, stampede_innate_rest()) == 60);
     assert(innate_rest_seconds(INNATE_CONJURE_WATER, 0) == 300);
     assert(innate_rest_seconds(INNATE_IMMOLATE, 0) == 20);
