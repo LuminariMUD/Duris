@@ -20,6 +20,10 @@ prelude = r'''
 static mm_ds pool{};
 mm_ds *dead_affect_pool = &pool;
 static hold_data TmpAffs{};
+typedef struct { ulong bit; int spell; } RemoveableSpellBit;
+bool NewSaves(P_char,int,int) { return false; }
+int get_property(const char *,int fallback) { return fallback; }
+void add_tag_to_char(P_char,int,int,int,int) { assert(false); }
 int GET_CLASS(P_char ch,uint cls) { return (ch->player.m_class & cls) != 0; }
 int GET_CHAR_SKILL_P(P_char,int) { return 0; }
 bool has_innate(P_char ch,int id) { return id == INNATE_BLUR && GET_RACE(ch) == RACE_DRAGON && GET_LEVEL(ch) >= 56; }
@@ -64,18 +68,19 @@ void all_affects(P_char ch,int mode) {
 }
 '''
 functions = [("affects.c",s) for s in (
-    "bool affected_by_spell(", "struct affected_type *affect_to_char(",
+    "struct affected_type *get_spell_from_char(", "bool affected_by_spell(", "struct affected_type *affect_to_char(",
     "void affect_remove(", "void affect_from_char(",
-)] + [("magic.c", "static int blur_duration("), ("magic.c", "void spell_blur(int /*level*/,")]
+)] + [("magic.c", "int CheckMobRemoveableSpellBits("), ("magic.c", "static int blur_duration("), ("magic.c", "void spell_blur(int /*level*/,")]
 updates = extract_function("affects.c", "void affect_update(")
 a = updates.index("\t\t\tfor (af = i->affected;")
 b = updates.index("\n\t\t\tif (morphed)",a)
 tick = "void tick(P_char i) { affected_type *af,*next_af_dude; P_char orig; int morphed = FALSE;\n" + updates[a:b] + "}\n"
 driver = r'''
 int main() {
-    for (int race : {RACE_HUMAN,RACE_DRAGON}) for (int level : {55,56}) {
+    for (int race : {RACE_HUMAN,RACE_DRAGON}) for (int level : {55,56}) for (bool npc : {false,true}) {
         char_data ch{}; ch.player.race = race; ch.player.level = level;
         ch.player.m_class = CLASS_WARRIOR;
+        if (npc) SET_BIT(ch.specials.act,ACT_ISNPC);
         SET_POS(&ch,POS_STANDING + STAT_NORMAL);
         const bool innate = race == RACE_DRAGON && level == 56;
         all_affects(&ch,true);
@@ -87,6 +92,15 @@ int main() {
         spell_blur(level,&ch,nullptr,0,&ch,nullptr);
         affect_from_char(&ch,SPELL_BLUR); // the normal dispel removal path
         assert(!ch.affected && bool(IS_AFFECTED3(&ch,AFF3_BLUR)) == innate);
+        RemoveableSpellBit blur[] = {{AFF3_BLUR,SPELL_BLUR}};
+        int dispelled = CheckMobRemoveableSpellBits(&ch,blur,1,&ch.specials.affected_by3,true,0,3);
+        assert(dispelled == 0 && bool(IS_AFFECTED3(&ch,AFF3_BLUR)) == innate);
+        // A mob's ordinary authored Blur bit remains dispellable.
+        if (npc && !innate) {
+            SET_BIT(ch.specials.affected_by3,AFF3_BLUR);
+            assert(CheckMobRemoveableSpellBits(&ch,blur,1,&ch.specials.affected_by3,true,0,3) == 1);
+            assert(!IS_AFFECTED3(&ch,AFF3_BLUR));
+        }
         all_affects(&ch,false); all_affects(&ch,true);
         assert(bool(IS_AFFECTED3(&ch,AFF3_BLUR)) == innate);
         spell_blur(level,&ch,nullptr,0,&ch,nullptr);

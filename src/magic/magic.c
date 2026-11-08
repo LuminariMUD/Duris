@@ -20677,6 +20677,10 @@ int CheckMobRemoveableSpellBits(P_char ch, RemoveableSpellBit *spellBits, int co
 
 	for (int i = 0; i < countSpellBits; i++)
 	{
+		if (affectVector == 3 && spellBits[i].bit == AFF3_BLUR &&
+		    has_innate(ch, INNATE_BLUR))
+			continue;
+
 		if (IS_SET(*bitStore, spellBits[i].bit) &&
 		    !affected_by_spell(ch, spellBits[i].spell) &&
 		    (nosave || !NewSaves(ch, SAVING_SPELL, saveMod)))
