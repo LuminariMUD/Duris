@@ -105,6 +105,21 @@ int main() {
         assert(output.find("Middle") < output.find("Last"));
         assert(!pages);
     }
+    // Reserve a row for the warning when the final legal connection crosses
+    // the output limit. Keep rows at 254 bytes, with room 0 one byte longer.
+    for (auto &room : rooms) room.name = const_cast<char *>("");
+    run(&viewer, "");
+    const size_t header = output.find('\n', output.find('\n') + 1) + 1;
+    const size_t row = output.find('\n', header) + 1 - header;
+    std::string boundary_name(254 - row, 'x');
+    std::string longer_name = boundary_name + "x";
+    for (auto &room : rooms) room.name = boundary_name.data();
+    rooms[0].name = longer_name.data();
+    descriptors[2].next = &descriptors[3];
+    for (const char *argument : {"", "goods"}) {
+        run(&viewer, argument);
+        assert(output.ends_with("   ...the list is too long...\n"));
+    }
     // Long legal room text fills the output within the connection limit.
     std::string room_name(400, 'x');
     for (auto &room : rooms) room.name = room_name.data();

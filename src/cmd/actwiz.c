@@ -12391,7 +12391,7 @@ void do_where(P_char ch, char *argument, int /*cmd*/)
 	P_char t_ch;
 
 	int line_count;
-	struct line_info lines[MAX_CONNECTIONS];
+	struct line_info lines[MAX_CONNECTIONS + 1]; // One extra row for the truncation warning.
 
 	buf[0] = 0;
 	length = 0;
