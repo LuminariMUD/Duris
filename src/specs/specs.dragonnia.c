@@ -753,12 +753,13 @@ int dragons_of_dragonnia(P_char ch, P_char pl, int cmd, char * /*arg*/)
 			if (!number(0, 3) && ((GET_RNUM(ch) == real_mobile(6810)) ||
 					      (GET_RNUM(ch) == real_mobile(6811))))
 			{
-				if (!damage(ch, vict,
-					    number((GET_LEVEL(ch) >> 1), (GET_LEVEL(ch) * 6)),
-					    TYPE_UNDEFINED))
-					damage(ch, vict,
-					       number((GET_LEVEL(ch) >> 1), (GET_LEVEL(ch) * 7)),
-					       TYPE_UNDEFINED);
+				if (damage(ch, vict,
+					   number((GET_LEVEL(ch) >> 1), (GET_LEVEL(ch) * 6)),
+					   TYPE_UNDEFINED) ||
+				    damage(ch, vict,
+					   number((GET_LEVEL(ch) >> 1), (GET_LEVEL(ch) * 7)),
+					   TYPE_UNDEFINED))
+					return TRUE;
 				chance = 1;
 				if (ch->in_room != vict->in_room)
 					continue;

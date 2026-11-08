@@ -309,9 +309,10 @@ void event_super_cannon_fire(P_char ch, P_char /*vict*/, P_obj /*obj*/, void *da
 				send_to_char("&+WSMACK! &+LYou ran into something, that hurt!\r\n",
 					     ch);
 				ch->specials.z_cord = 0;
-				spell_damage(ch, ch, 20, SPLDAM_GENERIC,
-					     SPLDAM_NOSHRUG | SPLDAM_NODEFLECT, 0);
-				SET_POS(ch, GET_STAT(ch) + POS_PRONE);
+				if (spell_damage(ch, ch, 20, SPLDAM_GENERIC,
+						 SPLDAM_NOSHRUG | SPLDAM_NODEFLECT,
+						 0) == DAM_NONEDEAD)
+					SET_POS(ch, GET_STAT(ch) + POS_PRONE);
 				return;
 			}
 			troom = EXIT(ch, dir)->to_room;

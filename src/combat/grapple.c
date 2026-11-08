@@ -857,10 +857,10 @@ void event_headlock(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 		if (!knockedout)
 		{
 			int dam = (int)((GET_C_DEX(ch) / 7) * damage);
-			raw_damage(ch, victim, dam, RAWDAM_DEFAULT, &messages);
 			notch_skill(ch, SKILL_HEADLOCK,
 				    (int)get_property("skill.notch.headlock", 17));
-			check_shields(ch, victim, dam, RAWDAM_DEFAULT);
+			if (raw_damage(ch, victim, dam, RAWDAM_DEFAULT, &messages) == DAM_NONEDEAD)
+				check_shields(ch, victim, dam, RAWDAM_DEFAULT);
 			if (IS_ALIVE(ch) && IS_ALIVE(victim))
 				add_event(event_headlock, PULSE_VIOLENCE / 2, ch, victim, 0, 0, 0,
 					  0);
@@ -942,8 +942,8 @@ void armlock_check(P_char attacker, P_char grappler)
 	case ARMREFLEX_HOLD:
 		dam = (int)(GET_C_DEX(grappler) / 15 * 4 *
 			    (float)get_property("grapple.armlock.dmgmod", 1.00));
-		raw_damage(grappler, attacker, dam, RAWDAM_DEFAULT, &messages);
-		check_shields(grappler, attacker, dam, RAWDAM_DEFAULT);
+		if (raw_damage(grappler, attacker, dam, RAWDAM_DEFAULT, &messages) == DAM_NONEDEAD)
+			check_shields(grappler, attacker, dam, RAWDAM_DEFAULT);
 
 		if (!IS_ALIVE(grappler) || !IS_ALIVE(attacker))
 			return;
@@ -966,8 +966,9 @@ void armlock_check(P_char attacker, P_char grappler)
 			int break_damage =
 				(int)(((GET_C_DEX(grappler) / 10) + str) * 4 *
 				      (float)get_property("grapple.armlock.break.dmgmod", 1.00));
-			raw_damage(grappler, attacker, break_damage, RAWDAM_DEFAULT, &breakmsg);
-			check_shields(grappler, attacker, break_damage, RAWDAM_DEFAULT);
+			if (raw_damage(grappler, attacker, break_damage, RAWDAM_DEFAULT,
+				       &breakmsg) == DAM_NONEDEAD)
+				check_shields(grappler, attacker, break_damage, RAWDAM_DEFAULT);
 
 			if (!IS_ALIVE(grappler) || !IS_ALIVE(attacker))
 				return;
@@ -1364,10 +1365,10 @@ void event_leglock(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 
 			int dam = (int)(((GET_C_DEX(ch) / 10) + str) * 4 *
 					(float)get_property("grapple.leglock.break.dmgmod", 1.00));
-			raw_damage(ch, victim, dam, RAWDAM_DEFAULT, &breakmsg);
 			notch_skill(ch, SKILL_LEGLOCK,
 				    (int)get_property("skill.notch.leglock", 17));
-			check_shields(ch, victim, dam, RAWDAM_DEFAULT);
+			if (raw_damage(ch, victim, dam, RAWDAM_DEFAULT, &breakmsg) == DAM_NONEDEAD)
+				check_shields(ch, victim, dam, RAWDAM_DEFAULT);
 
 			if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
 				return;
@@ -1389,10 +1390,10 @@ void event_leglock(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 		if (!legbreak)
 		{
 			int dam = (int)((GET_C_DEX(ch) / 7) * damage);
-			raw_damage(ch, victim, dam, RAWDAM_DEFAULT, &messages);
 			notch_skill(ch, SKILL_LEGLOCK,
 				    (int)get_property("skill.notch.leglock", 17));
-			check_shields(ch, victim, dam, RAWDAM_DEFAULT);
+			if (raw_damage(ch, victim, dam, RAWDAM_DEFAULT, &messages) == DAM_NONEDEAD)
+				check_shields(ch, victim, dam, RAWDAM_DEFAULT);
 			if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
 				return;
 			add_event(event_leglock, PULSE_VIOLENCE / 2, ch, victim, 0, 0, 0, 0);
@@ -1518,8 +1519,8 @@ void do_groundslam(P_char ch, char *argument, int /*cmd*/)
 			// Add weight based damge here
 			int dam = (int)((GET_WEIGHT(ch) / 5) *
 					(float)get_property("grapple.groundslam.dmgmod", 1.00));
-			raw_damage(ch, victim, dam, RAWDAM_DEFAULT, &messages);
-			check_shields(ch, victim, dam, RAWDAM_DEFAULT);
+			if (raw_damage(ch, victim, dam, RAWDAM_DEFAULT, &messages) == DAM_NONEDEAD)
+				check_shields(ch, victim, dam, RAWDAM_DEFAULT);
 			if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
 				return;
 			SET_POS(ch, POS_PRONE + GET_STAT(ch));

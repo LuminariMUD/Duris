@@ -1917,13 +1917,16 @@ std::string meditate_facts(P_char ch)
 	const int advanced = GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION);
 	if (!rating)
 		return "  You have not learned to meditate.\n";
-	std::string text = fact("Chance a spell's recovery skips its extra half",
+	std::string text = fact("Roll chance to skip a recovery's extra half",
 				chance_under(rating + 1, 0, 100));
 	if (IS_PUNDEAD(ch) || GET_CLASS(ch, CLASS_WARLOCK) || IS_UNDEADRACE(ch) || IS_ANGEL(ch) ||
 	    is_wearing_necroplasm(ch))
-		text += fact("Chance your recovery time halves", chance_under(rating, 0, 100));
+		text += fact("Roll chance to halve a new recovery interval",
+			     chance_under(rating, 0, 100));
 	else if (USES_TUPOR(ch))
-		text += fact("Chance your recovery time halves", chance_under(rating, 0, 100));
+		text += fact("Roll chance to halve a new recovery interval",
+			     chance_under(rating, 0, 100));
+	text += "  Learning from a Meditation check also makes that check succeed.\n";
 	text += fact("Base mana recovery, if you use mana",
 		     std::to_string((int)meditate_mana_gain(ch)) + " while you meditate") +
 		fact("Your lag", seconds(!advanced ? meditate_lag() :

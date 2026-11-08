@@ -4712,9 +4712,10 @@ int holy_weapon(P_obj obj, P_char ch, int cmd, char *arg)
 				"$n's $q &+Lflares with darkness, unleashing the wrath of the underworld upon _YOU_!&n",
 				"$n's $q &+Lflares with darkness, unleashing the wrath of the underworld upon $N!&n",
 				TRUE, ch, obj, vict);
-			spell_damage(ch, vict, 360, SPLDAM_NEGATIVE,
-				     SPLDAM_NOSHRUG | SPLDAM_NODEFLECT, &evilmessages);
-			if (GET_C_LUK(ch) > number(0, 500))
+			if (spell_damage(ch, vict, 360, SPLDAM_NEGATIVE,
+					 SPLDAM_NOSHRUG | SPLDAM_NODEFLECT,
+					 &evilmessages) == DAM_NONEDEAD &&
+			    GET_C_LUK(ch) > number(0, 500))
 			{
 				spell_malison(56, ch, 0, 0, vict, 0);
 			}

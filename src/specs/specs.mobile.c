@@ -835,8 +835,8 @@ void demogorgon_tail(P_char ch)
 		    TO_NOTVICT);
 		dam = dice(level, 15);
 		spell_dispel_magic(60, ch, 0, 0, victim, 0);
-		melee_damage(ch, victim, dam, 0, 0);
-		spell_energy_drain(level, ch, 0, 0, victim, 0);
+		if (melee_damage(ch, victim, dam, 0, 0) == DAM_NONEDEAD)
+			spell_energy_drain(level, ch, 0, 0, victim, 0);
 	}
 	else
 	{

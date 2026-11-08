@@ -85,6 +85,17 @@ sql_zone_story_quest_state_load(uint32_t expected_catalog_revision, std::string 
 	}
 	state->assign(row[2], lengths[2]);
 	mysql_free_result(result);
+	MYSQL_RES *parts = db_query("SELECT part_blob FROM zone_story_quest_state_part "
+				    "ORDER BY part_index");
+	if (!parts)
+	{
+		if (error)
+			*error = "zone-story SQL state part query failed";
+		return sql_zone_story_quest_state_result::io_error;
+	}
+	while (MYSQL_ROW part = mysql_fetch_row(parts))
+		state->append(part[0], mysql_fetch_lengths(parts)[0]);
+	mysql_free_result(parts);
 	return sql_zone_story_quest_state_result::ok;
 #endif
 }
@@ -94,16 +105,21 @@ sql_zone_story_quest_state_save(uint32_t catalog_revision,
 				std::vector<std::shared_ptr<const std::string>> parts,
 				size_t unshared_bytes, std::string *error)
 {
-	/* MEDIUMTEXT holds 16 MiB minus one byte; reject larger blobs before issuing SQL. */
-	size_t size = 0;
-	for (const auto &part : parts)
-		size += part->size();
-	if (!catalog_revision || !size || size >= 16U * 1024U * 1024U)
+	/* Each part is saved in its own statement, below the 16 MiB packet and column limits
+	 * with room for escaped newlines; the document as a whole has no such limit. */
+	if (!catalog_revision || parts.empty())
 	{
 		if (error)
-			*error = "zone-story SQL state is oversized";
+			*error = "zone-story SQL state is invalid";
 		return sql_zone_story_quest_state_result::invalid;
 	}
+	for (const auto &part : parts)
+		if (part->size() >= 15U * 1024U * 1024U)
+		{
+			if (error)
+				*error = "zone-story SQL state part is oversized";
+			return sql_zone_story_quest_state_result::invalid;
+		}
 #ifdef __NO_MYSQL__
 	(void)catalog_revision;
 	(void)unshared_bytes;
@@ -112,28 +128,42 @@ sql_zone_story_quest_state_save(uint32_t catalog_revision,
 	return sql_zone_story_quest_state_result::io_error;
 #else
 	// Queued on the writer, in capture order with the saves; the writer logs a failure.
-	// It joins, escapes and formats the document too, which the game thread must not pay
-	// for. Only the parts this save alone keeps alive count against the writer's limit.
+	// It escapes and formats the parts too, which the game thread must not pay for. Only
+	// the parts this save alone keeps alive count against the writer's limit. The writer
+	// runs the work in one transaction, so a load never sees a partly saved document.
 	const bool queued = sql_queue_sized_work(
 		unshared_bytes,
-		[catalog_revision, parts = std::move(parts),
-		 size](MYSQL *connection) -> unsigned int
+		[catalog_revision, parts = std::move(parts)](MYSQL *connection) -> unsigned int
 		{
-			std::string state;
-			state.reserve(size);
-			for (const auto &part : parts)
-				state += *part;
-			std::string escaped(state.size() * 2 + 1, '\0');
-			escaped.resize(mysql_real_escape_string(connection, escaped.data(),
-								state.data(), state.size()));
-			return sql_execute(
+			const auto escape = [connection](const std::string &part)
+			{
+				std::string escaped(part.size() * 2 + 1, '\0');
+				escaped.resize(mysql_real_escape_string(connection, escaped.data(),
+									part.data(), part.size()));
+				return escaped;
+			};
+			unsigned int failed = sql_execute(
 				connection,
 				sql_format(
 					"INSERT INTO zone_story_quest_state (state_id,state_version,catalog_revision,state_blob,updated_at) "
 					"VALUES (1,1,%u,'%s',UTC_TIMESTAMP(6)) "
 					"ON DUPLICATE KEY UPDATE state_version=VALUES(state_version), "
 					"catalog_revision=VALUES(catalog_revision),state_blob=VALUES(state_blob),updated_at=VALUES(updated_at)",
-					catalog_revision, escaped.c_str()));
+					catalog_revision, escape(*parts[0]).c_str()));
+			for (size_t index = 1; !failed && index < parts.size(); ++index)
+				failed = sql_execute(
+					connection,
+					sql_format(
+						"INSERT INTO zone_story_quest_state_part (part_index,part_blob) "
+						"VALUES (%zu,'%s') ON DUPLICATE KEY UPDATE part_blob=VALUES(part_blob)",
+						index, escape(*parts[index]).c_str()));
+			return failed ?
+				       failed :
+				       sql_execute(
+					       connection,
+					       sql_format(
+						       "DELETE FROM zone_story_quest_state_part WHERE part_index>=%zu",
+						       parts.size()));
 		});
 	if (!queued)
 	{

@@ -15,6 +15,7 @@
 #include "item/random_equipment_config.h"
 #include "world/difficulty.h"
 #include "world/hardcore_config.h"
+#include <cmath>
 
 extern struct zone_data *zone_table;
 extern P_index mob_index;
@@ -105,6 +106,19 @@ bool check_random_drop(P_char ch, P_char mob, bool piece)
 
 	chance *=
 		(piece ? config->drop_piece_percentage : config->drop_equipment_percentage) / 100.0;
+
+	// Reward tougher home zones with diminishing equipment-only gains. Use the
+	// birthplace, as apply_zone_modifier does, so moving a mob cannot change it.
+	if (piece)
+	{
+		const int home = real_room(GET_BIRTHPLACE(mob));
+		if (home >= 0)
+		{
+			const int difficulty =
+				BOUNDED(1, zone_table[world[home].zone].difficulty, 10);
+			chance *= 1.0f + 0.10f * std::sqrt(static_cast<float>(difficulty - 1));
+		}
+	}
 
 	chance *= static_cast<float>(difficulty_multiplier(DIFFICULTY_LOOT_DROPS));
 
