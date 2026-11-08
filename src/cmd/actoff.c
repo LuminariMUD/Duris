@@ -13780,7 +13780,8 @@ std::string shriek_facts(P_char ch)
 	       "  deflected. Not underwater or in a safe room.\n";
 }
 
-// Shriek:  skill level/2 + 1d20 area damage = 51 - 70 damage @100 skill, usable once every 5 minutes.
+// Shriek: 2 * skill + 4 * 1d20 (4-80), halved base on a save.
+// At skill 100: 204-280 unsaved or 104-180 saved, before modifiers; five-minute rest.
 void do_shriek(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	int skl_lvl, basedamage, actualdam, savemod, count, res;
@@ -13883,7 +13884,7 @@ void do_shriek(P_char ch, char * /*argument*/, int /*cmd*/)
 			actualdam = basedamage;
 		}
 
-		// Apply the actualdamage to the person + 1d20 randomness.
+		// Apply the base damage plus 4 * 1d20 randomness.
 		// Note: spell_damage will engage victims (if they live), but not cause bashes/backstabs/etc so ch won't die.
 		//       Should this change, we might want to look at GET_POS(ch) vs POS_STANDING to see if they got knocked down.
 		res = spell_damage(ch, person, actualdam + shriek_roll_damage(live_rolls),

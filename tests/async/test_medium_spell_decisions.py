@@ -293,6 +293,7 @@ SCALARS = {
                   "psionic_wave_blast_interval psionic_wave_blast_mana spell_psionic_wave_blast event_psionic_wave_blast",
     "ethermancer.c": "cosmic_success_chance cosmic_success_roll cosmic_saved_duration cosmic_failed_duration "
                      "cosmic_vacuum_ac cosmic_vacuum_curse spell_cosmic_vacuum "
+                     "ethereal_form_duration spell_ethereal_form "
                      "supernova_damage supernova_player_damage supernova_area_damage supernova_constitution "
                      "spell_single_supernova static_discharge_level static_discharge_damage "
                     "static_discharge_failed_save static_discharge_wet_damage static_discharge "
@@ -359,6 +360,17 @@ int main() {
         assert(target.affected->modifier == -10 && waited == 2 * WAIT_SEC);
     }
     clear(&target); target.specials.act = 0; saved = false;
+    spell_ethereal_form(50, &caster, nullptr, 0, &caster, nullptr);
+    assert(caster.affected && caster.affected->type == SPELL_ETHEREAL_FORM);
+    const int form_duration = caster.affected->duration;
+    caster.affected->duration = 1;
+    // Refresh is self-only even if the unused victim argument is absent or different.
+    spell_ethereal_form(50, &caster, nullptr, 0, nullptr, nullptr);
+    assert(caster.affected->duration == form_duration);
+    caster.affected->duration = 1;
+    spell_ethereal_form(50, &caster, nullptr, 0, &target, nullptr);
+    assert(caster.affected->duration == form_duration && !target.affected);
+    clear(&caster);
     for (int level : {1, 2, 5, 9, 10, 50, 56, 60}) {
         caster.player.level = level; roll = -100;
         assert(mending_healing(live_rolls, level, &caster) >= 1);

@@ -1326,7 +1326,7 @@ void event_frost_bolt(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 
 	fdata = (struct frost_data *)data;
 
-	// Actual damage @lvl 11: 9-12 | 6-8 saved, @lvl 30: 16-19 | 10-12 saved.
+	// 4 * (number(6, 9) + level/3), capped at level 30: 64-76 at cast level 50, 42-50 saved.
 	dam = frost_bolt_damage(live_rolls, fdata->level);
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_FROST_BOLT);
 	if (NewSaves(victim, SAVING_SPELL, mod))
@@ -1367,7 +1367,7 @@ void spell_frost_bolt(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 
 	level = frost_bolt_level(level);
 
-	// Actual damage @lvl 11: 9-12 | 6-8 saved, @lvl 30: 16-19 | 10-12 saved.
+	// 4 * (number(6, 9) + level/3), capped at level 30: 64-76 at cast level 50, 42-50 saved.
 	dam = frost_bolt_damage(live_rolls, level);
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_FROST_BOLT);
 	if (NewSaves(victim, SAVING_SPELL, mod))
@@ -1408,7 +1408,7 @@ std::string ethereal_form_facts(P_char ch)
 }
 
 void spell_ethereal_form(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
-			 P_char victim, P_obj /*tar_obj*/)
+			 P_char /*victim*/, P_obj /*tar_obj*/)
 {
 	struct affected_type af;
 	int duration = ethereal_form_duration(ch);
@@ -1416,7 +1416,7 @@ void spell_ethereal_form(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unuse
 	if (affected_by_spell(ch, SPELL_ETHEREAL_FORM))
 	{
 		struct affected_type *af1;
-		for (af1 = victim->affected; af1; af1 = af1->next)
+		for (af1 = ch->affected; af1; af1 = af1->next)
 		{
 			if (af1->type == SPELL_ETHEREAL_FORM)
 			{
@@ -3986,7 +3986,7 @@ void event_razor_wind(P_char victim, P_char ch, P_obj /*obj*/, void *data)
 	};
 
 	duration = *((int *)data);
-	// 35-55 damage.
+	// 4 * number(35, 55): 140-220 damage before saves and modifiers.
 	dam = razor_wind_damage(live_rolls);
 
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_RAZOR_WIND);

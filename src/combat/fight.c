@@ -5735,6 +5735,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	if (ilogb(dam) / 2 > number(1, 100))
 		DamageStuff(victim, SPLDAM_GENERIC);
 
+	// Keep the low-damage cutoff in shield ability descriptions synchronized with this rule.
 	if (dam <= 5 || (flags & PHSDAM_NOSHIELDS))
 	{
 		if (!(flags & PHSDAM_NOENGAGE))

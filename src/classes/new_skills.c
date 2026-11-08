@@ -3020,7 +3020,7 @@ void mount_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /
 
 		if (IS_SKELETON(ch))
 		{
-			// 100 - 25 + 50 (for being a mount) is a minimum of 125 moves, and max 175.
+			// Skeleton vitality is reset after conversion: 100 +/- 25, or 75-125.
 			mount->points.vitality = mount->points.base_vitality =
 				mount->points.max_vitality =
 					summoned_mount_skeleton_vitality(live_rolls);

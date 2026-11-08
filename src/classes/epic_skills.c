@@ -1139,39 +1139,6 @@ int epic_familiar(P_char ch, P_char pl, int cmd, char *arg)
 	return FALSE;
 }
 
-int spell_penetration_check(P_char caster, P_char victim)
-{
-	int skill = GET_CHAR_SKILL(caster, SKILL_SPELL_PENETRATION);
-
-	if (skill)
-	{
-		skill /= 2;
-
-		if (number(0, 110) <
-			    BOUNDED(10, skill,
-				    (int)get_property("skill.spellPenetration.highEndPercent",
-						      60.000)) &&
-		    caster->in_room == victim->in_room)
-		{
-			struct affected_type af;
-
-			memset(&af, 0, sizeof(af));
-			af.type = SKILL_SPELL_PENETRATION;
-			af.flags = AFFTYPE_NOAPPLY | AFFTYPE_SHORT;
-			af.duration = 1;
-			affect_to_char(victim, &af);
-			act("&+CYour pure arcane focus causes your spell to partially burst through&n $N&+C's magical resistance!&n",
-			    TRUE, caster, 0, victim, TO_CHAR);
-			act("$n&+C seems to focus for a moment, and $s spell partially bursts through your magical barrier!&n",
-			    TRUE, caster, 0, victim, TO_VICT);
-			act("$n&+C seems to focus for a moment, and $s spell partially bursts through&n $N&+C's magical barrier!&n",
-			    TRUE, caster, 0, victim, TO_NOTVICT);
-			return TRUE;
-		}
-	}
-	return FALSE;
-}
-
 // bonuses
 //     hit  dam
 // 1    1    0

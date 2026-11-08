@@ -310,7 +310,6 @@ void do_shapechange(P_char, char *, int);
 void do_subterfuge(P_char, char *, int);
 void do_trip(P_char, char *, int);
 void do_dirttoss(P_char, char *, int);
-void do_trap(P_char, char *, int);
 P_char morph(P_char, int, int);
 P_char un_morph(P_char);
 void do_stampede(P_char, char *, int);
