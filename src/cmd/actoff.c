@@ -1350,7 +1350,7 @@ void lance_charge(P_char ch, char *argument)
 			{
 				if (!find_live_object(weapon, weapon_uid))
 					return;
-				dam += lance_charge_ram_damage(live_rolls);
+				dam = dam + lance_charge_ram_damage(live_rolls);
 				set_fighting(ch, victim);
 				snprintf(
 					buf, sizeof buf,
