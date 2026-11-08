@@ -7,6 +7,8 @@ tests. Distinguish verified behavior from balance estimates and design judgments
 
 - [PC racial stats](race-stats.md): racial factors, effective-stat calculations,
   gameplay consumers, resource formulas, and gearing breakpoints.
+- [PC racial innates](race-innates.md): all PC racial grants and unlocks, active
+  powers, passive effects, gameplay interactions, costs, and balance tradeoffs.
 - [Race stats issues](race-stats-issues.md): potential stat-mechanics bugs,
   gameplay impact, recommended fixes, design questions, and resolved findings.
 - [PC race size](race-size.md): complete race size assignments, growth and form
