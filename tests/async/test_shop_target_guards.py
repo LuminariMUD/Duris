@@ -117,6 +117,8 @@ int main() {
     check(&keeper, &player, "shopkeeper", true);
     check(&keeper, &player, "dwarf", true);
     check(&keeper, &player, "guard", true);
+    check(&keeper, &player, "shopkeeper-dwarf", true);
+    check(&keeper, &player, "2.shopkeeper-dwarf", false);
     check(&keeper, &player, "2.dwarf", false);
     shops[0].shop_killable = true;
     char argument[] = "dwarf";

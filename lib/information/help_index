@@ -6931,6 +6931,12 @@ You are in a room and you see:
 If you wished to get the second box, you would type:
 
         "get 2.box"
+
+Join full object keywords with hyphens to narrow your choice: "get fire-sword"
+matches an object with both fire and sword keywords. "get 2.fire-sword" picks
+the second match, and "get all.fire-sword" takes all matching objects.
+Existing keywords such as two-handed still work. Each part must be a full
+keyword; leading, trailing or doubled hyphens do not form a combination.
 ===========================================================================
 See also: DROP, PUT
 
@@ -9681,7 +9687,12 @@ KILL HIT MURDER (Command)
 ===========================================================================
 Syntax:         kill | hit | murder <victim>
 
-One way to initiate a fight.  
+One way to initiate a fight.
+
+Join full target keywords with hyphens: "kill fire-giant" selects a creature
+with both fire and giant keywords. "kill 2.fire-giant" selects the second
+matching creature. Existing keywords such as thri-kreen still work.
+Each part must be a full keyword; "fire-gi" does not abbreviate fire-giant.
 ===========================================================================
 
 #
