@@ -191,23 +191,17 @@ absent requires accepted level 41 or higher.
 books, quivers, instruments, spellbooks, totems, shields, fireweapons, weapons,
 and potions, with these exclusions:
 
-- `ITEM_NORENT`, `ITEM_TRANSIENT`, `STRUNG_KEYS`, `ITEM2_QUESTITEM`, artifacts,
-  `IS_NOSHOW`, weight above 99, and the `_noquest_` keyword.
+- `ITEM_NORENT`, `ITEM_TRANSIENT`, `STRUNG_KEYS`, `ITEM2_QUESTITEM`,
+  `ITEM2_CRUMBLELOOT`, artifacts, `IS_NOSHOW`, weight above 99, and the
+  `_noquest_` keyword.
 - Granted affects for stone skin, hide, sneak, flight, nofear, air/earth aura,
   inertial barrier, reduce, globe, haste, detect invisible, or detect illusion.
-- Every explicit item input or output in the loaded static `quest_index`,
-  whether or not a builder set `ITEM2_QUESTITEM`. Type-based static goals do
-  not enumerate additional VNUMs for this exclusion.
 
-Each zone then withholds its most valuable `world.quest.reward.top.withheld.percent`
-(configured 5%, missing-key fallback 20%) of source-eligible items, rounded up and
-including value ties. If ties would remove the entire pool even though the
-rounded requested count is smaller than the pool, withholding is suppressed.
-A sole item is still removed. This ceiling is calculated before level filtering.
-Remaining rewards must have positive `itemvalue` and pass `2 * itemvalue >= L`
-to enter that level's pool. Counts, means, and scores use only this final pool.
-The boot log reports `withheld_quest_items`, `withheld_top_value`, and the effective percentage. The setting
-is read when the catalog is built, so a change applies at the next boot.
+Ordinary items that static quests reference are eligible, and there is no top-value
+ceiling, so a zone's most valuable eligible items can be awarded. Eligible rewards
+must have positive `itemvalue` and pass `2 * itemvalue >= L` to enter that level's
+pool. Counts, means, and scores use only this final pool. The catalog is built at
+boot. `random_recipe()` draws from the zone's unleveled list of these same items.
 
 For eligible zones, the relative selection weight is
 `exp(-abs(average_level - L) / 6) * (average_ivalue / L) * eligible_item_count`.
@@ -488,14 +482,6 @@ differ; in particular `world.quest.share.max` falls back to 0 but this file sets
   multiplied by a remaining-time percentage clamped to 1–100.
   Its C++ fallback is 1.0. `world.quest.cost.abandon.time=24` is the decay
   period in hours (also fallback 24).
-- `world.quest.reward.top.withheld.percent=5` is read while building the boot
-  catalog. Its inclusive range is 5–25%; the missing-key default is 20%.
-  Finite values are clamped before integer conversion, and fractional values
-  truncate toward zero. Nonfinite values use 20% with a diagnostic. The catalog
-  startup message reports the effective percentage. Changing the property
-  requires restarting the server to rebuild the catalog; a property reload
-  alone does not change the pools. Boundary ties and small-pool rounding can
-  withhold more than the configured fraction.
 
 The checked-in `difficulty.dial.world.quest=5` is neutral (multiplier 1).
 The [difficulty functions](../../src/world/difficulty.c)
@@ -602,7 +588,7 @@ the owning source paths above as well. Run each focused script below with
   300 scenarios also exercise level/zone boundaries, geography, route immunity,
   history/probe caps and refunds, followed by 10 SQL-history scenarios.
 - [test_world_quest_reward_policy.py](../../tests/async/test_world_quest_reward_policy.py):
-  executable withholding math and source contracts for reward filtering,
+  executable catalog construction and source contracts for reward filtering,
   sharing limits, fees, completion batches, and independent bonus rolls.
 - [test_world_quest_failure_feedback.py](../../tests/async/test_world_quest_failure_feedback.py):
   source assertions for failed assignment feedback, refunds, and preserved state.
