@@ -2202,15 +2202,32 @@ test does not turn in a quest on a running server; separate world-quest journeys
 
 When a player's pet kills an NPC and wins the equipment roll, the "salvage a piece of
 equipment" line goes to the pet's owner. It used to go to the pet, which nobody reads, so
-the owner never learned an item was on the corpse. The drop rolls and the item still use
-the pet's own level and luck.
+the owner never learned an item was on the corpse. Both rolls now use the owner's
+current luck, level, Hardcore flag, and neutral side. Generation uses the owner as
+finder while retaining the actual killer's room for restrictions and zone rewards.
 
 ```sh
 python3 tests/async/test_random_drop_owner_message.py
+python3 tests/async/test_random_equipment_golden.py
+python3 tests/async/run_pet_random_drop_journey.py /absolute/path/to/flatfile/server
 ```
 
-The test is a source contract on the drop block in `die()`. No test kills an NPC with a
-pet on a running server.
+The message test checks death-path wiring and message recipients. The golden harness
+executes the production modules with ASan/UBSan and real RNG/configuration. Paired
+direct/pet cases compare full generated state, messages, Alchemist resources and RNG
+sentinels across divergent luck/level, Hardcore toggles, level-gap and low-level
+boundaries, neutral wins/fallthrough, remote owners, town/guild rooms, independent
+equipment/material outcomes, stones and rejection gates. Four pet-kill fixture rows
+and their sentinels deliberately changed for #812; the other 1,476 cases are unchanged.
+
+The gameplay journey boots a private minimal flat-file server, creates a synthetic
+staff owner, links a pet through `givepet`, and orders it to kill an NPC. Private drop
+settings force the equipment roll and suppress materials; stone substitution retains
+its normal roll; a subsequent fight waits through an explicitly refused busy order
+while the pet's normal action cooldown clears. It verifies one owner salvage message, loots the generated item from
+the corpse, checks that a second get finds no duplicate, and sees the item in inventory.
+It never reads checkout `.env` or operates on an existing game. Evidence belongs under
+`bin/tests/issue812-pet-*`; the journey is separate from probability qualification.
 
 ## Riposte after a participant is removed
 
