@@ -146,7 +146,7 @@ def run(binary, driver):
 
         def save_quit():
             for client, (_, name) in zip(clients, ACCOUNTS):
-                command(client, "save", f"Save complete for {name}.")
+                command(client, "save", f"Saving {name}.")
                 command(client, "quit", "ACCOUNT MENU")
                 client.close()
             clients.clear()
@@ -241,7 +241,7 @@ def run(binary, driver):
             assert "copyover: execl failed:" in journey.runtime_logs(runtime)
             for client, (_, name) in zip(clients, ACCOUNTS):
                 command(client, "look", "The Regression Arena")
-                command(client, "save", f"Save complete for {name}.")
+                command(client, "save", f"Saving {name}.")
             petition("AFTER-FAILED-EXEC")
             reply("REPLY-AFTER-FAILED-EXEC")
             after = sink.rpc()
@@ -259,7 +259,7 @@ def run(binary, driver):
             sink.until(lambda value: value["connected"] and value["connections"] > after["connections"])
             for client, (_, name) in zip(clients, ACCOUNTS):
                 command(client, "look", "The Regression Arena")
-                command(client, "save", f"Save complete for {name}.")
+                command(client, "save", f"Saving {name}.")
             assert output_path.read_text().count("Entering game loop.") == boots + 1
             petition("AFTER-SUCCESSFUL-COPYOVER")
             reply("REPLY-AFTER-SUCCESSFUL-COPYOVER")

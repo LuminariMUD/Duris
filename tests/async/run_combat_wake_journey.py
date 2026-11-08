@@ -53,7 +53,7 @@ def run(binary):
             staff = server.client = journey.MudClient(server.port)
             journey.create_character(staff)
             staff.send("save")
-            staff.expect(f"Save complete for {journey.CHARACTER}.")
+            staff.expect(f"Saving {journey.CHARACTER}.")
             staff.send("quit")
             staff.expect("ACCOUNT MENU")
             server.stop()

@@ -95,7 +95,7 @@ def run(binary, backend):
 
             def save(client, name=PLAYER):
                 client.send('save')
-                client.expect('Save complete for ' + name + '.', timeout=60)
+                client.expect('Saving ' + name + '.', timeout=60)
 
             def stored():
                 if sql:

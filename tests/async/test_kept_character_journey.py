@@ -158,7 +158,7 @@ def override_entry(original, server, sql, inspector, protocol):
             replacement.command("enter", {"character": "Taverek"}, "gmcp")
             websocket_text(replacement, "Your starter kit is ready")
             replacement.command("game", "save", "text")
-            websocket_text(replacement, "Save complete for Taverek.")
+            websocket_text(replacement, "Saving Taverek.")
         else:
             replacement = login(server)
             # Telnet authentication closes the older pre-entry socket before
@@ -171,7 +171,7 @@ def override_entry(original, server, sql, inspector, protocol):
             creation.reply(replacement, "y", "PRESS RETURN")
             creation.reply(replacement, "", "Your starter kit is ready")
             replacement.expect("Pos: standing >")
-            creation.reply(replacement, "save", "Save complete for Taverek.")
+            creation.reply(replacement, "save", "Saving Taverek.")
         after = saved_character(server, sql, inspector)
         assert after == (before[0], 1, before[2]), (before, after)
         if protocol == "websocket":
@@ -186,7 +186,7 @@ def override_entry(original, server, sql, inspector, protocol):
         creation.reply(replacement, "1", "Taverek")
         creation.reply(replacement, "1", "(Y/N)")
         creation.reply(replacement, "y", "Pos: standing >")
-        creation.reply(replacement, "save", "Save complete for Taverek.")
+        creation.reply(replacement, "save", "Saving Taverek.")
         assert saved_character(server, sql, inspector) == after
         server.shutdown()
     finally:

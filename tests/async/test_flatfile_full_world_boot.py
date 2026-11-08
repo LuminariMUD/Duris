@@ -182,7 +182,7 @@ def save_durably(client, state_root, timeout=15):
     """Save and wait for the writer to land it; a save is written asynchronously."""
     revision = inspect_authority(state_root)["revision"]
     client.send("save")
-    client.expect(f"Save complete for {CHARACTER}.", timeout=45)
+    client.expect(f"Saving {CHARACTER}.", timeout=45)
     deadline = time.monotonic() + timeout
     while True:
         snapshot = inspect_authority(state_root)
@@ -250,7 +250,6 @@ def crash_before_ack(client, process, state_root, run_root):
         try:
             change_saved_setting(client)
             client.send("save")
-            client.expect(f"Save queued for {CHARACTER}.")
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
                 log = (run_root / "logs/log/status").read_text(errors="replace")
@@ -460,7 +459,7 @@ with tempfile.TemporaryDirectory(prefix="full-world-build-", dir=ROOT / "bin") a
                             if CRASH_PHASE == "after_ack":
                                 change_saved_setting(client)
                             client.send("save")
-                            client.expect(f"Save complete for {CHARACTER}.", timeout=45)
+                            client.expect(f"Saving {CHARACTER}.", timeout=45)
                             if CRASH_PHASE == "after_ack":
                                 crash_server(process)
                                 require(inspect_authority(state_root)["wimpy"] == 5, "acknowledged setting was not durable")
@@ -529,7 +528,7 @@ with tempfile.TemporaryDirectory(prefix="full-world-build-", dir=ROOT / "bin") a
                         client.expect("a small wooden mace", timeout=10)
                         phase = output_path.stem + ":manual_save"
                         client.send("save")
-                        client.expect(f"Save complete for {CHARACTER}.", timeout=45)
+                        client.expect(f"Saving {CHARACTER}.", timeout=45)
                         phase = output_path.stem + ":terminal_save"
                         client.send("quit")
                         client.expect("ACCOUNT MENU", timeout=30)

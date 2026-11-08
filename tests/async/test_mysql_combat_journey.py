@@ -114,7 +114,7 @@ def run(server, reset_coins=False, boons=False):
                     # Recover the starter-kit roots dropped by the NPC fixture,
                     # so the real player's death exercises a multi-root batch.
                     client.send('get all'); client.expect('You get', timeout=20)
-                    client.send('save'); client.expect('Save complete for '+journey.CHARACTER+'.', timeout=30)
+                    client.send('save'); client.expect('Saving '+journey.CHARACTER+'.', timeout=30)
                     pid = number("SELECT pid FROM player_data WHERE name='"+journey.CHARACTER+"'")
                     # What the save wrote is what the player holds; the ownership table
                     # also still names the player for items it dropped in memory.
@@ -143,14 +143,14 @@ def run(server, reset_coins=False, boons=False):
                     client.send('get coins '+journey.CHARACTER)
                     client.expect('There were: 3 silver coins.' if reset_coins else 'There were: 1 copper coin.',timeout=15)
                     client.send('get banana '+journey.CHARACTER); client.expect('get a banana',timeout=15)
-                    client.send('save'); client.expect('Save complete for '+journey.CHARACTER+'.')
+                    client.send('save'); client.expect('Saving '+journey.CHARACTER+'.')
                     client.send('quit'); client.expect('ACCOUNT MENU',timeout=30)
                     client.send('0'); client.close(); client=None
                     journey.verify_recovered_loot(plain)
                     expected='0\t3\t0\t0' if reset_coins else '1\t0\t0\t0'
                     assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')==expected
                     client=journey.reconnect_character(plain)
-                    client.send('save'); client.expect('Save complete for '+journey.CHARACTER+'.')
+                    client.send('save'); client.expect('Saving '+journey.CHARACTER+'.')
                     banana=number(f'SELECT item_uid FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND state=1 AND vnum=15 LIMIT 1')
                     client.send('quit'); client.expect('ACCOUNT MENU',timeout=30)
                     client.send('0'); client.close(); client=None
@@ -188,7 +188,7 @@ def run(server, reset_coins=False, boons=False):
                     stop(); process=boot()
                     assert number(f'SELECT COUNT(*) FROM item_current_owner WHERE item_uid={ghost}')==0, 'the boot did not reap the ghost row'
                     client=journey.reconnect_character(plain)
-                    client.send('save'); client.expect('Save complete for '+journey.CHARACTER+'.')
+                    client.send('save'); client.expect('Saving '+journey.CHARACTER+'.')
                     client.send('quit'); client.expect('ACCOUNT MENU',timeout=30)
                     client.send('0'); client.close(); client=None
                     assert stable_state(pid)==(wallet,kept), 'restart duplicated death consequences'

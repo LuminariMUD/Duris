@@ -103,7 +103,7 @@ def run_journey(binary: pathlib.Path) -> None:
             require_prompt_framed(client, "< (news)> ")
 
             client.send("save")
-            client.expect(f"Save complete for {CHARACTER}.", timeout=20)
+            client.expect(f"Saving {CHARACTER}.", timeout=20)
 
             client.send("quit")
             # Normal quit camps first (TAG_CAMP: roughly 140 seconds).

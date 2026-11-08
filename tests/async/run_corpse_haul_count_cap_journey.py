@@ -173,12 +173,12 @@ def run(binary, backend):
                 assert "banana" in contents and "ruby" in contents, contents
                 drain(actor)
                 actor.send("get all corpse")
-                first = actor.expect("You finish sorting your haul", timeout=60) + drain(actor)
+                first = actor.expect("You get ", timeout=60) + drain(actor)
                 print("NPC corpse at cap:", first, flush=True)
                 assert first.count("You can't carry any more.") == 1, first
                 assert "3s" in first and "Nothing acquired." not in first, first
                 actor.send("save")
-                actor.expect("Save complete for Taverek.", timeout=30)
+                actor.expect("Saving Taverek.", timeout=30)
                 pid = int(sql("SELECT pid FROM player_data WHERE name='Taverek'")) if sql else 1
                 assert wallet(pid) == [0, 3, 0, 0]
                 assert owner_count(pid) == 0
@@ -190,14 +190,14 @@ def run(binary, backend):
                 actor.expect("You drop a marker.", timeout=20)
                 drain(actor)
                 actor.send("get all corpse")
-                partial = actor.expect("You finish sorting your haul", timeout=60) + drain(actor)
+                partial = actor.expect("You get ", timeout=60) + drain(actor)
                 print("NPC corpse with one free slot:", partial, flush=True)
                 assert partial.count("You can't carry any more.") == 1, partial
-                assert "Haul:\r\n  a " in partial, partial
+                assert "You get a " in partial and " from the corpse of Raoul." in partial, partial
                 # The haul moves the item in memory; the save makes the ownership
                 # table name the player (persistence reset step 4).
                 actor.send("save")
-                actor.expect("Save complete for Taverek.", timeout=30)
+                actor.expect("Saving Taverek.", timeout=30)
                 deadline = time.monotonic() + 20
                 while owner_count(pid) != 1:
                     assert time.monotonic() < deadline, "the save did not claim the hauled item"
@@ -219,10 +219,10 @@ def run(binary, backend):
                 actor.expect("The corpse of a Human is lying here.")
                 drain(actor)
                 actor.send("get all Taverek")
-                player = actor.expect("You finish sorting your haul", timeout=60) + drain(actor)
+                player = actor.expect("You can't carry any more.", timeout=60) + drain(actor)
                 print("Player corpse at cap:", player, flush=True)
                 assert player.count("You can't carry any more.") == 1, player
-                assert "Haul:" in player and "Some contents were not acquired." in player
+                assert "Haul:" not in player and "pulling things" not in player
                 if "The coin transfer could not start; nothing changed." in player:
                     # An independent transaction admission may refuse a coin
                     # after the durable roots commit. It must remain in the
@@ -234,7 +234,7 @@ def run(binary, backend):
                     coin_retry = actor.expect("You get 3s.", timeout=30) + drain(actor)
                     print("Separate coin retry:", coin_retry, flush=True)
                 actor.send("save")
-                actor.expect("Save complete for Taverek.", timeout=30)
+                actor.expect("Saving Taverek.", timeout=30)
                 assert wallet(pid) == [0, 3, 0, 0]
                 print(f"PASS: {backend} NPC/player corpse count notice, partial haul, saved custody, wallet and reconnect", flush=True)
             except Exception:

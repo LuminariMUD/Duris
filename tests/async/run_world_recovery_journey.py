@@ -184,7 +184,7 @@ def run(binary: Path) -> None:
             client = journey.MudClient(port)
             journey.create_character(client, account="Roomclaimac", character="Roomclaimer",
                                      email="roomclaim@example.invalid")
-            client.send("save"); client.expect("Save complete for Roomclaimer.", timeout=60)
+            client.send("save"); client.expect("Saving Roomclaimer.", timeout=60)
             claimant = sql("SELECT pid FROM player_data WHERE name='Roomclaimer'")
             floor_root = sql("SELECT own.item_uid FROM item_current_owner own "
                              "JOIN player_items i ON i.obj_uid=own.item_uid "
@@ -244,7 +244,7 @@ def run(binary: Path) -> None:
                   "after the kill, past the 60 s it was configured with", flush=True)
             client = journey.reconnect_character(port, account="Roomclaimac", character="Roomclaimer")
             client.send("get bag"); client.expect("You get", timeout=20)
-            client.send("save"); client.expect("Save complete for Roomclaimer.", timeout=60)
+            client.send("save"); client.expect("Saving Roomclaimer.", timeout=60)
             assert sql(f"SELECT COUNT(*) FROM player_items WHERE pid={claimant} "
                        f"AND obj_uid={floor_root}") == "1", "matching room claim lost its floor UID"
             client.close()

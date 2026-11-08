@@ -234,7 +234,7 @@ def run_scenario(server_binary: Path, enabled: bool) -> None:
             client = journey.MudClient(port)
             journey.create_character(client, class_name="3")
             client.send("save")
-            client.expect("Save complete for Taverek.")
+            client.expect("Saving Taverek.")
             client.send("quit")
             client.expect("ACCOUNT MENU", timeout=30)
             stop()

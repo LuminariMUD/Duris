@@ -124,7 +124,7 @@ def score(client):
 
 def save(client, name=journey.CHARACTER):
     client.send("save")
-    client.expect("Save complete for " + name + ".", timeout=30)
+    client.expect("Saving " + name + ".", timeout=30)
 
 
 def expect_max_hp(client, expected):

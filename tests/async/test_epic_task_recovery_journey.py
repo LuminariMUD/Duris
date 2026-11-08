@@ -104,7 +104,7 @@ def run(binary):
 
             def save(client, name=PLAYER):
                 client.send('save')
-                client.expect('Save complete for ' + name + '.', timeout=60)
+                client.expect('Saving ' + name + '.', timeout=60)
 
             def task_rows(name=PLAYER):
                 return sql(f"SELECT type,modifier FROM player_affects WHERE pid=(SELECT pid FROM player_data "

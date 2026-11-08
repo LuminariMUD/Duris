@@ -102,7 +102,7 @@ def inspect(state, pid=1):
 
 
 def saved(client, state, name=journey.CHARACTER, pid=1):
-    command(client, "save", f"Save complete for {name}.")
+    command(client, "save", f"Saving {name}.")
     return inspect(state, pid)
 
 

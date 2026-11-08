@@ -69,13 +69,13 @@ def verify(client, port, state_root, populated_bank, expect_regression=False):
                                 f"failed coin put changed {key}: {after}")
     else:
         command(client, "put all.coins testbag", TRANSFER_SUCCEEDED)
-        command(client, "save", f"Save complete for {journey.CHARACTER}.")
+        command(client, "save", f"Saving {journey.CHARACTER}.")
         journey.require(journey.inspect_authority(state_root)["wallet"] == [0, 0, 0, 0],
                         "successful coin put did not durably debit the wallet")
         command(client, "get coins testbag", COINS_BACK)
         command(client, "put all.coins testbag", TRANSFER_SUCCEEDED)
 
-    command(client, "save", f"Save complete for {journey.CHARACTER}.")
+    command(client, "save", f"Saving {journey.CHARACTER}.")
     command(client, "quit", "ACCOUNT MENU")
     client.send("0")
     client.close()
@@ -83,7 +83,7 @@ def verify(client, port, state_root, populated_bank, expect_regression=False):
     try:
         if not expect_regression:
             command(reloaded, "get coins testbag", COINS_BACK)
-            command(reloaded, "save", f"Save complete for {journey.CHARACTER}.")
+            command(reloaded, "save", f"Saving {journey.CHARACTER}.")
         after = journey.inspect_authority(state_root)
         journey.require(after["wallet"] == REMAINING_WALLET,
                         f"round trip or full reload changed the coin balance: {after}")

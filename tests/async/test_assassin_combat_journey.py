@@ -142,7 +142,7 @@ def run(binary, build):
                     journey.create_character(client, account=account, character=name,
                                              email=name.lower() + "@example.invalid")
                     client.send("save")
-                    client.expect("Save complete for " + name + ".")
+                    client.expect("Saving " + name + ".")
                 stop()
                 subprocess.run([str(fixture_binary), str(state)], check=True)
                 boot()
@@ -225,7 +225,7 @@ def run(binary, build):
                         break
                 else:
                     raise AssertionError("level-46 Weakness never established")
-                victim.send("save"); victim.expect("Save complete for Venomtarget.")
+                victim.send("save"); victim.expect("Saving Venomtarget.")
                 saved = subprocess.check_output([str(fixture_binary), str(state), "inspect"], text=True)
                 weakness = re.search(r"affect 3 1537 (\d+) (-\d+)", saved)
                 assert weakness and int(weakness[1]) == 46 and -15 <= int(weakness[2]) <= -5, saved
@@ -240,15 +240,15 @@ def run(binary, build):
                 assert "Ok." in command(staff, "give weakness Shadeblade")
                 command(assassin, "wake"); command(assassin, "stand")
                 assert "now drips" in command(assassin, "apply weakness journeydagger")
-                assassin.send("save"); assassin.expect("Save complete for Shadeblade.")
+                assassin.send("save"); assassin.expect("Saving Shadeblade.")
                 logout(assassin)
                 assassin = login(*ACTORS[1])
-                assassin.send("save"); assassin.expect("Save complete for Shadeblade.")
+                assassin.send("save"); assassin.expect("Saving Shadeblade.")
                 coated = subprocess.check_output([str(fixture_binary), str(state), "inspect"], text=True)
                 assert "coating 2 1537" in coated, coated
                 logout(victim)
                 victim = login(*ACTORS[2])
-                victim.send("save"); victim.expect("Save complete for Venomtarget.")
+                victim.send("save"); victim.expect("Saving Venomtarget.")
                 restored = subprocess.check_output([str(fixture_binary), str(state), "inspect"], text=True)
                 assert re.search(r"affect 3 1537 46 " + re.escape(weakness[2]) + r"\b", restored), restored
                 print("Assassin Weakness persisted delivery level 46 after source advance and victim reconnect:", weakness[2], flush=True)

@@ -161,7 +161,7 @@ def run(binary, backend, interruptions_only=False, reconnect_only=False, skip_in
 
             def save(client, name=PLAYER):
                 client.send('save')
-                client.expect('Save complete for ' + name + '.', timeout=60)
+                client.expect('Saving ' + name + '.', timeout=60)
 
             def progress():
                 if sql:

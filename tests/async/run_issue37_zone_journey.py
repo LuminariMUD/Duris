@@ -93,7 +93,7 @@ def run(binary, baseline, evidence_path):
                 cmd(god, f'goto {expected}')
                 cmd(god, 'purge')
                 response = cmd(player, direction)
-                if ('You cannot move normally while fighting' in response or
+                if ("Sorry, you aren't allowed to do that in combat" in response or
                         "Sorry, you can't do that while laying around" in response):
                     # Isolate ambient combat only when it blocks the route check.
                     # Native purge preserves fixed portals; exits, room flags and
@@ -236,7 +236,7 @@ def run(binary, baseline, evidence_path):
                     journey.create_character(client, expected_room=None, account=account,
                                              character=name, email=name.lower() + '@example.invalid')
                     client.send('save')
-                    client.expect('Save complete for ' + name + '.', timeout=60)
+                    client.expect('Saving ' + name + '.', timeout=60)
                 stop()
                 journey.make_overlord(Path(env['FLATFILE_STATE_DIR']), GOD)
                 for phase in (('first',) if baseline else ('first', 'restart')):

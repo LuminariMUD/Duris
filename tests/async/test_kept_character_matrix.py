@@ -34,7 +34,7 @@ def run(binary, backend, chaos):
                 creation.play_saved_character(staff, STAFF)
                 creation.reply(staff, "", ready)
                 staff.expect("Pos: standing >")
-                creation.reply(staff, "save", f"Save complete for {STAFF}.")
+                creation.reply(staff, "save", f"Saving {STAFF}.")
                 server.shutdown()
                 staff.close()
                 if sql:
@@ -80,7 +80,7 @@ def run(binary, backend, chaos):
                         creation.play_saved_character(mortal, name)
                     creation.reply(mortal, "", ready)
                     mortal.expect("Pos: standing >")
-                    creation.reply(mortal, "save", f"Save complete for {name}.")
+                    creation.reply(mortal, "save", f"Saving {name}.")
                     after = saved_character(server, sql, inspector, name)
                     assert after == (before[0], 56 if chaos else 1, before[2]), (before, after)
 
@@ -108,7 +108,7 @@ def run(binary, backend, chaos):
                     creation.reply(mortal, "1", name)
                     creation.reply(mortal, "1", "(Y/N)")
                     creation.reply(mortal, "y", "Pos: standing >")
-                    creation.reply(mortal, "save", f"Save complete for {name}.")
+                    creation.reply(mortal, "save", f"Saving {name}.")
                     assert saved_character(server, sql, inspector, name) == after
                     assert rewards() == baseline_rewards, "starter balances repeated after restart"
                     assert "A free frigate!" not in mortal.transcript.decode(errors="replace")

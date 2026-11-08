@@ -103,7 +103,7 @@ def run(server):
                     process = boot()
                     client = journey.MudClient(plain)
                     journey.create_character(client)
-                    client.send('save'); client.expect('Save complete for '+journey.CHARACTER+'.', timeout=30)
+                    client.send('save'); client.expect('Saving '+journey.CHARACTER+'.', timeout=30)
                     client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)
                     pid = number("SELECT pid FROM player_data WHERE name='"+journey.CHARACTER+"'")
                     items_before = number(f'SELECT COUNT(*) FROM player_items WHERE pid={pid}')
@@ -123,7 +123,7 @@ def run(server):
                         client.send('0'); client.close()
                         client = journey.reconnect_character(plain)
                         client.send('inventory'); client.expect('You are carrying')
-                        client.send('save'); client.expect('Save complete for '+journey.CHARACTER+'.', timeout=30)
+                        client.send('save'); client.expect('Saving '+journey.CHARACTER+'.', timeout=30)
                         client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)
                         print(label + ': accurate refusal, mapping/inventory rollback and playable reconnect passed', flush=True)
                     # A character in the game, here linkdead after a second login, is not
@@ -172,7 +172,7 @@ def run(server):
                         client = journey.MudClient(plain)
                         journey.create_character(client, account='Erasedacct', character='Vorlesk',
                                                  email='erased@example.invalid')
-                        client.send('save'); client.expect('Save complete for Vorlesk.', timeout=30)
+                        client.send('save'); client.expect('Saving Vorlesk.', timeout=30)
                         client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)
                         return client
                     client = create_erased()

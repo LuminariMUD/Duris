@@ -68,7 +68,7 @@ def login_journey(socket, work, server):
 
             def save():
                 client.send('save')
-                client.expect('Save complete for ' + journey.CHARACTER + '.', timeout=30)
+                client.expect('Saving ' + journey.CHARACTER + '.', timeout=30)
 
             def quit_player():
                 client.send('quit')

@@ -418,7 +418,7 @@ def run(binary):
             combat.create_character(other, expected_room=None, account=journey.ACCOUNT,
                                     existing_account=True)
             other.send("save")
-            other.expect(f"Save complete for {combat.CHARACTER}.")
+            other.expect(f"Saving {combat.CHARACTER}.")
             other.send("look")
             other.expect("Obvious exits")
             sql(f"UPDATE accounts SET last_good_char=FROM_UNIXTIME(1) "

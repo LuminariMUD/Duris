@@ -174,11 +174,11 @@ S
         try:
             boot()
             admin = journey.MudClient(port); journey.create_character(admin)
-            admin.send('save'); admin.expect(f'Save complete for {journey.CHARACTER}.')
+            admin.send('save'); admin.expect(f'Saving {journey.CHARACTER}.')
             admin.send('quit'); admin.expect('ACCOUNT MENU', timeout=30)
             player = journey.MudClient(port)
             journey.create_character(player, account='Purgeacct', character='Purgemortal', email='purge@example.invalid')
-            player.send('save'); player.expect('Save complete for Purgemortal.')
+            player.send('save'); player.expect('Saving Purgemortal.')
             player.send('quit'); player.expect('ACCOUNT MENU', timeout=30)
             stop()
             subprocess.run([str(fixture), str(state), mode], check=True)
@@ -202,10 +202,10 @@ S
                 player.expect('You land with stunning force!', timeout=30)
                 time.sleep(5)
                 player.send('save')
-                outcome, _ = player.expect_any(('Save complete for Purgemortal.', 'Being knocked unconscious strictly limits what you can do.'), timeout=30)
-                if outcome != 'Save complete for Purgemortal.':
+                outcome, _ = player.expect_any(('Saving Purgemortal.', 'Being knocked unconscious strictly limits what you can do.'), timeout=30)
+                if outcome != 'Saving Purgemortal.':
                     player.expect('Feeling begins to return', timeout=30)
-                    player.send('save'); player.expect('Save complete for Purgemortal.', timeout=30)
+                    player.send('save'); player.expect('Saving Purgemortal.', timeout=30)
                 player.send('look'); player.expect('The Final Landing')
             drain(admin)
             admin.send('look'); room = drain(admin, 1)
@@ -230,9 +230,9 @@ S
                 player = reconnect_player()
                 admin.send('transfer purgemortal'); drain(admin); drain(player)
                 player.send('get all purgemortal')
-                player.expect('You finish sorting your haul from the corpse of Purgemortal.', timeout=30)
+                player.expect('You get ', timeout=30)
                 time.sleep(2)
-                player.send('save'); player.expect('Save complete for Purgemortal.', timeout=30)
+                player.send('save'); player.expect('Saving Purgemortal.', timeout=30)
                 recovered = inspect_player()
                 recovered_uids = set(recovered['snapshot_uids'])
                 # Ordinary carry limits can stop a bulk haul. Every recovered
@@ -245,7 +245,7 @@ S
                 # and death count through actual process restart and re-entry.
                 stop(); boot()
                 player = reconnect_player(expected_room='The Breakable Floor')
-                player.send('save'); player.expect('Save complete for Purgemortal.', timeout=30)
+                player.send('save'); player.expect('Saving Purgemortal.', timeout=30)
                 restarted = inspect_player()
                 assert restarted['snapshot_uids'] == recovered['snapshot_uids'], restarted
                 assert restarted['death_count'] == recovered['death_count']

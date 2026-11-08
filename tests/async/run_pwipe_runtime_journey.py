@@ -258,7 +258,7 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                     time.sleep(0.1)
 
             def save(name):
-                client.send("save"); client.expect("Save complete for " + name + ".", timeout=30)
+                client.send("save"); client.expect("Saving " + name + ".", timeout=30)
 
             def reward_items(pid):
                 rows = sql("SELECT name,obj_uid,vnum,item_type,weight,cost," +
@@ -429,7 +429,7 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                 observer.expect("revoked your ability to use the 'shutdown' command")
                 observer.expect("Scheduled reboot cancelled", timeout=15)
                 save(STAFF) # Flush earlier broadcasts before the next command group.
-                observer.send("save"); observer.expect("Save complete for " + OBSERVER + ".")
+                observer.send("save"); observer.expect("Saving " + OBSERVER + ".")
                 client.send("shutdown reboot 10 retained malformed-request control")
                 client.expect("retained malformed-request control")
                 for invalid, message in (("pwipe", "You must"), ("pwipe confirm", "You must"),
@@ -900,7 +900,7 @@ def flatfile_rejection(binary):
                 time.sleep(0.1)
 
         def save():
-            client.send("save"); client.expect("Save complete for " + STAFF + ".", timeout=30)
+            client.send("save"); client.expect("Saving " + STAFF + ".", timeout=30)
 
         try:
             boot()

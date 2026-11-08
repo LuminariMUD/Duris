@@ -279,7 +279,7 @@ def main() -> None:
                 create_character(client)
                 # Creation refuses god_list names, so the OVERLORD that 'pulse adjust' and
                 # 'pulse save' need is an ordinary character raised while the server is down.
-                command(client, "save", f"Save complete for {CHARACTER}.")
+                command(client, "save", f"Saving {CHARACTER}.")
                 client.send("quit")
                 client.expect("ACCOUNT MENU", timeout=30)
                 client.close()

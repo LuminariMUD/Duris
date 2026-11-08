@@ -243,7 +243,7 @@ def run_case(binary: pathlib.Path, setting: int) -> tuple[int, int, int, int]:
             client = MudClient(plain)
             create_character(client)
             client.send("save")
-            client.expect("Save complete for Taverek.", timeout=30)
+            client.expect("Saving Taverek.", timeout=30)
             client.send("quit")
             client.expect("ACCOUNT MENU", timeout=30)
             client.send("0")

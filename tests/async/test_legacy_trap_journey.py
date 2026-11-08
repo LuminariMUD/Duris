@@ -190,7 +190,7 @@ def run(binary, backend):
                 boot()
                 for account, name in ((ACCOUNT, BUILDER), (journey.ACCOUNT, journey.CHARACTER)):
                     client = connect(account, name, True)
-                    client.send("save"); client.expect(f"Save complete for {name}.", timeout=45)
+                    client.send("save"); client.expect(f"Saving {name}.", timeout=45)
                     client.send("quit"); client.expect("ACCOUNT MENU", timeout=45)
                 stop()
                 if sql:
@@ -386,7 +386,7 @@ def run(binary, backend):
                         assert "You get" in taken,(saved_key,taken)
                         stored=command(builder,"put "+saved_key+" storageprobe")
                         assert "Ok." in stored,(saved_key,stored)
-                actor.send("save");actor.expect("Save complete for Taverek.",timeout=45)
+                actor.send("save");actor.expect("Saving Taverek.",timeout=45)
                 assert count(14)==caster_count
                 stop();boot()
                 builder,actor=connect(ACCOUNT,BUILDER),connect(journey.ACCOUNT,journey.CHARACTER)

@@ -137,7 +137,7 @@ def run(binary, backend, report):
 
             def save(client, name):
                 client.send("save")
-                client.expect("Save complete for " + name + ".", timeout=60)
+                client.expect("Saving " + name + ".", timeout=60)
                 command(client, "score")
 
             def action(client, text, receipt):

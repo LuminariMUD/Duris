@@ -101,7 +101,7 @@ def run(binary: Path, command: str) -> None:
                 client.expect("You get", timeout=30)
                 # The coins reach the wallet in memory; the save writes it.
                 client.send("save")
-                client.expect(f"Save complete for {CHARACTER}.", timeout=15)
+                client.expect(f"Saving {CHARACTER}.", timeout=15)
                 authority = inspect_authority(state)
                 require(authority["wallet"] == [0, 0, 0, 10],
                         "area coin pickup did not durably credit ten platinum")
@@ -113,7 +113,7 @@ def run(binary: Path, command: str) -> None:
                 client.send("get coins statue")
                 client.expect("does not contain the coins.", timeout=20)
                 client.send("save")
-                client.expect(f"Save complete for {CHARACTER}.", timeout=15)
+                client.expect(f"Saving {CHARACTER}.", timeout=15)
                 require(inspect_authority(state)["wallet"] == [0, 0, 0, 10],
                         "repeated pickup duplicated area money")
                 process.send_signal(signal.SIGTERM)

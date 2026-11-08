@@ -144,7 +144,7 @@ def run(server):
             client = journey.MudClient(plain)
             journey.create_character(client)
             client.send('save')
-            client.expect('Save complete for ' + journey.CHARACTER + '.', timeout=30)
+            client.expect('Saving ' + journey.CHARACTER + '.', timeout=30)
             pid = int(sql("SELECT pid FROM player_data WHERE name='" + journey.CHARACTER + "'"))
             held = sql(f'SELECT COUNT(*) FROM player_items WHERE pid={pid}')
             # `save` leaves a command lag; let it pass so quit runs when it is sent.

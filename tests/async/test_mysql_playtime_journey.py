@@ -118,7 +118,7 @@ def run(server):
                     # interval between two saves starts when the first was sent.
                     sent[label] = time.monotonic()
                     client.send("save")
-                    client.expect("Save complete for " + journey.CHARACTER + ".", timeout=30)
+                    client.expect("Saving " + journey.CHARACTER + ".", timeout=30)
                     value = persisted()
                     rows.append({"phase": label, "played_seconds": value, "monotonic": time.monotonic()})
                     return value

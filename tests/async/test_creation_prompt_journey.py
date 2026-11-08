@@ -223,7 +223,7 @@ def invitation_rejection(client, server, *, invited=False):
     play_saved_character(client, STAFF)
     reply(client, "", "Your starter kit is ready")
     client.expect("Pos: standing >")
-    reply(client, "save", f"Save complete for {STAFF}.")
+    reply(client, "save", f"Saving {STAFF}.")
     # A mortal must camp to quit, so the server stops with the character in game.
     server.shutdown()
     make_overlord(server.state_root, STAFF)
@@ -353,7 +353,7 @@ def advanced_creation(client, server):
     play_saved_character(client)
     reply(client, "", "Your starter kit is ready")
     client.expect("Pos: standing >")
-    reply(client, "save", "Save complete for Taverek.")
+    reply(client, "save", "Saving Taverek.")
 
 
 def method_home_routes(client, server, *, alignment):
@@ -428,7 +428,7 @@ def normal_after_hardcore(client, server):
     require(re.search(r"Web Info\s*:\s*ON\b", toggles),
             "new character did not default to webinfo ON")
     reply(client, "toggle webinfo off", "Pos: standing >")
-    reply(client, "save", "Save complete for Taverek.")
+    reply(client, "save", "Saving Taverek.")
     # A resident linkdead character reconnects immediately by design. Restart
     # the server to exercise disk reload and the saved-character confirmation.
     server.shutdown()

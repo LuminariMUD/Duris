@@ -61,7 +61,7 @@ def run(binary, backend, chaos, transport):
                     creation.reply(client, "", "Your Chaos Equipment has been prepared!!" if chaos
                                    else "Your starter kit is ready")
                     client.expect("Pos: standing >")
-                creation.reply(client, "save", "Save complete for Taverek.")
+                creation.reply(client, "save", "Saving Taverek.")
                 before = saved_character(server, sql, inspector)
                 pid = before[0]
                 record = server.run_root / f"journals/critical/starter-kits/{pid}.kit"
@@ -96,7 +96,7 @@ def run(binary, backend, chaos, transport):
                 creation.reply(client, "1", "(Y/N)")
                 creation.reply(client, "y", "Your starter kit is ready")
                 client.expect("Pos: standing >")
-                creation.reply(client, "save", "Save complete for Taverek.")
+                creation.reply(client, "save", "Saving Taverek.")
                 assert uids() == original_uids, "restart minted or replaced starter item UIDs"
                 assert record.read_bytes() == data, "replay changed the bound command or operation"
                 assert saved_character(server, sql, inspector) == before

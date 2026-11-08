@@ -102,7 +102,7 @@ def run(binary, backend):
                                              email=name.lower() + "@example.invalid",
                                              class_name=class_key, race_name=race_key, alignment=alignment)
                     client.send("save")
-                    client.expect("Save complete for " + name + ".", timeout=30)
+                    client.expect("Saving " + name + ".", timeout=30)
                 stop()
                 if sql:
                     sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + GOD + "'")

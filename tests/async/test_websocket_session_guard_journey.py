@@ -53,7 +53,7 @@ def websocket_login(server, name):
 
 def save(client):
     send(client, "game", "save")
-    assert "Save complete for Taverek." in json.dumps(drain(client, 10, "Save complete")), "save failed"
+    assert "Saving Taverek." in json.dumps(drain(client, 10, "Saving Taverek.")), "save failed"
 
 
 def in_game_commands(server):
@@ -101,7 +101,7 @@ def delete_at_first_play(server):
     client.close()
     creation.reply(telnet, "", "Your starter kit is ready")
     telnet.expect("Pos: standing >")
-    creation.reply(telnet, "save", "Save complete for Taverek.")
+    creation.reply(telnet, "save", "Saving Taverek.")
     telnet.close()
 
 
@@ -114,7 +114,7 @@ def waiting_application(server, sql):
     creation.play_saved_character(staff, STAFF)
     creation.reply(staff, "", "Your starter kit is ready")
     staff.expect("Pos: standing >")
-    creation.reply(staff, "save", f"Save complete for {STAFF}.")
+    creation.reply(staff, "save", f"Saving {STAFF}.")
     server.shutdown()
     staff.close()
     if sql:

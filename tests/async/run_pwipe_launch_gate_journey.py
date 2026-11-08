@@ -199,7 +199,7 @@ def run(binary, backend):
                     journey.create_character(client, account=account, character=name,
                                              email=account.lower() + "@example.invalid")
                     client.send("save")
-                    client.expect("Save complete for " + name + ".")
+                    client.expect("Saving " + name + ".")
                 stop()
                 if sql:
                     sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + STAFF + "'")
@@ -292,7 +292,7 @@ def run(binary, backend):
                 client = connect()
                 journey.create_character(client, existing_account=True, account=APPROVED, character="Prepsecond")
                 client.send("save")
-                client.expect("Save complete for Prepsecond.")
+                client.expect("Saving Prepsecond.")
                 evidence["approved_creation"] = "new character, starter kit, game entry and save while closed"
                 stop()
                 assert time.time() < deadline, "closed checks exhausted the launch deadline"
@@ -326,7 +326,7 @@ def run(binary, backend):
                                          email="afterlaunch@example.invalid")
                 command(client, "score")
                 client.send("save")
-                client.expect("Save complete for Launchfresh.")
+                client.expect("Saving Launchfresh.")
                 assert process.pid == running_pid and process.poll() is None
                 evidence.update(status="passed", opening="public Telnet/TLS/WS login/entry; registration, creation, starter kit, gameplay and save without reboot")
                 print("PASS: deadline opened ordinary public admission/creation/gameplay without reboot", flush=True)

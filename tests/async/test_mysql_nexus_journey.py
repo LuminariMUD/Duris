@@ -104,7 +104,7 @@ def run(binary):
                     journey.create_character(client, expected_room=None, account=ACCOUNTS[name],
                                              character=name, email=name.lower() + '@example.invalid')
                     client.send('save')
-                    client.expect('Save complete for ' + name + '.', timeout=60)
+                    client.expect('Saving ' + name + '.', timeout=60)
                 stop()
                 sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
                 for name in (GOOD, EVIL):
@@ -206,7 +206,7 @@ def run(binary):
                     same_side = command(player, 'touch stone')
                     assert 'The stone is indifferent to your touch.' in same_side, same_side
                     player.send('save')
-                    player.expect('Save complete for ' + player_name + '.', timeout=60)
+                    player.expect('Saving ' + player_name + '.', timeout=60)
                     evidence['captures'].append({'stone': stone_id, 'align': side * 3,
                                                  'epic_delta': after - before})
                     print(f'PASS {stone_name}: mortal guardian defeat, touch cooldown, full capture and epic award', flush=True)
@@ -241,7 +241,7 @@ def run(binary):
                         evidence['cargo_sales'].append({'player': name, 'commodity': commodity,
                                                        'base': base, 'bonus': bonus, 'paid': paid})
                     client.send('save')
-                    client.expect('Save complete for ' + name + '.', timeout=60)
+                    client.expect('Saving ' + name + '.', timeout=60)
                 print('PASS actual cargo/contraband sales: owning-side bonus and opposing-side exclusion', flush=True)
                 assert sql(base_stats_query) == base_stats, 'Nexus journey changed base stats'
                 evidence['base_stats_unchanged'] = True

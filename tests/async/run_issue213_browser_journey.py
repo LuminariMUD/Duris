@@ -59,7 +59,7 @@ def full_world(args):
                 journey.create_character(staff, expected_room=None, account=GOD_ACCOUNT, character=GOD,
                                          email='browserward@example.invalid', hometown='t')
                 staff.send('save')
-                staff.expect('Save complete for ' + GOD + '.')
+                staff.expect('Saving ' + GOD + '.')
                 staff.close()
                 stop()
                 if sql:
@@ -263,7 +263,7 @@ def exercise(server, sql, args, evidence):
         expected = guild_rooms()[18][1]
         assert room() == expected
         send('save')
-        page.get_by_text('Save complete for ' + character + '.', exact=False).wait_for()
+        page.get_by_text('Saving ' + character + '.', exact=False).wait_for()
         saved = saved_state(command(god, 'stat char ' + character))
         assert [saved[key] for key in ('hometown', 'birthplace', 'original_birthplace')] == [expected] * 3, saved
         command(god, 'advance ' + character + ' 30')

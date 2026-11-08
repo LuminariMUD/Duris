@@ -91,7 +91,7 @@ def run(binary, backend, inspector, evidence_dir):
 
             def save():
                 client.send("save")
-                client.expect("Save complete for " + PLAYER + ".", timeout=60)
+                client.expect("Saving " + PLAYER + ".", timeout=60)
                 return inspect()
 
             def retired(data):

@@ -69,7 +69,7 @@ def run(binary, backend):
                     journey.create_character(client, account=account, character=name,
                                              email=name.lower() + "@example.invalid")
                     client.send("save")
-                    client.expect("Save complete for " + name + ".", timeout=30)
+                    client.expect("Saving " + name + ".", timeout=30)
                 stop()
                 if sql:
                     sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + GOD + "'")

@@ -94,7 +94,7 @@ def run(binary, backend, inspector, conflicts_only=False):
                 return client
 
             def save(client, name):
-                client.send('save'); client.expect('Save complete for ' + name + '.', timeout=60)
+                client.send('save'); client.expect('Saving ' + name + '.', timeout=60)
 
             def camp(client):
                 client.send('camp'); client.expect('ACCOUNT MENU', timeout=60)

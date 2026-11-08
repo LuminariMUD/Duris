@@ -2107,11 +2107,8 @@ void command_interpreter(P_char ch, char *argument)
 					break;
 				}
 			if (IS_FIGHTING(ch) && !cmd_info[cmd].in_battle)
-				send_to_char(
-					is_normal_movement_command(cmd) ?
-						"You cannot move normally while fighting; use 'flee' to escape.\r\n" :
-						"Sorry, you aren't allowed to do that in combat.\r\n",
-					ch);
+				send_to_char("Sorry, you aren't allowed to do that in combat.\r\n",
+					     ch);
 			return;
 		}
 		else

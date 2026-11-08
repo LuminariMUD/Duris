@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify combat direction refusals tell players how to escape."""
+"""Verify combat direction refusals retain the original player-facing message."""
 
 from _paths import SRC
 from _source_contract import function_body
@@ -13,8 +13,9 @@ COMMAND = function_body(
 
 assert "CMD_NORTH && cmd <= CMD_DOWN" in MOVEMENT
 assert "CMD_NORTHWEST && cmd <= CMD_SE" in MOVEMENT
-assert "You cannot move normally while fighting; use 'flee' to escape." in COMMAND
-assert "is_normal_movement_command(cmd) ?" in COMMAND
+assert "You cannot move normally while fighting; use 'flee' to escape." not in COMMAND
+assert "is_normal_movement_command(cmd) ?" not in COMMAND
+assert "IS_FIGHTING(ch) && !cmd_info[cmd].in_battle" in COMMAND
 assert "Sorry, you aren't allowed to do that in combat." in COMMAND
 
-print("combat movement feedback: direction refusals explain flee")
+print("combat movement feedback: original refusal with combat restrictions preserved")

@@ -182,7 +182,7 @@ def run(binary):
                 player = journey.MudClient(port)
                 journey.create_character(player, account=name, character=name,
                                          email=f"{name.lower()}@example.invalid")
-                command(player, "save", f"Save complete for {name}.")
+                command(player, "save", f"Saving {name}.")
                 player.send("quit")
                 player.expect("ACCOUNT MENU", timeout=30)
                 player.close()
@@ -255,7 +255,7 @@ def run(binary):
             command(player, "wear all", "You attach")
             inspect(staff, "copper", 89177, f"equipped by {NAME}")
             command(player, "remove copper", "You stop using")
-            command(player, "save", f"Save complete for {NAME}.")
+            command(player, "save", f"Saving {NAME}.")
             player.send("quit")
             player.expect("ACCOUNT MENU", timeout=30)
             player.close()

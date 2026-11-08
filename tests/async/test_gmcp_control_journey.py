@@ -334,7 +334,7 @@ def item_journey(client):
     snapshot("eq", before)
     before = len(telnet_packets(client))
     client.send("save")
-    client.expect(f"Save complete for {CHARACTER}.")
+    client.expect(f"Saving {CHARACTER}.")
     drain(client)
     require(not any(name == "Char.Items.List" for name, _ in telnet_packets(client)[before:]),
             "ordinary save invented an item revision")
@@ -387,7 +387,7 @@ def run(binary, evidence):
             played = [data for name, data in telnet_packets(client) if name == "Duris.Session" and data["state"] == "playing"]
             require({(state["context"], state["generation"]) for state in played} == {(entry["context"], "1")}, "negotiation/preference replayed character entry")
             client.send("save")
-            client.expect(f"Save complete for {CHARACTER}.", timeout=20)
+            client.expect(f"Saving {CHARACTER}.", timeout=20)
             client.close()
             client = None
             server.shutdown()
@@ -462,7 +462,7 @@ def run(binary, evidence):
             reentered = wait_telnet(client, "Duris.Session", before, lambda state: state["state"] == "playing")
             require(reentered["context"] == reconnected["context"] and reentered["generation"] == "2" and reentered["character"]["name"] == SECOND_CHARACTER, "same-socket A/account/B transition has wrong identity")
             client.send("save")
-            client.expect(f"Save complete for {SECOND_CHARACTER}.")
+            client.expect(f"Saving {SECOND_CHARACTER}.")
             client.close()
             client = None
             server.shutdown()

@@ -79,7 +79,7 @@ def telnet_journey(binary, inspector, race, name, alignment):
             telnet.play_saved_character(client)
             telnet.reply(client, '', 'Your starter kit is ready')
             client.expect('Pos: standing >')
-            telnet.reply(client, 'save', 'Save complete for Taverek.')
+            telnet.reply(client, 'save', 'Saving Taverek.')
             before = inspect(server, inspector, race, alignment)
             client.close()
             restart(server)
@@ -91,7 +91,7 @@ def telnet_journey(binary, inspector, race, name, alignment):
             telnet.reply(client, '1', 'Taverek')
             telnet.reply(client, '1', '(Y/N)')
             telnet.reply(client, 'y', 'Pos: standing >')
-            telnet.reply(client, 'save', 'Save complete for Taverek.')
+            telnet.reply(client, 'save', 'Saving Taverek.')
             require(inspect(server, inspector, race, alignment) == before, 'Telnet kit identities changed on reload')
             print(f'PASS Telnet {name} Monk: fixed alignment/faction, equipped kit, save/restart/relog', flush=True)
         finally:
@@ -101,7 +101,7 @@ def telnet_journey(binary, inspector, race, name, alignment):
 def ws_save(client):
     response = client.command('game', 'save', 'text')
     deadline = time.monotonic() + 15
-    while 'Save complete for Taverek' not in json.dumps(response):
+    while 'Saving Taverek' not in json.dumps(response):
         require(time.monotonic() < deadline, 'save did not commit')
         response = client.receive()
 

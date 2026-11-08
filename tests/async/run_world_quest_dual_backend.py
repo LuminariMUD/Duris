@@ -591,7 +591,7 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
             partials.append(current)
             if not partial_persisted and level == 29 and (29, 1) in cases:
                 client.send("save")
-                client.expect("Save complete for Taverek.", timeout=120)
+                client.expect("Saving Taverek.", timeout=120)
                 saved = gameplay_snapshot(client, run_root)
                 require(saved["active"] and saved["kills"] < saved["quota"],
                         "combat completed before the partial checkpoint")
@@ -642,7 +642,7 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                            if (row.get("selector") or "").endswith(":" + str(uid))]
             require(len(reward_rows) == 1, "committed reward missing or duplicated in owner item wire snapshot")
         client.send("save")
-        client.expect("Save complete for Taverek.", timeout=120)
+        client.expect("Saving Taverek.", timeout=120)
         deadline = time.monotonic() + 30
         while stored_gameplay_history(database_environment, completed) != history_before + 1:
             require(time.monotonic() < deadline, "completion did not persist exactly one history row")
@@ -659,7 +659,7 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
             "no real partial-progress restart was qualified")
     # One focused restart proves ordinary equipment plus all completed rewards.
     client.send("save")
-    client.expect("Save complete for Taverek.", timeout=120)
+    client.expect("Saving Taverek.", timeout=120)
     before_items = item_snapshot(client)
     client = restart(client)
     enable_items(client)
@@ -754,7 +754,7 @@ def perform_rested_ask(client, run_root, restart, database_environment):
                         stored_gameplay_history(database_environment, credited) == history + 1,
                         "expired ASK rest was lost, stacked, or history was repeated")
                 current_client.send("save")
-                current_client.expect("Save complete for Taverek.", timeout=120)
+                current_client.expect("Saving Taverek.", timeout=120)
                 current_client = restart(current_client)
                 final = settled_gameplay_snapshot(current_client, run_root)
                 # Chaos login restores level 56, independent of this fixture's
@@ -785,7 +785,7 @@ def perform_reward_recovery(client, run_root, restart, database_environment):
         require(history == stored_gameplay_history(database_environment, accepted),
                 "failed preparation consumed history")
         current_client.send("save")
-        current_client.expect("Save complete for Taverek.", timeout=120)
+        current_client.expect("Saving Taverek.", timeout=120)
         current_client = restart(current_client, lambda: control.write_text("9 0 0\n"))
         restored = settled_gameplay_snapshot(current_client, run_root)
         require(restored["frozen_item_count"] == 3 and restored["active"],
@@ -823,7 +823,7 @@ def perform_reward_recovery(client, run_root, restart, database_environment):
                 stored_gameplay_history(database_environment, claimed) == history + 1,
                 "secured recovery repeated generation, XP, or completion history")
         current_client.send("save")
-        current_client.expect("Save complete for Taverek.", timeout=120)
+        current_client.expect("Saving Taverek.", timeout=120)
         current_client = restart(current_client)
         final = settled_gameplay_snapshot(current_client, run_root)
         require(not final["active"] and uids <= {item["uid"] for item in final["items"]} and
@@ -860,7 +860,7 @@ def perform_reported(client: MudClient, run_root: pathlib.Path, restart,
     def persist(state):
         nonlocal client
         client.send("save")
-        client.expect("Save complete for Taverek.", timeout=120)
+        client.expect("Saving Taverek.", timeout=120)
         history = stored_gameplay_history(database_environment, state)
         client = restart(client)
         # Chaos entry restores its level-56 floor. Reapply only the requested
@@ -932,9 +932,9 @@ def perform_reported(client: MudClient, run_root: pathlib.Path, restart,
                 mapped["remaining"] == shared["remaining"] and not mapped["due"],
                 "locked-route map purchase changed entitlement/history or charged incorrectly")
         partner.send("save")
-        partner.expect("Save complete for Nimerek.", timeout=120)
+        partner.expect("Saving Nimerek.", timeout=120)
         client.send("save")
-        client.expect("Save complete for Taverek.", timeout=120)
+        client.expect("Saving Taverek.", timeout=120)
         partner.close()
         client = restart(client)
         client.send("chaos")  # Reapply current actor level only; no setup action is pending.
@@ -1081,7 +1081,7 @@ def perform_history_regrant(client: MudClient, run_root: pathlib.Path, restart,
             regrant["wallet"] == abandoned["wallet"] - 600,
             "history rollover changed allowance or purchase fee")
     client.send("save")
-    client.expect("Save complete for Taverek.", timeout=120)
+    client.expect("Saving Taverek.", timeout=120)
     client = restart(client)
     client.send("chaos")  # Reapply only the test actor's level after Chaos entry.
     restored = settled_gameplay_snapshot(client, run_root)
@@ -1194,7 +1194,7 @@ def perform_history_write_failure(client: MudClient, run_root: pathlib.Path, res
     client.send("chaos")
     before = settled_gameplay_snapshot(client, run_root)
     client.send("save")
-    client.expect("Save complete for Taverek.", timeout=120)
+    client.expect("Saving Taverek.", timeout=120)
     history_before = stored_gameplay_history(database_environment, before)
     sql("CREATE TRIGGER quest_history_refusal BEFORE INSERT ON world_quest_accomplished "
         "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture history failure'")
@@ -1242,7 +1242,7 @@ def perform_history_write_failure(client: MudClient, run_root: pathlib.Path, res
     require(stored_gameplay_history(database_environment, after) == history_before + 1,
             "recovery did not persist exactly one history row")
     client.send("save")
-    client.expect("Save complete for Taverek.", timeout=120)
+    client.expect("Saving Taverek.", timeout=120)
     client = restart(client)
     restored = settled_gameplay_snapshot(client, run_root)
     require(not restored["active"] and restored["wallet"] == after["wallet"] and
@@ -1507,7 +1507,7 @@ run
             client.expect("Quest-room test move complete.", timeout=15)
             client.expect("Quest-room test funds committed.", timeout=60)
             client.send("save")
-            client.expect("Save complete for Taverek.", timeout=120)
+            client.expect("Saving Taverek.", timeout=120)
             client.send("look")
             client.expect("Mathorn's Bar", timeout=15)
             if JOURNEY == "history":
@@ -1589,7 +1589,7 @@ run
             require(output_path.read_text(errors="replace").count("World quest catalog ready:") == 1,
                     "catalog was rebuilt during repeated quest/abandon commands")
             client.send("save")
-            client.expect("Save complete for Taverek.", timeout=120)
+            client.expect("Saving Taverek.", timeout=120)
             player_state = None
             if database_environment is not None:
                 player_state = verify_mariadb_player_state(database_environment)
@@ -1613,7 +1613,7 @@ run
             client.send("ask bartender quest")
             client.expect("Your free replacement and earned progress remain yours.", timeout=30)
             client.send("save")
-            client.expect("Save complete for Taverek.", timeout=120)
+            client.expect("Saving Taverek.", timeout=120)
             if database_environment is not None:
                 verify_mariadb_player_state(database_environment, active=0, map_bought=1,
                                             replacement_due=1)
@@ -1636,7 +1636,7 @@ run
             require(all(relogged[k] == pending[k] for k in JOURNEY_FIELDS),
                     "pending entitlement changed on relogin")
             client.send("save")
-            client.expect("Save complete for Taverek.", timeout=120)
+            client.expect("Saving Taverek.", timeout=120)
             client.send("rent")
             client.expect("ACCOUNT MENU", timeout=30)
             client.send("0")
@@ -1677,7 +1677,7 @@ run
             require(replacement["origin"] == BARTENDER_ROOM and replacement["map_room"] > 0,
                     "replacement lost its current verified origin/entrance")
             client.send("save")
-            client.expect("Save complete for Taverek.", timeout=120)
+            client.expect("Saving Taverek.", timeout=120)
             if database_environment is not None:
                 verify_mariadb_player_state(database_environment, map_bought=1)
             if JOURNEY != "recovery":

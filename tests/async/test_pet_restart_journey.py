@@ -94,7 +94,7 @@ def run(binary):
             client = journey.MudClient(port)
             journey.create_character(client)
             client.send("save")
-            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+            client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
             stop()
             seeded = rows("seed")
             expected_states = {row[1] for row in seeded if row[1]}
@@ -108,7 +108,7 @@ def run(binary):
                 assert "skeleton of fixture0" in visible and "skeleton of fixture1" in visible, visible
                 assert "undead corpse stands" not in visible, visible
                 client.send("save")
-                client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+                client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
                 current = rows()
                 assert len(current) == 3, current
                 assert {row[1] for row in current if row[1]} == expected_states, "generated state changed"
@@ -140,7 +140,7 @@ def run(binary):
             stop(); boot()
             client = journey.reconnect_character(port)
             client.send("save")
-            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+            client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
             assert {uid for row in rows() for uid in row[3:]} == expected_uids
             print("offline pet artifact expiry preserves pets and sibling UIDs across restart", flush=True)
             stop()
@@ -157,7 +157,7 @@ def run(binary):
                 assert time.monotonic() < deadline, "restored finite pet did not die at its deadline"
                 time.sleep(1)
             client.send("save")
-            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+            client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
             assert len(rows()) == 2, "expired pet remained in owner's checkpoint"
             assert any(row[1] == seeded[0][1] for row in rows()), "permanent pet expired"
             print("restored finite pet dies at its deadline; permanent pet remains", flush=True)
@@ -170,7 +170,7 @@ def run(binary):
                 boot()
                 client = journey.reconnect_character(port)
                 client.send("save")
-                client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+                client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
                 timers = rows("timers")
                 assert len(timers) == 6, timers
                 for kind, spell, remaining in timers:
@@ -190,7 +190,7 @@ def run(binary):
             boot()
             client = journey.reconnect_character(port)
             client.send("save")
-            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+            client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
             assert all(row[0] == "0" for row in rows() if row[3] in cooled), rows()
             assert len(rows("timers")) == 6, rows("timers")
             print("upgrade releases pets a rollback held", flush=True)
@@ -203,7 +203,7 @@ def run(binary):
             boot()
             client = journey.reconnect_character(port)
             client.send("save")
-            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+            client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
             assert rows() == remaining, "held record changed across quit/restart"
             print("held pet equipment survives quit, restart and subsequent save", flush=True)
         except Exception:

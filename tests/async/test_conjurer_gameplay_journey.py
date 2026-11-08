@@ -266,7 +266,7 @@ PH 0 0 -1
                 try:
                     journey.create_character(client, account=account, character=name,
                                              email=f'conjurer{index}@example.invalid')
-                    client.send('save'); client.expect(f'Save complete for {name}.')
+                    client.send('save'); client.expect(f'Saving {name}.')
                     client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)
                 finally:
                     client.close()
@@ -379,7 +379,7 @@ PH 0 0 -1
             checks.append('real help lookup from both supplied sources')
             def saved_state():
                 for index, client in enumerate(clients):
-                    client.send('save'); client.expect(f'Save complete for {ROSTER[index][1]}.')
+                    client.send('save'); client.expect(f'Saving {ROSTER[index][1]}.')
                 return subprocess.check_output([str(fixture), str(state), 'inspect'], text=True)
 
             state_text = saved_state()

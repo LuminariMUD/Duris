@@ -107,7 +107,7 @@ def ready(client, race):
 def save(client, name):
     message = client.command("game", "save", "text")
     deadline = time.monotonic() + 20
-    while "Save complete for " + name + "." not in json.dumps(message):
+    while "Saving " + name + "." not in json.dumps(message):
         assert time.monotonic() < deadline, message
         message = client.receive()
 
@@ -289,7 +289,7 @@ def browser_case(server, args, name, race, cls, alignment, *, relog=False):
         field.fill("save")
         field.press("Enter")
         deadline = time.monotonic() + 20
-        while "Save complete for " + name + "." not in json.dumps(frames):
+        while "Saving " + name + "." not in json.dumps(frames):
             assert time.monotonic() < deadline, (frames[-5:], page.locator("body").inner_text())
             page.wait_for_timeout(100)
         record = server["saved"](name)
@@ -338,7 +338,7 @@ def run(args):
                 journey.create_character(client, expected_room=None, class_name=cls,
                                          account=name, character=name, email=name + "@example.invalid", hometown="p")
                 client.send("save")
-                client.expect("Save complete for " + name + ".")
+                client.expect("Saving " + name + ".")
                 record = server["saved"](name)
                 assert record["alignment"] == alignment and record["racewar"] == 1, record
                 records[name] = record
@@ -350,7 +350,7 @@ def run(args):
                                      character="Teltiefling", email="teltiefling@example.invalid",
                                      race_name="f", alignment="e", hometown="A", expected_hometown=ARACHDRATHOS)
             client.send("save")
-            client.expect("Save complete for Teltiefling.")
+            client.expect("Saving Teltiefling.")
             record = server["saved"]("Teltiefling")
             assert record["alignment"] == -1000 and record["racewar"] == 2, record
             assert [record[key] for key in HOME_FIELDS] == [ARACHDRATHOS_ENTRY] * 3, record

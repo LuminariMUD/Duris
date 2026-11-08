@@ -110,7 +110,7 @@ def run(binary, backend, inspector):
 
             def save(client, name):
                 client.send('save')
-                client.expect('Save complete for ' + name + '.', timeout=60)
+                client.expect('Saving ' + name + '.', timeout=60)
 
             def stop():
                 for client in clients:

@@ -60,7 +60,7 @@ def run(binary):
                     clients.append(client)
                     journey.create_character(client, account=account, character=name,
                                              email=name.lower() + '@example.invalid')
-                    response(client, 'save', 'Save complete for ' + name + '.')
+                    response(client, 'save', 'Saving ' + name + '.')
                     response(client, 'look', 'Obvious exits')
                     response(client, 'quit', 'Please select an option')
                 stop()

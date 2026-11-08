@@ -320,7 +320,7 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
 
                 def save():
                     client.send("save")
-                    client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+                    client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
 
                 def health():
                     client.send("world telemetry")
@@ -338,7 +338,7 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                 journey.create_character(companion, character=companion_name,
                                          account=companion_account, email="companion@example.invalid")
                 companion.send("save")
-                companion.expect(f"Save complete for {companion_name}.")
+                companion.expect(f"Saving {companion_name}.")
                 companion.send("quit"); companion.expect("ACCOUNT MENU", timeout=30)
                 companion.close(); companion = None
                 client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
@@ -472,7 +472,7 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                 client.send("order followers kill raoul")
                 client.expect("is dead! R.I.P.", timeout=45)
                 print("PASS level/group/player/pet gameplay", backend, flush=True)
-                companion.send("save"); companion.expect(f"Save complete for {companion_name}.")
+                companion.send("save"); companion.expect(f"Saving {companion_name}.")
                 response["status"] = 503
                 prior_attempts = len(attempts)
                 companion.send("quit"); companion.expect("ACCOUNT MENU", timeout=30)

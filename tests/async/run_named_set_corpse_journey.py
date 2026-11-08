@@ -125,7 +125,7 @@ try:
     command(builder, "transfer " + CHARACTER)
     if not recovered:
         command(actor, "look in " + CHARACTER, "collector")
-        command(actor, "get all " + CHARACTER, "Haul:")
+        command(actor, "get all " + CHARACTER, "You get ")
     save(actor, CHARACTER)
     assert graph() == setup["graph"], (
         "the complete nested inventory graph must survive the corpse"

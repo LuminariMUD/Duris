@@ -12,14 +12,14 @@ status_event = source[
     source.index("static struct deferred_save_slot *find_deferred_save_slot")
 ]
 
-assert '"Save already queued for %s.\\r\\n"' in manual_save
-assert '"Save queued for %s.\\r\\n"' in manual_save
+assert "Save already queued" not in manual_save
+assert "Save queued" not in manual_save
 assert manual_save.index("find_manual_save_status") < manual_save.index("persistence_schedule_character_save")
 assert "revision.written_revision >= status->revision" in status_event
-assert 'literal("Save complete for ")' in status_event
+assert 'literal("Saving ")' in status_event
 assert 'literal("Save failed for ")' in status_event
 
-print("[PASS] manual saves report queued, duplicate, completion, and failure states")
+print("[PASS] manual saves retain the original message at completion and report failures")
 
 # Execute the real save slot code with world callbacks deliberately withheld.
 # Only the clock, character lookup, snapshot submission, and ACK are controlled.
@@ -47,6 +47,7 @@ P_char character_list = &player;
 #define IS_PC(ch) true
 #define GET_PID(ch) ((ch)->pid)
 #define GET_NAME(ch) "Synthetic"
+#define GET_PLYR(ch) (ch)
 #define WAIT_SEC 4
 #define LOG_DEBUG 0
 uint64_t now_usec = 1000000;
@@ -100,17 +101,17 @@ int main() {
     now_usec += 500000;
     persistence_pulse_character_saves();
     assert(saves == 1); // No world callback ran, but the save was submitted.
-    assert(messages.find("Save complete") == std::string::npos);
+    assert(messages.empty());
     // The writer accepting the save is not the save landing.
     player_revision_t revision = 0;
     player_component_mask_t components = 0;
     assert(player_revision_queue(1, &revision, &components));
     assert(player_revision_acknowledge_durable(1, revision, components));
     persistence_pulse_character_saves();
-    assert(messages.find("Save complete") == std::string::npos);
+    assert(messages.empty());
     assert(player_revision_record_written(1, revision));
     persistence_pulse_character_saves();
-    assert(messages.find("Save complete") != std::string::npos);
+    assert(messages == "Saving Synthetic.\r\n");
     assert(last_feedback_role == OutputRole::Success);
     assert(!find_manual_save_status(1));
 
@@ -134,7 +135,7 @@ int main() {
     persistence_pulse_character_saves();
     assert(messages.find("Save failed") != std::string::npos);
     assert(last_feedback_role == OutputRole::Failure);
-    assert(messages.find("Save complete") == std::string::npos);
+    assert(messages.find("Saving ") == std::string::npos);
 
     manual_request();
     ++player.runtime_id; // Simulate extraction and storage reuse.

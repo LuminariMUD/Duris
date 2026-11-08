@@ -316,7 +316,7 @@ def run(binary, mode='file', full_world=None):
                 time.sleep(.1)
         try:
             boot(); client=journey.MudClient(port); journey.create_character(client, expected_room=expected_room)
-            client.send('save'); client.expect('Save complete for Taverek.')
+            client.send('save'); client.expect('Saving Taverek.')
             client.send('quit'); client.expect('ACCOUNT MENU',timeout=30)
             stop()
             if mode == 'file': subprocess.run([str(fixture),str(state)],check=True)
@@ -334,7 +334,7 @@ def run(binary, mode='file', full_world=None):
             if full_world:
                 def recover(cycle):
                     nonlocal client
-                    client.send('save'); client.expect('Save complete for Taverek.', timeout=30)
+                    client.send('save'); client.expect('Saving Taverek.', timeout=30)
                     if mode == 'file':
                         status = runtime / 'logs/log/status'
                         for attempt in range(3):
@@ -412,10 +412,10 @@ def run(binary, mode='file', full_world=None):
                 assert 'random mob prototype' not in scanned.lower(),scanned
                 client.send('south'); client.expect('The Regression Arena'); drain(client)
                 if cycle<2:
-                    client.send('save'); client.expect('Save complete for Taverek.',timeout=30)
+                    client.send('save'); client.expect('Saving Taverek.',timeout=30)
                     if mode == 'file':
                         client.send('shutdown hotboot'); client.expect('Copyover complete!',timeout=90)
-                        client.send('save'); client.expect('Save complete for Taverek.',timeout=30)
+                        client.send('save'); client.expect('Saving Taverek.',timeout=30)
                     else:
                         deadline = time.monotonic() + 60
                         while 'generation and floor handoff acknowledged' not in journey.runtime_logs(runtime):

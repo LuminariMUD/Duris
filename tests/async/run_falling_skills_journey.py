@@ -167,7 +167,7 @@ S
 
         def save_after_landing():
             client.send('save')
-            saved_message = f'Save complete for {journey.CHARACTER}.'
+            saved_message = f'Saving {journey.CHARACTER}.'
             outcome, _ = client.expect_any((saved_message,
                 'Being knocked unconscious strictly limits what you can do.'), timeout=30)
             if outcome != saved_message:
@@ -193,7 +193,7 @@ S
             client.send('toggle boon')
             client.expect('Divine Boons apply automatically.')
             client.send('save')
-            client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
+            client.expect(f'Saving {journey.CHARACTER}.', timeout=30)
             client.send('quit')
             client.expect('ACCOUNT MENU', timeout=30)
             stop()
@@ -226,7 +226,7 @@ S
                 client.send('look')
                 client.expect('The Regression Landing')
                 client.send('save')
-                client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
+                client.expect(f'Saving {journey.CHARACTER}.', timeout=30)
                 stop()
             # Normal RNG and a possible regeneration tick cannot mask a doubled
             # impact with this HP scale. Exact integer cases have their own test.
@@ -274,7 +274,7 @@ S
             journey.create_character(god, account=GOD_ACCOUNT, character=GOD,
                                      email='god@example.invalid')
             god.send('save')
-            god.expect(f'Save complete for {GOD}.', timeout=30)
+            god.expect(f'Saving {GOD}.', timeout=30)
             god.send('quit')
             god.expect('ACCOUNT MENU', timeout=30)
             god.close()

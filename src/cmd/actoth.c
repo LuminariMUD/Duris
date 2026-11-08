@@ -2038,8 +2038,8 @@ static void check_manual_character_save_status(struct manual_save_status_slot *s
 	    revision.written_revision >= status->revision)
 	{
 		PlayerOutputMessage(ch, OutputChannel::SystemFeedback, OutputRole::Success)
-			.literal("Save complete for ")
-			.entity(GET_NAME(ch))
+			.literal("Saving ")
+			.entity(GET_NAME(GET_PLYR(ch)))
 			.literal(".\r\n")
 			.send(LOG_PUBLIC);
 		clear_manual_save_status(pid);
@@ -2519,7 +2519,6 @@ bool do_save_silent(P_char ch, int type)
 /** Queue a manual checkpoint and track feedback until its captured revision is durable. */
 void do_save(P_char ch, char *argument, int /*cmd*/)
 {
-	char Gbuf1[MAX_STRING_LENGTH];
 	char tmp_buf[MAX_STRING_LENGTH];
 
 	if (!ch)
@@ -2561,12 +2560,7 @@ void do_save(P_char ch, char *argument, int /*cmd*/)
 	}
 	struct manual_save_status_slot *status = find_manual_save_status(GET_PID(ch));
 	if (status)
-	{
-		snprintf(Gbuf1, MAX_STRING_LENGTH, "Save already queued for %s.\r\n",
-			 GET_NAME(GET_PLYR(ch)));
-		send_to_char(Gbuf1, ch);
 		return;
-	}
 	status = find_empty_manual_save_status();
 	if (!status)
 	{
@@ -2580,8 +2574,6 @@ void do_save(P_char ch, char *argument, int /*cmd*/)
 	persistence_schedule_character_save(ch, 1, 2, "manual_save");
 	if (!find_deferred_save_slot(GET_PID(ch)))
 		begin_manual_save_status_wait(ch);
-	snprintf(Gbuf1, MAX_STRING_LENGTH, "Save queued for %s.\r\n", GET_NAME(GET_PLYR(ch)));
-	send_to_char(Gbuf1, ch);
 }
 
 void do_not_here(P_char ch, char * /*argument*/, int /*cmd*/)

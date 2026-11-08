@@ -101,7 +101,7 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                 journey.create_character(client, expected_room=None, class_name="n",
                                          hometown="p")
                 client.send("save")
-                client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+                client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
                 client.close()
                 client = None
                 process.terminate()
@@ -262,7 +262,7 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                         assert "corpse of an ordinary beast" not in room, room
                         assert room.lower().count("dracolich") == 1, room
                         client.send("save")
-                        client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+                        client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
                         client.close()
                         client = None
                         process.terminate()
@@ -500,7 +500,7 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                         client.expect("Pos: standing >", timeout=20)
                     client.pending.clear()
                     client.send("save")
-                    client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+                    client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
                     raised = (UIDS[0], UIDS[1]) + tuple(uid for uid, *_ in WORN)
                     deadline = time.monotonic() + 15
                     while sql("SELECT COUNT(*) FROM player_pet_items WHERE "
@@ -597,7 +597,7 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                         client.send("order dracolich wear trinket")
                         client.expect("Pos: standing >", timeout=20)
                         client.send("save")
-                        client.expect(f"Save complete for {journey.CHARACTER}.",
+                        client.expect(f"Saving {journey.CHARACTER}.",
                                       timeout=30)
                         assert int(sql("SELECT equip_slot FROM player_pet_items "
                                        f"WHERE obj_uid={GIVE_UIDS[1]}")) > 0
@@ -712,7 +712,7 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                             custody(uid, 11, corpse_owner, "player_pet_items")
                         command("order dracolich wear trinket", "Pos: standing >")
                         client.send("save")
-                        client.expect(f"Save complete for {journey.CHARACTER}.",
+                        client.expect(f"Saving {journey.CHARACTER}.",
                                       timeout=30)
                         assert int(sql("SELECT equip_slot FROM player_pet_items "
                                        f"WHERE obj_uid={GIVE_UIDS[1]}")) > 0
@@ -723,7 +723,7 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                         raise AssertionError("equipment save and pre-save restart are separate journeys")
                     if not restart_before_save and not equip_probe:
                         client.send("save")
-                        client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+                        client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
                     assert sql("SELECT COUNT(*) FROM player_pets WHERE "
                                f"owner_pid={pid}") == "1"
                     if pet_probe:
@@ -766,7 +766,7 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                             assert time.monotonic() < deadline, "pet did not die"
                             time.sleep(1)
                         client.send("save")
-                        client.expect(f"Save complete for {journey.CHARACTER}.",
+                        client.expect(f"Saving {journey.CHARACTER}.",
                                       timeout=30)
                         assert sql("SELECT hold_reason FROM player_pets WHERE "
                                    f"owner_pid={pid}") == "6"
@@ -801,7 +801,7 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                         assert "dracolich" not in dismissed_room.lower(), dismissed_room
                         assert "fixture backpack" not in dismissed_room, dismissed_room
                         client.send("save")
-                        client.expect(f"Save complete for {journey.CHARACTER}.",
+                        client.expect(f"Saving {journey.CHARACTER}.",
                                       timeout=30)
                         assert sql("SELECT hold_reason FROM player_pets WHERE "
                                    f"owner_pid={pid}") == "6"
@@ -869,7 +869,7 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                             assert "dracolich" not in restored.lower(), restored
                             client.send("save")
                             client.expect(
-                                f"Save complete for {journey.CHARACTER}.",
+                                f"Saving {journey.CHARACTER}.",
                                 timeout=30)
                             assert sql("SELECT hold_reason FROM player_pets "
                                        f"WHERE owner_pid={pid}") == "3"
@@ -885,7 +885,7 @@ def run(binary: Path, expect_refusal: bool, with_coins: bool) -> bool:
                         assert restored.lower().count("dracolich") == 1, restored
                         if restart_before_save:
                             client.send("save")
-                            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+                            client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
                         tracked = f"({UIDS[0]},{UIDS[1]},{GIVE_UIDS[0]},{GIVE_UIDS[1]},{PROC_UID})"
                         if pet_probe:
                             assert sql("SELECT COUNT(*) FROM player_pet_items WHERE "

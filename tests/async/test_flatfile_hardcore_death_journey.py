@@ -82,7 +82,7 @@ def run(binary):
                 client = journey.MudClient(plain)
                 journey.create_character(client, hardcore=True)
                 client.send("save")
-                client.expect("Save complete for " + journey.CHARACTER + ".")
+                client.expect("Saving " + journey.CHARACTER + ".")
                 assert_deaths(0)
                 for death in range(1, 4):
                     start = len(client.transcript)

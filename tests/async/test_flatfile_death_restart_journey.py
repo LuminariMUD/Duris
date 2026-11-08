@@ -104,7 +104,7 @@ def run(binary: pathlib.Path) -> None:
             client.send("get mace corpse")
             client.expect("You get a small wooden mace", timeout=10)
             client.send("save")
-            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+            client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
             client.send("quit")
             client.expect("ACCOUNT MENU", timeout=30)
             client.send("0")

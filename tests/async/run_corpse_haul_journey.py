@@ -98,36 +98,37 @@ def run(binary):
                     assert time.monotonic()<deadline
                     actor.send('kill raoul')
                 actor.send('look in corpse'); actor.expect('banana')
-                actor.send('save'); actor.expect('Save complete for Taverek.',timeout=30)
+                actor.send('save'); actor.expect('Saving Taverek.',timeout=30)
                 pid=int(sql("SELECT pid FROM player_data WHERE name='Taverek'"))
 
                 def plain_haul(target='corpse', name='the corpse of Raoul'):
                     for c in clients: drain(c)
                     actor.send('get all '+target)
-                    actor.expect('You finish sorting your haul from '+name,timeout=30)
-                    final=drain(actor,1)
-                    assert 'Haul:' in final,final
+                    final=actor.expect('You get ',timeout=30)+drain(actor,1)
+                    assert ' from '+name+'.' in final,final
+                    assert 'Haul:' not in final and 'pulling things' not in final,final
                     return final
 
                 # Coins and items move in memory, so the haul completes at once. The
-                # room sees it start; the next room sees nothing.
+                # room sees individual pickups; the next room sees nothing.
                 first=plain_haul()
                 assert '3s' in first and 'a banana' in first,first
                 assert 'Some contents were not acquired.' not in first,first
                 observed=drain(source); elsewhere=drain(dest)
-                assert 'begins pulling things from' in observed,observed
+                assert 'gets a banana from' in observed,observed
+                assert 'begins pulling things from' not in observed,observed
                 assert 'gets ' not in elsewhere and 'pulling things' not in elsewhere,elsewhere
                 print('npc corpse haul: '+first,flush=True)
                 actor.send('inventory'); actor.expect('a banana')
-                actor.send('save'); actor.expect('Save complete for Taverek.',timeout=30)
+                actor.send('save'); actor.expect('Saving Taverek.',timeout=30)
                 assert sql(f'SELECT COUNT(*) FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND vnum=15 AND state=1')=='1'
                 assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')=='0\t3\t0\t0'
                 actor.close(); clients.remove(actor)
                 # Reconnect to the same live player, verify inventory and save.
                 actor=reconnect_linkdead(port); clients.append(actor)
                 actor.send('inventory'); actor.expect('a banana')
-                actor.send('save'); actor.expect('Save complete for Taverek.',timeout=30)
-                assert 'finish sorting' not in drain(actor), 'completion replayed on reconnect'
+                actor.send('save'); actor.expect('Saving Taverek.',timeout=30)
+                assert 'You get ' not in drain(actor), 'completion replayed on reconnect'
                 # The player's own corpse gives the banana back, and the wallet ends
                 # where it was whether the coins went into the corpse or stayed.
                 journey.attack_until_death(actor); actor.expect('ACCOUNT MENU',timeout=45)
@@ -137,7 +138,7 @@ def run(binary):
                 pc_items=plain_haul('Taverek','the corpse of Taverek')
                 assert 'a banana' in pc_items and 'Some contents were not acquired.' not in pc_items,pc_items
                 print('player corpse haul: '+pc_items,flush=True)
-                actor.send('save'); actor.expect('Save complete for Taverek.',timeout=30)
+                actor.send('save'); actor.expect('Saving Taverek.',timeout=30)
                 assert sql(f'SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}')=='0\t3\t0\t0'
                 print('PASS: three-player NPC/player corpse hauls: coins and items in memory, observers, saved custody, wallet and reconnect',flush=True)
             except Exception:

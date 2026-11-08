@@ -57,7 +57,7 @@ constexpr ColorCommandChannel commands[] = {
 	  "< 100h &+y40m &+R10v&n> \r\n", false, false },
 	{ OutputChannel::SystemFeedback, "feedback", "system.feedback",
 	  "Manual-save completion and failure feedback after the result is known.",
-	  "Save complete for someone.\r\n", false, false },
+	  "Saving someone.\r\n", false, false },
 	{ OutputChannel::RoomTitle, "title", "room.title",
 	  "Room headings; authored colors remain protected.", "A woodland clearing.\r\n", false,
 	  false },

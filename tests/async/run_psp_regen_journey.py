@@ -54,7 +54,7 @@ def run(binary):
             server.start(full_world=True)
             staff = server.client = journey.MudClient(server.port)
             journey.create_character(staff, expected_room=None)
-            staff.send("save"); staff.expect("Save complete for Taverek.")
+            staff.send("save"); staff.expect("Saving Taverek.")
             staff.send("quit"); staff.expect("ACCOUNT MENU", timeout=45)
             server.stop()
             journey.make_overlord(state, journey.CHARACTER)
