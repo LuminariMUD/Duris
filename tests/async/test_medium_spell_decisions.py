@@ -286,7 +286,10 @@ SCALARS = {
                   "psionic_wave_blast_damage psionic_wave_blast_shrug_roll psionic_wave_blast_waves "
                   "psionic_wave_blast_wave_damage psionic_wave_blast_failed_save psionic_wave_blast_away "
                   "psionic_wave_blast_interval psionic_wave_blast_mana spell_psionic_wave_blast event_psionic_wave_blast",
-    "ethermancer.c": "cosmic_vacuum_curse static_discharge_level static_discharge_damage "
+    "ethermancer.c": "cosmic_success_chance cosmic_success_roll cosmic_saved_duration cosmic_failed_duration "
+                     "cosmic_vacuum_ac cosmic_vacuum_curse spell_cosmic_vacuum "
+                     "supernova_damage supernova_player_damage supernova_area_damage supernova_constitution "
+                     "spell_single_supernova static_discharge_level static_discharge_damage "
                     "static_discharge_failed_save static_discharge_wet_damage static_discharge "
                     "etheric_gust_range etheric_gust_limited_range etheric_gust_direction_roll "
                     "etheric_gust_zone_room_roll etheric_gust_lag etheric_gust_room_limited spell_etheric_gust",
@@ -318,6 +321,27 @@ int main() {
     char_data caster = alive(), target = alive();
     std::remove_pointer_t<decltype(caster.only.pc)> pc{}, target_pc{};
     caster.only.pc = &pc; target.only.pc = &target_pc; character_list = &target;
+    // Exhaust every percentile outcome in the real handlers, including the shared
+    // Supernova secondary effect, at both clamps and equal levels.
+    for (auto spell : {spell_cosmic_vacuum, spell_single_supernova}) {
+        const int effect = spell == spell_cosmic_vacuum ? SPELL_COSMIC_VACUUM : SPELL_SUPERNOVA;
+        for (int target_level : {1, 50, 100}) for (bool saves : {false, true}) {
+            caster.player.level = 50; target.player.level = target_level;
+            saved = saves; shrug = false; damage_result = DAM_NONEDEAD;
+            int successes = 0;
+            for (int percentile = 1; percentile <= 100; ++percentile) {
+                clear(&target); target.points.hit = target.points.max_hit = 100000;
+                roll = percentile;
+                spell(50, &caster, nullptr, 0, &target, nullptr);
+                if (affected_by_spell(&target, effect)) {
+                    ++successes;
+                    assert(target.affected->duration == (saves ? 16 * WAIT_SEC : 5));
+                }
+            }
+            assert(successes == (target_level == 1 ? 80 : target_level == 50 ? 70 : 50));
+        }
+    }
+    clear(&target); saved = false; target.player.level = 50;
     for (int level : {1, 2, 5, 9, 10, 50, 56, 60}) {
         caster.player.level = level; roll = -100;
         assert(mending_healing(live_rolls, level, &caster) >= 1);

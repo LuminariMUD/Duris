@@ -1488,8 +1488,7 @@ static int conjured_elemental_poof(const Rolls &rolls)
 	return (4 + rolls.number(1, 6)) * WAIT_SEC;
 }
 
-// Charm ticks at the elemental's intelligence index. Unless charmed for good, it then dies
-// this many pulses from the summons: the charm's ticks as minutes, plus the roll and one.
+// Charm duration is in game hours; cleanup adds the rolled grace plus one real minute.
 static int conjured_elemental_charm(int intelligence_index)
 {
 	return 400 / intelligence_index;
@@ -1500,9 +1499,9 @@ static int conjured_elemental_late_death_roll(const Rolls &rolls)
 	return rolls.number(1, 10);
 }
 
-static int conjured_elemental_death_delay(int duration)
+static int conjured_elemental_death_delay(int duration, int grace_minutes)
 {
-	return (duration + 1) * 60 * 4;
+	return duration * PULSES_IN_TICK + (grace_minutes + 1) * WAIT_MIN;
 }
 
 // The rolled level range of a caster outside the elemental's spec.
@@ -1534,12 +1533,12 @@ static std::string conjured_elemental_page(P_char ch, Range mob, Range hit_point
 			     "attacks, gone in " + seconds(conjured_elemental_poof(lowest_rolls)) +
 				     " to " + seconds(conjured_elemental_poof(highest_rolls)));
 	return text +
-	       fact("It dies after its charm's ticks as minutes, plus",
+	       fact("It dies after its charm, plus",
 		    real_time(conjured_elemental_death_delay(
-			    conjured_elemental_late_death_roll(lowest_rolls))) +
+			    0, conjured_elemental_late_death_roll(lowest_rolls))) +
 			    " to " +
 			    real_time(conjured_elemental_death_delay(
-				    conjured_elemental_late_death_roll(highest_rolls)))) +
+				    0, conjured_elemental_late_death_roll(highest_rolls)))) +
 	       "  Its charm depends on its intelligence; a globe of shadows or unholy\n"
 	       "  alliance makes the charm permanent, and then it does not die.\n"
 	       "  Only one elemental at a time; safe rooms block it.\n";
@@ -1697,12 +1696,13 @@ void spell_conjure_air(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 		int duration = setup_pet(
 			mob, ch, conjured_elemental_charm(STAT_INDEX(GET_C_INT(mob))), PET_NOCASH);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 		if (duration >= 0)
 		{
-			duration += conjured_elemental_late_death_roll(live_rolls);
-			add_event(event_pet_death, conjured_elemental_death_delay(duration), mob,
-				  NULL, NULL, 0, NULL, 0);
+			add_event(event_pet_death,
+				  conjured_elemental_death_delay(
+					  duration, conjured_elemental_late_death_roll(live_rolls)),
+				  mob, NULL, NULL, 0, NULL, 0);
 		}
 	}
 }
@@ -2728,7 +2728,7 @@ static int cosmic_success_roll(const Rolls &rolls)
 // A level this far above or below the target's reaches the chance's bounds.
 static std::string cosmic_success_page()
 {
-	return show({ cosmic_success_chance(0, 100) - 1, cosmic_success_chance(100, 0) - 1 }) +
+	return show({ cosmic_success_chance(0, 100), cosmic_success_chance(100, 0) }) +
 	       "%, higher the more you outlevel the target";
 }
 
@@ -2786,7 +2786,7 @@ void spell_cosmic_vacuum(int level, P_char ch, char * /*arg*/, [[maybe_unused]] 
 	}
 
 	success_chance = cosmic_success_chance(GET_LEVEL(ch), GET_LEVEL(victim));
-	if (success_chance <= cosmic_success_roll(live_rolls))
+	if (success_chance < cosmic_success_roll(live_rolls))
 	{
 		return;
 	}
@@ -2908,7 +2908,7 @@ void spell_single_supernova(int level, P_char ch, char * /*arg*/, [[maybe_unused
 	}
 
 	int success_chance = cosmic_success_chance(GET_LEVEL(ch), GET_LEVEL(victim));
-	if (success_chance <= cosmic_success_roll(live_rolls))
+	if (success_chance < cosmic_success_roll(live_rolls))
 		return;
 
 	memset(&af, 0, sizeof(af));
@@ -4179,12 +4179,13 @@ void spell_conjure_void_elemental(int level, P_char ch, char * /*arg*/, int /*ty
 		int duration = setup_pet(
 			mob, ch, conjured_elemental_charm(STAT_INDEX(GET_C_INT(mob))), PET_NOCASH);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 		if (duration >= 0)
 		{
-			duration += conjured_elemental_late_death_roll(live_rolls);
-			add_event(event_pet_death, conjured_elemental_death_delay(duration), mob,
-				  NULL, NULL, 0, NULL, 0);
+			add_event(event_pet_death,
+				  conjured_elemental_death_delay(
+					  duration, conjured_elemental_late_death_roll(live_rolls)),
+				  mob, NULL, NULL, 0, NULL, 0);
 		}
 	}
 }
@@ -4307,12 +4308,13 @@ void spell_conjure_ice_elemental(int level, P_char ch, char * /*arg*/, int /*typ
 		int duration = setup_pet(
 			mob, ch, conjured_elemental_charm(STAT_INDEX(GET_C_INT(mob))), PET_NOCASH);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 		if (duration >= 0)
 		{
-			duration += conjured_elemental_late_death_roll(live_rolls);
-			add_event(event_pet_death, conjured_elemental_death_delay(duration), mob,
-				  NULL, NULL, 0, NULL, 0);
+			add_event(event_pet_death,
+				  conjured_elemental_death_delay(
+					  duration, conjured_elemental_late_death_roll(live_rolls)),
+				  mob, NULL, NULL, 0, NULL, 0);
 		}
 	}
 }

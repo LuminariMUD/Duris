@@ -2556,11 +2556,11 @@ P_char make_mirror(P_char ch)
 	image->specials.act |= ACT_SPEC_DIE;
 
 	int duration = setup_pet(image, ch, 30, PET_NOCASH);
-	/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+	/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 	if (duration >= 0)
 	{
-		duration += number(1, 10);
-		add_event(event_pet_death, (duration + 1) * 60 * 4, image, NULL, NULL, 0, NULL, 0);
+		const int delay = duration * PULSES_IN_TICK + (number(1, 10) + 1) * WAIT_MIN;
+		add_event(event_pet_death, delay, image, NULL, NULL, 0, NULL, 0);
 	}
 
 	/* string it */
@@ -3262,11 +3262,12 @@ void spell_conjour_elemental(int level, P_char ch, char *arg, int /*type*/, P_ch
 		    TO_CHAR);
 		duration = setup_pet(mob, ch, 400 / STAT_INDEX(GET_C_INT(mob)), PET_NOCASH);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 		if (duration >= 0)
 		{
-			duration += number(1, 10);
-			schedule_elemental_death(mob, (duration + 1) * 60 * 4);
+			const int delay =
+				duration * PULSES_IN_TICK + (number(1, 10) + 1) * WAIT_MIN;
+			schedule_elemental_death(mob, delay);
 		}
 	}
 }
@@ -3906,11 +3907,12 @@ void conjure_specialized(P_char ch, [[maybe_unused]] int level, bool mephit)
 		duration = setup_pet(mob, ch, duration, PET_NOCASH);
 
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 		if (duration >= 0)
 		{
-			duration += number(1, 10);
-			schedule_elemental_death(mob, (duration + 1) * 60 * 4);
+			const int delay =
+				duration * PULSES_IN_TICK + (number(1, 10) + 1) * WAIT_MIN;
+			schedule_elemental_death(mob, delay);
 		}
 	}
 }
@@ -4098,12 +4100,12 @@ void spell_conjour_greater_elemental(int level, P_char ch, char *arg, int /*type
 
 		duration = setup_pet(mob, ch, 400 / STAT_INDEX(GET_C_INT(mob)), PET_NOCASH);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 		if (duration >= 0)
 		{
-			duration += number(1, 10);
-			add_event(event_pet_death, (duration + 1) * 60 * 4, mob, NULL, NULL, 0,
-				  NULL, 0);
+			const int delay =
+				duration * PULSES_IN_TICK + (number(1, 10) + 1) * WAIT_MIN;
+			add_event(event_pet_death, delay, mob, NULL, NULL, 0, NULL, 0);
 		}
 	}
 }
@@ -4185,12 +4187,12 @@ void spell_summon_greater_demon(int level, P_char ch, P_char /*victim*/, P_obj /
 
 		int duration = setup_pet(mob, ch, 30, PET_NOCASH);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 		if (duration >= 0)
 		{
-			duration += number(1, 10);
-			add_event(event_pet_death, (duration + 1) * 60 * 4, mob, NULL, NULL, 0,
-				  NULL, 0);
+			const int delay =
+				duration * PULSES_IN_TICK + (number(1, 10) + 1) * WAIT_MIN;
+			add_event(event_pet_death, delay, mob, NULL, NULL, 0, NULL, 0);
 		}
 	}
 }
