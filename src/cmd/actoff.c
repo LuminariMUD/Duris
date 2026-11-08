@@ -1164,8 +1164,8 @@ void lance_charge(P_char ch, char *argument)
 		{
 			if (world[ch->in_room].dir_option[i])
 			{
-				if (CAN_GO(ch, i) && !check_wall(ch->in_room, dir) &&
-				    (dir == -1 || dir != rev_dir[dir]) &&
+				if (CAN_GO(ch, i) && !check_wall(ch->in_room, i) &&
+				    (dir == -1 || i != rev_dir[dir]) &&
 				    can_enter_room(ch, EXIT(ch, i)->to_room, 0))
 				{
 					available_exits++;
@@ -1179,8 +1179,8 @@ void lance_charge(P_char ch, char *argument)
 		{
 			if (world[ch->in_room].dir_option[i])
 			{
-				if (CAN_GO(ch, i) && !check_wall(ch->in_room, dir) &&
-				    (dir == -1 || dir != rev_dir[dir]) &&
+				if (CAN_GO(ch, i) && !check_wall(ch->in_room, i) &&
+				    (dir == -1 || i != rev_dir[dir]) &&
 				    can_enter_room(ch, EXIT(ch, i)->to_room, 0))
 				{
 					if (!choice--)
@@ -3873,8 +3873,8 @@ void rush(P_char ch, P_char victim)
 
 	CharWait(ch, rush_lag());
 
-	if (notch_skill(ch, SKILL_RUSH, get_property("skill.notch.offensive", 7)) ||
-	    number(1, 100) > GET_CHAR_SKILL(ch, SKILL_RUSH))
+	notch_skill(ch, SKILL_RUSH, get_property("skill.notch.offensive", 7));
+	if (number(1, 100) > GET_CHAR_SKILL(ch, SKILL_RUSH))
 	{
 		act("$n rushes toward $N in a furious rage, but misses $s target completely.",
 		    FALSE, ch, 0, victim, TO_NOTVICT);
@@ -4945,6 +4945,7 @@ std::string dragon_breath_facts(P_char ch)
 	       "  The circle it spends picks the spell, cast at your dragon's level:\n"
 	       "    1-2 burning hands, 3-4 flameburst, 5-6 molten spray,\n"
 	       "    7-8 fireball, 9-10 magma burst, 11-12 immolate.\n"
+	       "  Dragon breath skill controls your chance to select the requested spell.\n"
 	       "  With no circle prepared, it does nothing.\n";
 }
 
@@ -5245,7 +5246,7 @@ void do_dragon_breath(P_char ch, char *argument, int /*cmd*/)
 							(95 *
 							 GET_CHAR_SKILL(ch, SKILL_DRAGON_BREATH)) /
 							100;
-						select_chance = BOUNDED(1, percent_chance, 99);
+						select_chance = BOUNDED(1, select_chance, 99);
 
 						if (((select_chance + power) > number(1, 100)))
 						{
@@ -6013,7 +6014,6 @@ bool roundkick(P_char ch, P_char victim)
 			    FALSE, ch, 0, victim, TO_VICT);
 			act("$n swings about and delivers a &+ymighty roundhouse kick&n to $N!",
 			    FALSE, ch, 0, victim, TO_NOTVICT);
-			CharWait(victim, (int)(PULSE_VIOLENCE * 0.5));
 			SET_POS(victim, POS_KNEELING + GET_STAT(victim));
 		}
 		else
@@ -7612,6 +7612,8 @@ bool single_stab(P_char ch, P_char victim, P_obj weapon)
 		       (critical_stab_threshold(ch) > number(1, 100));
 	}
 
+	// Criticals bypass ordinary awareness, but still take the recent-backstab penalty.
+	// The critical damage bonus is applied after that penalty.
 	if (((IS_AFFECTED(victim, AFF_AWARE) || IS_AFFECTED(victim, AFF_SKILL_AWARE)) && !crit &&
 	     !IS_AFFECTED(victim, AFF_KNOCKED_OUT)) ||
 	    affected_by_spell(victim, SKILL_BACKSTAB))
@@ -9252,7 +9254,7 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 	appear(ch);
 
 	if ((has_innate(vict, INNATE_HORSE_BODY) || has_innate(vict, INNATE_SPIDER_BODY) ||
-	     GET_RACE(ch) == RACE_QUADRUPED) &&
+	     GET_RACE(vict) == RACE_QUADRUPED) &&
 	    (get_takedown_size(ch) <= get_takedown_size(vict)))
 	{
 		act("$n makes a futile attempt to tackle $N, but $E is simply immovable.", FALSE,
@@ -9631,7 +9633,7 @@ static std::string retreat_page(P_char ch)
 			    " in 100; 5 less for each other attacker") +
 	       fact("Your lag", seconds(retreat_lag())) +
 	       "  A retreat while tanking can only go back the way you came, unless your\n"
-	       "  expedited retreat rating is between 1 and 19.\n";
+	       "  expedited retreat rating is positive.\n";
 }
 
 std::string retreat_facts(P_char ch)
@@ -9784,7 +9786,7 @@ void do_retreat(P_char ch, char *arg, int /*cmd*/)
 	{
 		if (!backdir)
 		{
-			if (expdr && expdr < 20)
+			if (expdr > 0)
 				send_to_char(
 					"&+wKnowing well that it is nearly impossible, you attempt an expeditious retreat in a new direction!&n\n",
 					ch);
@@ -10006,8 +10008,8 @@ void rescue(P_char ch, P_char rescuee, bool rescue_all)
 		if (!found)
 		{
 			found = TRUE;
-			if (notch_skill(ch, SKILL_RESCUE, get_property("skill.notch.rescue", 10)) ||
-			    number(1, 100) > GET_CHAR_SKILL(ch, SKILL_RESCUE))
+			notch_skill(ch, SKILL_RESCUE, get_property("skill.notch.rescue", 10));
+			if (number(1, 100) > GET_CHAR_SKILL(ch, SKILL_RESCUE))
 			{
 				act("$n futilely tries to rescue $N!", FALSE, ch, 0, rescuee,
 				    TO_NOTVICT);
