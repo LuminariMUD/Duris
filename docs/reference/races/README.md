@@ -7,6 +7,8 @@ tests. Distinguish verified behavior from balance estimates and design judgments
 
 - [PC racial stats](race-stats.md): racial factors, effective-stat calculations,
   gameplay consumers, resource formulas, and gearing breakpoints.
+- [Race stats issues](race-stats-issues.md): potential stat-mechanics bugs,
+  gameplay impact, recommended fixes, design questions, and resolved findings.
 - [PC race size](race-size.md): complete race size assignments, growth and form
   changes, combat target limits, physical mass, and other gameplay effects.
 - [Race size issues](race-size-issues.md): potential bugs, the six inconsistent
