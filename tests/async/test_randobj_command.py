@@ -71,7 +71,7 @@ static P_obj object(const char *kind, int finder_level = 0, int source_level = 0
     obj->name = strdup("test item"); obj->short_description = strdup("a test item");
     return obj;
 }
-P_obj create_random_eq(P_char ch, int finder_level, int source_level, int slot, int material) {
+P_obj create_random_eq(P_char ch, int finder_level, int source_level, int slot, int material, int) {
     assert(ch == &staff && GET_LEVEL(ch) == 62 && ch->in_room == 123 && material == -1);
     return object("eq", finder_level, source_level, slot);
 }
