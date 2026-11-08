@@ -2250,16 +2250,6 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 		return;
 	}
 
-	mob = read_mobile(real_mobile(golem_data[which_type].vnum), REAL);
-
-	if (!mob)
-	{
-		logit(LOG_DEBUG, "create_golem(): mob %d not loadable",
-		      golem_data[which_type].vnum);
-		send_to_char("Bug in create_golem.  Tell a god!\r\n", ch);
-		return;
-	}
-
 	clevel = obj->value[CORPSE_LEVEL];
 	if (IS_SET(obj->value[CORPSE_FLAGS], PC_CORPSE) && (clevel < 0))
 		clevel = -clevel;
@@ -2269,6 +2259,16 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	{
 		act("You are not powerful enough to animate that corpse!", FALSE, ch, 0, 0,
 		    TO_CHAR);
+		return;
+	}
+
+	mob = read_mobile(real_mobile(golem_data[which_type].vnum), REAL);
+
+	if (!mob)
+	{
+		logit(LOG_DEBUG, "create_golem(): mob %d not loadable",
+		      golem_data[which_type].vnum);
+		send_to_char("Bug in create_golem.  Tell a god!\r\n", ch);
 		return;
 	}
 
