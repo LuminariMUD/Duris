@@ -95,6 +95,7 @@ expected_resource_intensive = {
     "test_minor_creation_instrument_journey.py",
     "test_mob_gold_dial_runtime.py",
     "test_pet_restart_journey.py",
+    "test_ranged_kill_xp_journey.py",
     "test_shambler_reflection_journey.py",
     "test_websocket_session_guard_journey.py",
     "test_shop_multi_buy_journey.py",
@@ -140,6 +141,7 @@ sample_tests = [
     Path("test_mysql_combat_journey.py"),
     Path("test_information_cache_journey.py"),
     Path("test_creation_prompt_journey.py"),
+    Path("test_ranged_kill_xp_journey.py"),
 ]
 assert runner.deadline_for(Path("test_fast.py")) == runner.POOLED_DEADLINE_SECONDS
 assert all(runner.deadline_for(path) == runner.JOURNEY_DEADLINE_SECONDS for path in sample_tests[1:])

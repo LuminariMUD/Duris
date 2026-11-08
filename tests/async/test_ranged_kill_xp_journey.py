@@ -17,33 +17,6 @@ ROOT = journey.ROOT
 MATE = "Torven"
 
 
-def build_inspector(root):
-    source, binary = root / "xp.cpp", root / "xp"
-    source.write_text(r'''
-#include "flatfile/flatfile_player_snapshot_file.h"
-#include <cassert>
-#include <cstdio>
-#include <cstdlib>
-int main(int argc, char **argv) {
-    assert(argc == 3);
-    player_snapshot snapshot; std::string error;
-    assert(flatfile_player_snapshot_read(argv[1], std::atoi(argv[2]), &snapshot, &error) ==
-           flatfile_player_load_result::ok);
-    for (const auto &field : snapshot.status_integers)
-        if (field.field == player_status_field::experience) {
-            printf("%lld\n", static_cast<long long>(field.signed_value));
-            return 0;
-        }
-    return 1;
-}
-''')
-    subprocess.run(["g++", "-std=c++20", "-Isrc", str(source),
-                    "src/flatfile/flatfile_player_snapshot_file.c",
-                    "src/flatfile/flatfile_store.c", "src/player/player_snapshot_codec.c",
-                    "-lcrypto", "-o", str(binary)], cwd=ROOT, check=True)
-    return binary
-
-
 def configure(runtime):
     arrows.configure(runtime, "ranger", None)
     objects = runtime / "areas_mini/mini.obj"
@@ -72,10 +45,11 @@ def configure(runtime):
     properties = runtime / "lib/duris.properties"
     # Hold level constant while comparing equal NPCs and one-arrow volleys.
     properties.write_text(properties.read_text() +
-                          "\nexp.maxExpLevel=1.000\narchery.speedPerShot=1000.000\n")
+                          "\nexp.maxExpLevel=1.000\nexp.min.lvl.see.numbers=1.000\n"
+                          "archery.speedPerShot=1000.000\n")
 
 
-def run(binary, inspector):
+def run(binary):
     with tempfile.TemporaryDirectory(prefix="ranged-xp-", dir=ROOT / "bin/tests") as temporary:
         root = Path(temporary)
         runtime, state = root / "runtime", root / "state"
@@ -109,13 +83,17 @@ def run(binary, inspector):
                 arrows.command(shooter, "wear quiver", "You strap ")
                 arrows.command(shooter, "toggle exp", "Experience Display is now ON")
 
-                def balance(client, name, pid):
-                    arrows.command(client, "save", f"Saving {name}.")
-                    return int(subprocess.check_output([str(inspector), str(state), str(pid)], text=True))
+                def balance(client):
+                    # With level held constant, falling XP-to-level measures
+                    # actual credit directly, without racing an asynchronous save.
+                    response = arrows.command(client, "exp", "Experience till level: ")
+                    amount = re.search(r"Experience till level: ([\d,]+)", response)
+                    journey.require(amount, f"missing numeric XP balance: {response}")
+                    return -int(amount[1].replace(",", ""))
 
                 def kill(name, adjacent, mate=None, mate_present=False):
-                    before = balance(shooter, journey.CHARACTER, 1)
-                    mate_before = balance(mate, MATE, 2) if mate else 0
+                    before = balance(shooter)
+                    mate_before = balance(mate) if mate else 0
                     start = len(shooter.transcript)
                     for _ in range(20):
                         shot = arrows.command(shooter, f"fire {name}" + (" north" if adjacent else ""),
@@ -134,9 +112,9 @@ def run(binary, inspector):
                     awards = re.findall(r"EXP:\s+(\d+)", transcript)
                     journey.require(len(awards) == 1, f"expected one kill award: {transcript}")
                     kill_xp = int(awards[0])
-                    total = balance(shooter, journey.CHARACTER, 1) - before
+                    total = balance(shooter) - before
                     journey.require(total > kill_xp > 0, f"missing damage or kill XP: {transcript}")
-                    mate_xp = balance(mate, MATE, 2) - mate_before if mate else 0
+                    mate_xp = balance(mate) - mate_before if mate else 0
                     journey.require((mate_xp > 0) == mate_present, f"wrong group recipient: {mate_xp}")
                     result = {"command": f"fire {name}" + (" north" if adjacent else ""),
                               "damage_xp": total - kill_xp, "kill_xp": kill_xp, "groupmate_xp": mate_xp}
@@ -185,4 +163,4 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="ranged-xp-build-", dir=build_root) as temporary:
         build = Path(temporary)
         binary = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else journey.build_flatfile_server(build)
-        run(binary, build_inspector(build))
+        run(binary)
