@@ -20,6 +20,7 @@
 #include <string.h>
 #include <time.h>
 #include "combat/arena.h"
+#include "combat/attack_continuation.h"
 #include "core/config.h"
 #include "combat/damage.h"
 #include "combat/training_dummy.h"
@@ -1074,8 +1075,17 @@ void do_flurry_of_blows(P_char ch, char *arg)
 
 		for (int i = 1; i <= num_hits_per_target && count < max_num_attacks; i++, count++)
 		{
-			if (!should_not_kill(ch, tch) && (GET_STAT(tch) != STAT_DEAD))
-				hit(ch, tch, NULL);
+			if (should_not_kill(ch, tch) || GET_STAT(tch) == STAT_DEAD)
+				continue;
+
+			const attack_continuation continuation = begin_attack_continuation(ch, tch);
+			hit(ch, tch, NULL);
+			const attack_continuation_result checked =
+				check_attack_continuation(continuation);
+			if (checked.outcome == attack_continuation_outcome::actor_gone)
+				return;
+			if (!checked.can_continue())
+				break;
 		}
 	}
 	CharWait(ch, flurry_lag());
@@ -3863,14 +3873,19 @@ void do_throat_crush(P_char ch, char *arg, int /*cmd*/)
 		return;
 	}
 
-	melee_damage(ch, vict, throat_crush_damage(), PHSDAM_TOUCH, &messages);
-	StopCasting(vict);
+	const int result = melee_damage(ch, vict, throat_crush_damage(), PHSDAM_TOUCH, &messages);
+	if (result == DAM_CHARDEAD || result == DAM_BOTHDEAD)
+		return;
 
 	memset(&af, 0, sizeof(af));
-	af.type = SKILL_THROAT_CRUSH;
-	af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL | AFFTYPE_CUSTOM1;
-	af.duration = throat_crush_silence(live_rolls);
-	affect_to_char(vict, &af);
+	if (result == DAM_NONEDEAD)
+	{
+		StopCasting(vict);
+		af.type = SKILL_THROAT_CRUSH;
+		af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL | AFFTYPE_CUSTOM1;
+		af.duration = throat_crush_silence(live_rolls);
+		affect_to_char(vict, &af);
+	}
 
 	af.type = SKILL_THROAT_CRUSHER;
 	af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL | AFFTYPE_CUSTOM2;

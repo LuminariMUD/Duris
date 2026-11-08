@@ -22,6 +22,8 @@ loop = re.search(loop_head, flurry).group() + function_bodies(flurry, loop_head)
 throat = function("actnew.c", "void do_throat_crush(")
 throat_roll = throat[throat.index("skl_lvl = MIN(i, 90);"):throat.index('send_to_char("You miss their throat!')]
 throat_roll = throat_roll[:throat_roll.rindex("{")] + "{return true;} return false;"
+throat_finish = throat[throat.index("const int result = melee_damage("):]
+throat_finish = throat_finish[:throat_finish.rindex("}")]
 throw = function("actnew.c", "bool throw_potion(")
 assert throw.index("if (!(chance = chance_throw_potion") < throw.index("CharWait(ch,")
 assert "if (chance < 0)" in throw
@@ -52,6 +54,8 @@ cpp = r'''#include "abilities/abilities.h"
 #include "net/comm.h"
 #include "world/db.h"
 #include "magic/spells.h"
+#include "combat/attack_continuation.h"
+#include "combat/damage.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
@@ -84,6 +88,22 @@ P_char get_linked_char(P_char,ush_int) { return nullptr; }
 bool affected_by_spell(P_char ch,int spell) { return ch->affected && ch->affected->type==spell; }
 bool should_not_kill(P_char,P_char) { return false; }
 bool hit(P_char,P_char,P_obj,int *) { ++hits; return true; }
+static int gone_after_hits;
+static attack_continuation_outcome gone_outcome=attack_continuation_outcome::continue_attack;
+attack_continuation begin_attack_continuation(P_char,P_char,P_obj,int) noexcept { return {}; }
+attack_continuation_result check_attack_continuation(const attack_continuation &) noexcept {
+    attack_continuation_result result{};
+    result.outcome=hits>=gone_after_hits ? gone_outcome : attack_continuation_outcome::continue_attack;
+    return result;
+}
+#define live_rolls 0
+static int melee_result, stops, afflicted, cooled;
+int melee_damage(P_char,P_char,double,int,struct damage_messages *,int *) { return melee_result; }
+void StopCasting(P_char) { ++stops; }
+int throat_crush_damage() { return 1; }
+int throat_crush_silence(int) { return 1; }
+int throat_crush_cooldown(int) { return 1; }
+struct affected_type *affect_to_char(P_char ch,struct affected_type *) { (ch->player.level==1 ? afflicted : cooled)++; return nullptr; }
 struct familiar_data {int vnum,skill; const char *name;};
 static const familiar_data familiars[]={{1,5,"cat"},{2,30,"bat"},{}};
 int summon_familiar_rest(int) { return 100; }
@@ -98,6 +118,7 @@ cpp += function("epic_skills.c", "void do_summon_familiar(")
 cpp += jin + mine
 cpp += "int wear(int percent,int chance,P_obj pick,P_obj obj) {" + breakage + "return percent;}\n"
 cpp += "bool misses(P_char ch,int i) {int skl_lvl;" + throat_roll + "}\n"
+cpp += "void finish_throat(P_char ch,P_char vict) {struct affected_type af; struct damage_messages messages{};" + throat_finish + "}\n"
 cpp += "bool goes_astray(int chance) { return " + astray + ";}\n"
 cpp += "bool needs_kit(P_char ch) { return " + kit + ";}\n"
 cpp += "int recover(P_char ch,bool bStatOnly) {int remem_time=100;" + meditation + "return remem_time;}\n"
@@ -117,6 +138,17 @@ int main() {
         assert(hits==std::min(2*normal+1,normal*targets));
     }
     hits=0; flurry_hits(&actor,&target,3,3); assert(hits==7);
+    gone_after_hits=1; gone_outcome=attack_continuation_outcome::target_gone;
+    hits=0; flurry_hits(&actor,&target,3,3); assert(hits==3); // each target falls to its first hit
+    gone_outcome=attack_continuation_outcome::actor_gone;
+    hits=0; flurry_hits(&actor,&target,3,3); assert(hits==1); // the monk is gone: stop entirely
+    gone_outcome=attack_continuation_outcome::continue_attack; gone_after_hits=0;
+    char_data doomed{}; doomed.player.level=1;
+    for(int outcome : {DAM_NONEDEAD,DAM_VICTDEAD,DAM_CHARDEAD,DAM_BOTHDEAD}) {
+        melee_result=outcome; stops=afflicted=cooled=0; finish_throat(&actor,&doomed);
+        assert(stops==(outcome==DAM_NONEDEAD) && afflicted==(outcome==DAM_NONEDEAD));
+        assert(cooled==(outcome==DAM_NONEDEAD || outcome==DAM_VICTDEAD));
+    }
     for(bool gains : {false,true}) {
         learn=gains; roll=90; assert(!misses(&actor,200)); assert(notch_chance==4);
         roll=91; assert(misses(&actor,200));
