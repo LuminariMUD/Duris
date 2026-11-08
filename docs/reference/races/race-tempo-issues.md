@@ -538,31 +538,38 @@ global override and several short/long spells; compare display to execution.
 
 ## F17 — Inactive settings and outdated timing labels can drive incorrect tuning
 
-**Status:** maintenance/presentation. **Priority:** P3.
-**Recommendation:** label or retire misleading inputs; preserve current mechanics.
+**Status:** racial output presentation resolved; other timing presentation concerns remain. **Priority:** P3.
+**Recommendation:** correct the remaining misleading timing descriptions.
 
-The property file retains non-neutral `damage.totalOutput.racial.*` values,
-but the loader explicitly sets the corresponding field to 1. Old direct-AGI
+The original review found non-neutral `damage.totalOutput.racial.*` values
+whose loader forced the output field to 1. **Resolved by the
+2026-11-09 transparency change:** racial loading is active, all shipped racial
+values and the missing-key fallback are neutral, and non-neutral race/class
+values appear in innate listings. Class balance values are unchanged. See
+[scope and verification](race-misc.md#3-visible-racial-and-class-attack-damage-modifiers).
+
+The other presentation concerns remain: old direct-AGI
 speed and pulse-compression switches are commented out. Timing constants also
 retain incompatible prose: the 35-pulse bard constant says 15 seconds, while
 4 pulses/s makes it 8.75 seconds; `WAIT_ROUND=12` differs from the 16-pulse
 `PULSE_VIOLENCE`. Several code fallbacks differ from committed settings, such
 as the global melee offset +1 versus +2 and Two Daggers -3 versus -1.
 
-**Gameplay:** an operator can tune an inactive damage setting, infer nonexistent
-compensation for a slow race, or compare durations using the wrong “round.”
+**Gameplay:** the original inactive-setting confusion is addressed. Operators can
+still compare durations using the wrong “round” or infer compensation that a
+neutral racial multiplier does not provide.
 An absent property can silently select a different balance from the checked-in
 configuration. Different fallback values are not inherently wrong, but need
 to be explicit in reproducible comparisons.
 
 **Fix:** mark unused settings as inactive or remove them after checking remaining
 references; correct units/comments and document important fallback behavior.
-Do not reactivate retired racial multipliers or replace every round constant
+Keep the racial output activation neutral; do not replace every round constant
 as a documentation cleanup.
 
 **Verify:** active-consumer search, missing-key fixtures, actual property snapshots
 and unchanged output when removing an unused value.
-[Disabled multiplier](../../../src/magic/affects.c#L3477),
+[Racial output loader](../../../src/magic/affects.c#L3467),
 [current pulse application](../../../src/magic/affects.c#L1965),
 [clock constants](../../../src/core/config.h#L75),
 [fallback loading](../../../src/magic/affects.c#L3510).

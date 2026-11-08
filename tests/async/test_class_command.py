@@ -25,6 +25,7 @@ extern const struct race_names race_names_table[];
 extern const char *specdata[][MAX_SPEC];
 Skill skills[MAX_AFFECT_TYPES + 1];
 char class_innates[LAST_INNATE + 2][CLASS_COUNT][5];
+float combat_by_class[CLASS_COUNT + 1][2];
 void active(P_char, char *, int) {}
 extern const innate_data innates_data[LAST_INNATE + 1] = {
     {"inherited", active}, {"passive gift", nullptr}, {"changed gift", nullptr}
@@ -98,6 +99,7 @@ static void check_filters() {
     }
 }
 int main() {
+    for (auto &row : combat_by_class) row[1] = 1.0f;
     ch.only.pc = &pc; ch.player.race = RACE_GOBLIN; ch.player.level = 1;
     ch.player.m_class = CLASS_CLERIC;
     std::filesystem::create_directories("lib");
@@ -189,6 +191,25 @@ int main() {
                      "changed gift (level 20, passive)", "race innates <race>"})
         assert(text.find(part) != std::string::npos);
     assert(run("innates conjurer").find("None. No class innates") != std::string::npos);
+    combat_by_class[flag2idx(CLASS_WARRIOR)][1] = 1.15f;
+    combat_by_class[flag2idx(CLASS_MONK)][1] = .825f;
+    combat_by_class[flag2idx(CLASS_BERSERKER)][1] = .9f;
+    combat_by_class[flag2idx(CLASS_ROGUE)][1] = 1.1f;
+    for (auto name : {"warrior", "guardian", "swordsman"})
+        assert(run(std::string("innates ") + name).find("Melee and archery damage: +15% (passive)") != std::string::npos);
+    assert(run("innates monk").find("Melee and archery damage: -17.5% (passive)") != std::string::npos);
+    assert(run("innates berserker").find("Melee and archery damage: -10% (passive)") != std::string::npos);
+    for (auto name : {"rogue", "thief", "assassin"})
+        assert(run(std::string("innates ") + name).find("Melee and archery damage: +10% (passive)") != std::string::npos);
+    // The display describes the selected class, not the viewer's current kit.
+    ch.player.m_class = CLASS_MONK;
+    assert(run("innates warrior").find("+15%") != std::string::npos);
+    combat_by_class[flag2idx(CLASS_CONJURER)][1] = .8f;
+    auto modifier_only = run("innates conjurer");
+    assert(modifier_only.find("-20%") != std::string::npos && modifier_only.find("None. No class innates") == std::string::npos);
+    combat_by_class[flag2idx(CLASS_CONJURER)][1] = 1.0f;
+    assert(run("innates conjurer").find("Melee and archery damage") == std::string::npos);
+    assert(run("innates conjurer").find("None. No class innates") != std::string::npos);
     help_available = false;
     assert(run("info guardian").find("Lost skill: lost access") != std::string::npos);
     assert(run("").find("THE CLASS ROSTER") != std::string::npos);
@@ -229,6 +250,7 @@ def main():
     functions = [extract_function(file, signature) for file, signature in (
         ("interp.c", "char *one_argument("), ("utility.c", "string strip_ansi("),
         ("utility.c", "int ansi_strlen("), ("utility.c", "int flag2idx("),
+        ("abilities.c", "std::string damage_modifier_innate("),
         ("wikihelp.c", "string trim("),
     )]
     build = ROOT / "bin/tests"

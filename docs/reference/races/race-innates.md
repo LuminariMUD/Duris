@@ -33,6 +33,12 @@ Navigation: [unlock roster](#2-complete-race-by-race-unlock-roster),
 [lifecycle](#12-lifecycle-boundaries-and-interpretation),
 [verification](#13-evidence-verification-and-limits).
 
+Follow-up on 2026-11-09: innate catalog listings also show a computed passive
+melee/archery damage modifier when the selected race or class output factor is
+non-neutral. This adds no innate-table grants. All shipped racial output factors
+are 1.000; class factors are unchanged. See
+[modifier transparency](race-misc.md#3-visible-racial-and-class-attack-damage-modifiers).
+
 ## 1. Reading the mechanics
 
 ### Ownership, unlocks and commands

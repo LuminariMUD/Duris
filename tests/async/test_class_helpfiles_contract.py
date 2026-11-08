@@ -57,6 +57,12 @@ for entry in index_entries:
 command_body = "\n".join(parsed_map["class"][1].strip().splitlines()[3:]).strip()
 command_index_body = "\n".join(index_map["class"][1].strip().splitlines()[2:]).strip()
 assert command_body == command_index_body, "Class command help sources diverge"
+modifier_body = "\n".join(parsed_map["attack damage modifiers"][1].strip().splitlines()[3:]).strip()
+modifier_index_body = "\n".join(index_map["attack damage modifiers"][1].strip().splitlines()[2:]).strip()
+assert modifier_body == modifier_index_body, "Damage modifier help sources diverge"
+for detail in ("-17.5%", "Neutral modifiers", "ordinary melee", "backstab", "+32.25%", "higher of their two"):
+    assert detail in modifier_body, f"Missing damage modifier explanation: {detail}"
+
 for form in ("class list <race>", "class info <class or specialization>",
              "class specs <class>", "class innates <class or specialization>",
              "skills <class or specialization>", "spells <class or specialization>"):

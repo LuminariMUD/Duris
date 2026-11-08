@@ -177,7 +177,31 @@ def run(binary, backend):
                 inherited = command(player, "class innates huntsman")
                 assert "outdoor sneak (level 1, passive)" in inherited
                 assert "woodland renewal (level 30, passive)" in inherited
-                assert "None. No class innates" in command(player, "class innates warrior")
+                # Computed modifiers use live class/race data, including base-class
+                # inheritance and fractional penalties, without inventing grant IDs.
+                warrior_innates = command(player, "class innates warrior")
+                assert "Melee and archery damage: +15% (passive)" in warrior_innates
+                assert "None. No class innates" not in warrior_innates
+                assert "Melee and archery damage: -17.5% (passive)" in command(player, "class innates monk")
+                assert "Melee and archery damage: -10% (passive)" in command(player, "class innates berserker")
+                for name in ("thief", "assassin"):
+                    assert "Melee and archery damage: +10% (passive)" in command(player, "class innates " + name)
+                assert "Melee and archery damage" not in command(player, "class innates paladin")
+                assert "Melee and archery damage" not in command(player, "race innates barbarian")
+                for value, expected in (("1.150", "+15%"), ("0.825", "-17.5%")):
+                    command(god, "properties set damage.totalOutput.racial.Barbarian " + value)
+                    text = command(player, "race innate barbarian")
+                    assert "Melee and archery damage: " + expected + " (passive)" in text, text
+                command(god, "properties set damage.totalOutput.racial.Barbarian 1.000")
+                assert "Melee and archery damage" not in command(player, "race innates barbarian")
+                assert "None." in command(player, "race innates storm giant")
+                command(god, "properties set damage.totalOutput.racial.StormGiant 1.100")
+                text = command(player, "race innates storm giant")
+                assert "Melee and archery damage: +10% (passive)" in text and "None." not in text
+                command(god, "properties set damage.totalOutput.racial.StormGiant 1.000")
+                modifier_help = command(player, "help attack damage modifiers")
+                for explanation in ("ordinary melee", "backstab", "higher of their two", "+32.25%"):
+                    assert explanation in modifier_help, modifier_help
                 wizard = command(player, "class info wizard")
                 assert "Lost spell: solbeeps missile barrage" in wizard
                 assert "Changed spell: haste (Circle 10 -> 8)" in command(player, "class info shock reaver")
@@ -213,6 +237,7 @@ def run(binary, backend):
                 assert b"\x1b[" in player.raw_transcript
                 for name, text in (("roster", roster), ("guardian", guardian), ("wizard", wizard),
                                    ("warrior", warrior), ("specs", specs), ("innates", innates),
+                                   ("damage-modifier", warrior_innates), ("damage-help", modifier_help),
                                    ("forbidden", forbidden), ("human", human),
                                    ("theurgist", theurgist), ("theurgist-specs", theurgist_specs),
                                    ("medium", medium)):

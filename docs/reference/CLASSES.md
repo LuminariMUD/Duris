@@ -29,8 +29,12 @@ Use `class` or `class list` for the live roster, `class list <race>` for current
 creation-policy choices, and `class info <class or specialization>` for a
 profile. `class specs <class>` compares named paths with your race permission;
 `class innates <class or specialization>` includes inherited class grants,
-unlock levels, and active/passive markers. Names match the skills and spells
-browsers, including spaces/hyphens and unique abbreviations. Assassin and Thief
+unlock levels, and active/passive markers. Non-neutral class attack-damage
+factors are also shown as signed passive features, with fractional penalties preserved. Specializations inherit the base
+class factor; multiclass combat uses the higher class factor, multiplied by the
+racial factor. These cover ordinary melee and archery rather than every spell
+or special attack; see [scope and settings](races/race-misc.md#3-visible-racial-and-class-attack-damage-modifiers).
+Names match the skills and spells browsers, including spaces/hyphens and unique abbreviations. Assassin and Thief
 resolve to Rogue specializations; standalone legacy IDs are labelled roster
 notes. Specialization profiles summarize only effective grant differences,
 including skill cap changes and lost access. Full catalogs remain in `skills`
