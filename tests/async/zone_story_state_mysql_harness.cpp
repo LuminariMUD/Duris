@@ -110,6 +110,36 @@ int main()
 		"the load failed: " + error);
 	require(loaded == state, "the state read back is " + std::to_string(loaded.size()) +
 					 " bytes, not " + std::to_string(state.size()));
+	// Larger than the 16 MiB packet and column limits, in parts that each fit them.
+	std::vector<std::shared_ptr<const std::string>> parts;
+	std::string large;
+	for (int index = 0; index < 90; ++index)
+	{
+		parts.push_back(std::make_shared<const std::string>(
+			"part " + std::to_string(index) + " '\\\n" + std::string(256 * 1024, 'r')));
+		large += *parts.back();
+	}
+	require(large.size() > 16U * 1024U * 1024U, "the fixture is below the limit");
+	require(sql_zone_story_quest_state_save(7, parts, 0, &error) ==
+			sql_zone_story_quest_state_result::ok,
+		"the large save was refused: " + error);
+	require(sql_zone_story_quest_state_load(7, &loaded, &error) ==
+				sql_zone_story_quest_state_result::ok &&
+			loaded == large,
+		"the large state did not read back: " + error);
+	// A shorter save drops the parts it no longer has.
+	require(sql_zone_story_quest_state_save(7, { std::make_shared<const std::string>(state) },
+						state.size(),
+						&error) == sql_zone_story_quest_state_result::ok &&
+			sql_zone_story_quest_state_load(7, &loaded, &error) ==
+				sql_zone_story_quest_state_result::ok &&
+			loaded == state,
+		"a shorter save kept stale parts: " + error);
+	// A part one statement cannot hold is refused before it reaches the writer.
+	require(sql_zone_story_quest_state_save(
+			7, { std::make_shared<const std::string>(15U * 1024U * 1024U, 'r') }, 0,
+			&error) == sql_zone_story_quest_state_result::invalid,
+		"an oversized part was queued");
 	std::cout << "zone-story state above 64 KiB stored and read back\n";
 	return 0;
 }

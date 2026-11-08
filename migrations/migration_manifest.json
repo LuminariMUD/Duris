@@ -788,6 +788,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "6fc0474017ce7411c93cb31f16a6a78fa0e1af2050be045324489274c33f5023",
       "verify_checksum": "118cc7b780ad571ac39c3399c0def29b020b1e3d5fae5423847b5c992ba64b5e"
+    },
+    {
+      "id": "0061_zone_story_quest_state_parts",
+      "sequence": 62,
+      "description": "Store the zone-story quest state across rows",
+      "apply": "immutable/0061_zone_story_quest_state_parts.sql",
+      "verify": "immutable/0061_zone_story_quest_state_parts.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "885d73ea5a0b4ae19f9e85dc6035bdb9edcf43859532e40368b4eb1281750a27",
+      "verify_checksum": "9d4d92299da2eef085d0fc2b533d96b73e5037c9bb4b69a2e0b221bdf1d2b80e"
     }
   ],
   "engine_verifiers": [

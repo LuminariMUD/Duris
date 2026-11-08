@@ -55,6 +55,16 @@ def main() -> None:
     assert "'zone_story_quest_state'" in runtime["runtime_table_sql_list"]
     assert runtime["migration_head"]["sequence"] >= step["sequence"]
 
+    # Later parts of a document too large for one row (#807).
+    part_id = "0061_zone_story_quest_state_parts"
+    part_step = next(item for item in manifest["migrations"] if item["id"] == part_id)
+    part_sql = ROOT / f"migrations/immutable/{part_id}.sql"
+    part_sh = ROOT / f"migrations/immutable/{part_id}.sh"
+    assert part_step["apply_checksum"] == hashlib.sha256(part_sql.read_bytes()).hexdigest()
+    assert part_step["verify_checksum"] == hashlib.sha256(part_sh.read_bytes()).hexdigest()
+    assert "CREATE TABLE IF NOT EXISTS zone_story_quest_state_part" in part_sql.read_text()
+    assert "'zone_story_quest_state_part'" in runtime["runtime_table_sql_list"]
+
     lifecycle = json.loads((ROOT / "migrations/data_lifecycle_manifest.json").read_text())
     entry = next(item for item in lifecycle["entries"]
                  if item["id"] == "database:zone_story_quest_state")
