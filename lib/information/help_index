@@ -20000,6 +20000,12 @@ classes have the skill of using two weapons. It should be noted, however,
 that the skill "double attack" (allowing you to hit twice) can only be used
 with your primary weapon. You cannot hold anything else if wielding two 
 weapons (unless you are a thri-kreen).
+
+Ogres, Firbolgs, Minotaurs, Storm Giants and Wights can use a two-handed
+weapon in one hand because of their Huge natural size. Enlarge, Reduce and
+Titan Form do not change this benefit. Weapon weight limits and dual-wield
+training still apply; two-handed held items that are not weapons still
+need two hands. The weapon keeps its two-handed damage and proficiency.
 ===========================================================================
 See also: WEAR, REMOVE, EQUIPMENT, INVENTORY, "DUAL WIELD"
 
