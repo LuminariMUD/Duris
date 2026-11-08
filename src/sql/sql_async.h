@@ -62,6 +62,8 @@ bool sql_queue_statements_at(struct persistence_query_site site,
 			     std::shared_ptr<sql_write_receipt> receipt);
 // Writes that need the database's answer first (a lookup, then an update or an insert).
 bool sql_queue_work_at(struct persistence_query_site site, sql_work work);
+// For work capturing a large payload: `bytes` counts it against the writer's pending limit.
+bool sql_queue_sized_work_at(struct persistence_query_site site, size_t bytes, sql_work work);
 bool sql_queue_work_at(struct persistence_query_site site, sql_work work,
 		       std::shared_ptr<sql_write_receipt> receipt);
 // done(ok, rows) runs on the game thread; ok is false when the read failed.
@@ -93,6 +95,7 @@ size_t sql_async_pulse(void);
 #define sql_queue(...) sql_queue_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
 #define sql_queue_statements(...) sql_queue_statements_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
 #define sql_queue_work(...) sql_queue_work_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
+#define sql_queue_sized_work(...) sql_queue_sized_work_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
 #define sql_read(...) sql_read_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
 #define sql_read_for(...) sql_read_for_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)
 #define sql_read_work(...) sql_read_work_at(PERSISTENCE_QUERY_SITE, __VA_ARGS__)

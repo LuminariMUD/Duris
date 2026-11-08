@@ -39,10 +39,7 @@ bool fail(std::string *error, std::string message)
 	return false;
 }
 
-char hex_digit(uint8_t value)
-{
-	return value < 10 ? static_cast<char>('0' + value) : static_cast<char>('a' + value - 10);
-}
+constexpr char hex_digits[] = "0123456789abcdef";
 
 int hex_value(char value)
 {
@@ -55,15 +52,22 @@ int hex_value(char value)
 	return -1;
 }
 
+void append_hex(std::string *output, std::string_view value)
+{
+	const size_t begin = output->size();
+	output->resize(begin + value.size() * 2);
+	char *out = output->data() + begin;
+	for (unsigned char byte : value)
+	{
+		*out++ = hex_digits[byte >> 4];
+		*out++ = hex_digits[byte & 0x0f];
+	}
+}
+
 std::string hex_encode(std::string_view value)
 {
 	std::string encoded;
-	encoded.reserve(value.size() * 2);
-	for (unsigned char byte : value)
-	{
-		encoded.push_back(hex_digit(static_cast<uint8_t>(byte >> 4)));
-		encoded.push_back(hex_digit(static_cast<uint8_t>(byte & 0x0f)));
-	}
+	append_hex(&encoded, value);
 	return encoded;
 }
 
@@ -617,12 +621,23 @@ result service::record_completion(const completion_event &event, std::string *er
 		return fail(error,
 			    "direct completer is deleted and must re-identify before earning credit"),
 		       result::rejected;
-	const std::string before = serialize_state();
+	last_completion_ = {};
+	for (const uint32_t pid : event.transaction.credited_pids)
+	{
+		const std::pair<uint32_t, uint32_t> key{ event.transaction.season_id, pid };
+		const auto found = characters_.find(key);
+		last_completion_.characters.emplace_back(
+			key, found == characters_.end() ?
+				     std::nullopt :
+				     std::optional<character_state>(found->second));
+	}
 	const result recorded = apply_transaction(event.transaction, event.character_name,
 						  event.racewar, false, true, error);
 	if (recorded == result::invalid || recorded == result::conflict ||
 	    recorded == result::rejected)
 		return recorded;
+	if (recorded == result::applied)
+		last_completion_.transaction_id = event.transaction.transaction_id;
 
 	if (event.attempt_observed)
 	{
@@ -645,12 +660,27 @@ result service::record_completion(const completion_event &event, std::string *er
 		const result telemetry_result = record_telemetry(observation, error);
 		if (telemetry_result == result::conflict || telemetry_result == result::invalid)
 		{
-			std::string restore_error;
-			deserialize_state(before, &restore_error);
+			undo_last_completion();
 			return telemetry_result;
 		}
+		if (telemetry_result == result::applied)
+			last_completion_.observation_id = observation.observation_id;
 	}
 	return recorded;
+}
+
+void service::undo_last_completion()
+{
+	for (auto &[key, state] : last_completion_.characters)
+	{
+		if (state)
+			characters_[key] = std::move(*state);
+		else
+			characters_.erase(key);
+	}
+	transactions_.erase(last_completion_.transaction_id);
+	telemetry_.erase(last_completion_.observation_id);
+	last_completion_ = {};
 }
 
 result service::record_telemetry(const telemetry_observation &observation, std::string *error)
@@ -1414,8 +1444,9 @@ std::string service::render_daily_score(uint32_t season_id, uint32_t pid, int le
 std::string service::serialize_state(std::string *error) const
 {
 	(void)error;
-	std::ostringstream output;
-	output << "ZSQF|1\n";
+	/* Transactions and telemetry are nearly all of a multi-megabyte document, which is
+	 * built on the game thread for every completion: they skip the stream. */
+	std::string document = "ZSQF|1\n";
 	for (const auto &[id, stored] : transactions_)
 	{
 		bool includes_deleted_pid = false;
@@ -1427,9 +1458,15 @@ std::string service::serialize_state(std::string *error) const
 				break;
 			}
 		if (!includes_deleted_pid)
-			output << "T|" << hex_encode(id) << "|" << hex_encode(stored.encoded)
-			       << "\n";
+		{
+			document += "T|";
+			append_hex(&document, id);
+			document += '|';
+			append_hex(&document, stored.encoded);
+			document += '\n';
+		}
 	}
+	std::ostringstream output;
 	for (const auto &[key, state] : characters_)
 	{
 		if (deleted_characters_.find(key) != deleted_characters_.end())
@@ -1459,6 +1496,7 @@ std::string service::serialize_state(std::string *error) const
 		if (deleted_characters_.find({ season, pid }) == deleted_characters_.end())
 			output << "H|" << season << "|" << pid << "\n";
 	}
+	document += output.str();
 	for (const auto &[id, observation] : telemetry_)
 	{
 		bool deleted_pid = false;
@@ -1469,10 +1507,15 @@ std::string service::serialize_state(std::string *error) const
 				break;
 			}
 		if (!deleted_pid)
-			output << "E|" << hex_encode(id) << "|"
-			       << hex_encode(serialize_observation(observation)) << "\n";
+		{
+			document += "E|";
+			append_hex(&document, id);
+			document += '|';
+			append_hex(&document, serialize_observation(observation));
+			document += '\n';
+		}
 	}
-	return output.str();
+	return document;
 }
 
 bool service::deserialize_state(std::string_view encoded, std::string *error)

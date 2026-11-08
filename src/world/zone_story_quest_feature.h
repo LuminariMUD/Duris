@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -198,6 +199,8 @@ class service
 	const daily_policy &get_daily_policy() const;
 
 	result record_completion(const completion_event &event, std::string *error = nullptr);
+	/* Takes back the latest record_completion(), for a completion that could not be saved. */
+	void undo_last_completion();
 	result record_telemetry(const telemetry_observation &observation,
 				std::string *error = nullptr);
 
@@ -265,6 +268,15 @@ class service
 	std::set<std::pair<uint32_t, uint32_t>> leaderboard_exclusions_;
 	std::map<std::string, stored_transaction> transactions_;
 	std::map<std::string, telemetry_observation> telemetry_;
+	/* What the latest completion changed: its size follows the credited characters,
+	 * not the shared history. */
+	struct completion_undo
+	{
+		std::vector<std::pair<std::pair<uint32_t, uint32_t>, std::optional<character_state>>>
+			characters;
+		std::string transaction_id;
+		std::string observation_id;
+	} last_completion_;
 
 	character_state &state_for(uint32_t season_id, uint32_t pid);
 	const character_state *find_state(uint32_t season_id, uint32_t pid) const;

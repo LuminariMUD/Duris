@@ -22,7 +22,6 @@
 
 #ifndef __NO_MYSQL__
 #include "sql/sql_async.h"
-#include "sql/sql_player.h"
 
 #include <cstdlib>
 #include <mysql.h>
@@ -90,9 +89,8 @@ sql_zone_story_quest_state_load(uint32_t expected_catalog_revision, std::string 
 #endif
 }
 
-sql_zone_story_quest_state_result sql_zone_story_quest_state_save(uint32_t catalog_revision,
-								  const std::string &state,
-								  std::string *error)
+sql_zone_story_quest_state_result
+sql_zone_story_quest_state_save(uint32_t catalog_revision, std::string state, std::string *error)
 {
 	/* MEDIUMTEXT is capped at 16 MiB; reject larger blobs before issuing SQL. */
 	if (!catalog_revision || state.size() > 16U * 1024U * 1024U)
@@ -108,21 +106,25 @@ sql_zone_story_quest_state_result sql_zone_story_quest_state_save(uint32_t catal
 		*error = "SQL state repository is unavailable in a flat-file build";
 	return sql_zone_story_quest_state_result::io_error;
 #else
-	char *escaped = sql_escape_string(state.c_str());
-	if (!escaped)
-	{
-		if (error)
-			*error = "zone-story SQL state could not be escaped";
-		return sql_zone_story_quest_state_result::io_error;
-	}
 	// Queued on the writer, in capture order with the saves; the writer logs a failure.
-	const bool queued = sql_queue(
-		"INSERT INTO zone_story_quest_state (state_id,state_version,catalog_revision,state_blob,updated_at) "
-		"VALUES (1,1,%u,'%s',UTC_TIMESTAMP(6)) "
-		"ON DUPLICATE KEY UPDATE state_version=VALUES(state_version), "
-		"catalog_revision=VALUES(catalog_revision),state_blob=VALUES(state_blob),updated_at=VALUES(updated_at)",
-		catalog_revision, escaped);
-	free(escaped);
+	// It escapes and formats the document too, which the game thread must not pay for.
+	const size_t bytes = state.size();
+	const bool queued = sql_queue_sized_work(
+		bytes,
+		[catalog_revision, state = std::move(state)](MYSQL *connection) -> unsigned int
+		{
+			std::string escaped(state.size() * 2 + 1, '\0');
+			escaped.resize(mysql_real_escape_string(connection, escaped.data(),
+								state.data(), state.size()));
+			return sql_execute(
+				connection,
+				sql_format(
+					"INSERT INTO zone_story_quest_state (state_id,state_version,catalog_revision,state_blob,updated_at) "
+					"VALUES (1,1,%u,'%s',UTC_TIMESTAMP(6)) "
+					"ON DUPLICATE KEY UPDATE state_version=VALUES(state_version), "
+					"catalog_revision=VALUES(catalog_revision),state_blob=VALUES(state_blob),updated_at=VALUES(updated_at)",
+					catalog_revision, escaped.c_str()));
+		});
 	if (!queued)
 	{
 		if (error)

@@ -393,6 +393,22 @@ int main()
 
 	completion_event daily_completion = completion("tx-daily", "zone-story:901:002", 901, 42,
 						       assignment.assigned_at + 100, { 42 });
+	// A completion that cannot be saved is taken back exactly: new party member, telemetry,
+	// transaction and daily award alike, so a retry applies it afresh.
+	const std::string before_undo = tracker.serialize_state(&error);
+	completion_event undone_party = daily_completion;
+	undone_party.transaction.credited_pids = { 42, 555 };
+	require(tracker.record_completion(undone_party, &error) == result::applied &&
+			tracker.summary_for(7, 555).completed == 1 &&
+			tracker.daily_for(7, 42, service::period_for(daily_now)).status ==
+				daily_status::completed,
+		"completion to undo was not applied");
+	tracker.undo_last_completion();
+	require(tracker.serialize_state(&error) == before_undo &&
+			tracker.summary_for(7, 555).completed == 0 &&
+			tracker.daily_for(7, 42, service::period_for(daily_now)).status ==
+				daily_status::assigned,
+		"undo did not restore the state before the completion");
 	daily_completion.party_context_known =
 		true; // Known solo context keeps the candidate eligible.
 	require(tracker.record_completion(daily_completion, &error) == result::applied,
