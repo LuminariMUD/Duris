@@ -368,8 +368,11 @@ static forced_move_result move_forced_people(P_char first, P_char second, P_char
 			separate_riders(person.live());
 	departure();
 	bool arrived = true;
-	for (size_t i = 0; i < people.size(); ++i)
+	for (size_t step = 0; step < people.size(); ++step)
 	{
+		// A ram places the victim before the charger and mount, keeping the
+		// combatants adjacent at either end of a single-file room.
+		const size_t i = mount && step < 2 ? 1 - step : step;
 		// All three have left and passed their own checks. char_to_room brings the
 		// mount in before the rider's arrival hook, preserving mounted script behavior.
 		if (mount && i == 2)
@@ -379,8 +382,12 @@ static forced_move_result move_forced_people(P_char first, P_char second, P_char
 				continue;
 		}
 		// Earlier arrival procedures may remove another participant or seal the exit.
-		if (recheck(people[i], plans[i], true).status != forced_move_status::arrived)
+		if (recheck(people[i], plans[i], true).status != forced_move_status::arrived ||
+		    (mount && i == 0 &&
+		     recheck(people[2], plans[2], true).status != forced_move_status::arrived))
 		{
+			if (mount && i == 0)
+				suspend_riding();
 			recover(people[i], source);
 			arrived = false;
 			continue;
@@ -406,6 +413,7 @@ static forced_move_result move_forced_people(P_char first, P_char second, P_char
 		P_char steed = people[2].live();
 		if (!rider || !steed || rider->in_room != steed->in_room)
 			suspend_riding();
+		restore_riding();
 		if (!riding_together())
 			arrived = false;
 	}

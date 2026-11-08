@@ -48,7 +48,7 @@ static bool ranged_charge=false, break_lance=false;
 static int damage_calls, reschedules, judgement_limit=4;
 static int identity_lookups;
 static bool multiple_targets=false;
-enum class Hook { none, veto, seal, lose_passdoor, redirect, extract, kill, remove_weapon, remove_actor, redirect_actor, dismount, disarm };
+enum class Hook { none, veto, seal, lose_passdoor, redirect, extract, kill, remove_weapon, remove_actor, redirect_actor, dismount, disarm, strip_mount_passdoor, paralyze_mount };
 static Hook leave_hook, enter_hook;
 static P_char hook_target;
 static obj_data lance{};
@@ -62,7 +62,7 @@ void act(const char *text,int,P_char ch,P_obj obj,void *target,int) { assert(!ch
 void send_to_char(const char *text,P_char ch) { assert(char_in_list(ch)); fixture_messages.emplace_back(text); }
 void CharWait(P_char ch,int) { assert(char_in_list(ch) && IS_ALIVE(ch)); }
 int number(int low,int high) {
- if(rng_route==4 && low==0 && high==4) return 3;
+ if(rng_route==4 && low==0 && high==4) return ranged_charge?4:3;
  if(rng_route==1 && low==0 && high==100) return 100; // fail nexus agility dodge
  return low;
 }
@@ -85,7 +85,7 @@ void spell_slow(int,P_char,char*,int,P_char,P_obj) { assert(false); }
 void spell_dispel_magic(int,P_char,char*,int,P_char,P_obj) { assert(false); }
 void astral_banishment(P_char,P_char,int,int) {}
 void Stun(P_char,P_char,int,bool) {}
-int CanDoFightMove(P_char,P_char) { return rng_route==4; }
+int CanDoFightMove(P_char ch,P_char victim) { return rng_route==4 && (!IS_ROOM(ch->in_room,ROOM_SINGLE_FILE) || AdjacentInRoom(ch,victim)); }
 bool damage(P_char,P_char,double,int) { return false; }
 void update_pos(P_char) {}
 int GET_ALT_SIZE(P_char ch) { return ch->player.size; }
@@ -172,7 +172,7 @@ static void forget(P_char ch) {
  detach(ch); live.erase(std::remove(live.begin(),live.end(),ch),live.end()); ++character_removal_generation;
 }
 int do_simple_move(P_char ch,int,unsigned int) {
- assert(ranged_charge); place(ch,1); place(&mount,1);
+ assert(ranged_charge); detach(ch); assert(char_to_room(ch,1,DIR_NORTH));
  if(enter_hook==Hook::extract) forget(&target);
  if(enter_hook==Hook::redirect) place(&target,2);
  if(enter_hook==Hook::kill) SET_POS(&target,STAT_DEAD);
@@ -180,6 +180,7 @@ int do_simple_move(P_char ch,int,unsigned int) {
  if(enter_hook==Hook::redirect_actor) place(ch,2);
  if(enter_hook==Hook::remove_weapon) { lance_present=false; ch->equipment[WIELD]=nullptr; }
  if(enter_hook==Hook::disarm) ch->equipment[WIELD]=nullptr;
+ if(enter_hook==Hook::paralyze_mount) mount.specials.affected_by2|=AFF2_MINOR_PARALYSIS;
  enter_hook=Hook::none; return true;
 }
 void char_from_room(P_char ch) {
@@ -203,7 +204,8 @@ void char_from_room(P_char ch) {
 placement = r'''
 bool char_to_room(P_char ch,int room,int dir) {
  assert(char_in_list(ch) && room>=0 && room<=top_of_world);
- place(ch,room); if(room==1) ++placements;
+ __ROOM_INSERTION__
+ if(room==1) ++placements;
  if(dir>=0 && rng_route==4 && ch==&actor) {
   assert(GET_MOUNT(ch)==&mount && GET_RIDER(&mount)==ch);
   mounted_during_entry=true;
@@ -219,16 +221,25 @@ bool char_to_room(P_char ch,int room,int dir) {
   if(hook==Hook::kill) { SET_POS(ch,STAT_DEAD); return false; }
   if(hook==Hook::remove_weapon) lance_present=false;
   if(hook==Hook::disarm) actor.equipment[WIELD]=nullptr;
+  if(hook==Hook::strip_mount_passdoor) mount.specials.affected_by2=0;
+  if(hook==Hook::paralyze_mount) mount.specials.affected_by2|=AFF2_MINOR_PARALYSIS;
   if(hook==Hook::remove_actor) forget(&actor);
   if(hook==Hook::redirect_actor) place(&actor,2);
  }
  return true;
 }
 '''
+room_placement = extract_function('handler.c', 'bool char_to_room(')
+room_placement = room_placement[room_placement.index('\tif (!IS_ROOM(room, ROOM_SINGLE_FILE))'):
+                                room_placement.index('\twas_in = real_room0')]
+placement = placement.replace('__ROOM_INSERTION__',
+    'P_char k=nullptr; int j=0; char exit1=-1,exit2=-1,exit3=-1;\n detach(ch);\n' +
+    room_placement + '\n ch->in_room=room;')
 prelude += re.search(r'struct fury_data\n\{.*?\n};', (root/'src/magic/smagic.c').read_text(), re.S)[0]+'\n'
 prelude += re.search(r'^#define BANISHMENT_HOLY_WORD.*$', (root/'src/magic/magic.c').read_text(), re.M)[0]+'\n'
 prelude += (root/'src/cmd/actoff.c').read_text().split('#include')[0]
-functions=[extract_function('affects.c','P_char get_linked_char('),
+functions=[extract_function('fight.c','bool AdjacentInRoom('),
+           extract_function('affects.c','P_char get_linked_char('),
            extract_function('affects.c','P_char get_linking_char('),
            extract_function('handler.c','static bool move_riding_companions('), placement]
 functions += [extract_function('actmove.c', signature) for signature in
@@ -348,10 +359,37 @@ int main() {
    assert(mount.in_room==0 && GET_MOUNT(&actor)==&mount);
   } else assert(!GET_MOUNT(&actor));
  }
+
+ // A ram into either end of a single-file room must still hit, with real insertion and adjacency.
+ for(bool ranged : {false,true}) for(bool prepend : {false,true}) {
+  reset(4,0,7); ranged_charge=ranged;
+  rooms[1].room_flags=ROOM_SINGLE_FILE;
+  room_direction_data back[2]{};
+  for(auto &exit:back) { exit.to_room=0; exit.exit_info=sealed; }
+  rooms[1].dir_option[prepend?DIR_SOUTH:DIR_NORTH]=&back[0];
+  rooms[1].dir_option[prepend?DIR_WEST:DIR_SOUTH]=&back[1];
+  if(ranged) place(&target,1);
+  run(4); ++cases;
+  assert(IS_ROOM(1,ROOM_SINGLE_FILE));
+  assert(actor.in_room==1 && target.in_room==1 && mount.in_room==1);
+  assert(AdjacentInRoom(&actor,&target) && damage_calls==1);
+  assert(GET_MOUNT(&actor)==&mount && mounted_during_entry);
+ }
  // Arrival hooks are authoritative. No later participant may cross a newly sealed door.
- reset(4,EX_CLOSED,7); hook_target=&actor; enter_hook=Hook::seal; run(4); ++cases;
- assert(actor.in_room==1 && target.in_room==0 && mount.in_room==1 && GET_MOUNT(&actor)==&mount);
+ reset(4,EX_CLOSED,7); hook_target=&target; enter_hook=Hook::seal; run(4); ++cases;
+ assert(actor.in_room==0 && target.in_room==1 && mount.in_room==0 && GET_MOUNT(&actor)==&mount);
  assert(damage_calls==0);
+
+ // The victim enters first; its hook cannot lend the charger permission to their mount.
+ reset(4,EX_CLOSED,7); hook_target=&target; enter_hook=Hook::strip_mount_passdoor; run(4); ++cases;
+ assert(actor.in_room==0 && mount.in_room==0 && target.in_room==1 && GET_MOUNT(&actor)==&mount && damage_calls==0);
+ // Nor may a later mount placement undo a redirect/removal performed by the victim's hook.
+ for(Hook hook : {Hook::redirect_actor,Hook::remove_actor}) {
+  reset(4,0,7); hook_target=&target; enter_hook=hook; run(4); ++cases;
+  assert(target.in_room==1 && mount.in_room==1 && !GET_RIDER(&mount) && damage_calls==0);
+  if(hook==Hook::redirect_actor) assert(actor.in_room==2 && !GET_MOUNT(&actor));
+  else assert(!char_in_list(&actor));
+ }
  // Redirecting/removing the charger never leaves a riding link across rooms.
  for(const Hook hook:{Hook::redirect,Hook::extract,Hook::kill}) {
   reset(4,0,7); hook_target=&actor; enter_hook=hook; run(4); ++cases;
@@ -410,13 +448,13 @@ int main() {
  witness.specials.affected_by2=AFF2_PASSDOOR; hook_target=&witness; leave_hook=Hook::veto;
  run(1); ++cases; assert(target.in_room==1);
  // A weapon removed by arrival scripts must not be dereferenced after movement.
- for(Hook hook : {Hook::remove_weapon,Hook::disarm}) {
+ for(Hook hook : {Hook::remove_weapon,Hook::disarm,Hook::paralyze_mount}) {
   reset(4,0,7); hook_target=&actor; enter_hook=hook; run(4); ++cases;
   assert(actor.in_room==1 && target.in_room==1 && mount.in_room==1 && damage_calls==0);
  }
  // An approach walk may succeed after its scripts invalidate another charge participant.
  for(Hook hook : {Hook::none,Hook::extract,Hook::redirect,Hook::kill,Hook::remove_actor,
-                  Hook::redirect_actor,Hook::remove_weapon,Hook::disarm}) {
+                  Hook::redirect_actor,Hook::remove_weapon,Hook::disarm,Hook::paralyze_mount}) {
   reset(4,0,7); ranged_charge=true; place(&target,1); enter_hook=hook;
   run(4); ++cases; assert(damage_calls==(hook==Hook::none?1:0));
  }

@@ -1162,12 +1162,12 @@ void lance_charge(P_char ch, char *argument)
 		if (find_character_by_runtime_id(charger_id) != ch ||
 		    find_character_by_runtime_id(victim_id) != victim ||
 		    find_character_by_runtime_id(mount_id) != mount || !IS_ALIVE(ch) ||
-		    !IS_ALIVE(victim) || !IS_ALIVE(mount) || ch->in_room != target_room ||
-		    victim->in_room != target_room || mount->in_room != target_room ||
-		    GET_MOUNT(ch) != mount || GET_RIDER(mount) != ch ||
-		    !find_live_object(weapon, weapon_uid) || ch->equipment[WIELD] != weapon ||
-		    !IS_LANCE(weapon) || !CanDoFightMove(ch, victim) ||
-		    !CanDoFightMove(mount, victim))
+		    !IS_ALIVE(victim) || !IS_ALIVE(mount) || IS_IMMOBILE(mount) ||
+		    ch->in_room != target_room || victim->in_room != target_room ||
+		    mount->in_room != target_room || GET_MOUNT(ch) != mount ||
+		    GET_RIDER(mount) != ch || !find_live_object(weapon, weapon_uid) ||
+		    ch->equipment[WIELD] != weapon || !IS_LANCE(weapon) ||
+		    !CanDoFightMove(ch, victim))
 			return;
 	}
 
@@ -1365,7 +1365,7 @@ void lance_charge(P_char ch, char *argument)
 			{
 				if (!find_live_object(weapon, weapon_uid) ||
 				    ch->equipment[WIELD] != weapon || !IS_LANCE(weapon) ||
-				    !CanDoFightMove(ch, victim) || !CanDoFightMove(mount, victim))
+				    IS_IMMOBILE(mount) || !CanDoFightMove(ch, victim))
 					return;
 				dam = dam + lance_charge_ram_damage(live_rolls);
 				set_fighting(ch, victim);
