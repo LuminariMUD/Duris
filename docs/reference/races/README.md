@@ -9,6 +9,10 @@ tests. Distinguish verified behavior from balance estimates and design judgments
   gameplay consumers, resource formulas, and gearing breakpoints.
 - [PC racial innates](race-innates.md): all PC racial grants and unlocks, active
   powers, passive effects, gameplay interactions, costs, and balance tradeoffs.
+- [PC race tempo](race-tempo.md): racial melee and casting timing, action gates,
+  attack payloads, recovery, and worked comparisons of effects and repeat rates.
+- [Race tempo issues](race-tempo-issues.md): potential timing defects, gameplay
+  impact, recommended fixes, and distinctions from intentional timing policies.
 - [Race stats issues](race-stats-issues.md): potential stat-mechanics bugs,
   gameplay impact, recommended fixes, design questions, and resolved findings.
 - [PC race size](race-size.md): complete race size assignments, growth and form
