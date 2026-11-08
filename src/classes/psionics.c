@@ -2195,7 +2195,8 @@ void spell_psionic_cloud(int level, P_char ch, char * /*arg*/, [[maybe_unused]] 
 
 static int displacement_duration(int level)
 {
-	return level - 4;
+	// Low-level item and scripted casts must not produce the permanent sentinel (-1).
+	return MAX(0, level - 4);
 }
 
 static int displacement_ac(int level)
@@ -2206,9 +2207,7 @@ static int displacement_ac(int level)
 std::string displacement_facts(P_char ch)
 {
 	const int level = GET_LEVEL(ch);
-	// affect_update() removes any duration below -1 on the next tick, as it does 0.
-	const int duration = displacement_duration(level);
-	return fact("Duration", game_hours(duration < -1 ? 0 : duration) + " at your level, " +
+	return fact("Duration", game_hours(displacement_duration(level)) + " at your level, " +
 					std::to_string(level)) +
 	       fact("Armor class", std::to_string(displacement_ac(level))) +
 	       fact("Chance a melee hit on you deals nothing",
