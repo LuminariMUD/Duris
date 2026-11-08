@@ -64,6 +64,8 @@ def github_anchors(markdown: str) -> set[str]:
             continue
         if in_fence:
             continue
+        anchors.update(value.lower() for value in
+                       re.findall(r'''<a\b[^>]*\bid=["']([^"']+)["']''', line, re.I))
         match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
         if not match:
             continue
@@ -81,6 +83,14 @@ def github_anchors(markdown: str) -> set[str]:
 class DocumentationContractTest(unittest.TestCase):
     def setUp(self) -> None:
         self.text = {path: path.read_text() for path in GUIDES}
+
+    def test_explicit_anchor_ids_outside_code_fences(self) -> None:
+        self.assertEqual(
+            github_anchors('<a id="vnum-17040"></a>\n'
+                           "<a id='second'></a>\n"
+                           '```html\n<a id="example"></a>\n```\n## Heading\n'),
+            {"vnum-17040", "second", "heading"},
+        )
 
     def test_heading_anchors_preserve_each_space_like_github_slugger(self) -> None:
         self.assertEqual(

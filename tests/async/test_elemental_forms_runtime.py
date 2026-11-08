@@ -141,6 +141,7 @@ functions = [
     ('fight.c', 'int displacement_absorb_roll('),
     ('fight.c', 'float biofeedback_melee_share('),
     ('fight.c', 'float stone_skin_melee_share('),
+    ('fight.c', 'float shadow_shield_melee_share('),
     ('fight.c', 'float ironwood_melee_share('),
     ('fight.c', 'float drakescale_aegis_melee_share('),
     ('fight.c', 'int skin_spell_deduct('),
@@ -417,6 +418,17 @@ int main() {
         assert(earth.affected == head && head->next->next == nullptr);
         clear(&earth);
     }
+    // Shadow Shield: its own factor, unchanged flat deduction and hit budget.
+    affected_type shadow{};
+    shadow.type = SPELL_SHADOW_SHIELD; shadow.modifier = 2; shadow.duration = 4;
+    affect_to_char(&earth, &shadow);
+    assert(physical_skin_path(&ordinary, &earth, 200, PHSDAM_NOREDUCE) == 200);
+    assert(earth.affected->modifier == 2);
+    assert(physical_skin_path(&ordinary, &earth, 200) == int((200 - 46) * double(shadow_shield_melee_share())));
+    assert(earth.affected->modifier == 1);
+    assert(physical_skin_path(&ordinary, &earth, 50) == 4);
+    assert(!affected_by_spell(&earth, SPELL_SHADOW_SHIELD));
+    assert(physical_skin_path(&ordinary, &earth, 200) == 200);
     // Actual Maul handler: matched dice retain normal/indoor/mountain/lava tiers
     // for both Earth Magi and Druids; earthless/airborne fallback stays normal.
     for (int cls : {CLASS_CONJURER, CLASS_DRUID}) {

@@ -899,7 +899,7 @@ static void check_rolls() {
         assert(aura_precision_hitroll(c) == (int)(get_property("innate.paladin_aura.precision_hitroll_mod", 0.2) * GET_LEVEL(c)));
         assert(aura_endurance_moves(c) == (int)(get_property("innate.paladin_aura.endurance_move_mod", 1.0) * GET_LEVEL(c)));
         assert(aura_vigor_hit_points(c) == (int)(get_property("innate.paladin_aura.vigor_hp_mod", 1.0) * GET_LEVEL(c)));
-        assert(aura_spell_protection_percent(c) == (int)(get_property("innate.paladin_aura.protection_spell_mod", 0.5) * GET_LEVEL(c)) - 3);
+        assert(aura_spell_protection_percent(c) == MAX(0, (int)(get_property("innate.paladin_aura.protection_spell_mod", 0.5) * GET_LEVEL(c)) - 3));
     }
 }
 
@@ -971,7 +971,7 @@ CHECKS = r'''
     AT(1, 1);
     IS(aura_protection_innate_facts, "  Armor class: -1 at your level\n" + aura_common_facts());
     IS(aura_precision_innate_facts, "  Hitroll: +0 at your level\n" + aura_common_facts());
-    IS(aura_spell_protection_innate_facts, "  Spell damage taken: 3% more at your level\n" + aura_common_facts());
+    IS(aura_spell_protection_innate_facts, "  Spell damage taken: no change at your level\n" + aura_common_facts());
     IS(aura_battlelust_innate_facts, "  Damage dealt: +0.2% at your level\n" + aura_common_facts());
     AT(1, 6);
     IS(aura_spell_protection_innate_facts, "  Spell damage taken: no change at your level\n" + aura_common_facts());

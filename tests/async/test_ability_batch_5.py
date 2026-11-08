@@ -128,7 +128,7 @@ HANDLER_CALLS = {
     "spell_scathing_wind": ["cast_as_damage_area(ch, spell_single_scathing_wind, level"],
     "spell_single_earthen_rain": ["dam = earthen_rain_damage(live_rolls, level)", "dam = earthen_rain_saved(dam)"],
     "spell_earthen_rain": ["cast_as_damage_area(ch, spell_single_earthen_rain, level"],
-    "earthen_grasp": ["level = earthen_grasp_level(level, ch)", "earthen_grasp_damage(live_rolls, level)",
+    "earthen_grasp": ["earthen_grasp_damage(live_rolls, level)",
                       "earthen_grasp_saved_damage(live_rolls, level)"],
     "spell_earthen_grasp": ["earthen_grasp(level, ch, victim, false)"],
     "spell_single_earthen_grasp": ["earthen_grasp(level, ch, victim, true)"],
@@ -590,8 +590,8 @@ int main() {
                                                        "  If the target fails its save: 470-1478\n"));
     assert(contains(wellness_facts(&ch), "  Healing per person: 60-104 at your level, 56\n"));
     ch = viewer(viewers[4], 56); // elementalist with elemental power
-    assert(contains(earthen_grasp_facts(&ch), "  Damage level: 64, raised by elemental power\n"
-                                              "  Earth damage on a grasp: 64-768, or 64-448 if the target saves\n"));
+    assert(contains(earthen_grasp_facts(&ch), "  Damage level: 56, your level\n"
+                                              "  Earth damage on a grasp: 56-672, or 56-392 if the target saves\n"));
     assert(contains(etherportal_facts(&ch), "  People who can pass each way: 12-18 at your level, 56\n"
                                             "  Portal lasts: up to 37.5 seconds\n"));
     elemental_power = false;

@@ -119,7 +119,6 @@ HELPERS = {
     "command_aura_fear_save": "magic/affects.c",
     "restoration_other_share": "magic/smagic.c",
     "elemental_power_save_change": "magic/smagic.c",
-    "elemental_power_area_factor": "magic/smagic.c",
     "wellness_improved_bonus": "magic/smagic.c",
     "lesser_mending_improved_bonus": "magic/smagic.c",
     "mending_improved_bonus": "magic/smagic.c",

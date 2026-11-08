@@ -399,8 +399,8 @@ static void check_rolls() {
                      improved_shield_combat_damage(rolls, c));
                 SAME(number(0, 3), critical_attack_roll(rolls));
                 SAME(number(0, 2), critical_attack_disarm_roll(rolls));
-                SAME(number(1, get_property("skill.arcane.block.dam.reduction", .4) *
-                                   GET_CHAR_SKILL(c, SKILL_ARCANE_BLOCK)),
+                SAME(number(1, MAX(1, (int)(get_property("skill.arcane.block.dam.reduction", .4) *
+                                   GET_CHAR_SKILL(c, SKILL_ARCANE_BLOCK)))),
                      arcane_block_reduction(rolls, c));
                 SAME(number(4, 16) * get_property("archery.enchantArrows.damage.mod", 1), enchant_arrow_damage(rolls));
                 SAME(number(0, GET_CHAR_SKILL(c, SKILL_ARCHERY) / 25), archery_skill_damage(rolls, c));
@@ -597,6 +597,7 @@ static void check_pages() {
                               "  With anatomy, chance of more damage: 15 in 101, for 450\n");
     HAS(jin_touch_facts, "  Chance: 50 in 50\n  Damage: 37-112\n    (past the target's armor and skin spells)\n");
     HAS(jin_touch_facts, "  Target's armor class, on a further roll: +112-168\n");
+    assert(jin_touch_facts(&ch).find("even if it's still resting") == std::string::npos);
     HAS(regenerate_facts, "  Chance: 100 in 100\n  Duration: 8-9 game hours (10-11.25 minutes)\n  Hit point regeneration: +5600\n");
     HAS(tiger_palm_facts, "  Chance: 101 in 101\n  Duration: 50 seconds\n  Psionic spell damage you take: 65% of normal, added to other factors\n");
     HAS(fist_of_dragon_facts, "  Chance: 100 in 101\n  Duration: 56 seconds\n  Chance a melee hit ignores armor that helps the target: 1 in 3\n");
@@ -715,7 +716,7 @@ def check_sources():
         assert bodies and all(old not in body for body in bodies), f"{head} still has {old}"
     # Followed branches: each lag sits in its own branch.
     jin = function_bodies(strip_comments(source("new_skills.c").read_text()), r"chant_jin_touch\s*\(")[0]
-    assert jin.index("number(1, 50) > skl_lvl") < jin.index("jin_touch_failed_lag") < jin.index("jin_touch_lag") < jin.index("jin_touch_rest"), "jin touch order"
+    assert jin.index("affected_by_skill(ch, SKILL_JIN_TOUCH)") < jin.index("number(1, 50) > skl_lvl") < jin.index("jin_touch_failed_lag") < jin.index("jin_touch_rest") < jin.index("jin_touch_lag"), "jin touch order"
     rage = function_bodies(strip_comments(source("actoth.c").read_text()), r"do_rage\s*\(")[0]
     assert rage.index("rage_failed_lag") < rage.index("notch_skill") < rage.index("rage_lag") < rage.index("rage_ragelord_lag"), "rage order"
     table = strip_comments(source("abilities.c").read_text())
