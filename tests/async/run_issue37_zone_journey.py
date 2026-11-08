@@ -93,7 +93,7 @@ def run(binary, baseline, evidence_path):
                 cmd(god, f'goto {expected}')
                 cmd(god, 'purge')
                 response = cmd(player, direction)
-                if ('You cannot move normally while fighting' in response or
+                if ("Sorry, you aren't allowed to do that in combat" in response or
                         "Sorry, you can't do that while laying around" in response):
                     # Isolate ambient combat only when it blocks the route check.
                     # Native purge preserves fixed portals; exits, room flags and

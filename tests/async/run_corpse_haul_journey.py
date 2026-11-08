@@ -128,7 +128,7 @@ def run(binary):
                 actor=reconnect_linkdead(port); clients.append(actor)
                 actor.send('inventory'); actor.expect('a banana')
                 actor.send('save'); actor.expect('Saving Taverek.',timeout=30)
-                assert 'finish sorting' not in drain(actor), 'completion replayed on reconnect'
+                assert 'You get ' not in drain(actor), 'completion replayed on reconnect'
                 # The player's own corpse gives the banana back, and the wallet ends
                 # where it was whether the coins went into the corpse or stayed.
                 journey.attack_until_death(actor); actor.expect('ACCOUNT MENU',timeout=45)

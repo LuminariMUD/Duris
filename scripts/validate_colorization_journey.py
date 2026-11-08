@@ -197,7 +197,7 @@ def run(server: Path, inspector: Path, report_path: Path | None) -> None:
                     command(client, "toggle color tell chartreuse", "Unknown color")
                     command(client, "toggle color preview tell yellow", "Sample (tell)")
                     command(client, "toggle color tell", f"tell: {color}.")
-                    command(client, "save", f"Save complete for {character}.")
+                    command(client, "save", f"Saving {character}.")
 
                 def chat_pair(label: str) -> None:
                     for sender, receiver in ((0, 1), (1, 0)):
@@ -342,7 +342,7 @@ def run(server: Path, inspector: Path, report_path: Path | None) -> None:
                         "selected prompt base hid the warning colors")
                 frames.append({"label": "low-resource prompt preview", "terminalAnsi": low.decode("utf-8")})
                 for client, (_, character) in zip(clients, accounts):
-                    command(client, "save", f"Save complete for {character}.")
+                    command(client, "save", f"Saving {character}.")
                     command(client, "quit", "ACCOUNT MENU")
                     client.send("0")
                     client.close()

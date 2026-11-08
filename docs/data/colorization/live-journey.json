@@ -31,7 +31,7 @@
     },
     {
       "command": "save",
-      "expected": "Save complete for Taverek."
+      "expected": "Saving Taverek."
     },
     {
       "command": "toggle color",
@@ -63,7 +63,7 @@
     },
     {
       "command": "save",
-      "expected": "Save complete for Colorbob."
+      "expected": "Saving Colorbob."
     },
     {
       "chat": "selected",
@@ -255,7 +255,7 @@
     },
     {
       "command": "save",
-      "expected": "Save complete for Taverek."
+      "expected": "Saving Taverek."
     },
     {
       "command": "quit",
@@ -263,7 +263,7 @@
     },
     {
       "command": "save",
-      "expected": "Save complete for Colorbob."
+      "expected": "Saving Colorbob."
     },
     {
       "command": "quit",

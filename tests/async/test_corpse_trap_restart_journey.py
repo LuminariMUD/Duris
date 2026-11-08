@@ -397,7 +397,6 @@ def run(binary, backend):
                 drain(actor)
                 actor.send(f"get all {SOURCE}")
                 death = actor.expect("ACCOUNT MENU", timeout=45) + drain(actor)
-                assert "finish sorting your haul" not in death
                 assert "corpse-test ioun stone" not in death and "corpse-test ruby" not in death
                 assert process.poll() is None, "the lethal corpse trap stopped the server"
                 bystander = observer.expect("ACCOUNT MENU", timeout=45) + drain(observer)
@@ -427,7 +426,7 @@ def run(binary, backend):
                 assert "corpse-test ioun stone" in contents and "corpse-test ruby" in contents
                 actor.send("get sword")
                 actor.expect("You get a steel long sword.")
-                assert "finish sorting" not in drain(actor), "an abandoned haul replayed"
+                assert "corpse-test" not in drain(actor), "an abandoned haul replayed"
                 actor.send("save")
                 actor.expect("Saving Taverek.", timeout=30)
                 stop()

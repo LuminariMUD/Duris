@@ -283,7 +283,7 @@ and manual acknowledgement checks from the game-loop persistence path, independe
 of world-event debt. It attempts at most 32 due deferred saves per call with a
 round-robin cursor and checks the bounded 512-slot manual-status table. Deferred
 slots use monotonic due times and character runtime identities so storage reuse
-cannot apply work to a different character. `save` says `Save complete` once the
+cannot apply work to a different character. `save` says `Saving <name>.` once the
 writer has written the save: the writer's completion advances the player's written
 revision (`player_revision_record_written()`). The revision the pipeline acknowledges
 when the writer accepts a save only marks the character clean. A save not written
