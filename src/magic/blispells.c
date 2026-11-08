@@ -1232,9 +1232,8 @@ void event_sandstorm(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 		int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_SANDSTORM);
 		if (!NewSaves(victim, SAVING_SPELL, mod))
 		{
-			spell_damage(ch, victim, sandstorm_damage(live_rolls, level), SPLDAM_GAS, 0,
-				     &messages);
-			if (victim && IS_ALIVE(victim))
+			if (spell_damage(ch, victim, sandstorm_damage(live_rolls, level),
+					 SPLDAM_GAS, 0, &messages) == DAM_NONEDEAD)
 			{
 				blind(ch, victim, sandstorm_blindness(live_rolls));
 			}

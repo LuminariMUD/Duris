@@ -3734,7 +3734,6 @@ void do_consume(P_char ch, char *argument, int /*cmd*/)
 		--af->modifier;
 		REMOVE_BIT(victim->specials.affected_by5, AFF5_DECAYING_FLESH);
 		affect_from_char(victim, SPELL_DECAYING_FLESH);
-		spell_damage(ch, victim, 3 * GET_LEVEL(ch), SPLDAM_GENERIC, 0, 0);
 		act("...with a final gesture, &+L$n&n tears the last bit of &+gr&+Go&+gt&+Gt&+gi&+Gn&+gg&+r flesh&n from $N&n's &+gco&+Lrrod&+ged&n body.&n\r\n",
 		    FALSE, ch, 0, victim, TO_NOTVICT);
 		act("...with a final gesture, &+L$n&n tears the last bit of &+gr&+Go&+gt&+Gt&+gi&+Gn&+gg&+r flesh&n from your&n &+gco&+Lrrod&+ged&n body.&n\r\n",
@@ -3743,7 +3742,13 @@ void do_consume(P_char ch, char *argument, int /*cmd*/)
 		    FALSE, ch, 0, victim, TO_CHAR);
 		act("The mass of &+gflesh&n is quickly absorbed by you, leaving your body &+rstrengthened&n and your &+Lprayers &nrefreshed.&n\n",
 		    FALSE, ch, 0, victim, TO_CHAR);
+		const int result =
+			spell_damage(ch, victim, 3 * GET_LEVEL(ch), SPLDAM_GENERIC, 0, 0);
+		if (result == DAM_CHARDEAD || result == DAM_BOTHDEAD)
+			return;
 		CharWait(ch, PULSE_VIOLENCE);
+		if (result == DAM_VICTDEAD)
+			return;
 	}
 	attack_back(ch, victim, FALSE);
 }
@@ -10372,9 +10377,8 @@ void maul(P_char ch, P_char victim)
 			set_short_affected_by(ch, SKILL_BASH, maul_rest(false));
 		}
 
-		melee_damage(ch, victim, dam, PHSDAM_TOUCH, 0);
-
-		if (!affected_by_spell(victim, SKILL_AWARENESS))
+		if (melee_damage(ch, victim, dam, PHSDAM_TOUCH, 0) == DAM_NONEDEAD &&
+		    !affected_by_spell(victim, SKILL_AWARENESS))
 		{
 			bzero(&af, sizeof(af));
 			af.type = SKILL_AWARENESS;

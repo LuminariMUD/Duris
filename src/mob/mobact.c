@@ -5101,9 +5101,11 @@ void SweepAttack(P_char ch)
 				    FALSE, tch, 0, 0, TO_CHAR);
 				act("$n &+ycrashes to the &+Lground!&n", FALSE, tch, 0, 0, TO_ROOM);
 
-				damage(ch, tch, dice(4, MAX(1, GET_LEVEL(ch) / 4)), TYPE_UNDEFINED);
+				const bool died = damage(ch, tch,
+							 dice(4, MAX(1, GET_LEVEL(ch) / 4)),
+							 TYPE_UNDEFINED);
 				// Dracos hurt themselves via tailsweeps 15-25 damage (not very signifigant since they vamp tho).
-				if (IS_ALIVE(ch) && IS_DRACOLICH(ch))
+				if (!died && IS_DRACOLICH(ch))
 				{
 					damage(tch, ch, dice(4, 11) + 56, TYPE_UNDEFINED);
 				}

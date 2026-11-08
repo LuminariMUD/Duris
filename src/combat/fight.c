@@ -5095,8 +5095,9 @@ int check_shields(P_char ch, P_char victim, int dam, int flags)
 			rnumber -= GET_CHAR_SKILL(victim, SKILL_DEVOTION) / 50;
 
 			// Elite and greater races get a similar bonus also. Jan08 -Lucrot
-			if (IS_NPC(ch) && !affected_by_spell(ch, TAG_CONJURED_PET) &&
-			    GET_LEVEL(ch) >= 51 && (IS_ELITE(ch) || IS_GREATER_RACE(ch)))
+			if (result == DAM_NONEDEAD && IS_NPC(ch) &&
+			    !affected_by_spell(ch, TAG_CONJURED_PET) && GET_LEVEL(ch) >= 51 &&
+			    (IS_ELITE(ch) || IS_GREATER_RACE(ch)))
 			{
 				rnumber = 6;
 			}
@@ -8263,8 +8264,11 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 		act("$n touches you with $s bare hands, draining your life force.", FALSE, ch, 0,
 		    victim, TO_VICT);
 		damage(ch, victim, to_hit, SPELL_VAMPIRIC_TOUCH);
-		affect_from_char(ch, SPELL_VAMPIRIC_TOUCH);
-		vamp(ch, to_hit, static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
+		if (IS_ALIVE(ch))
+		{
+			affect_from_char(ch, SPELL_VAMPIRIC_TOUCH);
+			vamp(ch, to_hit, static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
+		}
 		return FALSE;
 	}
 

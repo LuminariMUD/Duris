@@ -954,7 +954,7 @@ void spell_corrosive_blast(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 		dam >>= 1;
 	}
 
-	if (spell_damage(ch, victim, dam, SPLDAM_ACID, SPLDAM_NOSHRUG, &messages) == DAM_VICTDEAD)
+	if (spell_damage(ch, victim, dam, SPLDAM_ACID, SPLDAM_NOSHRUG, &messages) != DAM_NONEDEAD)
 		return;
 
 	if (!affected_by_spell(victim, SPELL_CORROSIVE_BLAST))
@@ -1177,11 +1177,11 @@ void spell_flameburst(int level, P_char ch, char * /*arg*/, int type, P_char vic
 
 	if (GET_RACE(victim) == RACE_W_ELEMENTAL)
 	{
-		spell_damage(ch, victim, (int)(dam * 1.25), SPLDAM_FIRE,
-			     SPLDAM_NOSHRUG | SPLDAM_ALLGLOBES, &messages);
-		send_to_char(
-			"&+RYour f&+ri&+Re&+rr&+Ry b&+ru&+Rr&+rs&+Rt causes your victim to &+ysizzle &+Rquite nicely!\r\n",
-			ch);
+		if (spell_damage(ch, victim, (int)(dam * 1.25), SPLDAM_FIRE,
+				 SPLDAM_NOSHRUG | SPLDAM_ALLGLOBES, &messages) == DAM_NONEDEAD)
+			send_to_char(
+				"&+RYour f&+ri&+Re&+rr&+Ry b&+ru&+Rr&+rs&+Rt causes your victim to &+ysizzle &+Rquite nicely!\r\n",
+				ch);
 		return;
 	}
 
@@ -1238,10 +1238,8 @@ void spell_scalding_blast(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 
 	if (GET_RACE(victim) == RACE_E_ELEMENTAL)
 	{
-		spell_damage(ch, victim, (int)(dam * 1.25), SPLDAM_ACID,
-			     SPLDAM_NOSHRUG | SPLDAM_ALLGLOBES, &messages);
-
-		if (IS_ALIVE(victim))
+		if (spell_damage(ch, victim, (int)(dam * 1.25), SPLDAM_ACID,
+				 SPLDAM_NOSHRUG | SPLDAM_ALLGLOBES, &messages) == DAM_NONEDEAD)
 		{
 			send_to_char(
 				"&+GThe &+gacid &+Gfrom your spell causes your victim to &+Lsmoke!\r\n",
@@ -1365,9 +1363,8 @@ void spell_molten_spray(int level, P_char ch, char * /*arg*/, int type, P_char v
 
 	if (IS_UNDEADRACE(victim))
 	{
-		spell_damage(ch, victim, (int)(dam * 1.25), SPLDAM_FIRE, SPLDAM_NOSHRUG, &messages);
-
-		if (IS_ALIVE(victim))
+		if (spell_damage(ch, victim, (int)(dam * 1.25), SPLDAM_FIRE, SPLDAM_NOSHRUG,
+				 &messages) == DAM_NONEDEAD)
 		{
 			send_to_char(
 				"&+LThe vile creature &+Rb&+ru&+Rr&+rn&+Rs&n &+Land &+Ys&+yi&+Yz&+yz&+Yl&+ye&+Ys!\r\n",

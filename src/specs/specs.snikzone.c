@@ -89,7 +89,8 @@ int wristthrow_and_gore(P_char ch, P_char pl, int cmd, char * /*arg*/)
 			act("<to the victim>", TRUE, pl, 0, ch, TO_CHAR);
 			act("<to the thrower>", TRUE, ch, 0, pl, TO_CHAR);
 			act("<to the room>", TRUE, ch, 0, pl, TO_ROOM);
-			damage(ch, pl, dice(3, 10), 0);
+			if (damage(ch, pl, dice(3, 10), 0))
+				return TRUE;
 			CharWait(ch, PULSE_VIOLENCE * 3);
 			CharWait(pl, PULSE_VIOLENCE * 2);
 			SET_POS(pl, GET_STAT(pl) + POS_PRONE);
