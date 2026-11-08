@@ -93,15 +93,16 @@ bool persisted_state_absent(std::string *error)
 
 bool save_persisted_state(std::string *error)
 {
-	std::string encoded = tracker.serialize_state(error);
-	if (encoded.empty())
-		return fail(error, "zone-story state serialization returned an empty document");
 	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 		return flatfile_zone_story_quest_state_save(persistence_mode_flatfile_root(),
-							    content_revision(), encoded, error) ==
+							    content_revision(),
+							    tracker.serialize_state(error),
+							    error) ==
 		       flatfile_zone_story_quest_result::ok;
-	return sql_zone_story_quest_state_save(content_revision(), std::move(encoded), error) ==
-	       sql_zone_story_quest_state_result::ok;
+	auto captured = tracker.capture_state();
+	return sql_zone_story_quest_state_save(content_revision(), std::move(captured.parts),
+					       captured.unshared_bytes,
+					       error) == sql_zone_story_quest_state_result::ok;
 }
 
 uint32_t environment_season()
