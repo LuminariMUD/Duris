@@ -77,7 +77,6 @@ extern P_desc descriptor_list;
 extern P_room world;
 extern const char *command[];
 extern const char *dirs[];
-extern void act_convert(char *, const char *, P_char, P_char, P_obj, void *, int);
 extern const struct stat_data stat_factor[];
 extern struct str_app_type str_app[];
 extern struct zone_data *zone_table;
@@ -1058,6 +1057,7 @@ void lance_charge(P_char ch, char *argument)
 		send_to_char("You need a lance to do that!\n", ch);
 		return;
 	}
+	const uint64_t weapon_uid = weapon->obj_uid;
 
 	if (*arg2)
 	{
@@ -1152,7 +1152,22 @@ void lance_charge(P_char ch, char *argument)
 		snprintf(buf, sizeof buf, "$n rears up on you and orders you to charge %s.",
 			 dirs[dir]);
 		act(buf, TRUE, ch, weapon, mount, TO_VICT);
+		const uint64_t charger_id = ch->runtime_id;
+		const uint64_t victim_id = victim->runtime_id;
+		const uint64_t mount_id = mount->runtime_id;
+		const int target_room = victim->in_room;
 		if (!do_simple_move(ch, dir, 0))
+			return;
+		// A successful approach does not guarantee its scripts left the target or lance intact.
+		if (find_character_by_runtime_id(charger_id) != ch ||
+		    find_character_by_runtime_id(victim_id) != victim ||
+		    find_character_by_runtime_id(mount_id) != mount || !IS_ALIVE(ch) ||
+		    !IS_ALIVE(victim) || !IS_ALIVE(mount) || IS_IMMOBILE(mount) ||
+		    ch->in_room != target_room || victim->in_room != target_room ||
+		    mount->in_room != target_room || GET_MOUNT(ch) != mount ||
+		    GET_RIDER(mount) != ch || !find_live_object(weapon, weapon_uid) ||
+		    ch->equipment[WIELD] != weapon || !IS_LANCE(weapon) ||
+		    !CanDoFightMove(ch, victim))
 			return;
 	}
 
@@ -1325,33 +1340,44 @@ void lance_charge(P_char ch, char *argument)
 		// 	&& !IS_SET(victim->specials.act, ACT_SENTINEL)
 		if (continue_dir != -1)
 		{
-			int target_room = world[ch->in_room].dir_option[continue_dir]->to_room;
-			dam = dam + lance_charge_ram_damage(live_rolls);
-			snprintf(buf, sizeof buf,
+			const int source_room = ch->in_room;
+			char actor_text[512], target_text[512], room_text[512];
+			snprintf(actor_text, sizeof actor_text,
 				 "You ram your $q through $N sending both veering out %s.",
 				 dirs[continue_dir]);
-			act(buf, FALSE, ch, weapon, victim, TO_CHAR);
-			snprintf(buf, sizeof buf,
+			snprintf(room_text, sizeof room_text,
 				 "$n rams $s $q through $N sending both veering out %s.",
 				 dirs[continue_dir]);
-			act(buf, FALSE, ch, weapon, victim, TO_NOTVICT);
-			snprintf(buf, sizeof buf,
+			snprintf(target_text, sizeof target_text,
 				 "$n rams $s $q through you sending both veering out %s.",
 				 dirs[continue_dir]);
-			act(buf, FALSE, ch, weapon, victim, TO_VICT);
-			char_from_room(victim);
-			char_to_room(victim, target_room, -1);
-			char_from_room(ch);
-			char_to_room(ch, target_room, -1);
-			set_fighting(ch, victim);
-			snprintf(
-				buf, sizeof buf,
-				"$N is flung to the ground as $n charges in from the %s, with $M impaled on the tip of the $q.",
-				dirs[rev_dir[continue_dir]]);
-			if (!number(0, 100))
-				DamageOneItem(ch, SPLDAM_GENERIC, weapon, FALSE);
-			act(buf, FALSE, ch, weapon, victim, TO_NOTVICT);
-			break;
+			const auto messages = snapshot_forced_departure(
+				ch, victim, actor_text, target_text, room_text, weapon);
+			const auto movement = move_forced_mounted(
+				ch, victim, continue_dir,
+				[&]() {
+					deliver_forced_departure(messages, ch, victim, source_room,
+								 true);
+				});
+			if (movement.status == forced_move_status::interrupted)
+				return;
+			if (movement.status == forced_move_status::arrived)
+			{
+				if (!find_live_object(weapon, weapon_uid) ||
+				    ch->equipment[WIELD] != weapon || !IS_LANCE(weapon) ||
+				    IS_IMMOBILE(mount) || !CanDoFightMove(ch, victim))
+					return;
+				dam = dam + lance_charge_ram_damage(live_rolls);
+				set_fighting(ch, victim);
+				snprintf(
+					buf, sizeof buf,
+					"$N is flung to the ground as $n charges in from the %s, with $M impaled on the tip of the $q.",
+					dirs[rev_dir[continue_dir]]);
+				act(buf, FALSE, ch, weapon, victim, TO_NOTVICT);
+				if (!number(0, 100))
+					DamageOneItem(ch, SPLDAM_GENERIC, weapon, FALSE);
+				break;
+			}
 		}
 		[[fallthrough]];
 	case 4:
@@ -1381,7 +1407,8 @@ void lance_charge(P_char ch, char *argument)
 
 	if (other_weapon)
 	{
-		do_remove(ch, weapon->name, CMD_REMOVE);
+		if (find_live_object(weapon, weapon_uid) && ch->equipment[WIELD] == weapon)
+			do_remove(ch, weapon->name, CMD_REMOVE);
 		do_wield(ch, other_weapon->name, CMD_WIELD);
 	}
 
@@ -4293,16 +4320,6 @@ int chance_kick(P_char ch, P_char victim)
 	return percent_chance;
 }
 
-using forced_departure_message = std::pair<uint64_t, std::string>;
-
-static bool can_receive_forced_departure(P_char recipient, P_char attacker)
-{
-	return recipient->desc && IS_AWAKE(recipient) &&
-	       recipient->specials.z_cord == attacker->specials.z_cord &&
-	       (IS_NPC(recipient) || !recipient->only.pc || !recipient->only.pc->ignored ||
-		recipient->only.pc->ignored != attacker);
-}
-
 // Capture recipient-specific names while both combatants still have valid rooms.
 // The caller sends these only after departure scripts have allowed the move.
 static std::vector<forced_departure_message>
@@ -4330,38 +4347,7 @@ snapshot_forced_departure(P_char ch, P_char victim, int direction, bool tackle, 
 		target_text = rear ? "$n's mighty rearkick sends you flying out of the room!" :
 				     "$n's mighty kick sends you flying out of the room!";
 	}
-	std::vector<forced_departure_message> messages;
-	for (P_char recipient = world[ch->in_room].people; recipient;
-	     recipient = recipient->next_in_room)
-	{
-		if (!can_receive_forced_departure(recipient, ch))
-			continue;
-		const int type = recipient == ch     ? TO_CHAR :
-				 recipient == victim ? TO_VICT :
-						       TO_NOTVICT;
-		const char *message = recipient == ch	  ? actor_text :
-				      recipient == victim ? target_text :
-							    room_text;
-		char rendered[3 * MAX_STRING_LENGTH];
-		act_convert(rendered, message, ch, recipient, nullptr, victim, type);
-		messages.emplace_back(recipient->runtime_id, rendered);
-	}
-	return messages;
-}
-
-static void deliver_forced_departure(const std::vector<forced_departure_message> &messages,
-				     P_char ch, P_char victim, int source, bool paired)
-{
-	for (const auto &message : messages)
-	{
-		P_char recipient = find_character_by_runtime_id(message.first);
-		if (!recipient || !can_receive_forced_departure(recipient, ch))
-			continue;
-		const int expected_room =
-			recipient == victim || (paired && recipient == ch) ? NOWHERE : source;
-		if (recipient->in_room == expected_room)
-			send_to_char(message.second.c_str(), recipient);
-	}
+	return snapshot_forced_departure(ch, victim, actor_text, target_text, room_text);
 }
 
 static void forced_rebound_messages(P_char ch, P_char victim, forced_block reason, bool tackle)
