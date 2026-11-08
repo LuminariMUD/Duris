@@ -4,10 +4,93 @@
 &+R                   PWIPE HAPPENED &+YOCT 28TH 1800 UTC!&n
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
 &+W======================================================================&n
-&+WUpdated: November 07, 2026&n
+&+WUpdated: November 08, 2026&n
 
-Welcome back! Collect matching gear and catch up on your abilities.
+Welcome back! Rediscover your gear's powers and keep your bearings at sea.
 Newest first; later updates replace older rules. Longer archive on web.
+
+&+R11/07/26 - 11/08/26&n &+L-&n &+YOld steel, renewed powers&n
+&+W----------------------------------------------------------------------&n
+
+&+CWeapons and worn gear&n
+&+Y-&n The lightning sword's special strike now fires, about &+Y1 hit in 33&n.
+  A killing bolt destroys only that victim's corpse, leaving its
+  contents on the ground.
+&+Y-&n Gauntlets of legend grant Stoneskin every &+Ythree minutes&n while you
+  are hurt and lack a skin. Their &+Y1-in-10&n combat effect can heal you
+  below half HP and damage a wounded opponent. The buckler of the saints
+  can heal its hurt wearer every &+Ythree minutes&n.
+&+Y-&n The deathseeker mace and illithid axe regain their periodic healing
+  or invigorating effects, with a &+Y50%&n chance on each periodic check.
+&+Y-&n Demon Slayer again drains undead wearers, stopping at &+Y1 HP&n.
+  Vecna's stone mist can strip Stoneskin. Tripboots and blindbadge
+  can trip or blind opponents, but can backfire on their wearer.
+  Fumblegaunts can grant extra strikes or make you drop your weapon.
+  The dragon skull helm regains its periodic senses and undead attack.
+&+Y-&n The alchemist's bag refills again, only while empty. The Snow Ogres'
+  berserker can toss opponents again, and its flesh golem summons the
+  intended temporary helper to attack its current opponent.
+&+Y-&n Good and evil swords can repeat their special flurries; their group
+  Armor and Bless reach the intended groupmates. Holy weapons correctly
+  compare caster groupmates' remaining health when choosing whom to rescue.
+&+Y-&n Removing a vigor mask removes its Vitality. Dragonslayer drops cleanly
+  when you exceed its level limit. Living necroplasm fits centaur bodies
+  correctly; the escape from the Gods' battle plane finds its destination.
+&+Y-&n The staff of blue flames imposes its full &+Y2.75-round&n delay. Shaboath
+  traps and summoning reject creatures in the wrong condition. Failed
+  stat-pool attempts inflict the intended &+Y50 damage&n.
+&+Y-&n Treasure chests react only when you open that chest, rather than any
+  door or container nearby. Their potion reward handles missing stock.
+&+Y-&n Weapon effects follow the creature actually struck, including a
+  redirected grapple hit. Several weapon, armor and creature effects
+  now stop safely when their target, wearer or object disappears.
+  Their messages name the proper actor and reach the proper recipients.
+&+Y-&n A holy weapon that leaps to an ally reaches that ally even if its
+  rebuke kills its former holder, rather than disappearing with them.
+
+&+CMonks travel lighter&n
+&+Y-&n Loose inventory no longer reduces base monk attacks. Each equipped
+  item counts at half its effective weight, rounded down separately;
+  every full &+Y10 lb&n above &+YStrength / 2&n costs one base attack,
+  leaving at least one. Worn bags include their effective contents.
+&+Y-&n Weapons, held items, shields and equipped lights still limit monks
+  to one base attack. Armor class and bare-hand damage use full equipped
+  weight under their separate allowances. Read &+C'help martial arts'&n
+  for the complete rules and &+C'skills info martial arts'&n for your values.
+
+&+CShips and bearings&n
+&+Y-&n Ship contacts and tactical maps correctly follow the short route
+  across wrapping oceans. Equal-speed followers no longer lose a target
+  just because its hull moved first; idle target locks expire normally.
+&+Y-&n Ocean PvP detection uses actual sensor range. Sloops and unarmed
+  yachts do not count as opposing warships for that detection.
+
+&+CQuests and familiar feedback&n
+&+Y-&n Portable gear no longer makes a bartender ASK target unusable.
+  Talish can also be addressed as &+C'bartender'&n.
+&+Y-&n Corpse looting again reports each acquired item with &+C'You get ...'&n.
+  Saving reports &+C'Saving <name>.'&n only after the save finishes;
+  ordinary movement in combat uses the familiar combat refusal.
+&+Y-&n &+C'race info <race>'&n shows numeric base combat pulses and the casting
+  time multiplier, making racial timing easier to compare.
+
+&+CCombat choices that follow your training&n
+&+Y-&n Dragon Breath uses its own skill to select the requested spell;
+  Mounted Combat still controls the mount. Any positive Expedited
+  Retreat rating lets you try a new direction while tanking.
+&+Y-&n Lance Charge checks the actual exit's walls, avoids the reverse
+  route when appropriate, and stops when movement fails. Tackle checks
+  the target's quadruped body when applying its size restriction.
+&+Y-&n Gaining a skill point no longer makes Rush or Rescue fail its roll.
+  Both stop safely if a reaction kills or moves a participant.
+
+&+CHelp for your next adventure&n
+&+Y-&n New help explains &+C'black kush'&n, &+C'lifeleak'&n, &+C'moveleak'&n,
+  &+C'saving throws'&n, &+C'detect subversion'&n, &+C'battlefield aid'&n and
+  &+C'interception'&n, including the limits of the current abilities.
+&+Y-&n Try &+C'help rested experience'&n, &+C'help exp loss'&n or
+  &+C'help create chest'&n. Shorter named-set, lockpick, ship-list and
+  Sorcerer-skill searches now lead to the existing guides.
 
 &+R11/06/26 - 11/07/26&n &+L-&n &+YMore sets, sharper spells&n
 &+W----------------------------------------------------------------------&n
