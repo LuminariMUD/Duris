@@ -3317,17 +3317,16 @@ void do_pick(P_char ch, char *argument, int /*cmd*/)
 		 * else if( ((percent - IS_SET (obj->value[1], CONT_HARDPICK) ? 30 : 0) > BOUNDED (0, chance, 100)) ||
 		 * IS_SET (obj->value[1], CONT_PICKPROOF)) {
 		 */
-		else if ((percent > chance) || IS_SET(obj->value[1], CONT_PICKPROOF))
+		else if ((percent > BOUNDED(0, chance, 100)) ||
+			 IS_SET(obj->value[1], CONT_PICKPROOF))
 		{
 			send_to_char("You failed to pick the lock.\n", ch);
 			notch_skill(ch, SKILL_PICK_LOCK, 25);
 			CharWait(ch, pick_lock_lag());
-			percent = percent - chance + pick->value[1] -
-						  IS_SET(obj->value[1], CONT_HARDPICK) ?
-					  15 :
-					  0;
+			percent = percent - chance + pick->value[1] +
+				  (IS_SET(obj->value[1], CONT_HARDPICK) ? 15 : 0);
 			if (IS_SET(obj->value[1], CONT_PICKPROOF))
-				percent -= 20; /*
+				percent += 20; /*
 				                * higher chance to break picks
 				                */
 			if ((percent > -1) && (number(-1, percent) > 0))
@@ -3380,7 +3379,7 @@ void do_pick(P_char ch, char *argument, int /*cmd*/)
 			CharWait(ch, pick_lock_lag());
 			percent = percent - chance + pick->value[1];
 			if (IS_SET(EXIT(ch, door)->exit_info, EX_PICKPROOF))
-				percent -= 20; /*
+				percent += 20; /*
 				                * higher chance to break picks
 				                */
 			if ((percent > -1) && (number(-1, percent) > 0))

@@ -52,6 +52,7 @@
 #include <utility>
 #include <vector>
 #include "world/buildings.h"
+#include "combat/attack_continuation.h"
 #include "combat/damage.h"
 #include "combat/forced_movement.h"
 #include "combat/grapple.h"
@@ -1151,7 +1152,8 @@ void lance_charge(P_char ch, char *argument)
 		snprintf(buf, sizeof buf, "$n rears up on you and orders you to charge %s.",
 			 dirs[dir]);
 		act(buf, TRUE, ch, weapon, mount, TO_VICT);
-		do_simple_move(ch, dir, 0);
+		if (!do_simple_move(ch, dir, 0))
+			return;
 	}
 
 	// calculate dir for continued charge
@@ -1164,8 +1166,8 @@ void lance_charge(P_char ch, char *argument)
 		{
 			if (world[ch->in_room].dir_option[i])
 			{
-				if (CAN_GO(ch, i) && !check_wall(ch->in_room, dir) &&
-				    (dir == -1 || dir != rev_dir[dir]) &&
+				if (CAN_GO(ch, i) && !check_wall(ch->in_room, i) &&
+				    (dir == -1 || i != rev_dir[dir]) &&
 				    can_enter_room(ch, EXIT(ch, i)->to_room, 0))
 				{
 					available_exits++;
@@ -1179,8 +1181,8 @@ void lance_charge(P_char ch, char *argument)
 		{
 			if (world[ch->in_room].dir_option[i])
 			{
-				if (CAN_GO(ch, i) && !check_wall(ch->in_room, dir) &&
-				    (dir == -1 || dir != rev_dir[dir]) &&
+				if (CAN_GO(ch, i) && !check_wall(ch->in_room, i) &&
+				    (dir == -1 || i != rev_dir[dir]) &&
 				    can_enter_room(ch, EXIT(ch, i)->to_room, 0))
 				{
 					if (!choice--)
@@ -3873,8 +3875,8 @@ void rush(P_char ch, P_char victim)
 
 	CharWait(ch, rush_lag());
 
-	if (notch_skill(ch, SKILL_RUSH, get_property("skill.notch.offensive", 7)) ||
-	    number(1, 100) > GET_CHAR_SKILL(ch, SKILL_RUSH))
+	notch_skill(ch, SKILL_RUSH, get_property("skill.notch.offensive", 7));
+	if (number(1, 100) > GET_CHAR_SKILL(ch, SKILL_RUSH))
 	{
 		act("$n rushes toward $N in a furious rage, but misses $s target completely.",
 		    FALSE, ch, 0, victim, TO_NOTVICT);
@@ -3892,10 +3894,16 @@ void rush(P_char ch, P_char victim)
 
 		if (GET_OPPONENT(ch))
 		{
+			const attack_continuation continuation =
+				begin_attack_continuation(ch, victim);
 			// The person you are rushing away from gets a free attack.
 			hit(GET_OPPONENT(ch), ch, GET_OPPONENT(ch)->equipment[PRIMARY_WEAPON]);
+			if (!check_attack_continuation(continuation).can_continue())
+				return;
 			stop_fighting(ch);
 			set_fighting(ch, victim);
+			if (!check_attack_continuation(continuation).can_continue())
+				return;
 		}
 
 		hit(ch, victim, ch->equipment[PRIMARY_WEAPON]);
@@ -4945,6 +4953,7 @@ std::string dragon_breath_facts(P_char ch)
 	       "  The circle it spends picks the spell, cast at your dragon's level:\n"
 	       "    1-2 burning hands, 3-4 flameburst, 5-6 molten spray,\n"
 	       "    7-8 fireball, 9-10 magma burst, 11-12 immolate.\n"
+	       "  Dragon breath skill controls your chance to select the requested spell.\n"
 	       "  With no circle prepared, it does nothing.\n";
 }
 
@@ -4954,7 +4963,7 @@ void do_dragon_breath(P_char ch, char *argument, int /*cmd*/)
 	int skl_lvl = 0;
 	int percent_chance;
 	bool is_priest = FALSE;
-	char name[MAX_INPUT_LENGTH];
+	char name[MAX_INPUT_LENGTH] = {};
 	char buf[MAX_STRING_LENGTH];
 	char spellName[MAX_INPUT_LENGTH] = {};
 
@@ -5245,7 +5254,7 @@ void do_dragon_breath(P_char ch, char *argument, int /*cmd*/)
 							(95 *
 							 GET_CHAR_SKILL(ch, SKILL_DRAGON_BREATH)) /
 							100;
-						select_chance = BOUNDED(1, percent_chance, 99);
+						select_chance = BOUNDED(1, select_chance, 99);
 
 						if (((select_chance + power) > number(1, 100)))
 						{
@@ -6013,7 +6022,6 @@ bool roundkick(P_char ch, P_char victim)
 			    FALSE, ch, 0, victim, TO_VICT);
 			act("$n swings about and delivers a &+ymighty roundhouse kick&n to $N!",
 			    FALSE, ch, 0, victim, TO_NOTVICT);
-			CharWait(victim, (int)(PULSE_VIOLENCE * 0.5));
 			SET_POS(victim, POS_KNEELING + GET_STAT(victim));
 		}
 		else
@@ -6886,6 +6894,8 @@ int sneaky_strike_bleed_damage(const Rolls &rolls)
 void event_bleedproc(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 {
 	int count = *((int *)data);
+	if (count <= 0)
+		return;
 
 	// Deliver damage with no reductions or messages.
 	if (raw_damage(ch, victim, sneaky_strike_bleed_damage(live_rolls), PHSDAM_NOREDUCE, NULL) !=
@@ -6906,11 +6916,10 @@ void event_bleedproc(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 		act("$n&+r's wound gushes &+Rblood &+rall over the surrounding area.", TRUE, victim,
 		    NULL, NULL, TO_NOTVICT);
 	}
-	make_bloodstain(ch);
+	make_bloodstain(victim);
 
-	if (count >= 0)
+	if (--count > 0)
 	{
-		count--;
 		add_event(event_bleedproc, PULSE_VIOLENCE, ch, victim, 0, 0, &count, sizeof(count));
 	}
 	else
@@ -6951,10 +6960,10 @@ static int sneaky_strike_damage(P_char ch, int dam, int multiplier, int skill)
 	return dam;
 }
 
-// The rolled rounds of an assassin's bleed; event_bleedproc runs two more than this.
+// The full number of bleeding rounds from an assassin's strike.
 static int sneaky_strike_bleed_rounds(const Rolls &rolls)
 {
-	return rolls.number(4, 7);
+	return rolls.number(6, 9);
 }
 
 // The vitality a mercenary's strike takes from a player.
@@ -6998,8 +7007,8 @@ std::string sneaky_strike_facts(P_char ch)
 	if (GET_SPEC(ch, CLASS_ROGUE, SPEC_ASSASSIN))
 		facts += fact("Follow-up",
 			      "a stab and " +
-				      show({ sneaky_strike_bleed_rounds(lowest_rolls) + 2,
-					     sneaky_strike_bleed_rounds(highest_rolls) + 2 }) +
+				      show({ sneaky_strike_bleed_rounds(lowest_rolls),
+					     sneaky_strike_bleed_rounds(highest_rolls) }) +
 				      " rounds of bleeding") +
 			 fact("Bleeding per round",
 			      show({ sneaky_strike_bleed_damage(lowest_rolls),
@@ -7220,8 +7229,7 @@ void event_sneaky_strike(P_char ch, P_char victim, P_obj obj, void *data)
 				    FALSE, ch, 0, victim, TO_CHAR);
 				act("$n &+yseems to fill with unearthly &+RRAGE&+y, and strikes $N &+ywith all of their &+Bmight&+y!",
 				    TRUE, ch, 0, victim, TO_NOTVICT);
-				Stun(victim, victim, PULSE_VIOLENCE, FALSE);
-				;
+				Stun(victim, ch, PULSE_VIOLENCE, FALSE);
 			}
 			else
 			{
@@ -7612,6 +7620,8 @@ bool single_stab(P_char ch, P_char victim, P_obj weapon)
 		       (critical_stab_threshold(ch) > number(1, 100));
 	}
 
+	// Criticals bypass ordinary awareness, but still take the recent-backstab penalty.
+	// The critical damage bonus is applied after that penalty.
 	if (((IS_AFFECTED(victim, AFF_AWARE) || IS_AFFECTED(victim, AFF_SKILL_AWARE)) && !crit &&
 	     !IS_AFFECTED(victim, AFF_KNOCKED_OUT)) ||
 	    affected_by_spell(victim, SKILL_BACKSTAB))
@@ -9189,7 +9199,7 @@ std::string tackle_facts(P_char)
 	       fact("Stun if you land prone and fail a constitution roll",
 		    seconds(tackle_self_stun())) +
 	       fact("Your lag if the target is more than a size off", seconds(tackle_size_lag())) +
-	       fact("Your lag if a centaur or drider is at least your size",
+	       fact("Your lag if a centaur, quadruped or drider is at least your size",
 		    seconds(tackle_body_lag())) +
 	       fact("Your lag if the target is asleep",
 		    seconds(takedown_sleeping_target_lag()) + " (you attack it instead)") +
@@ -9252,7 +9262,7 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 	appear(ch);
 
 	if ((has_innate(vict, INNATE_HORSE_BODY) || has_innate(vict, INNATE_SPIDER_BODY) ||
-	     GET_RACE(ch) == RACE_QUADRUPED) &&
+	     GET_RACE(vict) == RACE_QUADRUPED) &&
 	    (get_takedown_size(ch) <= get_takedown_size(vict)))
 	{
 		act("$n makes a futile attempt to tackle $N, but $E is simply immovable.", FALSE,
@@ -9631,7 +9641,7 @@ static std::string retreat_page(P_char ch)
 			    " in 100; 5 less for each other attacker") +
 	       fact("Your lag", seconds(retreat_lag())) +
 	       "  A retreat while tanking can only go back the way you came, unless your\n"
-	       "  expedited retreat rating is between 1 and 19.\n";
+	       "  expedited retreat rating is positive.\n";
 }
 
 std::string retreat_facts(P_char ch)
@@ -9784,7 +9794,7 @@ void do_retreat(P_char ch, char *arg, int /*cmd*/)
 	{
 		if (!backdir)
 		{
-			if (expdr && expdr < 20)
+			if (expdr > 0)
 				send_to_char(
 					"&+wKnowing well that it is nearly impossible, you attempt an expeditious retreat in a new direction!&n\n",
 					ch);
@@ -10006,8 +10016,8 @@ void rescue(P_char ch, P_char rescuee, bool rescue_all)
 		if (!found)
 		{
 			found = TRUE;
-			if (notch_skill(ch, SKILL_RESCUE, get_property("skill.notch.rescue", 10)) ||
-			    number(1, 100) > GET_CHAR_SKILL(ch, SKILL_RESCUE))
+			notch_skill(ch, SKILL_RESCUE, get_property("skill.notch.rescue", 10));
+			if (number(1, 100) > GET_CHAR_SKILL(ch, SKILL_RESCUE))
 			{
 				act("$n futilely tries to rescue $N!", FALSE, ch, 0, rescuee,
 				    TO_NOTVICT);
@@ -10045,10 +10055,13 @@ void rescue(P_char ch, P_char rescuee, bool rescue_all)
 				}
 
 				if (!rescue_all && GET_CHAR_SKILL(ch, SKILL_CLEAVE))
+				{
+					const attack_continuation continuation =
+						begin_attack_continuation(ch, t_ch);
 					cleave(ch, t_ch);
-
-				if (GET_STAT(t_ch) == STAT_DEAD)
-					return;
+					if (!check_attack_continuation(continuation).can_continue())
+						return;
+				}
 
 				send_to_char("&+WBanzai! To the rescue...\n", ch);
 				act("&+WYou are rescued by $N&+W, you are confused, but grateful!",

@@ -724,7 +724,7 @@ int calculate_harpy_time(P_char ch, int circle, bool bStatOnly)
 
 	if (!bStatOnly && IS_AFFECTED(ch, AFF_MEDITATE) &&
 	    (notch_skill(ch, SKILL_MEDITATE, (int)get_property("skill.notch.meditate", 3)) ||
-	     GET_CHAR_SKILL(ch, SKILL_MEDITATE) < number(0, 100)))
+	     GET_CHAR_SKILL(ch, SKILL_MEDITATE) > number(0, 100)))
 	{
 		remem_time /= 2;
 	}

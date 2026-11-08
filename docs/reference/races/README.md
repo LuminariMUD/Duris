@@ -5,6 +5,8 @@ restrictions, mechanics, strengths, weaknesses, and balance rationale. Use one
 Markdown file per race, such as `human.md`, with links to the relevant source and
 tests. Distinguish verified behavior from balance estimates and design judgments.
 
+- [PC racial stats](race-stats.md): racial factors, effective-stat calculations,
+  gameplay consumers, resource formulas, and gearing breakpoints.
 - [PC race size](race-size.md): complete race size assignments, growth and form
   changes, combat target limits, physical mass, and other gameplay effects.
 - [Race size issues](race-size-issues.md): potential bugs, the six inconsistent
