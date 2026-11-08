@@ -1,6 +1,7 @@
 # Issue #812: owner-based random treasure for pet kills
 
-Status: planned; no gameplay changes implemented.
+Status: implemented and qualified locally on
+`branch/issue-812-pet-random-treasure`; final commit/PR delivery in progress.
 Date: 2026-11-08.
 Issue: [#812 — Pet finishing blows ignore the owner's luck and Hardcore random-drop bonus](https://github.com/LuminariMUD/Duris/issues/812).
 Source inspected: local `master` at `628dfce559c81c484d88dcf139e93c7a2569fe7d`.
@@ -24,7 +25,7 @@ It does not change XP or kill attribution elsewhere, group rewards, recipes,
 dragon scales, soul shards, drop rates/configuration values, pet ownership
 rules, or corpse/loot access. No migration or production operation is needed.
 
-## Verified current behavior
+## Verified baseline behavior (before implementation)
 
 - [`die()`](../../src/combat/fight.c) calls
   `random_equipment_kill_drop(killer, ch)` before corpse handling. Other special
@@ -212,6 +213,60 @@ admission, messages, corpse delivery, and unaffected golden cases remain
 correct. Deliver the implementation, focused tests, and documentation as one
 coherent change. Deployment is separate.
 
-Planning validation: issue and owning source/test paths were inspected;
-document links and whitespace were checked. No build, executable regression,
-gameplay test, or deployment was performed as part of writing this plan.
+## Implementation handoff
+
+- Worktree: `C:/Users/apexw/.codex/worktrees/issue-812-pet-random-treasure/duris`.
+  The plan moved here from the original checkout; use this copy as the reference.
+- Plan committed/pushed as `d3a8eebc8`. Production change is limited to the
+  three item-module files above; existing harnesses supply the proof. Ablation
+  retained the source-room argument because remote owners otherwise change
+  zone rewards; no shared reward framework or configuration switch is needed.
+- New executable owner/pet parity assertions failed on the original source
+  at `decision(false,piece,seed)==decision(true,piece,seed)` under ASan/UBSan.
+  Evidence: `bin/tests/issue812-red.log`.
+- Production ownership/location changes are implemented. The six focused Python
+  checks listed above passed (`bin/tests/issue812-focused.log`), including 1,480
+  golden cases and RNG sentinels plus new owner/pet assertions under ASan/UBSan.
+  Only the four pet-kill rows and matching sentinels changed. Three now reject
+  victims more than ten levels below their level-62 owner; the level-62 victim
+  uses owner luck 60 instead of pet luck 160. The remote owner's guild room no
+  longer determines any generation location.
+- Both builds completed: `make -C src -j8 CC='ccache g++'` (MariaDB, default
+  `bin/server/dms_new`) and the flat-file variant with
+  `PERSISTENCE_BACKEND=flatfile DMS_BINARY=../bin/server/dms_flat`.
+  Logs: `bin/tests/issue812-build.log`, `issue812-build-verify.log`, and
+  `issue812-flat-build.log`.
+- Final expanded sanitizer check passed (`bin/tests/issue812-golden-final.log`).
+  The disposable gameplay check passed using
+  `TMPDIR=/home/aiwithapex/projects/duris/bin/tests python3
+  tests/async/run_pet_random_drop_journey.py bin/server/dms_flat`.
+  It exercised a real `givepet` link, ordered pet finishing blow, one owner
+  salvage message, corpse get, duplicate-get rejection, and inventory presence.
+  Evidence: `bin/tests/issue812-journey.log`, `issue812-pet-transcript.txt`, and
+  `issue812-pet-server.log`. The server shut down cleanly. No existing game,
+  production data, or checkout `.env` was used.
+- Run Linux tools through WSL from
+  `/mnt/c/Users/apexw/.codex/worktrees/issue-812-pet-random-treasure/duris`, with
+  `GIT_DIR=/home/aiwithapex/projects/duris/.git/worktrees/duris` and `GIT_WORK_TREE`
+  set to that `/mnt/c/.../duris` path. This handles the managed Windows worktree's
+  shared WSL Git metadata. Native Git works for inspection/staging; WSL Git
+  runs repository shell hooks. Worktree-specific `core.autocrlf=false` and
+  `core.filemode=false` preserve LF bytes and avoid Windows mode noise.
+  `core.symlinks=false` matches the native checkout's symlink representation.
+  The worktree is locked with an explanatory reason to retain its cross-platform
+  registration. Use POSIX `TMPDIR=/home/aiwithapex/projects/duris/bin/tests` for
+  the gameplay journey: NTFS cannot supply the store's private directory modes.
+- On this mount, ordinary `scripts/format.sh --check` reports only fictitious
+  100644-to-100755 changes: git-clang-format uses `os.stat()` for worktree
+  output even with `core.filemode=false`. Use `scripts/format.sh --staged --check`
+  after staging; it uses index modes while checking the same changed lines and
+  complete touched files. This check passed (`bin/tests/issue812-format-staged.log`),
+  as did `git diff --check`. No repository tooling or mode changes are needed.
+- The default clang-tidy selected incompatible GCC 16 headers (standard-library
+  `__builtin_popcountg` / iterator parse errors). The same staged check passed
+  with installed `/usr/bin/clang-tidy` (LLVM 18) and
+  `--extra-arg=--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13`.
+  `bin/tools/issue812-clang-tidy` is a local wrapper supplying that argument;
+  set `CLANG_TIDY` to its absolute WSL path when committing here. Evidence:
+  `bin/tests/issue812-tidy.log` (`tidy: changed lines are clean`). Hooks remain
+  enabled and repository tooling is unchanged.

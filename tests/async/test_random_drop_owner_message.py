@@ -14,7 +14,6 @@ for kind in ("equipment", "material"):
     call = drops[drops.index(message) :]
     assert call.split(")", 1)[0].split(",")[-1].strip() == "credited_killer", kind
 
-# The rolls and the item still use the actual killer's level and luck.
+# Roll entry points retain the kill location; executable golden tests prove owner rewards.
 assert "check_random_drop(killer, victim, TRUE)" in drops
-assert "create_random_eq(killer, GET_LEVEL(killer), GET_LEVEL(victim), -1, -1)" in " ".join(drops.split())
 print("random drop owner message passed")
