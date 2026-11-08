@@ -107,7 +107,7 @@ reset_remaining=$("${MYSQL[@]}" "$DB_NAME" < "$WORK/flight-reset.sql")
 [[ "$reset_remaining" == 0 ]]
 [[ $("${MYSQL[@]}" "$DB_NAME" -e "SELECT COUNT(*) FROM player_data WHERE learned_flight_stops <> 0") == 0 ]]
 
-# The zone-story state is saved through sql_queue() on the writer: a state above 64 KiB
+# The zone-story state is saved through sql_queue_sized_work() on the writer: a state above 64 KiB
 # is stored whole on the same schema.
 g++ -std=c++20 -Wall -Wextra -Wpedantic -Werror -pthread -ffunction-sections -fdata-sections \
     -Isrc "${MYSQL_CFLAGS[@]}" tests/async/zone_story_state_mysql_harness.cpp tests/async/harness_stubs.cpp \
