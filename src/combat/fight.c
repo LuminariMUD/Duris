@@ -9889,6 +9889,19 @@ std::string expert_parry_facts(P_char ch)
 		    chance_under(rating, 1, 250));
 }
 
+// One roll with the odds parry has always had: a 4 in `learned` chance of exactly 5,
+// otherwise an even roll from 1 to `learned`. Rolling over learned squared keeps those
+// odds exact. Do not simplify this to a floor of 5: that changes every parry chance.
+static int parry_roll(int learned)
+{
+	if (learned < 5)
+		return 5;
+	const int roll = number(1, learned * learned);
+	if (roll <= 4 * learned)
+		return 5;
+	return roll % learned + 1;
+}
+
 int parrySucceed(P_char victim, P_char attacker, P_obj wpn)
 {
 	int learnedvictim = GET_CHAR_SKILL(victim, SKILL_PARRY);
@@ -10034,8 +10047,8 @@ int parrySucceed(P_char victim, P_char attacker, P_obj wpn)
 
 	// Generate attacker and victim ranges.
 	int defroll, attroll;
-	defroll = MAX(5, number(1, learnedvictim));
-	attroll = MAX(5, number(1, learnedattacker));
+	defroll = parry_roll(learnedvictim);
+	attroll = parry_roll(learnedattacker);
 
 	// debug("Defroll (%d), Attroll (%d)", defroll, attroll);
 
