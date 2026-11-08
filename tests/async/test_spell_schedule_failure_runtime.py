@@ -252,6 +252,7 @@ source = PRELUDE + '\n'.join([
     extract(CAST, 'void StopCasting('),
     extract(CAST, 'static bool schedule_spellcast('),
     extract(MEM, 'static bool schedule_memorize('),
+    extract(MEM, 'static int64_t spell_preparation_by_circle('),
     extract(MEM, 'int64_t spell_preparation_estimate('),
 ]) + DRIVER
 with tempfile.TemporaryDirectory(prefix='spell-schedule-') as directory:

@@ -106,8 +106,10 @@ static void display(P_char ch, int64_t expected, bool active) {
         (active ? "remaining: " : "if started now: ") +
         std::to_string((expected + WAIT_SEC - 1) / WAIT_SEC) + " seconds.";
     assert(output.find(text) != std::string::npos);
-    assert(output.find("Meditation may shorten this estimate.") != std::string::npos);
-    assert(output.find("(  ") == std::string::npos);
+    assert(output.find(" seconds)\n") != std::string::npos);
+    assert(output.find("Higher circles") == std::string::npos);
+    assert(output.find("Meditation may") == std::string::npos);
+    assert(output.find("already recovering") == std::string::npos);
     if (active) {
         assert(rolls == old_rolls && notches == old_notches);
         assert(ch->nevents == old_event && ch->nevents->due_tick == due);
@@ -174,6 +176,15 @@ int main() {
     output.clear();
     do_assimilate(&paused, const_cast<char *>("nl"), CMD_TUPOR);
     assert(output.empty() && !paused.nevents && !rolls && !notches);
+    // Each short circle keeps its own row, showing that circle's share of the total.
+    char_data rows{};
+    SET_POS(&rows, STAT_NORMAL | POS_STANDING);
+    rows.player.m_class = CLASS_ETHERMANCER;
+    rows.specials.undead_spell_slots[1] = 1;
+    rows.specials.undead_spell_slots[2] = 2;
+    display(&rows, 144, false);
+    assert(output.find(" 1st circle:  1 of  3   (  30 seconds)\n") != std::string::npos);
+    assert(output.find(" 2nd circle:  2 of  3   (   6 seconds)\n") != std::string::npos);
 }
 """
 source = PRELUDE + '\n'.join([
@@ -181,6 +192,7 @@ source = PRELUDE + '\n'.join([
     extract(MEM, 'static bool schedule_memorize('),
     extract(MEM, 'void handle_undead_mem('),
     extract(MEM, 'static bool uses_slot_recovery('),
+    extract(MEM, 'static int64_t spell_preparation_by_circle('),
     extract(MEM, 'int64_t spell_preparation_estimate('),
     extract(MEM, 'void event_memorize('),
     extract(MEM, 'void do_assimilate('),
