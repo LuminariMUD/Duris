@@ -13,8 +13,8 @@
     "id": "0061_zone_story_quest_state_parts",
     "sequence": 62,
     "apply_checksum": "885d73ea5a0b4ae19f9e85dc6035bdb9edcf43859532e40368b4eb1281750a27",
-    "verify_checksum": "462885b77b0bc0d7193a58e4e05f9306bbdf9e44a669e96c13be8de38f0036ef",
-    "history_checksum": "98c480d1bc60301cd614c99a96610bfbb66f2e1b3d5ff46e3dbbccd0bf479eaa"
+    "verify_checksum": "9d4d92299da2eef085d0fc2b533d96b73e5037c9bb4b69a2e0b221bdf1d2b80e",
+    "history_checksum": "f4c052d87b2f77700373a6dd42ff6cb471e284577dba8afa443f543d16fb61fc"
   },
   "connection": {
     "character_set": "utf8mb4",

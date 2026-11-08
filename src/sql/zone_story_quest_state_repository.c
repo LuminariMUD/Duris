@@ -105,14 +105,21 @@ sql_zone_story_quest_state_save(uint32_t catalog_revision,
 				std::vector<std::shared_ptr<const std::string>> parts,
 				size_t unshared_bytes, std::string *error)
 {
-	/* Each part is saved in its own statement, below the 16 MiB packet and column limits;
-	 * the document as a whole has no such limit. */
+	/* Each part is saved in its own statement, below the 16 MiB packet and column limits
+	 * with room for escaped newlines; the document as a whole has no such limit. */
 	if (!catalog_revision || parts.empty())
 	{
 		if (error)
 			*error = "zone-story SQL state is invalid";
 		return sql_zone_story_quest_state_result::invalid;
 	}
+	for (const auto &part : parts)
+		if (part->size() >= 15U * 1024U * 1024U)
+		{
+			if (error)
+				*error = "zone-story SQL state part is oversized";
+			return sql_zone_story_quest_state_result::invalid;
+		}
 #ifdef __NO_MYSQL__
 	(void)catalog_revision;
 	(void)unshared_bytes;

@@ -135,6 +135,11 @@ int main()
 				sql_zone_story_quest_state_result::ok &&
 			loaded == state,
 		"a shorter save kept stale parts: " + error);
+	// A part one statement cannot hold is refused before it reaches the writer.
+	require(sql_zone_story_quest_state_save(
+			7, { std::make_shared<const std::string>(15U * 1024U * 1024U, 'r') }, 0,
+			&error) == sql_zone_story_quest_state_result::invalid,
+		"an oversized part was queued");
 	std::cout << "zone-story state above 64 KiB stored and read back\n";
 	return 0;
 }

@@ -119,9 +119,9 @@ constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 62;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
 	"885d73ea5a0b4ae19f9e85dc6035bdb9edcf43859532e40368b4eb1281750a27";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"462885b77b0bc0d7193a58e4e05f9306bbdf9e44a669e96c13be8de38f0036ef";
+	"9d4d92299da2eef085d0fc2b533d96b73e5037c9bb4b69a2e0b221bdf1d2b80e";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"98c480d1bc60301cd614c99a96610bfbb66f2e1b3d5ff46e3dbbccd0bf479eaa";
+	"f4c052d87b2f77700373a6dd42ff6cb471e284577dba8afa443f543d16fb61fc";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";
