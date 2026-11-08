@@ -529,6 +529,8 @@ PINS = r'''
                             "  Cold at song level above 17: 3 in 4\n  Gas at song level above 19: 3 in 4\n  Acid at song level above 21: 3 in 4\n  Lightning at song level above 23: 3 in 4\n");
     HAS(song_drifting_facts, "  Chance each verse: 99 in 300\n");
     HAS(song_flight_facts, "  Flight at song level 56: 56-57 game hours (70-71.25 minutes)\n  Vitality regeneration while you sing: +28\n");
+    HAS(song_flight_facts, "  It works on you and your group in the room.\n");
+    LACKS(song_flight_facts, "everyone");
     HAS(song_heroism_facts, "  Combat pulse and spell pulse: -1\n  Yours instead: -2 at song level 56\n");
     HAS(song_peace_facts, "  Peace if the target fails its save: 1-2 game hours (1.25-2.5 minutes)\n");
     HAS(song_revelation_facts, "  Song levels from empower song: +4\n  Detect magic at song level above 7: every verse\n  Detect good and evil at song level above 13: every verse\n"
@@ -536,6 +538,7 @@ PINS = r'''
     HAS(song_dissonance_facts, "  Your strength: 159\n");
     HAS(song_dissonance_facts, "  That singer's lag: 4 seconds\n  Chance to free a pet with its master here: 158 in 2000\n  A freed pet dies after: 90 seconds\n");
     LACKS(song_dissonance_facts, "disharmonist");
+    HAS(song_dissonance_facts, "  Only eligible hostile targets in the room, excluding your group and gods.\n");
     HAS(empower_song_facts, "  Harming's damage: +25\n  Protection's armor class: -50\n  Flight's vitality regeneration: +10\n  Revelation's song levels: +4\n"
                             "  Cowardice's hitroll and damroll at song level 56: -17\n  Levels above yours that cowardice can make flee: 5\n  Dissonance's strength: +33\n");
     HAS(riff_facts, "  Chance: 90 in 90\n  Rest if you can't recall the lines: 8 seconds\n  Rest after a verse: 16 seconds\n  Your lag after a verse: 4 seconds\n");

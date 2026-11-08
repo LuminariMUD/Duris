@@ -3235,6 +3235,7 @@ std::string pyrokinesis_facts(P_char ch)
 		fact("Fire damage first, on an NPC only", show(fire) + ", and it cannot kill") +
 		fact("If the NPC fails its save", show({ pyrokinesis_failed_fire(fire.low),
 							 pyrokinesis_failed_fire(fire.high) })) +
+		"  Players take no fire component; psionic damage and penalties still apply.\n" +
 		fact("Chance a target may try to shrug it",
 		     std::to_string(pyrokinesis_shrug_below() -
 				    pyrokinesis_shrug_roll(lowest_rolls)) +
@@ -3312,7 +3313,7 @@ void spell_pyrokinesis(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 
 	else
 	{
-		// spell_damage(ch, victim, fire_dam, SPLDAM_FIRE, SPLDAM_NOSHRUG | SPLDAM_NODEFLECT | RAWDAM_NOKILL, 0);
+		// Pyrokinesis intentionally has no fire-damage component against players.
 		if (IS_ALIVE(victim))
 		{
 			if ((IS_AFFECTED2(victim, AFF2_FIRE_AURA) &&

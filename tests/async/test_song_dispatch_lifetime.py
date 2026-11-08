@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 '''Run the real song dispatch loops with effects that kill the singer and its targets.'''
 from pathlib import Path
+import re
 import subprocess
 import tempfile
-from _paths import ROOT, extract_function
+from _paths import ROOT, extract_function, source
 
 fixture = r'''
 #include "abilities/abilities.h"
@@ -27,6 +28,7 @@ P_room world = room_store;
 P_char character_list;
 uint64_t character_removal_generation;
 static std::vector<P_char> sung;
+static P_char ally;
 static std::vector<uint64_t> doomed; // Runtime ids released on the next effect.
 static int aggros, rests, waits, scheduled;
 static uint64_t next_id = 1;
@@ -72,7 +74,7 @@ void send_to_room(const char *, int) {}
 void act(const char *, int, P_char, P_obj, void *, int) {}
 void logit(const char *, const char *, ...) {}
 bool should_area_hit(P_char ch, P_char t) { return ch != t; }
-bool grouped(P_char, P_char) { return false; }
+bool grouped(P_char, P_char target) { return target == ally; }
 bool bard_saves(P_char, P_char, int) { return true; }
 void bard_aggro(P_char, P_char) { ++aggros; }
 int bard_song_level(P_char, int) { return 30; }
@@ -183,9 +185,33 @@ int main() {
         if (path == 2) assert(rests == 1 && waits == 1);
         clear_room();
     }
+    // Run all dispatch paths with the actual catalog flags for the four songs.
+    // A callback records delivery; the separate dissonance harness exercises its
+    // handler's hostile/group/room eligibility checks.
+    for (int flags : {TARGET_FLAGS}) for (int path : {0,1,2}) {
+        Crowd c = crowd(); ally = c.first; songs[0].flags = flags;
+        dispatch(path, c.bard);
+        assert(sung.size() == (flags == SONG_ALLIES ? 2 : 4));
+        if (flags == SONG_ALLIES) {
+            assert(sung[0] == c.bard && sung[1] == c.first);
+        }
+        sung.clear(); c.third->player.level = MAXLVL;
+        dispatch(path, c.bard);
+        assert(sung.size() == (flags == SONG_ALLIES ? 2 : 3));
+        assert(!aggros);
+        ally = nullptr; clear_room();
+    }
     std::puts("PASS song dispatch survives the singer, target and next target dying mid-song");
 }
 '''
+
+catalog = source('bard.c').read_text()
+target_flags = []
+for song in ('flight', 'calming', 'peace', 'forgetfulness'):
+    flags = re.search(r'\{ "'+song+r'", \w+, \w+, \w+, ([\w |]+) \}', catalog).group(1)
+    assert flags == ('SONG_ALLIES' if song == 'flight' else '0'), (song, flags)
+    target_flags.append('int('+flags+')')
+fixture = fixture.replace('TARGET_FLAGS', ','.join(target_flags))
 
 out = ROOT / 'bin/tests'
 out.mkdir(parents=True, exist_ok=True)

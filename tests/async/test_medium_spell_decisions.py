@@ -52,6 +52,7 @@ static bool saved, shrug, consent, introduced, war, portal_allowed, necroplasm;
 static int roll, roll_count, damage_done, damage_calls, damage_result, shrug_attempts, last_save_mod;
 static double precise_damage;
 static std::vector<int> draws;
+static std::vector<int> damage_types;
 static uint damage_flags;
 static std::vector<P_char> recipients;
 static P_char pet_master;
@@ -181,7 +182,8 @@ affected_type *affect_to_char(P_char ch, affected_type *af) {
 void wear_off_message(P_char, affected_type *) {}
 bool nevent_reschedule_after(nevent_handle, unsigned long long delay) { rescheduled = delay; return true; }
 nevent_handle nevent_handle_from_event(P_nevent e) { return {e, 1}; }
-int spell_damage(P_char, P_char victim, double dam, int, uint flags, damage_messages *, int *) {
+int spell_damage(P_char, P_char victim, double dam, int type, uint flags, damage_messages *, int *) {
+    damage_types.push_back(type);
     precise_damage = dam; damage_done = dam; damage_flags = flags; ++damage_calls; recipients.push_back(victim);
     if (damage_result == DAM_VICTDEAD) {
         for (auto &room : rooms) {
@@ -281,6 +283,9 @@ SCALARS = {
                "ray_of_enfeeblement_chance ray_of_enfeeblement_duration ray_of_enfeeblement_damroll spell_ray_of_enfeeblement "
                "entangle_bind_chance entangle_bind_roll entangle_duration spell_entangle",
     "psionics.c": "memory_block_forget_roll memory_block_duration spell_memory_block "
+                  "pyrokinesis_shrug_roll pyrokinesis_shrug_below pyrokinesis_damage "
+                  "pyrokinesis_pyrokinetic_fire pyrokinesis_failed_psionic pyrokinesis_failed_fire "
+                  "pyrokinesis_penalty pyrokinesis_penalty_duration pyrokinesis_lag spell_pyrokinesis "
                   "inertial_barrier_duration spell_inertial_barrier cannibalize_duration spell_cannibalize "
                   "improved_wormhole_bonus wormhole_throughput thought_beacon_duration spell_thought_beacon "
                   "psionic_wave_blast_damage psionic_wave_blast_shrug_roll psionic_wave_blast_waves "
@@ -342,6 +347,18 @@ int main() {
         }
     }
     clear(&target); saved = false; target.player.level = 50;
+    // Pyrokinesis keeps its player psionic damage and stat penalty, with no
+    // fire component. NPCs retain both components, for saved and unsaved casts.
+    for (bool npc : {false,true}) for (bool saves : {false,true}) {
+        clear(&target); target.specials.act = npc ? ACT_ISNPC : 0;
+        target.points.hit = target.points.max_hit = 100000;
+        damage_types.clear(); saved = saves; roll = 100; waited = 0;
+        spell_pyrokinesis(50, &caster, nullptr, 0, &target, nullptr);
+        assert(damage_types == (npc ? std::vector<int>{SPLDAM_FIRE,SPLDAM_PSI} : std::vector<int>{SPLDAM_PSI}));
+        assert(affected_by_spell(&target, SPELL_PYROKINESIS));
+        assert(target.affected->modifier == -10 && waited == 2 * WAIT_SEC);
+    }
+    clear(&target); target.specials.act = 0; saved = false;
     for (int level : {1, 2, 5, 9, 10, 50, 56, 60}) {
         caster.player.level = level; roll = -100;
         assert(mending_healing(live_rolls, level, &caster) >= 1);
