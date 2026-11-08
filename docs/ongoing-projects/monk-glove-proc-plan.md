@@ -112,8 +112,11 @@ Selected records and unchanged physical stats:
 
 **Owned-copy policy: future copies only.** Enable the flag/packed fields in these
 four authored templates for newly instantiated drops, quest rewards and kits.
-Do not retrofit existing player items, recovered floor items or pets' gear. Their
-saved flags/values remain authoritative; reboot is not a migration. There is no
+Do not retrofit existing player items or recovered floor items. Their saved
+flags/values remain authoritative; reboot is not a migration. Pet files are the
+exception: they store only differences from the template, so an unmodified pilot
+glove saved on a pet loads with the new values. Pets cannot proc, so this matters
+only if those gloves later reach a player. There is no
 production data update, UID replacement, per-hit template overlay or SQL migration
 to run for this policy. Persisted newly created copies retain the configuration
 using the framework's verified existing backends.
