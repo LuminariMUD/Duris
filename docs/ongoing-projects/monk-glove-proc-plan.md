@@ -62,6 +62,10 @@ not need a release tag before review.
   fatal base-hit suppression, removal/extraction/relocation cancellation, invalid
   packed data, delayed class/flag/slot cancellation, busy suppression and retaining
   an already-started action when a separate weapon is later equipped.
+- Framework review: [PR #805](https://github.com/LuminariMUD/Duris/pull/805),
+  `branch/monk-glove-proc-research`, implementation `ff8d8f283` plus the prerequisite
+  merge `e378275a0`. Research [#804](https://github.com/LuminariMUD/Duris/pull/804)
+  and editor build [#797](https://github.com/LuminariMUD/Duris/pull/797) precede it.
 - Remaining project work: the dependent authored-content pilot, its before/after
   runtime values, progression/spec/PvE/PvP samples and player identify check.
   Choose and record the owned-copy policy before any production activation.
