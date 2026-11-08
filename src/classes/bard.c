@@ -113,10 +113,12 @@ struct song_description
 	  { "chaos", bard_chaos, INSTRUMENT_DRUMS, SONG_CHAOS, SONG_AGGRESSIVE },
 	  { "cowardice", bard_cowardice, INSTRUMENT_DRUMS, SONG_COWARDICE, SONG_AGGRESSIVE },
 	  { "discord", bard_discord, INSTRUMENT_FLUTE, SONG_DISCORD, 0 },
+	  // Hostile eligibility is checked inside bard_dissonance, without damage-song aggro.
 	  { "dissonance", bard_dissonance, INSTRUMENT_HORN, SONG_DISSONANCE, 0 },
 	  { "dragons", bard_dragons, INSTRUMENT_HORN, SONG_DRAGONS, SONG_ALLIES },
 	  { "drifting", bard_drifting, INSTRUMENT_DRUMS, SONG_DRIFTING, SONG_SELF_ONLY },
-	  { "flight", bard_flight, INSTRUMENT_HORN, SONG_FLIGHT, 0 },
+	  { "flight", bard_flight, INSTRUMENT_HORN, SONG_FLIGHT, SONG_ALLIES },
+	  // Calming, forgetfulness and peace intentionally also reach non-allies.
 	  { "forgetfulness", bard_forgetfulness, INSTRUMENT_MANDOLIN, SONG_FORGETFULNESS, 0 },
 	  { "harming", bard_harming, INSTRUMENT_LYRE, SONG_HARMING, SONG_AGGRESSIVE },
 	  { "harmony", bard_harmony, INSTRUMENT_FLUTE, SONG_HARMONY, 0 },
@@ -1581,7 +1583,7 @@ std::string song_flight_facts(P_char ch)
 	       fact("Vitality regeneration while you sing",
 		    "+" + std::to_string(song_flight_move_regen(
 				  level, GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG)))) +
-	       song_everyone_facts() + "  Leaving the room ends the regeneration.\n" +
+	       song_allies_facts() + "  Leaving the room ends the regeneration.\n" +
 	       song_common_facts(ch, SONG_FLIGHT);
 }
 
@@ -2322,7 +2324,8 @@ std::string song_dissonance_facts(P_char ch)
 	       fact("That singer's lag", seconds(song_dissonance_target_lag())) +
 	       fact("Chance to free a pet with its master here", chance_under(power, 1, 2000)) +
 	       fact("A freed pet dies after", seconds(song_dissonance_pet_death_delay())) +
-	       "  Not your group or gods. Each verse does this once for everyone in the room.\n" +
+	       "  Only eligible hostile targets in the room, excluding your group and gods.\n"
+	       "  Each verse checks each such target once.\n" +
 	       song_common_facts(ch, SONG_DISSONANCE);
 }
 

@@ -746,6 +746,7 @@ int main() {
                     "  If the target fails its save: 134-672\n"
                     "  Fire damage first, on an NPC only: 112-560, and it cannot kill\n"
                     "  If the NPC fails its save: 128-644\n"
+                    "  Players take no fire component; psionic damage and penalties still apply.\n"
                     "  Chance a target may try to shrug it: 59 in 100\n"));
     assert(contains(pyrokinesis_facts(&ch),
                     "  A shrug stops all of it, and neither the penalty nor your lag applies.\n"
