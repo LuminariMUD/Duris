@@ -257,10 +257,16 @@ struct copyover_fd_flags
 struct copyover_binary_promotion
 {
 	int lock_fd = -1;
+	int candidate_fd = -1;
+	std::string candidate_directory;
 	bool promoted = false;
 
 	~copyover_binary_promotion()
 	{
+		if (candidate_fd >= 0)
+			close(candidate_fd);
+		if (!candidate_directory.empty())
+			rmdir(candidate_directory.c_str());
 		if (lock_fd >= 0)
 			close(lock_fd);
 	}
@@ -286,51 +292,68 @@ struct copyover_binary_promotion
 			return false;
 
 		char path[] = DMS_HISTORY_DIR "/.copyover.XXXXXX";
-		const int placeholder = mkostemp(path, O_CLOEXEC);
-		if (placeholder < 0)
+		if (!mkdtemp(path))
 			return false;
-		close(placeholder);
-		if (rename(DMS_STAGED_BINARY, path) != 0)
+		candidate_directory = path;
+		candidate_fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+		if (candidate_fd < 0)
+			return false;
+		struct stat directory = {};
+		if (fstat(candidate_fd, &directory) != 0 || directory.st_uid != geteuid() ||
+		    (directory.st_mode & 0077))
 		{
-			const int error = errno;
-			unlink(path);
-			errno = error;
+			// The name may have been replaced after mkdtemp. Do not claim a binary
+			// through, or remove, a directory that another user can control.
+			candidate_directory.clear();
+			errno = ESTALE;
 			return false;
 		}
-		if (lstat(path, &candidate) != 0 || candidate.st_dev != staged.st_dev ||
-		    candidate.st_ino != staged.st_ino)
-			return reject_candidate(path, ESTALE);
-		if (renameat2(AT_FDCWD, path, AT_FDCWD, DMS_RUNTIME_BINARY, RENAME_EXCHANGE) != 0)
-			return reject_candidate(path, errno);
+		// Keep the checked entry private and resolve it through the same directory
+		// descriptor even if an ancestor pathname is replaced before publication.
+		if (renameat(AT_FDCWD, DMS_STAGED_BINARY, candidate_fd, "binary") != 0)
+			return false;
+		if (fstatat(candidate_fd, "binary", &candidate, AT_SYMLINK_NOFOLLOW) != 0 ||
+		    candidate.st_dev != staged.st_dev || candidate.st_ino != staged.st_ino)
+			return reject_candidate(ESTALE);
+		if (renameat2(candidate_fd, "binary", AT_FDCWD, DMS_RUNTIME_BINARY,
+			      RENAME_EXCHANGE) != 0)
+			return reject_candidate(errno);
 
 		struct stat backup = {}, active = {};
 		int error = ESTALE;
-		if (lstat(path, &backup) == 0 && backup.st_dev == runtime.st_dev &&
-		    backup.st_ino == runtime.st_ino && lstat(DMS_RUNTIME_BINARY, &active) == 0 &&
-		    active.st_dev == staged.st_dev && active.st_ino == staged.st_ino)
+		if (fstatat(candidate_fd, "binary", &backup, AT_SYMLINK_NOFOLLOW) == 0 &&
+		    backup.st_dev == runtime.st_dev && backup.st_ino == runtime.st_ino &&
+		    lstat(DMS_RUNTIME_BINARY, &active) == 0 && active.st_dev == staged.st_dev &&
+		    active.st_ino == staged.st_ino)
 		{
-			if (rename(path, DMS_COPYOVER_BACKUP) == 0)
+			if (renameat(candidate_fd, "binary", AT_FDCWD, DMS_COPYOVER_BACKUP) == 0)
 			{
+				// A successful exec skips the destructor, so retire the empty directory now.
+				if (rmdir(candidate_directory.c_str()) == 0)
+					candidate_directory.clear();
 				promoted = true;
 				return true;
 			}
 			error = errno;
 		}
-		if (renameat2(AT_FDCWD, path, AT_FDCWD, DMS_RUNTIME_BINARY, RENAME_EXCHANGE) != 0)
+		if (renameat2(candidate_fd, "binary", AT_FDCWD, DMS_RUNTIME_BINARY,
+			      RENAME_EXCHANGE) != 0)
 		{
 			logit(LOG_STATUS, "copyover: executable exchange rollback failed: %s",
 			      strerror(errno));
 			return false;
 		}
-		return reject_candidate(path, error);
+		return reject_candidate(error);
 	}
 
-	static bool reject_candidate(const char *path, int error)
+	bool reject_candidate(int error) const
 	{
 		// Preserve a concurrent publication and leave our candidate in history
 		// if its staging name has already been taken.
-		if (renameat2(AT_FDCWD, path, AT_FDCWD, DMS_STAGED_BINARY, RENAME_NOREPLACE) != 0)
-			logit(LOG_STATUS, "copyover: executable candidate retained at %s", path);
+		if (renameat2(candidate_fd, "binary", AT_FDCWD, DMS_STAGED_BINARY,
+			      RENAME_NOREPLACE) != 0)
+			logit(LOG_STATUS, "copyover: executable candidate retained at %s/binary",
+			      candidate_directory.c_str());
 		errno = error;
 		return false;
 	}

@@ -59,6 +59,7 @@ support += extract_function('nanny.c', 'void update_ingame_racewar(')
 
 HARNESS = r'''
 P_obj read_object_for_creation(int, int) { std::abort(); }
+bool binary_case() { return std::string(getenv("COPYOVER_TEST_CASE")).starts_with("binary-"); }
 bool npc_case() { const char *s=getenv("COPYOVER_TEST_CASE"); return !strcmp(s,"npc") || !strcmp(s,"shop") || !strcmp(s,"foreign-shop"); }
 bool shop_case() { return npc_case() && strcmp(getenv("COPYOVER_TEST_CASE"),"npc"); }
 int singleton_shop_id(P_char mob) { return mob && mob->only.npc ? mob->only.npc->shopkeeper_shop_id : -1; }
@@ -143,7 +144,7 @@ bool persistence_save_character_terminal_database_acknowledged(P_char, int) { st
 int websocket_send_text(P_desc, const char *) { std::abort(); }
 int compress_end(P_desc, int) { std::abort(); }
 void write_to_q(const char *, txt_q *, int) {
-    assert(!strcmp(getenv("COPYOVER_TEST_CASE"), "binary-race"));
+    assert(binary_case());
 }
 uint64_t persistence_observability_now_usec() { std::abort(); }
 uint64_t player_load_pipeline_next_request_id() { std::abort(); }
@@ -203,6 +204,27 @@ P_obj find_live_object(P_obj expected,uint64_t uid) {
 int bind_shopkeeper_calls = 0;
 void bind_shopkeeper(P_char mob, int shop) { ++bind_shopkeeper_calls; mob->only.npc->shopkeeper_shop_id=shop; }
 
+bool binary_directory_race_injected = false;
+extern "C" int __wrap_open(const char *path, int flags, ...)
+{
+    if (!strcmp(getenv("COPYOVER_TEST_CASE"), "binary-directory-race") &&
+        (flags & O_DIRECTORY) && std::string(path).starts_with("bin/server/history/.copyover.")) {
+        assert(!binary_directory_race_injected);
+        binary_directory_race_injected = true;
+        // Substitute a directory other users can modify before open pins it.
+        assert(!syscall(SYS_rename, path, (std::string(path) + ".moved").c_str()));
+        assert(!mkdir(path, 0700) && !chmod(path, 0777));
+    }
+    mode_t mode = 0;
+    if (flags & O_CREAT) {
+        va_list args;
+        va_start(args, flags);
+        mode = va_arg(args, int);
+        va_end(args);
+    }
+    return static_cast<int>(syscall(SYS_openat, AT_FDCWD, path, flags, mode));
+}
+
 // Inject a concurrent publication at the actual kernel rename boundary.
 extern "C" int renameat2(int from_directory,const char *from,int to_directory,const char *to,
     unsigned int flags) noexcept
@@ -219,7 +241,7 @@ extern "C" int renameat2(int from_directory,const char *from,int to_directory,co
         assert(other && fwrite("replacement",11,1,other)==1 && fclose(other)==0);
     }
     const int result = static_cast<int>(syscall(SYS_renameat2,from_directory,from,to_directory,to,flags));
-    if (result == 0 && !strcmp(scenario, "binary-race") &&
+    if (result == 0 && binary_case() &&
         !strcmp(to, "bin/server/dms") && flags == RENAME_EXCHANGE) {
         int publisher = open("bin/server", O_RDONLY | O_DIRECTORY);
         assert(publisher >= 0 && flock(publisher, LOCK_EX | LOCK_NB) < 0 && errno == EWOULDBLOCK);
@@ -228,6 +250,46 @@ extern "C" int renameat2(int from_directory,const char *from,int to_directory,co
         assert(!rename("bin/server/racing", "bin/server/dms_new"));
     }
     return result;
+}
+
+bool binary_backup_race_injected = false;
+void replace_binary_parent(int directory, const char *from, const char *to)
+{
+    if (strcmp(getenv("COPYOVER_TEST_CASE"), "binary-backup-race") ||
+        strcmp(to, "bin/server/history/dms.copyover"))
+        return;
+    assert(!binary_backup_race_injected);
+    binary_backup_race_injected = true;
+    std::string source = from;
+    if (directory != AT_FDCWD) {
+        char link[64], parent[4096];
+        snprintf(link, sizeof(link), "/proc/self/fd/%d", directory);
+        const ssize_t size = readlink(link, parent, sizeof(parent));
+        assert(size > 0 && size < static_cast<ssize_t>(sizeof(parent)));
+        source = std::string(parent, size) + "/" + from;
+        struct stat permissions = {};
+        assert(!fstat(directory, &permissions) && (permissions.st_mode & 0777) == 0700);
+        assert(fcntl(directory, F_GETFD) & FD_CLOEXEC);
+    }
+    // Replace an ancestor after the inode checks, at the final rename boundary.
+    // A descriptor-relative rename must still publish the original runtime inode.
+    const std::string parent = source.substr(0, source.find_last_of('/'));
+    assert(!syscall(SYS_rename, parent.c_str(), (parent + ".moved").c_str()));
+    assert(!mkdir(parent.c_str(), 0700));
+    FILE *replacement = fopen(source.c_str(), "wb");
+    assert(replacement && fwrite("unvalidated", 11, 1, replacement) == 1 && !fclose(replacement));
+}
+
+extern "C" int rename(const char *from, const char *to) noexcept
+{
+    replace_binary_parent(AT_FDCWD, from, to);
+    return static_cast<int>(syscall(SYS_rename, from, to));
+}
+
+extern "C" int renameat(int from_directory, const char *from, int to_directory, const char *to) noexcept
+{
+    replace_binary_parent(from_directory, from, to);
+    return static_cast<int>(syscall(SYS_renameat, from_directory, from, to_directory, to));
 }
 
 extern "C" int unlink(const char *path) noexcept {
@@ -244,6 +306,8 @@ extern "C" int unlink(const char *path) noexcept {
 // the production save, publication, counting and recovery functions are intact.
 extern "C" int fixture_execl(const char *path, const char *, ...) noexcept
 {
+    assert(strcmp(getenv("COPYOVER_TEST_CASE"), "binary-directory-race") &&
+           "an unsafe candidate directory must refuse before exec");
     assert(strcmp(getenv("COPYOVER_TEST_CASE"),"publish-race") && strcmp(getenv("COPYOVER_TEST_CASE"),"claim-race") && "a competing publication must refuse before exec");
     assert(!std::strcmp(path, "bin/server/dms"));
     FILE *file = std::fopen(COPYOVER_FILE, "rb"); assert(file);
@@ -253,7 +317,7 @@ extern "C" int fixture_execl(const char *path, const char *, ...) noexcept
     assert(header.version == COPYOVER_VERSION && header.num_objects == (npc ? 5 : 1));
     assert(!header.num_descriptors && header.num_mobs==(npc ? 1 : 0));
     std::fclose(file);
-    if (!strcmp(getenv("COPYOVER_TEST_CASE"), "binary-race")) {
+    if (binary_case() && strcmp(getenv("COPYOVER_TEST_CASE"), "binary-success")) {
         errno = ENOENT;
         return -1;
     }
@@ -359,7 +423,7 @@ int main(int argc, char **argv)
             puts("[PASS] competing publication survives atomic publish refusal; live objects and custody remain");
             return 0;
         }
-        if (!strcmp(getenv("COPYOVER_TEST_CASE"), "binary-race")) {
+        if (binary_case() && strcmp(getenv("COPYOVER_TEST_CASE"), "binary-success")) {
             int pair[2];
             assert(!socketpair(AF_UNIX, SOCK_STREAM, 0, pair));
             descriptor_data tls_menu = {}, web_menu = {};
@@ -373,17 +437,23 @@ int main(int argc, char **argv)
             web_menu.websocket = web_menu.ws_handshake_done = 1;
             web_menu.ws_output_len = 1024 * 1024 - 16;
             descriptor_list = &tls_menu;
-            struct stat before = {}, after = {}, racing = {}, staged = {};
+            struct stat before = {}, after = {}, racing = {}, staged = {}, original_staged = {};
             assert(!stat("bin/server/dms", &before) && !stat("bin/server/racing", &racing));
+            assert(!stat("bin/server/dms_new", &original_staged));
             assert(!copyover_save(plain, tls, -1));
             assert(!stat("bin/server/dms", &after) && before.st_ino == after.st_ino);
-            assert(!stat("bin/server/dms_new", &staged) && racing.st_ino == staged.st_ino);
+            assert(binary_backup_race_injected ==
+                   !strcmp(getenv("COPYOVER_TEST_CASE"), "binary-backup-race"));
+            const bool directory_race = !strcmp(getenv("COPYOVER_TEST_CASE"), "binary-directory-race");
+            assert(binary_directory_race_injected == directory_race);
+            assert(!stat("bin/server/dms_new", &staged) &&
+                   (directory_race ? original_staged.st_ino : racing.st_ino) == staged.st_ino);
             assert(access(COPYOVER_FILE, F_OK) < 0 && errno == ENOENT);
             assert(!tls_menu.write_failed && !web_menu.write_failed &&
                    !(fcntl(pair[0], F_GETFD) & FD_CLOEXEC) && !(fcntl(pair[1], F_GETFD) & FD_CLOEXEC));
             assert(tls_menu.telnet_output_len == 1024 * 1024 - 16 &&
                    web_menu.ws_output_len == 1024 * 1024 - 16);
-            puts("[PASS] racing publication preserved both binaries and congested menu sockets after failed exec");
+            puts("[PASS] racing publication and backup paths preserved both binaries and congested menu sockets after failed exec");
             return 0;
         }
         copyover_save(plain, tls, -1);
@@ -543,7 +613,9 @@ int main(int argc, char **argv)
 }
 '''
 
-with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-") as temp:
+output = ROOT / "bin/tests"
+output.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-", dir=output) as temp:
     temp = Path(temp)
     source = temp / "fixture.cpp"
     source.write_text(support + HARNESS)
@@ -556,16 +628,28 @@ with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-") as temp:
                    "src/player/pet_restore_state.c", "src/combat/trap_legacy.c",
                             "src/item/item_ownership_runtime.c", "src/item/item_transfer_command.c",
                             "src/redis/redis_command_observability.c", str(HARNESS_STUBS), "-Wl,--gc-sections",
-                            "-lz", "-pthread", "-lgnutls", "-lbsd", "-o", str(temp / "fixture")],
+                            "-Wl,--wrap=open", "-lz", "-pthread", "-lgnutls", "-lbsd", "-o", str(temp / "fixture")],
                    cwd=ROOT, check=True)
-    for scenario in ("binary-race", "shop", "foreign-shop", "npc", "consume-race", "claim-race", "normal", "newer", "changed", "publish-race", "newer-owner", "mixed-owner"):
+    for scenario in ("binary-directory-race", "binary-backup-race", "binary-race", "binary-success", "shop", "foreign-shop", "npc", "consume-race", "claim-race", "normal", "newer", "changed", "publish-race", "newer-owner", "mixed-owner"):
         state = temp / scenario
         server = state / "bin/server"
         server.mkdir(parents=True)
-        if scenario == "binary-race":
+        if scenario.startswith("binary-"):
             for name in ("dms", "dms_new", "racing"):
                 binary = server / name
                 binary.write_text(name)
                 binary.chmod(0o755)
         subprocess.run([str(temp / "fixture")], cwd=state, check=True, timeout=60,
                        env=dict(os.environ, COPYOVER_TEST_CASE=scenario, COPYOVER_STATE_FILE="copyover.dat"))
+        if scenario == "binary-success":
+            assert (server / "dms").read_text() == "dms_new"
+            assert (server / "history/dms.copyover").read_text() == "dms"
+            assert (server / "dms_new").read_text() == "racing"
+        if scenario == "binary-directory-race":
+            untrusted = next(path for path in (server / "history").glob(".copyover.*")
+                             if not path.name.endswith(".moved"))
+            assert untrusted.stat().st_mode & 0o777 == 0o777
+            assert not list(untrusted.iterdir())
+            assert (server / "dms_new").read_text() == "dms_new"
+        if scenario.startswith("binary-") and scenario not in ("binary-backup-race", "binary-directory-race"):
+            assert not list((server / "history").glob(".copyover.*"))
