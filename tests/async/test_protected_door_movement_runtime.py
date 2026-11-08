@@ -44,9 +44,11 @@ static std::vector<P_char> live;
 static std::list<char_link_data> links;
 static std::vector<std::string> fixture_messages;
 static bool lance_present=true, mounted_during_entry;
+static bool ranged_charge=false, break_lance=false;
 static int damage_calls, reschedules, judgement_limit=4;
+static int identity_lookups;
 static bool multiple_targets=false;
-enum class Hook { none, veto, seal, lose_passdoor, redirect, extract, kill, remove_weapon, remove_actor, redirect_actor };
+enum class Hook { none, veto, seal, lose_passdoor, redirect, extract, kill, remove_weapon, remove_actor, redirect_actor, dismount, disarm };
 static Hook leave_hook, enter_hook;
 static P_char hook_target;
 static obj_data lance{};
@@ -56,7 +58,7 @@ const int rev_dir[]={2,3,0,1,5,4,9,8,7,6};
 static int placements=0, rng_route=0;
 bool check_castle_walls(int,int) { return castle_wall; }
 int check_wall(int,int) { return spell_wall; }
-void act(const char *text,int,P_char ch,P_obj,void *target,int) { assert(!ch || char_in_list(ch)); assert(!target || char_in_list(static_cast<P_char>(target))); fixture_messages.emplace_back(text); }
+void act(const char *text,int,P_char ch,P_obj obj,void *target,int) { assert(!ch || char_in_list(ch)); assert(!target || char_in_list(static_cast<P_char>(target))); assert(obj!=&lance || lance_present); fixture_messages.emplace_back(text); }
 void send_to_char(const char *text,P_char ch) { assert(char_in_list(ch)); fixture_messages.emplace_back(text); }
 void CharWait(P_char ch,int) { assert(char_in_list(ch) && IS_ALIVE(ch)); }
 int number(int low,int high) {
@@ -87,24 +89,24 @@ int CanDoFightMove(P_char,P_char) { return rng_route==4; }
 bool damage(P_char,P_char,double,int) { return false; }
 void update_pos(P_char) {}
 int GET_ALT_SIZE(P_char ch) { return ch->player.size; }
-void half_chop(char *,char *one,char *two) { strcpy(one,"target"); *two=0; }
+void half_chop(char *,char *one,char *two) { strcpy(one,"target"); strcpy(two,ranged_charge?"north":""); }
 bool SanityCheck(P_char ch,const char *) { return ch!=nullptr; }
 int GET_CHAR_SKILL_P(P_char,int) { return 100; }
 bool affected_by_spell(P_char,int) { return false; }
 
-int dir_from_keyword(char *) { assert(false); return -1; }
-P_char get_char_ranged(const char *,P_char,int,int) { assert(false); return nullptr; }
+int dir_from_keyword(char *) { return DIR_NORTH; }
+P_char get_char_ranged(const char *,P_char,int,int) { return &target; }
 P_char ParseTarget(P_char,char *) { return &target; }
 void set_short_affected_by(P_char,int,int) {}
 float takedown_check(P_char,P_char,float chance,int,ulong) { return chance; }
 bool notch_skill(P_char,int,float) { return true; }
-int do_simple_move(P_char,int,unsigned int) { assert(false); return 0; }
+int do_simple_move(P_char,int,unsigned int);
 int can_enter_room(P_char,int,int) { return true; }
 
-int DamageOneItem(P_char,int,P_obj,bool) { return 0; }
+int DamageOneItem(P_char ch,int,P_obj,bool) { if(break_lance) { lance_present=false; ch->equipment[WIELD]=nullptr; } return 0; }
 void set_fighting(P_char,P_char) {}
 int melee_damage(P_char ch,P_char victim,double,int,damage_messages*,int*) { assert(char_in_list(ch) && char_in_list(victim)); ++damage_calls; return DAM_NONEDEAD; }
-void do_remove(P_char,char*,int) {}
+void do_remove(P_char,char*,int) { assert(lance_present); }
 void do_wield(P_char,char*,int) {}
 void update_group_vitals(P_char) {}
 void gmcp_char_vitals(P_char) {}
@@ -127,6 +129,7 @@ nevent_schedule_result add_event(event_func,int,P_char ch,P_char,P_obj,int,const
 void logit(const char*,const char*,...) {}
 P_obj find_live_object(P_obj obj,uint64_t uid) { return lance_present && obj==&lance && obj->obj_uid==uid ? obj:nullptr; }
 P_char find_character_by_runtime_id(uint64_t id) {
+ ++identity_lookups;
  for(P_char ch:live) if(ch->runtime_id==id) return ch;
  return nullptr;
 }
@@ -168,6 +171,17 @@ static void forget(P_char ch) {
  if(P_char rider=GET_RIDER(ch)) unlink_char(rider,ch,LNK_RIDING);
  detach(ch); live.erase(std::remove(live.begin(),live.end(),ch),live.end()); ++character_removal_generation;
 }
+int do_simple_move(P_char ch,int,unsigned int) {
+ assert(ranged_charge); place(ch,1); place(&mount,1);
+ if(enter_hook==Hook::extract) forget(&target);
+ if(enter_hook==Hook::redirect) place(&target,2);
+ if(enter_hook==Hook::kill) SET_POS(&target,STAT_DEAD);
+ if(enter_hook==Hook::remove_actor) forget(&mount);
+ if(enter_hook==Hook::redirect_actor) place(ch,2);
+ if(enter_hook==Hook::remove_weapon) { lance_present=false; ch->equipment[WIELD]=nullptr; }
+ if(enter_hook==Hook::disarm) ch->equipment[WIELD]=nullptr;
+ enter_hook=Hook::none; return true;
+}
 void char_from_room(P_char ch) {
  assert(char_in_list(ch));
  const Hook hook=ch==hook_target ? leave_hook:Hook::none;
@@ -179,6 +193,10 @@ void char_from_room(P_char ch) {
  detach(ch);
  if(hook==Hook::seal) north.exit_info|=EX_CLOSED|EX_LOCKED|EX_PICKPROOF;
  if(hook==Hook::lose_passdoor) ch->specials.affected_by2=0;
+ if(hook==Hook::dismount) {
+  if(P_char steed=GET_MOUNT(ch)) unlink_char(ch,steed,LNK_RIDING);
+  if(P_char rider=GET_RIDER(ch)) unlink_char(rider,ch,LNK_RIDING);
+ }
 }
 
 '''
@@ -200,6 +218,7 @@ bool char_to_room(P_char ch,int room,int dir) {
   if(hook==Hook::extract) { forget(ch); return false; }
   if(hook==Hook::kill) { SET_POS(ch,STAT_DEAD); return false; }
   if(hook==Hook::remove_weapon) lance_present=false;
+  if(hook==Hook::disarm) actor.equipment[WIELD]=nullptr;
   if(hook==Hook::remove_actor) forget(&actor);
   if(hook==Hook::redirect_actor) place(&actor,2);
  }
@@ -212,6 +231,8 @@ prelude += (root/'src/cmd/actoff.c').read_text().split('#include')[0]
 functions=[extract_function('affects.c','P_char get_linked_char('),
            extract_function('affects.c','P_char get_linking_char('),
            extract_function('handler.c','static bool move_riding_companions('), placement]
+functions += [extract_function('actmove.c', signature) for signature in
+              ['static bool walking_door_allows(', 'static bool leave_walking_group(']]
 text=(root/'src/classes/ethermancer.c').read_text()
 for m in re.finditer(r'static (?:int|double) (tempest_\w+)\(',text):
  name=m.group(1)
@@ -231,8 +252,9 @@ for signature in ['static int elemental_fury_level(', 'static int elemental_fury
 driver = r'''
 static void reset(int route,unsigned flags,unsigned pass_mask) {
  actor={}; target={}; mount={}; witness={}; lance={}; links.clear(); live.clear(); fixture_messages.clear();
- for(auto &room:rooms) room={}; north={}; placements=damage_calls=reschedules=0; character_removal_generation=0;
+ for(auto &room:rooms) room={}; north={}; placements=damage_calls=reschedules=identity_lookups=0; character_removal_generation=0;
  rng_route=route; castle_wall=spell_wall=false; lance_present=true; multiple_targets=false; judgement_limit=4;
+ ranged_charge=break_lance=false;
  leave_hook=enter_hook=Hook::none; hook_target=nullptr; mounted_during_entry=false;
  int id=0;
  for(P_char ch:{&actor,&target,&mount,&witness}) {
@@ -388,11 +410,50 @@ int main() {
  witness.specials.affected_by2=AFF2_PASSDOOR; hook_target=&witness; leave_hook=Hook::veto;
  run(1); ++cases; assert(target.in_room==1);
  // A weapon removed by arrival scripts must not be dereferenced after movement.
- reset(4,0,7); hook_target=&actor; enter_hook=Hook::remove_weapon; run(4); ++cases;
- assert(actor.in_room==1 && target.in_room==1 && mount.in_room==1 && damage_calls==0);
+ for(Hook hook : {Hook::remove_weapon,Hook::disarm}) {
+  reset(4,0,7); hook_target=&actor; enter_hook=hook; run(4); ++cases;
+  assert(actor.in_room==1 && target.in_room==1 && mount.in_room==1 && damage_calls==0);
+ }
+ // An approach walk may succeed after its scripts invalidate another charge participant.
+ for(Hook hook : {Hook::none,Hook::extract,Hook::redirect,Hook::kill,Hook::remove_actor,
+                  Hook::redirect_actor,Hook::remove_weapon,Hook::disarm}) {
+  reset(4,0,7); ranged_charge=true; place(&target,1); enter_hook=hook;
+  run(4); ++cases; assert(damage_calls==(hook==Hook::none?1:0));
+ }
+ // Worn lances can be scrapped by DamageOneItem; swapping to a spare must not use one.
+ for(bool ram : {false,true}) {
+  reset(4,0,7); break_lance=true; obj_data spare{}; spare.type=ITEM_WEAPON; actor.carrying=&spare;
+  if(!ram) rooms[0].dir_option[DIR_NORTH]=nullptr;
+  run(4); ++cases; assert(!lance_present && damage_calls==1);
+ }
+ // Walking must finish every leave hook and recheck each mover before either placement pass.
+ for(P_char mover : {&actor,&mount}) for(P_char participant : {&actor,&mount})
+  for(Hook hook : {Hook::none,Hook::veto,Hook::seal,Hook::lose_passdoor,Hook::redirect,Hook::extract,Hook::kill,Hook::dismount}) {
+   reset(4,EX_CLOSED,7); hook_target=participant; leave_hook=hook;
+   const bool departed=leave_walking_group(mover,1,DIR_NORTH); ++cases;
+   if(hook!=Hook::extract) assert(identity_lookups==0);
+   assert(departed==(hook==Hook::none));
+   if(departed) {
+    assert(actor.in_room==NOWHERE && mount.in_room==NOWHERE);
+    assert(char_to_room(mover,1,DIR_NORTH));
+    assert(actor.in_room==1 && mount.in_room==1);
+   } else {
+    assert(placements==0 && (!char_in_list(&actor) || actor.in_room!=NOWHERE) &&
+           (!char_in_list(&mount) || mount.in_room!=NOWHERE));
+    if(hook==Hook::veto || hook==Hook::seal || hook==Hook::lose_passdoor)
+     assert(actor.in_room==0 && mount.in_room==0 && GET_MOUNT(&actor)==&mount);
+    if(hook==Hook::dismount)
+     assert(actor.in_room==0 && mount.in_room==0 && !GET_MOUNT(&actor) && !GET_RIDER(&mount));
+   }
+  }
+ // An unmounted character cannot walk through a door sealed by their own leave hook either.
+ reset(0,0,0); hook_target=&actor; leave_hook=Hook::seal;
+ assert(!leave_walking_group(&actor,1,DIR_NORTH) && actor.in_room==0 && placements==0); ++cases;
  printf("protected door movement: %d actual-handler cases passed, including mounted companion execution\n",cases);
 }
 '''
+walking = extract_function('actmove.c', 'int do_simple_move_skipping_procs(')
+assert walking.count('leave_walking_group(ch, new_room, exitnumb)') == 2
 build = Path(os.environ.get("BIN_ROOT", ROOT / "bin")) / "tests"
 build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="protected-doors-", dir=build) as directory:

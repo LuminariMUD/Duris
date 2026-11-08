@@ -1057,6 +1057,7 @@ void lance_charge(P_char ch, char *argument)
 		send_to_char("You need a lance to do that!\n", ch);
 		return;
 	}
+	const uint64_t weapon_uid = weapon->obj_uid;
 
 	if (*arg2)
 	{
@@ -1151,7 +1152,22 @@ void lance_charge(P_char ch, char *argument)
 		snprintf(buf, sizeof buf, "$n rears up on you and orders you to charge %s.",
 			 dirs[dir]);
 		act(buf, TRUE, ch, weapon, mount, TO_VICT);
+		const uint64_t charger_id = ch->runtime_id;
+		const uint64_t victim_id = victim->runtime_id;
+		const uint64_t mount_id = mount->runtime_id;
+		const int target_room = victim->in_room;
 		if (!do_simple_move(ch, dir, 0))
+			return;
+		// A successful approach does not guarantee its scripts left the target or lance intact.
+		if (find_character_by_runtime_id(charger_id) != ch ||
+		    find_character_by_runtime_id(victim_id) != victim ||
+		    find_character_by_runtime_id(mount_id) != mount || !IS_ALIVE(ch) ||
+		    !IS_ALIVE(victim) || !IS_ALIVE(mount) || ch->in_room != target_room ||
+		    victim->in_room != target_room || mount->in_room != target_room ||
+		    GET_MOUNT(ch) != mount || GET_RIDER(mount) != ch ||
+		    !find_live_object(weapon, weapon_uid) || ch->equipment[WIELD] != weapon ||
+		    !IS_LANCE(weapon) || !CanDoFightMove(ch, victim) ||
+		    !CanDoFightMove(mount, victim))
 			return;
 	}
 
@@ -1325,7 +1341,6 @@ void lance_charge(P_char ch, char *argument)
 		if (continue_dir != -1)
 		{
 			const int source_room = ch->in_room;
-			const uint64_t weapon_uid = weapon->obj_uid;
 			char actor_text[512], target_text[512], room_text[512];
 			snprintf(actor_text, sizeof actor_text,
 				 "You ram your $q through $N sending both veering out %s.",
@@ -1348,7 +1363,9 @@ void lance_charge(P_char ch, char *argument)
 				return;
 			if (movement.status == forced_move_status::arrived)
 			{
-				if (!find_live_object(weapon, weapon_uid))
+				if (!find_live_object(weapon, weapon_uid) ||
+				    ch->equipment[WIELD] != weapon || !IS_LANCE(weapon) ||
+				    !CanDoFightMove(ch, victim) || !CanDoFightMove(mount, victim))
 					return;
 				dam = dam + lance_charge_ram_damage(live_rolls);
 				set_fighting(ch, victim);
@@ -1356,9 +1373,9 @@ void lance_charge(P_char ch, char *argument)
 					buf, sizeof buf,
 					"$N is flung to the ground as $n charges in from the %s, with $M impaled on the tip of the $q.",
 					dirs[rev_dir[continue_dir]]);
+				act(buf, FALSE, ch, weapon, victim, TO_NOTVICT);
 				if (!number(0, 100))
 					DamageOneItem(ch, SPLDAM_GENERIC, weapon, FALSE);
-				act(buf, FALSE, ch, weapon, victim, TO_NOTVICT);
 				break;
 			}
 		}
@@ -1390,7 +1407,8 @@ void lance_charge(P_char ch, char *argument)
 
 	if (other_weapon)
 	{
-		do_remove(ch, weapon->name, CMD_REMOVE);
+		if (find_live_object(weapon, weapon_uid) && ch->equipment[WIELD] == weapon)
+			do_remove(ch, weapon->name, CMD_REMOVE);
 		do_wield(ch, other_weapon->name, CMD_WIELD);
 	}
 

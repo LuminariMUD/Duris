@@ -48,11 +48,13 @@ The builder checker called zcheck describes the ordinary walking rule correctly.
 
 # Status and further detail
 
-[The fix is ready for review in PR 850](https://github.com/LuminariMUD/Duris/pull/850). All five abilities now check whether each person being moved can cross the door. A charger cannot lend passdoor to a victim or mount. The charger stays on their mount; a thrown victim leaves their own mount behind.
+[The fix in PR 850](https://github.com/LuminariMUD/Duris/pull/850) makes all five abilities check whether each person being moved can cross the door. A charger cannot lend passdoor to a victim or mount. The charger stays on their mount; a thrown victim leaves their own mount behind.
+
+Walking also checks everyone again after departure scripts run, so a script that closes the door or removes passdoor can stop the move. Interrupted moves restore surviving travelers without undoing a script's decision to send someone elsewhere. Lance charges stop if an approach or arrival script removes the target, mount, or equipped lance; a lance destroyed by wear is no longer used afterward.
 
 Tests cover all five abilities, mounted movement, and room scripts that interrupt a move. A disposable local game also confirmed that Squall cannot throw someone through the protected door, and that unlocking the door allows the expected movement.
 
-This has not been deployed to the live game. The issue stays open until the fix is merged.
+This has not been deployed to the live game.
 
 [GitHub issue 752](https://github.com/LuminariMUD/Duris/issues/752) contains the detailed findings and links to the technical report. The source examined was the November 8 2026 master snapshot `dd31e9f2d`.
 
