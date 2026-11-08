@@ -2030,47 +2030,14 @@ void do_stat(P_char ch, char *argument, int cmd, P_obj object)
 				 j->value[1], j->value[0], j->value[3]);
 			break;
 		case ITEM_WEAPON:
-		{
-			int spells[3];
-			char spell_list[512];
-
-			spells[0] = j->value[5] % 1000;
-			spells[1] = j->value[5] % 1000000 / 1000;
-			spells[2] = j->value[5] % 1000000000 / 1000000;
-
 			if ((j->value[0] < 1) || (j->value[0] > WEAPON_NUMCHUCKS))
 				strcpy(buf2, "&+RBUGGED!&N");
 			else
 				strcpy(buf2, weapon_types[j->value[0]].flagLong);
-
-			if (obj_index[j->R_num].func.obj == NULL && j->value[5])
-			{
-				if (skills[spells[0]].name)
-					strcpy(spell_list, skills[spells[0]].name);
-				if (spells[1] && skills[spells[1]].name)
-					APPENDF(spell_list, "&n, &+W%s", skills[spells[1]].name);
-				if (spells[2] && skills[spells[2]].name)
-					APPENDF(spell_list, "&n, &+W%s", skills[spells[2]].name);
-
-				if (j->value[5] / 1000000000)
-					snprintf(
-						buf1, MAX_STRING_LENGTH,
-						"&+YProcs one of &+W%d&+Y level &+W%s &+Yat &+W1/%d&+Y chance\n",
-						j->value[6], spell_list, j->value[7]);
-				else
-					snprintf(
-						buf1, MAX_STRING_LENGTH,
-						"&+YProcs all of &+W%d&+Y level &+W%s &+Yat &+W1/%d&+Y chance\n",
-						j->value[6], spell_list, j->value[7]);
-			}
-			else
-				*buf1 = 0;
 			checked_snprintf(buf, MAX_STRING_LENGTH,
-					 "%s&+YType: &n%s &+Ydice: &N%dD%d&N %s", buf1, buf2,
-					 j->value[1], j->value[2],
-					 j->value[4] ? "&+g(Poisoned)&n" : "");
+					 "&+YType: &n%s &+Ydice: &N%dD%d&N %s", buf2, j->value[1],
+					 j->value[2], j->value[4] ? "&+g(Poisoned)&n" : "");
 			break;
-		}
 		case ITEM_QUIVER:
 			snprintf(
 				buf, MAX_STRING_LENGTH,
@@ -2166,6 +2133,28 @@ void do_stat(P_char ch, char *argument, int cmd, P_obj object)
 			break;
 		}
 		strcat(o_buf, buf);
+
+		if (IS_MONK_PROC_GLOVE(j))
+			strcat(o_buf,
+			       "\n&+YActivates on a monk's barehand strikes when worn on the primary hands.&n");
+		if ((j->type == ITEM_WEAPON || IS_MONK_PROC_GLOVE(j)) && j->value[5] > 0 &&
+		    (IS_MONK_PROC_GLOVE(j) || obj_index[j->R_num].func.obj == nullptr))
+		{
+			char spell_list[512] = {};
+			for (int packed = j->value[5] % 1000000000, slot = 0; slot < 3;
+			     ++slot, packed /= 1000)
+			{
+				const int spell = packed % 1000;
+				if (spell > 0 && spell < MAX_SKILLS && skills[spell].name)
+					APPENDF(spell_list, "%s%s", *spell_list ? "&n, &+W" : "",
+						skills[spell].name);
+			}
+			checked_snprintf(
+				o_buf + strlen(o_buf), MAX_STRING_LENGTH - strlen(o_buf),
+				"\n&+YProcs %s of &+W%d&+Y level &+W%s &+Yat &+W1/%d&+Y chance\n",
+				j->value[5] / 1000000000 ? "one" : "all", j->value[6], spell_list,
+				j->value[7]);
+		}
 
 		if (!showed_vals)
 			snprintf(

@@ -247,6 +247,7 @@ typedef unsigned int uint;
 #define ITEM2_TRANSPARENT BIT_17 /* Item shows contents when looked at */
 #define ITEM2_ACCOUNT_BOUND BIT_18 /* Account-bound divine reward */
 #define ITEM2_ENHANCED BIT_19
+#define ITEM2_MONK_PROC BIT_20 /* Primary gloves can proc on player monk barehand strikes */
 
 /* Bitvector for 'anti_flags' */
 /*

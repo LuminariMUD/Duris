@@ -406,6 +406,12 @@
 #define MISSILE_DART 6
 #define MISSILE_LAST 6
 
+// Admission only: packed spell validity is checked before dispatch.
+#define IS_MONK_PROC_GLOVE(obj)                                              \
+	((obj) && ((obj)->type == ITEM_ARMOR || (obj)->type == ITEM_WORN) && \
+	 IS_SET((obj)->wear_flags, ITEM_WEAR_HANDS) &&                       \
+	 IS_SET((obj)->extra2_flags, ITEM2_MONK_PROC))
+
 #define IS_BACKSTABBER(obj)                                                           \
 	((obj)->type == ITEM_WEAPON &&                                                \
 	 ((obj)->value[0] == WEAPON_DAGGER || (obj)->value[0] == WEAPON_SHORTSWORD || \

@@ -17,6 +17,7 @@
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "item/artifact_mana.h"
+#include "item/objmisc.h"
 #include "magic/spells.h"
 #include "net/comm.h"
 
@@ -123,6 +124,13 @@ class weapon_adapter final : public item_action_adapter
 	bool validate(const item_action_context &context) const noexcept override
 	{
 		if (OBJ_VNUM(context.source) != vnum || !context.definition.effect_count)
+			return false;
+		// The captured slot survives flag removal, so a pending glove cannot
+		// escape its class/opt-in checks by losing MONK_PROC.
+		if (kind == weapon_kind::packed && context.identity.source_slot == WEAR_HANDS &&
+		    (!IS_PC(context.actor) || !GET_CLASS(context.actor, CLASS_MONK) ||
+		     !IS_MONK_PROC_GLOVE(context.source) ||
+		     context.actor->equipment[WEAR_HANDS] != context.source))
 			return false;
 		bool harmful = kind == weapon_kind::avernus;
 		for (size_t i = 0; i < context.definition.effect_count; ++i)

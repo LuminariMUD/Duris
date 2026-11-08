@@ -14480,29 +14480,7 @@ void spell_identify(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /
 				"You magically sense that the damage dice for this weapon are '%dD%d'\n",
 				obj->value[1], obj->value[2]);
 			send_to_char(Gbuf1, ch);
-			if (obj_index[obj->R_num].func.obj == NULL && obj->value[5] &&
-			    GET_LEVEL(ch) >= 56 && GET_CLASS(ch, CLASS_CONJURER))
-			{
-				int spells[3];
-				char spell_list[512];
 
-				spells[0] = obj->value[5] % 1000;
-				spells[1] = obj->value[5] % 1000000 / 1000;
-				spells[2] = obj->value[5] % 1000000000 / 1000000;
-
-				if (skills[spells[0]].name)
-					strcpy(spell_list, skills[spells[0]].name);
-				if (spells[1] && skills[spells[1]].name)
-					APPENDF(spell_list, "&n and &+W%s", skills[spells[1]].name);
-				if (spells[2] && skills[spells[2]].name)
-					APPENDF(spell_list, "&n and &+W%s", skills[spells[2]].name);
-
-				snprintf(
-					Gbuf1, MAX_STRING_LENGTH,
-					"You recognize the forces of &+W%s &nimbued within this item.\n",
-					spell_list);
-				send_to_char(Gbuf1, ch);
-			}
 			break;
 
 		case ITEM_ARMOR:
@@ -14510,6 +14488,29 @@ void spell_identify(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /
 			/* include obj affects for armor and worn items.. */
 
 			break;
+		}
+
+		if (IS_MONK_PROC_GLOVE(obj))
+			send_to_char(
+				"It activates on a monk's barehand strikes when worn on the primary hands.\n",
+				ch);
+		if ((obj->type == ITEM_WEAPON || IS_MONK_PROC_GLOVE(obj)) && obj->value[5] > 0 &&
+		    (IS_MONK_PROC_GLOVE(obj) || obj_index[obj->R_num].func.obj == nullptr) &&
+		    GET_LEVEL(ch) >= 56 && GET_CLASS(ch, CLASS_CONJURER))
+		{
+			char spell_list[512] = {};
+			for (int packed = obj->value[5] % 1000000000, slot = 0; slot < 3;
+			     ++slot, packed /= 1000)
+			{
+				const int spell = packed % 1000;
+				if (spell > 0 && spell < MAX_SKILLS && skills[spell].name)
+					APPENDF(spell_list, "%s%s", *spell_list ? "&n and &+W" : "",
+						skills[spell].name);
+			}
+			snprintf(Gbuf1, MAX_STRING_LENGTH,
+				 "You recognize the forces of &+W%s &nimbued within this item.\n",
+				 spell_list);
+			send_to_char(Gbuf1, ch);
 		}
 
 		found = FALSE;

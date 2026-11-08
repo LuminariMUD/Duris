@@ -26,6 +26,7 @@ affects = '\n'.join(function(ROOT/'src/magic/affects.c', signature) for signatur
 
 HARNESS = r'''
 #include "item/weapon_actions.h"
+#include "combat/attack_continuation.c"
 static int attacks=0, hits=0, damage_amount=0, healed_amount=0, packed=0, dirty=0, call_mutation=0;
 static bool skin=true;
 static P_char sword_master=nullptr;

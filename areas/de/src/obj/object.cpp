@@ -1063,7 +1063,11 @@ int itemvalue(objectType *obj)
 
 	// Has a old school proc (Up to three spells).
 	// Can un-comment the debug stuff if you want to modify this.
-	if (IS_SET(obj->wearBits, ITEM_WIELD) && (obj->objValues[5] > 0))
+	if ((IS_SET(obj->wearBits, ITEM_WIELD) ||
+	     ((obj->objType == ITEM_ARMOR || obj->objType == ITEM_WORN) &&
+	      IS_SET(obj->wearBits, ITEM_WEAR_HANDS) && IS_SET(obj->extra2Bits, ITEM2_MONK_PROC) &&
+	      obj->objValues[6] > 0)) &&
+	    obj->objValues[5] > 0 && obj->objValues[7] > 0)
 	{
 		int spells[3];
 		int spellcirclesum, numspells;
