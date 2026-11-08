@@ -2490,7 +2490,7 @@ P_char get_char_room(const char *name, int room)
 		return (0);
 
 	for (i = world[room].people, j = 1; i && (j <= k); i = i->next_in_room)
-		if (isname(tmp, IS_NPC(i) ? FirstWord(i->player.name) : GET_NAME(i)))
+		if (isname(tmp, GET_NAME(i)))
 		{
 			if (j == k && !IS_AFFECTED(i, AFF_HIDE))
 				return (i);
