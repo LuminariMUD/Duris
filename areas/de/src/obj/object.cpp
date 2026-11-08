@@ -31,8 +31,6 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
-
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -43,8 +41,6 @@
 
 #include "object.h"
 #include "objhere.h"
-
-
 
 extern objectType **g_objLookup;
 extern uint g_lowestObjNumber, g_highestObjNumber, g_numbLookupEntries, g_numbObjTypes;
@@ -61,9 +57,8 @@ extern Skill skills[MAX_AFFECT_TYPES];
 
 bool noObjTypesExist(void)
 {
-  return (getLowestObjNumber() > getHighestObjNumber());
+	return (getLowestObjNumber() > getHighestObjNumber());
 }
-
 
 //
 // getObjShortName
@@ -71,12 +66,11 @@ bool noObjTypesExist(void)
 
 const char *getObjShortName(const objectType *obj)
 {
-  if (!obj)
-    return "(object type not in this .obj file)";
-  else
-    return obj->objShortName;
+	if (!obj)
+		return "(object type not in this .obj file)";
+	else
+		return obj->objShortName;
 }
-
 
 //
 // findObj : Returns the address of the object node that has the requested
@@ -87,12 +81,11 @@ const char *getObjShortName(const objectType *obj)
 
 objectType *findObj(const uint objNumber)
 {
-  if (objNumber >= g_numbLookupEntries) 
-    return NULL;
+	if (objNumber >= g_numbLookupEntries)
+		return NULL;
 
-  return g_objLookup[objNumber];
+	return g_objLookup[objNumber];
 }
-
 
 //
 // objExists : Returns true if object with objNumber exists
@@ -102,12 +95,11 @@ objectType *findObj(const uint objNumber)
 
 bool objExists(const uint objNumber)
 {
-  if (objNumber >= g_numbLookupEntries) 
-    return false;
+	if (objNumber >= g_numbLookupEntries)
+		return false;
 
-  return (g_objLookup[objNumber] != NULL);
+	return (g_objLookup[objNumber] != NULL);
 }
-
 
 //
 // copyObjectType : copies all the info from an object type record into a new
@@ -119,48 +111,46 @@ bool objExists(const uint objNumber)
 
 objectType *copyObjectType(const objectType *srcObj, const bool incNumbObjects)
 {
-  objectType *newObj;
+	objectType *newObj;
 
+	// make sure src exists
 
- // make sure src exists
+	if (!srcObj)
+		return NULL;
 
-  if (!srcObj) 
-    return NULL;
+	// alloc mem for new rec
 
- // alloc mem for new rec
+	newObj = new (std::nothrow) objectType;
+	if (!newObj)
+	{
+		displayAllocError("objectType", "copyObjectType");
 
-  newObj = new(std::nothrow) objectType;
-  if (!newObj)
-  {
-    displayAllocError("objectType", "copyObjectType");
+		return NULL;
+	}
 
-    return NULL;
-  }
+	// first, copy the simple stuff
 
- // first, copy the simple stuff
+	memcpy(newObj, srcObj, sizeof(objectType));
 
-  memcpy(newObj, srcObj, sizeof(objectType));
+	// next, the not-so-simple stuff
 
- // next, the not-so-simple stuff
+	newObj->keywordListHead = copyStringNodes(srcObj->keywordListHead);
 
-  newObj->keywordListHead = copyStringNodes(srcObj->keywordListHead);
+	// extra desc linked list
 
- // extra desc linked list
+	newObj->extraDescHead = copyExtraDescs(srcObj->extraDescHead);
 
-  newObj->extraDescHead = copyExtraDescs(srcObj->extraDescHead);
+	if (incNumbObjects)
+	{
+		g_numbObjTypes++;
 
-  if (incNumbObjects)
-  {
-    g_numbObjTypes++;
-    
-    createPrompt();
-  }
+		createPrompt();
+	}
 
- // return the address of the new object
+	// return the address of the new object
 
-  return newObj;
+	return newObj;
 }
-
 
 //
 // compareObjectApply : FALSE no match TRUE match
@@ -171,12 +161,11 @@ objectType *copyObjectType(const objectType *srcObj, const bool incNumbObjects)
 
 bool compareObjectApply(const objApplyRec *app1, const objApplyRec *app2)
 {
-  if (!memcmp(app1, app2, sizeof(objApplyRec))) 
-    return true;
-  else 
-    return false;
+	if (!memcmp(app1, app2, sizeof(objApplyRec)))
+		return true;
+	else
+		return false;
 }
-
 
 //
 // compareObjectType : compares almost all - returns FALSE if they don't
@@ -187,91 +176,89 @@ bool compareObjectApply(const objApplyRec *app1, const objApplyRec *app2)
 
 bool compareObjectType(const objectType *obj1, const objectType *obj2)
 {
-  if (obj1 == obj2) 
-    return true;
+	if (obj1 == obj2)
+		return true;
 
-  if (!obj1 || !obj2) 
-    return false;
+	if (!obj1 || !obj2)
+		return false;
 
- // check all object attributes
+	// check all object attributes
 
-  if (strcmp(obj1->objShortName, obj2->objShortName)) 
-    return false;
-  if (strcmp(obj1->objLongName, obj2->objLongName)) 
-    return false;
+	if (strcmp(obj1->objShortName, obj2->objShortName))
+		return false;
+	if (strcmp(obj1->objLongName, obj2->objLongName))
+		return false;
 
-  if (obj1->objNumber != obj2->objNumber) 
-    return false;
+	if (obj1->objNumber != obj2->objNumber)
+		return false;
 
-  if (obj1->extraBits != obj2->extraBits)
-    return false;
-  if (obj1->wearBits != obj2->wearBits)
-    return false;
-  if (obj1->extra2Bits != obj2->extra2Bits)
-    return false;
-  if (obj1->antiBits != obj2->antiBits)
-    return false;
-  if (obj1->anti2Bits != obj2->anti2Bits)
-    return false;
+	if (obj1->extraBits != obj2->extraBits)
+		return false;
+	if (obj1->wearBits != obj2->wearBits)
+		return false;
+	if (obj1->extra2Bits != obj2->extra2Bits)
+		return false;
+	if (obj1->antiBits != obj2->antiBits)
+		return false;
+	if (obj1->anti2Bits != obj2->anti2Bits)
+		return false;
 
-  if (obj1->affect1Bits != obj2->affect1Bits)
-    return false;
-  if (obj1->affect2Bits != obj2->affect2Bits)
-    return false;
-  if (obj1->affect3Bits != obj2->affect3Bits)
-    return false;
-  if (obj1->affect4Bits != obj2->affect4Bits)
-    return false;
+	if (obj1->affect1Bits != obj2->affect1Bits)
+		return false;
+	if (obj1->affect2Bits != obj2->affect2Bits)
+		return false;
+	if (obj1->affect3Bits != obj2->affect3Bits)
+		return false;
+	if (obj1->affect4Bits != obj2->affect4Bits)
+		return false;
 
-  if (obj1->objType != obj2->objType) 
-    return false;
-  if (obj1->material != obj2->material) 
-    return false;
-  if (obj1->size != obj2->size) 
-    return false;
-  if (obj1->space != obj2->space) 
-    return false;
-  if (obj1->craftsmanship != obj2->craftsmanship) 
-    return false;
-  if (obj1->damResistBonus != obj2->damResistBonus) 
-    return false;
-  if (obj1->weight != obj2->weight) 
-    return false;
-  if (obj1->worth != obj2->worth) 
-    return false;
-  if (obj1->condition != obj2->condition) 
-    return false;
+	if (obj1->objType != obj2->objType)
+		return false;
+	if (obj1->material != obj2->material)
+		return false;
+	if (obj1->size != obj2->size)
+		return false;
+	if (obj1->space != obj2->space)
+		return false;
+	if (obj1->craftsmanship != obj2->craftsmanship)
+		return false;
+	if (obj1->damResistBonus != obj2->damResistBonus)
+		return false;
+	if (obj1->weight != obj2->weight)
+		return false;
+	if (obj1->worth != obj2->worth)
+		return false;
+	if (obj1->condition != obj2->condition)
+		return false;
 
-  for (uint i = 0; i < NUMB_OBJ_APPLIES; i++)
-  {
-    if (!compareObjectApply(&(obj1->objApply[i]), &(obj2->objApply[i])))
-      return false; 
-  }
+	for (uint i = 0; i < NUMB_OBJ_APPLIES; i++)
+	{
+		if (!compareObjectApply(&(obj1->objApply[i]), &(obj2->objApply[i])))
+			return false;
+	}
 
-  if (memcmp(obj1->objValues, obj2->objValues, sizeof(int) * NUMB_OBJ_VALS))
-    return false;
+	if (memcmp(obj1->objValues, obj2->objValues, sizeof(int) * NUMB_OBJ_VALS))
+		return false;
 
-  if (obj1->trapBits != obj2->trapBits) 
-    return false;
-  if (obj1->trapDam != obj2->trapDam) 
-    return false;
-  if (obj1->trapCharge != obj2->trapCharge) 
-    return false;
-  if (obj1->trapLevel != obj2->trapLevel) 
-    return false;
+	if (obj1->trapBits != obj2->trapBits)
+		return false;
+	if (obj1->trapDam != obj2->trapDam)
+		return false;
+	if (obj1->trapCharge != obj2->trapCharge)
+		return false;
+	if (obj1->trapLevel != obj2->trapLevel)
+		return false;
 
- // description and extra descs
+	// description and extra descs
 
-  if (!compareStringNodesIgnoreCase(obj1->keywordListHead, obj2->keywordListHead))
-    return false;
+	if (!compareStringNodesIgnoreCase(obj1->keywordListHead, obj2->keywordListHead))
+		return false;
 
-  if (!compareExtraDescs(obj1->extraDescHead, obj2->extraDescHead))
-    return false;
+	if (!compareExtraDescs(obj1->extraDescHead, obj2->extraDescHead))
+		return false;
 
-
-  return true;
+	return true;
 }
-
 
 //
 // getHighestObjNumber : Gets the highest object number
@@ -279,9 +266,8 @@ bool compareObjectType(const objectType *obj1, const objectType *obj2)
 
 uint getHighestObjNumber(void)
 {
-  return g_highestObjNumber;
+	return g_highestObjNumber;
 }
-
 
 //
 // getLowestObjNumber : Gets the lowest object number
@@ -289,9 +275,8 @@ uint getHighestObjNumber(void)
 
 uint getLowestObjNumber(void)
 {
-  return g_lowestObjNumber;
+	return g_lowestObjNumber;
 }
-
 
 //
 // getFirstFreeObjNumber : Starts at lowest obj number + 1, loops up to highest - 1,
@@ -300,15 +285,14 @@ uint getLowestObjNumber(void)
 
 uint getFirstFreeObjNumber(void)
 {
-  for (uint i = g_lowestObjNumber + 1; i <= g_highestObjNumber - 1; i++)
-  {
-    if (!g_objLookup[i]) 
-      return i;
-  }
+	for (uint i = g_lowestObjNumber + 1; i <= g_highestObjNumber - 1; i++)
+	{
+		if (!g_objLookup[i])
+			return i;
+	}
 
-  return g_highestObjNumber + 1;
+	return g_highestObjNumber + 1;
 }
-
 
 //
 // checkAndFixRefstoObj : reset any object value refs (i.e. container key), room exit
@@ -317,111 +301,115 @@ uint getFirstFreeObjNumber(void)
 
 void checkAndFixRefstoObj(const uint oldNumb, const uint newNumb)
 {
-  const uint highRoomNumb = getHighestRoomNumber();
-  const uint highObjNumb = getHighestObjNumber();
-  const uint highMobNumb = getHighestMobNumber();
+	const uint highRoomNumb = getHighestRoomNumber();
+	const uint highObjNumb = getHighestObjNumber();
+	const uint highMobNumb = getHighestMobNumber();
 
+	// scan through object types and room exits
 
- // scan through object types and room exits
+	// fix object field refs
 
- // fix object field refs
+	for (uint objNumb = getLowestObjNumber(); objNumb <= highObjNumb; objNumb++)
+	{
+		if (objExists(objNumb))
+		{
+			objectType *obj = findObj(objNumb);
 
-  for (uint objNumb = getLowestObjNumber(); objNumb <= highObjNumb; objNumb++)
-  {
-    if (objExists(objNumb))
-    {
-      objectType *obj = findObj(objNumb);
+			for (uint i = 0; i < NUMB_OBJ_VALS; i++)
+			{
+				if ((fieldRefsObjNumb(obj->objType, i) &&
+				     (obj->objValues[i] == oldNumb)))
+				{
+					obj->objValues[i] = newNumb;
+				}
+			}
+		}
+	}
 
-      for (uint i = 0; i < NUMB_OBJ_VALS; i++)
-      {
-        if ((fieldRefsObjNumb(obj->objType, i) && (obj->objValues[i] == oldNumb)))
-        {
-          obj->objValues[i] = newNumb;
-        }
-      }
-    }
-  }
+	// fix keynumb refs
 
- // fix keynumb refs
+	for (uint roomNumb = getLowestRoomNumber(); roomNumb <= highRoomNumb; roomNumb++)
+	{
+		if (roomExists(roomNumb))
+		{
+			room *roomPtr = findRoom(roomNumb);
 
-  for (uint roomNumb = getLowestRoomNumber(); roomNumb <= highRoomNumb; roomNumb++)
-  {
-    if (roomExists(roomNumb))
-    {
-      room *roomPtr = findRoom(roomNumb);
+			for (uint i = 0; i < NUMB_EXITS; i++)
+			{
+				if (roomPtr->exits[i] && roomPtr->exits[i]->keyNumb &&
+				    (roomPtr->exits[i]->keyNumb == oldNumb))
+					roomPtr->exits[i]->keyNumb = newNumb;
+			}
+		}
+	}
 
-      for (uint i = 0; i < NUMB_EXITS; i++)
-      {
-        if (roomPtr->exits[i] && roomPtr->exits[i]->keyNumb && (roomPtr->exits[i]->keyNumb == oldNumb))
-          roomPtr->exits[i]->keyNumb = newNumb;
-      }
-    }
-  }
+	// fix quest refs
 
- // fix quest refs
+	for (uint mobNumb = getLowestMobNumber(); mobNumb <= highMobNumb; mobNumb++)
+	{
+		if (mobExists(mobNumb))
+		{
+			mobType *mob = findMob(mobNumb);
 
-  for (uint mobNumb = getLowestMobNumber(); mobNumb <= highMobNumb; mobNumb++)
-  {
-    if (mobExists(mobNumb))
-    {
-      mobType *mob = findMob(mobNumb);
+			if (mob->questPtr)
+			{
+				questQuest *qst = mob->questPtr->questHead;
 
-      if (mob->questPtr)
-      {
-        questQuest *qst = mob->questPtr->questHead;
+				while (qst)
+				{
+					questItem *item = qst->questPlayRecvHead;
+					while (item)
+					{
+						if ((item->itemType == QUEST_RITEM_OBJ) &&
+						    (item->itemVal == oldNumb))
+						{
+							item->itemVal = newNumb;
+						}
 
-        while (qst)
-        {
-          questItem *item = qst->questPlayRecvHead;
-          while (item)
-          {
-            if ((item->itemType == QUEST_RITEM_OBJ) && (item->itemVal == oldNumb))
-            {
-              item->itemVal = newNumb;
-            }
+						item = item->Next;
+					}
 
-            item = item->Next;
-          }
+					item = qst->questPlayGiveHead;
+					while (item)
+					{
+						if ((item->itemType == QUEST_GITEM_OBJ) &&
+						    (item->itemVal == oldNumb))
+						{
+							item->itemVal = newNumb;
+						}
 
-          item = qst->questPlayGiveHead;
-          while (item)
-          {
-            if ((item->itemType == QUEST_GITEM_OBJ) && (item->itemVal == oldNumb))
-            {
-              item->itemVal = newNumb;
-            }
+						item = item->Next;
+					}
 
-            item = item->Next;
-          }
+					qst = qst->Next;
+				}
+			}
+		}
+	}
 
-          qst = qst->Next;
-        }
-      }
-    }
-  }
+	// fix shop refs
 
- // fix shop refs
+	for (uint mobNumb = getLowestMobNumber(); mobNumb <= highMobNumb; mobNumb++)
+	{
+		if (mobExists(mobNumb))
+		{
+			mobType *mob = findMob(mobNumb);
 
-  for (uint mobNumb = getLowestMobNumber(); mobNumb <= highMobNumb; mobNumb++)
-  {
-    if (mobExists(mobNumb))
-    {
-      mobType *mob = findMob(mobNumb);
-
-      if (mob->shopPtr)
-      {
-        for (uint i = 0; (i < MAX_NUMBSHOPITEMS) && mob->shopPtr->producedItemList[i]; i++)
-        {
-          if (mob->shopPtr->producedItemList[i] == oldNumb)
-          {
-            mob->shopPtr->producedItemList[i] = newNumb;
-          }
-        }
-      }
-    }
-  }
+			if (mob->shopPtr)
+			{
+				for (uint i = 0;
+				     (i < MAX_NUMBSHOPITEMS) && mob->shopPtr->producedItemList[i];
+				     i++)
+				{
+					if (mob->shopPtr->producedItemList[i] == oldNumb)
+					{
+						mob->shopPtr->producedItemList[i] = newNumb;
+					}
+				}
+			}
+		}
+	}
 }
-
 
 //
 // renumberObjs : Renumbers the objs so that there are no "gaps" - starts
@@ -430,89 +418,89 @@ void checkAndFixRefstoObj(const uint oldNumb, const uint newNumb)
 
 void renumberObjs(const bool renumberHead, const uint newHeadNumb)
 {
-  uint objNumb = getLowestObjNumber(), lastNumb, oldNumb;
-  objectType *objPtr = findObj(objNumb);
+	uint objNumb = getLowestObjNumber(), lastNumb, oldNumb;
+	objectType *objPtr = findObj(objNumb);
 
+	// basic technique - keep all old obj pointers in g_objLookup table until clearing them at the
+	// very end so that checkAndFixRefstoObj()/etc calls work; similarly, do not reset low/high obj
+	// number until the very end
 
- // basic technique - keep all old obj pointers in g_objLookup table until clearing them at the
- // very end so that checkAndFixRefstoObj()/etc calls work; similarly, do not reset low/high obj
- // number until the very end
+	if (renumberHead)
+	{
+		oldNumb = objNumb;
+		objPtr->objNumber = lastNumb = newHeadNumb;
 
- if (renumberHead)
-  {
-    oldNumb = objNumb;
-    objPtr->objNumber = lastNumb = newHeadNumb;
+		resetAllObjHere(objNumb, newHeadNumb);
+		resetNumbLoaded(ENTITY_OBJECT, objNumb, newHeadNumb);
 
-    resetAllObjHere(objNumb, newHeadNumb);
-    resetNumbLoaded(ENTITY_OBJECT, objNumb, newHeadNumb);
+		checkAndFixRefstoObj(objNumb, newHeadNumb);
 
-    checkAndFixRefstoObj(objNumb, newHeadNumb);
+		g_objLookup[newHeadNumb] = objPtr;
 
-    g_objLookup[newHeadNumb] = objPtr;
+		g_madeChanges = true;
+	}
+	else
+	{
+		objNumb = oldNumb = lastNumb = getLowestObjNumber();
+	}
 
-    g_madeChanges = true;
-  }
-  else
-  {
-    objNumb = oldNumb = lastNumb = getLowestObjNumber();
-  }
+	// skip past first object
 
- // skip past first object
+	objPtr = getNextObj(oldNumb);
 
-  objPtr = getNextObj(oldNumb);
+	// remove gaps
 
- // remove gaps
+	while (objPtr)
+	{
+		oldNumb = objNumb = objPtr->objNumber;
 
-  while (objPtr)
-  {
-    oldNumb = objNumb = objPtr->objNumber;
+		if (objNumb != (lastNumb + 1))
+		{
+			objPtr->objNumber = objNumb = lastNumb + 1;
 
-    if (objNumb != (lastNumb + 1))
-    {
-      objPtr->objNumber = objNumb = lastNumb + 1;
+			resetAllObjHere(oldNumb, objNumb);
+			resetNumbLoaded(ENTITY_OBJECT, oldNumb, objNumb);
 
-      resetAllObjHere(oldNumb, objNumb);
-      resetNumbLoaded(ENTITY_OBJECT, oldNumb, objNumb);
+			checkAndFixRefstoObj(oldNumb, objNumb);
 
-      checkAndFixRefstoObj(oldNumb, objNumb);
+			g_madeChanges = true;
 
-      g_madeChanges = true;
+			g_objLookup[objNumb] = objPtr;
+			if (!renumberHead)
+				g_objLookup[oldNumb] = NULL;
+		}
 
-      g_objLookup[objNumb] = objPtr;
-      if (!renumberHead)
-        g_objLookup[oldNumb] = NULL;
-    }
+		lastNumb = objPtr->objNumber;
 
-    lastNumb = objPtr->objNumber;
+		objPtr = getNextObj(oldNumb);
+	}
 
-    objPtr = getNextObj(oldNumb);
-  }
+	resetEntityPointersByNumb(true, false);
 
-  resetEntityPointersByNumb(true, false);
+	// clear old range
 
- // clear old range
+	if (renumberHead)
+	{
+		// entire range was moved, assumes no overlap
 
-  if (renumberHead)
-  {
-   // entire range was moved, assumes no overlap
+		memset(g_objLookup + g_lowestObjNumber, 0,
+		       ((g_highestObjNumber - g_lowestObjNumber) + 1) * sizeof(objectType *));
+	}
+	else
+	{
+		// if the head vnum wasn't changed, then the most that happened was that the high vnum came down
 
-    memset(g_objLookup + g_lowestObjNumber, 0, ((g_highestObjNumber - g_lowestObjNumber) + 1) * sizeof(objectType*));
-  }
-  else
-  {
-   // if the head vnum wasn't changed, then the most that happened was that the high vnum came down
+		memset(g_objLookup + lastNumb + 1, 0,
+		       (g_highestObjNumber - lastNumb) * sizeof(objectType *));
+	}
 
-    memset(g_objLookup + lastNumb + 1, 0, (g_highestObjNumber - lastNumb) * sizeof(objectType*));
-  }
+	// set new low/high
 
- // set new low/high
+	if (renumberHead)
+		g_lowestObjNumber = newHeadNumb;
 
-  if (renumberHead)
-    g_lowestObjNumber = newHeadNumb;
-
-  g_highestObjNumber = lastNumb;
+	g_highestObjNumber = lastNumb;
 }
-
 
 //
 // getPrevObj : find object right before objNumb, numerically
@@ -520,17 +508,16 @@ void renumberObjs(const bool renumberHead, const uint newHeadNumb)
 
 objectType *getPrevObj(const uint objNumb)
 {
-  uint i = objNumb - 1;
+	uint i = objNumb - 1;
 
-  if (objNumb <= getLowestObjNumber()) 
-    return NULL;
+	if (objNumb <= getLowestObjNumber())
+		return NULL;
 
-  while (!g_objLookup[i]) 
-    i--;
+	while (!g_objLookup[i])
+		i--;
 
-  return g_objLookup[i];
+	return g_objLookup[i];
 }
-
 
 //
 // getNextObj : find object right after objNumb, numerically
@@ -538,17 +525,16 @@ objectType *getPrevObj(const uint objNumb)
 
 objectType *getNextObj(const uint objNumb)
 {
-  uint i = objNumb + 1;
+	uint i = objNumb + 1;
 
-  if (objNumb >= getHighestObjNumber()) 
-    return NULL;
+	if (objNumb >= getHighestObjNumber())
+		return NULL;
 
-  while (!g_objLookup[i]) 
-    i++;
+	while (!g_objLookup[i])
+		i++;
 
-  return g_objLookup[i];
+	return g_objLookup[i];
 }
-
 
 //
 // deleteObjsinInv : delete any carried items that have objPtr
@@ -556,23 +542,22 @@ objectType *getNextObj(const uint objNumb)
 
 void deleteObjsinInv(const objectType *objPtr)
 {
-  editableListNode *edit = g_inventory;
-  
+	editableListNode *edit = g_inventory;
 
-  if (!objPtr) 
-    return;
+	if (!objPtr)
+		return;
 
-  while (edit)
-  {
-    editableListNode *next = edit->Next;
+	while (edit)
+	{
+		editableListNode *next = edit->Next;
 
-    if ((edit->entityType == ENTITY_OBJECT) && (((objectHere *)(edit->entityPtr))->objectPtr == objPtr))
-      deleteEditableinList(&g_inventory, edit);
+		if ((edit->entityType == ENTITY_OBJECT) &&
+		    (((objectHere *)(edit->entityPtr))->objectPtr == objPtr))
+			deleteEditableinList(&g_inventory, edit);
 
-    edit = next;
-  }
+		edit = next;
+	}
 }
-
 
 //
 // updateInvKeywordsObj : update keywords of any items in inventory that match objPtr
@@ -580,23 +565,22 @@ void deleteObjsinInv(const objectType *objPtr)
 
 void updateInvKeywordsObj(const objectType *objPtr)
 {
-  editableListNode *edit = g_inventory;
+	editableListNode *edit = g_inventory;
 
+	if (!objPtr)
+		return;
 
-  if (!objPtr) 
-    return;
+	while (edit)
+	{
+		if ((edit->entityType == ENTITY_OBJECT) &&
+		    (((objectHere *)(edit->entityPtr))->objectPtr == objPtr))
+		{
+			edit->keywordListHead = objPtr->keywordListHead;
+		}
 
-  while (edit)
-  {
-    if ((edit->entityType == ENTITY_OBJECT) && (((objectHere *)(edit->entityPtr))->objectPtr == objPtr))
-    {
-      edit->keywordListHead = objPtr->keywordListHead;
-    }
-
-    edit = edit->Next;
-  }
+		edit = edit->Next;
+	}
 }
-
 
 //
 // resetLowHighObj : reset low and high obj type numb to actual
@@ -604,24 +588,23 @@ void updateInvKeywordsObj(const objectType *objPtr)
 
 void resetLowHighObj(void)
 {
-  uint high = 0, low = g_numbLookupEntries;
+	uint high = 0, low = g_numbLookupEntries;
 
-  for (uint i = 0; i < g_numbLookupEntries; i++)
-  {
-    if (g_objLookup[i])
-    {
-      if (i > high) 
-        high = i;
+	for (uint i = 0; i < g_numbLookupEntries; i++)
+	{
+		if (g_objLookup[i])
+		{
+			if (i > high)
+				high = i;
 
-      if (i < low) 
-        low = i;
-    }
-  }
+			if (i < low)
+				low = i;
+		}
+	}
 
-  g_lowestObjNumber = low;
-  g_highestObjNumber = high;
+	g_lowestObjNumber = low;
+	g_highestObjNumber = high;
 }
-
 
 //
 // getMatchingObj : snags the first matching object type based on character
@@ -632,59 +615,57 @@ void resetLowHighObj(void)
 
 objectType *getMatchingObj(const char *strn)
 {
-  uint vnum;
-  bool isVnum;
-  const uint highObjNumb = getHighestObjNumber();
+	uint vnum;
+	bool isVnum;
+	const uint highObjNumb = getHighestObjNumber();
 
+	if (strnumber(strn))
+	{
+		isVnum = true;
+		vnum = strtoul(strn, NULL, 10);
+	}
+	else
+	{
+		isVnum = false;
+	}
 
-  if (strnumber(strn))
-  {
-    isVnum = true;
-    vnum = strtoul(strn, NULL, 10);
-  }
-  else 
-  {
-    isVnum = false;
-  }
+	objectHere *objHere = g_currentRoom->objectHead;
 
-  objectHere *objHere = g_currentRoom->objectHead;
+	while (objHere)
+	{
+		if (objHere->objectPtr)
+		{
+			if (!isVnum)
+			{
+				if (scanKeyword(strn, objHere->objectPtr->keywordListHead))
+					return objHere->objectPtr;
+			}
+			else
+			{
+				if (objHere->objectNumb == vnum)
+					return objHere->objectPtr;
+			}
+		}
 
-  while (objHere)
-  {
-    if (objHere->objectPtr)
-    {
-      if (!isVnum)
-      {
-        if (scanKeyword(strn, objHere->objectPtr->keywordListHead))
-          return objHere->objectPtr;
-      }
-      else
-      {
-        if (objHere->objectNumb == vnum)
-          return objHere->objectPtr;
-      }
-    }
+		objHere = objHere->Next;
+	}
 
-    objHere = objHere->Next;
-  }
-  
-  if (isVnum)
-    return findObj(vnum);
+	if (isVnum)
+		return findObj(vnum);
 
-  for (uint objNumb = getLowestObjNumber(); objNumb <= highObjNumb; objNumb++)
-  {
-    if (objExists(objNumb))
-    {
-      objectType *obj = findObj(objNumb);
+	for (uint objNumb = getLowestObjNumber(); objNumb <= highObjNumb; objNumb++)
+	{
+		if (objExists(objNumb))
+		{
+			objectType *obj = findObj(objNumb);
 
-      if (scanKeyword(strn, obj->keywordListHead)) 
-        return obj;
-    }
-  }
+			if (scanKeyword(strn, obj->keywordListHead))
+				return obj;
+		}
+	}
 
-  return NULL;
+	return NULL;
 }
-
 
 //
 // showKeyUsed : list all objects of type ITEM_KEY or with the keyword 'key' if no arg, or show where object
@@ -693,621 +674,624 @@ objectType *getMatchingObj(const char *strn)
 
 void showKeyUsed(const char *args)
 {
-  objectType *obj = NULL;
-  room *roomPtr;
-  uint vnum = 0;
-  size_t lines = 0;
-  char outStrn[512];
-  bool foundKey = false;
-  const uint highRoomNumb = getHighestRoomNumber();
-  const uint highObjNumb = getHighestObjNumber();
+	objectType *obj = NULL;
+	room *roomPtr;
+	uint vnum = 0;
+	size_t lines = 0;
+	char outStrn[512];
+	bool foundKey = false;
+	const uint highRoomNumb = getHighestRoomNumber();
+	const uint highObjNumb = getHighestObjNumber();
 
+	if (strlen(args) == 0)
+	{
+		if (noObjTypesExist())
+		{
+			_outtext("\nThere are no object types.\n\n");
 
-  if (strlen(args) == 0)
-  {
-    if (noObjTypesExist())
-    {
-      _outtext("\nThere are no object types.\n\n");
+			return;
+		}
 
-      return;
-    }
+		_outtext("\n\n");
 
-    _outtext("\n\n");
+		lines += 2;
 
-    lines += 2;
+		for (uint objNumb = getLowestObjNumber(); objNumb <= highObjNumb; objNumb++)
+		{
+			if (objExists(objNumb))
+			{
+				obj = findObj(objNumb);
 
-    for (uint objNumb = getLowestObjNumber(); objNumb <= highObjNumb; objNumb++)
-    {
-      if (objExists(objNumb))
-      {
-        obj = findObj(objNumb);
+				if ((obj->objType == ITEM_KEY) ||
+				    scanKeyword("KEY", obj->keywordListHead))
+				{
+					foundKey = true;
 
-        if ((obj->objType == ITEM_KEY) || scanKeyword("KEY", obj->keywordListHead))
-        {
-          foundKey = true;
+					sprintf(outStrn, "%s&n (#%u)\n", obj->objShortName,
+						objNumb);
 
-          sprintf(outStrn, "%s&n (#%u)\n", obj->objShortName, objNumb);
+					if (checkPause(outStrn, lines))
+						return;
+				}
+			}
+		}
 
-          if (checkPause(outStrn, lines))
-            return;
-        }
-      }
-    }
+		if (!foundKey)
+			checkPause("There are no items of type key or with the keyword 'key'.\n",
+				   lines);
 
-    if (!foundKey) 
-      checkPause("There are no items of type key or with the keyword 'key'.\n", lines);
+		checkPause("\n", lines);
 
-    checkPause("\n", lines);
+		return;
+	}
 
-    return;
-  }
+	// allow looking for objects that don't exist in this zone
 
- // allow looking for objects that don't exist in this zone
+	if (strnumber(args))
+	{
+		vnum = strtoul(args, NULL, 10);
 
-  if (strnumber(args))
-  {
-    vnum = strtoul(args, NULL, 10);
+		obj = findObj(vnum);
+	}
+	else
+	{
+		for (uint objNumb = getLowestObjNumber(); objNumb <= highObjNumb; objNumb++)
+		{
+			if (objExists(objNumb))
+			{
+				obj = findObj(objNumb);
 
-    obj = findObj(vnum);
-  }
-  else
-  {
-    for (uint objNumb = getLowestObjNumber(); objNumb <= highObjNumb; objNumb++)
-    {
-      if (objExists(objNumb))
-      {
-        obj = findObj(objNumb);
+				if (scanKeyword(args, obj->keywordListHead))
+				{
+					vnum = objNumb;
+					break;
+				}
+			}
+		}
 
-        if (scanKeyword(args, obj->keywordListHead))
-        {
-          vnum = objNumb;
-          break;
-        }
-      }
-    }
+		if (!obj)
+		{
+			_outtext("\nNo object could be found that matches that keyword.\n\n");
+			return;
+		}
+	}
 
-    if (!obj)
-    {
-      _outtext("\nNo object could be found that matches that keyword.\n\n");
-      return;
-    }
-  }
+	if (obj && (obj->objType != ITEM_KEY))
+	{
+		sprintf(outStrn, "\n&+WNOTE:&n '%s&n' is not of item type KEY.\n\n",
+			obj->objShortName);
+		if (checkPause(outStrn, lines))
+			return;
+	}
 
-  if (obj && (obj->objType != ITEM_KEY))
-  {
-    sprintf(outStrn, "\n&+WNOTE:&n '%s&n' is not of item type KEY.\n\n", obj->objShortName);
-    if (checkPause(outStrn, lines))
-      return;
-  }
+	// find the thingies that need this key and display them
 
- // find the thingies that need this key and display them
+	sprintf(outStrn, "\n\n'%s&n' (#%u) is needed for -\n\n", getObjShortName(obj), vnum);
+	if (checkPause(outStrn, lines))
+		return;
 
-  sprintf(outStrn, "\n\n'%s&n' (#%u) is needed for -\n\n",
-          getObjShortName(obj), vnum);
-  if (checkPause(outStrn, lines))
-    return;
+	// first, room exits
 
- // first, room exits
+	for (uint roomNumb = getLowestRoomNumber(); roomNumb <= highRoomNumb; roomNumb++)
+	{
+		if (roomExists(roomNumb))
+		{
+			roomPtr = findRoom(roomNumb);
 
-  for (uint roomNumb = getLowestRoomNumber(); roomNumb <= highRoomNumb; roomNumb++)
-  {
-    if (roomExists(roomNumb))
-    {
-      roomPtr = findRoom(roomNumb);
+			for (uint i = 0; i < NUMB_EXITS; i++)
+			{
+				if (exitNeedsKey(roomPtr->exits[i], vnum))
+				{
+					sprintf(outStrn,
+						"  &+C%s&n exit of &+groom #&+c%u&n, '%s&n'\n",
+						g_exitnames[i], roomPtr->roomNumber,
+						roomPtr->roomName);
 
-      for (uint i = 0; i < NUMB_EXITS; i++)
-      {
-        if (exitNeedsKey(roomPtr->exits[i], vnum))
-        {
-          sprintf(outStrn, "  &+C%s&n exit of &+groom #&+c%u&n, '%s&n'\n",
-                  g_exitnames[i], roomPtr->roomNumber, roomPtr->roomName);
+					if (checkPause(outStrn, lines))
+						return;
 
-          if (checkPause(outStrn, lines)) 
-            return;
+					foundKey = true;
+				}
+			}
+		}
+	}
 
-          foundKey = true;
-        }
-      }
-    }
-  }
+	// then, objects (containers)
 
- // then, objects (containers)
+	for (uint objNumb = getLowestObjNumber(); objNumb <= highObjNumb; objNumb++)
+	{
+		if (objExists(objNumb))
+		{
+			obj = findObj(objNumb);
 
-  for (uint objNumb = getLowestObjNumber(); objNumb <= highObjNumb; objNumb++)
-  {
-    if (objExists(objNumb))
-    {
-      obj = findObj(objNumb);
+			if ((obj->objType == ITEM_CONTAINER) && (obj->objValues[2] == vnum))
+			{
+				sprintf(outStrn, "  &+gobject #&+c%u&n, '%s&n' (&+ycontainer&n)\n",
+					objNumb, obj->objShortName);
 
-      if ((obj->objType == ITEM_CONTAINER) && (obj->objValues[2] == vnum))
-      {
-        sprintf(outStrn, "  &+gobject #&+c%u&n, '%s&n' (&+ycontainer&n)\n",
-                objNumb, obj->objShortName);
+				if (checkPause(outStrn, lines))
+					return;
 
-        if (checkPause(outStrn, lines)) 
-          return;
+				foundKey = true;
+			}
+		}
+	}
 
-        foundKey = true;
-      }
-    }
-  }
+	if (!foundKey)
+		_outtext("That key is not used on any doors or containers.\n");
 
-  if (!foundKey) 
-    _outtext("That key is not used on any doors or containers.\n");
-
-  _outtext("\n");
+	_outtext("\n");
 }
 
 #ifdef GODMODE
-#define IS_SET(flag, bit)  ((flag) & (bit))
-int get_mincircle( int spell );
+#define IS_SET(flag, bit) ((flag) & (bit))
+int get_mincircle(int spell);
 
-int itemvalue( objectType *obj )
+int itemvalue(objectType *obj)
 {
-  long workingvalue = 0;
-  double multiplier = 1;
-  double mod;
+	long workingvalue = 0;
+	double multiplier = 1;
+	double mod;
 
-  if( !obj )
-  {
-    return 0;
-  }
+	if (!obj)
+	{
+		return 0;
+	}
 
-  if(IS_SET(obj->wearBits, ITEM_WEAR_EYES))
-    multiplier *= 1.3;
+	if (IS_SET(obj->wearBits, ITEM_WEAR_EYES))
+		multiplier *= 1.3;
 
-  if(IS_SET(obj->wearBits, ITEM_WEAR_EARRING))
-    multiplier *= 1.2;
+	if (IS_SET(obj->wearBits, ITEM_WEAR_EARRING))
+		multiplier *= 1.2;
 
-  if (IS_SET(obj->wearBits, ITEM_WEAR_FACE))
-    multiplier *= 1.3;
+	if (IS_SET(obj->wearBits, ITEM_WEAR_FACE))
+		multiplier *= 1.3;
 
-  if (IS_SET(obj->wearBits, ITEM_WEAR_QUIVER))
-    multiplier *= 1.1;
+	if (IS_SET(obj->wearBits, ITEM_WEAR_QUIVER))
+		multiplier *= 1.1;
 
-  if (IS_SET(obj->wearBits, ITEM_WEAR_FINGER))
-    multiplier *= 1.2;
+	if (IS_SET(obj->wearBits, ITEM_WEAR_FINGER))
+		multiplier *= 1.2;
 
-  if (IS_SET(obj->wearBits, ITEM_GUILD_INSIGNIA))
-    multiplier *= 1.5;
+	if (IS_SET(obj->wearBits, ITEM_GUILD_INSIGNIA))
+		multiplier *= 1.5;
 
-  if (IS_SET(obj->wearBits, ITEM_WEAR_NECK))
-    multiplier *= 1.2;
+	if (IS_SET(obj->wearBits, ITEM_WEAR_NECK))
+		multiplier *= 1.2;
 
-  if (IS_SET(obj->wearBits, ITEM_WEAR_WAIST))
-    multiplier *= 1.1;
+	if (IS_SET(obj->wearBits, ITEM_WEAR_WAIST))
+		multiplier *= 1.1;
 
-  if (IS_SET(obj->wearBits, ITEM_WEAR_WRIST))
-    multiplier *= 1.1;
+	if (IS_SET(obj->wearBits, ITEM_WEAR_WRIST))
+		multiplier *= 1.1;
 
-  // Aff's add to the base value.
-  if (IS_SET(obj->affect1Bits, AFF_STONE_SKIN))
-	  workingvalue += 125;
+	// Aff's add to the base value.
+	if (IS_SET(obj->affect1Bits, AFF_STONE_SKIN))
+		workingvalue += 125;
 
-  if (IS_SET(obj->affect1Bits, AFF_BIOFEEDBACK))
-	  workingvalue += 110;
+	if (IS_SET(obj->affect1Bits, AFF_BIOFEEDBACK))
+		workingvalue += 110;
 
-  if (IS_SET(obj->affect1Bits, AFF_FARSEE))
-	  workingvalue += 45;
+	if (IS_SET(obj->affect1Bits, AFF_FARSEE))
+		workingvalue += 45;
 
-  if (IS_SET(obj->affect1Bits, AFF_DETECT_INVISIBLE))
-	  workingvalue += 90;
+	if (IS_SET(obj->affect1Bits, AFF_DETECT_INVISIBLE))
+		workingvalue += 90;
 
-  if (IS_SET(obj->affect1Bits, AFF_HASTE))
-	  workingvalue += 75;
+	if (IS_SET(obj->affect1Bits, AFF_HASTE))
+		workingvalue += 75;
 
-  if (IS_SET(obj->affect1Bits, AFF_INVISIBLE))
-	  workingvalue += 35;
+	if (IS_SET(obj->affect1Bits, AFF_INVISIBLE))
+		workingvalue += 35;
 
-  if (IS_SET(obj->affect1Bits, AFF_SENSE_LIFE))
-	  workingvalue += 45;
+	if (IS_SET(obj->affect1Bits, AFF_SENSE_LIFE))
+		workingvalue += 45;
 
-  if (IS_SET(obj->affect1Bits, AFF_MINOR_GLOBE))
-	  workingvalue += 28;
+	if (IS_SET(obj->affect1Bits, AFF_MINOR_GLOBE))
+		workingvalue += 28;
 
-  if (IS_SET(obj->affect1Bits, AFF_UD_VISION))
-	  workingvalue += 40;
+	if (IS_SET(obj->affect1Bits, AFF_UD_VISION))
+		workingvalue += 40;
 
-  if (IS_SET(obj->affect1Bits, AFF_WATERBREATH))
-	  workingvalue += 45;
+	if (IS_SET(obj->affect1Bits, AFF_WATERBREATH))
+		workingvalue += 45;
 
-  if (IS_SET(obj->affect1Bits, AFF_PROTECT_EVIL))
-	  workingvalue += 35;
+	if (IS_SET(obj->affect1Bits, AFF_PROTECT_EVIL))
+		workingvalue += 35;
 
-  if (IS_SET(obj->affect1Bits, AFF_SLOW_POISON))
-	  workingvalue += 20;
+	if (IS_SET(obj->affect1Bits, AFF_SLOW_POISON))
+		workingvalue += 20;
 
-  if (IS_SET(obj->affect1Bits, AFF_SNEAK))
-	  workingvalue += 125;
+	if (IS_SET(obj->affect1Bits, AFF_SNEAK))
+		workingvalue += 125;
 
-  if (IS_SET(obj->affect1Bits, AFF_BARKSKIN))
-	  workingvalue += 25;
+	if (IS_SET(obj->affect1Bits, AFF_BARKSKIN))
+		workingvalue += 25;
 
-  if (IS_SET(obj->affect1Bits, AFF_INFRAVISION))
-	  workingvalue += 7;
+	if (IS_SET(obj->affect1Bits, AFF_INFRAVISION))
+		workingvalue += 7;
 
-  if (IS_SET(obj->affect1Bits, AFF_LEVITATE))
-	  workingvalue += 13;
+	if (IS_SET(obj->affect1Bits, AFF_LEVITATE))
+		workingvalue += 13;
 
-  if (IS_SET(obj->affect1Bits, AFF_HIDE))
-	  workingvalue += 85;
+	if (IS_SET(obj->affect1Bits, AFF_HIDE))
+		workingvalue += 85;
 
-  if (IS_SET(obj->affect1Bits, AFF_FLY))
-	  workingvalue += 75;
+	if (IS_SET(obj->affect1Bits, AFF_FLY))
+		workingvalue += 75;
 
-  if (IS_SET(obj->affect1Bits, AFF_AWARE))
-	  workingvalue += 75;
+	if (IS_SET(obj->affect1Bits, AFF_AWARE))
+		workingvalue += 75;
 
-  if (IS_SET(obj->affect1Bits, AFF_PROT_FIRE))
-	  workingvalue += 35;
+	if (IS_SET(obj->affect1Bits, AFF_PROT_FIRE))
+		workingvalue += 35;
 
-  if (IS_SET(obj->affect2Bits, AFF2_FIRESHIELD))
-	  workingvalue += 45;
+	if (IS_SET(obj->affect2Bits, AFF2_FIRESHIELD))
+		workingvalue += 45;
 
-  if (IS_SET(obj->affect2Bits, AFF2_ULTRAVISION))
-	  workingvalue += 75;
+	if (IS_SET(obj->affect2Bits, AFF2_ULTRAVISION))
+		workingvalue += 75;
 
-  if (IS_SET(obj->affect2Bits, AFF2_DETECT_EVIL))
-	  workingvalue += 10;
+	if (IS_SET(obj->affect2Bits, AFF2_DETECT_EVIL))
+		workingvalue += 10;
 
-  if (IS_SET(obj->affect2Bits, AFF2_DETECT_GOOD))
-	  workingvalue += 10;
+	if (IS_SET(obj->affect2Bits, AFF2_DETECT_GOOD))
+		workingvalue += 10;
 
-  if (IS_SET(obj->affect2Bits, AFF2_DETECT_MAGIC))
-	  workingvalue += 15;
+	if (IS_SET(obj->affect2Bits, AFF2_DETECT_MAGIC))
+		workingvalue += 15;
 
-  if (IS_SET(obj->affect2Bits, AFF2_PROT_COLD))
-    workingvalue += 35;
+	if (IS_SET(obj->affect2Bits, AFF2_PROT_COLD))
+		workingvalue += 35;
 
-  if (IS_SET(obj->affect2Bits, AFF2_PROT_LIGHTNING))
-    workingvalue += 35;
+	if (IS_SET(obj->affect2Bits, AFF2_PROT_LIGHTNING))
+		workingvalue += 35;
 
-  if (IS_SET(obj->affect2Bits, AFF2_GLOBE))
-	  workingvalue += 75;
+	if (IS_SET(obj->affect2Bits, AFF2_GLOBE))
+		workingvalue += 75;
 
-  if (IS_SET(obj->affect2Bits, AFF2_PROT_GAS))
-    workingvalue += 35;
+	if (IS_SET(obj->affect2Bits, AFF2_PROT_GAS))
+		workingvalue += 35;
 
-  if (IS_SET(obj->affect2Bits, AFF2_PROT_ACID))
-    workingvalue += 35;
+	if (IS_SET(obj->affect2Bits, AFF2_PROT_ACID))
+		workingvalue += 35;
 
-  if (IS_SET(obj->affect2Bits, AFF2_SOULSHIELD))
-    workingvalue += 45;
+	if (IS_SET(obj->affect2Bits, AFF2_SOULSHIELD))
+		workingvalue += 45;
 
-  if (IS_SET(obj->affect2Bits, AFF2_MINOR_INVIS))
-	  workingvalue += 15;
+	if (IS_SET(obj->affect2Bits, AFF2_VAMPIRIC_TOUCH))
+		workingvalue += 60;
 
-  if (IS_SET(obj->affect2Bits, AFF2_VAMPIRIC_TOUCH))
-	  workingvalue += 60;
+	if (IS_SET(obj->affect2Bits, AFF2_EARTH_AURA))
+		workingvalue += 110;
 
-  if (IS_SET(obj->affect2Bits, AFF2_EARTH_AURA))
-	  workingvalue += 110;
+	if (IS_SET(obj->affect2Bits, AFF2_WATER_AURA))
+		workingvalue += 115;
 
-  if (IS_SET(obj->affect2Bits, AFF2_WATER_AURA))
-	  workingvalue += 115;
+	if (IS_SET(obj->affect2Bits, AFF2_FIRE_AURA))
+		workingvalue += 120;
 
-  if (IS_SET(obj->affect2Bits, AFF2_FIRE_AURA))
-	  workingvalue += 120;
+	if (IS_SET(obj->affect2Bits, AFF2_AIR_AURA))
+		workingvalue += 130;
 
-  if (IS_SET(obj->affect2Bits, AFF2_AIR_AURA))
-	  workingvalue += 130;
+	if (IS_SET(obj->affect2Bits, AFF2_PASSDOOR))
+		workingvalue += 80;
 
-  if (IS_SET(obj->affect2Bits, AFF2_PASSDOOR))
-	  workingvalue += 80;
+	if (IS_SET(obj->affect2Bits, AFF2_FLURRY))
+		workingvalue += 150;
 
-  if (IS_SET(obj->affect2Bits, AFF2_FLURRY))
-	  workingvalue += 150;
+	if (IS_SET(obj->affect3Bits, AFF3_PROT_ANIMAL))
+		workingvalue += 25;
 
-  if (IS_SET(obj->affect3Bits, AFF3_PROT_ANIMAL))
-	  workingvalue += 25;
+	if (IS_SET(obj->affect3Bits, AFF3_SPIRIT_WARD))
+		workingvalue += 40;
 
-  if (IS_SET(obj->affect3Bits, AFF3_SPIRIT_WARD))
-	  workingvalue += 40;
+	if (IS_SET(obj->affect3Bits, AFF3_GR_SPIRIT_WARD))
+		workingvalue += 65;
 
-  if (IS_SET(obj->affect3Bits, AFF3_GR_SPIRIT_WARD))
-	  workingvalue += 65;
+	if (IS_SET(obj->affect3Bits, AFF3_ENLARGE))
+		workingvalue += 120;
 
-  if (IS_SET(obj->affect3Bits, AFF3_ENLARGE))
-	  workingvalue += 120;
+	if (IS_SET(obj->affect3Bits, AFF3_REDUCE))
+		workingvalue += 120;
 
-  if (IS_SET(obj->affect3Bits, AFF3_REDUCE))
-	  workingvalue += 120;
+	if (IS_SET(obj->affect3Bits, AFF3_INERTIAL_BARRIER))
+		workingvalue += 125;
 
-  if (IS_SET(obj->affect3Bits, AFF3_INERTIAL_BARRIER))
-	  workingvalue += 125;
+	if (IS_SET(obj->affect3Bits, AFF3_COLDSHIELD))
+		workingvalue += 45;
 
-  if (IS_SET(obj->affect3Bits, AFF3_COLDSHIELD))
-	  workingvalue += 45;
+	if (IS_SET(obj->affect3Bits, AFF3_TOWER_IRON_WILL))
+		workingvalue += 45;
 
-  if (IS_SET(obj->affect3Bits, AFF3_TOWER_IRON_WILL))
-	  workingvalue += 45;
+	if (IS_SET(obj->affect3Bits, AFF3_BLUR))
+		workingvalue += 65;
 
-  if (IS_SET(obj->affect3Bits, AFF3_BLUR))
-	  workingvalue += 65;
+	if (IS_SET(obj->affect3Bits, AFF3_PASS_WITHOUT_TRACE))
+		workingvalue += 45;
 
-  if (IS_SET(obj->affect3Bits, AFF3_PASS_WITHOUT_TRACE))
-	  workingvalue += 45;
+	if (IS_SET(obj->affect4Bits, AFF4_VAMPIRE_FORM))
+		workingvalue += 90;
 
-  if (IS_SET(obj->affect4Bits, AFF4_VAMPIRE_FORM))
-	  workingvalue += 90;
+	if (IS_SET(obj->affect4Bits, AFF4_HOLY_SACRIFICE))
+		workingvalue += 105;
 
-  if (IS_SET(obj->affect4Bits, AFF4_HOLY_SACRIFICE))
-	  workingvalue += 105;
+	if (IS_SET(obj->affect4Bits, AFF4_BATTLE_ECSTASY))
+		workingvalue += 105;
 
-  if (IS_SET(obj->affect4Bits, AFF4_BATTLE_ECSTASY))
-	  workingvalue += 105;
+	if (IS_SET(obj->affect4Bits, AFF4_DAZZLER))
+		workingvalue += 45;
 
-  if (IS_SET(obj->affect4Bits, AFF4_DAZZLER))
-	  workingvalue += 45;
+	if (IS_SET(obj->affect4Bits, AFF4_PHANTASMAL_FORM))
+		workingvalue += 105;
 
-  if (IS_SET(obj->affect4Bits, AFF4_PHANTASMAL_FORM))
-	  workingvalue += 105;
+	if (IS_SET(obj->affect4Bits, AFF4_NOFEAR))
+		workingvalue += 40;
 
-  if (IS_SET(obj->affect4Bits, AFF4_NOFEAR))
-	  workingvalue += 40;
-
-  if (IS_SET(obj->affect4Bits, AFF4_REGENERATION))
-	  workingvalue += 60;
-
-  if (IS_SET(obj->affect4Bits, AFF4_GLOBE_OF_DARKNESS))
-	  workingvalue += 15;
-
-  if (IS_SET(obj->affect4Bits, AFF4_HAWKVISION))
-	  workingvalue += 20;
-
-  if (IS_SET(obj->affect4Bits, AFF4_SANCTUARY))
-	  workingvalue += 105;
-
-  if (IS_SET(obj->affect4Bits, AFF4_HELLFIRE))
-	  workingvalue += 110;
-
-  if (IS_SET(obj->affect4Bits, AFF4_SENSE_HOLINESS))
-	  workingvalue += 15;
-
-  if (IS_SET(obj->affect4Bits, AFF4_PROT_LIVING))
-	  workingvalue += 65;
-
-  if (IS_SET(obj->affect4Bits, AFF4_DETECT_ILLUSION))
-	  workingvalue += 40;
-
-  if (IS_SET(obj->affect4Bits, AFF4_ICE_AURA))
-	  workingvalue += 90;
-
-  if (IS_SET(obj->affect4Bits, AFF4_NEG_SHIELD))
-	  workingvalue += 45;
-
-  if (IS_SET(obj->affect4Bits, AFF4_WILDMAGIC))
-	  workingvalue += 240;
-
-  // Has a old school proc (Up to three spells).
-  // Can un-comment the debug stuff if you want to modify this.
-  if(IS_SET(obj->wearBits, ITEM_WIELD) && (obj->objValues[5] > 0))
-  {
-    int spells[3];
-    int spellcirclesum, numspells;
-
-    // val5 : 3 spells + all or one.
-    spells[0] = obj->objValues[5] % 1000;
-    spells[1] = obj->objValues[5] % 1000000 / 1000;
-    spells[2] = obj->objValues[5] % 1000000000 / 1000000;
-//    debug( "Spells0: %d, Spells1: %d, Spells2: %d.", spells[0], spells[1], spells[2] );
-
-    // val6 = level * val7 = chance -> 1/30 chance = 1, 1/60 chance = .5, 1/15 chance = 2, etc.
-    mod = ((obj->objValues[6] > 19) ? obj->objValues[6] / 10.0 : 1) * ( 30.0 / obj->objValues[7] );
-//    debug( "mod: %f, objval6/10: %f, 30/objval7: %f", mod, (obj->objValues[6] > 19) ? obj->objValues[6] / 10.0 : 1, (30.0 / obj->objValues[7]) );
-
-    spellcirclesum = get_mincircle( spells[0] );
-    spellcirclesum += get_mincircle( spells[1] );
-    spellcirclesum += get_mincircle( spells[2] );
-//    debug( "spellcirclesum: %d, circle0: %d, circle1: %d, circle2: %d.", spellcirclesum, get_mincircle(spells[0]), get_mincircle(spells[1]), get_mincircle(spells[2]) );
-
-    // 1 lvl 10 spell  2nd circle 1/60 chance = 1*1* 2*.5 =  1
-    // 1 lvl 60 spell  1st circle 1/30 chance = 1*6* 1*1  =  6
-    // 1 lvl 40 spell  3rd circle 1/30 chance = 1*4* 3*1  = 12
-    // 1 lvl 60 spell 12th circle 1/30 chance = 1*6*12*1  = 72 etc.
-    // val5 / 1000000000 -> 1, otherwise casts all.
-    if( obj->objValues[5] / 1000000000 )
-    {
-      // Add up number of spells
-      numspells = ((spells[0]) ? 1 : 0)+((spells[1]) ? 1 : 0)+((spells[2]) ? 1 : 0);
-      // If there are none?!, set to 1 anyway.
-      numspells = numspells ? numspells : 1;
-      // Compute average circle.
-//      debug( "mod * spellcirclesum / numspells: %d.",(int) (mod * (spellcirclesum / numspells)) );
-      workingvalue += (int) (mod * (spellcirclesum / numspells));
-    }
-    else
-    {
-//      debug( "spellcirclesum * mod: %d.", (int) (spellcirclesum * mod) );
-      workingvalue += mod * spellcirclesum;
-    }
-  }
-
-  //------- A0/A1/A2 -------------  
-  int i = 0;
-  while(i < 3)
-  {
-    mod = obj->objApply[i].applyModifier;
-    //dam/hitroll are normal values
-    if( (obj->objApply[i].applyWhere == APPLY_DAMROLL)
-	    || (obj->objApply[i].applyWhere == APPLY_HITROLL) )
-    {
-      // 1:1, 2:2, 3:6, 4:12, 5:20, 6:30, 7:42, 8:56, 9:72, 10:90, 11: 110..
-      workingvalue += (mod <= 2) ? mod : mod * (mod - 1);
-      multiplier *= 1.25;
-    }
-
-    //regular stats can be high numbers - half them
-    if( (obj->objApply[i].applyWhere == APPLY_STR)
-	    || (obj->objApply[i].applyWhere == APPLY_DEX)
-	    || (obj->objApply[i].applyWhere == APPLY_INT)
-	    || (obj->objApply[i].applyWhere == APPLY_WIS)
-	    || (obj->objApply[i].applyWhere == APPLY_CON)
-	    || (obj->objApply[i].applyWhere == APPLY_AGI)
-	    || (obj->objApply[i].applyWhere == APPLY_POW)
-	    || (obj->objApply[i].applyWhere == APPLY_LUCK) )
-    {
-      // 1:1, 2:2, 3:4, 4:9, 5:16, 6:25, 7:36, 8:49, 9:64, 10:81, 11:100
-      workingvalue += (mod <= 2) ? mod : (mod - 1) * (mod - 1);
-    }
-
-    //hit, move, mana, are generally large #'s
-    if( (obj->objApply[i].applyWhere == APPLY_HIT)
-	    || (obj->objApply[i].applyWhere == APPLY_MOVE)
-	    || (obj->objApply[i].applyWhere == APPLY_MANA) )
-    {
-      // Right now, 25 : 25, 35 : 55, 50 : 100
-      workingvalue += (mod <= 25) ? mod : 3 * mod - 50;
-    }
-    //hit, move, mana, regen are generally large #'s, but we don't want above 9.
-    if( (obj->objApply[i].applyWhere == APPLY_HIT_REG)
-	    || (obj->objApply[i].applyWhere == APPLY_MOVE_REG)
-	    || (obj->objApply[i].applyWhere == APPLY_MANA_REG) )
-    {
-      // 1:1, 2:2, 3:3, 4:5, 5:8, 6:12, 7:16, 8:21, 9:27, 10:33
-      // 11:40, 12:48, 13:56, 14:65, 15:75, 16:85, 17:96, 18:108
-      workingvalue += (mod < 4) ? mod : mod * mod / 3;
-    }
-
-    // Racial attributes #'s - Do we still have these?
-    if( (obj->objApply[i].applyWhere == APPLY_AGI_RACE)
-	    || (obj->objApply[i].applyWhere == APPLY_STR_RACE)
-	    || (obj->objApply[i].applyWhere == APPLY_CON_RACE)
-	    || (obj->objApply[i].applyWhere == APPLY_INT_RACE)
-	    || (obj->objApply[i].applyWhere == APPLY_WIS_RACE)
-	    || (obj->objApply[i].applyWhere == APPLY_CHA_RACE)
-	    || (obj->objApply[i].applyWhere == APPLY_DEX_RACE) )
-    {
-      if( mod < 1 || mod > LAST_RACE )
-      {
-//        debug( "itemvalue: obj '%s' %d has APPLY_..._RACE %d and bad modifier %d.",
-//          obj->objShortName, GET_OBJ_VNUM(obj), obj->objApply[i].applyWhere, mod );
-        workingvalue += 100;
-      }
-      else
-      {
-        switch( obj->objApply[i].applyWhere )
-        {
-          // We're looking for the stat vs 100. 75->0pts, 100->50pts, 150->150pts, 200->250pts
-          // Since racial stats vary depending on values in duris_properties, which gets changed
-          //   all the time, we just set the value as if the stat was 100. (Weak, but works).
-          case APPLY_AGI_RACE:
-            workingvalue += 2 * 100 - 150;
-            break;
-          case APPLY_STR_RACE:
-            workingvalue += 2 * 100 - 150;
-            break;
-          case APPLY_CON_RACE:
-            workingvalue += 2 * 100 - 150;
-            break;
-          case APPLY_INT_RACE:
-            workingvalue += 2 * 100 - 150;
-            break;
-          case APPLY_WIS_RACE:
-            workingvalue += 2 * 100 - 150;
-            break;
-          case APPLY_CHA_RACE:
-            workingvalue += 2 * 100 - 150;
-            break;
-          case APPLY_DEX_RACE:
-            workingvalue += 2 * 100 - 150;
-            break;
-          // Should never be the case but..
-          default:
-//            debug( "itemvalue: obj '%s' %d has 'bad' APPLY_..._RACE %d, modifier %d.",
-//              obj->objShortName, GET_OBJ_VNUM(obj), obj->objApply[i].applyWhere, mod );
-            workingvalue += 100;
-            break;
-        }
-      }
-    }
-
-    //obj procs - No idea how to do this atm?
-/* Procs aren't assigned in DE, so it sucks.
+	if (IS_SET(obj->affect4Bits, AFF4_REGENERATION))
+		workingvalue += 60;
+
+	if (IS_SET(obj->affect4Bits, AFF4_GLOBE_OF_DARKNESS))
+		workingvalue += 15;
+
+	if (IS_SET(obj->affect4Bits, AFF4_HAWKVISION))
+		workingvalue += 20;
+
+	if (IS_SET(obj->affect4Bits, AFF4_SANCTUARY))
+		workingvalue += 105;
+
+	if (IS_SET(obj->affect4Bits, AFF4_HELLFIRE))
+		workingvalue += 110;
+
+	if (IS_SET(obj->affect4Bits, AFF4_SENSE_HOLINESS))
+		workingvalue += 15;
+
+	if (IS_SET(obj->affect4Bits, AFF4_PROT_LIVING))
+		workingvalue += 65;
+
+	if (IS_SET(obj->affect4Bits, AFF4_DETECT_ILLUSION))
+		workingvalue += 40;
+
+	if (IS_SET(obj->affect4Bits, AFF4_ICE_AURA))
+		workingvalue += 90;
+
+	if (IS_SET(obj->affect4Bits, AFF4_NEG_SHIELD))
+		workingvalue += 45;
+
+	if (IS_SET(obj->affect4Bits, AFF4_WILDMAGIC))
+		workingvalue += 240;
+
+	// Has a old school proc (Up to three spells).
+	// Can un-comment the debug stuff if you want to modify this.
+	if (IS_SET(obj->wearBits, ITEM_WIELD) && (obj->objValues[5] > 0))
+	{
+		int spells[3];
+		int spellcirclesum, numspells;
+
+		// val5 : 3 spells + all or one.
+		spells[0] = obj->objValues[5] % 1000;
+		spells[1] = obj->objValues[5] % 1000000 / 1000;
+		spells[2] = obj->objValues[5] % 1000000000 / 1000000;
+		//    debug( "Spells0: %d, Spells1: %d, Spells2: %d.", spells[0], spells[1], spells[2] );
+
+		// val6 = level * val7 = chance -> 1/30 chance = 1, 1/60 chance = .5, 1/15 chance = 2, etc.
+		mod = ((obj->objValues[6] > 19) ? obj->objValues[6] / 10.0 : 1) *
+		      (30.0 / obj->objValues[7]);
+		//    debug( "mod: %f, objval6/10: %f, 30/objval7: %f", mod, (obj->objValues[6] > 19) ? obj->objValues[6] / 10.0 : 1, (30.0 / obj->objValues[7]) );
+
+		spellcirclesum = get_mincircle(spells[0]);
+		spellcirclesum += get_mincircle(spells[1]);
+		spellcirclesum += get_mincircle(spells[2]);
+		//    debug( "spellcirclesum: %d, circle0: %d, circle1: %d, circle2: %d.", spellcirclesum, get_mincircle(spells[0]), get_mincircle(spells[1]), get_mincircle(spells[2]) );
+
+		// 1 lvl 10 spell  2nd circle 1/60 chance = 1*1* 2*.5 =  1
+		// 1 lvl 60 spell  1st circle 1/30 chance = 1*6* 1*1  =  6
+		// 1 lvl 40 spell  3rd circle 1/30 chance = 1*4* 3*1  = 12
+		// 1 lvl 60 spell 12th circle 1/30 chance = 1*6*12*1  = 72 etc.
+		// val5 / 1000000000 -> 1, otherwise casts all.
+		if (obj->objValues[5] / 1000000000)
+		{
+			// Add up number of spells
+			numspells = ((spells[0]) ? 1 : 0) + ((spells[1]) ? 1 : 0) +
+				    ((spells[2]) ? 1 : 0);
+			// If there are none?!, set to 1 anyway.
+			numspells = numspells ? numspells : 1;
+			// Compute average circle.
+			//      debug( "mod * spellcirclesum / numspells: %d.",(int) (mod * (spellcirclesum / numspells)) );
+			workingvalue += (int)(mod * (spellcirclesum / numspells));
+		}
+		else
+		{
+			//      debug( "spellcirclesum * mod: %d.", (int) (spellcirclesum * mod) );
+			workingvalue += mod * spellcirclesum;
+		}
+	}
+
+	//------- A0/A1/A2 -------------
+	int i = 0;
+	while (i < 3)
+	{
+		mod = obj->objApply[i].applyModifier;
+		//dam/hitroll are normal values
+		if ((obj->objApply[i].applyWhere == APPLY_DAMROLL) ||
+		    (obj->objApply[i].applyWhere == APPLY_HITROLL))
+		{
+			// 1:1, 2:2, 3:6, 4:12, 5:20, 6:30, 7:42, 8:56, 9:72, 10:90, 11: 110..
+			workingvalue += (mod <= 2) ? mod : mod * (mod - 1);
+			multiplier *= 1.25;
+		}
+
+		//regular stats can be high numbers - half them
+		if ((obj->objApply[i].applyWhere == APPLY_STR) ||
+		    (obj->objApply[i].applyWhere == APPLY_DEX) ||
+		    (obj->objApply[i].applyWhere == APPLY_INT) ||
+		    (obj->objApply[i].applyWhere == APPLY_WIS) ||
+		    (obj->objApply[i].applyWhere == APPLY_CON) ||
+		    (obj->objApply[i].applyWhere == APPLY_AGI) ||
+		    (obj->objApply[i].applyWhere == APPLY_POW) ||
+		    (obj->objApply[i].applyWhere == APPLY_LUCK))
+		{
+			// 1:1, 2:2, 3:4, 4:9, 5:16, 6:25, 7:36, 8:49, 9:64, 10:81, 11:100
+			workingvalue += (mod <= 2) ? mod : (mod - 1) * (mod - 1);
+		}
+
+		//hit, move, mana, are generally large #'s
+		if ((obj->objApply[i].applyWhere == APPLY_HIT) ||
+		    (obj->objApply[i].applyWhere == APPLY_MOVE) ||
+		    (obj->objApply[i].applyWhere == APPLY_MANA))
+		{
+			// Right now, 25 : 25, 35 : 55, 50 : 100
+			workingvalue += (mod <= 25) ? mod : 3 * mod - 50;
+		}
+		//hit, move, mana, regen are generally large #'s, but we don't want above 9.
+		if ((obj->objApply[i].applyWhere == APPLY_HIT_REG) ||
+		    (obj->objApply[i].applyWhere == APPLY_MOVE_REG) ||
+		    (obj->objApply[i].applyWhere == APPLY_MANA_REG))
+		{
+			// 1:1, 2:2, 3:3, 4:5, 5:8, 6:12, 7:16, 8:21, 9:27, 10:33
+			// 11:40, 12:48, 13:56, 14:65, 15:75, 16:85, 17:96, 18:108
+			workingvalue += (mod < 4) ? mod : mod * mod / 3;
+		}
+
+		// Racial attributes #'s - Do we still have these?
+		if ((obj->objApply[i].applyWhere == APPLY_AGI_RACE) ||
+		    (obj->objApply[i].applyWhere == APPLY_STR_RACE) ||
+		    (obj->objApply[i].applyWhere == APPLY_CON_RACE) ||
+		    (obj->objApply[i].applyWhere == APPLY_INT_RACE) ||
+		    (obj->objApply[i].applyWhere == APPLY_WIS_RACE) ||
+		    (obj->objApply[i].applyWhere == APPLY_CHA_RACE) ||
+		    (obj->objApply[i].applyWhere == APPLY_DEX_RACE))
+		{
+			if (mod < 1 || mod > LAST_RACE)
+			{
+				//        debug( "itemvalue: obj '%s' %d has APPLY_..._RACE %d and bad modifier %d.",
+				//          obj->objShortName, GET_OBJ_VNUM(obj), obj->objApply[i].applyWhere, mod );
+				workingvalue += 100;
+			}
+			else
+			{
+				switch (obj->objApply[i].applyWhere)
+				{
+				// We're looking for the stat vs 100. 75->0pts, 100->50pts, 150->150pts, 200->250pts
+				// Since racial stats vary depending on values in duris_properties, which gets changed
+				//   all the time, we just set the value as if the stat was 100. (Weak, but works).
+				case APPLY_AGI_RACE:
+					workingvalue += 2 * 100 - 150;
+					break;
+				case APPLY_STR_RACE:
+					workingvalue += 2 * 100 - 150;
+					break;
+				case APPLY_CON_RACE:
+					workingvalue += 2 * 100 - 150;
+					break;
+				case APPLY_INT_RACE:
+					workingvalue += 2 * 100 - 150;
+					break;
+				case APPLY_WIS_RACE:
+					workingvalue += 2 * 100 - 150;
+					break;
+				case APPLY_CHA_RACE:
+					workingvalue += 2 * 100 - 150;
+					break;
+				case APPLY_DEX_RACE:
+					workingvalue += 2 * 100 - 150;
+					break;
+				// Should never be the case but..
+				default:
+					//            debug( "itemvalue: obj '%s' %d has 'bad' APPLY_..._RACE %d, modifier %d.",
+					//              obj->objShortName, GET_OBJ_VNUM(obj), obj->objApply[i].applyWhere, mod );
+					workingvalue += 100;
+					break;
+				}
+			}
+		}
+
+		//obj procs - No idea how to do this atm?
+		/* Procs aren't assigned in DE, so it sucks.
     if(obj_index[obj->R_num].func.obj && i < 1)
     {
       workingvalue += get_ival_from_proc(obj_index[obj->R_num].func.obj);
     }
 */
-    //AC negative is good
-    if( (obj->objApply[i].applyWhere == APPLY_AC) )
-    {
-      workingvalue -= mod / 10;
-    }
+		//AC negative is good
+		if ((obj->objApply[i].applyWhere == APPLY_AC))
+		{
+			workingvalue -= mod / 10;
+		}
 
-    //saving throw values (good) are negative
-    if( (obj->objApply[i].applyWhere == APPLY_SAVING_PARA)
-	    || (obj->objApply[i].applyWhere == APPLY_SAVING_ROD)
-	    || (obj->objApply[i].applyWhere == APPLY_SAVING_FEAR)
-	    || (obj->objApply[i].applyWhere == APPLY_SAVING_BREATH)
-	    || (obj->objApply[i].applyWhere == APPLY_SAVING_SPELL) )
-    {
-      // -1:2, -2:8, -3:18, -4:32, -5:50, -6:72, -7:98, -8:128
-      workingvalue += mod * mod * ((mod <= 0) ? 2 : -2);
-    }
+		//saving throw values (good) are negative
+		if ((obj->objApply[i].applyWhere == APPLY_SAVING_PARA) ||
+		    (obj->objApply[i].applyWhere == APPLY_SAVING_ROD) ||
+		    (obj->objApply[i].applyWhere == APPLY_SAVING_FEAR) ||
+		    (obj->objApply[i].applyWhere == APPLY_SAVING_BREATH) ||
+		    (obj->objApply[i].applyWhere == APPLY_SAVING_SPELL))
+		{
+			// -1:2, -2:8, -3:18, -4:32, -5:50, -6:72, -7:98, -8:128
+			workingvalue += mod * mod * ((mod <= 0) ? 2 : -2);
+		}
 
-    //pulse is quite valuable and negative is good
-    if( (obj->objApply[i].applyWhere == APPLY_COMBAT_PULSE)
-      || (obj->objApply[i].applyWhere == APPLY_SPELL_PULSE) )
-    {
-      multiplier *= 2;
-      workingvalue += mod * -75;
-    }
+		//pulse is quite valuable and negative is good
+		if ((obj->objApply[i].applyWhere == APPLY_COMBAT_PULSE) ||
+		    (obj->objApply[i].applyWhere == APPLY_SPELL_PULSE))
+		{
+			multiplier *= 2;
+			workingvalue += mod * -75;
+		}
 
-    //max_stats double points
-    if( (obj->objApply[i].applyWhere == APPLY_STR_MAX)
-      || (obj->objApply[i].applyWhere == APPLY_DEX_MAX)
-      || (obj->objApply[i].applyWhere == APPLY_INT_MAX)
-      || (obj->objApply[i].applyWhere == APPLY_WIS_MAX)
-      || (obj->objApply[i].applyWhere == APPLY_CON_MAX)
-      || (obj->objApply[i].applyWhere == APPLY_CHA_MAX)
-      || (obj->objApply[i].applyWhere == APPLY_AGI_MAX)
-      || (obj->objApply[i].applyWhere == APPLY_POW_MAX)
-      || (obj->objApply[i].applyWhere == APPLY_LUCK_MAX) )
-    {
-      // 1:2, 2:6, 3:14, 4:25, 5:39, 6:56, 7:77, 8:100
-      workingvalue += (mod < 2) ? 2 * mod : 1.5625 * mod * mod;
-    }
-    i++;
-  }
+		//max_stats double points
+		if ((obj->objApply[i].applyWhere == APPLY_STR_MAX) ||
+		    (obj->objApply[i].applyWhere == APPLY_DEX_MAX) ||
+		    (obj->objApply[i].applyWhere == APPLY_INT_MAX) ||
+		    (obj->objApply[i].applyWhere == APPLY_WIS_MAX) ||
+		    (obj->objApply[i].applyWhere == APPLY_CON_MAX) ||
+		    (obj->objApply[i].applyWhere == APPLY_CHA_MAX) ||
+		    (obj->objApply[i].applyWhere == APPLY_AGI_MAX) ||
+		    (obj->objApply[i].applyWhere == APPLY_POW_MAX) ||
+		    (obj->objApply[i].applyWhere == APPLY_LUCK_MAX))
+		{
+			// 1:2, 2:6, 3:14, 4:25, 5:39, 6:56, 7:77, 8:100
+			workingvalue += (mod < 2) ? 2 * mod : 1.5625 * mod * mod;
+		}
+		i++;
+	}
 
-  if(obj->objType == ITEM_WEAPON)
-  {
-    // Add avg damage.
-    workingvalue += (obj->objValues[1] * obj->objValues[2])/2;
-  }
+	if (obj->objType == ITEM_WEAPON)
+	{
+		// Add avg damage.
+		workingvalue += (obj->objValues[1] * obj->objValues[2]) / 2;
+	}
 
-  if(workingvalue < 1)
-  {
-    workingvalue = 1;
-  }
+	if (workingvalue < 1)
+	{
+		workingvalue = 1;
+	}
 
-  workingvalue *= multiplier;
-  //debug("&+YItem value is: &n%d", workingvalue); 
-  return workingvalue;
+	workingvalue *= multiplier;
+	//debug("&+YItem value is: &n%d", workingvalue);
+	return workingvalue;
 }
 
-int get_mincircle( int spell )
+int get_mincircle(int spell)
 {
-  int i, j;
-  int lowest = 13;
+	int i, j;
+	int lowest = 13;
 
-  // If not a spell, return 0.
-  if( spell < 1 || spell > LAST_SPELL )
-  {
-    return 0;
-  }
+	// If not a spell, return 0.
+	if (spell < 1 || spell > LAST_SPELL)
+	{
+		return 0;
+	}
 
-  // Skip CLASS_NONE..
-  for( i = 1; i <= CLASS_COUNT; i++ )
-  {
-    if( (skills[spell].minLevel[i] > 0) && (skills[spell].minLevel[i] <= lowest))
-    {
-        lowest = skills[spell].minLevel[i];
-    }
-  }
+	// Skip CLASS_NONE..
+	for (i = 1; i <= CLASS_COUNT; i++)
+	{
+		if ((skills[spell].minLevel[i] > 0) && (skills[spell].minLevel[i] <= lowest))
+		{
+			lowest = skills[spell].minLevel[i];
+		}
+	}
 
-  return lowest;
+	return lowest;
 }
 
 // New object proc?  Add it here with a value associated with it.
@@ -2511,27 +2495,32 @@ int get_ival_from_proc( obj_proc_type proc )
 
 void huntForOPEquipment(const char *args)
 {
-  int lowerIValLimit, currIVal;
-  int lowest, highest;
-  char buf[3000];
+	int lowerIValLimit, currIVal;
+	int lowest, highest;
+	char buf[3000];
 
-  if( (lowerIValLimit = atoi(args)) <= 0 )
-  {
-    _outtext( "\n\rHunting for OP equipment requires a positive integer as input.\n\r" );
-    return;
-  }
-  sprintf( buf, "\n\r&+WSearching for items with itemvalues greater than or equal to %d.&n\n\r\n\r", lowerIValLimit );
-  displayColorString(buf);
+	if ((lowerIValLimit = atoi(args)) <= 0)
+	{
+		_outtext("\n\rHunting for OP equipment requires a positive integer as input.\n\r");
+		return;
+	}
+	sprintf(buf,
+		"\n\r&+WSearching for items with itemvalues greater than or equal to %d.&n\n\r\n\r",
+		lowerIValLimit);
+	displayColorString(buf);
 
-  lowest = getLowestObjNumber();
-  highest = getHighestObjNumber();
-  for( uint i = lowest; i <= highest; i++ )
-  {
-    if( (g_objLookup[i] != NULL) && ((currIVal = itemvalue(g_objLookup[i])) >= lowerIValLimit) )
-    {
-      sprintf( buf, "&+WItem #&n%6d&+W '&n%s&+W' is OP with itemvalue &n%d&+W.&n\n\r", i, g_objLookup[i]->objShortName, currIVal );
-      displayColorString(buf);
-    }
-  }
+	lowest = getLowestObjNumber();
+	highest = getHighestObjNumber();
+	for (uint i = lowest; i <= highest; i++)
+	{
+		if ((g_objLookup[i] != NULL) &&
+		    ((currIVal = itemvalue(g_objLookup[i])) >= lowerIValLimit))
+		{
+			sprintf(buf,
+				"&+WItem #&n%6d&+W '&n%s&+W' is OP with itemvalue &n%d&+W.&n\n\r",
+				i, g_objLookup[i]->objShortName, currIVal);
+			displayColorString(buf);
+		}
+	}
 }
 #endif
