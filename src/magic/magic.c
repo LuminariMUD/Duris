@@ -10281,7 +10281,7 @@ std::string sticks_to_snakes_facts(P_char ch)
 void spell_sticks_to_snakes(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			    P_char victim, P_obj obj)
 {
-	int snakes, arrowSnakes, room, dam_type;
+	int snakes, arrowSnakes, room, dam_type, result = DAM_NONEDEAD;
 	P_obj arrows, inven, next_inven;
 
 	struct damage_messages arrow_messages = {
@@ -10327,22 +10327,22 @@ void spell_sticks_to_snakes(int level, P_char ch, char * /*arg*/, [[maybe_unused
 			break;
 	}
 
-	while (arrows && IS_ALIVE(victim))
+	while (arrows && result == DAM_NONEDEAD)
 	{
 		arrow_messages.obj = arrows;
 		dam_type = find_dam_type(OBJ_SHORT(arrows));
 		// Increase the regular arrow damage by 25%.
-		spell_damage(ch, victim, 5 * dice(arrows->value[1], arrows->value[2]), dam_type,
-			     SPLDAM_ALLGLOBES, &arrow_messages);
+		result = spell_damage(ch, victim, 5 * dice(arrows->value[1], arrows->value[2]),
+				      dam_type, SPLDAM_ALLGLOBES, &arrow_messages);
 		obj = arrows;
 		arrows = arrows->next_content;
 		obj->next_content = NULL;
 		extract_obj(obj);
 	}
-	while (snakes && is_char_in_room(victim, room))
+	while (snakes && result == DAM_NONEDEAD && is_char_in_room(victim, room))
 	{
-		spell_damage(ch, victim, sticks_to_snakes_bite(live_rolls, level), SPLDAM_GENERIC,
-			     SPLDAM_ALLGLOBES, &messages);
+		result = spell_damage(ch, victim, sticks_to_snakes_bite(live_rolls, level),
+				      SPLDAM_GENERIC, SPLDAM_ALLGLOBES, &messages);
 		snakes--;
 	}
 }
@@ -18238,12 +18238,14 @@ void spell_disintegrate(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 						    !IS_NOSHOW(obj))
 						{
 							eqburnmsg.obj = obj;
-							spell_damage(
-								ch, victim,
-								(int)get_property(
-									"spell.disintegrate.burn.dmg",
-									3),
-								SPLDAM_FIRE, 0, &eqburnmsg);
+							if (spell_damage(
+								    ch, victim,
+								    (int)get_property(
+									    "spell.disintegrate.burn.dmg",
+									    3),
+								    SPLDAM_FIRE, 0,
+								    &eqburnmsg) != DAM_NONEDEAD)
+								return;
 							set_obj_condition(
 								obj,
 								obj->condition -
@@ -24985,7 +24987,7 @@ static int apocalypse_pestilence_damage(P_char ch)
 void event_apocalypse(P_char ch, [[maybe_unused]] P_char victim, P_obj /*obj*/, void *data)
 {
 	struct apoc_data *d = (struct apoc_data *)data;
-	P_char vict, tch;
+	P_char vict, tch, tch_next;
 	int max_affected, i, opponents;
 
 	struct damage_messages d_messages = {
@@ -25189,8 +25191,9 @@ void event_apocalypse(P_char ch, [[maybe_unused]] P_char victim, P_obj /*obj*/, 
 			ch->in_room);
 
 		i = 0;
-		for (tch = world[ch->in_room].people; tch; tch = tch->next_in_room)
+		for (tch = world[ch->in_room].people; tch; tch = tch_next)
 		{
+			tch_next = tch->next_in_room;
 			if (should_area_hit(ch, tch) && !number(0, 2))
 			{
 				act("The Horseman of &+gP&+Le&+gs&+Lt&+gi&+Ll&+ge&+Ln&+gc&+Le&N breathes on $n!",
@@ -30362,8 +30365,9 @@ void spell_draconic_apotheosis(int /*level*/, P_char ch, char * /*arg*/, [[maybe
 	extract_char(mount);
 
 	// Take a little damage for your benefits
-	spell_damage(ch, ch, draconic_apotheosis_cost(ch), SPLDAM_SPIRIT,
-		     SPLDAM_GRSPIRIT | SPLDAM_NOSHRUG, NULL);
+	if (spell_damage(ch, ch, draconic_apotheosis_cost(ch), SPLDAM_SPIRIT,
+			 SPLDAM_GRSPIRIT | SPLDAM_NOSHRUG, NULL) != DAM_NONEDEAD)
+		return;
 
 	do_roar_of_heroes(ch);
 }

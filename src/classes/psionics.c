@@ -1701,7 +1701,7 @@ void spell_death_field(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 void spell_detonate2(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		     P_obj /*obj*/)
 {
-	int dam;
+	int dam, result;
 	struct damage_messages messages = {
 		"You feel a warm sense of satisfaction as &+Rexplosions&N engulf $N.",
 		"Tiny &+Yexplosions&N wrack your body with pain!",
@@ -1733,14 +1733,15 @@ void spell_detonate2(int level, P_char ch, char * /*arg*/, int /*type*/, P_char 
 	if (!StatSave(victim, APPLY_POW, (GET_LEVEL(victim) - GET_LEVEL(ch)) / 5) &&
 	    !IS_ELITE(victim))
 	{
-		spell_damage(ch, victim, dam, SPLDAM_PSI, SPLDAM_NOSHRUG, &messages);
+		result = spell_damage(ch, victim, dam, SPLDAM_PSI, SPLDAM_NOSHRUG, &messages);
 	}
 	else
 	{
-		spell_damage(ch, victim, dam >> 1, SPLDAM_PSI, SPLDAM_NOSHRUG, &messages);
+		result = spell_damage(ch, victim, dam >> 1, SPLDAM_PSI, SPLDAM_NOSHRUG, &messages);
 	}
 
-	CharWait(ch, (int)(PULSE_SPELLCAST * 1));
+	if (result >= DAM_NONEDEAD)
+		CharWait(ch, (int)(PULSE_SPELLCAST * 1));
 }
 
 static int detonate_damage(const Rolls &rolls, int level)

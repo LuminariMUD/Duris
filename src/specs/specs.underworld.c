@@ -1311,7 +1311,9 @@ int piercer(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 				{
 					if (!IS_FIGHTING(ch))
 						set_fighting(ch, vict);
-					melee_damage(ch, vict, dam, 0, &messages);
+					if (melee_damage(ch, vict, dam, 0, &messages) <
+					    DAM_NONEDEAD)
+						return (TRUE);
 				}
 				/*
 				   piercer is one-shot per mob

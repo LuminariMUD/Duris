@@ -2493,6 +2493,7 @@ void spell_transfer_wellness(int level, P_char ch, char * /*arg*/, int /*type*/,
 {
 	int to, from, pos;
 	P_obj t_obj, next_obj, money;
+	P_char next_victim;
 	int room;
 	bool explode = FALSE;
 
@@ -2551,8 +2552,9 @@ void spell_transfer_wellness(int level, P_char ch, char * /*arg*/, int /*type*/,
 	act("$n&n &+Rpales, then turns red, and suddenly explodes torn apart by the wild magic that took control over $s &+Rweakened spirit!&n.",
 	    FALSE, ch, 0, 0, TO_ROOM);
 
-	for (victim = world[ch->in_room].people; victim; victim = victim->next_in_room)
+	for (victim = world[ch->in_room].people; victim; victim = next_victim)
 	{
+		next_victim = victim->next_in_room;
 		if (ch != victim)
 		{
 			if (StatSave(victim, APPLY_AGI, -5))
@@ -2568,7 +2570,8 @@ void spell_transfer_wellness(int level, P_char ch, char * /*arg*/, int /*type*/,
 						"&+LOne of the flying bones hits you in your head, and you pass out...&n\n",
 						victim);
 				}
-				damage(ch, victim, from, TYPE_UNDEFINED);
+				if (damage(ch, victim, from, TYPE_UNDEFINED) && !char_in_list(ch))
+					return;
 			}
 		}
 	}
