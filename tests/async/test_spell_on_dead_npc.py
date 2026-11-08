@@ -218,7 +218,7 @@ int main() {
 
 subprocess.run(['make', '-C', 'src', f'-j{os.cpu_count()}'], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
 # Print the Makefile's own object and library lists so the link matches the server's.
-link = subprocess.check_output(['make', '-s', '-C', 'src', '--eval=print-link:;@echo $(DMS_OBJS) $(LIBS)',
+link = subprocess.check_output(['make', '-s', '--no-print-directory', '-C', 'src', '--eval=print-link:;@echo $(DMS_OBJS) $(LIBS)',
                                 'print-link'], cwd=ROOT, text=True).split()
 out = ROOT / 'bin/tests'
 out.mkdir(parents=True, exist_ok=True)

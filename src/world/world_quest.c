@@ -242,7 +242,7 @@ static bool world_quest_deliver_reward(P_char ch, P_char quest_mob, int type, bo
 			return false;
 	if (!final_kill && quest_mob && type == FIND_AND_ASK)
 	{
-		wizlog(56, "%s finished quest @%s (ask quest)", GET_NAME(ch),
+		wizlog(56, "%s finished ask quest at %s", GET_NAME(ch),
 		       quest_mob->player.short_descr);
 		do_action(quest_mob, 0, CMD_NOD);
 		mobsay(quest_mob,
@@ -1082,7 +1082,7 @@ bool createQuestForGiverVnum(P_char ch, int giver_vnum, int origin_vnum,
 		return FALSE;
 	}
 	const int quest_kill_original =
-		MIN(difficulty_scale_world_quest_kills(number(7, 9)), target.usable_count - 1);
+		std::min(difficulty_scale_world_quest_kills(number(7, 9)), target.usable_count - 1);
 	ch->only.pc->quest_shares_left = world_quest_share_limit();
 	ch->only.pc->quest_active = 1;
 	ch->only.pc->quest_mob_vnum = target.mob_vnum;

@@ -233,7 +233,7 @@ int amethyst_orb(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		int dam;
 
-		dam = MIN(number(60, 160), GET_HIT(ch));
+		dam = std::min(number(60, 160), (int)GET_HIT(ch));
 
 		if (obj->value[0])
 		{
