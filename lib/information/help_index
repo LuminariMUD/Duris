@@ -19723,12 +19723,18 @@ specialization/multiclass state. Type specialize to see personal choices.
 Area of effect: direction
 Aggressive:     No
 Cumulative:     N/A
-Duration:       Dependent on proficiency of caster 
+Duration:       7 minutes 30 seconds
 Type of spell:  Illusion
 
 This spell creates an illusionary stone wall with many eyes in it. It will
-show the caster the room from time to time. It will also show the room
-to the caster if  someone is trying to destroy the wall.
+occasionally show the caster the room when someone acts near the wall,
+including when someone hits it. Each side has a one-in-three viewing chance
+when more than 10 seconds have passed since its last eligible attempt.
+Hitting the wall uses that same chance and cooldown; it gives no extra view.
+The caster must be in the game and in a different room from the person acting.
+Immortals do not trigger views. Other characters must be at ground height.
+A failed roll, absent caster or caster in the same room still consumes the
+eligible attempt.
 ===========================================================================
 
 #

@@ -1311,6 +1311,7 @@ std::string watching_wall_facts(P_char ch)
 	       fact("Seconds between those chances",
 		    "more than " + std::to_string(watching_wall_vision_gap())) +
 	       "  You must be elsewhere and in the game. Immortals show you nothing.\n"
+	       "  Hits use the same viewing chance and cooldown as other activity.\n"
 	       "  Hits wear it down by the hitter's damroll and level, and hurt the hitter.\n"
 	       "  Your own hit breaks it.\n" +
 	       fact("A hitter's lag", seconds(wall_hit_lag())) +
