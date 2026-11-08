@@ -848,7 +848,7 @@ void do_mine(P_char ch, char *arg, int /*cmd*/)
 	if (!ch || IS_NPC(ch))
 		return;
 
-	if (GET_CHAR_SKILL(ch, SKILL_MINE) <= 1)
+	if (GET_CHAR_SKILL(ch, SKILL_MINE) <= 0)
 	{
 		send_to_char("&+LYou dont know how to mine.\r\n", ch);
 		return;

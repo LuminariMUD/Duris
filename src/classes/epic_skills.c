@@ -964,16 +964,17 @@ void do_summon_familiar(P_char ch, char *argument, int /*cmd*/)
 		}
 	}
 
-	if (!affect_timer(ch, summon_familiar_rest(ch_skill_level), SKILL_SUMMON_FAMILIAR))
-	{
-		send_to_char("You call for a familiar but no creature responds.\n", ch);
-		return;
-	}
-
 	for (i = 0; familiars[i].vnum && familiars[i].skill <= ch_skill_level; i++)
 	{
 		if (!str_cmp(argument, familiars[i].name))
 		{
+			if (!IS_TRUSTED(ch) && affected_by_skill(ch, SKILL_SUMMON_FAMILIAR))
+			{
+				send_to_char("You call for a familiar but no creature responds.\n",
+					     ch);
+				return;
+			}
+
 			mob = read_mobile(familiars[i].vnum, VIRTUAL);
 
 			if (!mob)
@@ -981,6 +982,9 @@ void do_summon_familiar(P_char ch, char *argument, int /*cmd*/)
 				send_to_char("Nothing answers.\n", ch);
 				return;
 			}
+
+			affect_timer(ch, summon_familiar_rest(ch_skill_level),
+				     SKILL_SUMMON_FAMILIAR);
 
 			int hits = GET_HIT(mob) + summon_familiar_hit_points(ch_skill_level);
 			GET_HIT(mob) = GET_MAX_HIT(mob) = mob->points.base_hit = hits;

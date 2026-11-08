@@ -1707,6 +1707,12 @@ void chant_jin_touch(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
+	if (!IS_TRUSTED(ch) && affected_by_skill(ch, SKILL_JIN_TOUCH))
+	{
+		send_to_char("&+GYour inner force has not realigned...\r\n", ch);
+		return;
+	}
+
 	if (number(1, 50) > skl_lvl)
 	{
 		send_to_char("You forgot the words for the chant.\r\n", ch);
@@ -1725,13 +1731,8 @@ void chant_jin_touch(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
+	affect_timer(ch, jin_touch_rest(), SKILL_JIN_TOUCH);
 	CharWait(ch, jin_touch_lag());
-
-	if (!affect_timer(ch, jin_touch_rest(), SKILL_JIN_TOUCH))
-	{
-		send_to_char("&+GYour inner force has not realigned...\r\n", ch);
-		return;
-	}
 
 	if (vict == ch)
 	{
@@ -2021,8 +2022,6 @@ void chant_ki_strike(P_char ch, char *argument, int /*cmd*/)
 		af.duration = ki_strike_slow_duration();
 		af.bitvector2 = AFF2_SLOW;
 		affect_to_char(vict, &af);
-
-		CharWait(ch, (int)(0.2 * PULSE_VIOLENCE));
 	}
 }
 

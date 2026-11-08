@@ -465,7 +465,7 @@ static void check_numbers() {
     assert(song_cowardice_penalty(1, 0) == -2 && song_cowardice_penalty(56, 100) == -17);
     assert(song_cowardice_flee_levels(100) == 5 && song_cowardice_flee_levels(39) == 1);
     assert(song_heroism_singer_pulse(19) == 0 && song_heroism_singer_pulse(40) == -2);
-    assert(flurry_hits_per_target(8, 1, 4) == 4 && flurry_hits_per_target(8, 3, 4) == 2 && flurry_hits_per_target(8, 100, 4) == 1);
+    assert(flurry_hits_per_target(8, 1, 4) == 4 && flurry_hits_per_target(8, 3, 4) == 3 && flurry_hits_per_target(8, 100, 4) == 1);
     assert(hitall_lag(0) == 2 * PULSE_VIOLENCE && hitall_lag(5) == 2 * PULSE_VIOLENCE && hitall_lag(6) == 3 * PULSE_VIOLENCE);
     assert(dirt_toss_blindness(100, 100, 0) == 40 && dirt_toss_blindness(100, 100, 1000) == 20 && dirt_toss_blindness(100, 100, 75) == 25);
     assert(hamstring_threshold(100, 57) == 95);
@@ -553,7 +553,7 @@ PINS = r'''
     HAS(disarm_facts, "  Chance against a target of your dexterity and level: 49 in 100\n");
     HAS(disarm_facts, "  You must be fighting the target.\n  Time before the weapon can be wielded again: 12 seconds\n");
     HAS(disarm_facts, "  A failed roll that fumbles your own weapon, with the same wait: 90 or more\n  Your lag: 8 seconds\n");
-    HAS(flurry_of_blows_facts, "  Chance on each target: 101 in 101\n  Attacks to spend: 2 times your attacks, shared by the targets\n"
+    HAS(flurry_of_blows_facts, "  Chance on each target: 101 in 101\n  Attacks to spend: twice your normal attacks plus one, shared by the targets\n"
                                "  Hits on each target: at least 1, at most your attacks\n  Your lag: 12 seconds\n  Rest: 10 seconds\n");
     assert(hitall_facts(&ch) == "  With flurry of blows, this command does that instead.\n");
     HAS(hamstring_facts, "  Chance on a target with no agility: 99 in 100\n  Threshold lost per 10 of the target's agility: 1\n  Threshold lost if the target is aware: 10, or its awareness\n"
@@ -679,7 +679,7 @@ PINS = r'''
     set_ratings(30);
     assert(chant_mastery_facts(&ch) == "  Chance on each cast: 8 in 101\n  Fair result: cast time 60%, lag 80%\n  Low result: cast time 80%, full lag\n");
     set_ratings(1);
-    HAS(throwpotion_facts, "  At rating 1, no throw is steady.\n");
+    HAS(throwpotion_facts, "  Chance a steady throw lands as aimed: 1 in 100\n");
     set_ratings(10);
     HAS(silent_spell_facts, "  Chance to start a spell where you can't speak: 25 in 101\n");
     set_ratings(99);
@@ -708,10 +708,10 @@ def check_sources():
         for anchor, kind, call in branches:
             at = one.index(anchor)
             assert one.find(kind, at) == one.find(call, at) >= 0, f"{head}: after {anchor!r} the next {kind} is not {call}"
-    # The dead hitroll block and the double-roll macros stay as they were.
+    # Preserve the unrelated heroism blocks.
     heroism = body("bard.c", "void bard_heroism")[0]
     assert heroism.count("af.modifier=(l/10)+(empower/15)") == 4
-    assert "if(notch_skill(ch,SKILL_THROAT_CRUSH,get_property(\"skill.notch.offensive\",4)||number(1,100)>i))" in body("actnew.c", "void do_throat_crush")[0]
+    assert "notch_skill(ch,SKILL_THROAT_CRUSH,get_property(\"skill.notch.offensive\",4));if(number(1,100)>skl_lvl)" in body("actnew.c", "void do_throat_crush")[0]
     table = strip_comments(source("abilities.c").read_text())
     header = source("abilities.h").read_text()
     pending = (ROOT / "tests/fixtures/ability_coverage_pending.txt").read_text().split()
