@@ -102,12 +102,23 @@ def run(binary, backend):
         zone = root / "areas_mini/mini.zon"
         zone.write_text(re.sub(r"^E .*\n", "", zone.read_text(), flags=re.M).replace(
             "\nS\n", "\nO 0 22802 1 22800 100 0 0 0 * monk glove\nS\n"))
+        # A bound template remains passive through balance_affects()/restore;
+        # a live setbit on affected_by5 is recomputed by those operations.
+        defines = (ROOT / "src/core/defines.h").read_text()
+        bound_bit = int(re.search(r"#define AFF_BOUND BIT_(\d+)", defines)[1])
+        mobiles = root / "areas_mini/mini.mob"
+        mob_text = mobiles.read_text()
+        match = re.search(r"^#22801\n.*?(?=^#\d+\n|^\$~)", mob_text, re.M | re.S)
+        mobile = match.group().replace("10 0 0 0 0 0 0 0 S",
+            f"10 0 0 0 {1 << (bound_bit - 1)} 0 0 0 0 S")
+        mobiles.write_text(mob_text[:match.start()] + mobile + mob_text[match.end():])
+        (root / "areas/world.mob").write_text(mobiles.read_text())
         (root / "areas/world.obj").write_text(objects.read_text())
         (root / "areas/world.zon").write_text(zone.read_text())
         runtime_binary = root / "server"
         shutil.copy2(binary, runtime_binary)
         server = Server(runtime_binary, root, state, "studio", db_env)
-        client = None
+        client = other = None
         try:
             server.start()
             client = server.client = journey.MudClient(server.port)
@@ -137,16 +148,33 @@ def run(binary, backend):
             command(client, "setbit char sentinel hit 100000000")
             # A live opponent can provoke a legitimate barehand monk riposte
             # even while a weapon is wielded. Isolate the actual weapon hits here.
-            command(client, "setbit char sentinel aff5 'NOT OFFENSIVE' 1")
             # Use the ordinary weapon proc path with the same marked gloves on.
             command(client, "load obj 22801")
             command(client, "wield wandblade")
+            # Secondary Warrior makes dual wield a legal skill for this fixture.
+            command(client, "setbit char Taverek secondary Warrior")
+            command(client, "setbit char Taverek skill 'dual wield' 100")
+            # Devastating criticals follow up with the secondary slot, which
+            # would be a legitimate barehand hit if that slot were empty.
+            command(client, "load obj 22801")
+            command(client, "wield wandblade")
+            equipment = command(client, "equipment", .6)
+            assert equipment.count("regression wandblade") == 2, equipment
             fight(client, False, staff=True)
             command(client, "remove wandblade")
-            command(client, "setbit char Taverek class Warrior")
-            fight(client, False, staff=True)
-            # Persistence must retain the original source's flag and fields.
-            command(client, "setbit char Taverek class Monk")
+            command(client, "remove wandblade")
+            # Use a real non-monk, keeping the staff controller's class and
+            # authority intact. The same saved glove also survives both gifts.
+            other = journey.MudClient(server.port)
+            journey.create_character(other, account="Gloveother", character="Verenal",
+                                     email="glove-other@example.invalid")
+            command(other, "remove all"); command(other, "drop all")
+            command(client, "goto 22800"); command(client, "remove gloves")
+            command(client, "give gloves Verenal"); command(other, "wear gloves")
+            fight(other, False)
+            command(client, "goto 22801")
+            command(other, "remove gloves"); command(other, "give gloves Taverek")
+            command(client, "wear gloves")
             fight(client, True, staff=True)
             command(client, "save")
             print(backend + ": real punches proc; removal, weapon and non-monk exclusions; restart/stat passed", flush=True)
@@ -154,11 +182,14 @@ def run(binary, backend):
                     "weapon_excluded": True, "non_monk_excluded": True,
                     "save_restart_inspection": True, "first_fight_messages": len(output)}
         except Exception:
-            if client:
-                print(bytes(client.transcript).decode(errors="replace").replace(journey.PASSWORD, "[REDACTED]")[-7000:])
+            for connection in (client, other):
+                if connection:
+                    print(bytes(connection.transcript).decode(errors="replace").replace(journey.PASSWORD, "[REDACTED]")[-7000:])
             print(journey.runtime_logs(root)[-7000:])
             raise
         finally:
+            if other:
+                other.close()
             server.stop()
             if container:
                 subprocess.run(["docker", "rm", "-f", container], check=True,
