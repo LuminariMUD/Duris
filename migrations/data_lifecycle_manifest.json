@@ -6696,6 +6696,35 @@
       "dependencies": []
     },
     {
+      "id": "database:zone_story_quest_state_part",
+      "kind": "database_table",
+      "locator": "zone_story_quest_state_part",
+      "data_category": "reconciliation_or_replay_record",
+      "data_subject_key": "season_id_and_pid",
+      "technical_purpose": "Later parts of the zone_story_quest_state document, in order, so the saved document is not limited by one row; same data, subjects and retention as that table.",
+      "controller_decision": {
+        "status": "pending",
+        "reference": "PENDING-CONTROLLER-DECISION"
+      },
+      "export_rule": {
+        "disposition": "pending",
+        "subject_route": "direct_player",
+        "decision": {
+          "status": "pending",
+          "reference": "PENDING-SHARED-DISCLOSURE-DECISION"
+        },
+        "excluded_fields": [],
+        "shared_fields": []
+      },
+      "season_action": "retain",
+      "active_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "archive_retention": "indefinite_until_recovery_and_controller_approved_purge_horizon",
+      "terminal_action": "retain",
+      "exception": "protected_reconciliation_or_replay_horizon",
+      "protected_record": true,
+      "dependencies": []
+    },
+    {
       "id": "database:artifact_mana",
       "kind": "database_table",
       "locator": "artifact_mana",

@@ -22,7 +22,7 @@ constexpr const char *RUNTIME_BASELINE_ID = "duris-schema-2026-08-27-session11";
 constexpr const char *RUNTIME_BASELINE_FINGERPRINT =
 	"db13d7a42bf82bcbd32bac8d83224913c755fefd000ade6d4e798b1bd4f494dd";
 constexpr unsigned RUNTIME_BASELINE_TABLE_COUNT = 170;
-constexpr unsigned RUNTIME_CURRENT_TABLE_COUNT = 200;
+constexpr unsigned RUNTIME_CURRENT_TABLE_COUNT = 201;
 constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'account_banks','account_bound_reward_pwipe_state','account_bound_reward_summons',"
 	"'account_bound_rewards','account_characters','account_erasure_evidence',"
@@ -69,12 +69,13 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'telemetry_cohort_member','telemetry_config','telemetry_interval','telemetry_player_day',"
 	"'telemetry_quarantine','telemetry_reward_projection','telemetry_reward_projection_state',"
 	"'telemetry_rollup_session','telemetry_rollup_state','telemetry_session','timers','towns',"
-	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
+	"'world_quest_accomplished','zone_story_quest_state','zone_story_quest_state_part',"
+	"'zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"4fb694cf326c4ef5f70fb99a135a8ca238a18d96e2b0887c00cf212ac7b2ff3d";
+	"22f2be72b9f104b960e0ceb5545452693f2340e9cb0a89838a0901f2a97e1992";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"72e370d021eb113eb40fcfeca912cf4e3f68d997948fe087dee7e7e988e5a311";
+	"56d9a50116983e27e127a09ff6ee743517811933fd84676e3cc9518898c8f4b7";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -111,15 +112,16 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * Migration 0058 freezes bartender reward item quantities.
  * Migration 0059 preserves fixed item affects by slot.
  * Migration 0060 adds permanent per-instance item fields.
+ * Migration 0061 stores the zone-story quest state across rows.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0060_item_instance_fields";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 61;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0061_zone_story_quest_state_parts";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 62;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"6fc0474017ce7411c93cb31f16a6a78fa0e1af2050be045324489274c33f5023";
+	"885d73ea5a0b4ae19f9e85dc6035bdb9edcf43859532e40368b4eb1281750a27";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"118cc7b780ad571ac39c3399c0def29b020b1e3d5fae5423847b5c992ba64b5e";
+	"462885b77b0bc0d7193a58e4e05f9306bbdf9e44a669e96c13be8de38f0036ef";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"7f4edc5b2dd38c5d617303d43f24f09815d939befebad9bf05549e6e2afad559";
+	"98c480d1bc60301cd614c99a96610bfbb66f2e1b3d5ff46e3dbbccd0bf479eaa";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";
