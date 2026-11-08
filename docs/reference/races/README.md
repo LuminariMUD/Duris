@@ -11,6 +11,10 @@ tests. Distinguish verified behavior from balance estimates and design judgments
   powers, passive effects, gameplay interactions, costs, and balance tradeoffs.
 - [PC race tempo](race-tempo.md): racial melee and casting timing, action gates,
   attack payloads, recovery, and worked comparisons of effects and repeat rates.
+- [PC race combat resolution](race-combat-resolution.md): attack and spell
+  delivery, defenses, saves, control, sustain, and worked racial comparisons.
+- [Race combat resolution issues](race-combat-resolution-issues.md): potential
+  defects, gameplay impact, recommendations, and unresolved balance contracts.
 - [Race tempo issues](race-tempo-issues.md): potential timing defects, gameplay
   impact, recommended fixes, and distinctions from intentional timing policies.
 - [Race stats issues](race-stats-issues.md): potential stat-mechanics bugs,
