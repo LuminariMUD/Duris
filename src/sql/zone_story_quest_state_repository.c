@@ -92,8 +92,8 @@ sql_zone_story_quest_state_load(uint32_t expected_catalog_revision, std::string 
 sql_zone_story_quest_state_result
 sql_zone_story_quest_state_save(uint32_t catalog_revision, std::string state, std::string *error)
 {
-	/* MEDIUMTEXT is capped at 16 MiB; reject larger blobs before issuing SQL. */
-	if (!catalog_revision || state.size() > 16U * 1024U * 1024U)
+	/* MEDIUMTEXT holds 16 MiB minus one byte; reject larger blobs before issuing SQL. */
+	if (!catalog_revision || state.size() >= 16U * 1024U * 1024U)
 	{
 		if (error)
 			*error = "zone-story SQL state is oversized";
