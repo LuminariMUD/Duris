@@ -31,6 +31,11 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
                        (32862, "aboleth_pendant"), (3833, "glades_dagger")):
         assert re.search(rf"obj_index\[real_object0\({vnum}\)\]\.func\.obj\s*=\s*{proc};",
                          assignments)
+    # special() keeps using ch after an object proc returns, so these burns cannot kill.
+    object_procs = repo_source("specs.object.c").read_text()
+    for damage in (r"number\(120, 240\), SPLDAM_HOLY,\s+SPLDAM_NOSHRUG \| RAWDAM_NOKILL",
+                   r"4, SPLDAM_GENERIC, RAWDAM_NOKILL"):
+        assert re.search(rf"spell_damage\(ch, ch, {damage}", object_procs)
     # Identity-only dependencies must never be invoked by target validation.
     # The reported weapons and their neighbors below use full production bodies.
     policy = repo_source("world/world_quest_policy.c").read_text()

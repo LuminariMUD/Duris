@@ -11126,7 +11126,8 @@ int glades_dagger(P_obj obj, P_char ch, int cmd, char *arg)
 		    TRUE, ch, obj, vict, TO_CHAR);
 		act("$N screams in pain, as $S $p burns into $S skin!", FALSE, ch, obj, vict,
 		    TO_ROOM);
-		spell_damage(ch, ch, number(120, 240), SPLDAM_HOLY, SPLDAM_NOSHRUG, 0);
+		spell_damage(ch, ch, number(120, 240), SPLDAM_HOLY, SPLDAM_NOSHRUG | RAWDAM_NOKILL,
+			     0);
 		return FALSE;
 	}
 
@@ -11326,7 +11327,7 @@ int cutting_dagger(P_obj obj, P_char ch, int cmd, char *arg)
 	if (IS_ALIVE(ch) && IS_PC(ch) && OBJ_ROOM(obj) && cmd == CMD_GET &&
 	    obj == get_obj_in_list_vis(ch, arg, world[ch->in_room].contents))
 	{
-		spell_damage(ch, ch, 4, SPLDAM_GENERIC, 0, &messages);
+		spell_damage(ch, ch, 4, SPLDAM_GENERIC, RAWDAM_NOKILL, &messages);
 	}
 
 	return FALSE;
