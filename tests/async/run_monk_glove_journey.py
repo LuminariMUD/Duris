@@ -135,6 +135,9 @@ def run(binary, backend):
             command(client, "setbit char sentinel basehit 100000000")
             command(client, "restore sentinel")
             command(client, "setbit char sentinel hit 100000000")
+            # A live opponent can provoke a legitimate barehand monk riposte
+            # even while a weapon is wielded. Isolate the actual weapon hits here.
+            command(client, "setbit char sentinel aff5 'NOT OFFENSIVE' 1")
             # Use the ordinary weapon proc path with the same marked gloves on.
             command(client, "load obj 22801")
             command(client, "wield wandblade")
