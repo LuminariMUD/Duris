@@ -1057,6 +1057,51 @@ int main() {
         slot.expires_at = time(nullptr) + 7200;
         slot.zones[0] = 18;
     };
+    // #764: room distance alone does not suppress damage or kill awards.
+    // Group shares follow the killer's room, including when the victim is remote.
+    group_list ranged_group{}, ranged_mate{};
+    affected_type ranged_blood{}, ranged_mate_blood{};
+    ranged_blood.type = ranged_mate_blood.type = TAG_ADDICTED_BLOOD;
+    ranged_group.ch = &player;
+    ranged_group.next = &ranged_mate;
+    ranged_mate.ch = &other;
+    for (int victim_room : {0, 1}) {
+        for (int mate_room : {-1, 0, 1}) {
+            reset_divine();
+            divine_enabled = false;
+            player.affected = &ranged_blood;
+            other.affected = &ranged_mate_blood;
+            ranged_blood.modifier = ranged_mate_blood.modifier = 0;
+            mob.in_room = victim_room;
+            mob.points.max_hit = 100;
+            mob.points.curr_exp = 1000;
+            other.in_room = mate_room;
+            other.points.curr_exp = 0;
+            player.group = mate_room < 0 ? nullptr : &ranged_group;
+            assert(gain_exp(&player, &mob, 50, EXP_DAMAGE) == 384);
+            player.points.curr_exp = 0;
+            kill_gain(&player, &mob);
+            assert(player.points.curr_exp == (mate_room == 0 ? 800 : 1000));
+            assert(other.points.curr_exp == (mate_room == 0 ? 800 : 0));
+        }
+    }
+    // Both rooms' eligibility gates still apply to a remote target; exercise
+    // the real kill dispatcher as well as the damage-award function.
+    for (int room : {0, 1}) {
+        for (auto flag : {ROOM_SAFE, ROOM_GUILD}) {
+            reset_divine();
+            divine_enabled = false;
+            player.affected = &ranged_blood;
+            ranged_blood.modifier = 0;
+            mob.in_room = 1;
+            rooms[room].room_flags = flag;
+            assert(gain_exp(&player, &mob, 50, EXP_DAMAGE) == 0);
+            kill_gain(&player, &mob);
+            assert(player.points.curr_exp == 0);
+            rooms[room].room_flags = 0;
+        }
+    }
+    other.affected = nullptr;
     // Trainer encounters cannot grant any combat XP, with or without Divine
     // bonuses. Ordinary NPCs still award each source through the same dispatcher.
     group_list trainer_group{}, reward_group{};
