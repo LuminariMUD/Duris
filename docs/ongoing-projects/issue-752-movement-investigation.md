@@ -7,7 +7,11 @@ Investigated November 8, 2026 against fetched `origin/master` commit
 Tracking issue: [752](https://github.com/LuminariMUD/Duris/issues/752).
 [Plain English explanation](issue-752-plain-english.md).
 
-This is research and documentation. No server behavior or source comments were changed. Issue 752 remains open for implementation and gameplay validation. No production operation or player-data access was needed.
+The findings below describe the original source snapshot. [PR 850](https://github.com/LuminariMUD/Duris/pull/850) implements the follow-up fix; it is ready for review and has not been deployed. No production operation or player-data access was needed.
+
+The fix routes all five displacements through the existing forced-movement subsystem. Mounted lance ram validates the charger, victim and mount before departure and after leave hooks, preserves the charger's riding link during arrival hooks, and separates the victim from their own riding companion. Walking also checks riding companions at its closed-door gate, covering lance approach and missed-charge continuation. Source identity checks protect post-movement work, and guardian death bursts retain their dead, still-registered source.
+
+Verification includes 329 ASan/UBSan actual-handler scenarios, 50 walking permission cases, existing combat regressions and a disposable socket-game Squall/walking journey. The full safe gate at implementation commit `b64c49a67` passed 1,002 of 1,003 regressions: the unchanged Divine Boon journey timed out during PvP finishing blows, then passed unchanged in isolation against the same verified server binary. After merging master through `1ac753dbe`, both maintained builds, the native signal check, the focused movement tests and the changed upstream runtime regressions passed. The full suite was not rerun after that final integration.
 
 ## Door rules and root cause
 
