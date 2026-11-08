@@ -177,12 +177,11 @@ static void show_race_info(P_char ch, int race)
 		       "    Agility      &+c%3d%%&n    Wisdom       &+c%3d%%&n\n"
 		       "    Constitution &+c%3d%%&n    Charisma     &+c%3d%%&n\n"
 		       "    Luck         &+c%3d%%&n    Karma        &+c%3d%%&n\n"
-		       "\n    Combat speed : &+c%s&n\n"
-		       "    Spell speed  : &+c%s&n\n",
+		       "\n    Combat speed : &+c%.3f pulses&n\n"
+		       "    Spell speed  : &+c%.3fx casting time&n\n",
 		       stats.Str, stats.Pow, stats.Dex, stats.Int, stats.Agi, stats.Wis, stats.Con,
-		       stats.Cha, stats.Luk, stats.Kar,
-		       stat_to_string_damage_pulse(combat_by_race[race][0]),
-		       stat_to_string_spell_pulse(spell_pulse_data[race]));
+		       stats.Cha, stats.Luk, stats.Kar, combat_by_race[race][0],
+		       spell_pulse_data[race]);
 	send_to_char_f(ch,
 		       "\n  Abilities: &+Wrace innates %s&n\n"
 		       "  More lore and racial traits: &+Whelp %s&n\n",
