@@ -27,6 +27,9 @@ assert len(load_callers) == 4, "only the boot reads the stored state"
 # A completion builds the shared document once, for its save; rollback must not (#807).
 completion = function_bodies(runtime, r"\bbool\s+record_authoritative_completion\s*\(")[0]
 assert "serialize_state" not in completion and "deserialize_state" not in completion, completion
+save_state = function_bodies(runtime, r"\bbool\s+save_persisted_state\s*\(")[0]
+sql_branch = save_state[save_state.index("capture_state"):]
+assert "serialize_state" not in sql_branch, save_state
 assert "undo_last_completion()" in completion, completion
 feature = (SRC / "world/zone_story_quest_feature.c").read_text()
 record = function_bodies(feature, r"\bresult\s+service::record_completion\s*\(")[0]

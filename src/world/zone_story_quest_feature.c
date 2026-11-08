@@ -40,6 +40,8 @@ bool fail(std::string *error, std::string message)
 }
 
 constexpr char hex_digits[] = "0123456789abcdef";
+/* Big enough that a very long history is only a few hundred shared chunks. */
+constexpr size_t row_chunk_bytes = 256 * 1024;
 
 int hex_value(char value)
 {
@@ -592,6 +594,8 @@ service::apply_transaction(const zone_story_quest_tracking::completion_transacti
 
 	transactions_.emplace(transaction.transaction_id,
 			      stored_transaction{ transaction, encoded });
+	if (transaction_saved(transaction))
+		append_row('T', transaction.transaction_id, encoded);
 	for (uint32_t pid : transaction.credited_pids)
 	{
 		if (deleted_characters_.find({ transaction.season_id, pid }) !=
@@ -681,6 +685,52 @@ void service::undo_last_completion()
 	transactions_.erase(last_completion_.transaction_id);
 	telemetry_.erase(last_completion_.observation_id);
 	last_completion_ = {};
+	rebuild_rows();
+}
+
+bool service::transaction_saved(const zone_story_quest_tracking::completion_transaction &tx) const
+{
+	for (const uint32_t pid : tx.credited_pids)
+		if (deleted_characters_.find({ tx.season_id, pid }) != deleted_characters_.end())
+			return false;
+	return true;
+}
+
+bool service::observation_saved(const telemetry_observation &observation) const
+{
+	for (const auto &[season, pid] : deleted_characters_)
+		if (pid == observation.pid)
+			return false;
+	return true;
+}
+
+void service::append_row(char kind, std::string_view id, std::string_view payload)
+{
+	open_rows_ += kind;
+	open_rows_ += '|';
+	append_hex(&open_rows_, id);
+	open_rows_ += '|';
+	append_hex(&open_rows_, payload);
+	open_rows_ += '\n';
+	if (open_rows_.size() >= row_chunk_bytes)
+	{
+		sealed_rows_.push_back(std::make_shared<const std::string>(std::move(open_rows_)));
+		open_rows_.clear();
+	}
+}
+
+/* Rewrites the rows after anything that removes one or changes which are saved: erasure,
+ * undo and reload. Those are rare, and each already walks or replaces the history. */
+void service::rebuild_rows()
+{
+	sealed_rows_.clear();
+	open_rows_.clear();
+	for (const auto &[id, stored] : transactions_)
+		if (transaction_saved(stored.transaction))
+			append_row('T', id, stored.encoded);
+	for (const auto &[id, observation] : telemetry_)
+		if (observation_saved(observation))
+			append_row('E', id, serialize_observation(observation));
 }
 
 result service::record_telemetry(const telemetry_observation &observation, std::string *error)
@@ -701,6 +751,8 @@ result service::record_telemetry(const telemetry_observation &observation, std::
 		return result::already_applied;
 	}
 	telemetry_.emplace(observation.observation_id, observation);
+	if (observation_saved(observation))
+		append_row('E', observation.observation_id, encoded);
 	return result::applied;
 }
 
@@ -710,7 +762,8 @@ void service::remember_character(uint32_t season_id, uint32_t pid, std::string c
 	if (!season_id || !pid)
 		return;
 	const std::pair<uint32_t, uint32_t> key{ season_id, pid };
-	deleted_characters_.erase(key);
+	if (deleted_characters_.erase(key))
+		rebuild_rows();
 	if (!leaderboard_eligible)
 	{
 		leaderboard_exclusions_.insert(key);
@@ -759,6 +812,7 @@ bool service::erase_character(uint32_t season_id, uint32_t pid)
 		else
 			++telemetry;
 	}
+	rebuild_rows();
 	return true;
 }
 
@@ -800,6 +854,7 @@ bool service::erase_character_all_seasons(uint32_t pid, uint32_t current_season_
 		else
 			++telemetry;
 	}
+	rebuild_rows();
 	return true;
 }
 
@@ -1441,32 +1496,10 @@ std::string service::render_daily_score(uint32_t season_id, uint32_t pid, int le
 	return output.str();
 }
 
-std::string service::serialize_state(std::string *error) const
+service::state_parts service::capture_state() const
 {
-	(void)error;
-	/* Transactions and telemetry are nearly all of a multi-megabyte document, which is
-	 * built on the game thread for every completion: they skip the stream. */
-	std::string document = "ZSQF|1\n";
-	for (const auto &[id, stored] : transactions_)
-	{
-		bool includes_deleted_pid = false;
-		for (const uint32_t pid : stored.transaction.credited_pids)
-			if (deleted_characters_.find({ stored.transaction.season_id, pid }) !=
-			    deleted_characters_.end())
-			{
-				includes_deleted_pid = true;
-				break;
-			}
-		if (!includes_deleted_pid)
-		{
-			document += "T|";
-			append_hex(&document, id);
-			document += '|';
-			append_hex(&document, stored.encoded);
-			document += '\n';
-		}
-	}
 	std::ostringstream output;
+	output << "ZSQF|1\n";
 	for (const auto &[key, state] : characters_)
 	{
 		if (deleted_characters_.find(key) != deleted_characters_.end())
@@ -1496,25 +1529,23 @@ std::string service::serialize_state(std::string *error) const
 		if (deleted_characters_.find({ season, pid }) == deleted_characters_.end())
 			output << "H|" << season << "|" << pid << "\n";
 	}
-	document += output.str();
-	for (const auto &[id, observation] : telemetry_)
-	{
-		bool deleted_pid = false;
-		for (const auto &[season, pid] : deleted_characters_)
-			if (pid == observation.pid)
-			{
-				deleted_pid = true;
-				break;
-			}
-		if (!deleted_pid)
-		{
-			document += "E|";
-			append_hex(&document, id);
-			document += '|';
-			append_hex(&document, serialize_observation(observation));
-			document += '\n';
-		}
-	}
+	state_parts captured;
+	auto character_rows = std::make_shared<const std::string>(output.str());
+	captured.unshared_bytes = character_rows->size() + open_rows_.size();
+	captured.parts.reserve(sealed_rows_.size() + 2);
+	captured.parts.push_back(std::move(character_rows));
+	captured.parts.insert(captured.parts.end(), sealed_rows_.begin(), sealed_rows_.end());
+	captured.parts.push_back(std::make_shared<const std::string>(open_rows_));
+	return captured;
+}
+
+std::string service::serialize_state(std::string *error) const
+{
+	(void)error;
+	const state_parts captured = capture_state();
+	std::string document;
+	for (const auto &part : captured.parts)
+		document += *part;
 	return document;
 }
 
@@ -1687,6 +1718,7 @@ bool service::deserialize_state(std::string_view encoded, std::string *error)
 		if (applied != result::applied && applied != result::already_applied)
 			return false;
 	}
+	rebuild_rows();
 	return true;
 }
 } // namespace zone_story_quest_feature

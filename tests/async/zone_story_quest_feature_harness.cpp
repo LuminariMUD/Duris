@@ -2,10 +2,13 @@
 
 #include "core/defines.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <tuple>
+#include <vector>
 
 namespace
 {
@@ -16,6 +19,17 @@ void require(bool condition, const char *message)
 		std::cerr << message << '\n';
 		std::exit(1);
 	}
+}
+
+// Rows in append order after new completions, sorted order after a rebuild: compare as a set.
+std::vector<std::string> sorted_rows(const zone_story_quest_feature::service &tracker)
+{
+	std::vector<std::string> rows;
+	std::istringstream document(tracker.serialize_state());
+	for (std::string row; std::getline(document, row);)
+		rows.push_back(row);
+	std::sort(rows.begin(), rows.end());
+	return rows;
 }
 
 zone_story_quest_tracking::quest_definition definition(const char *id, int zone)
@@ -395,7 +409,7 @@ int main()
 						       assignment.assigned_at + 100, { 42 });
 	// A completion that cannot be saved is taken back exactly: new party member, telemetry,
 	// transaction and daily award alike, so a retry applies it afresh.
-	const std::string before_undo = tracker.serialize_state(&error);
+	const std::vector<std::string> before_undo = sorted_rows(tracker);
 	completion_event undone_party = daily_completion;
 	undone_party.transaction.credited_pids = { 42, 555 };
 	require(tracker.record_completion(undone_party, &error) == result::applied &&
@@ -404,8 +418,7 @@ int main()
 				daily_status::completed,
 		"completion to undo was not applied");
 	tracker.undo_last_completion();
-	require(tracker.serialize_state(&error) == before_undo &&
-			tracker.summary_for(7, 555).completed == 0 &&
+	require(sorted_rows(tracker) == before_undo && tracker.summary_for(7, 555).completed == 0 &&
 			tracker.daily_for(7, 42, service::period_for(daily_now)).status ==
 				daily_status::assigned,
 		"undo did not restore the state before the completion");
@@ -550,6 +563,41 @@ int main()
 				result::applied &&
 			disabled_after_assignment.summary_for(7, 42).renown == 0,
 		"disabling daily quests allowed a new reward to be earned");
+
+	// Sealed rows are shared with queued saves, and survive what later rewrites the rows.
+	service history(catalog);
+	for (int index = 0; index < 1200; ++index)
+	{
+		const std::string id = "tx-history-" + std::to_string(index);
+		const std::string quest = index % 2 ? "zone-story:900:001" : "zone-story:901:001";
+		completion_event grown = completion(id.c_str(), quest.c_str(),
+						    index % 2 ? 900 : 901, 1000 + index % 7,
+						    172800100 + index,
+						    { static_cast<uint32_t>(1000 + index % 7) });
+		require(history.record_completion(grown, &error) == result::applied,
+			"history fixture was not applied");
+	}
+	const service::state_parts capture_a = history.capture_state();
+	const service::state_parts capture_b = history.capture_state();
+	require(capture_a.parts.size() > 2 && capture_a.parts.size() == capture_b.parts.size() &&
+			std::equal(capture_a.parts.begin() + 1, capture_a.parts.end() - 1,
+				   capture_b.parts.begin() + 1) &&
+			capture_a.unshared_bytes < 1024 * 1024,
+		"a capture copied the sealed history instead of sharing it");
+	const std::vector<std::string> grown_rows = sorted_rows(history);
+	service reloaded(catalog);
+	require(reloaded.deserialize_state(history.serialize_state(&error), &error) &&
+			sorted_rows(reloaded) == grown_rows,
+		"reloaded rows differ from the saved document");
+	require(history.erase_character_all_seasons(1003, 7) && sorted_rows(history) != grown_rows,
+		"erasing a character left its rows in the document");
+	for (const std::string &row : sorted_rows(history))
+		require(row.rfind("N|7|1003|", 0) != 0, "erased character row was saved");
+	service after_erase(catalog);
+	require(after_erase.deserialize_state(history.serialize_state(&error), &error) &&
+			after_erase.summary_for(7, 1003).completed == 0 &&
+			after_erase.summary_for(7, 1002).completed > 0,
+		"rows rebuilt after an erase did not reload correctly");
 
 	zone_story_quest_catalog::catalog empty_catalog = { .content_revision = 7,
 							    .definitions = {} };

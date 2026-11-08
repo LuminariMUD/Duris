@@ -90,10 +90,15 @@ sql_zone_story_quest_state_load(uint32_t expected_catalog_revision, std::string 
 }
 
 sql_zone_story_quest_state_result
-sql_zone_story_quest_state_save(uint32_t catalog_revision, std::string state, std::string *error)
+sql_zone_story_quest_state_save(uint32_t catalog_revision,
+				std::vector<std::shared_ptr<const std::string>> parts,
+				size_t unshared_bytes, std::string *error)
 {
 	/* MEDIUMTEXT holds 16 MiB minus one byte; reject larger blobs before issuing SQL. */
-	if (!catalog_revision || state.size() >= 16U * 1024U * 1024U)
+	size_t size = 0;
+	for (const auto &part : parts)
+		size += part->size();
+	if (!catalog_revision || !size || size >= 16U * 1024U * 1024U)
 	{
 		if (error)
 			*error = "zone-story SQL state is oversized";
@@ -101,18 +106,23 @@ sql_zone_story_quest_state_save(uint32_t catalog_revision, std::string state, st
 	}
 #ifdef __NO_MYSQL__
 	(void)catalog_revision;
-	(void)state;
+	(void)unshared_bytes;
 	if (error)
 		*error = "SQL state repository is unavailable in a flat-file build";
 	return sql_zone_story_quest_state_result::io_error;
 #else
 	// Queued on the writer, in capture order with the saves; the writer logs a failure.
-	// It escapes and formats the document too, which the game thread must not pay for.
-	const size_t bytes = state.size();
+	// It joins, escapes and formats the document too, which the game thread must not pay
+	// for. Only the parts this save alone keeps alive count against the writer's limit.
 	const bool queued = sql_queue_sized_work(
-		bytes,
-		[catalog_revision, state = std::move(state)](MYSQL *connection) -> unsigned int
+		unshared_bytes,
+		[catalog_revision, parts = std::move(parts),
+		 size](MYSQL *connection) -> unsigned int
 		{
+			std::string state;
+			state.reserve(size);
+			for (const auto &part : parts)
+				state += *part;
 			std::string escaped(state.size() * 2 + 1, '\0');
 			escaped.resize(mysql_real_escape_string(connection, escaped.data(),
 								state.data(), state.size()));

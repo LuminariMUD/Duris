@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -239,6 +240,14 @@ class service
 	std::string render_daily_score(uint32_t season_id, uint32_t pid, int level, int racewar,
 				       int64_t now, bool colors = true);
 
+	/* The saved document in parts, cheap to take however long the history is: the sealed
+	 * rows are immutable and shared, only the character rows and the open chunk are new. */
+	struct state_parts
+	{
+		std::vector<std::shared_ptr<const std::string>> parts;
+		size_t unshared_bytes = 0;
+	};
+	state_parts capture_state() const;
 	std::string serialize_state(std::string *error = nullptr) const;
 	bool deserialize_state(std::string_view encoded, std::string *error = nullptr);
 
@@ -277,6 +286,10 @@ class service
 		std::string transaction_id;
 		std::string observation_id;
 	} last_completion_;
+	/* The transaction and telemetry rows of the saved document, in append order. Rows are
+	 * immutable once written, so full chunks are sealed and shared with queued saves. */
+	std::vector<std::shared_ptr<const std::string>> sealed_rows_;
+	std::string open_rows_;
 
 	character_state &state_for(uint32_t season_id, uint32_t pid);
 	const character_state *find_state(uint32_t season_id, uint32_t pid) const;
@@ -294,6 +307,10 @@ class service
 			  std::string_view character_name, int racewar, bool allow_stale,
 			  bool award_daily, std::string *error);
 	void award_daily_for(const zone_story_quest_tracking::completion_transaction &transaction);
+	bool transaction_saved(const zone_story_quest_tracking::completion_transaction &tx) const;
+	bool observation_saved(const telemetry_observation &observation) const;
+	void append_row(char kind, std::string_view id, std::string_view payload);
+	void rebuild_rows();
 	bool
 	eligible_for_current_catalog(const zone_story_quest_tracking::completion_transaction &tx,
 				     std::string *error) const;

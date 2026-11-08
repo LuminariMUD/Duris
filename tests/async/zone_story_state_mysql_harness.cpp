@@ -100,8 +100,9 @@ int main()
 	while (state.size() < 96 * 1024)
 		state += "pid=" + std::to_string(state.size()) + " quest='done'\\\n";
 	std::string error;
-	require(sql_zone_story_quest_state_save(7, state, &error) ==
-			sql_zone_story_quest_state_result::ok,
+	require(sql_zone_story_quest_state_save(7, { std::make_shared<const std::string>(state) },
+						state.size(),
+						&error) == sql_zone_story_quest_state_result::ok,
 		"the save was refused: " + error);
 	std::string loaded;
 	require(sql_zone_story_quest_state_load(7, &loaded, &error) ==

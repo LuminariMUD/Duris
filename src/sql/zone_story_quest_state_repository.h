@@ -15,8 +15,11 @@
 #ifndef ZONE_STORY_QUEST_STATE_REPOSITORY_H
 #define ZONE_STORY_QUEST_STATE_REPOSITORY_H
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <vector>
 
 enum class sql_zone_story_quest_state_result
 {
@@ -29,8 +32,9 @@ enum class sql_zone_story_quest_state_result
 sql_zone_story_quest_state_result
 sql_zone_story_quest_state_load(uint32_t expected_catalog_revision, std::string *state,
 				std::string *error = nullptr);
-sql_zone_story_quest_state_result sql_zone_story_quest_state_save(uint32_t catalog_revision,
-								  std::string state,
-								  std::string *error = nullptr);
+sql_zone_story_quest_state_result
+sql_zone_story_quest_state_save(uint32_t catalog_revision,
+				std::vector<std::shared_ptr<const std::string>> parts,
+				size_t unshared_bytes, std::string *error = nullptr);
 
 #endif
