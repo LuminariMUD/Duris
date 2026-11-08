@@ -1092,11 +1092,11 @@ void SpellCastShow(P_char ch, int spl)
 		act(Gbuf1, TRUE, ch, 0, tch, TO_VICT);
 
 		if (idok == 1)
-			notch_skill(ch, SKILL_SPELL_KNOWLEDGE_MAGICAL, 1);
+			notch_skill(tch, SKILL_SPELL_KNOWLEDGE_MAGICAL, 1);
 		else if (idok == 2)
-			notch_skill(ch, SKILL_SPELL_KNOWLEDGE_CLERICAL, 1);
+			notch_skill(tch, SKILL_SPELL_KNOWLEDGE_CLERICAL, 1);
 		else if (idok == 3)
-			notch_skill(ch, SKILL_SPELL_KNOWLEDGE_SHAMAN, 1);
+			notch_skill(tch, SKILL_SPELL_KNOWLEDGE_SHAMAN, 1);
 	}
 }
 
@@ -2512,7 +2512,7 @@ bool check_disruptive_blow(P_char ch)
 
 		if (skl && success)
 		{
-			if (notch_skill(ch, SKILL_DISRUPTIVE_BLOW, 17))
+			if (notch_skill(tch, SKILL_DISRUPTIVE_BLOW, 17))
 				success = 100;
 
 			if (success > disruptive_blow_stop_margin())

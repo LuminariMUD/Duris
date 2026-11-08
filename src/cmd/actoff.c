@@ -6894,6 +6894,8 @@ int sneaky_strike_bleed_damage(const Rolls &rolls)
 void event_bleedproc(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 {
 	int count = *((int *)data);
+	if (count <= 0)
+		return;
 
 	// Deliver damage with no reductions or messages.
 	if (raw_damage(ch, victim, sneaky_strike_bleed_damage(live_rolls), PHSDAM_NOREDUCE, NULL) !=
@@ -6916,9 +6918,8 @@ void event_bleedproc(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 	}
 	make_bloodstain(ch);
 
-	if (count >= 0)
+	if (--count > 0)
 	{
-		count--;
 		add_event(event_bleedproc, PULSE_VIOLENCE, ch, victim, 0, 0, &count, sizeof(count));
 	}
 	else
@@ -6959,10 +6960,10 @@ static int sneaky_strike_damage(P_char ch, int dam, int multiplier, int skill)
 	return dam;
 }
 
-// The rolled rounds of an assassin's bleed; event_bleedproc runs two more than this.
+// The full number of bleeding rounds from an assassin's strike.
 static int sneaky_strike_bleed_rounds(const Rolls &rolls)
 {
-	return rolls.number(4, 7);
+	return rolls.number(6, 9);
 }
 
 // The vitality a mercenary's strike takes from a player.
@@ -7006,8 +7007,8 @@ std::string sneaky_strike_facts(P_char ch)
 	if (GET_SPEC(ch, CLASS_ROGUE, SPEC_ASSASSIN))
 		facts += fact("Follow-up",
 			      "a stab and " +
-				      show({ sneaky_strike_bleed_rounds(lowest_rolls) + 2,
-					     sneaky_strike_bleed_rounds(highest_rolls) + 2 }) +
+				      show({ sneaky_strike_bleed_rounds(lowest_rolls),
+					     sneaky_strike_bleed_rounds(highest_rolls) }) +
 				      " rounds of bleeding") +
 			 fact("Bleeding per round",
 			      show({ sneaky_strike_bleed_damage(lowest_rolls),
@@ -7228,8 +7229,7 @@ void event_sneaky_strike(P_char ch, P_char victim, P_obj obj, void *data)
 				    FALSE, ch, 0, victim, TO_CHAR);
 				act("$n &+yseems to fill with unearthly &+RRAGE&+y, and strikes $N &+ywith all of their &+Bmight&+y!",
 				    TRUE, ch, 0, victim, TO_NOTVICT);
-				Stun(victim, victim, PULSE_VIOLENCE, FALSE);
-				;
+				Stun(victim, ch, PULSE_VIOLENCE, FALSE);
 			}
 			else
 			{

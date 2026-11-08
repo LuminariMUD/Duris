@@ -588,7 +588,7 @@ static void check_rolls() {
             SAME(!number(0, 9), !garrote_stops_casting_roll(rolls));
             SAME(dice(3, 6), sneaky_strike_bleed_damage(rolls));
             SAME(old_sneaky(c, &weapon, 80), new_sneaky(rolls, c, &weapon, 80));
-            SAME(number(4, 7), sneaky_strike_bleed_rounds(rolls));
+            SAME(number(6, 9), sneaky_strike_bleed_rounds(rolls));
             SAME(number(20, 45), sneaky_strike_drain(rolls));
             SAME(old_backstab(c, 80, &weapon), backstab_damage(c, 80, &weapon, backstab_luck_bonus(rolls, c)));
             SAME(number(1, 20) < 7, backstab_air_aura_roll(rolls) < backstab_air_aura_below());

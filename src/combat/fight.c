@@ -4317,7 +4317,7 @@ static int flame_mastery_roll(const Rolls &rolls)
 	return rolls.number(0, 10);
 }
 
-// ...and then needs this roll at or below the caster's level.
+// ...and then needs this roll at or below the defender's level.
 static int flame_mastery_level_roll(const Rolls &rolls)
 {
 	return rolls.number(1, 56);
@@ -4336,7 +4336,7 @@ std::string flame_mastery_facts(P_char ch)
 		return "  You need this skill to master flames.\n";
 	return fact("Chance to hurl a fire spell back",
 		    chance_under(rating, 0, 100) + ", then " + one_in(flame_mastery_roll)) +
-	       "    (and then the caster's level in 56)\n" +
+	       "    (and then your level in 56)\n" +
 	       fact("Damage to the caster", std::to_string((int)flame_mastery_damage(ch, 100)) +
 						    "% of the spell's, and you take none") +
 	       fact("Chance your fire shield doesn't worsen a cold spell on you",
@@ -4706,7 +4706,7 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 			     notch_skill(victim, SKILL_FLAME_MASTERY,
 					 get_property("skill.notch.pyrokinetics", 2))) ||
 			    (!flame_mastery_roll(live_rolls) &&
-			     flame_mastery_level_roll(live_rolls) <= GET_LEVEL(ch)))
+			     flame_mastery_level_roll(live_rolls) <= GET_LEVEL(victim)))
 			{
 				act("$N &+rsmiles slightly as $E stops the &+Yflames &+rsummoned by&n $n &+rand hurls them back at $m!&n",
 				    TRUE, ch, 0, victim, TO_NOTVICT);
@@ -5092,7 +5092,7 @@ int check_shields(P_char ch, P_char victim, int dam, int flags)
 
 			// Little bonus for devotion. Jan08 -Lucrot
 			int rnumber = 9;
-			rnumber -= GET_CHAR_SKILL(ch, SKILL_DEVOTION) / 50;
+			rnumber -= GET_CHAR_SKILL(victim, SKILL_DEVOTION) / 50;
 
 			// Elite and greater races get a similar bonus also. Jan08 -Lucrot
 			if (IS_NPC(ch) && !affected_by_spell(ch, TAG_CONJURED_PET) &&
@@ -8598,7 +8598,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 		 */
 	// 5% for elite mobs.
 	else if (IS_NPC(ch) && IS_ELITE(ch) &&
-		 get_property("skill.anatomy.NPC", 5.000) <= number(1, 100) &&
+		 get_property("skill.anatomy.NPC", 5.000) >= number(1, 100) &&
 		 IS_HUMANOID(victim) && IS_HUMANOID(ch))
 	{
 		dam = anatomy_strike(ch, victim, msg, &messages, attacker_msg, victim_msg, room_msg,
@@ -9532,12 +9532,13 @@ std::string improved_shield_combat_facts(P_char ch)
 
 int blockSucceed(P_char victim, P_char attacker, P_obj wpn)
 {
-	int learned, attackerweaponskill, percent;
-	int room = victim->in_room;
+	int learned, attackerweaponskill;
 	P_obj shield;
 
 	if (!(attacker) || !(victim) || !IS_ALIVE(victim) || !IS_ALIVE(attacker))
 		return false;
+
+	const int room = victim->in_room;
 
 	if (!GET_CHAR_SKILL(victim, SKILL_SHIELD_BLOCK) ||
 	    !(shield = victim->equipment[WEAR_SHIELD]))
@@ -9568,16 +9569,6 @@ int blockSucceed(P_char victim, P_char attacker, P_obj wpn)
 	// focuses their defense with the shield, if present.
 	if (!MIN_POS(victim, POS_STANDING + STAT_NORMAL))
 		learned = (int)(learned * 1.2);
-
-	if (!MIN_POS(attacker, POS_STANDING + STAT_NORMAL))
-		percent = (int)(learned * 1.1);
-
-	if (GET_C_LUK(victim) / 10 > number(0, 100))
-		percent += number(1, 4);
-
-	/* Bless spell modifier can be adjusted on the fly - Lucrot */
-	if (IS_SET(shield->extra2_flags, ITEM2_BLESS))
-		percent = (int)(percent * get_property("skill.shieldBlock.blessBonus", 1.2));
 
 	attackerweaponskill = WeaponSkill(attacker, wpn);
 	attackerweaponskill += str_app[STAT_INDEX(GET_C_STR(attacker))].tohit * 4;
@@ -9626,10 +9617,8 @@ int blockSucceed(P_char victim, P_char attacker, P_obj wpn)
 		/* Improved shield combat property can be adjusted on the fly - Lucrot */
 		int dmg = improved_shield_combat_damage(live_rolls, victim);
 
-		if (melee_damage(victim, attacker, dmg, 0, &messages) != DAM_NONEDEAD)
-			return true;
-		else
-			return false;
+		melee_damage(victim, attacker, dmg, 0, &messages);
+		return true;
 	}
 	else if (learned > 45 && !number(0, 2))
 	{
@@ -11112,29 +11101,8 @@ void perform_violence(void)
 		    GET_POS(opponent) == POS_STANDING && !IS_STUNNED(opponent) &&
 		    !IS_BLIND(opponent))
 		{
-			if (notch_skill(opponent, SKILL_BATTLE_SENSES,
-					get_property("skill.notch.defensive", 17)))
-			{
-			}
-			else if (battle_senses_threshold(opponent) >= number(1, 100))
-			{
-				act("&+wA sense of awareness &+bflows &+wover you as you move into &+rbattle.&n",
-				    FALSE, opponent, 0, 0, TO_CHAR);
-				act("$n maneuvers around you like a &+yviper!&n", FALSE, opponent,
-				    0, 0, TO_VICT);
-				act("$n &+bflows into battle with the speed of a &+yviper.&n",
-				    FALSE, opponent, 0, 0, TO_NOTVICT);
-
-				set_short_affected_by(opponent, SKILL_BATTLE_SENSES,
-						      battle_senses_duration());
-			}
-		}
-
-		if (!affected_by_spell(opponent, SKILL_BATTLE_SENSES) &&
-		    GET_CHAR_SKILL(opponent, SKILL_BATTLE_SENSES) &&
-		    GET_POS(opponent) == POS_STANDING && !IS_STUNNED(opponent) &&
-		    !IS_BLIND(opponent))
-		{
+			notch_skill(opponent, SKILL_BATTLE_SENSES,
+				    get_property("skill.notch.defensive", 17));
 			if (battle_senses_threshold(opponent) >= number(1, 100))
 			{
 				act("&+wA sense of awareness &+bflows &+wover you as you move into &+rbattle.&n",

@@ -11389,7 +11389,7 @@ std::string trap_facts(P_char /*ch*/)
 						     " more vitality per move") +
 	       fact("Its bleeding",
 		    show({ trap_bleed_count(lowest_rolls), trap_bleed_count(highest_rolls) }) +
-			    " rounds and 2 more, each " +
+			    " rounds, each " +
 			    show({ sneaky_strike_bleed_damage(lowest_rolls),
 				   sneaky_strike_bleed_damage(highest_rolls) })) +
 	       "  Wards and crippling traps have a thin string their victim's intelligence\n"
@@ -11528,7 +11528,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 				act("$n &+ywinces in &+ragony &+yas a &+rrusty &+yclamp suddenly tears at their legs!&n",
 				    FALSE, ch, 0, 0, TO_ROOM);
 
-				// 3-7 * ~5 damage = 15-35 damage total.
+				// Exactly 3-7 bleeding rounds, with 3-18 damage per round.
 				int numb = trap_bleed_count(live_rolls);
 				add_event(event_bleedproc, PULSE_VIOLENCE, tch, ch, 0, 0, &numb,
 					  sizeof(numb));

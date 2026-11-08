@@ -352,7 +352,7 @@ void event_super_cannon_fire(P_char ch, P_char /*vict*/, P_obj /*obj*/, void *da
 					"&+LYou've landed!  You roll as you hit the ground.&n\r\n",
 					ch);
 				if (!affected_by_spell(ch, SPELL_FLY) &&
-				    GET_CHAR_SKILL(ch, SKILL_SAFE_FALL) >= number(0, 100))
+				    GET_CHAR_SKILL(ch, SKILL_SAFE_FALL) < number(0, 100))
 				{
 					send_to_char(
 						"&+WOuch! &+LYou should try a fly spell next time.&n\r\n",

@@ -1696,7 +1696,7 @@ void bard_protection(int l, P_char ch, P_char victim, int song)
 
 	if (GET_LEVEL(ch) >= bard_protection_skin_level() && !has_skin_spell(victim))
 	{
-		if (IS_UNDEAD(victim) || IS_ANGEL(ch))
+		if (IS_UNDEAD(victim) || IS_ANGEL(victim))
 			spell_prot_undead(l, ch, 0, 0, victim, NULL);
 		else
 			spell_stone_skin(l, ch, 0, 0, victim, NULL);
