@@ -243,7 +243,8 @@ int storm_legplates(P_obj obj, P_char ch, int cmd, char *arg)
 				 TRUE, ch, obj, vict);
 
 			spell_lightning_bolt(50, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-			spell_lightning_bolt(50, ch, 0, SPELL_TYPE_SPELL, vict, 0);
+			if (IS_ALIVE(ch) && IS_ALIVE(vict))
+				spell_lightning_bolt(50, ch, 0, SPELL_TYPE_SPELL, vict, 0);
 
 			return TRUE;
 		}
@@ -380,8 +381,12 @@ int blur_shortsword(P_obj obj, P_char ch, int cmd, char *arg)
 
 						if (rand <= 15)
 						{
-							spell_frostbite(35, ch, 0, SPELL_TYPE_SPELL,
-									vict, 0);
+							if (IS_ALIVE(vict))
+							{
+								spell_frostbite(35, ch, 0,
+										SPELL_TYPE_SPELL,
+										vict, 0);
+							}
 						}
 						else
 						{
@@ -451,7 +456,9 @@ int blur_shortsword(P_obj obj, P_char ch, int cmd, char *arg)
 				}
 				else if (rand <= 19)
 				{
-					spell_frostbite(35, ch, 0, SPELL_TYPE_SPELL, vict, 0);
+					if (IS_ALIVE(vict))
+						spell_frostbite(35, ch, 0, SPELL_TYPE_SPELL, vict,
+								0);
 				}
 				else
 				{

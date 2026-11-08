@@ -32,7 +32,8 @@ extern P_index mob_index;
 int tutorial_mobile_mechanics_race(P_char ch)
 {
 	const int race = GET_RACE(ch);
-	if (!IS_NPC(ch))
+	// free_char releases only.npc while the dead NPC is still readable.
+	if (!IS_NPC(ch) || !ch->only.npc)
 		return race;
 	switch (GET_VNUM(ch))
 	{
