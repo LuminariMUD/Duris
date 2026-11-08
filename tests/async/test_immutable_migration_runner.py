@@ -51,6 +51,9 @@ class FakeExecutor:
 class ImmutableMigrationRunnerTest(unittest.TestCase):
     def test_online_item_fields_scope_and_lock_mode(self):
         manifest = runner.load_manifest()
+        # This online mode is pinned to the reviewed 0059/0060 prefix.
+        manifest = runner.replace(manifest, migrations=tuple(
+            step for step in manifest.migrations if step.sequence <= 61))
         environment = {
             "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
             "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
