@@ -223,7 +223,7 @@ std::string disguise_facts(P_char ch)
 	       fact("Your lag removing a disguise", seconds(disguise_remove_lag())) +
 	       fact("Its strength", std::to_string(disguise_hit_points(ch))) +
 	       "    (damage you take wears it down, and so does time)\n" +
-	       (free_kit ? "  It takes a disguise kit, but doesn't use one up.\n" :
+	       (free_kit ? "  You do not need a disguise kit.\n" :
 			   "  It uses up a disguise kit; a failure ruins it " +
 				   one_in(disguise_kit_roll) + " times.\n") +
 	       "  Not while fighting.\n";
@@ -240,7 +240,7 @@ static void disguise_as(P_char ch, P_char target, int i)
 	bool equipped = false;
 
 	// Check if we have a disguise kit
-	if (!IS_TRUSTED(ch) || !affected_by_spell(ch, ACH_DECEPTICON))
+	if (!IS_TRUSTED(ch) && !affected_by_spell(ch, ACH_DECEPTICON))
 	{
 		if (!(temp = get_obj_in_list_vis(ch, "_disguise_kit_", ch->carrying)))
 		{

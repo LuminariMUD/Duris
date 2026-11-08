@@ -126,7 +126,7 @@ HANDLER_CALLS = {
     ("cmd/actnew.c", "do_meditate"): ["GET_POS(ch) != POS_SITTING", "CharWait(ch, meditate_lag());"],
     ("classes/memorize.c", "event_memorize"): ["GET_CHAR_SKILL(ch, SKILL_MEDITATE) < number(0, 100)", "schedule_memorize(ch, time / 2);"],
     ("classes/memorize.c", "calculate_undead_time"): ["GET_CHAR_SKILL(ch, SKILL_MEDITATE) > number(0, 100)"],
-    ("classes/memorize.c", "calculate_harpy_time"): ["GET_CHAR_SKILL(ch, SKILL_MEDITATE) < number(0, 100)"],
+    ("classes/memorize.c", "calculate_harpy_time"): ["GET_CHAR_SKILL(ch, SKILL_MEDITATE) > number(0, 100)"],
     ("classes/memorize.c", "GetSpellPages"): ["int mod = scribe_mastery_pages(skill);"],
     ("classes/memorize.c", "AddScribingAffect"): ["CharWait(ch, scribe_affect_lag(ch));"],
     ("classes/memorize.c", "add_scribe_data"): ["add_event(event_scribe, scribe_first_page_wait(ch),"],
@@ -569,7 +569,7 @@ static void check_pages() {
     ch = viewer(viewers[9], 56);
     set_ratings(40);
     EXACT(meditate_facts, "  Chance a spell's recovery skips its extra half: 41 in 101\n"
-                          "  Chance your recovery time halves: 60 in 101\n"
+                          "  Chance your recovery time halves: 40 in 101\n"
                           "  Base mana recovery, if you use mana: 1000 while you meditate\n"
                           "  Your lag: 4 seconds\n"
                           "  You must be sitting. An attack on you or most commands end it.\n");

@@ -937,19 +937,19 @@ int do_roar_of_heroes(P_char ch)
 		}
 	}
 
+	CharWait(ch, PULSE_VIOLENCE);
 	return 1;
-	CharWait(ch, PULSE_VIOLENCE * 1);
 }
 
 // The attacks a flurry can spend, and each target's share.
 static int flurry_total_attacks(int num_attacks)
 {
-	return num_attacks * 2;
+	return num_attacks * 2 + 1;
 }
 
 static int flurry_hits_per_target(int max_num_attacks, int num_targets, int num_attacks)
 {
-	int num_hits_per_target = int(max_num_attacks / num_targets);
+	int num_hits_per_target = (max_num_attacks + num_targets - 1) / num_targets;
 	num_hits_per_target = BOUNDED(1, num_hits_per_target, num_attacks);
 	return num_hits_per_target;
 }
@@ -968,8 +968,8 @@ std::string flurry_of_blows_facts(P_char ch)
 {
 	const int rating = GET_CHAR_SKILL(ch, SKILL_FLURRY_OF_BLOWS);
 	return (rating ? fact("Chance on each target", chance_under(rating + 2, 1, 101)) : "") +
-	       fact("Attacks to spend", std::to_string(flurry_total_attacks(1)) +
-						" times your attacks, shared by the targets") +
+	       fact("Attacks to spend",
+		    "twice your normal attacks plus one, shared by the targets") +
 	       fact("Hits on each target", "at least " +
 						   std::to_string(flurry_hits_per_target(
 							   flurry_total_attacks(1), 100, 1)) +
@@ -1072,7 +1072,7 @@ void do_flurry_of_blows(P_char ch, char *arg)
 
 		/* Ok we got this far.. lets try and hit them! */
 
-		for (int i = 1; i <= num_hits_per_target && count <= max_num_attacks; i++, count++)
+		for (int i = 1; i <= num_hits_per_target && count < max_num_attacks; i++, count++)
 		{
 			if (!should_not_kill(ch, tch) && (GET_STAT(tch) != STAT_DEAD))
 				hit(ch, tch, NULL);
@@ -1913,8 +1913,7 @@ std::string meditate_facts(P_char ch)
 	    is_wearing_necroplasm(ch))
 		text += fact("Chance your recovery time halves", chance_under(rating, 0, 100));
 	else if (USES_TUPOR(ch))
-		text += fact("Chance your recovery time halves",
-			     std::to_string(100 - rating) + " in 101");
+		text += fact("Chance your recovery time halves", chance_under(rating, 0, 100));
 	text += fact("Base mana recovery, if you use mana",
 		     std::to_string((int)meditate_mana_gain(ch)) + " while you meditate") +
 		fact("Your lag", seconds(!advanced ? meditate_lag() :
@@ -3854,8 +3853,8 @@ void do_throat_crush(P_char ch, char *arg, int /*cmd*/)
 
 	skl_lvl = MIN(i, 90);
 
-	if (notch_skill(ch, SKILL_THROAT_CRUSH,
-			get_property("skill.notch.offensive", 4) || number(1, 100) > i))
+	notch_skill(ch, SKILL_THROAT_CRUSH, get_property("skill.notch.offensive", 4));
+	if (number(1, 100) > skl_lvl)
 	{
 		send_to_char("You miss their throat!\r\n", ch);
 		act("$n, lunges at $N, but misses!", FALSE, ch, 0, vict, TO_NOTVICT);
@@ -4360,8 +4359,11 @@ int chance_throw_potion(P_char ch, P_char /*victim*/)
 		chance = GET_LEVEL(ch) * 2;
 	}
 
+	if (chance <= 0)
+		return 0;
+
 	if (number(1, 140) > GET_C_AGI(ch))
-		chance = 1;
+		chance = -1;
 
 	return (int)chance;
 }
@@ -4397,7 +4399,7 @@ std::string throwpotion_facts(P_char ch)
 			     chance_under(GET_C_AGI(ch) + 1, 1, 140)) +
 				"  Otherwise the potion is lost.\n" +
 				(rating == 1 ?
-					 std::string("  At rating 1, no throw is steady.\n") :
+					 fact("Chance a steady throw lands as aimed", "1 in 100") :
 					 fact("Chance a steady throw goes astray, to anyone or the floor",
 					      chance_under(1, 0, rating))) :
 			"") +
@@ -4450,7 +4452,7 @@ bool throw_potion(P_char ch, P_obj potion, P_char victim, P_obj obj)
 
 	if (victim)
 	{
-		if (chance == 1)
+		if (chance < 0)
 		{
 			send_to_char("As you slip......\r\n", ch);
 			if (equipped)
@@ -4465,11 +4467,7 @@ bool throw_potion(P_char ch, P_obj potion, P_char victim, P_obj obj)
 			return FALSE;
 		}
 
-		if (number(0, chance))
-		{
-			victim = victim;
-		}
-		else
+		if (chance == 1 ? number(1, 100) > 1 : !number(0, chance))
 		{
 			the_room = ch->in_room;
 			for (tch = world[the_room].people; tch; tch = temp)
