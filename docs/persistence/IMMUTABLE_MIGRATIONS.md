@@ -1,5 +1,16 @@
 # Immutable Migration Ledger
 
+## Online zone-story state parts (0061)
+
+`run --online-zone-story-parts` accepts only the sealed 62-step manifest ending at
+`0061_zone_story_quest_state_parts`, with every earlier migration applied. It creates
+the independent `zone_story_quest_state_part` InnoDB table without changing existing
+rows or tables. Existing one-row documents remain valid. The path requires MariaDB
+11.8, the confirmed production target, a fresh verified backup, the advisory lock,
+matching checksums, and successful verification before publishing migration history.
+Metadata and row-lock waits are bounded to one second. Run the runtime compatibility
+verifier afterward and use a matching server build before restarting the game.
+
 ## Online item affect slots and instance fields (0059/0060)
 
 `run --online-item-fields` accepts only the sealed 61-step manifest ending at

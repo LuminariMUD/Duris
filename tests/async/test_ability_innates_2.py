@@ -54,7 +54,7 @@ SHARED = {
         troll_burn_duration fire_race_cold_mod sacrilegious_holy_factor vuln_cold_slow_save vuln_cold_slow_duration
         warcallers_fury_bonus warcallers_fury_max_steps warcallers_fury_step""".split(),
     "combat/grapple.c": "entrapment_chance entrapment_lag".split(),
-    "magic/smagic.c": """restoration_other_share elemental_power_save_change elemental_power_area_factor
+    "magic/smagic.c": """restoration_other_share elemental_power_save_change
         wellness_improved_bonus lesser_mending_improved_bonus mending_improved_bonus greater_mending_cure_level""".split(),
     "magic/magic.c": "stone_skin_absorb stone_skin_living_stone embalm_hours corpse_embalm_innate_facts blur_duration".split(),
     "magic/spells.c": "wall_climb_roll wall_climb_above wall_climb_text wall_of_flames_protected wall_of_ice_protected".split(),
@@ -496,7 +496,7 @@ static void check_keys() {
                              "innate.rrakkma.maxSteps", "innate.rrakkma.stepPct", "innate.timer.hatred", "innate.calming.delay",
                              "innate.calming.notarget.perc", "saves.quickthinking.percentage", "innate.evasion.removechance",
                              "innate.warcallersfury.maxSteps", "grapple.entrapment.chance.mod", "skill.trample.Knight.DamageMultiplier",
-                             "damage.increase.elementalist", "portals.wormhole.decayTimeout", "spell.dim.perlevel.modifier" })
+                             "portals.wormhole.decayTimeout", "spell.dim.perlevel.modifier" })
         if (!asked[key]) {
             std::fprintf(stderr, "nothing read %s\n", key);
             failed = true;
@@ -589,8 +589,6 @@ HANDLER_CALLS = {
     ("magic/smagic.c", "greater_mending_healing"): ["gain += mending_improved_bonus(rolls, level);"],
     ("magic/smagic.c", "spell_greater_mending"): ["level > greater_mending_cure_level()"],
     ("magic/smagic.c", "spell_single_scathing_wind"): ["mod += elemental_power_save_change(level);"],
-    ("magic/smagic.c", "earthen_grasp_level"): ["level = (int)(level * elemental_power_area_factor());"],
-    ("magic/smagic.c", "spell_single_earthen_rain"): ["dam = (int)(dam * elemental_power_area_factor());"],
     ("magic/magic.c", "spell_stone_skin"): ["has_innate(ch, INNATE_LIVING_STONE)", "absorb = stone_skin_living_stone(absorb);"],
     ("combat/dam_mods.c", "ALL"): ["GET_LEVEL(caster) >= elemental_power_level()", "has_innate(victim, MAGICAL_REDUCTION)", "magical_reduction_mod()", "af.duration = troll_burn_duration();", "af1->duration = troll_burn_duration();", "dam_mod->mod += fire_race_cold_mod(IS_EFREET(victim));", "levelmod = sacrilegious_holy_factor(GET_LEVEL(victim));", "dam_mod->mod += magic_vulnerability_mod();", "NewSaves(victim, SAVING_PARA, vuln_cold_slow_save())", "af.duration = vuln_cold_slow_duration();", "double bonus = warcallers_fury_bonus(group_size, GET_LEVEL(caster));", "count = MIN(count, warcallers_fury_max_steps());", "dam_mod->mod += warcallers_fury_step(count);"],
     ("ships/ship_utils.c", "ALL"): ["speed += seadog_speed_bonus();"],
@@ -963,8 +961,7 @@ GOLDEN = """== blindsinging
   Your elemental spell damage from level 35: +25%
   It counts fire, cold, lightning, gas, acid and earth damage.
   A target's save against your scathing wind: 5 harder at your level, 56
-  Your earthen rain's damage: 115% of normal
-  Your earthen grasp's damage level: 115% of your level
+  Earthen rain and earthen grasp use the same elemental damage bonus.
 == improved_heal
   Healing your restoration gives: full; 66% of that without this innate
   Healing your wellness gives each person: +56

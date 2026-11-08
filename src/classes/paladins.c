@@ -127,9 +127,9 @@ int aura_vigor_hit_points(P_char ch)
 
 int aura_spell_protection_percent(P_char ch)
 {
-	return (int)(get_property("innate.paladin_aura.protection_spell_mod", 0.5) *
-		     GET_LEVEL(ch)) -
-	       3;
+	return MAX(0, (int)(get_property("innate.paladin_aura.protection_spell_mod", 0.5) *
+			    GET_LEVEL(ch)) -
+			      3);
 }
 
 /*
