@@ -12,6 +12,7 @@ HARNESS = r'''
 #include "core/utility.h"
 #include "core/utils.h"
 #include "cmd/race.h"
+#include "abilities/abilities.h"
 #include "account/creation_availability_config.h"
 #include <cassert>
 #include <cstdarg>
@@ -26,6 +27,14 @@ extern const struct class_names class_names_table[];
 static std::string output;
 static int innate_race;
 float combat_by_race[LAST_RACE + 1][3];
+float combat_by_class[CLASS_COUNT + 1][2];
+char racial_innates[LAST_INNATE + 1][LAST_RACE + 1];
+char class_innates[LAST_INNATE + 2][CLASS_COUNT][5];
+void active(P_char, char *, int) {}
+extern const innate_data innates_data[LAST_INNATE + 1] = {
+    {"passive ability", nullptr}, {"active ability", active}
+};
+// PRODUCTION_LIST_INNATES
 float spell_pulse_data[LAST_RACE + 1];
 void send_to_char(const char *text, P_char) { output += text; }
 void send_to_char_f(P_char, const char *format, ...) {
@@ -41,7 +50,7 @@ std::string wiki_race_description(std::string) { return "Authored racial lore.";
 std::string list_innates(int race, int cls, int spec) {
     assert(race > 0 && race <= RACE_PLAYER_MAX && cls == 0 && spec == 0);
     innate_race = race;
-    return "*passive ability\n active ability (obtained at level 31)\n";
+    return production_list_innates(race, cls, spec);
 }
 static std::string plain(std::string text) {
     for (size_t i = 0; i < text.size();) {
@@ -77,6 +86,11 @@ static void check_classes(int race) {
     assert((classes.find("None.") != std::string::npos) == (expected == 0));
 }
 int main() {
+    for (int race = 1; race <= RACE_PLAYER_MAX; ++race) {
+        combat_by_race[race][1] = 1.0f;
+        racial_innates[0][race] = 1;
+        racial_innates[1][race] = 31;
+    }
     unsetenv("CREATION_ALL_CLASSES"); unsetenv("CREATION_ALL_RACES");
     std::filesystem::create_directory("lib");
     std::ofstream("lib/creation_availability.cfg") << "creation.class.dragoon.enabled=false\n";
@@ -119,6 +133,25 @@ int main() {
         run("innates " + std::string(race_names_table[race].normal));
         assert(innate_race == race);
     }
+    // Runtime table changes are displayed without changing innate grants.
+    assert(run("innates barbarian").find("Melee and archery damage") == std::string::npos);
+    combat_by_race[RACE_BARBARIAN][1] = 1.15f;
+    assert(run("innate barbarian").find("Melee and archery damage: +15% (passive)") != std::string::npos);
+    combat_by_race[RACE_BARBARIAN][1] = .825f;
+    assert(run("innates barbarian").find("Melee and archery damage: -17.5% (passive)") != std::string::npos);
+    for (auto entry : {std::pair{1.001f, "+0.1%"}, std::pair{.999f, "-0.1%"}}) {
+        combat_by_race[RACE_BARBARIAN][1] = entry.first;
+        assert(run("innates barbarian").find(entry.second) != std::string::npos);
+    }
+    combat_by_race[RACE_BARBARIAN][1] = 1.0f;
+    assert(run("innates barbarian").find("Melee and archery damage") == std::string::npos);
+    racial_innates[0][RACE_SGIANT] = racial_innates[1][RACE_SGIANT] = 0;
+    combat_by_race[RACE_SGIANT][1] = 1.2f;
+    auto modifier_only = run("innates storm giant");
+    assert(modifier_only.find("+20%") != std::string::npos && modifier_only.find("None.") == std::string::npos);
+    assert(modifier_only.find("help attack damage modifiers") != std::string::npos);
+    combat_by_race[RACE_SGIANT][1] = 1.0f;
+    assert(run("innates storm giant").find("None.") != std::string::npos);
     spell_pulse_data[RACE_BARBARIAN] = 1.22f;
     assert(run("info barbarian").find("    Spell speed  : 1.220x casting time\n") != std::string::npos);
     spell_pulse_data[RACE_ILLITHID] = 0.025f;
@@ -181,7 +214,10 @@ def main():
     with tempfile.TemporaryDirectory(prefix="race-command-", dir=build) as temporary:
         directory = Path(temporary)
         harness = directory / "race.cpp"
-        harness.write_text(HARNESS.replace("int main() {", parser + "\nint main() {", 1))
+        listing = extract_function("abilities.c", "std::string damage_modifier_innate(") + "\n"
+        listing += extract_function("innates.c", "string list_innates(").replace("string list_innates(", "string production_list_innates(", 1)
+        harness.write_text(HARNESS.replace("// PRODUCTION_LIST_INNATES", listing)
+                           .replace("int main() {", parser + "\nint main() {", 1))
         for backend in ("mariadb", "flatfile"):
             binary = directory / backend
             flags = ["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else []

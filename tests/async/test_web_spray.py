@@ -32,6 +32,7 @@ PRELUDE = r'''
 #include <vector>
 
 P_char character_list;
+uint64_t character_removal_generation;
 bool do_profile = false;
 PROFILE_DEFINE(short_affect_liveness)
 void set_short_affected_by(P_char, int, int) {}
@@ -146,6 +147,8 @@ static void advance(int pulses) {
 P_char get_linked_char(P_char ch, ush_int) { return ch == rider_fixture ? mount_fixture : nullptr; }
 P_char get_linking_char(P_char ch, ush_int) { return ch == mount_fixture ? rider_fixture : nullptr; }
 void char_from_room(P_char ch) { ch->in_room = NOWHERE; }
+// Departure rules have their own runtime matrix; this harness isolates movement completion.
+static bool leave_walking_group(P_char ch, int, int) { char_from_room(ch); return true; }
 bool char_to_room(P_char ch, int room, int) {
     if (!placement_ok) return false;
     ch->in_room = room;
@@ -305,6 +308,7 @@ assert 'ADD_RACIAL_INNATE(INNATE_WEB_SPRAY, RACE_DRIDER, 31);' in innates
 production = '#include "abilities/abilities.h"\n' + extract_function('utility.c', 'int dice(int num, int size)') + '\nconst Rolls live_rolls = { dice, number };\n'
 production += '\n'.join(extract_function(file, signature) for file, signature in [
     ('utility.c', 'int BOUNDED('),
+    ('character_identity.c', 'P_char find_character_by_runtime_id('),
     ('interp.c', 'void argument_interpreter('), ('interp.c', 'char *one_argument('),
     ('interp.c', 'bool is_abbrev('),
     ('utility.c', 'int strn_cmp('), ('sparser.c', 'char *skip_spaces('),

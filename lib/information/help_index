@@ -6931,6 +6931,12 @@ You are in a room and you see:
 If you wished to get the second box, you would type:
 
         "get 2.box"
+
+Join full object keywords with hyphens to narrow your choice: "get fire-sword"
+matches an object with both fire and sword keywords. "get 2.fire-sword" picks
+the second match, and "get all.fire-sword" takes all matching objects.
+Existing keywords such as two-handed still work. Each part must be a full
+keyword; leading, trailing or doubled hyphens do not form a combination.
 ===========================================================================
 See also: DROP, PUT
 
@@ -9681,7 +9687,12 @@ KILL HIT MURDER (Command)
 ===========================================================================
 Syntax:         kill | hit | murder <victim>
 
-One way to initiate a fight.  
+One way to initiate a fight.
+
+Join full target keywords with hyphens: "kill fire-giant" selects a creature
+with both fire and giant keywords. "kill 2.fire-giant" selects the second
+matching creature. Existing keywords such as thri-kreen still work.
+Each part must be a full keyword; "fire-gi" does not abbreviate fire-giant.
 ===========================================================================
 
 #
@@ -12981,8 +12992,9 @@ valid classes and their available specializations, racial stat factors and
 combat/spell speed. Its class list uses the current character creation
 restrictions, including enabled classes.
 
-Race innates lists only that race's abilities, including abilities gained at
-later levels. An asterisk marks a passive ability. Use help <ability name> for
+Race innates lists that race's abilities, including abilities gained at
+later levels. A nonzero melee and archery damage bonus or penalty is also
+shown as a passive feature; see help attack damage modifiers. An asterisk marks a passive ability. Use help <ability name> for
 details about an innate, or help <race name> for more lore and racial traits.
 
 Multiword race names work without quotes, such as race info mountain dwarf.
@@ -19723,12 +19735,18 @@ specialization/multiclass state. Type specialize to see personal choices.
 Area of effect: direction
 Aggressive:     No
 Cumulative:     N/A
-Duration:       Dependent on proficiency of caster 
+Duration:       7 minutes 30 seconds
 Type of spell:  Illusion
 
 This spell creates an illusionary stone wall with many eyes in it. It will
-show the caster the room from time to time. It will also show the room
-to the caster if  someone is trying to destroy the wall.
+occasionally show the caster the room when someone acts near the wall,
+including when someone hits it. Each side has a one-in-three viewing chance
+when more than 10 seconds have passed since its last eligible attempt.
+Hitting the wall uses that same chance and cooldown; it gives no extra view.
+The caster must be in the game and in a different room from the person acting.
+Immortals do not trigger views. Other characters must be at ground height.
+A failed roll, absent caster or caster in the same room still consumes the
+eligible attempt.
 ===========================================================================
 
 #
@@ -27950,7 +27968,8 @@ use skills <class or specialization> and spells <class or specialization>.
 
 Use specialize at level 30. See help specialization for requirements.
 Class innates lists inherited abilities, unlock levels, and active/passive
-markers. Use help <ability name> for usage, or race innates <race> for racial
+markers. Nonzero melee and archery damage bonuses or penalties are also
+shown; see help attack damage modifiers. Use help <ability name> for usage, or race innates <race> for racial
 abilities.
 
 Names accept case-insensitive full names, spaces/hyphens and unique prefixes.
@@ -28544,3 +28563,26 @@ deaths are exempt from this ordinary experience penalty; Liches have
 separate level-loss handling. Read 'help death' for death and corpse
 recovery, and 'help experience' for progression. 'exp' shows your
 current experience. A routine reboot does not impose a death penalty.
+
+#
+ATTACK DAMAGE MODIFIERS
+===========================================================================
+Race innates and class innates show a passive melee and archery damage bonus
+or penalty when it differs from zero. For example, +15% multiplies that
+attack's damage by 1.15; -17.5% multiplies it by 0.825. Neutral modifiers
+are omitted. These features are always applied when their attack qualifies;
+you do not need to activate or train them.
+
+They affect ordinary melee attacks, including unarmed attacks, and archery.
+Spells and special attacks have their own rules: backstab and the Monk's
+HP-based special hit do not use this modifier. It does not increase your
+accuracy, attack count or attack speed, and later defenses still apply.
+
+Racial and class modifiers multiply: +15% from both gives +32.25%, not +30%.
+Multiclass characters use the higher of their two class multipliers.
+Specializations use their base class modifier: Thief and Assassin use Rogue.
+
+Use race innates <race> or class innates <class or specialization> to view
+the current values. These modifiers are separate from your damroll limit.
+===========================================================================
+See also: RACE, CLASS, INNATE, MULTICLASS

@@ -47,7 +47,7 @@
  *         passdoor  AFF2_PASSDOOR walks a closed door unless it is LOCKED
  *                   *and* EX_PICKPROOF (actmove.c:1208).
  *       So EX_PICKPROOF with no obtainable key kills pick, doorbash and
- *       passdoor at once - that is the "unwinnable" tier.
+ *       passdoor at once - "unwinnable" for these modeled opening methods.
  *     - a BLOCKED wall's only data-driven opener is an ITEM_SWITCH object:
  *       item_switch (specs.object.c:1331) requires the blocked bit
  *       (specs.object.c:1382 "Nothing happens.") and clears EX_BLOCKED on

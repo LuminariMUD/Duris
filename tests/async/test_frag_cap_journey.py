@@ -176,6 +176,11 @@ def run(backend, binary):
                     time.sleep(0.1)
                 print(f"{backend}: ordinary PvP receipt changed the provisional leader without opening early", flush=True)
 
+                # Roaming guards in the PvP zone can award real XP while the cap opens.
+                # Wait in the already-visited hub so only maintenance can change the cap.
+                command(god, "peace")
+                command(god, "goto 22800")
+                command(god, "transfer " + PLAYER)
                 deadline = time.monotonic() + 190
                 while True:
                     shown = plain_text(command(player, "fraglist normal"))
@@ -186,7 +191,9 @@ def run(backend, binary):
                 assert time.time() >= earliest
                 assert "LEVEL 32 " in fixture("inspect")
                 assert re.search(r"Level:\s*31\b", plain_text(command(player, "score"))), "unlock granted a free level"
+                command(god, f"goto {room}")
                 command(god, "purge")
+                command(god, "transfer " + PLAYER)
                 command(god, f"load mob {mob}")
                 player.send("kill " + keyword)
                 deadline = time.monotonic() + 30

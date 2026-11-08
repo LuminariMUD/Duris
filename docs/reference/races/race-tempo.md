@@ -1012,7 +1012,7 @@ these isolated timing differences.
 | 6 | Duergar Dwarf | 5s / 0.850 | Same base timing as Mountain Dwarf; Battle Rage's Haste affects count, casts, songs and archery separately. Battle Frenzy opportunities depend on eligible hit frequency. |
 | 7 | Halfling | 3.75s / 0.730 | Fast melee and casting; the first -1 combat apply does not cross this neutral fixture's integer boundary. Quick Thinker preserves actions through saves rather than directly reducing timers. |
 | 8 | Gnome | 3.5s / 0.700 | Very fast ordinary timing. The first -1 combat apply has no interval effect here, but spell-pulse can cross a cast boundary; Reflection's 300s rest stays fixed. |
-| 9 | Ogre | 5.5s / 1.310 | Slow ordinary melee/casting. High STR and equipment/attack effects must supply any per-round compensation; the old 1.8 racial total-output property is inactive. |
+| 9 | Ogre | 5.5s / 1.310 | Slow ordinary melee/casting. High STR and equipment/attack effects must supply any per-round compensation; the shipped racial output multiplier is neutral (1.000). |
 | 10 | Troll | 5.25s / 1.220 | Same base tempo as Barbarian; regeneration changes sustain and recovery. Fire and sun can erode those advantages, and Troll no longer has Groundfighting to preserve downed attacks. |
 | 11 | Half-Elf | 4.25s / 0.900 | Moderately faster than Human on both axes, but restricted. Quick Thinker at 30 is action preservation; class/form availability must be checked before comparing builds. |
 | 12 | Illithid | 4.5s / 0.025 | Restricted, exceptional .025 cast factor plus racial mana/will routing. Short effects hit the minimum; completion recovery and input phases dominate repeated actions. Blast has its own default rest. |
@@ -1039,21 +1039,22 @@ these isolated timing differences.
 | 33 | Planetbound Illithid | 4.25s / 0.750 | Restricted; distinct from original Illithid: moderate melee, .75 casting and racial mana/will. Dayblind/sun affect access/recovery, not the same .025 floor behavior. |
 | 34 | Kuo Toa | 4.5s / 1.100 | Restricted; Human-like melee and slower casting. Throw Lightning waits 8s and selects the current opponent; its arrival is not accelerated by casting gear. |
 | 35 | Wood Elf | 4.25s / 0.950 | Restricted; moderately fast melee and slightly favorable casting. Terrain sneak/forest information can improve engagement choice without changing the personal clock. |
-| 36 | Firbolg | 5.5s / 1.310 | Ogre-like slow melee/casting. High STR, body size and opener admission must be evaluated against the frequency cost; the old racial total-output value is inactive. |
+| 36 | Firbolg | 5.5s / 1.310 | Ogre-like slow melee/casting. High STR, body size and opener admission must be evaluated against the frequency cost; the shipped racial output multiplier is neutral (1.000). |
 | 37 | Tiefling | 4.25s / 0.875 | Moderately fast melee and favorable .875 casting. Its defenses and lack of a racial sun penalty change usable uptime; they are not extra pulse applies. |
 
 ## 12. How to use this layer for balancing
 
 ### Do not substitute inactive settings or display labels for execution
 
-`damage.totalOutput.racial.*` still has many non-1 values in the property file,
-but the loader's use of those values is commented out and
-`combat_by_race[race][1]` is set to **1**. They do not compensate a slow race's
-melee timer through that loader. Class damage factors remain a separate active
-path. `damage.damrollModifier.racial.*` controls a racial damroll cap in
-aggregation; it is not an equivalent per-hit racial multiplier. Other active
-racial elemental damage factors also belong to their own damage predicates.
-[Inactive racial total-output loading](../../../src/magic/affects.c#L3477),
+Follow-up on 2026-11-09: `damage.totalOutput.racial.*` now loads with a neutral
+fallback of **1.000**, and all 93 shipped entries are 1.000. It therefore still
+provides no racial compensation for a slow melee timer under shipped settings.
+Class damage values are unchanged. Non-neutral race/class output factors are
+shown by their innate listings; see [modifier transparency](race-misc.md#3-visible-racial-and-class-attack-damage-modifiers).
+`damage.damrollModifier.racial.*` controls a racial damroll cap in aggregation;
+it is not an equivalent per-hit racial multiplier. Racial elemental damage
+factors also belong to their own damage predicates.
+[Active, neutral racial output loading](../../../src/magic/affects.c#L3467),
 [damroll cap](../../../src/magic/affects.c#L928),
 [spell-type factors](../../../src/combat/dam_mods.c#L766).
 
@@ -1131,7 +1132,7 @@ Isolated executable checks for this review:
   **37 PC races and 30 class IDs**, combat applies -25 through +10, spell bases
   1–72 and representative negative/zero/positive spell applies. Verified the
   floor, integer recurring periods, finite-window counts, multiclass selection
-  and inactive racial total-output field. External services and special
+  and neutral racial total-output field. External services and special
   equipment conditions were fixtures; this does not exercise every legal build
   or the complete `affect_total()` lifecycle.
 - Generated both 37-row numeric tables from those executions, then parsed the

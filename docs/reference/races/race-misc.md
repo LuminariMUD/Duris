@@ -101,3 +101,65 @@ covers all 37 PC races, the five Huge races' equip-order combinations, growth
 and shrinkage flags, the unchanged NPC distinction, nonweapon hand costs, and
 Wight's weight/training restrictions. This is executable command-path coverage
 with controlled dependencies, not a live-server gameplay session.
+
+
+## 3. Visible racial and class attack-damage modifiers
+
+Implemented 2026-11-09. Racial output loading is active again, with all **93**
+existing `damage.totalOutput.racial.*` entries set to **1.000**, including NPC
+entries. Missing racial keys use 1.000 too. This restores configurability while
+preserving the previous neutral racial contribution. Every
+`damage.totalOutput.class.*` setting is unchanged. The None sentinel retains
+its existing special handling.
+
+`race innates <race>` and `class innates <class or specialization>` show a
+computed passive feature only when the selected loaded factor differs from
+1.000. For example:
+
+```text
+*Melee and archery damage: +15% (passive)
+*Melee and archery damage: -17.5% (passive)
+```
+
+The displayed percentage is `(factor - 1) * 100`, with a sign and fractional
+precision. Warrior currently shows +15%, Berserker -10%, Monk -17.5%, and
+Rogue +10%; shipped racial entries are omitted because their adjustment is zero.
+Specializations inherit the base class factor: normal Thief and Assassin use
+Rogue's +10%, rather than the retired standalone class IDs. Values come from
+the loaded combat tables, not a duplicate innate grant or the viewer's class.
+These are descriptive features, with no new innate IDs, unlocks or commands.
+
+The factor multiplies ordinary melee damage, including ordinary unarmed
+attacks, and archery. Some explicit special-attack/item consumers also use it.
+It is **not** a universal spell, skill or final-DPS modifier: backstab and Monk's
+HP-based superhit use separate formulas. Weapon proficiency, attack counts,
+accuracy, timing, spell defenses and other damage stages remain separate.
+[Consumers and delivery](race-combat-resolution.md#what-a-landed-ordinary-attack-starts-with).
+
+Racial and class factors multiply: +15% from each yields `1.15 * 1.15 = 1.3225`,
+or +32.25% at that stage. Multiclass PCs use the **higher** class factor, then
+multiply it by the racial factor. This does not add or multiply both class
+bonuses. NPCs keep their separate zone scaling and do not gain PC class factors.
+The existing damage floor, later defenses and rounding still apply.
+
+The output factor is separate from `damage.damrollModifier.racial.*`, which
+limits stored damroll. Activating output does not alter those caps, racial
+pulse settings, or the existing class values. Normal property application
+updates the loaded tables; character recalculation continues to compose the
+combat factor through the existing path.
+
+Sources: [loading and composition](../../../src/magic/affects.c),
+[racial listing](../../../src/classes/innates.c),
+[class listing](../../../src/cmd/class.c),
+[shared display formatter](../../../src/abilities/abilities.c),
+[shipped properties](../../../lib/duris.properties).
+
+Verification: [damage-output regression](../../../tests/async/test_damage_output_modifiers.py)
+checks all shipped racial/class settings, loader defaults and reloads, the
+race/class composition, multiclass maximum, and NPC zone scaling. The
+[race](../../../tests/async/test_race_command.py) and
+[class](../../../tests/async/test_class_command.py) command fixtures exercise
+positive, negative, fractional and neutral entries and specialization inheritance.
+The [isolated class-command journey](../../../tests/async/run_class_command_journey.py)
+also covers mortal-visible class output, live racial property changes, neutral
+omission, and modifier help.

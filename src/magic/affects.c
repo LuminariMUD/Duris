@@ -3474,18 +3474,8 @@ void update_damage_data()
 	{
 		snprintf(buf, 128, "damage.pulse.racial.%s", race_names_table[i].no_spaces);
 		combat_by_race[i][0] = pulse = get_property(buf, (float)PULSE_VIOLENCE);
-		/* Disabling the totalOutput for the 2015-16 wipe.
-		 * This has the effect of setting everyone's totaloutput to 1.0, so less hidden variables.
-		 * It might have a strong mob buff (for weak) and nerf (for strong) for the various mob races.
-		 *   However, it'll be more like the zone writers intended etc.
-		 *   We can just up the damage where it should be; in the zone files / mob load.
-		    snprintf(buf, 128, "damage.totalOutput.racial.%s", race_names_table[i].no_spaces);
-		    multiplier = get_property(buf, 1.0);
-		    // Cancelling the rest of this crap. It doesn't work right anyway. - Lohrr
-		    // get_property(buf, 1.0) * melee_factor * pulse / PULSE_VIOLENCE;
-		    combat_by_race[i][1] = multiplier;
-		 */
-		combat_by_race[i][1] = 1;
+		snprintf(buf, 128, "damage.totalOutput.racial.%s", race_names_table[i].no_spaces);
+		combat_by_race[i][1] = get_property(buf, 1.0);
 		snprintf(buf, 128, "damage.damrollModifier.racial.%s",
 			 race_names_table[i].no_spaces);
 		multiplier = get_property(buf, 1.0);
