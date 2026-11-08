@@ -1,0 +1,18 @@
+# Race mechanics and balance
+
+This folder holds lasting, race-specific documentation covering stats, innates,
+restrictions, mechanics, strengths, weaknesses, and balance rationale. Use one
+Markdown file per race, such as `human.md`, with links to the relevant source and
+tests. Distinguish verified behavior from balance estimates and design judgments.
+
+- [PC race size](race-size.md): complete race size assignments, growth and form
+  changes, combat target limits, physical mass, and other gameplay effects.
+- [Race size issues](race-size-issues.md): potential bugs, the six inconsistent
+  racial mappings, gameplay impact, and recommended fixes.
+
+See the [race and class configuration guide](../../content/classes_and_races.txt)
+for creation tables and eligibility, and the [class overview](../CLASSES.md) for
+shared class and progression rules.
+
+Proposed changes belong in [design](../../design/); temporary investigations belong
+in [ongoing projects](../../ongoing-projects/). Consolidate lasting findings here.

@@ -31,6 +31,8 @@ docs/
 | [CODEBASE.md](reference/CODEBASE.md) | Module-by-module map of the server sources. |
 | [WORLD_ZONE_ROUTES.md](reference/WORLD_ZONE_ROUTES.md) | Current zone entrances, map footprints, preservation rules, validation, and historical placement decisions. |
 | [CLASSES.md](reference/CLASSES.md) | PC class catalogue, help resources, creation eligibility, specializations, multiclassing, and progression rules. |
+| [classes/](reference/classes/README.md) | Lasting class-specific mechanics and balance documentation. |
+| [races/](reference/races/README.md) | Lasting race-specific mechanics and balance documentation. |
 | [DATABASE.md](reference/DATABASE.md) | Database authority, typed reads/writes, schema, reconciliation, and migrations. |
 | [EVENTS.md](reference/EVENTS.md) | The `nevent` deferred-work scheduler: the timer wheel, scheduling, cancellation, the per-pulse budget, and catch-up. |
 | [SHIPS.md](reference/SHIPS.md) | Ship subsystem engineering reference: lifecycle, heartbeat, movement, crews, combat, NPC ships, persistence, GMCP, and extending it. |
