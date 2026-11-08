@@ -2,7 +2,8 @@
 
 Status: implementation and four-glove pilot validated; ready for review (2026-11-08).
 
-The supplied worktree is now on `branch/monk-glove-proc-pilot`. Its parent framework
+The supplied worktree is now on `branch/monk-glove-proc-pilot`,
+[pilot PR #809](https://github.com/LuminariMUD/Duris/pull/809). Its parent framework
 is `branch/monk-glove-proc-research`, [PR #805](https://github.com/LuminariMUD/Duris/pull/805),
 stacked on research [PR #804](https://github.com/LuminariMUD/Duris/pull/804).
 The editor prerequisite [#797](https://github.com/LuminariMUD/Duris/pull/797) landed
@@ -165,7 +166,12 @@ Final integration proof passed with both refreshed backend builds:
 The final fixture is committed in parent `bd3c4e405` and included by the pilot.
 It uses a real Warrior for the non-Monk check, avoiding any change to the staff
 controller's primary class/authority. Both gifts retain the same configured glove.
-The source changes and focused checks are complete; only PR review/merge remains.
+The source changes and focused checks are complete. All open PRs are labeled
+`READY` (documentation on #804, enhancement on #805/#809). Review order is
+[#804](https://github.com/LuminariMUD/Duris/pull/804) →
+[#805](https://github.com/LuminariMUD/Duris/pull/805) →
+[#809](https://github.com/LuminariMUD/Duris/pull/809); #797 is already merged.
+Only review/merge remains.
 No production operation was performed by this goal.
 
 ## Recommendation
