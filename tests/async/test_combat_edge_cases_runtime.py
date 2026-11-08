@@ -180,6 +180,7 @@ P_char get_linking_char(P_char ch, ush_int type)
 {
     return type == LNK_RIDING && ch == &victim ? rider : nullptr;
 }
+char_link_data *link_char(P_char, P_char, ush_int) { assert(false); return nullptr; }
 void unlink_char(P_char ch, P_char target, ush_int type)
 {
     assert(type == LNK_RIDING);
@@ -774,7 +775,8 @@ static void launch_message_cases()
         if (rear)
         {
             // Rearkick requires a standing victim; test the visibility predicate directly.
-            assert(!can_receive_forced_departure(&victim, &actor));
+            const auto messages = snapshot_forced_departure(&actor, &victim, DIR_NORTH, false, true);
+            for (const auto &message : messages) assert(message.first != victim.runtime_id);
         }
         else
         {
@@ -882,7 +884,6 @@ functions = [
     extract_function("utility.c", "bool is_ansi_char("),
     extract_function("utility.c", "void CAP("),
     extract_function("comm.c", "void act_convert("),
-    "using forced_departure_message = std::pair<uint64_t, std::string>;",
     extract_function("innates.c", "P_char parse_victim("),
     extract_function("innates.c", "static struct affected_type *find_innate_timer("),
     extract_function("innates.c", "static int innate_rest_seconds("),
@@ -931,9 +932,7 @@ functions = [
         "static int kick_low_roll(",
         "static bool kick_admitted(",
         "int chance_kick(",
-        "static bool can_receive_forced_departure(",
         "static std::vector<forced_departure_message>\nsnapshot_forced_departure(",
-        "static void deliver_forced_departure(",
         "static void forced_rebound_messages(",
         "void kick(",
         "static int roundkick_admission(",
