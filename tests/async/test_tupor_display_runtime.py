@@ -185,6 +185,17 @@ int main() {
     display(&rows, 144, false);
     assert(output.find(" 1st circle:  1 of  3   (  30 seconds)\n") != std::string::npos);
     assert(output.find(" 2nd circle:  2 of  3   (   6 seconds)\n") != std::string::npos);
+    // Losing a level can leave more slots than the new maximum. That is not recovery work.
+    char_data over{};
+    SET_POS(&over, STAT_RESTING | POS_SITTING);
+    over.player.m_class = CLASS_ETHERMANCER;
+    over.specials.undead_spell_slots[1] = 5;
+    over.specials.undead_spell_slots[2] = 3;
+    output.clear();
+    do_assimilate(&over, const_cast<char *>(""), CMD_TUPOR);
+    assert(output.find(" 1st circle:  5 of  3\n") != std::string::npos);
+    assert(output.find("Estimated total") == std::string::npos);
+    assert(!over.nevents && !IS_AFFECTED2(&over, AFF2_MEMORIZING));
 }
 """
 source = PRELUDE + '\n'.join([

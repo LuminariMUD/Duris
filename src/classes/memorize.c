@@ -1492,7 +1492,7 @@ void do_assimilate(P_char ch, char *argument, int cmd)
 				 circle == 3 ? "rd" :
 					       "th",
 				 available, max_spells_in_circle(ch, circle));
-		if (available != max_spells_in_circle(ch, circle))
+		if (available < max_spells_in_circle(ch, circle))
 		{
 			need_mem = circle;
 			const int seconds =
@@ -1613,7 +1613,7 @@ void do_npc_commune(P_char ch)
 	for (circle = max_circle; circle > 0; circle--)
 	{
 		available = ch->specials.undead_spell_slots[circle];
-		if (available != max_spells_in_circle(ch, circle, max_circle))
+		if (available < max_spells_in_circle(ch, circle, max_circle))
 		{
 			need_mem = circle;
 			break;
