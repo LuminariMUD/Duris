@@ -56,7 +56,7 @@ def fight(client, expected, staff=False):
             break
     assert (FLARE in output) == expected, output[-5000:]
     if staff:
-        command(client, "peace")
+        command(client, "tranquilize Taverek")
         command(client, "goto 22801")
         return output
     command(client, "flee", 1)
