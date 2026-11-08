@@ -45,6 +45,9 @@ static combat_outcome_payload captured;
 static unsigned submissions;
 static bool accept_submission = true;
 static unsigned rolled_back;
+static float frag_epic_amount = 250;
+static affected_type spill_blood_task;
+static P_char spill_blood_player;
 
 const char *get_account_name_safe(P_char) { return "fixture"; }
 const char *get_class_name(P_char, P_char) { return "Fixture"; }
@@ -58,12 +61,14 @@ P_char find_player_by_pid(int pid) {
 }
 float get_property(const char *key, double fallback) {
     if (!strcmp(key, "frag.evil.penalty")) return 1.0F;
-    if (!strcmp(key, "epic.frag.amount")) return 250.0F;
+    if (!strcmp(key, "epic.frag.amount")) return frag_epic_amount;
     if (!strcmp(key, "epic.frag.threshold")) return 0.15F;
     return fallback;
 }
 int get_property(const char *, int fallback) { return fallback; }
-affected_type *get_epic_task(P_char) { return nullptr; }
+affected_type *get_epic_task(P_char ch) {
+    return ch == spill_blood_player ? &spill_blood_task : nullptr;
+}
 const divine_boon_state *divine_boon_runtime_state() { return &boons; }
 int check_nexus_bonus(P_char, int value, int) { return value; }
 double check_nexus_bonus_precise(P_char, double value, int, bool) { return value; }
@@ -101,6 +106,10 @@ static void reset() {
     submissions = rolled_back = 0;
     boons = {};
     accept_submission = true;
+    frag_epic_amount = 250;
+    spill_blood_player = nullptr;
+    spill_blood_task = {};
+    spill_blood_task.modifier = SPILL_BLOOD;
     for (int i = 0; i < 6; ++i) {
         characters[i] = {};
         pcs[i] = {};
@@ -224,7 +233,61 @@ int main() {
     group(killer, pet, 0); accept_submission = false;
     assert(!submit_pvp_outcome(killer, victim, true));
     assert(submissions == 1 && rolled_back == 1);
+
+    // Live reward tuning changes only the earned-frag component. Victim frags
+    // use hundredths, and the base is clamped before bonuses or Spill Blood.
+    struct reward_case { int allies, victim_frags, before, after; };
+    for (const reward_case test : {
+            reward_case{1, 0, 250, 500}, {2, 0, 125, 250}, {4, 0, 100, 125},
+            {1, 500, 750, 1000}, {1, 1500, 1500, 1500}}) {
+        reset();
+        GET_FRAGS(victim) = test.victim_frags;
+        for (int i = 2; i <= test.allies; ++i) {
+            characters[i].specials.act = 0;
+            characters[i].only.pc = &pcs[i];
+            characters[i].next_in_room = rooms[0].people;
+            rooms[0].people = &characters[i];
+        }
+        for (const int amount : {250, 500}) {
+            frag_epic_amount = amount;
+            assert(submit_pvp_outcome(killer, victim, true));
+            const int expected = amount == 250 ? test.before : test.after;
+            assert(entry(killer).frag_delta == 100 / test.allies);
+            assert(entry(killer).epic_delta == expected);
+
+            // The existing witch bonus acts on the increased, clamped base.
+            killer->specials.affected_by4 |= AFF4_EPIC_INCREASE;
+            assert(submit_pvp_outcome(killer, victim, true));
+            assert(entry(killer).epic_delta == static_cast<int>(expected * 1.5));
+            killer->specials.affected_by4 &= ~AFF4_EPIC_INCREASE;
+
+            spill_blood_player = killer;
+            assert(submit_pvp_outcome(killer, victim, true));
+            assert(entry(killer).epic_delta == expected + 500);
+            assert(entry(killer).flags & COMBAT_PARTICIPANT_SPILL_BLOOD);
+
+            boons.mode = divine_boon_mode::divine;
+            boons.slots[0].id = 100;
+            boons.slots[0].category = divine_boon_category::pvp;
+            boons.slots[0].starts_at = time(nullptr) - 1;
+            boons.slots[0].expires_at = time(nullptr) + 3600;
+            assert(submit_pvp_outcome(killer, victim, true));
+            assert(entry(killer).epic_delta == expected + expected / 2 + 500);
+            assert(entry(killer).epic_base == expected);
+            assert(entry(killer).epic_spill_blood == 500);
+            assert(entry(killer).flags & COMBAT_PARTICIPANT_DIVINE_EPIC);
+            boons = {};
+            spill_blood_player = nullptr;
+        }
+        if (test.allies == 4) {
+            // 0.125 frags is below the unchanged 0.15 qualifying threshold.
+            killer->player.level = 31;
+            assert(submit_pvp_outcome(killer, victim, true));
+            assert(entry(killer).frag_delta == 12 && !entry(killer).epic_delta);
+        }
+    }
     puts("PvP player/pet groups: capture, shares, epics, blood money and refusals passed");
+    puts("PvP 250/500 tuning: five reward examples, threshold, bonuses and Spill Blood passed");
 }
 '''
 

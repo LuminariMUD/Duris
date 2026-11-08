@@ -6,8 +6,104 @@
 &+W======================================================================&n
 &+WUpdated: November 08, 2026&n
 
-Welcome back! Rediscover your gear's powers and keep your bearings at sea.
+Welcome back! Monk gloves spark, tougher homelands improve drops,
+bartender rewards widen, and PvP frags pay more epics.
 Newest first; later updates replace older rules. Longer archive on web.
+
+&+R11/07/26 - 11/08/26&n &+L-&n &+YSparks, spoils and sharper skills&n
+&+W----------------------------------------------------------------------&n
+
+&+CMagic in a monk's hands&n
+&+Y-&n New iron knuckles, gloves of the monk, sunstone knuckles and
+  razor-knuckled blood crystal gloves can cast &+CShocking Grasp&n on
+  player-monk barehand strikes: &+Y1 in 60&n, at spell levels &+Y12, 18, 24&n
+  and &+Y30&n respectively. Ordinary saves and lightning defenses apply.
+&+Y-&n Every Monk specialization and secondary Monks qualify. Use the
+  primary hands; a second pair adds no chance. Punches, barehand
+  counterattacks and pressure-point strikes qualify; misses and killing
+  blows do not. Weapon strikes keep their weapon's own magic.
+&+Y-&n Removing or changing these gloves cancels their unfinished magic.
+  They cannot be encrusted. &+CIdentify&n explains which gloves qualify;
+  level &+Y56+ Conjurers&n can recognize their spells.
+&+Y-&n Existing saved player and floor copies keep their old values.
+  Unmodified gloves saved on pets gain the new magic when loaded;
+  pets themselves cannot activate it.
+&+Y-&n &+CFlurry of Blows&n now spends exactly &+Ytwice your normal attacks plus&n
+  &+Yone&n across its targets, retaining the normal-attacks limit per target.
+&+Y-&n &+CJin Touch&n refuses an active cooldown before imposing action or
+  failure delay. &+CKi Strike&n keeps its &+Y2.5-round&n action delay without
+  adding an extra delay when its slow lands.
+&+Y-&n &+CThroat Crush&n now rolls its hit chance correctly, capped at &+Y90%&n;
+  gaining a skill point no longer turns the attempt into a miss.
+
+&+CLoot, quests and a hearty meal&n
+&+Y-&n Random equipment rolls gain better odds from the slain creature's
+  home-zone difficulty: &+Y+10%, +20%, +30%&n relative chance at difficulty
+  &+Y2, 5, 10&n. The bonus also covers the equipment roll's encrust-stone
+  substitution; material rolls and the neutral early bonus are unchanged.
+  Moving a creature does not change its home-zone bonus.
+&+Y-&n Bartenders can again award ordinary items used by other quests and
+  a zone's highest-value eligible gear. Recipes draw from the same wider
+  pool. Crumbling loot is excluded so it cannot spoil the reward batch.
+&+Y-&n A bartender KILL task still guarantees &+Yone item&n. Each kill after
+  the first adds a bonus-item roll of &+Y1 in (original quota + 1)&n;
+  nine kills average &+Y1.8 items&n. Items arrive together at completion;
+  ASK tasks give one, and already-decided reward counts are unchanged.
+&+Y-&n Quest completions keep their recorded credit when the world's shared
+  quest history grows beyond the old size limit.
+&+Y-&n Newly created &+Cspeckled perch&n grant &+Y+30 HP regeneration&n and
+  &+Y+15 movement regeneration&n for &+Y10 ticks&n when eaten. Existing fish
+  retain their stored bonuses.
+&+Y-&n &+CSpellbind&n improves each eligible item bonus independently, including
+  armor and saves, even at low skill. Bonuses stop at &+Y-120 or +120&n;
+  one item's earlier bonus no longer distorts its later bonuses.
+
+&+CCombat effects and defenses&n
+&+Y-&n &+CCrippling Trap&n now bleeds for &+Y3-7 rounds&n, down from &+Y5-9&n.
+  Sneaky Strike keeps &+Y6-9 rounds&n; blood appears where the wounded
+  target stands. Sneaky Strike's stun is credited to the attacker.
+&+Y-&n Bard Protection chooses its skin for the recipient: undead and
+  angels receive Protection from Undead. &+CFlame Mastery&n uses the
+  defender's level when checking whether to return a fire spell.
+&+Y-&n Soul Shield uses its owner's &+CDevotion&n. Improved Shield Combat
+  keeps a successful block blocked even when its counterattack hurts
+  a surviving attacker. Battle Senses no longer gets a second activation roll.
+&+Y-&n Elite creatures no longer receive an automatic Anatomy Strike bonus.
+&+Y-&n Watching a spell trains the observer's Spell Knowledge. A mercenary
+  using &+CDisruptive Blow&n gains its skill practice, rather than the caster.
+&+Y-&n Higher &+CSafe Fall&n now helps you survive the scripted cannon landing.
+  The &+Ccirclet of light&n fires its combat lightning &+Y1 in 15 hits&n,
+  reduced from &+Y14 in 15&n. Vecna's death altar activates only on touch.
+&+Y-&n Fixed crashes after killing blows from Parasite Bite, Frostbite,
+  Call Lightning, grapples and other affected attacks. Follow-up effects
+  no longer try to affect dead combatants.
+
+&+CRecovery, tools and clearer feedback&n
+&+Y-&n Higher &+CMeditation&n now improves Tupor's chance to halve a new
+  recovery interval. &+C'tupor'&n shows one total estimate for all missing
+  slots, allowing for progress on the current slot during recovery;
+  future Meditation successes are not assumed.
+&+Y-&n &+CSummon Familiar&n starts its cooldown only after creating a valid
+  familiar. The &+CDecepticon&n achievement now waives the disguise kit.
+&+Y-&n You can mine with a Mining rating of &+Y1&n. Untrained potion throwing
+  is refused; rating &+Y1&n gets a &+Y1%&n aimed hit chance after a steady throw,
+  with the normal Agility check still required to avoid losing the potion.
+&+Y-&n Hard container locks and pickproof locks now increase the risk of
+  breaking your lockpick on a failed attempt.
+&+Y-&n &+CRoar of Heroes&n now imposes its intended &+Yone-round&n action delay.
+  Failed &+CCircle&n attempts report failed positioning; the target gains
+  no defensive bonus from the failure message.
+
+&+R11/08/26&n &+L-&n &+YMore epics for earned frags&n
+&+W----------------------------------------------------------------------&n
+
+&+CPvP rewards&n
+&+Y-&n PvP rewards now use &+Y500 epics per frag earned&n, up from &+Y250&n.
+  This doubles the earned-frag portion of the base reward.
+&+Y-&n The &+Y0.15-frag&n qualifying threshold, victim-frag contribution and
+  &+Y100-1,500&n base limits are unchanged.
+&+Y-&n Percentage bonuses apply to the increased base. &+CSpill Blood&n still
+  adds &+Y500 epics&n before bonuses.
 
 &+R11/07/26 - 11/08/26&n &+L-&n &+YOld steel, renewed powers&n
 &+W----------------------------------------------------------------------&n
