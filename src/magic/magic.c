@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "combat/forced_movement.h"
 #include "item/named_set_effects.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -23358,8 +23359,8 @@ struct judgement_data
 
 void spell_oldjudgement(int level, P_char ch, P_char victim, P_obj /*obj*/)
 {
-	P_char t, t_next;
-	int lev, /*minalign, maxalign, dam, */ door, target_room, the_room, i, max_affected;
+	P_char t;
+	int lev, /*minalign, maxalign, dam, */ door, the_room, i, max_affected;
 
 	if (!IS_ALIVE(ch))
 	{
@@ -23394,13 +23395,20 @@ void spell_oldjudgement(int level, P_char ch, P_char victim, P_obj /*obj*/)
 		the_room = ch->in_room;
 	}
 
+	const uint64_t caster_runtime_id = ch->runtime_id;
+	const int caster_room = ch->in_room;
 	max_affected = (int)(get_property("spell.judgement.maxAffected", 4.000));
 
 	i = 0;
 
-	for (t = world[the_room].people; t; t = t_next)
+	std::vector<uint64_t> targets;
+	for (t = world[the_room].people; t; t = t->next_in_room)
+		targets.push_back(t->runtime_id);
+	for (const auto runtime_id : targets)
 	{
-		t_next = t->next_in_room;
+		t = find_character_by_runtime_id(runtime_id);
+		if (!t || t->in_room != the_room)
+			continue;
 
 		if (should_area_hit(ch, t) && !number(0, 2))
 		{
@@ -23444,27 +23452,38 @@ void spell_oldjudgement(int level, P_char ch, P_char victim, P_obj /*obj*/)
 					{
 						door = number(0, NUM_EXITS - 1);
 
-						if ((CAN_GO(t, door)) &&
-						    (!check_wall(t->in_room, door)))
+						const int source_room = t->in_room;
+						const auto messages = snapshot_forced_departure(
+							ch, t,
+							"The power of your spell sends $N flying out of the room!",
+							"The power of $n's spell sends you flying out of the room!",
+							"The power of $n's spell sends $N flying out of the room!");
+						const auto movement = move_forced(
+							ch, t, door,
+							[&]() {
+								deliver_forced_departure(
+									messages, ch, t,
+									source_room, false);
+							});
+						if (movement.status ==
+						    forced_move_status::interrupted)
 						{
-							act("The power of your spell sends $N flying out of the room!",
-							    FALSE, ch, 0, t, TO_CHAR);
-							act("The power of $n's spell sends you flying out of the room!",
-							    FALSE, ch, 0, t, TO_VICT);
-							act("The power of $n's spell sends $N flying out of the room!",
-							    FALSE, ch, 0, t, TO_NOTVICT);
-
-							target_room = world[t->in_room]
-									      .dir_option[door]
-									      ->to_room;
-							char_from_room(t);
-							char_to_room(t, target_room, -1);
-
+							P_char caster =
+								find_character_by_runtime_id(
+									caster_runtime_id);
+							if (caster != ch || !IS_ALIVE(caster) ||
+							    caster->in_room != caster_room)
+								return;
+							// Earlier debuffs still count even when this target's move is interrupted.
+							if (++i >= max_affected)
+								break;
+							continue;
+						}
+						if (movement.status == forced_move_status::arrived)
+						{
 							act("$n flies in, crashing on the floor!",
 							    TRUE, t, 0, 0, TO_ROOM);
-
 							SET_POS(t, POS_PRONE + GET_STAT(t));
-
 							stop_fighting(t);
 							if (CAN_ACT(t))
 							{
@@ -23473,7 +23492,8 @@ void spell_oldjudgement(int level, P_char ch, P_char victim, P_obj /*obj*/)
 								CharWait(t, PULSE_VIOLENCE * 2);
 							}
 						}
-						else
+						else if (movement.status ==
+							 forced_move_status::blocked)
 						{
 							act("Your spell sends $N crashing into the wall!",
 							    FALSE, ch, 0, t, TO_CHAR);

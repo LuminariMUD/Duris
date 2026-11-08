@@ -648,6 +648,7 @@ int race_size(int race);
 #define _3RD_EXIT(ch, door) (world[_2ND_EXIT(ch, door)->to_room].dir_option[door])
 #define VIRTUAL_EXIT(rnum, door) (world[rnum].dir_option[door])
 
+// Preliminary exit selection only; actual movement must enforce door permissions for every mover.
 #define CAN_GO(ch, door)                                                                       \
 	(ch && EXIT(ch, door) && (EXIT(ch, door)->to_room != NOWHERE) &&                       \
 	 (!IS_SET(EXIT(ch, door)->exit_info, EX_CLOSED) || IS_AFFECTED2(ch, AFF2_PASSDOOR)) && \
