@@ -134,30 +134,40 @@ def test_independent_bonus_rolls() -> None:
 #include <cmath>
 #include <climits>
 static unsigned outcomes = 0;
-static int calls = 0, roll = 11;
+static int calls = 0, expected_high = 0, fixed = 0;
 int number(int low, int high) {
-    assert(low == 1 && high == 100);
-    return (outcomes >> calls++) & 1 ? 10 : roll;
+    assert(low == 1 && high == expected_high);
+    if (fixed) { ++calls; return fixed; }
+    return (outcomes >> calls++) & 1 ? 1 : high;
 }
 ''' + extract_function("world_quest.c", "static int world_quest_roll_item_count(") + r'''
+// Enumerates every roll sequence, so the distribution is exact rather than sampled.
+static void check_quota(int quota) {
+    const double p=1.0/(quota+1);
+    double mass=0, mean=0;
+    expected_high=quota+1;
+    for (outcomes=0; outcomes<(1u<<(quota-1)); ++outcomes) {
+        calls=0;
+        const int count=world_quest_roll_item_count(quota);
+        const int successes=__builtin_popcount(outcomes);
+        assert(calls==quota-1 && count==1+successes && count>=1 && count<=quota);
+        const double probability=std::pow(p,successes)*std::pow(1-p,quota-1-successes);
+        mass+=probability; mean+=count*probability;
+    }
+    assert(std::abs(mass-1)<1e-12);
+    assert(std::abs(mean-2.0*quota/(quota+1))<1e-12);
+}
 int main() {
-    assert(world_quest_roll_item_count(1) == 1 && calls == 0);
+    for (int quota=1; quota<=9; ++quota) check_quota(quota);
+    check_quota(12);
+    expected_high=0;
+    calls=0;
     for (int invalid : {0, -1, INT_MAX})
         assert(world_quest_roll_item_count(invalid) == 0 && calls == 0);
-    double mass=0, mean=0, one=0;
-    for (outcomes=0; outcomes<256; ++outcomes) {
-        calls=0; roll=11;
-        int count=world_quest_roll_item_count(9);
-        assert(calls==8 && count>=1 && count<=9);
-        int successes=__builtin_popcount(outcomes);
-        assert(count==1+successes);
-        double probability=std::pow(0.1,successes)*std::pow(0.9,8-successes);
-        mass+=probability; mean+=count*probability;
-        if (count==1) one+=probability;
-    }
-    assert(std::abs(mass-1)<1e-12 && std::abs(mean-1.8)<1e-12);
-    assert(std::abs(one-0.43046721)<1e-12);
-    outcomes=0; calls=0; roll=10;
+    // Only an exact 1 is a bonus: 2 at the same quota pays nothing, and all 1s pay every item.
+    expected_high=19; fixed=2; calls=0;
+    assert(world_quest_roll_item_count(18)==1 && calls==17);
+    fixed=1; calls=0;
     assert(world_quest_roll_item_count(18)==18 && calls==17);
 }
 ''', "duris-world-quest-bonus-")
