@@ -41,7 +41,7 @@ const int top_of_world = 1;
 static struct { const char *normal; } race_names_table[LAST_RACE+1]{};
 static shop_data shops[1]{};
 shop_data *shop_index = shops;
-int number_of_shops = 0;
+int number_of_shops = 1;
 time_info_data time_info{};
 static P_char unseen;
 static int attacks, shouts, refusals;
@@ -57,7 +57,8 @@ void command_interpreter(P_char, char *text) {
     assert(strstr(text, "shout Guards!")); ++shouts;
 }
 void act(const char *message, int, P_char, P_obj, P_char, int) {
-    assert(!strcmp(message, MSG_NO_STEAL_HERE)); ++refusals;
+    assert(!strcmp(message, MSG_NO_STEAL_HERE) || strstr(message, "No magic in here!"));
+    ++refusals;
 }
 int smith(P_char, P_char, int, char *) { abort(); }
 int real_room(int room) { return room; }
@@ -120,6 +121,18 @@ int main() {
     shops[0].shop_killable = true;
     char argument[] = "dwarf";
     assert(!shop_keeper(&keeper, &player, CMD_KILL, argument));
+    for (int command : {CMD_CAST, CMD_USE, CMD_RECITE, CMD_WILL}) {
+        shops[0].magic_allowed = false;
+        shops[0].shop_is_roaming = false;
+        keeper.in_room = 0;
+        assert(shop_keeper(&keeper, &player, command, argument));
+        keeper.in_room = 1;
+        assert(!shop_keeper(&keeper, &player, command, argument));
+        shops[0].shop_is_roaming = true;
+        assert(shop_keeper(&keeper, &player, command, argument));
+        shops[0].magic_allowed = true;
+        assert(!shop_keeper(&keeper, &player, command, argument));
+    }
     puts("shop guards: secondary keywords, visibility, ordinals, height and killable shops passed");
 }
 '''

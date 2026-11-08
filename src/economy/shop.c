@@ -2024,7 +2024,7 @@ int shop_keeper(P_char keeper, P_char ch, int cmd, char *arg)
 		}
 	if (((cmd == CMD_CAST) || (cmd == CMD_RECITE) || (cmd == CMD_USE) || (cmd == CMD_WILL)) &&
 	    (!shop_index[shop_nr].magic_allowed &&
-	     (shop_index[number_of_shops].shop_is_roaming ||
+	     (shop_index[shop_nr].shop_is_roaming ||
 	      (keeper->in_room == real_room(GET_HOME(keeper))))))
 	{
 		/*
