@@ -139,7 +139,7 @@ BRANCHES = {
                                     "if(!garrote_stops_casting_roll(live_rolls)&&!IS_GREATER_RACE(ch)&&!IS_ELITE(ch)){StopCasting(ch);"],
         "bool backstab(": ["if(IS_AFFECTED2(victim,AFF2_AIR_AURA)){if(backstab_air_aura_roll(live_rolls)<backstab_air_aura_below())"],
         "void do_tackle(": ["if(!IS_FIGHTING(ch)&&!tackle_carry_roll(live_rolls)&&GET_POS(vict)==POS_STANDING&&!IS_ROOM(ch->in_room,ROOM_GUILD))"],
-        "void maul(": ["if(!maul_clip_roll(live_rolls)){act(\"$n&+ygrowls&n", "melee_damage(ch,victim,(int)(dam/2),PHSDAM_TOUCH,0);",
+        "void maul(": ["if(!maul_clip_roll(live_rolls)){act(\"$n&+ygrowls&n", "melee_damage(ch,victim,(int)(dam/2),PHSDAM_TOUCH,0)",
                        "if(!maul_clip_roll(live_rolls)){act(\"As$nfalls"],
         "void do_springleap(": ["if(!SUPER_SPRINGLEAP||(springleap_plain_roll(live_rolls)&&SUPER_SPRINGLEAP))",
                                 "if(springleap_super_stun_roll(live_rolls))Stun(vict,ch,springleap_super_stun(),TRUE);"],

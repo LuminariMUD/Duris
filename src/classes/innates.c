@@ -2491,8 +2491,8 @@ struct shift_prime_destination
 	bool random_in_zone = false;
 };
 
-template<size_t N> static int
-select_shift_prime_room(P_char ch, const shift_prime_destination (&destinations)[N])
+template <size_t N>
+static int select_shift_prime_room(P_char ch, const shift_prime_destination (&destinations)[N])
 {
 	std::vector<int> rooms[N];
 	int available_slots[N];
