@@ -1388,19 +1388,18 @@ revalidate_movement:
 
 	if (IS_SET(EXIT(ch, exitnumb)->exit_info, EX_CLOSED))
 	{
-		if (IS_TRUSTED(ch))
+		const auto exit = EXIT(ch, exitnumb);
+		bool permitted = true;
+		// Room placement also transports riding companions; none may borrow another's passdoor.
+		for (P_char participant : { ch, GET_MOUNT(ch), GET_RIDER(ch) })
 		{
-			send_to_char(
-				"You go with your godly self, ignoring physical barriers and all...\n",
-				ch);
+			if (participant && !IS_TRUSTED(participant) &&
+			    !(IS_AFFECTED2(participant, AFF2_PASSDOOR) &&
+			      (!IS_SET(exit->exit_info, EX_LOCKED) ||
+			       !IS_SET(exit->exit_info, EX_PICKPROOF))))
+				permitted = false;
 		}
-		else if (IS_AFFECTED2(ch, AFF2_PASSDOOR) &&
-			 (!IS_SET(EXIT(ch, exitnumb)->exit_info, EX_LOCKED) ||
-			  !IS_SET(EXIT(ch, exitnumb)->exit_info, EX_PICKPROOF)))
-		{
-			send_to_char("Your body vibrates as you fan out your molecules.\n", ch);
-		}
-		else
+		if (!permitted)
 		{
 			if (EXIT(ch, exitnumb)->keyword)
 			{
@@ -1415,6 +1414,12 @@ revalidate_movement:
 
 			return FALSE;
 		}
+		if (IS_TRUSTED(ch))
+			send_to_char(
+				"You go with your godly self, ignoring physical barriers and all...\n",
+				ch);
+		else
+			send_to_char("Your body vibrates as you fan out your molecules.\n", ch);
 	}
 	else if (world[ch->in_room].current_speed && !IS_TRUSTED(ch))
 	{

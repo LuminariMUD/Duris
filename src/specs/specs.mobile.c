@@ -8,6 +8,7 @@
  */
 
 #include "core/prototypes.h"
+#include "combat/forced_movement.h"
 #include "world/difficulty.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -13298,7 +13299,7 @@ int conj_specpet_golem(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 {
 	P_char vict;
 	int temp = 0;
-	int healpoints, door, target_room;
+	int healpoints, door;
 
 	if (cmd == CMD_SET_PERIODIC)
 		return TRUE;
@@ -13326,24 +13327,28 @@ int conj_specpet_golem(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 			if ((door == DIR_UP) || (door == DIR_DOWN))
 				door = number(0, 3);
 
-			if ((CAN_GO(vict, door)) && (!check_wall(vict->in_room, door)))
+			const int source_room = vict->in_room;
+			const auto messages = snapshot_forced_departure(
+				ch, vict, nullptr, "$n &+yflings &+Yyou &+yout of the room!",
+				"$n &+yflings &+Y$N &+yout of the room!");
+			const auto movement =
+				move_forced(ch, vict, door,
+					    [&]() {
+						    deliver_forced_departure(messages, ch, vict,
+									     source_room, false);
+					    });
+			if (movement.status == forced_move_status::interrupted)
+				return FALSE;
+			if (movement.status == forced_move_status::arrived)
 			{
-				act("$n &+yflings &+Yyou &+yout of the room!", FALSE, ch, 0, vict,
-				    TO_VICT);
-				act("$n &+yflings &+Y$N &+yout of the room!", FALSE, ch, 0, vict,
-				    TO_NOTVICT);
-				target_room = world[vict->in_room].dir_option[door]->to_room;
-				char_from_room(vict);
-				if (char_to_room(vict, target_room, -1))
-				{
-					act("$n &+Yflies in &+Yface first&+y, crashing on the floor!",
-					    TRUE, vict, 0, 0, TO_ROOM);
-					stop_fighting(vict);
-					SET_POS(vict, POS_SITTING + GET_STAT(vict));
-					CharWait(vict, PULSE_VIOLENCE * 1);
-				}
+				act("$n &+Yflies in &+Yface first&+y, crashing on the floor!", TRUE,
+				    vict, 0, 0, TO_ROOM);
+				stop_fighting(vict);
+				SET_POS(vict, POS_SITTING + GET_STAT(vict));
+				CharWait(vict, PULSE_VIOLENCE * 1);
+				return FALSE;
 			}
-			else
+			else if (movement.status == forced_move_status::blocked)
 			{
 				act("&+Y$N &+yflies into the &+Ywall &+ybreaking &+wbones &+yand landing with a stunning &+Yforce&+y.",
 				    FALSE, ch, 0, vict, TO_NOTVICT);

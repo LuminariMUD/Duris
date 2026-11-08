@@ -9,8 +9,18 @@ extern P_room world;
 extern const int top_of_world;
 extern struct zone_data *zone_table;
 
+extern void act_convert(char *, const char *, P_char, P_char, P_obj, void *, int);
+
 namespace
 {
+bool can_receive_forced_departure(P_char recipient, P_char attacker)
+{
+	return recipient->desc && IS_AWAKE(recipient) &&
+	       recipient->specials.z_cord == attacker->specials.z_cord &&
+	       (IS_NPC(recipient) || !recipient->only.pc || !recipient->only.pc->ignored ||
+		recipient->only.pc->ignored != attacker);
+}
+
 bool valid_room(int room)
 {
 	return room >= 0 && room <= top_of_world;
@@ -124,22 +134,72 @@ bool at_source(const participant &person, int source)
 	return ch && ch->in_room == source;
 }
 
-bool pair_capacity(const participant &first, const participant &second, int destination)
+bool group_capacity(const std::vector<participant> &people, int destination)
 {
 	if (!IS_ROOM(destination, ROOM_PRIVATE))
 		return true;
-	P_char first_ch = first.live();
-	P_char second_ch = second.live();
-	if (!first_ch || !second_ch)
-		return false;
-	if (GET_LEVEL(first_ch) >= 59 && GET_LEVEL(second_ch) >= 59)
+	bool limited = false;
+	for (const auto &person : people)
+	{
+		P_char ch = person.live();
+		if (!ch)
+			return false;
+		limited = limited || GET_LEVEL(ch) < 59;
+	}
+	if (!limited)
 		return true;
 	int present = 0;
 	for (P_char ch = world[destination].people; ch; ch = ch->next_in_room)
-		if (ch != first_ch && ch != second_ch)
+	{
+		bool participant_present = false;
+		for (const auto &person : people)
+			participant_present = participant_present || ch == person.live();
+		if (!participant_present)
 			++present;
-	return present == 0;
+	}
+	return present + people.size() <= 2;
 }
+}
+
+std::vector<forced_departure_message> snapshot_forced_departure(P_char ch, P_char victim,
+								const char *actor_text,
+								const char *target_text,
+								const char *room_text, P_obj object)
+{
+	std::vector<forced_departure_message> messages;
+	for (P_char recipient = world[ch->in_room].people; recipient;
+	     recipient = recipient->next_in_room)
+	{
+		if (!can_receive_forced_departure(recipient, ch))
+			continue;
+		const int type = recipient == ch     ? TO_CHAR :
+				 recipient == victim ? TO_VICT :
+						       TO_NOTVICT;
+		const char *message = recipient == ch	  ? actor_text :
+				      recipient == victim ? target_text :
+							    room_text;
+		if (!message)
+			continue;
+		char rendered[3 * MAX_STRING_LENGTH];
+		act_convert(rendered, message, ch, recipient, object, victim, type);
+		messages.emplace_back(recipient->runtime_id, rendered);
+	}
+	return messages;
+}
+
+void deliver_forced_departure(const std::vector<forced_departure_message> &messages, P_char ch,
+			      P_char victim, int source, bool paired)
+{
+	for (const auto &message : messages)
+	{
+		P_char recipient = find_character_by_runtime_id(message.first);
+		if (!recipient || !can_receive_forced_departure(recipient, ch))
+			continue;
+		const int expected_room =
+			recipient == victim || (paired && recipient == ch) ? NOWHERE : source;
+		if (recipient->in_room == expected_room)
+			send_to_char(message.second.c_str(), recipient);
+	}
 }
 
 forced_block map_entry_barrier(P_char ch, int source, int destination)
@@ -187,44 +247,87 @@ forced_move_result move_forced(P_char actor, P_char victim, int direction,
 	departure();
 	const bool entered = char_to_room(target.live(), plan.destination, direction);
 	P_char moved = target.live();
-	if (entered && moved && moved->in_room == plan.destination)
+	if (entered && moved && moved->in_room == plan.destination && at_source(kicker, source))
 		return { forced_move_status::arrived };
 	recover(target, source);
 	return { forced_move_status::interrupted };
 }
 
-forced_move_result move_forced_pair(P_char first, P_char second, int direction,
-				    const std::function<void()> &departure)
+// A mounted charge adds its mount to the same validated departure/arrival sequence.
+static forced_move_result move_forced_people(P_char first, P_char second, P_char mount,
+					     int direction, const std::function<void()> &departure)
 {
-	if (!first || !second || first == second)
+	if (!first || !second || first == second || mount == first || mount == second)
 		return { forced_move_status::interrupted };
-	const participant people[] = { { first, first->runtime_id },
-				       { second, second->runtime_id } };
+	std::vector<participant> people = { { first, first->runtime_id },
+					    { second, second->runtime_id } };
+	if (mount)
+		people.push_back({ mount, mount->runtime_id });
 	const int source = first->in_room;
-	if (!valid_room(source) || !at_source(people[0], source) || !at_source(people[1], source))
+	if (!valid_room(source))
 		return { forced_move_status::interrupted };
-	forced_exit plans[2]{};
-	for (int i = 0; i < 2; ++i)
+	std::vector<forced_exit> plans(people.size());
+	for (size_t i = 0; i < people.size(); ++i)
 	{
+		if (!at_source(people[i], source))
+			return { forced_move_status::interrupted };
 		const forced_block blocked =
 			plan_exit(people[i].live(), source, direction, plans[i]);
 		if (blocked != forced_block::none)
 			return { forced_move_status::blocked, blocked };
 	}
-	// Tackle retains its existing ocean restriction.
-	if (IS_OCEAN_ROOM(plans[0].destination))
+	auto riding_together = [&]()
+	{
+		P_char rider = people[0].live();
+		P_char steed = mount ? people[2].live() : nullptr;
+		return !mount ||
+		       (rider && steed && GET_MOUNT(rider) == steed && GET_RIDER(steed) == rider &&
+			!GET_RIDER(rider) && !GET_MOUNT(steed));
+	};
+	if (!riding_together())
+		return { forced_move_status::interrupted };
+	// Only tackle has the existing absolute ocean prohibition. Charge's caller checks entry.
+	if (!mount && IS_OCEAN_ROOM(plans[0].destination))
 		return { forced_move_status::blocked, forced_block::barrier };
-	if (!pair_capacity(people[0], people[1], plans[0].destination))
+	if (!group_capacity(people, plans[0].destination))
 		return { forced_move_status::blocked, forced_block::private_room };
+
+	bool suspended_riding = false;
+	auto suspend_riding = [&]()
+	{
+		if (!mount)
+			return;
+		// A participant may have died without being extracted yet. Detach that link too.
+		P_char rider = find_character_by_runtime_id(people[0].runtime_id);
+		P_char steed = find_character_by_runtime_id(people[2].runtime_id);
+		if (rider == people[0].pointer && steed == people[2].pointer &&
+		    GET_MOUNT(rider) == steed && GET_RIDER(steed) == rider)
+		{
+			// char_to_room otherwise pulls companions in without their own exit checks.
+			unlink_char(rider, steed, LNK_RIDING);
+			suspended_riding = true;
+		}
+	};
+	auto restore_riding = [&]()
+	{
+		P_char rider = people[0].live();
+		P_char steed = mount ? people[2].live() : nullptr;
+		if (suspended_riding && rider && steed && rider->in_room != NOWHERE &&
+		    rider->in_room == steed->in_room && !GET_MOUNT(rider) && !GET_RIDER(steed))
+			link_char(rider, steed, LNK_RIDING);
+	};
 	auto fail = [&](forced_move_result result)
 	{
+		suspend_riding();
 		for (const auto &person : people)
 			recover(person, source);
-		if (!at_source(people[0], source) || !at_source(people[1], source))
-			return forced_move_result{ forced_move_status::interrupted };
+		restore_riding();
+		for (const auto &person : people)
+			if (!at_source(person, source))
+				return forced_move_result{ forced_move_status::interrupted };
 		return result;
 	};
-	for (int i = 0; i < 2; ++i)
+	for (size_t i = 0; i < people.size(); ++i)
 	{
 		forced_move_result checked = recheck(people[i], plans[i], false);
 		if (checked.status != forced_move_status::arrived)
@@ -234,21 +337,29 @@ forced_move_result move_forced_pair(P_char first, P_char second, int direction,
 		if (checked.status != forced_move_status::arrived)
 			return fail(checked);
 	}
-	for (int i = 0; i < 2; ++i)
+	for (size_t i = 0; i < people.size(); ++i)
 	{
 		const forced_move_result checked = recheck(people[i], plans[i], true);
 		if (checked.status != forced_move_status::arrived)
 			return fail(checked);
 	}
-	if (!pair_capacity(people[0], people[1], plans[0].destination))
+	if (!riding_together())
+		return fail({ forced_move_status::interrupted });
+	if (!group_capacity(people, plans[0].destination))
 		return fail({ forced_move_status::blocked, forced_block::private_room });
-	for (const auto &person : people)
-		separate_riders(person.live());
+	if (mount)
+	{
+		separate_riders(people[1].live());
+		suspend_riding();
+	}
+	else
+		for (const auto &person : people)
+			separate_riders(person.live());
 	departure();
 	bool arrived = true;
-	for (int i = 0; i < 2; ++i)
+	for (size_t i = 0; i < people.size(); ++i)
 	{
-		// The first arrival procedure may have moved or removed the other participant.
+		// Earlier arrival procedures may remove another participant or seal the exit.
 		if (recheck(people[i], plans[i], true).status != forced_move_status::arrived)
 		{
 			recover(people[i], source);
@@ -264,11 +375,29 @@ forced_move_result move_forced_pair(P_char first, P_char second, int direction,
 			arrived = false;
 		}
 	}
-	for (int i = 0; i < 2; ++i)
+	restore_riding();
+	for (size_t i = 0; i < people.size(); ++i)
 	{
 		P_char moved = people[i].live();
 		if (!moved || moved->in_room != plans[i].destination)
 			arrived = false;
 	}
+	if (mount && !riding_together())
+		arrived = false;
 	return { arrived ? forced_move_status::arrived : forced_move_status::interrupted };
+}
+
+forced_move_result move_forced_pair(P_char first, P_char second, int direction,
+				    const std::function<void()> &departure)
+{
+	return move_forced_people(first, second, nullptr, direction, departure);
+}
+
+forced_move_result move_forced_mounted(P_char rider, P_char victim, int direction,
+				       const std::function<void()> &departure)
+{
+	P_char mount = rider ? GET_MOUNT(rider) : nullptr;
+	if (!mount)
+		return { forced_move_status::interrupted };
+	return move_forced_people(rider, victim, mount, direction, departure);
 }

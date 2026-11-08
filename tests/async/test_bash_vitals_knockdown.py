@@ -131,10 +131,9 @@ void CharWait(P_char ch, int) { SET_BIT(ch->specials.act2, PLR2_WAIT); }
 P_char ParseTarget(P_char, char *) { return tackle_target; }
 void set_fighting(P_char ch, P_char victim) { ch->specials.fighting = victim; }
 void unlink_char(P_char, P_char, ush_int) {}
-using forced_departure_message = std::pair<uint64_t, std::string>;
 static std::vector<forced_departure_message> snapshot_forced_departure(P_char, P_char, int, bool, bool)
 { assert(false); return {}; }
-static void deliver_forced_departure(const std::vector<forced_departure_message> &, P_char, P_char, int, bool)
+void deliver_forced_departure(const std::vector<forced_departure_message> &, P_char, P_char, int, bool)
 { assert(false); }
 static void forced_rebound_messages(P_char, P_char, forced_block, bool) { assert(false); }
 forced_move_result move_forced_pair(P_char, P_char, int, const std::function<void()> &)

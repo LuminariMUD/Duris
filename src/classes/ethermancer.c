@@ -15,6 +15,7 @@
 #include "abilities/abilities.h"
 #include "item/named_set_effects.h"
 #include "core/prototypes.h"
+#include "combat/forced_movement.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -2374,7 +2375,7 @@ void spell_single_tempest(int level, P_char ch, char * /*args*/, int /*type*/, P
 			  P_obj /*obj*/)
 {
 	double takedown_chance, dam;
-	int door, target_room;
+	int door;
 
 	struct damage_messages messages = {
 		"$N&+W is savagely tossed about by the &+cfreezing &+Wsquall!",
@@ -2443,22 +2444,25 @@ void spell_single_tempest(int level, P_char ch, char * /*args*/, int /*type*/, P
 			door = tempest_door_roll(live_rolls);
 			if ((door == DIR_UP) || (door == DIR_DOWN))
 				door = tempest_flat_door_roll(live_rolls);
-			if ((CAN_GO(victim, door)) && (!check_wall(victim->in_room, door)))
+			const int source_room = victim->in_room;
+			const auto messages = snapshot_forced_departure(
+				ch, victim,
+				"&+LA mighty &+Wwind&+L sends&n $N &+Lflying out of the room!&n",
+				"&+LA mighty &+Wwind&+L sends you flying out of the room!&n",
+				"&+LThe mighty &+Wwind&+L sends&n $N &+Lflying out of the room!&n");
+			const auto movement =
+				move_forced(ch, victim, door,
+					    [&]() {
+						    deliver_forced_departure(messages, ch, victim,
+									     source_room, false);
+					    });
+			if (movement.status == forced_move_status::interrupted)
+				return;
+			if (movement.status == forced_move_status::arrived)
 			{
-				act("&+LA mighty &+Wwind&+L sends&n $N &+Lflying out of the room!&n",
-				    FALSE, ch, 0, victim, TO_CHAR);
-				act("&+LA mighty &+Wwind&+L sends you flying out of the room!&n",
-				    FALSE, ch, 0, victim, TO_VICT);
-				act("&+LThe mighty &+Wwind&+L sends&n $N &+Lflying out of the room!&n",
-				    FALSE, ch, 0, victim, TO_NOTVICT);
-				target_room = world[victim->in_room].dir_option[door]->to_room;
-				char_from_room(victim);
-				if (char_to_room(victim, target_room, -1))
-				{
-					act("$n flies in looking slightly dazed!", TRUE, victim, 0,
-					    0, TO_ROOM);
-					CharWait(victim, tempest_thrown_lag());
-				}
+				act("$n flies in looking slightly dazed!", TRUE, victim, 0, 0,
+				    TO_ROOM);
+				CharWait(victim, tempest_thrown_lag());
 			}
 		}
 	}
