@@ -12187,7 +12187,7 @@ static int whirlwind_failed_vitality()
 // What a whirlwind takes from vitality regeneration.
 static int whirlwind_move_regen()
 {
-	return (int)(get_property("skill.whirlwind.movement.drain", 60));
+	return (int)(get_property("skill.whirlwind.movement.drain", 10));
 }
 
 // How long, in pulses, a whirlwind lasts.

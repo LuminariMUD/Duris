@@ -2216,7 +2216,7 @@ void bite(P_char ch, P_char victim)
 
 static int bite_innate_rest()
 {
-	return get_property("innate.timer.bite", 12);
+	return get_property("innate.timer.secs.bite", 12);
 }
 
 // The venom page, shared by insects and snakes and whoever else bites as they do.
