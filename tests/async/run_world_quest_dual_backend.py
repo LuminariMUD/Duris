@@ -1404,7 +1404,7 @@ caller = gdb.newest_frame().older()
 if caller and (caller.name() or '').startswith('world_quest_roll_item_count'):
     index = int(gdb.parse_and_eval('quest_gameplay_bonus_rolls'))
     successes = int(gdb.parse_and_eval('quest_gameplay_bonus_successes'))
-    gdb.execute('return ' + ('10' if index < successes else '11'), to_string=True)
+    gdb.execute('return ' + ('1' if index < successes else '2'), to_string=True)
     gdb.execute('set quest_gameplay_bonus_rolls = ' + str(index + 1))
     gdb.execute('set $bonus_remaining = $bonus_remaining - 1')
     if int(gdb.parse_and_eval('$bonus_remaining')) == 0:

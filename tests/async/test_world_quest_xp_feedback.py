@@ -215,7 +215,7 @@ char *coin_stringv(int, int) { static char text[] = "coins"; return text; }
 int number(int low, int high) {
     last_random_low = low; last_random_high = high;
     if (conjure_roll && low == 1 && high == conjure_intelligence) return conjure_roll;
-    if (low == 1 && high == 100) {
+    if (low == 1 && high == 10) {
         int index=bonus_calls++;
         if (index < static_cast<int>(bonus_rolls.size())) return bonus_rolls[index];
     }
@@ -508,8 +508,8 @@ int main() {
     // Quantity is personal, while XP/history/scalar rewards remain per task.
     for (int successes : {0,1,8}) {
         reset(); pc.quest_kill_original=9; pc.quest_kill_how_many=8;
-        bonus_rolls.assign(8,11);
-        for (int index=0; index<successes; ++index) bonus_rolls[index]=10;
+        bonus_rolls.assign(8,2);
+        for (int index=0; index<successes; ++index) bonus_rolls[index]=1;
         quest_kill(&player,&mob);
         assert(bonus_calls==8 && item_calls==1+successes && finished==1 && epics==1);
         assert(player.points.curr_exp==144 && !pc.quest_active);
@@ -525,11 +525,11 @@ int main() {
 
     // Losing a later item defers the whole batch without changing its count.
     reset(); pc.quest_kill_original=9; pc.quest_kill_how_many=8;
-    bonus_rolls.assign(8,10); fail_item_at=2;
+    bonus_rolls.assign(8,1); fail_item_at=2;
     quest_kill(&player,&mob);
     assert(pc.quest_reward_item_count==9 && bonus_calls==8 && !object_list && finished==0);
     assert(player.points.curr_exp==144 && pc.quest_accomplished==PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING);
-    fail_item_at=0; bonus_rolls.assign(8,11);
+    fail_item_at=0; bonus_rolls.assign(8,2);
     quest_full_reward(&player,&mob,FIND_AND_KILL);
     assert(bonus_calls==8 && item_calls==11 && finished==1 && epics==1);
     assert(player.points.curr_exp==144 && !pc.quest_active);
@@ -554,7 +554,7 @@ int main() {
     other_pc=pc; other_pc.pid=43;
     rooms[0].people=&player; player.next_in_room=&other; other.next_in_room=&mob;
     mob.next_in_room=nullptr;
-    bonus_rolls.assign(8,11); bonus_rolls.insert(bonus_rolls.end(),8,10);
+    bonus_rolls.assign(8,2); bonus_rolls.insert(bonus_rolls.end(),8,1);
     credit_group_kill(&player,&mob);
     assert(bonus_calls==16 && item_calls==10 && finished==2 && epics==2);
     assert(player.points.curr_exp==144 && other.points.curr_exp==144);
