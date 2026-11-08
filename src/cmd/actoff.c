@@ -8236,7 +8236,7 @@ void attack(P_char ch, P_char victim)
 			skl += GET_LEVEL(ch);
 		}
 
-		if (has_innate(victim, INNATE_CALMING) &&
+		if (innate_calming_active(victim) &&
 		    (number(0, 120) <= calming_switch_threshold(GET_LEVEL(victim))))
 		{
 			skl -= calming_switch_penalty(GET_CHAR_SKILL(ch, SKILL_SWITCH_OPPONENTS));

@@ -1803,6 +1803,7 @@ Syntax:         bodyslam <victim>
 This command is very similar to "Bash", except that it requires no shield
 and can only be used to start a fight. A successful bodyslam will send the
 victim sprawling, leaving them sitting on the ground.
+Its configured base success chance is 60% before combat modifiers.
 ===========================================================================
 See also: BASH
 
@@ -11950,6 +11951,8 @@ type.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 
+Holy Combat is a legacy label with no separate implemented combat bonus.
+
 ==Innate abilities==
 
 *&+canti-evil&n
@@ -12541,6 +12544,9 @@ Type of spell:  Protection
 
 This spell will create a magical armor on the recipient that will make the 
 target less prone to attacks from evilly aligned monsters and characters.
+Against an evil attacker, a non-evil recipient lowers the attacker's hit
+score by the recipient's level / 4 (12 points at level 50). This is an
+accuracy penalty, not an additional damage reduction.
 ===========================================================================
 See also: "PROTECTION FROM GOOD"
 
@@ -12582,6 +12588,9 @@ Type of spell:  Protection
 
 This spell will create a magical armor on the recipient that will make the 
 target less prone to attacks from good aligned monsters and characters.
+Against a good attacker, a non-good recipient lowers the attacker's hit
+score by the recipient's level / 4 (12 points at level 50). This is an
+accuracy penalty, not an additional damage reduction.
 ===========================================================================
 See also: "PROTECTION FROM EVIL"
 
@@ -15848,6 +15857,8 @@ SKILL_PALADIN (Skillset)
 The following is a list of all skills and spells available to the Paladin class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
+Holy Combat is a legacy label with no separate implemented combat bonus.
 
 ==Innate abilities==
 

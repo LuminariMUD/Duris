@@ -12436,7 +12436,7 @@ std::string blur_innate_facts(P_char /*ch*/)
 	extern int archery_blur_speed();
 	return fact("Your attacks each round", "+1") +
 	       fact("Archery speed", "+" + std::to_string(archery_blur_speed())) +
-	       "  You get it when you log in.\n";
+	       "  It is permanent; temporary blur ending cannot remove it.\n";
 }
 
 std::string blur_facts(P_char /*ch*/)

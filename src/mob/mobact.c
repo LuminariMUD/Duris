@@ -6700,7 +6700,7 @@ P_char PickTarget(P_char ch)
 		}
 
 		// Reflection Kobolds don't get innate calming anymore.
-		if (has_innate(t_ch, INNATE_CALMING) &&
+		if (innate_calming_active(t_ch) &&
 		    calming_notarget_roll(live_rolls) <= calming_notarget_percent() &&
 		    !(IS_NPC(t_ch) && GET_VNUM(t_ch) == 250))
 		{
@@ -7897,23 +7897,14 @@ void event_mob_mundane(P_char ch, P_char /*victim*/, P_obj /*object*/, void * /*
 	    (tmp_ch = PickTarget(ch)))
 	{
 		int calming = 0;
-		int nocalming = 0;
-		if ((IS_RACEWAR_EVIL(tmp_ch) &&
-		     IS_SET(hometowns[VNUM2TOWN(world[tmp_ch->in_room].number) - 1].flags,
-			    JUSTICE_GOODHOME)) ||
-		    (IS_RACEWAR_GOOD(tmp_ch) &&
-		     IS_SET(hometowns[VNUM2TOWN(world[tmp_ch->in_room].number) - 1].flags,
-			    JUSTICE_EVILHOME)))
-			nocalming = 1;
 
-		// Alright, if !elite ch and !nocalming.. check for calming:
+		// Non-elite mobs respect Calming outside enemy hometowns.
 		//   if ch's level <= target's level - 5 or 25% hit,
 		//   and target has innate calming and isn't a reflection/image.
-		if (!IS_ELITE(ch) && !nocalming &&
+		if (!IS_ELITE(ch) &&
 		    ((GET_LEVEL(ch) - GET_LEVEL(tmp_ch) <= calming_level_gap()) ||
 		     !calming_gap_roll(live_rolls)) &&
-		    (has_innate(tmp_ch, INNATE_CALMING) &&
-		     !(IS_NPC(tmp_ch) && GET_VNUM(tmp_ch) == 250)))
+		    (innate_calming_active(tmp_ch) && !(IS_NPC(tmp_ch) && GET_VNUM(tmp_ch) == 250)))
 		{
 			calming = calming_delay();
 		}

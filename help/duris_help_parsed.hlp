@@ -3627,6 +3627,7 @@ Syntax:         bodyslam <victim>
 This command is very similar to "Bash", except that it requires no shield
 and can only be used to start a fight. A successful bodyslam will send the
 victim sprawling, leaving them sitting on the ground.
+Its configured base success chance is 60% before combat modifiers.
 
 ==See also==
 
@@ -18832,6 +18833,8 @@ type.
 These are normal-roster matrix choices; alignment and server creation switches
 still apply. Other forms and event settings may differ.
 
+Holy Combat is a legacy label with no separate implemented combat bonus.
+
 ==Innate abilities==
 
 *&+canti-evil&n
@@ -18867,6 +18870,8 @@ Paladin Skills - Last Edited: 2026-10-18
 The following is a list of all skills and spells available to the Paladin class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+
+Holy Combat is a legacy label with no separate implemented combat bonus.
 
 ==Innate abilities==
 
@@ -20166,6 +20171,9 @@ Protection From Evil - Last Edited: 2015-07-13 19:50:04 by lohrr
 * Type of spell:  Protection
 This spell will create a magical armor on the recipient that will make the
 target less prone to attacks from evilly aligned monsters and characters.
+Against an evil attacker, a non-evil recipient lowers the attacker's hit
+score by the recipient's level / 4 (12 points at level 50). This is an
+accuracy penalty, not an additional damage reduction.
 This spell will only show on score if those affected have detect magic up.
 
 ==See also==
@@ -20216,6 +20224,9 @@ Protection From Good - Last Edited: 2015-07-13 19:52:04 by lohrr
 * Type of spell:  Protection
 This spell will create a magical armor on the recipient that will make the
 target less prone to attacks from good aligned monsters and characters.
+Against a good attacker, a non-good recipient lowers the attacker's hit
+score by the recipient's level / 4 (12 points at level 50). This is an
+accuracy penalty, not an additional damage reduction.
 This spell will only show on score if those affected have detect magic up.
 
 ==See also==
