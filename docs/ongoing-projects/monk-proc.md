@@ -1,8 +1,12 @@
 # Monk glove proc candidates
 
-Status: research inventory for monk balance; no proc or item changes implemented. Updated 2026-11-08.
+Status: preserved research baseline for monk balance, updated 2026-11-08.
+The [implementation plan and pilot](monk-glove-proc-plan.md) record current work;
+the catalog and ordering below retain the original pre-pilot values.
 
-Valuation baseline: `77dcd194274eb7fe3737530a308395ee6f804a70`. The original catalog sweep used `5958a80f7`; all 105 listed object records were rechecked against the current checkout and are unchanged.
+Valuation baseline: `77dcd194274eb7fe3737530a308395ee6f804a70`. The original catalog sweep used `5958a80f7`; all 105 listed object records were unchanged at that research checkpoint. The
+subsequent pilot changes only 21575, 500110, 76052 and 5817; its current effects
+and recalculated values are recorded in the plan.
 
 ## Scope and ordering
 

@@ -868,9 +868,13 @@ battered bloody iron knuckles~
 &+La pair of iron &+yknuckles&n~
 &+LA battered and bloodstained pair of iron &+yknuckles&+L lies here&n.~
 ~
-9 15 3 1 7 20 0 129 0 0 0
-6 0 0 4 0 0 0 0
+9 15 3 1 7 20 0 129 524288 0 0
+6 0 0 4 0 37 12 60
 1 0 100
+E
+_char_msg~
+&+YA spark leaps from $p as your barehand strike lands!&n
+~
 A
 19 1
 #21576

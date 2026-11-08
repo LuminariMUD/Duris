@@ -1573,9 +1573,13 @@ razor knuckled blood crystal gloves~
 &+Lsome &+Crazor-&Nknuckled &+Rblood &+rcrystal &+Lg&+rl&+Lo&+rv&+Le&+rs&N~
 &+LSome &+Crazor&N-knuckled &+Rblood crystal &Ngloves lie here.~
 ~
-9 26 3 0 14 0 0 129 64 0 0
-20 0 0 0 0 0 0 0
+9 26 3 0 14 0 0 129 524352 0 0
+20 0 0 0 0 37 30 60
 4 289434 100 8192 4 0 0
+E
+_char_msg~
+&+YA spark leaps from $p as your barehand strike lands!&n
+~
 A
 13 15
 A

@@ -691,9 +691,13 @@ sunstone knuckles~
 &+Ya pair of s&+yu&+Ynst&+yon&+Ye knuckles&n~
 &+YA pair of gleaming s&+yu&+Ynst&+yon&+Ye knuckles lay here.&n~
 ~
-9 11 3 0 12 0 1025 129 0 17825856 0
-8 0 0 3 0 0 0 0
+9 11 3 0 12 0 1025 129 524288 17825856 0
+8 0 0 3 0 37 24 60
 0 8821 100
+E
+_char_msg~
+&+YA spark leaps from $p as your barehand strike lands!&n
+~
 A
 32 3
 A

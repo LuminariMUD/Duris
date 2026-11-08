@@ -955,8 +955,8 @@ gloves leather simple _id_~
 &+ya pair of simple leather gloves&n~
 &+yA pair of leather gloves lies here, discarded.&n~
 ~
-9 13 3 6 7 0 0 129 64 4173708804 0
-4 7 6 3 0 0 0 0
+9 13 3 6 7 0 0 129 524352 4173708804 0
+4 7 6 3 0 37 18 60
 1 2319 100
 E
 gloves leather simple~
@@ -973,6 +973,10 @@ a pair of &+ygloves of the monk&n
 E
 _id_desc_~
 A pair of &+ygloves of the monk&n are here.
+~
+E
+_char_msg~
+&+YA spark leaps from $p as your barehand strike lands!&n
 ~
 A
 19 1
