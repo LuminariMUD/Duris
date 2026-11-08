@@ -14,7 +14,8 @@ def function(file, signature):
 
 
 pick = function("actmove.c", "void do_pick(")
-breakage = re.search(r"percent = percent - chance \+ pick->value\[1\] -.*?;", pick, re.S).group()
+breakage = re.search(r"percent = percent - chance \+ pick->value\[1\] \+.*?;", pick, re.S).group()
+assert pick.count("percent += 20;") == 2 and "percent -= 20;" not in pick
 assert pick.count("percent > BOUNDED(0, chance, 100)") == 2
 flurry = function("actnew.c", "void do_flurry_of_blows(")
 loop_head = r"for \(int i = 1;[^)]*\)"
@@ -130,7 +131,7 @@ int main() {
     actor.specials.position=target.specials.position=creature.specials.position=STAT_NORMAL+POS_STANDING;
     obj_data pick{},lock{};
     assert(wear(90,50,&pick,&lock)==40); pick.value[1]=20; assert(wear(90,50,&pick,&lock)==60);
-    lock.value[1]=CONT_HARDPICK; assert(wear(90,50,&pick,&lock)==45);
+    lock.value[1]=CONT_HARDPICK; assert(wear(90,50,&pick,&lock)==75);
     for(int chance=-50;chance<=150;++chance) for(int die=1;die<=100;++die)
         assert((die>chance)==(die>BOUNDED(0,chance,100)));
     for(int normal=1;normal<=10;++normal) for(int targets=1;targets<=30;++targets) {
