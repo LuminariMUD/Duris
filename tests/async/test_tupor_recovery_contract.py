@@ -48,7 +48,7 @@ assert "cmd != CMD_DEFOREST && cmd != CMD_ARTIFACTS &&\n\t\t\t\t\t\t cmd != CMD_
 # The first event must be based on the highest incomplete circle, not the
 # character's maximum circle when the top circle is already full.
 assert "schedule_memorize(ch, get_circle_memtime(ch, need_mem) / 2)" in MEMORIZE
-assert "You are already recovering your spell power." in MEMORIZE
+assert "You are already recovering your spell power." not in MEMORIZE
 
 # Voluntary posture changes end recovery without the old shock wait. Hostile
 # interruption remains explicit and data-driven.

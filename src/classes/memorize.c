@@ -1335,7 +1335,7 @@ static bool uses_slot_recovery(P_char ch)
 	       is_wearing_necroplasm(ch) || USES_FOCUS(ch) || IS_ANGEL(ch);
 }
 
-int64_t spell_preparation_estimate(P_char ch, bool &active)
+static int64_t spell_preparation_by_circle(P_char ch, bool &active, int64_t *by_circle)
 {
 	active = false;
 	if (!ch || IS_NPC(ch) || ch->in_room == NOWHERE || !IS_ALIVE(ch) || USES_MANA(ch))
@@ -1372,22 +1372,25 @@ int64_t spell_preparation_estimate(P_char ch, bool &active)
 	if (!first)
 		return 0;
 
-	int64_t pulses = 0;
 	const P_nevent event = get_scheduled(ch, event_memorize);
 	if (event)
 	{
 		active = true;
-		pulses = std::max(1, ne_event_time(event));
+		by_circle[first] = std::max(1, ne_event_time(event));
 		// The meditation check may schedule the second half of this interval.
 		if (event->data)
-			pulses += *static_cast<const int *>(event->data) / 2;
+			by_circle[first] += *static_cast<const int *>(event->data) / 2;
 		--pending[first];
 	}
 	// Future steps are estimates. Reading them must never roll a proc or train a skill.
+	int64_t pulses = 0;
 	for (int circle = 1; circle <= MAX_CIRCLE; ++circle)
 	{
 		if (pending[circle] <= 0)
+		{
+			pulses += by_circle[circle];
 			continue;
+		}
 		int64_t interval = get_circle_memtime(ch, circle, true, false);
 		if (slot_recovery)
 		{
@@ -1396,16 +1399,23 @@ int64_t spell_preparation_estimate(P_char ch, bool &active)
 				// The recovery command starts the first slot without a meditation check.
 				const bool full_interval = USES_COMMUNE(ch) || USES_FOCUS(ch) ||
 							   USES_DEFOREST(ch);
-				pulses += std::max<int64_t>(1, full_interval ? interval :
-									       interval / 2);
+				by_circle[circle] += std::max<int64_t>(
+					1, full_interval ? interval : interval / 2);
 				--pending[circle];
 			}
 			// Each subsequent slot can take another half-interval after meditation.
 			interval += interval / 2;
 		}
-		pulses += pending[circle] * std::max<int64_t>(1, interval);
+		by_circle[circle] += pending[circle] * std::max<int64_t>(1, interval);
+		pulses += by_circle[circle];
 	}
 	return pulses;
+}
+
+int64_t spell_preparation_estimate(P_char ch, bool &active)
+{
+	int64_t by_circle[MAX_CIRCLE + 1] = {};
+	return spell_preparation_by_circle(ch, active, by_circle);
 }
 
 void event_memorize(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
@@ -1465,6 +1475,11 @@ void do_assimilate(P_char ch, char *argument, int cmd)
 		return;
 	}
 
+	bool active = false;
+	int64_t circle_pulses[MAX_CIRCLE + 1] = {};
+	const int64_t total_pulses =
+		cmd == CMD_TUPOR ? spell_preparation_by_circle(ch, active, circle_pulses) : 0;
+
 	snprintf(Gbuf1, MAX_STRING_LENGTH,
 		 "You currently have the following spell slots available:\n");
 	for (circle = 1; circle <= get_max_circle(ch); circle++)
@@ -1477,29 +1492,26 @@ void do_assimilate(P_char ch, char *argument, int cmd)
 				 circle == 3 ? "rd" :
 					       "th",
 				 available, max_spells_in_circle(ch, circle));
-		if (available != max_spells_in_circle(ch, circle))
+		if (available < max_spells_in_circle(ch, circle))
 		{
 			need_mem = circle;
-			if (cmd != CMD_TUPOR)
-				checked_snprintf(Gbuf1 + strlen(Gbuf1),
-						 MAX_STRING_LENGTH - strlen(Gbuf1),
-						 "   (%4d seconds)",
-						 (get_circle_memtime(ch, circle, true) *
-						  (max_spells_in_circle(ch, circle) - available)) /
-							 WAIT_SEC);
+			const int seconds =
+				cmd == CMD_TUPOR ?
+					(circle_pulses[circle] + WAIT_SEC - 1) / WAIT_SEC :
+					(get_circle_memtime(ch, circle, true) *
+					 (max_spells_in_circle(ch, circle) - available)) /
+						WAIT_SEC;
+			checked_snprintf(Gbuf1 + strlen(Gbuf1), MAX_STRING_LENGTH - strlen(Gbuf1),
+					 "   (%4d seconds)", seconds);
 		}
 		strcat(Gbuf1, "\n");
 	}
 	if (cmd == CMD_TUPOR && need_mem)
 	{
-		bool active = false;
-		const int64_t pulses = spell_preparation_estimate(ch, active);
-		checked_snprintf(
-			Gbuf1 + strlen(Gbuf1), MAX_STRING_LENGTH - strlen(Gbuf1),
-			"Estimated total recovery %s: %lld seconds.\n"
-			"Higher circles recover first. Meditation may shorten this estimate.\n",
-			active ? "remaining" : "if started now",
-			static_cast<long long>((pulses + WAIT_SEC - 1) / WAIT_SEC));
+		checked_snprintf(Gbuf1 + strlen(Gbuf1), MAX_STRING_LENGTH - strlen(Gbuf1),
+				 "Estimated total recovery %s: %lld seconds.\n",
+				 active ? "remaining" : "if started now",
+				 static_cast<long long>((total_pulses + WAIT_SEC - 1) / WAIT_SEC));
 	}
 
 	if (IS_DRAGOON(ch))
@@ -1556,10 +1568,7 @@ void do_assimilate(P_char ch, char *argument, int cmd)
 		}
 
 		if (IS_AFFECTED2(ch, AFF2_MEMORIZING))
-		{
-			send_to_char("You are already recovering your spell power.\n", ch);
 			return;
-		}
 
 		send_to_char("\n&+cYour mind dr&+Cifts int&+Wo a deep meditat&+cion and "
 			     "th&+Ce spirits of sto&+Wrms and i&+cce spe&+Cak to yo&+cu.&n\n",
@@ -1604,7 +1613,7 @@ void do_npc_commune(P_char ch)
 	for (circle = max_circle; circle > 0; circle--)
 	{
 		available = ch->specials.undead_spell_slots[circle];
-		if (available != max_spells_in_circle(ch, circle, max_circle))
+		if (available < max_spells_in_circle(ch, circle, max_circle))
 		{
 			need_mem = circle;
 			break;
