@@ -185,7 +185,21 @@ int main() {
             assert(audit[2].find("[202] shield")!=std::string::npos);
         } else assert(audit.empty() && staff.empty());
     }
-    puts("PASS low combat: defender Power, Ogre Roar recipients, player-corpse equipment audit and transfer");
+    // Refuse an over-level corpse before loading a mobile into the game. The
+    // old ordering left an unplaced mobile alive on every rejected attempt.
+    for(int type : {0,1,3}) for(bool player_corpse : {false,true}) {
+        obj_data remains{}, equipment{}; corpse=&remains;
+        caster.player.level=type==1 ? 46 : 41;
+        caster.player.m_class=type==3 ? CLASS_THEURGIST : CLASS_NECROMANCER;
+        remains.type=ITEM_CORPSE; remains.value[CORPSE_LEVEL]=70;
+        remains.value[CORPSE_FLAGS]=player_corpse ? PC_CORPSE : 0;
+        remains.loc.room=1; remains.contains=&equipment;
+        audit.clear(); staff.clear(); loaded=consumed=scheduled=0;
+        create_golem(caster.player.level,&caster,nullptr,&remains,type);
+        assert(!loaded && !consumed && !scheduled && remains.contains==&equipment);
+        assert(audit.empty() && staff.empty());
+    }
+    puts("PASS low combat: defender Power, Ogre Roar recipients, corpse audit/transfer and golem rejection");
 }
 '''
 
