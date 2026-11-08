@@ -2266,7 +2266,7 @@ void spell_domination(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 	   if (victim->leader)
 	   stop_follower(victim);
 	 */
-	setup_pet(victim, ch, MAX(1, number(level - 20, level)), 0);
+	setup_pet(victim, ch, std::max(1, number(level - 20, level)), 0);
 	add_follower(victim, ch);
 	act("Your will dominates $N!", FALSE, ch, 0, victim, TO_CHAR);
 	act("Your will is dominated by $n!", FALSE, ch, 0, victim, TO_VICT);

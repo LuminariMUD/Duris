@@ -59,6 +59,10 @@ bool effect_supported(const studio_ability_effect &effect)
 {
 	if (effect.spell <= 0 || effect.spell >= MAX_SKILLS || !skills[effect.spell].spell_pointer)
 		return false;
+	// Studio cannot supply Gate's plane argument. Lightning's wand call is unsupported.
+	if (effect.spell == SPELL_GATE ||
+	    (effect.spell == SPELL_CALL_LIGHTNING && effect.call != studio_ability_call::spell))
+		return false;
 	const auto flags = skills[effect.spell].targets;
 	if (IS_SET(flags, TAR_CHAR_WORLD | TAR_OBJ_WORLD))
 		return false;
@@ -261,7 +265,7 @@ bool studio_abilities_load(const std::string &json, std::string &error)
 			if (!effect_supported(definition.effects[i]))
 			{
 				error = prefix + "effects[" + std::to_string(i) +
-					"] spell pointer or typed target is unsupported";
+					"] spell, call mode or typed target is unsupported";
 				return false;
 			}
 		if (definition.mana.id &&

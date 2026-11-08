@@ -13545,7 +13545,8 @@ int conj_specpet_triton(P_char ch, P_char /*pl*/, int cmd, char * /*arg*/)
 		if (GET_HIT(ch) < GET_MAX_HIT(ch))
 		{
 			if ((healpoints + GET_HIT(ch)) >= GET_MAX_HIT(ch))
-				healpoints = MAX(0, GET_MAX_HIT(ch) - GET_HIT(ch) - dice(1, 4));
+				healpoints =
+					std::max(0, GET_MAX_HIT(ch) - GET_HIT(ch) - dice(1, 4));
 			GET_HIT(ch) += healpoints;
 			update_pos(ch);
 			act("$n&+B stretches &+bout and lets loose a &+Btriumphant &+Whowl&+b!",

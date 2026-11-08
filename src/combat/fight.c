@@ -6068,9 +6068,10 @@ void check_vamp(P_char ch, P_char victim, double fdam, uint flags)
 		wdam = 1;
 
 		if (IS_NPC(ch))
-			wdam = MIN(dam, dice(ch->points.damnodice, MAX(1, ch->points.damsizedice)));
+			wdam = std::min(dam,
+					dice(ch->points.damnodice, MAX(1, ch->points.damsizedice)));
 		else if (IS_PC(ch) && weapon)
-			wdam = MIN(dam, dice(weapon->value[1], MAX(1, weapon->value[2])));
+			wdam = std::min(dam, dice(weapon->value[1], MAX(1, weapon->value[2])));
 		if (wdam)
 		{
 			vamped = vamp(ch, static_cast<double>(wdam) * dam_factor[DF_HFIREVAMP],
@@ -6125,7 +6126,7 @@ void check_vamp(P_char ch, P_char victim, double fdam, uint flags)
 	if (!vamped && ch->equipment[WIELD] &&
 	    (obj_index[ch->equipment[WIELD]->R_num].virtual_number == HOA_ILLESARUS_VNUM))
 	{
-		vamped = vamp(ch, MIN(dam, number(2, 7)),
+		vamped = vamp(ch, std::min(dam, number(2, 7)),
 			      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
 	}
 

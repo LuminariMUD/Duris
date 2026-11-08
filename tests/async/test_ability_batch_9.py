@@ -3,10 +3,11 @@
 
 Builds src/abilities/abilities.c and the real RNG with every shared and facts function of
 sillusionist.c and necromancy.c, under sanitizers. Each converted roll keeps its
-pre-conversion expression below as the oracle: under the same seeds it must give the same
-value, leave the RNG at the same draw and fall inside the range its page shows. Every page is
-built at every level for several casters: it must never roll, and every line must fit 79
-columns.
+pre-conversion expression (or its documented bug fix) below as the oracle: under the same
+seeds it must give the same value, leave the RNG at the same draw and fall inside the range
+its page shows. Insects also executes the summon, pet setup and periodic procedure. Every
+page is built at every level for several casters: it must never roll, and every line must
+fit 79 columns.
 """
 import re
 import subprocess
@@ -275,6 +276,10 @@ HARNESS = r'''
 #include "classes/necromancy.h"
 #include "combat/damage.h"
 #include "world/db.h"
+#include "net/comm.h"
+#include "cmd/interp.h"
+#include "combat/training_dummy.h"
+#include "economy/collector_presence.h"
 #include <algorithm>
 #include <cassert>
 #include <climits>
@@ -300,6 +305,62 @@ int get_property(const char *, int fallback) { return fallback; }
 P_char get_linked_char(P_char, ush_int) { return nullptr; }
 std::string invisibility_facts(P_char) { return "  Duration: invisibility's own page\n"; }
 extern const struct undead_description undead_data[NECROPET_LAST + 1];
+
+// Fixtures around the real Insects summon, pet setup and periodic procedure.
+static room_data room{};
+P_room world = &room;
+static index_data swarm_index{};
+P_index mob_index = &swarm_index;
+static char_data swarms[4];
+static npc_only_data swarm_npcs[4];
+static char_link_data swarm_links[4];
+static affected_type swarm_affects[4];
+static int swarm_count, fades, bites;
+bool collector_presence_is_npc(P_char) { return false; }
+bool training_dummy_capture_target_allowed(P_char) { return true; }
+bool has_innate(P_char, int) { return false; }
+P_obj get_globe(P_char) { return nullptr; }
+void clearMemory(P_char) { std::abort(); }
+void remember(P_char, P_char) { std::abort(); }
+void remove_plushit_bits(P_char) {}
+void send_to_char(const char *, P_char) {}
+void act(const char *, int, P_char, P_obj, void *, int) {}
+void logit(const char *, const char *, ...) { std::abort(); }
+[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
+char *str_dup(const char *text) { return strdup(text); }
+void str_free(const char *text) { free(const_cast<char *>(text)); }
+int real_mobile(int vnum) { assert(vnum == 1107); return 0; }
+P_char read_mobile(int rnum, int) {
+    assert(rnum == 0 && swarm_count < 4);
+    const int i = swarm_count++;
+    swarms[i] = {};
+    swarm_npcs[i] = {};
+    swarms[i].only.npc = &swarm_npcs[i];
+    swarms[i].specials.act = ACT_ISNPC;
+    swarms[i].player.name = const_cast<char *>("swarm");
+    SET_POS(&swarms[i], STAT_NORMAL + POS_STANDING);
+    swarm_index.virtual_number = 1107;
+    return &swarms[i];
+}
+bool char_to_room(P_char mob, int room_number, int) { mob->in_room = room_number; return true; }
+bool group_add_member(P_char, P_char) { return true; }
+void MobStartFight(P_char mob, P_char target) { mob->specials.fighting = target; }
+void linked_affect_to_char(P_char mob, affected_type *af, P_char ch, int type) {
+    assert(type == LNK_PET);
+    const int i = mob - swarms;
+    swarm_affects[i] = *af;
+    mob->affected = &swarm_affects[i];
+    swarm_links[i] = {};
+    swarm_links[i].type = type;
+    swarm_links[i].linking = mob;
+    swarm_links[i].next_linked = ch->linked;
+    ch->linked = &swarm_links[i];
+}
+void extract_char(P_char) { ++fades; }
+void poison_neurotoxin(int level, P_char, char *, int, P_char, affected_type *) {
+    assert(level == 10);
+    ++bites;
+}
 
 FUNCTIONS
 
@@ -369,11 +430,122 @@ static const Page pages[] = {
 PAGES
 };
 
+static int swarm_draws[4], swarm_draw_count;
+static int swarm_number(int from, int to) {
+    assert(swarm_draw_count < 4);
+    const int result = swarm_draws[swarm_draw_count++];
+    assert(result >= from && result <= to);
+    return result;
+}
+
+static void insects_bounds() {
+    const Rolls scripted = { nullptr, swarm_number };
+    for (int level = 1; level <= 62; ++level) {
+        int counts[31]{};
+        // Exhaust all four-draw streams that the old MIN/MAX could consume.
+        for (int stream = 0; stream < 1296; ++stream) {
+            int digits = stream;
+            for (int &draw : swarm_draws) {
+                draw = level - 7 + digits % 6;
+                digits /= 6;
+            }
+            swarm_draw_count = 0;
+            char_data storage{};
+            P_char mob = &storage;
+            mob->player.level = insects_level(scripted, level);
+            assert(swarm_draw_count == 1);
+            assert(GET_LEVEL(mob) >= 1 && GET_LEVEL(mob) <= 30);
+            assert(GET_LEVEL(mob) == std::clamp(swarm_draws[0], 1, 30));
+            ++counts[GET_LEVEL(mob)];
+        }
+        for (int value = 1; value <= 30; ++value) {
+            int expected = 0;
+            for (int raw = level - 7; raw <= level - 2; ++raw)
+                if (std::clamp(raw, 1, 30) == value) expected += 216;
+            assert(counts[value] == expected);
+        }
+    }
+    // The reported mixed-roll escape sequences must use only their first value.
+    for (int level : { 3, 33, 37 }) {
+        swarm_draws[0] = swarm_draws[1] = swarm_draws[2] = level == 3 ? 1 : level - 7;
+        swarm_draws[3] = level == 3 ? -4 : level - 2;
+        swarm_draw_count = 0;
+        assert(insects_level(scripted, level) == std::clamp(swarm_draws[0], 1, 30));
+        assert(swarm_draw_count == 1);
+    }
+}
+
+static void insects_summons() {
+    for (const Viewer &v : { viewers[0], viewers[1] })
+        for (int level = 1; level <= 62; ++level)
+            for (int spell_level : { level, 3, 35, 37 })
+                for (uint64_t seed = 1; seed <= 40; ++seed) {
+                    char_data ch = viewer(v, level), target{};
+                    ch.player.name = const_cast<char *>("caster");
+                    swarm_count = 0;
+                    randomize(seed);
+                    spell_insects(spell_level, &ch, nullptr, 0, &target, nullptr);
+                    const int limit = std::max(1, level / 14);
+                    assert(swarm_count == (v.m_class == CLASS_ILLUSIONIST ? limit : 1));
+                    const int low = std::clamp(spell_level - 7, 1, 30);
+                    const int high = std::clamp(spell_level - 2, 1, 30);
+                    if (spell_level == level) {
+                        const std::string page = insects_facts(&ch);
+                        assert(contains(page, ("  Swarm's level: " +
+                                               show({low, high}) + "\n").c_str()));
+                        assert(contains(page, ("  Its hit points: " +
+                                               show({low + level, high * 3 + level}) + "\n").c_str()));
+                    }
+                    for (int i = 0; i < swarm_count; ++i) {
+                        P_char mob = &swarms[i];
+                        assert(GET_LEVEL(mob) >= low && GET_LEVEL(mob) <= high);
+                        assert(GET_HIT(mob) >= GET_LEVEL(mob) + level);
+                        assert(GET_HIT(mob) <= GET_LEVEL(mob) * 3 + level);
+                        assert(GET_HIT(mob) == GET_MAX_HIT(mob) && GET_HIT(mob) == mob->points.base_hit);
+                        assert(mob->points.hitroll == level && mob->points.base_hitroll == level);
+                        assert(mob->points.damroll == level / 3 && mob->points.base_damroll == level / 3);
+                        assert(mob->points.damnodice == level / 8 && mob->points.damsizedice == level / 9);
+                        assert(IS_AFFECTED(mob, AFF_HASTE) && IS_SET(mob->specials.act, ACT_SPEC_DIE));
+                        assert(!!IS_AFFECTED3(mob, AFF3_BLUR) == (level > 31));
+                        assert(!!IS_AFFECTED2(mob, AFF2_FLURRY) == (level > 50));
+                        assert(!IS_AFFECTED(mob, AFF_CHARM) && !IS_SET(mob->specials.act, ACT_MEMORY));
+                        assert(mob->affected->duration == 1 && mob->affected->flags == AFFTYPE_NODISPEL);
+                        assert(GET_OPPONENT(mob) == &target && mob->player.m_class == 0 && GET_EXP(mob) == 0);
+                    }
+                    const int before = swarm_count;
+                    spell_insects(spell_level, &ch, nullptr, 0, &target, nullptr);
+                    assert(swarm_count == before + (v.m_class != CLASS_ILLUSIONIST && before < limit));
+                    for (int i = 0; i < swarm_count; ++i) free(swarms[i].player.name);
+                }
+}
+
+static void insects_periodic() {
+    char_data mob{}, target{};
+    SET_POS(&mob, STAT_NORMAL + POS_STANDING);
+    mob.specials.fighting = &target;
+    int total_fades = 0, total_bites = 0;
+    for (int level = 1; level <= 30; ++level) {
+        mob.player.level = level;
+        for (uint64_t seed = 1; seed <= 1000; ++seed) {
+            randomize(seed);
+            const bool fade = !number(0, level / 3);
+            const bool bite = !fade && !number(0, MAXLVL - level);
+            const int next = fingerprint();
+            randomize(seed);
+            fades = bites = 0;
+            assert(!!insects(&mob, nullptr, CMD_PERIODIC, nullptr) == (fade || bite));
+            assert(fades == fade && bites == bite && fingerprint() == next);
+            total_fades += fades;
+            total_bites += bites;
+        }
+    }
+    assert(total_fades > 0 && total_bites > 0);
+}
+
 static void rolls_match() {
-    for (int level : { 1, 10, 30, 50, 56, 60 }) {
+    for (int level : { 1, 10, 30, 35, 50, 56, 60 }) {
         SAME(BOUNDED(1, number(level - 5, level + 1), 55), shadow_monster_level(rolls, level));
         SAME(dice(level, 3) + (level * 2), shadow_monster_hit_points(rolls, level));
-        SAME(MIN(30, MAX(1, number(level - 7, level - 2))), insects_level(rolls, level));
         SAME(dice(level, 3) + (level), insects_hit_points(rolls, level, level));
         SAME(dice(2 * level, 8), boulder_damage(rolls, level));
         SAME(level + number(-10, 10), stunning_visions_percent(rolls, level));
@@ -417,6 +589,9 @@ static void rolls_match() {
         SAME((int)(number(0, MIN(level + 5, 45)) / 10),
              [&] { char_data t = viewer(viewers[4], level); return raised_undead_type_roll(rolls, &t, level); }());
     }
+    // Insects must consume one draw, including both former clamp-escape bands.
+    for (int level = 1; level <= 62; ++level)
+        SAME(std::clamp(number(level - 7, level - 2), 1, 30), insects_level(rolls, level));
     SAME(number(0, 9), boulder_knockdown_roll(rolls));
     SAME(number(0, 5), shadow_travel_unseen_roll(rolls));
     SAME(number(0, 19), hammer_stun_roll(rolls));
@@ -444,6 +619,10 @@ static void rolls_match() {
 
 int main() {
     rolls_match();
+    insects_bounds();
+    insects_summons();
+    insects_periodic();
+    puts("PASS: Insects one-roll bounds/distributions, summon HP/info/stats/flags, pet setup and periodic outcomes");
     // Every page at every level for every kind of caster: no rolls, short lines, sane numbers.
     randomize(9);
     const int untouched = fingerprint();
@@ -469,7 +648,7 @@ int main() {
             }
 
 EXACT
-    puts("PASS: batch 9 shared rolls match the old code and stay in range, facts never roll");
+    puts("PASS: batch 9 rolls match their oracles and stay in range, facts never roll");
 }
 '''
 
@@ -1573,6 +1752,10 @@ def main():
                  table(NECRO, "const struct undead_description undead_data[NECROPET_LAST + 1] =")]
     for file in PREFIXES:
         functions += [extract_function(file, signature) for signature in helpers_of(file)]
+    functions += [extract_function(NECRO, "static int unholy_alliance_charm_duration("),
+                  extract_function(NECRO, "int setup_pet("),
+                  extract_function(ILLUSION, "void spell_insects("),
+                  extract_function("specs.mobile.c", "int insects(")]
     pages = ",\n".join(f'    {{ "{name}", {name}_facts }}' for _, name, _ in SPELLS)
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)

@@ -61,40 +61,21 @@ void cast_call_lightning(int level, P_char ch, char * /*arg*/, int type, P_char 
 	switch (type)
 	{
 	case SPELL_TYPE_SPELL:
-		/*
-			    if (OUTSIDE(ch) && (sector_table[in_weather_sector(ch->in_room)].conditions.precip_rate > 5)) {
-			*/
-		if (OUTSIDE(ch))
-		{
-			spell_call_lightning(level, ch, victim, 0);
-		}
+		spell_call_lightning(level, ch, victim, 0);
 		break;
 	case SPELL_TYPE_POTION:
-		/*
-			    if (OUTSIDE(ch) && (sector_table[in_weather_sector(ch->in_room)].conditions.precip_rate > 5)) {
-			*/
-		if (OUTSIDE(ch))
-		{
-			spell_call_lightning(level, ch, ch, 0);
-		}
+		send_to_char("Call Lightning cannot be invoked by drinking a potion.\r\n", ch);
 		break;
 	case SPELL_TYPE_SCROLL:
-		/*
-			    if (OUTSIDE(ch) && (sector_table[in_weather_sector(ch->in_room)].conditions.precip_rate > 5)) {
-			*/
-		if (OUTSIDE(ch))
-		{
-			if (victim)
-				spell_call_lightning(level, ch, victim, 0);
-			else if (!tar_obj)
-				spell_call_lightning(level, ch, ch, 0);
-		}
+		if (victim)
+			spell_call_lightning(level, ch, victim, 0);
+		else if (!tar_obj)
+			spell_call_lightning(level, ch, ch, 0);
 		break;
 	case SPELL_TYPE_STAFF:
-		/*
-			    if (OUTSIDE(ch) && (sector_table[in_weather_sector(ch->in_room)].conditions.precip_rate > 5)) {
-			*/
-		if (OUTSIDE(ch))
+		if (!OUTSIDE(ch))
+			spell_call_lightning(level, ch, nullptr, 0);
+		else
 		{
 			for (victim = world[ch->in_room].people; victim; victim = next)
 			{
@@ -105,7 +86,7 @@ void cast_call_lightning(int level, P_char ch, char * /*arg*/, int type, P_char 
 		}
 		break;
 	default:
-		logit(LOG_DEBUG, "Serious screw-up in call lightning!");
+		send_to_char("Call Lightning does not support that activation.\r\n", ch);
 		break;
 	}
 }
@@ -570,7 +551,8 @@ void cast_gate(int level, P_char ch, char *arg, int type, P_char tar_ch, P_obj /
 
 		break;
 	default:
-		logit(LOG_DEBUG, "Serious screw-up in gate!");
+		send_to_char("Gate requires a spell, scroll, wand or staff and a named plane.\r\n",
+			     ch);
 		break;
 	}
 }

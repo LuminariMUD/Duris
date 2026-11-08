@@ -1592,14 +1592,8 @@ void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		{
 			REMOVE_BIT(mob->specials.act, ACT_SENTINEL);
 		}
-		if (!SET_BIT(mob->specials.act, ACT_HUNTER))
-		{
-			SET_BIT(mob->specials.act, ACT_HUNTER);
-		}
-		if (SET_BIT(mob->specials.act, ACT_GUILD_GOLEM))
-		{
-			REMOVE_BIT(mob->specials.act, ACT_GUILD_GOLEM);
-		}
+		SET_BIT(mob->specials.act, ACT_HUNTER);
+		REMOVE_BIT(mob->specials.act, ACT_GUILD_GOLEM);
 		if (GET_LEVEL(ch) >= 54)
 		{
 			mob->points.damnodice = 10;
@@ -1884,14 +1878,8 @@ void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused
 		{
 			REMOVE_BIT(mob->specials.act, ACT_SENTINEL);
 		}
-		if (!SET_BIT(mob->specials.act, ACT_HUNTER))
-		{
-			SET_BIT(mob->specials.act, ACT_HUNTER);
-		}
-		if (SET_BIT(mob->specials.act, ACT_GUILD_GOLEM))
-		{
-			REMOVE_BIT(mob->specials.act, ACT_GUILD_GOLEM);
-		}
+		SET_BIT(mob->specials.act, ACT_HUNTER);
+		REMOVE_BIT(mob->specials.act, ACT_GUILD_GOLEM);
 		if (GET_LEVEL(ch) >= 50)
 		{
 			mob->points.damnodice = 15;
@@ -2535,14 +2523,8 @@ void spell_call_avatar(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 		    {
 		      REMOVE_BIT(mob->specials.act, ACT_SENTINEL);
 		    } */
-		if (!SET_BIT(mob->specials.act, ACT_HUNTER))
-		{
-			SET_BIT(mob->specials.act, ACT_HUNTER);
-		}
-		if (SET_BIT(mob->specials.act, ACT_GUILD_GOLEM))
-		{
-			REMOVE_BIT(mob->specials.act, ACT_GUILD_GOLEM);
-		}
+		SET_BIT(mob->specials.act, ACT_HUNTER);
+		REMOVE_BIT(mob->specials.act, ACT_GUILD_GOLEM);
 		if (GET_LEVEL(ch) >= 54)
 		{
 			if (mob->points.damnodice < 15)
@@ -2831,14 +2813,8 @@ void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[mayb
 		    {
 		      REMOVE_BIT(mob->specials.act, ACT_SENTINEL);
 		    } */
-		if (!SET_BIT(mob->specials.act, ACT_HUNTER))
-		{
-			SET_BIT(mob->specials.act, ACT_HUNTER);
-		}
-		if (SET_BIT(mob->specials.act, ACT_GUILD_GOLEM))
-		{
-			REMOVE_BIT(mob->specials.act, ACT_GUILD_GOLEM);
-		}
+		SET_BIT(mob->specials.act, ACT_HUNTER);
+		REMOVE_BIT(mob->specials.act, ACT_GUILD_GOLEM);
 		if (GET_LEVEL(ch) >= 54)
 		{
 			if (mob->points.damnodice < 10)

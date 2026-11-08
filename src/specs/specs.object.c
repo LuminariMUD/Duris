@@ -4273,7 +4273,7 @@ int demo_scimitar(P_obj obj, P_char ch, int cmd, char *arg)
 		 "$p &+Lcarried by $n&+L slices into your&+L soul...&n",
 		 "$p &+Lcarried by $n&+L slices into $N's&+L soul...&n", TRUE, ch, obj, victim);
 
-	GET_VITALITY(victim) = MAX(0, GET_VITALITY(victim) - (number(10, 40)));
+	GET_VITALITY(victim) = std::max(0, GET_VITALITY(victim) - (number(10, 40)));
 
 	act_trio("&+L$N&+L goes limp for a moment.&n",
 		 "&+LYou feel your body&+L go limp for a moment.&n",

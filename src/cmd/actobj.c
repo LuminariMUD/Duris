@@ -4689,7 +4689,7 @@ void do_drink(P_char ch, char *argument, int /*cmd*/)
 			if ((temp->value[2] == LIQ_HOLYWATER && IS_GOOD(ch)) ||
 			    (temp->value[2] == LIQ_UNHOLYWAT && IS_EVIL(ch)))
 			{
-				healamt = MIN(GET_MAX_HIT(ch) - GET_HIT(ch), dice(3, 3));
+				healamt = std::min(GET_MAX_HIT(ch) - GET_HIT(ch), dice(3, 3));
 
 				send_to_char(
 					"You feel &+Wt&+wou&+Wc&+wh&+Wed&n by a higher power!\r\n",
@@ -4703,7 +4703,7 @@ void do_drink(P_char ch, char *argument, int /*cmd*/)
 				send_to_char(
 					"You are &+rbl&+Ra&+rs&+Rte&+rd&n by a higher power!\r\n",
 					ch);
-				GET_HIT(ch) = MAX(0, GET_HIT(ch) - dice(3, 3));
+				GET_HIT(ch) = std::max(0, GET_HIT(ch) - dice(3, 3));
 			}
 			else if (temp->value[3])
 			{ /*

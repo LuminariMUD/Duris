@@ -218,14 +218,8 @@ int main() {
 
 subprocess.run(['make', '-C', 'src', f'-j{os.cpu_count()}'], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
 # Print the Makefile's own object and library lists so the link matches the server's.
-link_output = subprocess.check_output(
-    ['make', '-s', '-C', 'src', '--eval=print-link:;@echo DEAD_NPC_LINK=$(DMS_OBJS) $(LIBS)',
-     'print-link'], cwd=ROOT, text=True)
-# Recursive Make can add directory banners; only its marked object/library row is link input.
-link_rows = [line.removeprefix('DEAD_NPC_LINK=') for line in link_output.splitlines()
-             if line.startswith('DEAD_NPC_LINK=')]
-assert len(link_rows) == 1, link_output
-link = link_rows[0].split()
+link = subprocess.check_output(['make', '-s', '--no-print-directory', '-C', 'src', '--eval=print-link:;@echo $(DMS_OBJS) $(LIBS)',
+                                'print-link'], cwd=ROOT, text=True).split()
 out = ROOT / 'bin/tests'
 out.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='spell-dead-npc-', dir=out) as temporary:
