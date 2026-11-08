@@ -2,7 +2,8 @@
 """Exercise all five displacement handlers with the real forced movement and riding executor.
 
 Combat rolls and room hooks are controlled. Actor bodies, ability functions, door checks,
-riding lookup, and implicit companion transport are production code, under ASan/UBSan.
+riding lookup, narrow mounted-entry checks and implicit companion transport are production
+code, under ASan/UBSan. The controlled walk models both production placement passes.
 """
 from pathlib import Path
 import os
@@ -102,6 +103,12 @@ float takedown_check(P_char,P_char,float chance,int,ulong) { return chance; }
 bool notch_skill(P_char,int,float) { return true; }
 int do_simple_move(P_char,int,unsigned int);
 int can_enter_room(P_char,int,int) { return true; }
+int leave_by_exit(P_char ch,int direction) {
+ P_char rider=nullptr;
+ const int room_to=EXIT(ch,direction)->to_room;
+ __MOUNTED_NARROW_GATE__
+ return true;
+}
 
 int DamageOneItem(P_char ch,int,P_obj,bool) { if(break_lance) { lance_present=false; ch->equipment[WIELD]=nullptr; } return 0; }
 void set_fighting(P_char,P_char) {}
@@ -171,8 +178,11 @@ static void forget(P_char ch) {
  if(P_char rider=GET_RIDER(ch)) unlink_char(rider,ch,LNK_RIDING);
  detach(ch); live.erase(std::remove(live.begin(),live.end(),ch),live.end()); ++character_removal_generation;
 }
-int do_simple_move(P_char ch,int,unsigned int) {
- assert(ranged_charge); detach(ch); assert(char_to_room(ch,1,DIR_NORTH));
+int do_simple_move(P_char ch,int direction,unsigned int) {
+ assert(ranged_charge);
+ if(!leave_by_exit(ch,direction)) return false;
+ detach(ch); assert(char_to_room(ch,1,-2));
+ char_from_room(ch); assert(char_to_room(ch,1,DIR_NORTH));
  if(enter_hook==Hook::extract) forget(&target);
  if(enter_hook==Hook::redirect) place(&target,2);
  if(enter_hook==Hook::kill) SET_POS(&target,STAT_DEAD);
@@ -235,6 +245,10 @@ room_placement = room_placement[room_placement.index('\tif (!IS_ROOM(room, ROOM_
 placement = placement.replace('__ROOM_INSERTION__',
     'P_char k=nullptr; int j=0; char exit1=-1,exit2=-1,exit3=-1;\n detach(ch);\n' +
     room_placement + '\n ch->in_room=room;')
+leave = extract_function('actmove.c', 'int leave_by_exit(')
+mounted_gate = leave[leave.index('\tif (IS_RIDING(ch) && IS_ROOM(room_to, ROOM_SINGLE_FILE))'):
+                     leave.index('\n\tif (IS_ROOM(ch->in_room, ROOM_SINGLE_FILE)')]
+prelude = prelude.replace('__MOUNTED_NARROW_GATE__', mounted_gate)
 prelude += re.search(r'struct fury_data\n\{.*?\n};', (root/'src/magic/smagic.c').read_text(), re.S)[0]+'\n'
 prelude += re.search(r'^#define BANISHMENT_HOLY_WORD.*$', (root/'src/magic/magic.c').read_text(), re.M)[0]+'\n'
 prelude += (root/'src/cmd/actoff.c').read_text().split('#include')[0]
@@ -360,7 +374,7 @@ int main() {
   } else assert(!GET_MOUNT(&actor));
  }
 
- // A ram into either end of a single-file room must still hit, with real insertion and adjacency.
+ // Forced rams retain damage at either end; ordinary mounted approaches are refused first.
  for(bool ranged : {false,true}) for(bool prepend : {false,true}) {
   reset(4,0,7); ranged_charge=ranged;
   rooms[1].room_flags=ROOM_SINGLE_FILE;
@@ -371,6 +385,12 @@ int main() {
   if(ranged) place(&target,1);
   run(4); ++cases;
   assert(IS_ROOM(1,ROOM_SINGLE_FILE));
+  if(ranged) {
+   assert(actor.in_room==0 && target.in_room==1 && mount.in_room==0 && damage_calls==0);
+   assert(!mounted_during_entry && std::any_of(fixture_messages.begin(),fixture_messages.end(),
+          [](const auto &message) { return message.find("while mounted")!=std::string::npos; }));
+   continue;
+  }
   assert(actor.in_room==1 && target.in_room==1 && mount.in_room==1);
   assert(AdjacentInRoom(&actor,&target) && damage_calls==1);
   assert(GET_MOUNT(&actor)==&mount && mounted_during_entry);
