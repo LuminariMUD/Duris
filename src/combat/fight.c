@@ -9185,7 +9185,7 @@ std::string leap_innate_facts(P_char ch)
 			    chance_under(leap_chance_top() + 1, 1, 100)) +
 	       "  It compares your agility, your load, and your level with the attacker's.\n"
 	       "  It needs you standing and not gazed at. Thri-kreen unlock it at level 21;\n"
-	       "  harpies at level 1.\n";
+	       "  harpies and gargoyles at level 1.\n";
 }
 
 int leapSucceed(P_char victim, P_char attacker)

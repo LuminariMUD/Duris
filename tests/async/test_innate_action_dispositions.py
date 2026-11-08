@@ -127,10 +127,10 @@ int main() {
     fresh(ch); rooms[0].sector_type = SECT_OCEAN;
     do_summon_orc(&ch,nullptr,0); assert(!find_innate_timer(&ch,INNATE_SUMMON_HORDE));
     rooms[0].sector_type = SECT_FIELD;
-    for (int race : {RACE_THRIKREEN,RACE_HARPY,RACE_HUMAN}) for (int level : {1,20,21,56}) {
+    for (int race : {RACE_THRIKREEN,RACE_HARPY,RACE_GARGOYLE,RACE_HUMAN}) for (int level : {1,20,21,56}) {
         fresh(ch); ch.player.race = race; ch.player.level = level; ch.curr_stats.Agi = 140;
         rolls = 0;
-        bool eligible = race == RACE_HARPY || (race == RACE_THRIKREEN && level >= 21);
+        bool eligible = race == RACE_HARPY || race == RACE_GARGOYLE || (race == RACE_THRIKREEN && level >= 21);
         assert(has_innate(&ch,INNATE_LEAP) == eligible);
         assert(bool(leapSucceed(&ch,&target)) == eligible);
         assert(rolls == (eligible ? 1 : 0));

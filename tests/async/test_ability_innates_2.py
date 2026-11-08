@@ -708,7 +708,7 @@ GOLDEN = """== blindsinging
   Lowest and highest chance: 1 in 100, 20 in 100
   It compares your agility, your load, and your level with the attacker's.
   It needs you standing and not gazed at. Thri-kreen unlock it at level 21;
-  harpies at level 1.
+  harpies and gargoyles at level 1.
 == rapier_dirk
   With a sword and a dagger or short sword, damage you deal: 110% of normal
   Damage you take: 90% of normal
