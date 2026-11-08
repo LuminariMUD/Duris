@@ -2316,6 +2316,19 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 
 	char_to_room(mob, ch->in_room, 0);
 
+	if (IS_SET(obj->value[CORPSE_FLAGS], PC_CORPSE))
+	{
+		logit(LOG_CORPSE, "%s got raised as %s while equipped ( by %s in room %d ).",
+		      obj->short_description, golem_data[which_type].name,
+		      (IS_PC(ch) ? GET_NAME(ch) : ch->player.short_descr),
+		      world[ch->in_room].number);
+		wizlog(57, "%s got raised as %s while equipped ( by %s in room %d ).",
+		       obj->short_description, golem_data[which_type].name,
+		       (IS_PC(ch) ? GET_NAME(ch) : ch->player.short_descr),
+		       world[ch->in_room].number);
+		corpselog = TRUE;
+	}
+
 	if (obj->contains)
 	{
 		for (obj_in_corpse = obj->contains; obj_in_corpse; obj_in_corpse = next_obj)
