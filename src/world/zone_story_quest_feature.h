@@ -262,6 +262,8 @@ class service
 		std::map<std::string, std::string> transaction_ids;
 		std::map<int64_t, daily_assignment> daily_assignments;
 		std::map<std::string, std::string> reward_keys;
+		/* This character's rows of the saved document; state_for() empties them. */
+		mutable std::string document_rows;
 	};
 
 	struct stored_transaction

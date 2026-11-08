@@ -589,6 +589,14 @@ int main()
 	require(reloaded.deserialize_state(history.serialize_state(&error), &error) &&
 			sorted_rows(reloaded) == grown_rows,
 		"reloaded rows differ from the saved document");
+	// Each character's cached rows follow every change to that character.
+	require(reloaded.summary_for(7, 1001).completed == history.summary_for(7, 1001).completed,
+		"a saved document missed later credits for a character");
+	history.remember_character(7, 1001, "Renamed");
+	service renamed(catalog);
+	require(renamed.deserialize_state(history.serialize_state(&error), &error) &&
+			renamed.summary_for(7, 1001).character_name == "Renamed",
+		"a saved document kept a character's old name");
 	require(history.erase_character_all_seasons(1003, 7) && sorted_rows(history) != grown_rows,
 		"erasing a character left its rows in the document");
 	for (const std::string &row : sorted_rows(history))

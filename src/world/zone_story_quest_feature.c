@@ -499,6 +499,7 @@ service::character_state &service::state_for(uint32_t season_id, uint32_t pid)
 	auto &state = characters_[{ season_id, pid }];
 	state.season_id = season_id;
 	state.pid = pid;
+	state.document_rows.clear();
 	return state;
 }
 
@@ -1498,12 +1499,17 @@ std::string service::render_daily_score(uint32_t season_id, uint32_t pid, int le
 
 service::state_parts service::capture_state() const
 {
-	std::ostringstream output;
-	output << "ZSQF|1\n";
+	std::string character_text = "ZSQF|1\n";
 	for (const auto &[key, state] : characters_)
 	{
 		if (deleted_characters_.find(key) != deleted_characters_.end())
 			continue;
+		if (!state.document_rows.empty())
+		{
+			character_text += state.document_rows;
+			continue;
+		}
+		std::ostringstream output;
 		if (!state.character_name.empty())
 			output << "N|" << state.season_id << "|" << state.pid << "|"
 			       << hex_encode(state.character_name) << "|" << state.racewar << "\n";
@@ -1521,7 +1527,10 @@ service::state_parts service::capture_state() const
 			output << "R|" << state.season_id << "|" << state.pid << "|"
 			       << hex_encode(reward_key) << "|" << hex_encode(transaction_id)
 			       << "\n";
+		state.document_rows = output.str();
+		character_text += state.document_rows;
 	}
+	std::ostringstream output;
 	for (const auto &[season, pid] : deleted_characters_)
 		output << "X|" << season << "|" << pid << "\n";
 	for (const auto &[season, pid] : leaderboard_exclusions_)
@@ -1530,7 +1539,7 @@ service::state_parts service::capture_state() const
 			output << "H|" << season << "|" << pid << "\n";
 	}
 	state_parts captured;
-	auto character_rows = std::make_shared<const std::string>(output.str());
+	auto character_rows = std::make_shared<const std::string>(character_text + output.str());
 	captured.unshared_bytes = character_rows->size() + open_rows_.size();
 	captured.parts.reserve(sealed_rows_.size() + 2);
 	captured.parts.push_back(std::move(character_rows));
