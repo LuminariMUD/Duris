@@ -6758,7 +6758,8 @@ Duration:       Instantaneous
 Type of spell:  Cold
 
 "Frostbite" generates an icy blast which engulfs its victim, chilling
-him down to the bone.
+him down to the bone. A victim who fails its saving throw is weakened,
+losing Strength, even if it shrugged off or absorbed the blast itself.
 ===========================================================================
 
 #

@@ -1056,7 +1056,8 @@ std::string frostbite_facts(P_char ch)
 			    show({ -frostbite_strength(lowest_rolls),
 				   -frostbite_strength(highest_rolls) }) +
 			    " strength") +
-	       "  Not if it is already frostbitten.\n" +
+	       "  Not if it is already frostbitten.\n"
+	       "  A shrugged or absorbed blast can still weaken it.\n" +
 	       fact("Weakness lasts", game_hours(frostbite_duration())) +
 	       "  Globes and spirit wards do not stop it.\n"
 	       "  Spell damage modifiers and the target's defenses apply after.\n";
@@ -1077,7 +1078,7 @@ void spell_frostbite(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 
 	int dam = frostbite_damage(live_rolls, level);
 
-	if (spell_damage(ch, victim, dam, SPLDAM_COLD, 0, &messages) != DAM_VICTDEAD)
+	if (spell_damage(ch, victim, dam, SPLDAM_COLD, 0, &messages) == DAM_NONEDEAD)
 	{
 		int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_FROSTBITE);
 		if (!affected_by_spell(victim, SPELL_FROSTBITE) &&

@@ -83,6 +83,12 @@ void char_from_room(P_char ch) { ch->in_room = NOWHERE; }
 bool char_to_room(P_char ch, int room, int) { ++moved; ch->in_room = room; return true; }
 void CharWait(P_char, int ticks) { waited += ticks; }
 void KnockOut(P_char, int) { assert(false); }
+static int weakened;
+int get_default_save_mod(P_char victim, P_char aggressor, int, int) {
+    return victim->player.level - aggressor->player.level;
+}
+bool NewSaves(P_char, int, int) { return false; }
+affected_type *affect_to_char(P_char, affected_type *) { ++weakened; return nullptr; }
 ''' + '\n'.join(extract_function(path, signature) for path, signature in [
     ('psionics.c', 'static int psionic_wave_blast_shrug_roll('),
     ('psionics.c', 'static int psionic_wave_blast_wave_damage('),
@@ -106,6 +112,10 @@ void KnockOut(P_char, int) { assert(false); }
     ('magic.c', 'static int heavens_aid_pc_damage('),
     ('magic.c', 'static int heavens_aid_factor('),
     ('magic.c', 'void spell_heavens_aid('),
+    ('magic.c', 'static int frostbite_damage('),
+    ('magic.c', 'static int frostbite_strength('),
+    ('magic.c', 'static int frostbite_duration('),
+    ('magic.c', 'void spell_frostbite('),
 ]) + r'''
 static char_data alive() {
     char_data ch{};
@@ -255,12 +265,25 @@ static void heavens() {
         assert(!damage_calls);
     }
 }
+static void frostbite() {
+    release_on_damage = true;
+    for (int result : {DAM_NONEDEAD, DAM_VICTDEAD, DAM_CHARDEAD, DAM_BOTHDEAD}) {
+        auto caster = new char_data(alive()), victim = new char_data(alive());
+        damage_result = result;
+        weakened = 0;
+        spell_frostbite(50, caster, nullptr, SPELL_TYPE_SPELL, victim, nullptr);
+        assert(weakened == (result == DAM_NONEDEAD));
+        if (result != DAM_VICTDEAD && result != DAM_BOTHDEAD) delete victim;
+        if (result != DAM_CHARDEAD && result != DAM_BOTHDEAD) delete caster;
+    }
+}
 int main(int argc, char **argv) {
     assert(argc == 2);
     if (!std::strcmp(argv[1], "wave")) wave();
     else if (!std::strcmp(argv[1], "golem")) golem();
     else if (!std::strcmp(argv[1], "radial")) radial();
     else if (!std::strcmp(argv[1], "heavens")) heavens();
+    else if (!std::strcmp(argv[1], "frostbite")) frostbite();
     else assert(false);
     std::printf("PASS critical spell safety: %s\n", argv[1]);
 }
@@ -275,5 +298,5 @@ with tempfile.TemporaryDirectory(prefix='critical-spells-', dir=out) as temporar
                     '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
                     '-g', '-Isrc', str(cpp), '-o', str(binary)], cwd=ROOT, check=True)
     results = [subprocess.run([str(binary), case], timeout=30).returncode
-               for case in ('wave', 'golem', 'radial', 'heavens')]
+               for case in ('wave', 'golem', 'radial', 'heavens', 'frostbite')]
     assert not any(results), results
