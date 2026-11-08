@@ -624,7 +624,7 @@ P_char create_random_mob(int theme, int mob_level)
 	random_mob->points.base_hitroll = random_mob->points.hitroll = level;
 	random_mob->points.base_damroll = random_mob->points.damroll = level;
 	// dice
-	random_mob->points.damnodice = (int)MAX(1, level / 5 + number(0, 3));
+	random_mob->points.damnodice = (int)std::max(1, level / 5 + number(0, 3));
 	random_mob->points.damsizedice = (int)MAX(1, level / 5);
 
 	if (GET_CLASS(random_mob, CLASS_MONK))

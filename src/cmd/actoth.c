@@ -3263,7 +3263,7 @@ void listen(P_char ch, char *argument)
 				snprintf(
 					buf, MAX_STRING_LENGTH,
 					"You hear what might be %d creatures invisible, or hiding.\r\n",
-					MAX(1, (found + number(0, 1) - number(0, 1))));
+					std::max(1, found + number(0, 1) - number(0, 1)));
 			}
 			else
 				snprintf(buf, MAX_STRING_LENGTH,
@@ -3305,7 +3305,7 @@ void listen(P_char ch, char *argument)
 				{
 					snprintf(buf, MAX_STRING_LENGTH,
 						 "You hear what might be %d creatures %s%s.\r\n",
-						 MAX(1, (found + number(0, 1) - number(0, 1))),
+						 std::max(1, found + number(0, 1) - number(0, 1)),
 						 ((dir == 5) ? "below" :
 						  (dir == 4) ? "above" :
 							       "to the "),
