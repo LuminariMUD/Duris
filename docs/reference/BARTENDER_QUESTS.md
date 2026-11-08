@@ -100,8 +100,10 @@ Let `C` be that character's current level at the relevant reward call, `L` the
 saved accepted quest level, and `N` the original KILL quota.
 
 - **Items:** ASK and one-kill tasks guarantee one personal item at completion.
-  A KILL quota `N` adds an independent 10% bonus-item roll for each kill after
-  the first: `1 + Binomial(N - 1, 0.1)`. Nine kills therefore average 1.8 items;
+  A KILL quota `N` adds an independent one-in-`N + 1` bonus-item roll for each
+  kill after the first: `1 + Binomial(N - 1, 1 / (N + 1))`. That averages
+  `2N / (N + 1)` items, the historical mean for a character credited with every
+  kill, without its zero-item outcomes. Nine kills therefore average 1.8 items;
   exactly one has probability 43.046721%, and two or more 56.953279%. Rewards
   are delivered together at completion. Quotas outside 1–4096 retain the task
   for staff diagnosis, so all possible quantities fit the snapshot object limit.

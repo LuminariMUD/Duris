@@ -15,14 +15,18 @@ from _paths import ROOT, extract_function
 
 HARNESS = r'''
 #include "persistence/critical_command_coordinator.c"
+#include "persistence/latency_trace.h"
 #include <cassert>
 #include <cstdio>
 #include <ctime>
 
 static int pulse = 0;
 static constexpr int WAIT_SEC = 4;
+static constexpr int LOG_STATUS = 0;
 static uint64_t ne_event_tick = 0;
-struct game_loop_pulse_context { uint64_t loop_tick = 0; };
+struct game_loop_pulse_context {
+    uint64_t loop_tick = 0, loop_start_mono_us = 0, persistence_us = 0;
+};
 struct player_load_result { uint64_t request_id = 0; };
 struct descriptor { uint64_t player_load_request_id; descriptor *next; };
 using P_desc = descriptor *;
@@ -35,8 +39,10 @@ static bool events_finished = false, receipt_queued = false;
 static unsigned int handled = 0, output_count = 0;
 static int published_at = -1, visible_at = -1;
 static uint64_t loop_monotonic_us() { return ne_event_tick * 250000; }
-static uint64_t latency_trace_elapsed_us(uint64_t a, uint64_t b) { return b - a; }
-static void latency_trace_record(const char *, uint64_t, uint64_t) {}
+uint64_t latency_trace_elapsed_us(uint64_t a, uint64_t b) { return b - a; }
+void latency_trace_record(const char *, uint64_t, uint64_t) {}
+const char *latency_trace_boot_id() { return "cadence-test"; }
+static void logit(int, const char *, ...) { assert(false); } // No job advances the virtual clock.
 
 #define SPY(name) static void name() { calls.emplace_back(#name); }
 SPY(gmcp_flush_initial_states)
