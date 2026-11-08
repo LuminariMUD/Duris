@@ -342,7 +342,7 @@ PALADIN_PAGES = r"""
   Uses: 1 before it rests
   Rest: all uses return 12 minutes after the first
   Your lag: 4 seconds
-  Already enlarged or in titan form, it spends a use for nothing.
+  Already enlarged or in titan form, it spends no use.
 --- fade
   It takes: 3 minutes 1 second
   It carries you to your birthplace and marks where you were.
@@ -502,7 +502,7 @@ PALADIN_PAGES = r"""
   Uses: 1 before it rests
   Rest: all uses return 12 minutes after the first
   Your lag: 4 seconds if it works
-  Trying with strength already on you still spends a use.
+  Existing strength enhancement prevents use without spending a charge.
 --- summon_imp
   Imp's level: 33, or 50 on Avernus or the fire plane
   Imp's hitroll and damroll: +25
@@ -514,7 +514,7 @@ PALADIN_PAGES = r"""
   Rest: all uses return 12 minutes after the first
   Your lag: 4 seconds
   In combat only, and it hits your opponent when it strikes.
-  Trying out of combat still spends a use.
+  You must be fighting; rejection spends no use.
   Globes and spirit wards do not stop it.
   Spell damage modifiers and the target's defenses apply after.
 --- ud_invisibility
@@ -522,7 +522,7 @@ PALADIN_PAGES = r"""
   Duration: 45-46 game hours (56.25-57.5 minutes)
   Uses: 1 before it rests
   Rest: all uses return 12 minutes after the first
-  Only in the underdark or underworld; trying elsewhere still spends a use.
+  Only in the underdark or underworld; rejection spends no use.
   It does nothing if you are already invisible.
 --- webwrap
   Paralysis if it works: 20 seconds to 40 seconds
@@ -599,8 +599,8 @@ PALADIN_PAGES = r"""
   They arrive after: 3.5 seconds to 17.5 seconds
   Uses: 1 before it rests
   Rest: all uses return 12 minutes after the first
-  Only an orc may call. Off the prime plane or on the ocean none come,
-  and the use is still spent; nor do they reach single-file rooms or lockers.
+  Only an orc may call. Off the prime plane or on the ocean, no use is spent.
+  They cannot reach single-file rooms or lockers.
 --- summon_mount
   It arrives after: 3.5 seconds to 47 seconds
   Its level: 47-57
@@ -899,7 +899,7 @@ static void check_rolls() {
         assert(aura_precision_hitroll(c) == (int)(get_property("innate.paladin_aura.precision_hitroll_mod", 0.2) * GET_LEVEL(c)));
         assert(aura_endurance_moves(c) == (int)(get_property("innate.paladin_aura.endurance_move_mod", 1.0) * GET_LEVEL(c)));
         assert(aura_vigor_hit_points(c) == (int)(get_property("innate.paladin_aura.vigor_hp_mod", 1.0) * GET_LEVEL(c)));
-        assert(aura_spell_protection_percent(c) == (int)(get_property("innate.paladin_aura.protection_spell_mod", 0.5) * GET_LEVEL(c)) - 3);
+        assert(aura_spell_protection_percent(c) == MAX(0, (int)(get_property("innate.paladin_aura.protection_spell_mod", 0.5) * GET_LEVEL(c)) - 3));
     }
 }
 
@@ -971,7 +971,7 @@ CHECKS = r'''
     AT(1, 1);
     IS(aura_protection_innate_facts, "  Armor class: -1 at your level\n" + aura_common_facts());
     IS(aura_precision_innate_facts, "  Hitroll: +0 at your level\n" + aura_common_facts());
-    IS(aura_spell_protection_innate_facts, "  Spell damage taken: 3% more at your level\n" + aura_common_facts());
+    IS(aura_spell_protection_innate_facts, "  Spell damage taken: no change at your level\n" + aura_common_facts());
     IS(aura_battlelust_innate_facts, "  Damage dealt: +0.2% at your level\n" + aura_common_facts());
     AT(1, 6);
     IS(aura_spell_protection_innate_facts, "  Spell damage taken: no change at your level\n" + aura_common_facts());

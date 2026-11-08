@@ -316,6 +316,7 @@ def main():
                  ("fight.c", "int displacement_absorb_roll("),
                  ("fight.c", "float biofeedback_melee_share("),
                  ("fight.c", "float stone_skin_melee_share("),
+                 ("fight.c", "float shadow_shield_melee_share("),
                  ("fight.c", "float ironwood_melee_share("),
                  ("fight.c", "float drakescale_aegis_melee_share("),
                  ("fight.c", "int skin_spell_deduct("),

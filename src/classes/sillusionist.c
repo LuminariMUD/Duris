@@ -1569,13 +1569,13 @@ static int shadow_shield_duration()
 static std::string shadow_shield_facts_at(int level, const std::string &at, const std::string &who)
 {
 	extern int skin_spell_deduct();
-	extern float stone_skin_melee_share();
+	extern float shadow_shield_melee_share();
 	return fact("Hits absorbed", show({ shadow_shield_absorb(lowest_rolls, level),
 					    shadow_shield_absorb(highest_rolls, level) }) +
 					     at) +
 	       fact("Each melee hit on " + who, std::to_string(skin_spell_deduct()) + " less") +
 	       fact("Then, if over 10 is left",
-		    share_percent(stone_skin_melee_share()) + " of that") +
+		    share_percent(shadow_shield_melee_share()) + " of that") +
 	       "  It applies before the raw damage modifiers.\n"
 	       "  Hits that ignore reductions go through it and use up nothing.\n"
 	       "  An attacker's fist of dragon can do the same.\n" +

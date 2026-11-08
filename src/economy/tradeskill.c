@@ -1058,6 +1058,12 @@ static int bandage_lag()
 	return 2 * PULSE_VIOLENCE;
 }
 
+std::string battlefield_aid_innate_facts(P_char /*ch*/)
+{
+	return "  Successful bandaging stabilizes a dying target still below positive HP\n"
+	       "  to 1 hit point. Normal bandaging requirements and costs apply.\n";
+}
+
 std::string bandage_facts(P_char ch)
 {
 	const int rating = GET_CHAR_SKILL(ch, SKILL_BANDAGE);
@@ -1138,6 +1144,8 @@ void event_bandage_check(P_char ch, P_char victim, P_obj, void *data)
 	healed = MIN(healed, mdata->maxheal - mdata->healed);
 	mdata->healed = mdata->healed + healed;
 	healed = vamp(victim, healed, GET_MAX_HIT(victim) * 0.875);
+	if (healed > 0 && has_innate(ch, INNATE_BATTLEAID) && GET_HIT(victim) <= 0)
+		GET_HIT(victim) = 1;
 	update_pos(victim);
 
 	if (IS_AFFECTED2(victim, AFF2_POISONED) && !bandage_poison_roll(live_rolls) &&

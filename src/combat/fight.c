@@ -176,10 +176,16 @@ float biofeedback_melee_share()
 	return get_property("damage.reduction.biofeedback", 0.65);
 }
 
-// The share of what is left of a melee hit that stone skin lets through. Shadow shield shares it.
+// The share of what is left of a melee hit that stone skin lets through.
 float stone_skin_melee_share()
 {
 	return get_property("damage.reduction.stoneSkin", 0.75);
+}
+
+// The share of what is left of a melee hit that shadow shield lets through.
+float shadow_shield_melee_share()
+{
+	return get_property("damage.reduction.shadowShield", 0.70);
 }
 
 // What barkskin multiplies fire damage by.
@@ -5617,7 +5623,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	}
 	else if (affected_by_spell(victim, SPELL_SHADOW_SHIELD) && !(flags & PHSDAM_NOREDUCE))
 	{
-		reduction = 1. - stone_skin_melee_share();
+		reduction = 1. - shadow_shield_melee_share();
 		skin = SPELL_SHADOW_SHIELD;
 	}
 	else if (affected_by_spell(victim, SPELL_IRONWOOD) && !(flags & PHSDAM_NOREDUCE))
@@ -9178,7 +9184,8 @@ std::string leap_innate_facts(P_char ch)
 		    chance_under(leap_chance_floor() + 1, 1, 100) + ", " +
 			    chance_under(leap_chance_top() + 1, 1, 100)) +
 	       "  It compares your agility, your load, and your level with the attacker's.\n"
-	       "  It needs you standing and not gazed at. These races have it at any level.\n";
+	       "  It needs you standing and not gazed at. Thri-kreen unlock it at level 21;\n"
+	       "  harpies and gargoyles at level 1.\n";
 }
 
 int leapSucceed(P_char victim, P_char attacker)
@@ -9186,7 +9193,7 @@ int leapSucceed(P_char victim, P_char attacker)
 	int chance;
 
 	chance = 0;
-	if (!IS_THRIKREEN(victim) && !IS_HARPY(victim)) /* only bugs */
+	if (!has_innate(victim, INNATE_LEAP))
 		return false;
 
 	if (!MIN_POS(victim, POS_STANDING + STAT_NORMAL) || affected_by_spell(victim, SKILL_GAZE))

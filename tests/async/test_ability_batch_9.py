@@ -293,7 +293,7 @@ int GET_CHAR_SKILL_P(P_char, int) { return infuse_life; }
 float get_property(const char *key, double fallback) {
     if (!strcmp(key, "spell.area.damage.to.pc")) return 1.15f;
     if (!strcmp(key, "spell.dim.perlevel.modifier")) return 1.25f;
-    if (!strcmp(key, "damage.reduction.stoneSkin")) return 0.55f;
+    if (!strcmp(key, "damage.reduction.shadowShield")) return 0.70f;
     return (float)fallback;
 }
 int get_property(const char *, int fallback) { return fallback; }
@@ -540,7 +540,7 @@ EXACT = r'''
         "  Casts: shadow shield on your group here, at level 36\n"
         "  Hits absorbed: 7-10\n"
         "  Each melee hit on them: 46 less\n"
-        "  Then, if over 10 is left: 55% of that\n"
+        "  Then, if over 10 is left: 70% of that\n"
         "  It applies before the raw damage modifiers.\n"
         "  Hits that ignore reductions go through it and use up nothing.\n"
         "  An attacker's fist of dragon can do the same.\n"
@@ -636,7 +636,7 @@ EXACT = r'''
     assert(shadow_shield_facts(&ch) ==
         "  Hits absorbed: 10-13 at your level, 56\n"
         "  Each melee hit on you: 46 less\n"
-        "  Then, if over 10 is left: 55% of that\n"
+        "  Then, if over 10 is left: 70% of that\n"
         "  It applies before the raw damage modifiers.\n"
         "  Hits that ignore reductions go through it and use up nothing.\n"
         "  An attacker's fist of dragon can do the same.\n"
@@ -1380,7 +1380,7 @@ EXACT = r'''
         "  Casts: shadow shield on your group here, at level 0\n"
         "  Hits absorbed: 1-4\n"
         "  Each melee hit on them: 46 less\n"
-        "  Then, if over 10 is left: 55% of that\n"
+        "  Then, if over 10 is left: 70% of that\n"
         "  It applies before the raw damage modifiers.\n"
         "  Hits that ignore reductions go through it and use up nothing.\n"
         "  An attacker's fist of dragon can do the same.\n"
@@ -1513,11 +1513,11 @@ def check_sources():
                           ("ardgral_decay", "portals.gate.decayTimeout"),
                           ("shadow_spawn_player_damage", "spell.area.damage.to.pc")):
         assert f'"{key}"' in function_bodies(illusion, rf"\bstatic\s+\w+\s+{function}\s*\(")[0], function
-    # Shadow shield is in melee_damage's skin chain, and reads stone skin's share.
+    # Shadow shield is in melee_damage's skin chain, and reads its own configured share.
     fight = strip_comments(source("fight.c").read_text(encoding="utf-8", errors="replace"))
     melee = re.sub(r"\s+", " ", function_bodies(fight, r"\bint\s+melee_damage\s*\(")[0])
     assert ("affected_by_spell(victim, SPELL_SHADOW_SHIELD) && !(flags & PHSDAM_NOREDUCE)) "
-            "{ reduction = 1. - stone_skin_melee_share(); skin = SPELL_SHADOW_SHIELD;") in melee
+            "{ reduction = 1. - shadow_shield_melee_share(); skin = SPELL_SHADOW_SHIELD;") in melee
     # The object procs and movement read the numbers on the pages.
     procs = strip_comments(source("specs.object.c").read_text(encoding="utf-8", errors="replace"))
     wall = function_bodies(procs, r"\bint\s+wall_generic\s*\(")[0]
@@ -1568,7 +1568,7 @@ def main():
                  extract_function("magic/spells.c", "int wall_climb_above("),
                  extract_function("magic/spells.c", "int wall_hit_lag("),
                  extract_function("fight.c", "int skin_spell_deduct("),
-                 extract_function("fight.c", "float stone_skin_melee_share("),
+                 extract_function("fight.c", "float shadow_shield_melee_share("),
                  table(NECRO, "const struct golem_description golem_data[4]"),
                  table(NECRO, "const struct undead_description undead_data[NECROPET_LAST + 1] =")]
     for file in PREFIXES:

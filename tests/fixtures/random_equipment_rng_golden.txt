@@ -770,10 +770,10 @@ kill player k01 m12 luck160 | 16018132
 kill player k30 m30 luck100 | 1605642093
 kill player k50 m45 luck160 | 869112967
 kill player k01 m62 luck160 | 998315838
-kill pet k01 m12 luck160 | 168252623
-kill pet k30 m30 luck100 | 1745300842
-kill pet k50 m45 luck160 | 1779284696
-kill pet k01 m62 luck160 | 2020476080
+kill pet k01 m12 luck160 | 360501718
+kill pet k30 m30 luck100 | 876975560
+kill pet k50 m45 luck160 | 1962109384
+kill pet k01 m62 luck160 | 613583089
 gen slot k56 m62 luck160 coloured pc slot0 material-1 | 1382845269
 gen slot k56 m62 luck160 coloured pc slot1 material-1 | 71035976
 gen slot k56 m62 luck160 coloured pc slot2 material-1 | 1937619225

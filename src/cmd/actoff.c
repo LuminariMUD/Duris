@@ -8635,7 +8635,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 	/* you must be size more than size down or same size of centaur/drider to try bashing */
 	if (ch_size < vict_size - 1 ||
 	    ((has_innate(victim, INNATE_HORSE_BODY) || has_innate(victim, INNATE_SPIDER_BODY) ||
-	      GET_RACE(ch) == RACE_QUADRUPED) &&
+	      GET_RACE(victim) == RACE_QUADRUPED) &&
 	     ch_size <= vict_size))
 	{
 		act("$n makes a futile attempt to bash $N, but $E is simply immovable.", FALSE, ch,
@@ -8789,7 +8789,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 	bool bigger_victim = FALSE;
 	if (vict_size > ch_size ||
 	    ((has_innate(victim, INNATE_HORSE_BODY) || has_innate(victim, INNATE_SPIDER_BODY) ||
-	      GET_RACE(ch) == RACE_QUADRUPED) &&
+	      GET_RACE(victim) == RACE_QUADRUPED) &&
 	     ch_size == vict_size))
 	{
 		bigger_victim = TRUE;

@@ -368,6 +368,20 @@ int main()
     assert(!CAN_ACT((&npc)));
     assert(IS_FIGHTING(&attacker));
 
+    // Equal-sized quadruped targets are sturdy; a quadruped attacker does
+    // not make a normal target sturdy. Both source checks must use the victim.
+    rooms[0].room_flags = 0;
+    for (bool quadruped_target : {false, true}) {
+        attacker.player.race = quadruped_target ? RACE_HUMAN : RACE_QUADRUPED;
+        npc.player.race = quadruped_target ? RACE_QUADRUPED : RACE_HUMAN;
+        attacker.specials.act2 = npc.specials.act2 = 0;
+        attacker.specials.fighting = npc.specials.fighting = nullptr;
+        SET_POS(&attacker, POS_STANDING + STAT_NORMAL);
+        SET_POS(&npc, POS_STANDING + STAT_NORMAL);
+        int before = melee_damage_calls;
+        bash(&attacker, &npc, false);
+        assert(melee_damage_calls == before + (quadruped_target ? 0 : 1));
+    }
     std::printf("Bash/tackle vitals knockdown native runtime tests passed\n");
     return 0;
 }
@@ -375,6 +389,8 @@ int main()
 
     tackle_fn = extract_function("actoff.c", "void do_tackle(")
     bash_fn = extract_function("actoff.c", "void bash(P_char ch, P_char victim, bool _debug)")
+    assert bash_fn.count("GET_RACE(victim) == RACE_QUADRUPED") == 2
+    assert "GET_RACE(ch) == RACE_QUADRUPED" not in bash_fn
     update_pos_fn = extract_function("combat/fight.c", "void update_pos(P_char ch)")
     json_build_char_vitals_fn = extract_function("core/json_utils.c", "char *json_build_char_vitals(struct char_data *ch)")
     gmcp_char_vitals_fn = extract_function("net/gmcp.c", "void gmcp_char_vitals(struct char_data *ch)")
