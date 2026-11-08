@@ -14,6 +14,7 @@
 using namespace std;
 
 #include "core/prototypes.h"
+#include "combat/forced_movement.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -882,7 +883,7 @@ void nexus_guardian_nuke(P_char ch, P_char victim, int dam)
 
 void nexus_guardian_energy_burst(P_char ch, bool show_message = true)
 {
-	P_char tch, next;
+	P_char tch;
 
 	if (show_message)
 	{
@@ -892,9 +893,17 @@ void nexus_guardian_energy_burst(P_char ch, bool show_message = true)
 		    FALSE, ch, 0, 0, TO_ROOM);
 	}
 
-	for (tch = world[ch->in_room].people; tch; tch = next)
+	const int source_room = ch->in_room;
+	const uint64_t source_runtime_id = ch->runtime_id;
+	const bool source_was_alive = IS_ALIVE(ch);
+	std::vector<uint64_t> targets;
+	for (tch = world[source_room].people; tch; tch = tch->next_in_room)
+		targets.push_back(tch->runtime_id);
+	for (const auto runtime_id : targets)
 	{
-		next = tch->next_in_room;
+		tch = find_character_by_runtime_id(runtime_id);
+		if (!tch || tch->in_room != source_room)
+			continue;
 		if (should_area_hit(ch, tch))
 		{
 			int chance = BOUNDED(25, GET_C_AGI(tch) - 50, 75);
@@ -909,24 +918,33 @@ void nexus_guardian_energy_burst(P_char ch, bool show_message = true)
 			}
 
 			int door = number(0, 9);
-			if ((CAN_GO(tch, door)) && (!check_wall(tch->in_room, door)))
+			const auto messages = snapshot_forced_departure(
+				ch, tch, nullptr,
+				"The wave slams into you, throwing from the room!",
+				"The wave slams into $N, throwing $M from the room!");
+			const auto movement =
+				move_forced(ch, tch, door,
+					    [&]() {
+						    deliver_forced_departure(messages, ch, tch,
+									     source_room, false);
+					    });
+			if (movement.status == forced_move_status::interrupted)
 			{
-				act("The wave slams into you, throwing from the room!", FALSE, ch,
-				    0, tch, TO_VICT);
-				act("The wave slams into $N, throwing $M from the room!", FALSE, ch,
-				    0, tch, TO_NOTVICT);
-				int target_room = world[tch->in_room].dir_option[door]->to_room;
-				char_from_room(tch);
-				if (char_to_room(tch, target_room, -1))
-				{
-					act("$n flies in, crashing on the floor!", TRUE, tch, 0, 0,
-					    TO_ROOM);
-					SET_POS(tch, POS_PRONE + GET_STAT(tch));
-					stop_fighting(tch);
-					CharWait(tch, PULSE_VIOLENCE * 3);
-				}
+				P_char source = find_character_by_runtime_id(source_runtime_id);
+				if (source != ch || source->in_room != source_room ||
+				    (source_was_alive && !IS_ALIVE(source)))
+					return;
+				continue;
 			}
-			else
+			if (movement.status == forced_move_status::arrived)
+			{
+				act("$n flies in, crashing on the floor!", TRUE, tch, 0, 0,
+				    TO_ROOM);
+				SET_POS(tch, POS_PRONE + GET_STAT(tch));
+				stop_fighting(tch);
+				CharWait(tch, PULSE_VIOLENCE * 3);
+			}
+			else if (movement.status == forced_move_status::blocked)
 			{
 				act("The wave slams into you, knocking you off your feet!", FALSE,
 				    ch, 0, tch, TO_VICT);
