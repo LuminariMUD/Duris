@@ -408,7 +408,9 @@ def navigate_quest(client: MudClient, run_root: pathlib.Path, *, returning: bool
         observed = gameplay_snapshot(client, run_root)
         if observed["room"] == batch[-1]["to"]:
             steps += len(batch)
-        elif observed["fighting"]:
+        elif observed["fighting"] or observed["position"] != posture:
+            # Combat, including a bash that ends the fight with the actor on
+            # the ground, stops the queued moves; resume from where it stopped.
             prefix = [batch[0]["from"]] + [step["to"] for step in batch]
             require(observed["room"] in prefix,
                     f"combat displaced the journey off its path: {observed}")

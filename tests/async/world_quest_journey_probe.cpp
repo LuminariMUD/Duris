@@ -369,40 +369,48 @@ struct journey_navigation
 	size_t work = 0;
 };
 
-static journey_navigation navigation_routes(P_char ch)
+// An NPC whose procedure might intercept ordinary movement makes its room
+// unusable for journey routes.
+static bool ordinary_occupant(P_char person)
 {
-	journey_navigation result;
+	if (!IS_NPC(person))
+		return true;
 	const auto passive =
 		reinterpret_cast<bool (*)(mob_proc_type)>(quest_gameplay_passive_mobile);
 	assert(passive);
+	for (mob_proc_type proc :
+	     { mob_index[GET_RNUM(person)].func.mob, mob_index[GET_RNUM(person)].qst_func })
+	{
+		if (proc == shop_keeper)
+		{
+			const int shop = singleton_shop_id(person);
+			if (shop < 0 || shop >= number_of_shops)
+				return false;
+			proc = shop_index[shop].func;
+		}
+		if (proc && proc != world_quest && proc != quester && !passive(proc))
+			return false;
+	}
+	return true;
+}
+
+// With occupants false, live NPCs and room affects are ignored, so a failure
+// diagnostic can name the rooms that currently cut an authored route.
+static journey_navigation navigation_routes(P_char ch, bool occupants = true)
+{
+	journey_navigation result;
 	std::unordered_map<int, bool> checked;
 	auto ordinary_room = [&](int room)
 	{
 		if (const auto found = checked.find(room); found != checked.end())
 			return found->second;
 		const auto &entry = world[room];
-		bool ordinary = !entry.affected &&
+		bool ordinary = (!occupants || !entry.affected) &&
 				(!entry.funct || entry.funct == inn ||
 				 entry.funct == crew_shop_proc || entry.funct == ship_shop_proc);
-		for (P_char person = entry.people; person && ordinary;
+		for (P_char person = occupants ? entry.people : nullptr; person && ordinary;
 		     person = person->next_in_room)
-			if (IS_NPC(person))
-				for (mob_proc_type proc : { mob_index[GET_RNUM(person)].func.mob,
-							    mob_index[GET_RNUM(person)].qst_func })
-				{
-					if (proc == shop_keeper)
-					{
-						const int shop = singleton_shop_id(person);
-						if (shop < 0 || shop >= number_of_shops)
-						{
-							ordinary = false;
-							continue;
-						}
-						proc = shop_index[shop].func;
-					}
-					ordinary = ordinary && (!proc || proc == world_quest ||
-								proc == quester || passive(proc));
-				}
+			ordinary = ordinary_occupant(person);
 		for (P_obj object = entry.contents; object && ordinary;
 		     object = object->next_content)
 			if (object->R_num >= 0)
@@ -480,8 +488,9 @@ static journey_navigation navigation_routes(P_char ch)
 	return result;
 }
 
-// Explicit disposable setup: restore routine target inputs to authored reset
-// positions and stop wandering. Do not change levels, stats, counts or provenance.
+// Explicit disposable setup: restore routine target inputs and route-closing
+// NPCs to authored reset positions and stop wandering. Do not change levels,
+// stats, counts or provenance.
 extern "C" void quest_gameplay_prepare_mobiles(P_char ch, const void *source_lookup)
 {
 	using lookup_type = const void *(*)(P_char);
@@ -489,16 +498,21 @@ extern "C" void quest_gameplay_prepare_mobiles(P_char ch, const void *source_loo
 	const auto &quest = *ch->only.pc;
 	for (P_char mob = character_list; mob; mob = mob->next)
 	{
-		if (!IS_NPC(mob) || !IS_ALIVE(mob) || !source(mob))
+		if (!IS_NPC(mob) || !IS_ALIVE(mob))
 			continue;
 		const int birthplace = real_room(GET_BIRTHPLACE(mob));
 		if (birthplace < 0 || birthplace > top_of_world)
 			continue;
-		if (quest.quest_active ? GET_VNUM(mob) != quest.quest_mob_vnum :
-		    quest_gameplay_kind == FIND_AND_KILL ?
-					 GET_LEVEL(mob) < quest_gameplay_level - 4 ||
-						 GET_LEVEL(mob) > quest_gameplay_level + 5 :
-					 mob_index[GET_RNUM(mob)].number != 1)
+		const bool fixture = source(mob) &&
+				     !(quest.quest_active ?
+					       GET_VNUM(mob) != quest.quest_mob_vnum :
+				       quest_gameplay_kind == FIND_AND_KILL ?
+					       GET_LEVEL(mob) < quest_gameplay_level - 4 ||
+						       GET_LEVEL(mob) > quest_gameplay_level + 5 :
+					       mob_index[GET_RNUM(mob)].number != 1);
+		// Wandering NPCs that close routes would otherwise move those closures
+		// between fixture choice, outward travel and the return trip.
+		if (!fixture && ordinary_occupant(mob))
 			continue;
 		SET_BIT(mob->specials.act, ACT_SENTINEL);
 		if (mob->in_room != birthplace)
@@ -572,11 +586,20 @@ extern "C" void quest_gameplay_choose_fixture(P_char ch, const void *source_look
 			quest_gameplay_reward_quota > 0	    ? quest_gameplay_reward_quota + 1 :
 			quest_gameplay_level == 29	    ? 3 :
 							      2;
-		if (!walkable ||
-		    world_quest_policy_check_target(ch, quest_gameplay_origin, quest_gameplay_level,
-						    zone, vnum, quest_gameplay_kind, needed)
-				    .status != world_quest_target_status::valid)
+		const auto check =
+			walkable ? world_quest_policy_check_target(ch, quest_gameplay_origin,
+								   quest_gameplay_level, zone, vnum,
+								   quest_gameplay_kind, needed) :
+				   world_quest_target_check{};
+		if (!walkable || check.status != world_quest_target_status::valid)
+		{
+			// Explains an eventual "no eligible fixture" failure.
+			fprintf(stderr,
+				"quest fixture %d zone %d distance %d rejected: %s status=%d\n",
+				vnum, zone, key.first, walkable ? "policy" : "off-route",
+				static_cast<int>(check.status));
 			continue;
+		}
 		quest_gameplay_fixture_zone = real_zone(zone);
 		quest_gameplay_fixture_vnum = vnum;
 		return;
@@ -756,35 +779,41 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 			if (q.quest_type == FIND_AND_ASK)
 				number(root, "target_level", GET_LEVEL(mob));
 		}
-	std::unordered_map<int, std::vector<int>> outgoing;
-	for (const auto &[to, incoming] : routes.rooms)
-		for (int from : incoming)
-			outgoing[from].push_back(to);
-	std::unordered_map<int, int> previous{ { ch->in_room, NOWHERE } };
-	std::vector<int> queue{ ch->in_room };
-	int destination = NOWHERE;
-	for (size_t next = 0; next < queue.size(); ++next)
+	// Shortest room sequence from the actor's room to the current destination;
+	// empty when the destination is unreachable.
+	auto shortest = [&](const journey_navigation &graph)
 	{
-		const int room = queue[next];
-		if (seeking_target ? targets.count(room) : room == real_room(origin))
+		std::unordered_map<int, std::vector<int>> outgoing;
+		for (const auto &[to, incoming] : graph.rooms)
+			for (int from : incoming)
+				outgoing[from].push_back(to);
+		std::unordered_map<int, int> previous{ { ch->in_room, NOWHERE } };
+		std::vector<int> queue{ ch->in_room };
+		std::vector<int> rooms;
+		for (size_t next = 0; next < queue.size(); ++next)
 		{
-			destination = room;
-			break;
+			const int room = queue[next];
+			if (seeking_target ? targets.count(room) : room == real_room(origin))
+			{
+				for (int step = room; step != NOWHERE; step = previous.at(step))
+					rooms.push_back(step);
+				std::reverse(rooms.begin(), rooms.end());
+				break;
+			}
+			for (int to : outgoing[room])
+				if (previous.emplace(to, room).second)
+					queue.push_back(to);
 		}
-		for (int to : outgoing[room])
-			if (previous.emplace(to, room).second)
-				queue.push_back(to);
-	}
+		return rooms;
+	};
+	const std::vector<int> rooms = shortest(routes);
+	const int destination = rooms.empty() ? NOWHERE : rooms.back();
 	cJSON *path = cJSON_AddArrayToObject(root, "path");
 	if (destination != NOWHERE)
 	{
-		std::vector<int> reversed;
-		for (int room = destination; room != ch->in_room; room = previous.at(room))
-			reversed.push_back(room);
-		std::reverse(reversed.begin(), reversed.end());
-		int from = ch->in_room;
-		for (int to : reversed)
+		for (size_t index = 1; index < rooms.size(); ++index)
 		{
+			const int from = rooms[index - 1], to = rooms[index];
 			int direction = 0;
 			while (direction < NUM_EXITS &&
 			       (!world[from].dir_option[direction] ||
@@ -800,7 +829,6 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 				       0);
 			number(step, "crawl", world[to].sector_type == SECT_UNDRWLD_LOWCEIL);
 			cJSON_AddItemToArray(path, step);
-			from = to;
 		}
 		number(root, "destination", world[destination].number);
 		if (seeking_target)
@@ -815,21 +843,16 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 	}
 	if (destination == NOWHERE)
 	{
-		cJSON *boundary = cJSON_AddArrayToObject(root, "unproved_boundary");
-		std::vector<int> inspected;
-		for (const auto &[room, info] : routes.rooms)
+		// Name the rooms whose live occupants or affects cut the authored route.
+		cJSON *cut = cJSON_AddArrayToObject(root, "route_cut");
+		for (int room : shortest(navigation_routes(ch, false)))
 		{
-			(void)info;
-			for (const auto *exit : world[room].dir_option)
-				if (exit && exit->to_room >= 0 && exit->to_room <= top_of_world &&
-				    !routes.rooms.count(exit->to_room) && inspected.size() < 32 &&
-				    std::find(inspected.begin(), inspected.end(), exit->to_room) ==
-					    inspected.end())
-				{
-					inspected.push_back(exit->to_room);
-					cJSON_AddItemToArray(boundary,
-							     room_diagnostic(exit->to_room, ch));
-				}
+			bool closed = world[room].affected != nullptr;
+			for (P_char person = world[room].people; person;
+			     person = person->next_in_room)
+				closed = closed || !ordinary_occupant(person);
+			if (closed)
+				cJSON_AddItemToArray(cut, room_diagnostic(room, ch));
 		}
 	}
 	char *text = cJSON_PrintUnformatted(root);
