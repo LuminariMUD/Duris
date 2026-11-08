@@ -4843,7 +4843,9 @@ void do_true_strike(P_char ch, char *argument, int /*cmd*/)
 		{
 			send_to_char("You feel like your nervous system is on fire!\n\r", vict);
 			send_to_char("You feel as tho you hit something vital!\n\r", ch);
-			damage(ch, vict, (10 + dice(1, 12)) * 3, SKILL_TRUE_STRIKE);
+			if (damage(ch, vict, (10 + dice(1, 12)) * 3, SKILL_TRUE_STRIKE) &&
+			    !char_in_list(ch))
+				return;
 		}
 		notch_skill(ch, SKILL_TRUE_STRIKE, 10);
 	}

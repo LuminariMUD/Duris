@@ -10318,7 +10318,9 @@ void maul(P_char ch, P_char victim)
 			    FALSE, ch, 0, victim, TO_VICT);
 			act("But you slam your head into $N before crashing to your knees!", FALSE,
 			    ch, 0, victim, TO_CHAR);
-			melee_damage(ch, victim, (int)(dam / 2), PHSDAM_TOUCH, 0);
+			if (melee_damage(ch, victim, (int)(dam / 2), PHSDAM_TOUCH, 0) <
+			    DAM_NONEDEAD)
+				return;
 		}
 
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
@@ -10341,7 +10343,9 @@ void maul(P_char ch, P_char victim)
 			act("But you get the last laugh as you &+mbitch slap&n $N!", FALSE, ch, 0,
 			    victim, TO_CHAR);
 
-			melee_damage(ch, victim, (int)(dam / 2), PHSDAM_TOUCH, 0);
+			if (melee_damage(ch, victim, (int)(dam / 2), PHSDAM_TOUCH, 0) <
+			    DAM_NONEDEAD)
+				return;
 		}
 
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
@@ -14627,9 +14631,9 @@ bool check_crippling_strike(P_char ch)
 
 					GET_VITALITY(ch) -=
 						crippling_strike_best_vitality(live_rolls);
-					damage(kala, ch, crippling_strike_best_damage(live_rolls),
-					       SKILL_CRIPPLING_STRIKE);
-					if (!IS_ALIVE(kala))
+					if (damage(kala, ch,
+						   crippling_strike_best_damage(live_rolls),
+						   SKILL_CRIPPLING_STRIKE))
 					{
 						return TRUE;
 					}
@@ -14644,9 +14648,9 @@ bool check_crippling_strike(P_char ch)
 					    ch, TO_NOTVICT);
 					GET_VITALITY(ch) -=
 						crippling_strike_second_vitality(live_rolls);
-					damage(kala, ch, crippling_strike_second_damage(live_rolls),
-					       SKILL_CRIPPLING_STRIKE);
-					if (!IS_ALIVE(kala))
+					if (damage(kala, ch,
+						   crippling_strike_second_damage(live_rolls),
+						   SKILL_CRIPPLING_STRIKE))
 					{
 						return TRUE;
 					}
@@ -14659,9 +14663,9 @@ bool check_crippling_strike(P_char ch)
 					    FALSE, kala, 0, ch, TO_VICT);
 					act("$n slams his knee into $N's face.", FALSE, kala, 0, ch,
 					    TO_NOTVICT);
-					damage(kala, ch, crippling_strike_third_damage(live_rolls),
-					       SKILL_CRIPPLING_STRIKE);
-					if (!IS_ALIVE(kala))
+					if (damage(kala, ch,
+						   crippling_strike_third_damage(live_rolls),
+						   SKILL_CRIPPLING_STRIKE))
 					{
 						return TRUE;
 					}
@@ -14674,9 +14678,9 @@ bool check_crippling_strike(P_char ch)
 					    FALSE, kala, 0, ch, TO_VICT);
 					act("As $N stands, $n leaps forward and slams the hilt of his weapon into $s back.",
 					    FALSE, kala, 0, ch, TO_NOTVICT);
-					damage(kala, ch, crippling_strike_fourth_damage(live_rolls),
-					       SKILL_CRIPPLING_STRIKE);
-					if (!IS_ALIVE(kala))
+					if (damage(kala, ch,
+						   crippling_strike_fourth_damage(live_rolls),
+						   SKILL_CRIPPLING_STRIKE))
 					{
 						return TRUE;
 					}

@@ -516,10 +516,12 @@ void event_bearhug(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 	{
 		int dam = bearhug_base_damage(ch, GET_C_STR(victim));
 		dam += bearhug_damage_roll(live_rolls);
-		melee_damage(ch, victim, dam, PHSDAM_TOUCH, &messages);
+		const int result = melee_damage(ch, victim, dam, PHSDAM_TOUCH, &messages);
+		if (result < DAM_NONEDEAD)
+			return;
 		notch_skill(ch, SKILL_BEARHUG, (int)get_property("skill.notch.bearhug", 12.5));
 		// check_shields(ch, victim, dam, RAWDAM_DEFAULT);
-		if (IS_ALIVE(ch) && IS_ALIVE(victim))
+		if (result == DAM_NONEDEAD)
 			add_event(event_bearhug, bearhug_interval(), ch, victim, 0, 0, 0, 0);
 	}
 }

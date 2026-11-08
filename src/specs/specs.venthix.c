@@ -358,8 +358,10 @@ void event_super_cannon_fire(P_char ch, P_char /*vict*/, P_obj /*obj*/, void *da
 					send_to_char(
 						"&+WOuch! &+LYou should try a fly spell next time.&n\r\n",
 						ch);
-					spell_damage(ch, ch, 20, SPLDAM_GENERIC,
-						     SPLDAM_NOSHRUG | SPLDAM_NODEFLECT, 0);
+					if (spell_damage(ch, ch, 20, SPLDAM_GENERIC,
+							 SPLDAM_NOSHRUG | SPLDAM_NODEFLECT,
+							 0) != DAM_NONEDEAD)
+						return;
 				}
 				SET_POS(ch, GET_STAT(ch) + POS_PRONE);
 			}
