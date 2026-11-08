@@ -327,8 +327,8 @@ int dragonkind(P_obj obj, P_char ch, int cmd, char *arg)
 						    sweep_target, 0, 0, TO_ROOM);
 						/* don't want to kill them with it, but can mess them up BAD! */
 						damage(ch, sweep_target,
-						       MIN(dice(2, (GET_LEVEL(ch) / 5)) + 5,
-							   GET_HIT(sweep_target) + 8),
+						       std::min(dice(2, (GET_LEVEL(ch) / 5)) + 5,
+								GET_HIT(sweep_target) + 8),
 						       TYPE_UNDEFINED);
 					}
 					else

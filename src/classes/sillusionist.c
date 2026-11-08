@@ -295,7 +295,7 @@ void spell_shadow_monster(int level, P_char ch, char * /*arg*/, [[maybe_unused]]
 
 static int insects_level(const Rolls &rolls, int level)
 {
-	return MIN(30, MAX(1, rolls.number(level - 7, level - 2)));
+	return BOUNDED(1, rolls.number(level - 7, level - 2), 30);
 }
 
 static int insects_hit_points(const Rolls &rolls, int mob_level, int ch_level)

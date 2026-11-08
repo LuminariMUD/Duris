@@ -1126,7 +1126,7 @@ bool CastMageSpell(P_char ch, P_char victim, int helping)
 		{
 			best_corpse = read_object(2, VIRTUAL);
 			best_corpse->value[2] = high_corpse =
-				MIN(50, GET_LEVEL(ch) + number(0, 8) - 4);
+				std::min(50, GET_LEVEL(ch) + number(0, 8) - 4);
 
 			switch (number(0, 3))
 			{
