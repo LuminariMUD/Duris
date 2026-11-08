@@ -44,12 +44,7 @@ using namespace std;
 #include "magic/spells.h"
 #include "sql/sql.h"
 
-#ifdef __NO_MYSQL__
-#include "flatfile/flatfile_association_repository.h"
-#include "persistence/persistence_mode.h"
-#else
 #include "sql/sql_async.h"
-#endif
 
 extern P_index mob_index;
 extern P_index obj_index;
@@ -70,9 +65,7 @@ extern const long boot_time;
 	(GET_ASSOC(ch) && (IS_LEADER(GET_M_BITS(GET_A_BITS(ch), A_RK_MASK)) || \
 			   GT_LEADER(GET_M_BITS(GET_A_BITS(ch), A_RK_MASK))))
 
-#ifndef __NO_MYSQL__
 extern MYSQL *DB;
-#endif
 
 // Location, entrance dir
 int outpost_locations[][2] = {
@@ -104,98 +97,14 @@ struct runtime_outpost_record
 	int scouts = 0;
 };
 
-#ifdef __NO_MYSQL__
-std::vector<runtime_outpost_record> default_outposts()
-{
-	std::vector<runtime_outpost_record> records;
-	for (int id = 0; outpost_locations[id][0]; ++id)
-	{
-		runtime_outpost_record record;
-		record.id = id;
-		records.push_back(record);
-	}
-	return records;
-}
-flatfile_outpost_record flat_outpost(const runtime_outpost_record &source)
-{
-	flatfile_outpost_record record;
-	record.outpost_id = source.id;
-	record.owner_association_id = source.owner_id;
-	record.level = source.level;
-	record.walls = source.walls;
-	record.archers = source.archers;
-	record.resources = source.resources;
-	record.applied_resources = source.applied_resources;
-	record.hitpoints = source.hitpoints;
-	record.territory = source.territory;
-	record.portal_room = source.portal_room;
-	record.golems = source.golems;
-	record.meurtriere = source.meurtriere;
-	record.scouts = source.scouts;
-	return record;
-}
-
-runtime_outpost_record runtime_outpost(const flatfile_outpost_record &source)
-{
-	runtime_outpost_record record;
-	record.id = source.outpost_id;
-	record.owner_id = source.owner_association_id;
-	record.level = source.level;
-	record.walls = source.walls;
-	record.archers = source.archers;
-	record.resources = source.resources;
-	record.applied_resources = source.applied_resources;
-	record.hitpoints = source.hitpoints;
-	record.territory = source.territory;
-	record.portal_room = source.portal_room;
-	record.golems = source.golems;
-	record.meurtriere = source.meurtriere;
-	record.scouts = source.scouts;
-	return record;
-}
-#else
 // The outposts, read at boot and kept current by the game's own writes, which are queued on
 // the writer: nothing else writes them while the game runs.
 std::vector<runtime_outpost_record> stored_outposts;
-#endif
 
 bool load_outpost_records(std::vector<runtime_outpost_record> *records, bool establish)
 {
 	if (!records)
 		return false;
-#ifdef __NO_MYSQL__
-	const char *root = persistence_mode_flatfile_root();
-	if (!root)
-		return false;
-	std::string error;
-	std::vector<flatfile_outpost_record> stored;
-	auto listed = flatfile_outpost_list(root, &stored, &error);
-	if (listed == flatfile_association_result::not_found && establish)
-	{
-		std::vector<flatfile_outpost_record> defaults;
-		for (const auto &record : default_outposts())
-			defaults.push_back(flat_outpost(record));
-		const auto created = flatfile_outpost_establish(root, defaults, &error);
-		if (created != flatfile_association_result::ok &&
-		    created != flatfile_association_result::already_exists)
-			return false;
-		listed = flatfile_outpost_list(root, &stored, &error);
-	}
-	if (listed != flatfile_association_result::ok)
-		return false;
-	records->clear();
-	try
-	{
-		records->reserve(stored.size());
-		for (const auto &record : stored)
-			records->push_back(runtime_outpost(record));
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-	return true;
-#else
 	if (establish)
 	{
 		// Boot: the game loop is not running yet.
@@ -231,7 +140,6 @@ bool load_outpost_records(std::vector<runtime_outpost_record> *records, bool est
 	}
 	*records = stored_outposts;
 	return true;
-#endif
 }
 
 bool load_outpost_record(int id, runtime_outpost_record *record)
@@ -248,22 +156,6 @@ bool load_outpost_record(int id, runtime_outpost_record *record)
 	return false;
 }
 
-#ifdef __NO_MYSQL__
-bool save_outpost_record(const runtime_outpost_record &record, const char *operation)
-{
-	const char *root = persistence_mode_flatfile_root();
-	std::string error;
-	const auto saved = root ? flatfile_outpost_save(root, flat_outpost(record), &error) :
-				  flatfile_association_result::io_error;
-	if (saved == flatfile_association_result::ok ||
-	    saved == flatfile_association_result::unchanged)
-		return true;
-	const std::string key = std::to_string(record.id);
-	persistence_alert(AVATAR, "outposts", key.c_str(), "none", "none", operation,
-			  "flat outpost mutation failed: %s", error.c_str());
-	return false;
-}
-#else
 // Memory changes once the write is queued; the writer logs a failed write.
 bool save_outpost_record(const runtime_outpost_record &record, const char * /*operation*/)
 {
@@ -280,7 +172,6 @@ bool save_outpost_record(const runtime_outpost_record &record, const char * /*op
 			stored = record;
 	return true;
 }
-#endif
 } // namespace
 
 int init_outposts()
@@ -321,11 +212,6 @@ int load_outposts()
 			return FALSE;
 		}
 		P_Guild guild = get_guild_from_id(record.owner_id);
-#ifdef __NO_MYSQL__
-		if (record.owner_id && !guild)
-			fatal_boot_error("outposts", "flat outpost %d references missing guild %u",
-					 record.id, record.owner_id);
-#endif
 		if ((building = load_building(guild, BUILDING_OUTPOST,
 					      outpost_locations[record.id][0], record.level)))
 		{

@@ -459,11 +459,6 @@ void boot_db(int mini_mode)
 
 	fprintf(stderr, "Reading files from lib directory. (motd, wizlist, etc)\n");
 	logit(LOG_STATUS, "Reading newsfile.");
-#ifdef __NO_MYSQL__
-	std::string news_error;
-	if (!load_news_file(".", &news_error))
-		logit(LOG_STATUS, "News unavailable: %s", news_error.c_str());
-#endif
 
 	logit(LOG_STATUS, "Reading projectsfile.");
 	projects = file_to_string(PROJECTS_FILE);
@@ -580,11 +575,6 @@ void boot_db(int mini_mode)
 	logit(LOG_STATUS, "Generating index table for objects.");
 	obj_index = generate_indices(obj_f, &top_of_objt);
 	stage_artifact_population();
-#ifdef __NO_MYSQL__
-	// The catalog supports an atomic batch. Finish boot discoveries before the
-	// live writer's per-row retry limit can turn them into a long startup backlog.
-	artifacts_save_boot_population();
-#endif
 
 	/*
 	 * load_obj_limits();

@@ -15,11 +15,9 @@
 #include "player/player_save_pipeline.h"
 #include "persistence/critical_command_coordinator.h"
 #include "persistence/persistence_mode.h"
-#ifndef __NO_MYSQL__
 #include "sql/sql.h"
 #include "sql/sql_player.h"
 #include "persistence/critical_command_repository.h"
-#endif
 #include "flatfile/flatfile_ship_repository.h"
 #include <cstdlib>
 #include <atomic>
@@ -115,12 +113,8 @@ try
 		}
 		else
 		{
-#ifdef __NO_MYSQL__
-			return false;
-#else
 			if (!divine_trade_sql_books(DB, boon_id, &loaded))
 				return false;
-#endif
 		}
 	}
 
@@ -152,9 +146,6 @@ try
 		}
 		else
 		{
-#ifdef __NO_MYSQL__
-			return false;
-#else
 			if (mysql_query(DB, "SELECT id FROM ships"))
 				return false;
 			MYSQL_RES *rows = mysql_store_result(DB);
@@ -172,7 +163,6 @@ try
 					reserved = std::max(reserved, lot.ship_id);
 			}
 			sql_reserve_ship_ids(reserved);
-#endif
 		}
 		for (const auto &book : loaded)
 			for (const auto &lot : book.lots)
@@ -441,14 +431,9 @@ try
 						result = divine_trade_flatfile_apply(root, command);
 					else
 					{
-#ifdef __NO_MYSQL__
-						result.outcome =
-							critical_apply_outcome::terminal_failure;
-#else
 						result =
 							critical_command_repository_apply_from_pool(
 								command, nullptr);
-#endif
 					}
 					recovery->outcome = result.outcome;
 				}

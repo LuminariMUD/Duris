@@ -311,12 +311,10 @@ bool Guildhall::save()
 	}
 
 	// The flat authority stores the hall and its rooms in the save above.
-#ifndef __NO_MYSQL__
 	for (size_t i = 0; i < this->rooms.size(); i++)
 	{
 		this->rooms[i]->save();
 	}
-#endif
 
 	return TRUE;
 }
@@ -330,12 +328,10 @@ bool Guildhall::destroy()
 	}
 
 	// The flat authority removes the hall and all nested rooms in the erase above.
-#ifndef __NO_MYSQL__
 	for (size_t i = 0; i < this->rooms.size(); i++)
 	{
 		this->rooms[i]->destroy();
 	}
-#endif
 
 	return TRUE;
 }

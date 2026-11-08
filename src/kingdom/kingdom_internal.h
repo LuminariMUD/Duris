@@ -20,9 +20,6 @@
 
 class Guild;
 class Guildhall;
-#ifdef __NO_MYSQL__
-struct flatfile_association_record;
-#endif
 
 #define LOG_KINGDOM "logs/log/kingdom"
 
@@ -219,10 +216,8 @@ struct kingdom_realm
 	 * the guild has not durably made) and the sweep must not bill again; the
 	 * pair is retried by kingdom_upkeep_retry_pending(). Never persisted. */
 	bool payment_pending = false;
-#ifndef __NO_MYSQL__
 	// The latest paired guild capture, never serialized or read by the SQL worker.
 	std::shared_ptr<sql_write_receipt> payment_receipt;
-#endif
 };
 
 /* ------------------------------------------------------------------ *
@@ -540,21 +535,10 @@ void kingdom_show_grid(struct char_data *ch, int hall_rnum, int racewar, int ign
 		       int highest_claim, const char *heading);
 
 /* ------------------------------------------------------------------ *
- * Persistence (kingdom_db.c, both backends behind __NO_MYSQL__)
- * ------------------------------------------------------------------ *
- * Dual backend on purpose: under the default mariadb build
- * persistence_mode_flatfile_root() returns NULL and no flat-file directories
- * are provisioned, so a flat-file-only store would silently not persist in
- * production.
- */
+ * Persistence (kingdom_db.c)
+ * ------------------------------------------------------------------ */
 bool kingdom_db_load_all(void);
 bool kingdom_db_save_realm(const kingdom_realm &realm);
-#ifdef __NO_MYSQL__
-/* Recoverably commit a flat guild debit and its paid realm after-image. */
-bool kingdom_db_save_payment_pair(const std::string &root,
-				  const flatfile_association_record &association,
-				  const kingdom_realm &realm, std::string *error);
-#endif
 bool kingdom_db_delete_realm(int assoc_id);
 void kingdom_db_flush_dirty(void);
 

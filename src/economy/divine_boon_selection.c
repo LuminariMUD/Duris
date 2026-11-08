@@ -353,9 +353,6 @@ try
 	reward_checked_at = -1;
 	if (!world || !zone_table || top_of_world < 0 || top_of_zone_table < 0)
 		return false;
-#ifdef __NO_MYSQL__
-	sql_load_zones();
-#endif
 	for (int index = 0; index <= top_of_zone_table; ++index)
 	{
 		// Exp uses the bartender-quest vetting (normal zone, not a town, not

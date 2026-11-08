@@ -62,11 +62,7 @@ static inline int get_db_port(void)
 #define DB_NAME get_db_name()
 #define DB_PORT get_db_port()
 
-#ifdef __NO_MYSQL__
-#include "no_mysql/mysql.h"
-#else
 #include <mysql.h>
-#endif
 extern MYSQL *DB;
 MYSQL *sql_open_configured_connection(unsigned long client_flags);
 MYSQL_RES *db_query_at(struct persistence_query_site site, const char *format, ...);
@@ -113,8 +109,6 @@ uint64_t sql_game_loop_query_count(void);
  * the same database. */
 const char *sql_persistence_db_name(void);
 
-#ifndef __NO_MYSQL__
-#endif
 bool sql_persistence_item_owner_matches(unsigned long long item_uid, const char *owner_type,
 					const char *owner_ref, const char *context);
 bool sql_persistence_item_owner_matches_identity(unsigned long long item_uid,
@@ -198,12 +192,10 @@ void sql_mud_info_refresh(void);
 
 string escape_str(const char *str);
 
-#ifndef __NO_MYSQL__
 void sql_clear_results_on(MYSQL *conn);
 // For the writer: the id of the character's account_characters row, or 0.
 unsigned int sql_find_account_character_id(MYSQL *connection, long pid,
 					   const std::string &escaped_char_name, long *id);
-#endif
 
 #include <vector>
 using namespace std;

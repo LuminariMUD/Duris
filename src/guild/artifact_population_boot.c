@@ -203,15 +203,11 @@ const artifact_population_boot_snapshot &artifact_population_prepare_boot(bool n
 		unsigned int failed = 0;
 		if (persistence_mode_requires_mysql())
 		{
-#ifndef __NO_MYSQL__
 			std::unique_ptr<MYSQL, decltype(&mysql_close)> connection(
 				sql_open_configured_connection(0), mysql_close);
 			failed = connection ? artifact_population_read_sql_payloads(
 						      connection.get(), &staged.items, &recovery) :
 					      ENOTCONN;
-#else
-			failed = ENOTSUP;
-#endif
 		}
 		else
 		{

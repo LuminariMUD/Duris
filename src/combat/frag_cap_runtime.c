@@ -5,10 +5,8 @@
 #include "persistence/persistence_mode.h"
 #include "player/player_save_worker.h"
 #include "redis/redis_report_cache.h"
-#ifndef __NO_MYSQL__
 #include "sql/sql.h"
 #include "sql/sql_pool.h"
-#endif
 
 #include <atomic>
 #include <cerrno>
@@ -38,7 +36,6 @@ try
 {
 	if (operation->flatfile)
 		operation->result = frag_cap_flatfile_load(operation->root, &operation->state);
-#ifndef __NO_MYSQL__
 	else if (MYSQL *connection = sql_pool_acquire())
 	{
 		operation->result = frag_cap_sql_load(connection, &operation->state);
@@ -48,7 +45,6 @@ try
 		if (connection)
 			sql_pool_release(connection);
 	}
-#endif
 	operation->finished.store(true, std::memory_order_release);
 	return { player_save_apply_outcome::applied, 0, 0 };
 }
@@ -89,9 +85,6 @@ bool frag_cap_runtime_boot(int64_t now)
 	}
 	else
 	{
-#ifdef __NO_MYSQL__
-		return false;
-#else
 		if (mysql_query(DB, "START TRANSACTION"))
 			return false;
 		result = frag_cap_sql_adopt(DB, frag_cap_config_get()->cap_floor_level,
@@ -107,7 +100,6 @@ bool frag_cap_runtime_boot(int64_t now)
 			mysql_query(DB, "ROLLBACK");
 			return false;
 		}
-#endif
 	}
 	if (result != frag_cap_store_result::ok)
 		return false;

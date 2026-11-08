@@ -141,7 +141,6 @@ bool queue_native(const std::shared_ptr<delivery_check> &check, size_t bytes,
 }
 bool queue_bootstrap(const std::shared_ptr<delivery_check> &check)
 {
-#ifndef __NO_MYSQL__
 	if (persistence_mode_requires_mysql())
 		return sql_queue_work(
 			[check](MYSQL *connection)
@@ -155,7 +154,6 @@ bool queue_bootstrap(const std::shared_ptr<delivery_check> &check)
 											  EIO));
 			},
 			check);
-#endif
 	const char *configured = persistence_mode_flatfile_root();
 	if (!configured)
 		return false;
@@ -185,7 +183,6 @@ bool queue_bootstrap(const std::shared_ptr<delivery_check> &check)
 bool queue_check(const std::shared_ptr<delivery_context> &context,
 		 const std::shared_ptr<delivery_check> &check)
 {
-#ifndef __NO_MYSQL__
 	if (persistence_mode_requires_mysql())
 		return sql_queue_work(
 			[context, check](MYSQL *connection)
@@ -202,7 +199,6 @@ bool queue_check(const std::shared_ptr<delivery_context> &context,
 										       EIO));
 			},
 			check);
-#endif
 	const char *configured = persistence_mode_flatfile_root();
 	if (!configured)
 		return false;
@@ -258,7 +254,6 @@ void cleanup_markers(uint64_t now)
 		return;
 	auto check = std::make_shared<delivery_check>();
 	bool queued = false;
-#ifndef __NO_MYSQL__
 	if (persistence_mode_requires_mysql())
 		queued = sql_queue_work(
 			[ids, check](MYSQL *connection)
@@ -281,7 +276,6 @@ void cleanup_markers(uint64_t now)
 			},
 			check);
 	else
-#endif
 	{
 		const char *configured = persistence_mode_flatfile_root();
 		if (configured)

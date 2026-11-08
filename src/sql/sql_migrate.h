@@ -20,9 +20,7 @@
  * tooling. The in-process auto-runner was removed.
  */
 
-#ifndef __NO_MYSQL__
 #include <mysql.h>
-#endif
 
 static inline int sql_run_migrations(void *db, const char *migrations_dir)
 {

@@ -1562,7 +1562,6 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
 		return false;
 	}
-#ifndef __NO_MYSQL__
 	// The writer drain finishes receipts; publish their terminal state before exec.
 	if (!sql_ship_write_pulse())
 	{
@@ -1572,7 +1571,6 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		notify_copyover_failure("Copyover cancelled: a ship save needs retry.");
 		return false;
 	}
-#endif
 	/* Terminal player saves can dirty a locker after the initial locker drain,
 	 * and critical movement ACKs can publish a locker transfer during the
 	 * critical drain. Seal that final generation before serializing copyover. */

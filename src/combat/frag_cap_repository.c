@@ -41,7 +41,6 @@ frag_cap_store_result commit(const std::string &root, const flatfile_authority_l
 		       frag_cap_store_result::io_error;
 }
 
-#ifndef __NO_MYSQL__
 std::string hex(const std::vector<uint8_t> &bytes)
 {
 	constexpr char digits[] = "0123456789abcdef";
@@ -63,7 +62,6 @@ bool parse(const char *text, int &value)
 	const auto parsed = std::from_chars(text, end, value);
 	return parsed.ec == std::errc() && parsed.ptr == end;
 }
-#endif
 }
 
 bool frag_cap_apply_combat(frag_cap_state *state, const critical_command &command,
@@ -174,12 +172,6 @@ frag_cap_store_result frag_cap_flatfile_tick(const std::string &root, int64_t no
 
 frag_cap_store_result frag_cap_sql_load(MYSQL *connection, frag_cap_state *state, bool for_update)
 {
-#ifdef __NO_MYSQL__
-	(void)connection;
-	(void)state;
-	(void)for_update;
-	return frag_cap_store_result::io_error;
-#else
 	if (!connection || !state)
 		return frag_cap_store_result::invalid;
 	if (mysql_query(connection, for_update ?
@@ -199,16 +191,10 @@ frag_cap_store_result frag_cap_sql_load(MYSQL *connection, frag_cap_state *state
 		loaded = frag_cap_store_result::ok;
 	mysql_free_result(result);
 	return loaded;
-#endif
 }
 
 frag_cap_store_result frag_cap_sql_save(MYSQL *connection, const frag_cap_state &state)
 {
-#ifdef __NO_MYSQL__
-	(void)connection;
-	(void)state;
-	return frag_cap_store_result::io_error;
-#else
 	std::vector<uint8_t> bytes;
 	if (!connection || !frag_cap_state_encode(state, &bytes))
 		return frag_cap_store_result::invalid;
@@ -236,22 +222,12 @@ frag_cap_store_result frag_cap_sql_save(MYSQL *connection, const frag_cap_state 
 		return loaded == frag_cap_store_result::not_found ? frag_cap_store_result::invalid :
 								    loaded;
 	return stored == state ? frag_cap_store_result::ok : frag_cap_store_result::invalid;
-#endif
 }
 
 frag_cap_store_result frag_cap_sql_adopt(MYSQL *connection, int legacy_floor, int legacy_maximum,
 					 int64_t now, frag_cap_state *state,
 					 const frag_cap_policy &policy)
 {
-#ifdef __NO_MYSQL__
-	(void)connection;
-	(void)legacy_floor;
-	(void)legacy_maximum;
-	(void)now;
-	(void)state;
-	(void)policy;
-	return frag_cap_store_result::io_error;
-#else
 	const auto loaded = frag_cap_sql_load(connection, state, true);
 	if (loaded != frag_cap_store_result::not_found)
 		return loaded;
@@ -289,7 +265,6 @@ frag_cap_store_result frag_cap_sql_adopt(MYSQL *connection, int legacy_floor, in
 	if (saved == frag_cap_store_result::ok)
 		*state = adopted;
 	return saved;
-#endif
 }
 
 frag_cap_store_result frag_cap_sql_reset_season(MYSQL *connection, int64_t reset_started_at,

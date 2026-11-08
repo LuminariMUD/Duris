@@ -1,6 +1,6 @@
 # Flat-file backend removal: fast approach
 
-Status: proposed; implementation has not started.
+Status: implementation in progress; see "Implementation log" at the end.
 Date: 2026-11-09.
 Source baseline: `06743dec0`. A recount at `4c2708c96` found no change to
 persistence paths or to the counts below.
@@ -386,7 +386,27 @@ is imported by 142 test modules; its `build_flatfile_server()`, `run_journey()`,
 and `make_fixture()` helpers, and `make_overlord()` (used by 63 files), hold most
 of the flat-file-specific setup.
 
-Implementation evidence will be added here during execution; the deferred
-inventory lives in the runner's named list. Apart from the scratch-copy trial
-above, no implementation, runtime validation, deployment, commit, or push has
-been performed by writing this plan.
+## Implementation log
+
+Worktree: `duris-worktrees/flatfile-backend-removal-plan`. The work ships as
+stacked PRs, each branch built on the previous one; the deferred inventory lives
+in the runner's named list. To continue, check out the top branch of the stack
+and pick up at the first step not marked done.
+
+| Step | Branch | State |
+| --- | --- | --- |
+| 2a. Strip `__NO_MYSQL__`, Makefile | `branch/flatfile-backend-removal-plan` | done |
+
+### Step 2a evidence
+
+`unifdef -U__NO_MYSQL__ -t -m` over the 71 files, then `./scripts/format.sh` for
+the blank lines it left. The 5 leftover macro comments, and comments that
+described the two-backend split in the same files, are rewritten. The
+preprocessor comparison shows 520 of 521 files identical; the exception,
+`net/comm.c`, differs only because clang-format joined one `if` condition onto a
+single line, which is the same tokens. `make -C src` builds, and
+`make -C src -n PERSISTENCE_BACKEND=flatfile all` stops with the new diagnostic.
+
+**The strip alone breaks tests that build the flat-file server or use the
+`__NO_MYSQL__` shape of the code.** `make test-all` is not expected to pass until
+the top of the stack adds the named deferred list, so merge the stack together.

@@ -255,17 +255,6 @@ void update_ingame_racewar(int racewar)
 
 int getNewPCidNumb(void)
 {
-#ifdef __NO_MYSQL__
-	int32_t allocated = -1;
-	std::string error;
-	if (!flatfile_player_identity_allocate(&allocated, &error))
-	{
-		logit(LOG_FILE, "could not allocate flat-file player id");
-		return -1;
-	}
-	highestPCidNumb = allocated;
-	return allocated;
-#else
 	// Every character's pid is in memory (sql_player_names_load()). init_char() records
 	// the new one there at once, so the next allocation is past it.
 	const int highest = sql_highest_player_pid();
@@ -276,24 +265,11 @@ int getNewPCidNumb(void)
 	}
 	highestPCidNumb = highest + 1;
 	return highestPCidNumb;
-#endif
 }
 
 void setNewPCidNumbfromFile(void)
 {
-#ifdef __NO_MYSQL__
-	int32_t highest = 0;
-	std::string error;
-	if (!flatfile_player_identity_highest(&highest, &error))
-	{
-		logit(LOG_FILE, "could not load flat-file player id allocator");
-		highestPCidNumb = 0;
-		return;
-	}
-	highestPCidNumb = highest;
-#else
 	highestPCidNumb = sql_highest_player_pid();
-#endif
 
 	logit(LOG_STATUS, "highest PC number is %ld", highestPCidNumb);
 }
@@ -2077,14 +2053,12 @@ void enter_game(P_desc d)
 		persistence_alert(AVATAR, "player", "redacted", "none", "none", "save_failed",
 				  NULL);
 	}
-#ifndef __NO_MYSQL__
 	else if (!sql_save_player_core(ch))
 	{
 		statuslog(56, "&+RALERT&n: post-entry player core save failed");
 		persistence_alert(AVATAR, "player", "redacted", "none", "none", "sql_save_failed",
 				  NULL);
 	}
-#endif
 	if (IS_SET(ch->specials.act3, PLR3_STARTER_KIT_PENDING))
 	{
 		if (!item_creation_grant_resume_starter(ch))
@@ -3899,12 +3873,6 @@ void init_char(P_char ch)
 		logit(LOG_FILE, "could not initialize new player revision state");
 	// The name is taken from now on.
 	sql_player_names_set(ch->only.pc->pid, GET_NAME(ch));
-#ifdef __NO_MYSQL__
-	/* The flat-file first save establishes the player's domains, which the save then
-	 * reads back, so it waits for the write. On MariaDB the first save is queued like
-	 * any other: the writer inserts the player_data row and its opening baselines. */
-	SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);
-#endif
 	ch->only.pc->screen_length = DEFAULT_SCREEN_LENGTH;
 	ch->only.pc->wiz_invis = 0;
 	ch->only.pc->highest_level = 1;
@@ -4299,10 +4267,6 @@ void account_creation_pulse()
 				player_save_pipeline_end_session(pid);
 			continue;
 		}
-#ifdef __NO_MYSQL__
-		// The persistent catalog now owns the reservation.
-		sql_player_names_release(pid, saved.name.c_str());
-#endif
 		if (saved.kind == kept_save_kind::initial)
 			for (P_desc cached = descriptor_list; cached; cached = cached->next)
 				if (cached->account && cached->account->acct_name &&

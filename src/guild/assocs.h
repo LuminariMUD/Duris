@@ -184,11 +184,6 @@ struct guild_frag_info
 
 typedef struct Guild *P_Guild;
 
-#ifdef __NO_MYSQL__
-struct flatfile_association_record;
-struct kingdom_realm;
-#endif
-
 void forget_deleted_guild_member(const char *character_name);
 void rename_guild_member(const char *old_name, const char *new_name);
 
@@ -357,10 +352,6 @@ class Guild
 	 * ordered snapshot and returns admission; save_pending() observes its commit.
 	 * A failed capture stays dirty and is reported. */
 	bool save();
-#ifdef __NO_MYSQL__
-	/* Commit this guild and a paid kingdom mutation through one recovery journal. */
-	bool save_with_kingdom(const kingdom_realm &realm);
-#endif
 
 	static void initialize();
 	Guild(char *_name, unsigned int _racewar, unsigned int _id_number, unsigned long _prestige,
@@ -377,10 +368,6 @@ class Guild
 	int max_assoc_size();
 	void default_title(P_char ch);
 	void update_online_members();
-#ifdef __NO_MYSQL__
-	bool build_flatfile_record(const std::string &root, flatfile_association_record *record,
-				   std::string *error);
-#endif
 
 	char name[ASC_MAX_STR];
 	char titles[ASC_NUM_RANKS][ASC_MAX_STR_RANK];
