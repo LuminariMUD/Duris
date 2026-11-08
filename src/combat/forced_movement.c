@@ -348,10 +348,7 @@ static forced_move_result move_forced_people(P_char first, P_char second, P_char
 	if (!group_capacity(people, plans[0].destination))
 		return fail({ forced_move_status::blocked, forced_block::private_room });
 	if (mount)
-	{
 		separate_riders(people[1].live());
-		suspend_riding();
-	}
 	else
 		for (const auto &person : people)
 			separate_riders(person.live());
@@ -359,6 +356,14 @@ static forced_move_result move_forced_people(P_char first, P_char second, P_char
 	bool arrived = true;
 	for (size_t i = 0; i < people.size(); ++i)
 	{
+		// All three have left and passed their own checks. char_to_room brings the
+		// mount in before the rider's arrival hook, preserving mounted script behavior.
+		if (mount && i == 2)
+		{
+			P_char steed = people[i].live();
+			if (steed && steed->in_room == plans[i].destination)
+				continue;
+		}
 		// Earlier arrival procedures may remove another participant or seal the exit.
 		if (recheck(people[i], plans[i], true).status != forced_move_status::arrived)
 		{
@@ -375,15 +380,21 @@ static forced_move_result move_forced_people(P_char first, P_char second, P_char
 			arrived = false;
 		}
 	}
-	restore_riding();
 	for (size_t i = 0; i < people.size(); ++i)
 	{
 		P_char moved = people[i].live();
 		if (!moved || moved->in_room != plans[i].destination)
 			arrived = false;
 	}
-	if (mount && !riding_together())
-		arrived = false;
+	if (mount)
+	{
+		P_char rider = people[0].live();
+		P_char steed = people[2].live();
+		if (!rider || !steed || rider->in_room != steed->in_room)
+			suspend_riding();
+		if (!riding_together())
+			arrived = false;
+	}
 	return { arrived ? forced_move_status::arrived : forced_move_status::interrupted };
 }
 

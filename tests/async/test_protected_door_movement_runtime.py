@@ -43,7 +43,7 @@ static descriptor_data descriptor{};
 static std::vector<P_char> live;
 static std::list<char_link_data> links;
 static std::vector<std::string> fixture_messages;
-static bool lance_present=true;
+static bool lance_present=true, mounted_during_entry;
 static int damage_calls;
 enum class Hook { none, veto, seal, lose_passdoor, redirect, extract, kill, remove_weapon, remove_actor };
 static Hook leave_hook, enter_hook;
@@ -172,8 +172,14 @@ placement = r'''
 bool char_to_room(P_char ch,int room,int dir) {
  assert(char_in_list(ch) && room>=0 && room<=top_of_world);
  place(ch,room); if(room==1) ++placements;
+ if(dir>=0 && rng_route==4 && ch==&actor) {
+  assert(GET_MOUNT(ch)==&mount && GET_RIDER(&mount)==ch);
+  mounted_during_entry=true;
+ }
  if(!move_riding_companions(ch,room,dir)) return false;
  if(dir>=0 && ch==hook_target) {
+  if(rng_route==4 && ch==&actor)
+   assert(GET_MOUNT(ch)==&mount && GET_RIDER(&mount)==ch && mount.in_room==ch->in_room);
   const Hook hook=enter_hook; enter_hook=Hook::none;
   if(hook==Hook::seal) north.exit_info|=EX_CLOSED|EX_LOCKED|EX_PICKPROOF;
   if(hook==Hook::redirect) { place(ch,2); return false; }
@@ -208,7 +214,7 @@ static void reset(int route,unsigned flags,unsigned pass_mask) {
  actor={}; target={}; mount={}; witness={}; lance={}; links.clear(); live.clear(); fixture_messages.clear();
  for(auto &room:rooms) room={}; north={}; placements=damage_calls=0; character_removal_generation=0;
  rng_route=route; castle_wall=spell_wall=false; lance_present=true;
- leave_hook=enter_hook=Hook::none; hook_target=nullptr;
+ leave_hook=enter_hook=Hook::none; hook_target=nullptr; mounted_during_entry=false;
  int id=0;
  for(P_char ch:{&actor,&target,&mount,&witness}) {
   ch->in_room=NOWHERE; ch->runtime_id=++id; ch->player.level=56; ch->desc=&descriptor;
@@ -255,7 +261,7 @@ int main() {
     assert(actor.in_room==((allowed && route==4)?1:0));
     assert(mount.in_room==((allowed && route==4)?1:0));
     assert(announced()==allowed);
-    if(route==4) { assert(GET_MOUNT(&actor)==&mount && GET_RIDER(&mount)==&actor); }
+    if(route==4) { assert(GET_MOUNT(&actor)==&mount && GET_RIDER(&mount)==&actor); assert(mounted_during_entry==allowed); }
    }
   // Trusted characters retain their own walking exception; they cannot lend it to companions.
   for(unsigned trust=0;trust<8;++trust) {
@@ -303,7 +309,7 @@ int main() {
  }
  // Arrival hooks are authoritative. No later participant may cross a newly sealed door.
  reset(4,EX_CLOSED,7); hook_target=&actor; enter_hook=Hook::seal; run(4); ++cases;
- assert(actor.in_room==1 && target.in_room==0 && mount.in_room==0 && !GET_MOUNT(&actor));
+ assert(actor.in_room==1 && target.in_room==0 && mount.in_room==1 && GET_MOUNT(&actor)==&mount);
  assert(damage_calls==0);
  // Redirecting/removing the charger never leaves a riding link across rooms.
  for(const Hook hook:{Hook::redirect,Hook::extract,Hook::kill}) {
