@@ -619,6 +619,22 @@ int main() {
     skills[SPELL_STONE_SKIN].name="stone skin"; skills[SPELL_STONE_SKIN].spell_pointer=spell_stone_skin;
     skills[SPELL_STORNOGS_SPHERES].name="spheres"; skills[SPELL_STORNOGS_SPHERES].spell_pointer=spell_stornogs_spheres;
     skills[SONG_DRAGONS].name="song of dragons"; skills[SKILL_EPIC_STRENGTH].name="epic strength";
+    // Item and scripted casts can bypass the learned spell's minimum circle.
+    // Check the real handler and affect expiry, including the old permanent sentinel.
+    for(const auto [level,duration]:{std::pair{3,0},{4,0},{1,0},{2,0},{5,1},{36,32},{56,52}}) {
+        reset();
+        spell_displacement(level,&wearer,nullptr,SPELL_TYPE_POTION,&wearer,nullptr);
+        auto *displacement=get_spell_from_char(&wearer,SPELL_DISPLACEMENT);
+        assert(displacement && displacement->duration==duration);
+        assert(displacement->location==APPLY_AC && displacement->modifier==-2*level);
+        for(int remaining=duration;remaining>0;--remaining) {
+            affect_update(0);
+            assert(affected_by_spell(&wearer,SPELL_DISPLACEMENT));
+            assert(displacement->duration==remaining-1);
+        }
+        affect_update(0);
+        assert(!affected_by_spell(&wearer,SPELL_DISPLACEMENT));
+    }
     {
         reset(); track_hit_points=true;
         affected_type vitality{}; vitality.type=SPELL_VITALITY;

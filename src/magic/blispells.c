@@ -780,7 +780,7 @@ void event_acid_rain(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 	for (victim = world[room].people; victim; victim = next)
 	{
 		next = victim->next_in_room;
-		if (victim == ch || (ch->group && ch->group == victim->group))
+		if (!IS_ALIVE(victim) || victim == ch || (ch->group && ch->group == victim->group))
 			continue;
 		int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_ACID_RAIN);
 		if (!NewSaves(victim, SAVING_SPELL, mod))
@@ -1227,7 +1227,7 @@ void event_sandstorm(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 	for (victim = world[rroom].people; victim; victim = next)
 	{
 		next = victim->next_in_room;
-		if (victim == ch || (ch->group && ch->group == victim->group))
+		if (!IS_ALIVE(victim) || victim == ch || (ch->group && ch->group == victim->group))
 			continue;
 		int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_SANDSTORM);
 		if (!NewSaves(victim, SAVING_SPELL, mod))

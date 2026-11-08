@@ -495,7 +495,8 @@ int main() {
         assert(combat_mind_duration(level) == level + 3 && combat_mind_hitroll(level) == level / 6 &&
                combat_mind_damroll(level) == level / 8);
         assert(psychic_crush_penalty(level) == (int)(-1 * (level / 2)));
-        assert(displacement_duration(level) == level - 4 && displacement_ac(level) == -level * 2);
+        assert(displacement_duration(level) == (level < 5 ? 0 : level - 4));
+        assert(displacement_ac(level) == -level * 2);
         assert(ectoplasmic_form_duration(level) == level / 2);
         assert(energy_containment_duration(level) == level / 2 + 7 && energy_containment_save(level) == -(level / 8));
         assert(enhance_armor_ac(level) == -1 * level && flesh_armor_ac(level) == (int)(-1 * level));
@@ -839,7 +840,9 @@ int main() {
                                             "  Casting it again renews the duration.\n"));
     assert(combat_mind_facts(&ch).find("psionicist") == std::string::npos);
     ch = viewer(viewers[1], 3);
-    assert(contains(displacement_facts(&ch), "  Duration: permanent at your level, 3\n"));
+    assert(contains(displacement_facts(&ch), "  Duration: up to 1 game hour (up to 1.25 minutes) at your level, 3\n"));
+    ch = viewer(viewers[1], 4);
+    assert(contains(displacement_facts(&ch), "  Duration: up to 1 game hour (up to 1.25 minutes) at your level, 4\n"));
     ch = viewer(viewers[1], 44);
     assert(contains(wormhole_facts(&ch), "  Can pass each way: 1-3"
                                          " at your level, 44\n"));

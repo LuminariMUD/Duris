@@ -3726,8 +3726,6 @@ void do_consume(P_char ch, char *argument, int /*cmd*/)
 			act("...another chunk of &+R$N&n's &+grotten &+yflesh&n falls to the ground, and you feel your &+gprayer &nflow back into your mind...&n",
 			    FALSE, ch, 0, victim, TO_CHAR);
 			memorize_last_spell(ch);
-			char buf[256];
-			send_to_char(buf, ch);
 			/*if(!NewSaves(victim, SAVING_FEAR, 0))
 			temp_dam = (int) (temp_dam * 1.33);*/
 			vamp(ch, temp_dam, static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
@@ -3735,8 +3733,6 @@ void do_consume(P_char ch, char *argument, int /*cmd*/)
 				     0);
 		}
 		memorize_last_spell(ch);
-		char buf[256];
-		send_to_char(buf, ch);
 		--af->modifier;
 		REMOVE_BIT(victim->specials.affected_by5, AFF5_DECAYING_FLESH);
 		affect_from_char(victim, SPELL_DECAYING_FLESH);
