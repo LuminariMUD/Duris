@@ -56,6 +56,8 @@ int main() {
     race_names_table[RACE_ORC].normal="Orc";
     char selector[128];
     assert(get_char_room_vis(&viewer,"Enemy")==nullptr); // actual names don't bypass racewar
+    assert(get_char_room_vis(&viewer,"Enemy-Human")==nullptr); // no combining private names with races
+    assert(get_char_room_vis(&viewer,"guard-human")==&npc);
     assert(get_char_room_target(&viewer,&enemy,selector,sizeof(selector)));
     assert(!strcmp(selector,"3.Human") && get_char_room_vis(&viewer,selector)==&enemy);
     assert(get_char_room_target(&viewer,&second,selector,sizeof(selector)));
@@ -74,6 +76,8 @@ int main() {
     enemy.disguise.title=const_cast<char *>("masked traveller");
     assert(get_char_room_target(&viewer,&enemy,selector,sizeof(selector)));
     assert(!strcmp(selector,"1.Orc") && get_char_room_vis(&viewer,selector)==&enemy);
+    assert(get_char_room_vis(&viewer,"masked-traveller")==&enemy);
+    assert(get_char_room_vis(&viewer,"masked-Orc")==nullptr); // separate disguise/race lists
     enemy.in_room=1;
     assert(!get_char_room_target(&viewer,&enemy,selector,sizeof(selector)));
     assert(!get_char_room_target(&viewer,&ally,selector,2));
@@ -95,6 +99,8 @@ int main() {
     half_chop(command,who,message);
     assert(!strcmp(message,"message"));
     assert(!strcmp(who,"2.guard") && get_char_room_vis(&viewer,who)==&captain);
+    assert(get_char_room_vis(&viewer,"1.guard-captain")==&captain);
+    assert(get_char_room_vis(&viewer,"2.guard-captain")==nullptr);
     puts("native room selectors: racewar, same-side names, NPC/PC ordinal collisions, movement, visibility, height and disguise passed");
 }
 '''
