@@ -2,7 +2,9 @@
 
 Source review: 2026-11-08, checkout `b9bcce5e1c0081d373382c0e9cd3f18d48832b84`.
 This is a reference to the checked-in server and `lib/duris.properties`, not a
-measurement of deployed settings or race win rates. No gameplay was changed.
+measurement of deployed settings or race win rates. The original review changed
+no gameplay; the 2026-11-08 [weapon-handling follow-up](race-misc.md#2-huge-player-races-two-handed-weapons-in-one-hand)
+extends the hand discount to all Huge player races, adding Wight.
 Runtime property overrides can change the configurable values below.
 
 See [race-size-issues.md](race-size-issues.md) for potential defects, each one's
@@ -28,9 +30,9 @@ affect training dummy profiles and NPC race defaults independently of corpseform
   mechanics deliberately or historically read stored size, ignoring growth.
 - The two racial size authorities disagree for six PC races. Barbarian is the
   ordinary-roster example: Large at creation/login, Medium in `race_size()`.
-- Giant weapon handling, dwarf giant avoidance, centaur/drider bodies, racial
-  stats, and racial skill grants are separate rules. Changing a size number
-  does not automatically give those racial benefits or remove those restrictions.
+- PC weapon hand cost uses stored base size: Huge or larger qualifies for
+  one-hand use of two-handed weapons. Dwarf giant avoidance, centaur/drider
+  bodies, racial stats and skill grants retain their separate racial rules.
 
 ## 1. Definitions and character lifecycle
 
@@ -836,18 +838,20 @@ five mismatching PC races likewise follow the lookup column. This matters when
 designing a race-specific size comparison journey.
 [Dummy profile](../../../src/combat/training_dummy.c#L237).
 
-## 9. Related racial rules that are not numeric size rules
+## 9. Related racial and weapon-handling rules
 
-These explain otherwise misleading balance conclusions. They are not bonuses
-gained by changing `B`, `S`, height, or weight alone.
+These explain otherwise misleading balance conclusions. PC weapon hand cost
+uses stored size `B`; the other racial benefits below are not gained by changing
+`B`, `S`, height, or weight alone.
 
 - **One-handed use of two-handed weapons:** `wield_item_size()` charges one hand
-  for a weapon when `IS_GIANT(actor)`, otherwise the normal two-hand rules apply.
-  The race predicate includes Giant, Ogre, Storm Giant, Minotaur, Snow Ogre,
-  Firbolg, Fire Giant, Frost Giant; it does not test effective Giant size.
-  Ordinary Ogre/Minotaur/Firbolg get the discount; an enlarged Human does not.
+  for a PC's weapon when stored base size is Huge or larger. This includes
+  Ogre, Minotaur, Firbolg, Storm Giant and Wight. Enlarge/Reduce/Titan Form do
+  not change eligibility. NPCs retain `IS_GIANT(actor)`: Giant, Ogre, Storm
+  Giant, Minotaur, Snow Ogre, Firbolg, Fire Giant and Frost Giant.
   It is a weapon discount, not a general discount for any two-handed held item.
   Hand capacity remains two, or four with the separate four-hand trait.
+  [Follow-up rationale and effects](race-misc.md#2-huge-player-races-two-handed-weapons-in-one-hand),
   [Predicate](../../../src/core/utils.h#L770),
   [weapon hand cost](../../../src/cmd/actobj.c#L104),
   [hand accounting](../../../src/cmd/actobj.c#L5608).

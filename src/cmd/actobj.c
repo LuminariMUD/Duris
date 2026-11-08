@@ -103,9 +103,10 @@ bool is_stat_max(sbyte location)
 
 int wield_item_size(P_char ch, P_obj obj)
 {
+	// Player hand cost uses base size, not Enlarge/Reduce or the NPC giant list.
 	if (!(IS_SET(obj->extra_flags, ITEM_TWOHANDS) ||
 	      (obj->type == ITEM_WEAPON && obj->value[0] == WEAPON_2HANDSWORD)) ||
-	    (IS_GIANT(ch) && obj->type == ITEM_WEAPON))
+	    (obj->type == ITEM_WEAPON && (IS_PC(ch) ? GET_SIZE(ch) >= SIZE_HUGE : IS_GIANT(ch))))
 	{
 		return 1;
 	}
@@ -5592,7 +5593,7 @@ int numb_artis_using(P_char ch)
 
 /*
  * Capacity is two hands (four for HAS_FOUR_HANDS), regardless of race.
- * Giant-class races, including minotaurs, get their weapon discount solely
+ * Huge players and giant-class NPCs get their weapon discount solely
  * from wield_item_size; an extra allowance here double-counts that benefit
  * and makes admission depend on equip order or whether WIELD is occupied.
  */

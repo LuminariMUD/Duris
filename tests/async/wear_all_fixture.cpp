@@ -180,6 +180,7 @@ static void reset(int race = RACE_HUMAN, bool four_arms = false)
 	actor = {};
 	actor.only.pc = &pc;
 	actor.player.race = race;
+	set_char_size(&actor);
 	actor.curr_stats.Str = 100;
 	actor.specials.position = STAT_RESTING | POS_SITTING;
 	if (four_arms)
@@ -360,10 +361,9 @@ int main()
 		combinations({ great, book, pen }, { 12, 13, 13 }, race, effect);
 		combinations({ twoheld, shield, weapon }, { 13, 14, 12 }, race, effect);
 	}
-	// Racial size reduces weapon cost, not total capacity. Minotaurs retain
+	// Base Huge size reduces weapon cost, not total capacity. These players retain
 	// two-handed weapons in the primary slot, even with only one hand free.
-	for (int race : { RACE_GIANT, RACE_OGRE, RACE_SGIANT, RACE_MINOTAUR, RACE_SNOW_OGRE,
-			  RACE_FIRBOLG, RACE_FIREGIANT, RACE_FROSTGIANT })
+	for (int race : { RACE_OGRE, RACE_SGIANT, RACE_MINOTAUR, RACE_FIRBOLG, RACE_WIGHT })
 	{
 		reset(race);
 		assert(wield_item_size(&actor, &great) == 1);
@@ -404,10 +404,61 @@ int main()
 		assert(wear(&actor, &held_weapon, 13, false));
 		assert(get_numb_free_hands(&actor) == 0);
 	}
+	// Check the complete PC roster against real creation sizes. Effective growth,
+	// shrinkage and Titan Form never change this base-size equipment benefit.
+	for (int race = RACE_HUMAN; race <= RACE_TIEFLING; ++race)
+	{
+		reset(race);
+		const bool huge = race == RACE_OGRE || race == RACE_MINOTAUR ||
+				  race == RACE_FIRBOLG || race == RACE_SGIANT || race == RACE_WIGHT;
+		assert((GET_SIZE(&actor) == SIZE_HUGE) == huge);
+		const int cost = huge ? 1 : 2;
+		assert(wield_item_size(&actor, &great) == cost);
+		SET_BIT(actor.specials.affected_by3, AFF3_ENLARGE);
+		assert(wield_item_size(&actor, &great) == cost);
+		actor.specials.affected_by3 = AFF3_REDUCE;
+		assert(wield_item_size(&actor, &great) == cost);
+		actor.specials.affected_by3 = 0;
+		SET_BIT(actor.specials.affected_by5, AFF5_TITAN_FORM);
+		assert(wield_item_size(&actor, &great) == cost);
+	}
+	// NPC equipment keeps the racial giant rule, even when stored size differs.
+	for (int race : { RACE_GIANT, RACE_OGRE, RACE_SGIANT, RACE_MINOTAUR, RACE_SNOW_OGRE,
+			  RACE_FIRBOLG, RACE_FIREGIANT, RACE_FROSTGIANT })
+	{
+		reset(race);
+		SET_BIT(actor.specials.act, ACT_ISNPC);
+		GET_SIZE(&actor) = SIZE_MEDIUM;
+		assert(wield_item_size(&actor, &great) == 1);
+		assert(wield_item_size(&actor, &twoheld) == 2);
+	}
+	for (int race : { RACE_WIGHT, RACE_HUMAN, RACE_GOLEM })
+	{
+		reset(race);
+		SET_BIT(actor.specials.act, ACT_ISNPC);
+		GET_SIZE(&actor) = SIZE_HUGE;
+		assert(wield_item_size(&actor, &great) == 2);
+	}
+	// Wight gains a hand discount, not exemptions from weight or dual training.
+	reset(RACE_WIGHT);
+	pc.skills[SKILL_DUAL_WIELD].learned = 0;
+	auto wight_primary = item(ITEM_WEAPON, ITEM_WIELD, true);
+	auto wight_secondary = item(ITEM_WEAPON, ITEM_WIELD, true);
+	assert(wear(&actor, &wight_primary, 12, false));
+	assert(!wear(&actor, &wight_secondary, 12, false));
+	pc.skills[SKILL_DUAL_WIELD].learned = 100;
+	wight_secondary.weight = 34;
+	assert(!wear(&actor, &wight_secondary, 12, false));
+	remove(&wight_primary);
+	wight_primary.weight = 101;
+	assert(!wear(&actor, &wight_primary, 12, false));
 	reset();
 	auto old_sword = item(ITEM_WEAPON, ITEM_WIELD);
 	old_sword.value[0] = WEAPON_2HANDSWORD;
 	assert(wield_item_size(&actor, &old_sword) == 2);
+	reset(RACE_WIGHT);
+	assert(wield_item_size(&actor, &old_sword) == 1);
+	reset();
 	auto occupied = item(ITEM_ARMOR, ITEM_HOLD);
 	assert(wear(&actor, &occupied, 13, false));
 	assert(!wear(&actor, &old_sword, 12, false));
