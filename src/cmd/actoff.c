@@ -52,6 +52,7 @@
 #include <utility>
 #include <vector>
 #include "world/buildings.h"
+#include "combat/attack_continuation.h"
 #include "combat/damage.h"
 #include "combat/forced_movement.h"
 #include "combat/grapple.h"
@@ -1151,7 +1152,8 @@ void lance_charge(P_char ch, char *argument)
 		snprintf(buf, sizeof buf, "$n rears up on you and orders you to charge %s.",
 			 dirs[dir]);
 		act(buf, TRUE, ch, weapon, mount, TO_VICT);
-		do_simple_move(ch, dir, 0);
+		if (!do_simple_move(ch, dir, 0))
+			return;
 	}
 
 	// calculate dir for continued charge
@@ -3892,10 +3894,16 @@ void rush(P_char ch, P_char victim)
 
 		if (GET_OPPONENT(ch))
 		{
+			const attack_continuation continuation =
+				begin_attack_continuation(ch, victim);
 			// The person you are rushing away from gets a free attack.
 			hit(GET_OPPONENT(ch), ch, GET_OPPONENT(ch)->equipment[PRIMARY_WEAPON]);
+			if (!check_attack_continuation(continuation).can_continue())
+				return;
 			stop_fighting(ch);
 			set_fighting(ch, victim);
+			if (!check_attack_continuation(continuation).can_continue())
+				return;
 		}
 
 		hit(ch, victim, ch->equipment[PRIMARY_WEAPON]);
@@ -4955,7 +4963,7 @@ void do_dragon_breath(P_char ch, char *argument, int /*cmd*/)
 	int skl_lvl = 0;
 	int percent_chance;
 	bool is_priest = FALSE;
-	char name[MAX_INPUT_LENGTH];
+	char name[MAX_INPUT_LENGTH] = {};
 	char buf[MAX_STRING_LENGTH];
 	char spellName[MAX_INPUT_LENGTH] = {};
 
@@ -9191,7 +9199,7 @@ std::string tackle_facts(P_char)
 	       fact("Stun if you land prone and fail a constitution roll",
 		    seconds(tackle_self_stun())) +
 	       fact("Your lag if the target is more than a size off", seconds(tackle_size_lag())) +
-	       fact("Your lag if a centaur or drider is at least your size",
+	       fact("Your lag if a centaur, quadruped or drider is at least your size",
 		    seconds(tackle_body_lag())) +
 	       fact("Your lag if the target is asleep",
 		    seconds(takedown_sleeping_target_lag()) + " (you attack it instead)") +
@@ -10047,10 +10055,13 @@ void rescue(P_char ch, P_char rescuee, bool rescue_all)
 				}
 
 				if (!rescue_all && GET_CHAR_SKILL(ch, SKILL_CLEAVE))
+				{
+					const attack_continuation continuation =
+						begin_attack_continuation(ch, t_ch);
 					cleave(ch, t_ch);
-
-				if (GET_STAT(t_ch) == STAT_DEAD)
-					return;
+					if (!check_attack_continuation(continuation).can_continue())
+						return;
+				}
 
 				send_to_char("&+WBanzai! To the rescue...\n", ch);
 				act("&+WYou are rescued by $N&+W, you are confused, but grateful!",

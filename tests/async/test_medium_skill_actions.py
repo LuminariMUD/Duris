@@ -32,6 +32,14 @@ roundkick = handler("bool roundkick(")
 assert roundkick.count("CharWait(victim,") == 1
 assert "CharWait(victim, roundkick_target_lag())" in roundkick
 assert "SET_POS(victim, POS_KNEELING + GET_STAT(victim))" in roundkick
+lance_source = handler("void lance_charge(")
+assert re.search(r"if \(!do_simple_move\(ch, dir, 0\)\)\s*return;", lance_source)
+assert re.search(r"void do_dragon_breath\(.*?char name\[MAX_INPUT_LENGTH\] = \{\};", strip_comments(handler("void do_dragon_breath(")), re.S)
+assert "centaur, quadruped or drider" in extract_function("actoff.c", "std::string tackle_facts(")
+rush_body = handler("void rush(")
+rush_free_attack = between(rush_body[rush_body.rindex("if (GET_OPPONENT(ch))"):], "if (GET_OPPONENT(ch))", "\n\t}\n")
+rescue_body = handler("void rescue(")
+rescue_cleave = between(rescue_body, "if (!rescue_all && GET_CHAR_SKILL(ch, SKILL_CLEAVE))", 'send_to_char("&+WBanzai!')
 stab = handler("bool single_stab(")
 awareness = between(stab, "if (((IS_AFFECTED", "\n\t{")[4:-1]
 assert stab.index("dam = backstab_noticed_damage") < stab.index("dam = critical_stab_damage")
@@ -71,6 +79,29 @@ cpp += "bool sturdy_target(Char *ch,Char *vict) { return " + sturdy + ";}\n"
 cpp += "bool penalized(Char *victim,bool crit) {return " + awareness + ";}\n"
 cpp += "\n".join(learning)
 cpp += r'''
+
+constexpr int PRIMARY_WEAPON=0, SKILL_CLEAVE=2;
+struct attack_continuation {};
+struct continuation_result { bool go; bool can_continue() const { return go; } };
+int alive_checks, freed_uses;
+attack_continuation begin_attack_continuation(Char *,Char *) { return {}; }
+continuation_result check_attack_continuation(attack_continuation) { return {alive_checks-->0}; }
+Char *opponent;
+void *equipment_of(Char *) { return nullptr; }
+void hit_char(Char *,Char *,void *) { ++freed_uses; }
+void stop_fighting(Char *) { ++freed_uses; }
+void set_fighting(Char *,Char *) { ++freed_uses; }
+int cleaves;
+bool cleave(Char *,Char *) { ++cleaves; return true; }
+#define hit(a,b,c) (hit_char(a,b,nullptr))
+#define GET_OPPONENT(ch) opponent
+#undef GET_CHAR_SKILL
+#define GET_CHAR_SKILL(ch, skill) ((ch)->skills[skill])
+struct WithEquipment : Char { void *equipment[1]{}; };
+'''
+cpp += "void rush_free(WithEquipment *ch,WithEquipment *victim) {" + rush_free_attack + "}\n"
+cpp += "void rescue_cleave(WithEquipment *ch,WithEquipment *t_ch,bool rescue_all) {" + rescue_cleave + "++freed_uses;}\n"
+cpp += r'''
 int main() {
     Char actor, target;
     for (int rating : {1,19,20,50,100}) assert(new_direction(rating));
@@ -93,6 +124,13 @@ int main() {
     assert(continued(&actor,0)==-1); // the sole clear exit is the reverse direction
     exits[1].wall=false; assert(continued(&actor,0)==1);
     exits[0].wall=false; assert(continued(&actor,0)==0); // continue straight when possible
+    WithEquipment rusher, rushed; opponent=&rushed;
+    alive_checks=0; freed_uses=0; rush_free(&rusher,&rushed); assert(freed_uses==1); // rusher died to the free attack
+    alive_checks=1; freed_uses=0; rush_free(&rusher,&rushed); assert(freed_uses==3); // set_fighting ended it
+    alive_checks=2; freed_uses=0; rush_free(&rusher,&rushed); assert(freed_uses==4);
+    rusher.skills[SKILL_CLEAVE]=50;
+    alive_checks=0; freed_uses=cleaves=0; rescue_cleave(&rusher,&rushed,false); assert(cleaves==1 && freed_uses==0);
+    alive_checks=1; freed_uses=cleaves=0; rescue_cleave(&rusher,&rushed,false); assert(cleaves==1 && freed_uses==1);
     target.flags=AFF_AWARE; assert(!penalized(&target,true)); assert(penalized(&target,false));
     target.recent=true; assert(penalized(&target,true));
     std::puts("PASS #715 skill actions: selection, retreat ratings, exit walls/reversal, learning, tackle and critical awareness");
