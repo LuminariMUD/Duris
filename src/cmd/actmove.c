@@ -1313,6 +1313,96 @@ int crippled_move_cost()
 	return 5;
 }
 
+static bool walking_door_allows(P_char ch, const room_direction_data *exit)
+{
+	return !IS_SET(exit->exit_info, EX_CLOSED) || IS_TRUSTED(ch) ||
+	       (IS_AFFECTED2(ch, AFF2_PASSDOOR) &&
+		(!IS_SET(exit->exit_info, EX_LOCKED) || !IS_SET(exit->exit_info, EX_PICKPROOF)));
+}
+
+// Run every departure hook before placement can implicitly transport a riding companion.
+static bool leave_walking_group(P_char ch, int destination, int direction)
+{
+	const int source = ch->in_room;
+	const auto exit = world[source].dir_option[direction];
+	if (!exit || exit->to_room != destination)
+		return false;
+	P_char mount = GET_MOUNT(ch), rider = GET_RIDER(ch);
+	const std::pair<P_char, uint64_t> people[] = { { ch, ch->runtime_id },
+						       { mount, mount ? mount->runtime_id : 0 },
+						       { rider, rider ? rider->runtime_id : 0 } };
+	const uint64_t removals = character_removal_generation;
+	auto present = [&](const auto &person) -> P_char
+	{
+		// Ordinary NPC walking must not scan the full character list unless a hook removed someone.
+		if (!person.first || (removals != character_removal_generation &&
+				      find_character_by_runtime_id(person.second) != person.first))
+			return nullptr;
+		return person.first->runtime_id == person.second ? person.first : nullptr;
+	};
+	auto live = [&](const auto &person) -> P_char
+	{
+		P_char current = present(person);
+		return IS_ALIVE(current) ? current : nullptr;
+	};
+	bool departed = true;
+	for (const auto &person : people)
+	{
+		if (!person.first)
+			continue;
+		P_char current = live(person);
+		if (!current || current->in_room != source)
+		{
+			departed = false;
+			break;
+		}
+		char_from_room(current);
+		if (!live(person) || current->in_room != NOWHERE)
+		{
+			departed = false;
+			break;
+		}
+	}
+	departed = departed && world[source].dir_option[direction] == exit &&
+		   exit->to_room == destination;
+	for (const auto &person : people)
+		if (person.first)
+		{
+			P_char current = live(person);
+			departed = departed && current && current->in_room == NOWHERE &&
+				   current->specials.was_in_room == world[source].number &&
+				   walking_door_allows(current, exit);
+		}
+	departed = departed && GET_MOUNT(ch) == mount && GET_RIDER(ch) == rider &&
+		   (!mount || GET_RIDER(mount) == ch) && (!rider || GET_MOUNT(rider) == ch);
+	if (departed)
+		return true;
+	// Restore only detached survivors. Suspend existing links so recovery cannot undo a redirect.
+	bool suspended[2] = {};
+	for (int i = 0; i < 2; ++i)
+	{
+		P_char first = present(people[i == 0 ? 0 : 2]);
+		P_char second = present(people[i == 0 ? 1 : 0]);
+		if (first && second && GET_MOUNT(first) == second)
+		{
+			unlink_char(first, second, LNK_RIDING);
+			suspended[i] = true;
+		}
+	}
+	for (const auto &person : people)
+		if (P_char current = live(person); current && current->in_room == NOWHERE)
+			char_to_room(current, source, -2);
+	for (int i = 0; i < 2; ++i)
+	{
+		P_char first = live(people[i == 0 ? 0 : 2]);
+		P_char second = live(people[i == 0 ? 1 : 0]);
+		if (suspended[i] && first && second && first->in_room == second->in_room &&
+		    first->in_room != NOWHERE && !GET_MOUNT(first) && !GET_RIDER(second))
+			link_char(first, second, LNK_RIDING);
+	}
+	return false;
+}
+
 /*
  * This function is meant to be called from procs and do_simple_move only
  */
@@ -1388,19 +1478,15 @@ revalidate_movement:
 
 	if (IS_SET(EXIT(ch, exitnumb)->exit_info, EX_CLOSED))
 	{
-		if (IS_TRUSTED(ch))
+		const auto exit = EXIT(ch, exitnumb);
+		bool permitted = true;
+		// Room placement also transports riding companions; none may borrow another's passdoor.
+		for (P_char participant : { ch, GET_MOUNT(ch), GET_RIDER(ch) })
 		{
-			send_to_char(
-				"You go with your godly self, ignoring physical barriers and all...\n",
-				ch);
+			if (participant && !walking_door_allows(participant, exit))
+				permitted = false;
 		}
-		else if (IS_AFFECTED2(ch, AFF2_PASSDOOR) &&
-			 (!IS_SET(EXIT(ch, exitnumb)->exit_info, EX_LOCKED) ||
-			  !IS_SET(EXIT(ch, exitnumb)->exit_info, EX_PICKPROOF)))
-		{
-			send_to_char("Your body vibrates as you fan out your molecules.\n", ch);
-		}
-		else
+		if (!permitted)
 		{
 			if (EXIT(ch, exitnumb)->keyword)
 			{
@@ -1415,6 +1501,12 @@ revalidate_movement:
 
 			return FALSE;
 		}
+		if (IS_TRUSTED(ch))
+			send_to_char(
+				"You go with your godly self, ignoring physical barriers and all...\n",
+				ch);
+		else
+			send_to_char("Your body vibrates as you fan out your molecules.\n", ch);
 	}
 	else if (world[ch->in_room].current_speed && !IS_TRUSTED(ch))
 	{
@@ -1778,8 +1870,7 @@ revalidate_movement:
 	 */
 	if (world[new_room].people)
 	{
-		char_from_room(ch);
-		if (ch->in_room != NOWHERE)
+		if (!leave_walking_group(ch, new_room, exitnumb))
 			return FALSE;
 		if (!char_to_room(ch, new_room, -2))
 		{
@@ -1954,9 +2045,21 @@ revalidate_movement:
 	const int mount_room = mount ? mount->in_room : NOWHERE;
 	const int rider_room = rider ? rider->in_room : NOWHERE;
 
-	char_from_room(ch);
-	if (ch->in_room != NOWHERE)
-		return FALSE;
+	if (ch->in_room == was_in)
+	{
+		if (!leave_walking_group(ch, new_room, exitnumb))
+			return FALSE;
+	}
+	else
+	{
+		const uint64_t runtime_id = ch->runtime_id;
+		const uint64_t removals = character_removal_generation;
+		char_from_room(ch);
+		if ((removals != character_removal_generation &&
+		     find_character_by_runtime_id(runtime_id) != ch) ||
+		    ch->runtime_id != runtime_id || !IS_ALIVE(ch) || ch->in_room != NOWHERE)
+			return FALSE;
+	}
 	ch->specials.was_in_room = world[was_in].number;
 	if (!char_to_room(ch, new_room, exitnumb))
 	{

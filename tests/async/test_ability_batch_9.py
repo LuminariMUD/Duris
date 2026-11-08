@@ -902,6 +902,7 @@ EXACT = r'''
         "  Chance someone acting by it shows you the room: 1 in 3\n"
         "  Seconds between those chances: more than 10\n"
         "  You must be elsewhere and in the game. Immortals show you nothing.\n"
+        "  Hits use the same viewing chance and cooldown as other activity.\n"
         "  Hits wear it down by the hitter's damroll and level, and hurt the hitter.\n"
         "  Your own hit breaks it.\n"
         "  A hitter's lag: 16 seconds\n"
