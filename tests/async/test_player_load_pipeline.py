@@ -64,7 +64,7 @@ struct callback_state
 player_load_result execute(const player_load_request &request, void *raw)
 {
     auto &state = *static_cast<callback_state *>(raw);
-    if (request.request_id >= 1000)
+    if (request.request_id == 3 || request.request_id >= 1000)
     {
         std::unique_lock<std::mutex> lock(state.mutex);
         state.hold_started = true;
@@ -73,6 +73,8 @@ player_load_result execute(const player_load_request &request, void *raw)
     }
     if (request.request_id == 4)
         std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    if (request.request_id == 10)
+        assert(player_load_pipeline_cancel(request.request_id));
     player_load_result result = {};
     result.request_id = request.request_id;
     result.pid = request.pid;
@@ -146,7 +148,16 @@ int main()
 
     assert(player_load_pipeline_submit(request(3, 30)) ==
            player_load_submit_outcome::accepted);
-    assert(player_load_pipeline_cancel(3));
+    {
+        std::unique_lock<std::mutex> lock(state.mutex);
+        state.changed.wait(lock, [&] { return state.hold_started; });
+        assert(player_load_pipeline_cancel(3));
+        state.release = true;
+        state.changed.notify_all();
+    }
+    // A repeated cancellation must stay idempotent after worker publication,
+    // while the result is still waiting for delivery.
+    wait_until([&] { return player_load_pipeline_health_copy().completions == 1; });
     assert(player_load_pipeline_cancel(3));
     wait_until([&] { return player_load_pipeline_pulse(results, 8) == 1; });
     assert(results[0].request_id == 3);
@@ -157,6 +168,18 @@ int main()
     wait_until([&] { return player_load_pipeline_pulse(results, 8) == 1; });
     assert(results[0].request_id == 4);
     assert(results[0].outcome == player_load_outcome::cancelled);
+    assert(player_load_pipeline_health_copy().cancelled == 2);
+
+    // Synchronous delivery must also retire the cancellation marker. Reusing
+    // the ID must count a new cancellation instead of inheriting the old one.
+    for (uint64_t index = 0; index < 2; ++index)
+    {
+        player_load_result cancelled = {};
+        assert(player_load_pipeline_wait(request(10, 100), &cancelled, 5000));
+        assert(cancelled.request_id == 10);
+        assert(cancelled.outcome == player_load_outcome::cancelled);
+        assert(player_load_pipeline_health_copy().cancelled == 3 + index);
+    }
 
     // A character with a save still queued waits; other logins go ahead.
     player_load_pipeline_set_hold(held);
@@ -192,6 +215,11 @@ int main()
     assert(synchronous.request_id == 6 && synchronous.pid == 60);
     assert(synchronous.outcome == player_load_outcome::applied);
 
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.hold_started = false;
+        state.release = false;
+    }
     assert(player_load_pipeline_submit(request(1000, 1000)) ==
            player_load_submit_outcome::accepted);
     {
@@ -214,7 +242,7 @@ int main()
     assert(!health.running);
     assert(health.applied >= 1);
     assert(health.stale >= 1);
-    assert(health.cancelled == 2);
+    assert(health.cancelled == 4);
     assert(health.component_failures == 1);
     assert(health.high_water == PLAYER_LOAD_MAX_PENDING);
     assert(health.last_query_count == 7);

@@ -26,7 +26,9 @@ prelude = r'''
 #include "item/objmisc.h"
 #include "net/comm.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include <cassert>
+#include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <string>
@@ -40,6 +42,8 @@ zone_data *zone_table = zones;
 hometown_data hometowns[1]{};
 time_info_data time_info{};
 Skill skills[MAX_SKILLS];
+float combat_by_race[LAST_RACE + 1][3];
+float combat_by_class[CLASS_COUNT + 1][2];
 static int attacks;
 int GET_CLASS(P_char ch, unsigned int cls) { return (ch->player.m_class & cls) != 0; }
 bool affected_by_spell(P_char, int) { return false; }
@@ -78,6 +82,7 @@ void attack(P_char, P_char) { ++attacks; }
 '''
 
 functions = [
+    ('abilities.c', 'std::string damage_modifier_innate('),
     ('utility.c', 'int flag2idx('),
     ('innates.c', 'static int innate_char_race('),
     ('innates.c', 'static int innate_unlock_level('),
@@ -96,6 +101,8 @@ functions = [
 
 driver = r'''
 int main() {
+    for (auto &race : combat_by_race) race[1] = 1.0f;
+    for (auto &cls : combat_by_class) cls[1] = 1.0f;
     assign_innates();
     char_data player{}, mob{}, pet{}, groupmate{};
     pc_only_data pc{};
