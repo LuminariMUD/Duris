@@ -4783,6 +4783,25 @@ void do_quaff(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
+	bool unsupported_magic = false, usable_magic = false;
+	for (i = 1; i < 4; ++i)
+	{
+		j = bottle->value[i];
+		if (j == SPELL_GATE || j == SPELL_CALL_LIGHTNING)
+			unsupported_magic = true;
+		else if (j > 0 && j < MAX_SKILLS && skills[j].spell_pointer &&
+			 !IS_SET(skills[j].targets, TAR_AREA | TAR_OFFAREA))
+			usable_magic = true;
+	}
+	if (unsupported_magic)
+	{
+		send_to_char("Gate and Call Lightning cannot be invoked by drinking a potion.\r\n",
+			     ch);
+		// Mixed potions still deliver their other spells or non-magical damage.
+		if (!usable_magic && bottle->value[4] <= 0)
+			return;
+	}
+
 	if (IS_FIGHTING(ch))
 	{
 		chance = 50;
@@ -4859,7 +4878,8 @@ void do_quaff(P_char ch, char *argument, int /*cmd*/)
 				if ((j != -1) && (skills[j].spell_pointer != NULL))
 				{
 					// We don't do area spells via potions unless the quaffer explodes.
-					if (IS_SET(skills[j].targets, TAR_AREA | TAR_OFFAREA))
+					if (j == SPELL_GATE || j == SPELL_CALL_LIGHTNING ||
+					    IS_SET(skills[j].targets, TAR_AREA | TAR_OFFAREA))
 						continue;
 					((*skills[j].spell_pointer)((int)bottle->value[0], ch, 0,
 								    SPELL_TYPE_POTION, ch, 0));

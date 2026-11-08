@@ -76,6 +76,13 @@ interception and native transformations are rejected. They require a separately
 reviewed typed adapter. A room effect invokes the native area spell once; it
 does not turn a single-character spell into an invented area spell.
 
+Gate (87) is rejected for both call modes: this schema cannot supply its required
+plane argument. Call Lightning (6) supports only `target: "room", call: "spell"`;
+its native handler does not implement a wand call. These unsupported definitions
+reject the candidate before publication, mana debit or cooldown changes. A
+supported lightning release that finds the actor indoors reports the ordinary
+outdoor-only refusal and retains the accepted mana/cooldown cost.
+
 At admission and before every effect, recheck life, awake/resting posture,
 mobility/stun, magic, level, visibility, single-file restrictions, safe room/zone,
 peace/gaze/nonoffensive state, master protection, combat permission and bound

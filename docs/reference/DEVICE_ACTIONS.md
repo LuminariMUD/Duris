@@ -93,6 +93,35 @@ retain the old recipient-as-caster call. True area/ignore spells call the native
 spell once. Room enumeration is capped at 4096; overflow dispatches no partial
 target list. Native area spell internals retain their own semantics.
 
+### Gate and Call Lightning
+
+Normal spells, scrolls, wands and staves invoke these spells with
+`SPELL_TYPE_SPELL` on both legacy and channelled device routes. Gate receives
+the trailing plane name (for example, `use scepter earth`); a Call Lightning
+staff starts one storm. Indoor lightning reports that an outdoor location is
+required. Invalid destinations and environment failures retain the established
+spell/device cost; accepted channel cancellation retains its cost too.
+
+Neither spell supports drinking a potion. A potion containing either spell
+alone, or both with no usable sibling spell or non-magical damage, is refused
+before waiting, spilling, applying a potion timer or consuming the bottle.
+Mixed potions explain the unsupported magic and still apply their other usable
+spells or non-magical damage, with the normal consumption and no-magic rules.
+This does not enable any other area spell through `quaff`.
+
+Salchemist throwing also refuses any potion containing either spell before the
+throw roll, lag, cooldown or consumption. This includes mixed potions: the whole
+bottle is retained, so no sibling spell is lost. Throwing supplies no Gate plane
+and does not dispatch Call Lightning's area target.
+
+Named raw cast types differ from these command routes: Gate accepts only
+`SPELL_TYPE_SPELL`; Call Lightning retains its raw spell/scroll/staff behavior
+and explicitly refuses potion and wand calls. The older raw staff behavior
+is not used by ordinary staff activation. Studio's narrower supported calls
+are documented in [STUDIO_ITEM_ABILITIES.md](STUDIO_ITEM_ABILITIES.md).
+
+### Wand of wonder
+
 The wonder callback still performs its existing unconditional level roll, and
 the new adapter selects its branch once before admission. Mapping is exact:
 
@@ -133,6 +162,11 @@ to the common departure/extraction hooks. No raw game pointer survives a call.
 - `test_wonder_actions_runtime.py`: actual special callback, all twenty legacy
   and enabled outcomes, RNG bounds/capture, no second spend or dispatch,
   ownership/law/visibility, abort, reload and native-loop interruption.
+- `test_gate_lightning_item_runtime.py`: both ordinary device routes through
+  actual Gate portal creation/entry and delayed lightning events, indoor
+  feedback, invalid planes/room restrictions/raidability, cancellation and
+  pure/mixed potion consumption under ASan/UBSan. World lookup, allocation,
+  movement and damage use controlled doubles; this is not a production journey.
 - `run_device_actions_journey.py --binary bin/server/dms_new`: explicit real
   Telnet A/B using a disposable flatfile server, synthetic ordinary devices,
   account creation, production parsing, spell damage, typeahead and abort.

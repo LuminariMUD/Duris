@@ -4340,6 +4340,16 @@ bool throw_potion(P_char ch, P_obj potion, P_char victim, P_obj obj)
 	int the_room;
 	int chance = 0;
 
+	// Neither spell has a meaningful thrown-potion target or a supplied plane.
+	for (i = 1; i < 4; ++i)
+		if (potion->value[i] == SPELL_GATE || potion->value[i] == SPELL_CALL_LIGHTNING)
+		{
+			send_to_char(
+				"Gate and Call Lightning cannot be invoked by throwing a potion.\r\n",
+				ch);
+			return FALSE;
+		}
+
 	if (!(chance = chance_throw_potion(ch, victim)))
 	{
 		act("Well, trying might not hurt.", FALSE, ch, 0, 0, TO_CHAR);
