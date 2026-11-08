@@ -9184,7 +9184,8 @@ std::string leap_innate_facts(P_char ch)
 		    chance_under(leap_chance_floor() + 1, 1, 100) + ", " +
 			    chance_under(leap_chance_top() + 1, 1, 100)) +
 	       "  It compares your agility, your load, and your level with the attacker's.\n"
-	       "  It needs you standing and not gazed at. These races have it at any level.\n";
+	       "  It needs you standing and not gazed at. Thri-kreen unlock it at level 21;\n"
+	       "  harpies and gargoyles at level 1.\n";
 }
 
 int leapSucceed(P_char victim, P_char attacker)
@@ -9192,7 +9193,7 @@ int leapSucceed(P_char victim, P_char attacker)
 	int chance;
 
 	chance = 0;
-	if (!IS_THRIKREEN(victim) && !IS_HARPY(victim)) /* only bugs */
+	if (!has_innate(victim, INNATE_LEAP))
 		return false;
 
 	if (!MIN_POS(victim, POS_STANDING + STAT_NORMAL) || affected_by_spell(victim, SKILL_GAZE))
