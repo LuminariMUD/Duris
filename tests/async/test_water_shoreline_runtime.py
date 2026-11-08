@@ -115,7 +115,13 @@ room_affect *get_spell_from_room(P_room, int) { return nullptr; }
 char *one_argument(const char *, char *out) { *out=0; return out; }
 void bfs_clear_marks() {}
 void make_ice(P_char) {}
-int leave_by_exit(P_char, int) { return !wall; }
+int leave_by_exit(P_char ch, int direction) {
+    if(wall) return false;
+    P_char rider=nullptr;
+    const int room_to=EXIT(ch,direction)->to_room;
+    __MOUNTED_NARROW_GATE__
+    return true;
+}
 bool grease_check(P_char) { return grease; }
 bool special(P_char ch, int, char *) {
     ++specials;
@@ -138,6 +144,10 @@ void update_pos(P_char) {}
 '''
 
 move = source('actmove.c').read_text()
+leave = extract_function('actmove.c', 'int leave_by_exit(')
+mounted_gate = leave[leave.index('\tif (IS_RIDING(ch) && IS_ROOM(room_to, ROOM_SINGLE_FILE))'):
+                     leave.index('\n\tif (IS_ROOM(ch->in_room, ROOM_SINGLE_FILE)')]
+prelude = prelude.replace('__MOUNTED_NARROW_GATE__', mounted_gate)
 structure = re.search(r'struct water_crossing_data\n\{.*?\n};',move,re.S)[0]
 functions = [
     ('magic/spells.c', 'int blood_to_stone_move_cost('),
@@ -204,6 +214,7 @@ int main() {
         GET_VITALITY(&ch)=100; lag=movements=specials=mode=trap_mode=0;
         trap=wall=grease=linked_mount=linked_rider=false; ch.lobj=nullptr;
         rooms[1].current_speed=0;
+        rooms[1].room_flags=0; rooms[1].dir_option[DIR_SOUTH]=nullptr;
         exits[0].to_room=1; exits[0].exit_info=0;
         exits[1].to_room=0; exits[1].exit_info=0;
     };
@@ -324,6 +335,19 @@ int main() {
         }
     }
     printf("Walking doors: %d permission cases, including mounts and riders, passed.\n",door_cases);
+    // The real movement admission blocks a riding group before either placement pass.
+    for(int companion_kind : {0,1,2}) {
+        reset(); output.clear(); ch.affected=nullptr; ch.player.level=56;
+        rooms[0].sector_type=rooms[1].sector_type=SECT_FIELD;
+        rooms[1].room_flags=ROOM_SINGLE_FILE;
+        rooms[1].dir_option[DIR_SOUTH]=&exits[1];
+        linked_mount=companion_kind==1; linked_rider=companion_kind==2;
+        const bool moved=do_simple_move(&ch,DIR_NORTH,0);
+        assert(moved==(companion_kind==0));
+        assert(ch.in_room==(companion_kind==0?1:0) && movements==(companion_kind==0?1:0));
+        if(companion_kind) assert(output.find("mount")!=std::string::npos);
+    }
+    puts("Single-file admission: foot entry allowed; mounted rider and ridden mount refused before placement.");
     puts("Water shoreline: native command/scheduler, timed directions, interruption, exact costs and isolated entry exception passed.");
 }
 '''
