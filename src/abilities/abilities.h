@@ -54,6 +54,8 @@ std::string game_hours_range(Range ticks);
 std::string show_signed(Range range);
 std::string show_landing(Range range);
 std::string share_percent(float share);
+// A computed passive listing entry; neutral damage multipliers have no entry.
+std::string damage_modifier_innate(float multiplier);
 
 // "N in M" for a roll from low to high coming out below threshold.
 std::string chance_under(int threshold, int low, int high);

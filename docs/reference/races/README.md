@@ -14,7 +14,7 @@ tests. Distinguish verified behavior from balance estimates and design judgments
 - [PC race combat resolution](race-combat-resolution.md): attack and spell
   delivery, defenses, saves, control, sustain, and worked racial comparisons.
 - [Miscellaneous race balance notes](race-misc.md): historical evil-race
-  hardship/power rationale and Huge player races' one-hand use of two-handed weapons.
+  hardship/power rationale, Huge player weapon handling, and visible attack-damage modifiers.
 - [Race combat resolution issues](race-combat-resolution-issues.md): potential
   defects, gameplay impact, recommendations, and unresolved balance contracts.
 - [Race tempo issues](race-tempo-issues.md): potential timing defects, gameplay

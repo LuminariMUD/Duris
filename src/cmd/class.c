@@ -8,6 +8,7 @@
 #include "cmd/race.h"
 #include "cmd/wikihelp.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 
 #include <algorithm>
 #include <cctype>
@@ -16,6 +17,7 @@
 
 extern const struct class_names class_names_table[];
 extern const struct race_names race_names_table[];
+extern float combat_by_class[][2];
 extern int class_table[LAST_RACE + 1][CLASS_COUNT + 1];
 extern const char *specdata[][MAX_SPEC];
 extern Skill skills[];
@@ -342,13 +344,16 @@ std::vector<int> innate_entries(int cls, int spec)
 
 void innates(std::ostringstream &out, int cls, int spec)
 {
+	const string damage_modifier = damage_modifier_innate(combat_by_class[cls][1]);
+	if (!damage_modifier.empty())
+		paragraph(out, damage_modifier);
 	const auto entries = innate_entries(cls, spec);
 	for (int innate : entries)
 		paragraph(out, string(innates_data[innate].func ? " &+c" : "*&+c") +
 				       innates_data[innate].name + "&n (level " +
 				       std::to_string(innate_level(innate, cls, spec)) +
 				       (innates_data[innate].func ? ", active)" : ", passive)"));
-	if (entries.empty())
+	if (entries.empty() && damage_modifier.empty())
 		paragraph(out, "None. No class innates assigned.");
 	paragraph(
 		out,

@@ -73,6 +73,8 @@ extern bool epic_summon(P_char, char *);
 extern const struct class_names class_names_table[];
 extern char *specdata[][MAX_SPEC];
 extern int racial_shrug_data[];
+extern float combat_by_race[][3];
+extern float combat_by_class[][2];
 
 void do_levitate(P_char, char *, int);
 void do_darkness(P_char, char *, int);
@@ -340,6 +342,9 @@ string list_innates(int race, int cls, int spec)
 		debug("list_innates called with no race or class.");
 		return return_str;
 	}
+	return_str =
+		damage_modifier_innate(race ? combat_by_race[race][1] : combat_by_class[cls][1]);
+	found = !return_str.empty();
 	for (innate = 0; innate <= LAST_INNATE; innate++)
 	{
 		if ((race && racial_innates[innate][race]) ||
