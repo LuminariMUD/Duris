@@ -70,7 +70,6 @@ static int elemental_power_level()
 std::string elemental_power_innate_facts(P_char ch)
 {
 	extern int elemental_power_save_change(int level);
-	extern float elemental_power_area_factor();
 	const int level = GET_LEVEL(ch);
 	return fact("Your elemental spell damage from level " +
 			    std::to_string(elemental_power_level()),
@@ -79,10 +78,7 @@ std::string elemental_power_innate_facts(P_char ch)
 	       fact("A target's save against your scathing wind",
 		    std::to_string(elemental_power_save_change(level)) + " harder at your level, " +
 			    std::to_string(level)) +
-	       fact("Your earthen rain's damage",
-		    share_percent(elemental_power_area_factor()) + " of normal") +
-	       fact("Your earthen grasp's damage level",
-		    share_percent(elemental_power_area_factor()) + " of your level");
+	       "  Earthen rain and earthen grasp use the same elemental damage bonus.\n";
 }
 
 static double magical_reduction_mod()
@@ -265,8 +261,8 @@ static int arcane_block_threshold(P_char victim)
 // The percent of a spell's damage an arcane block disperses.
 static int arcane_block_reduction(const Rolls &rolls, P_char victim)
 {
-	return rolls.number(1, get_property("skill.arcane.block.dam.reduction", .4) *
-				       GET_CHAR_SKILL(victim, SKILL_ARCANE_BLOCK));
+	return rolls.number(1, MAX(1, (int)(get_property("skill.arcane.block.dam.reduction", .4) *
+					    GET_CHAR_SKILL(victim, SKILL_ARCANE_BLOCK))));
 }
 
 std::string arcane_block_facts(P_char ch)

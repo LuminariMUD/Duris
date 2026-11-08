@@ -1999,6 +1999,8 @@ AbilityFacts innate_facts(int innate)
 		return hatred_innate_facts;
 	case INNATE_HOLY_CRUSADE:
 		return holy_crusade_innate_facts;
+	case INNATE_BATTLEAID:
+		return battlefield_aid_innate_facts;
 	case INNATE_LEAP:
 		return leap_innate_facts;
 	case INNATE_RAPIER_DIRK:

@@ -8035,7 +8035,8 @@ int madman_mangler(P_obj obj, P_char ch, int cmd, char *arg)
 	if (cmd == CMD_REMOVE && isname(arg, obj->name))
 	{
 		affect_from_char(ch, SPELL_BLUR);
-		REMOVE_BIT(ch->specials.affected_by3, AFF3_BLUR);
+		if (!has_innate(ch, INNATE_BLUR))
+			REMOVE_BIT(ch->specials.affected_by3, AFF3_BLUR);
 		return FALSE;
 	}
 

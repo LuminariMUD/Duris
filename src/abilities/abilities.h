@@ -88,6 +88,7 @@ std::string intercept_innate_facts(char_data *ch);
 std::string diseased_bite_innate_facts(char_data *ch);
 std::string hatred_innate_facts(char_data *ch);
 std::string holy_crusade_innate_facts(char_data *ch);
+std::string battlefield_aid_innate_facts(char_data *ch);
 std::string leap_innate_facts(char_data *ch);
 std::string rapier_dirk_innate_facts(char_data *ch);
 std::string resurrection_innate_facts(char_data *ch);

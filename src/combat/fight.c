@@ -176,10 +176,16 @@ float biofeedback_melee_share()
 	return get_property("damage.reduction.biofeedback", 0.65);
 }
 
-// The share of what is left of a melee hit that stone skin lets through. Shadow shield shares it.
+// The share of what is left of a melee hit that stone skin lets through.
 float stone_skin_melee_share()
 {
 	return get_property("damage.reduction.stoneSkin", 0.75);
+}
+
+// The share of what is left of a melee hit that shadow shield lets through.
+float shadow_shield_melee_share()
+{
+	return get_property("damage.reduction.shadowShield", 0.70);
 }
 
 // What barkskin multiplies fire damage by.
@@ -5617,7 +5623,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	}
 	else if (affected_by_spell(victim, SPELL_SHADOW_SHIELD) && !(flags & PHSDAM_NOREDUCE))
 	{
-		reduction = 1. - stone_skin_melee_share();
+		reduction = 1. - shadow_shield_melee_share();
 		skin = SPELL_SHADOW_SHIELD;
 	}
 	else if (affected_by_spell(victim, SPELL_IRONWOOD) && !(flags & PHSDAM_NOREDUCE))
@@ -5729,6 +5735,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	if (ilogb(dam) / 2 > number(1, 100))
 		DamageStuff(victim, SPLDAM_GENERIC);
 
+	// Keep the low-damage cutoff in shield ability descriptions synchronized with this rule.
 	if (dam <= 5 || (flags & PHSDAM_NOSHIELDS))
 	{
 		if (!(flags & PHSDAM_NOENGAGE))
@@ -7625,6 +7632,17 @@ static std::string weapon_skill_lines(P_char ch, int rating)
 		    chance_under(weapon_fumble_check(ch, checked) + 1, 1, 101));
 }
 
+// A reaver's combat round runs longer with some weapons.
+static std::string reaver_round_line(const char *reaver, float penalty)
+{
+	if (penalty <= 0)
+		return "";
+	char pulses[32];
+	snprintf(pulses, sizeof(pulses), "%g", penalty);
+	return std::string("  As ") + reaver + ", one makes your combat round " + pulses +
+	       " pulses longer.\n";
+}
+
 std::string one_h_flaying_facts(P_char ch)
 {
 	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_1H_FLAYING)) +
@@ -7633,8 +7651,12 @@ std::string one_h_flaying_facts(P_char ch)
 
 std::string two_h_flaying_facts(P_char ch)
 {
+	extern float flame_reaver_2h_penalty();
 	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_2H_FLAYING)) +
-	       "  A flaying weapon can't be parried, and you can't parry wielding one first.\n";
+	       "  A flaying weapon can't be parried, and you can't parry wielding one first.\n" +
+	       (GET_SPEC(ch, CLASS_REAVER, SPEC_FLAME_REAVER) ?
+			reaver_round_line("a flame reaver", flame_reaver_2h_penalty()) :
+			"");
 }
 
 std::string one_h_piercing_facts(P_char ch)
@@ -7648,17 +7670,6 @@ std::string one_h_slashing_facts(P_char ch)
 		return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_1H_SLASHING)) +
 		       "    (with a short sword: as a thief, any other blade counts as rating 0)\n";
 	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_1H_SLASHING));
-}
-
-// A reaver's combat round runs longer with some weapons.
-static std::string reaver_round_line(const char *reaver, float penalty)
-{
-	if (penalty <= 0)
-		return "";
-	char pulses[32];
-	snprintf(pulses, sizeof(pulses), "%g", penalty);
-	return std::string("  As ") + reaver + ", one makes your combat round " + pulses +
-	       " pulses longer.\n";
 }
 
 std::string one_h_bludgeon_facts(P_char ch)
@@ -9178,7 +9189,8 @@ std::string leap_innate_facts(P_char ch)
 		    chance_under(leap_chance_floor() + 1, 1, 100) + ", " +
 			    chance_under(leap_chance_top() + 1, 1, 100)) +
 	       "  It compares your agility, your load, and your level with the attacker's.\n"
-	       "  It needs you standing and not gazed at. These races have it at any level.\n";
+	       "  It needs you standing and not gazed at. Thri-kreen unlock it at level 21;\n"
+	       "  harpies and gargoyles at level 1.\n";
 }
 
 int leapSucceed(P_char victim, P_char attacker)
@@ -9186,7 +9198,7 @@ int leapSucceed(P_char victim, P_char attacker)
 	int chance;
 
 	chance = 0;
-	if (!IS_THRIKREEN(victim) && !IS_HARPY(victim)) /* only bugs */
+	if (!has_innate(victim, INNATE_LEAP))
 		return false;
 
 	if (!MIN_POS(victim, POS_STANDING + STAT_NORMAL) || affected_by_spell(victim, SKILL_GAZE))
@@ -11168,7 +11180,7 @@ void perform_violence(void)
 				// 10% chance on shaman spell knowledge + 5% POW modifier
 				if (((1 +
 				      (GET_CHAR_SKILL(opponent, SKILL_SPELL_KNOWLEDGE_SHAMAN) / 10) +
-				      (GET_C_POW(ch) / 20))) >= number(1, 100))
+				      (GET_C_POW(opponent) / 20))) >= number(1, 100))
 				{
 					act("You smell &+rblood&n as you maneuver your &+Gdr&+Lag&+Gon&n into battle!",
 					    FALSE, opponent, 0, 0, TO_CHAR);

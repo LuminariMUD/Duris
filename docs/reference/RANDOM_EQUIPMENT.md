@@ -23,15 +23,23 @@ a player or a player's pet. It makes two independent rolls with `check_random_dr
 The setting names are historical: the "piece" percentage governs equipment, and the
 "equipment" percentage governs materials. Whatever is created goes into the dying mob's
 inventory, so it ends up in the corpse. Only an equipment item prints the salvage line.
-When the killer is a pet, the line goes to the pet's owner, but the rolls and the item
-use the pet's own level and luck.
+When the killer is a linked player's pet, the owner supplies current luck, level,
+Hardcore status, and neutral race-war side for both rolls. The owner is also the
+item's finder: quality, named-item chance, owner keywords, and finder messages use
+the owner. Material generation gives an Alchemist owner its ordinary resource benefit.
+The actual killer's room still controls guild/town restrictions and the generated
+item's zone, origin, and zone-dependent affects, even if the owner is elsewhere.
+No grouping, owner-presence, or owner-alive requirement is added; the actual killer
+must still be alive. Unowned NPCs and NPC-owned followers receive no random kill drops.
 
 ## The drop chance
 
 `check_random_drop(killer, mob, piece)` refuses outright when the mob gives no
 experience or is a shopkeeper, the killer stands in a guild room, the killer is in a
-town and the mob is above level 25, or the killer is more than `drop.maximum.level.gap`
-(10) levels above the mob.
+town and the mob is above level 25, or the reward owner is more than
+`drop.maximum.level.gap` (10) levels above the mob. On direct kills the killer is
+the reward owner. A level-32 owner can receive drops from a level-22 mob but not a
+level-21 mob, regardless of pet level. Owner level also governs low-level bonuses.
 
 A player on the neutral race-war side then wins one time in `drop.neutral.roll.max + 1`
 (10) before any of the calculation below, and none of the scaling applies to that win.
@@ -47,6 +55,13 @@ chance = chance x Hardcore multiplier x roll percentage x loot-drops dial
 win when round(chance) >= a roll of 1..100
 ```
 
+The equipment roll additionally receives the home-zone difficulty multiplier
+`1 + 0.10 x sqrt(difficulty - 1)`, with difficulty clamped to 1–10, after the
+roll percentage and before the loot-drops dial. It uses the victim's birthplace,
+so moving the victim or owner does not move that bonus. A missing birthplace
+adds no bonus. Materials and the neutral early win do not receive this multiplier.
+This bonus applies equally to direct and pet kills.
+
 `divisor` is `drop.luck.divisor` (4.0) and `base` is `drop.base.chance` (50), so a
 killer with 100 luck and a level ratio of 1 starts at 50 whatever the divisor. From
 killer level 15 up, the level ratio is mob level divided by killer level. Below 15 a
@@ -56,7 +71,8 @@ never falls below 0.1.
 At even levels, with 100 luck and the default settings, a kill wins the equipment roll
 about 7.5 percent of the time and the material roll about 4 percent of the time.
 The Hardcore multiplier is `bonus.random.equipment.multiplier` in `lib/hardcore.cfg`
-(1.5) and applies only to a Hardcore player's own kills.
+(1.5) and applies to a Hardcore player's direct kills and linked-pet finishing blows.
+The neutral early win above retains its unscaled behavior on both routes.
 
 ## What the equipment is
 
@@ -64,6 +80,9 @@ The Hardcore multiplier is `bonus.random.equipment.multiplier` in `lib/hardcore.
 `VOBJ_RANDOM_WEAPON` (1254) for a wielded slot or `VOBJ_RANDOM_ARMOR` (1252) for
 anything else, and fills it in. Existing callers pass the killer's and mob's levels;
 explicit levels let staff generate the same item without changing their character.
+Pet kill drops pass the owner's level and the victim's level. The optional final
+`source_room` argument keeps the generation zone at the kill; other callers use
+the finder's room by default.
 The steps are `choose_slot()`, `choose_material()`, `choose_name()`/`name_item()`,
 `add_name_affects()`, `set_wear_and_weight()`, `set_stat_affects()` and `set_type_values()`:
 

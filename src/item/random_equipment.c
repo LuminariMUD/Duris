@@ -416,7 +416,7 @@ static void set_type_values(P_obj obj, int slot, int material, int prefix, int s
 }
 
 P_obj create_random_eq(P_char finder, int finder_level, int source_level, int requested_slot,
-		       int requested_material)
+		       int requested_material, int source_room)
 {
 	int slot = choose_slot(requested_slot);
 	P_obj obj = read_object(slot_data[slot].wear_bit == ITEM_WIELD ? VOBJ_RANDOM_WEAPON :
@@ -430,7 +430,8 @@ P_obj create_random_eq(P_char finder, int finder_level, int source_level, int re
 	// Each step keeps the old roll order, including rolls whose result is discarded.
 	int prefix = number(0, MAXPREFIX);
 	int material = choose_material(finder_level, source_level, requested_material);
-	const auto *zone = &zone_table[world[finder->in_room].zone];
+	const auto *zone =
+		&zone_table[world[source_room == NOWHERE ? finder->in_room : source_room].zone];
 	random_name_style style =
 		choose_name(finder, finder_level, source_level, requested_material, zone);
 	if (style == ZONE_NAME)

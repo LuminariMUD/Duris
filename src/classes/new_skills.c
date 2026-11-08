@@ -3011,7 +3011,7 @@ void mount_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /
 		mount->base_stats.Con = BOUNDED(75, mount->base_stats.Con, 75 + factor);
 		mount->base_stats.Cha = 100;
 		mount->player.level = summoned_mount_level(factor);
-		mount->points.base_hit = factor * (IS_SKELETON(ch) ? 25 : 50);
+		mount->points.base_hit = summoned_mount_hit_points(ch, factor);
 		GET_HIT(mount) = summoned_mount_hit_points(ch, factor);
 		GET_MAX_HIT(mount) = summoned_mount_hit_points(ch, factor);
 		mount->player.m_class = CLASS_NONE;
@@ -3020,7 +3020,7 @@ void mount_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /
 
 		if (IS_SKELETON(ch))
 		{
-			// 100 - 25 + 50 (for being a mount) is a minimum of 125 moves, and max 175.
+			// Skeleton vitality is reset after conversion: 100 +/- 25, or 75-125.
 			mount->points.vitality = mount->points.base_vitality =
 				mount->points.max_vitality =
 					summoned_mount_skeleton_vitality(live_rolls);
@@ -3297,8 +3297,8 @@ std::string summon_horde_innate_facts(P_char ch)
 	       fact("They arrive after", seconds(summon_horde_delay(lowest_rolls, ch)) + " to " +
 						 seconds(summon_horde_delay(highest_rolls, ch))) +
 	       innate_rest_facts(INNATE_SUMMON_HORDE, 0) +
-	       "  Only an orc may call. Off the prime plane or on the ocean none come,\n"
-	       "  and the use is still spent; nor do they reach single-file rooms or lockers.\n";
+	       "  Only an orc may call. Off the prime plane or on the ocean, no use is spent.\n"
+	       "  They cannot reach single-file rooms or lockers.\n";
 }
 
 void do_summon_orc(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -3312,6 +3312,15 @@ void do_summon_orc(P_char ch, char * /*arg*/, int /*cmd*/)
 		send_to_char("Only an orc may call for the orc horde!\r\n", ch);
 		return;
 	}
+	// Cannot summon horde to plane type rooms or on oceans.
+	if (!is_prime_plane(ch->in_room) || world[ch->in_room].sector_type == SECT_OCEAN)
+	{
+		send_to_char(
+			"&+LYou have a bad feeling that your horde will not arrive to this hostile environment...\r\n",
+			ch);
+		return;
+	}
+
 	if (!check_innate_time(ch, INNATE_SUMMON_HORDE))
 	{
 		send_to_char("You can call for the horde just thrice weekly!\r\n", ch);
@@ -3321,15 +3330,6 @@ void do_summon_orc(P_char ch, char * /*arg*/, int /*cmd*/)
 	act("$n throws $s head back, letting out a long, low-pitched howl...", FALSE, ch, 0, 0,
 	    TO_ROOM);
 	send_to_char("You throw your head back, letting out a long, low-pitched howl...\r\n", ch);
-
-	// Cannot summon horde to plane type rooms or on oceans.
-	if (!is_prime_plane(ch->in_room) || world[ch->in_room].sector_type == SECT_OCEAN)
-	{
-		send_to_char(
-			"&+LYou have a bad feeling that your horde will not arrive to this hostile environment...\r\n",
-			ch);
-		return;
-	}
 
 	if (IS_ROOM(ch->in_room, ROOM_SINGLE_FILE))
 	{
@@ -3412,7 +3412,7 @@ std::string ogre_roar_innate_facts(P_char ch)
 	       fact("Worst roar, " + one_in(ogre_roar_roll) + ": your hitroll loss",
 		    "your hitroll * its level / " +
 			    std::to_string(ogre_roar_worst_hitroll_divisor())) +
-	       fact("And the target's armor class", "+1 + its level / 2") +
+	       fact("And your armor class", "+1 + its level / 2") +
 	       fact("For", game_hours(ogre_roar_worst_duration(101))) +
 	       innate_rest_facts(INNATE_OGREROAR, 0) +
 	       "  Only a plain ogre may roar. Level, power and wisdom shift the roll,\n"
@@ -3525,7 +3525,7 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 		af.duration = ogre_roar_worst_duration(temp);
 		af.modifier = 1 + GET_LEVEL(vict) / 2;
 		af.location = APPLY_AC;
-		affect_to_char(vict, &af);
+		affect_to_char(ch, &af);
 		af.modifier =
 			-(GET_HITROLL(ch) * GET_LEVEL(vict) / ogre_roar_worst_hitroll_divisor());
 		af.location = APPLY_HITROLL;

@@ -18,6 +18,7 @@ from _source_contract import function_bodies, strip_comments
 
 # Shared functions and their pages, by file. Order matters: later ones call earlier ones.
 SHARED = {
+    "economy/tradeskill.c": [],
     "classes/bard.c": "echo_song_level bard_pulse hasted_bard_pulse get_bard_pulse bard_blind_play_rating echo_chance echo_roll echo_delay".split(),
     "classes/drannak.c": "intercept_luck_roll intercept_attack_roll intercept_duration".split(),
     "combat/fight.c": """acid_blood_min_hit acid_blood_dodge_base acid_blood_dodge_divisor spell_absorb_damage_divisor leap_chance_floor leap_chance_top intercept_attack_share rapier_dirk_chance rapier_dirk_more_hits_roll rapier_dirk_more_hits
@@ -54,7 +55,7 @@ SHARED = {
         troll_burn_duration fire_race_cold_mod sacrilegious_holy_factor vuln_cold_slow_save vuln_cold_slow_duration
         warcallers_fury_bonus warcallers_fury_max_steps warcallers_fury_step""".split(),
     "combat/grapple.c": "entrapment_chance entrapment_lag".split(),
-    "magic/smagic.c": """restoration_other_share elemental_power_save_change elemental_power_area_factor
+    "magic/smagic.c": """restoration_other_share elemental_power_save_change
         wellness_improved_bonus lesser_mending_improved_bonus mending_improved_bonus greater_mending_cure_level""".split(),
     "magic/magic.c": "stone_skin_absorb stone_skin_living_stone embalm_hours corpse_embalm_innate_facts blur_duration".split(),
     "magic/spells.c": "wall_climb_roll wall_climb_above wall_climb_text wall_of_flames_protected wall_of_ice_protected".split(),
@@ -68,6 +69,7 @@ INNATE_INTERCEPT intercept classes/drannak.c
 INNATE_DISEASED_BITE diseased_bite classes/innates.c
 INNATE_HATRED hatred classes/innates.c
 INNATE_HOLY_CRUSADE holy_crusade classes/innates.c
+INNATE_BATTLEAID battlefield_aid economy/tradeskill.c
 INNATE_LEAP leap combat/fight.c
 INNATE_RAPIER_DIRK rapier_dirk classes/innates.c
 INNATE_RESURRECTION resurrection classes/innates.c
@@ -139,7 +141,7 @@ INNATE_FOREST_SIGHT forest_sight world/map.c
 """.strip().splitlines()]
 
 NO_NUMBERS = """HOLY_COMBAT INNATE_BOW_MASTERY INNATE_DAMAGE_SPREAD INNATE_DAYVISION INNATE_OUTDOOR_SNEAK
-    INNATE_SPEED INNATE_UD_SNEAK INNATE_WARDING_FAITH INNATE_ARCANE_RUDIMENTS INNATE_BATTLEAID INNATE_DET_SUBVERSION
+    INNATE_SPEED INNATE_UD_SNEAK INNATE_WARDING_FAITH INNATE_ARCANE_RUDIMENTS INNATE_DET_SUBVERSION
     INNATE_DECEPTIVE_FLEE INNATE_HORSE_BODY INNATE_SENSE_WEAKNESS INNATE_SPIDER_BODY INNATE_SNEAK INNATE_AIR_AFFINITY
     INNATE_ASTRAL_NATIVE INNATE_EARTH_AFFINITY INNATE_FIRE_AFFINITY INNATE_WATER_AFFINITY INNATE_BARTER INNATE_ANTI_GOOD
     INNATE_BLOOD_SCENT INNATE_DAUNTLESS INNATE_FLY INNATE_HOLY_LIGHT INNATE_INFRAVISION INNATE_INVISIBILITY
@@ -496,7 +498,7 @@ static void check_keys() {
                              "innate.rrakkma.maxSteps", "innate.rrakkma.stepPct", "innate.timer.hatred", "innate.calming.delay",
                              "innate.calming.notarget.perc", "saves.quickthinking.percentage", "innate.evasion.removechance",
                              "innate.warcallersfury.maxSteps", "grapple.entrapment.chance.mod", "skill.trample.Knight.DamageMultiplier",
-                             "damage.increase.elementalist", "portals.wormhole.decayTimeout", "spell.dim.perlevel.modifier" })
+                             "portals.wormhole.decayTimeout", "spell.dim.perlevel.modifier" })
         if (!asked[key]) {
             std::fprintf(stderr, "nothing read %s\n", key);
             failed = true;
@@ -567,7 +569,7 @@ HANDLER_CALLS = {
     ("world/handler.c", "ALL"): ["<= calming_level_gap()) || !calming_gap_roll(live_rolls)", "calming = calming_delay();", "!IS_BLOODLUST && has_innate(i, INNATE_VULN_SUN)"],
     ("cmd/actmove.c", "ALL"): ["<= calming_level_gap()) || !calming_gap_roll(live_rolls)", "calming = calming_delay();"],
     ("mob/mobact.c", "ALL"): ["calming_notarget_roll(live_rolls) <= calming_notarget_percent()", "<= calming_level_gap()) || !calming_gap_roll(live_rolls)", "calming = calming_delay();"],
-    ("cmd/interp.c", "ALL"): ["!has_innate(ch, INNATE_CALMING) || !calming_command_roll(live_rolls)", "calming_chance += calming_chance_bonus();", "(has_innate(exec_char, INNATE_CALMING) ? calming_chance_bonus() : 0)", "calming_chance >= number(1, 100)"],
+    ("cmd/interp.c", "ALL"): ["!innate_calming_active(exec_char) || !calming_command_roll(live_rolls)", "calming_chance += calming_chance_bonus();", "(innate_calming_active(exec_char) ? calming_chance_bonus() : 0)", "calming_chance >= number(1, 100)"],
     ("world/limits.c", "hit_regen"): ["regeneration_sleeping_multiple() * get_innate_regeneration(ch)", "regeneration_resting_multiple() * get_innate_regeneration(ch)"],
     ("world/map.c", "map_view_distance"): ["return eyeless_map_range();", "dayblind_infravision_bonus()", "n = dayblind_underdark_range();", "n > forest_map_cap()", "n = forest_map_cap();", "n += perception_map_bonus();"],
     ("cmd/track.c", "show_tracks"): ["skill += perception_track_bonus();", "percent -= farsee_track_bonus();", "percent -= ophidian_track_bonus();", "chance = track_sense_chance(GET_LEVEL(ch));"],
@@ -589,8 +591,6 @@ HANDLER_CALLS = {
     ("magic/smagic.c", "greater_mending_healing"): ["gain += mending_improved_bonus(rolls, level);"],
     ("magic/smagic.c", "spell_greater_mending"): ["level > greater_mending_cure_level()"],
     ("magic/smagic.c", "spell_single_scathing_wind"): ["mod += elemental_power_save_change(level);"],
-    ("magic/smagic.c", "earthen_grasp_level"): ["level = (int)(level * elemental_power_area_factor());"],
-    ("magic/smagic.c", "spell_single_earthen_rain"): ["dam = (int)(dam * elemental_power_area_factor());"],
     ("magic/magic.c", "spell_stone_skin"): ["has_innate(ch, INNATE_LIVING_STONE)", "absorb = stone_skin_living_stone(absorb);"],
     ("combat/dam_mods.c", "ALL"): ["GET_LEVEL(caster) >= elemental_power_level()", "has_innate(victim, MAGICAL_REDUCTION)", "magical_reduction_mod()", "af.duration = troll_burn_duration();", "af1->duration = troll_burn_duration();", "dam_mod->mod += fire_race_cold_mod(IS_EFREET(victim));", "levelmod = sacrilegious_holy_factor(GET_LEVEL(victim));", "dam_mod->mod += magic_vulnerability_mod();", "NewSaves(victim, SAVING_PARA, vuln_cold_slow_save())", "af.duration = vuln_cold_slow_duration();", "double bonus = warcallers_fury_bonus(group_size, GET_LEVEL(caster));", "count = MIN(count, warcallers_fury_max_steps());", "dam_mod->mod += warcallers_fury_step(count);"],
     ("ships/ship_utils.c", "ALL"): ["speed += seadog_speed_bonus();"],
@@ -663,7 +663,7 @@ def check_sources():
         uses = re.findall(rf"\b{constant}\b(?!\s+\d)", everything)
         adds = re.findall(rf"ADD_(?:RACIAL|CLASS)_INNATE\({constant}\b", everything)
         assert len(uses) == len(adds), f"{constant} now has an effect: reclassify it"
-    # Battlefield aid's only reads are behind a dead return and an unregistered command.
+    # Obsolete first-aid systems stay disabled; modern bandaging owns Battlefield Aid.
     assert 'send_to_char("Try using the bandage instead.", ch);\n\treturn;' in source("classes/new_skills.c").read_text(errors="replace")
     assert "do_OLD_bandage" not in source("cmd/interp.c").read_text(errors="replace")
 
@@ -700,11 +700,15 @@ GOLDEN = """== blindsinging
   Your healing when you kill an evil being: 2 per level of the victim
   Up to: 330 hit points
   Plague, blackmantle and flamestrike can block some of it.
+== battlefield_aid
+  Successful bandaging stabilizes a dying target still below positive HP
+  to 1 hit point. Normal bandaging requirements and costs apply.
 == leap
   Thri-kreen or harpy: chance to avoid an attacker of your level: 13 in 100
   Lowest and highest chance: 1 in 100, 20 in 100
   It compares your agility, your load, and your level with the attacker's.
-  It needs you standing and not gazed at. These races have it at any level.
+  It needs you standing and not gazed at. Thri-kreen unlock it at level 21;
+  harpies and gargoyles at level 1.
 == rapier_dirk
   With a sword and a dagger or short sword, damage you deal: 110% of normal
   Damage you take: 90% of normal
@@ -754,7 +758,8 @@ GOLDEN = """== blindsinging
   A mount that bucks never throws you.
 == calming
   Extra wait before an aggressive mob attacks: 2.5 seconds
-  Elites and some hometowns ignore it. A mob over 5 levels above you waits
+  Innate Calming is disabled in enemy hometowns.
+  Elites ignore the extra wait. A mob over 5 levels above you waits
   only 1 in 4 times.
   Chance a mob picking a target passes you over: 76 in 102
   Your commands that draw an aggression check: 1 in 20
@@ -856,7 +861,7 @@ GOLDEN = """== blindsinging
 == blur
   Your attacks each round: +1
   Archery speed: +20
-  You get it when you log in.
+  It is permanent; temporary blur ending cannot remove it.
 == evasion
   Way of the dragon: chance to avoid spell damage: 14 in 100
   Way of the snake: chance to avoid an area spell: 40 in 100
@@ -963,8 +968,7 @@ GOLDEN = """== blindsinging
   Your elemental spell damage from level 35: +25%
   It counts fire, cold, lightning, gas, acid and earth damage.
   A target's save against your scathing wind: 5 harder at your level, 56
-  Your earthen rain's damage: 115% of normal
-  Your earthen grasp's damage level: 115% of your level
+  Earthen rain and earthen grasp use the same elemental damage bonus.
 == improved_heal
   Healing your restoration gives: full; 66% of that without this innate
   Healing your wellness gives each person: +56

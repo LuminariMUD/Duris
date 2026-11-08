@@ -757,6 +757,7 @@ static void check_pages() {
 }
 
 int main() {
+    assert(whirlwind_move_regen() == 10);
     check_rolls();
     check_pages();
     sweep_pages();

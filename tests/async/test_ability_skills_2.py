@@ -19,7 +19,8 @@ from _source_contract import function_bodies, strip_comments
 
 # File order matters: each file's functions may call those of the files before it.
 SHARED = {
-    "fight.c": """soul_trap_hit_points soul_trap_threshold soul_trap_group_threshold soul_trap_cap mangle_rating_needed expert_parry_mangle_penalty mangle_chance mangle_damage mangle_disarm_roll riposte_specialist_score riposte_lucky_share riposte_unlucky_share followup_riposte_threshold followup_riposte_blow followup_riposte_second_blow arcane_riposte_threshold arcane_riposte_damage disperse_flames_roll disperse_flames_level_roll flame_mastery_roll flame_mastery_level_roll flame_mastery_damage fist_of_dragon_roll blindfighting_to_hit_penalty blindfighting_ac_penalty blindfighting_defense_threshold parry_blind_score tainted_blade_roll tainted_blade_damage tainted_blade_bleed tainted_blade_rounds tainted_blade_interval blade_lines anatomy_strike_threshold vicious_strike_anatomy_bonus anatomy_torso_damage anatomy_leg_vitality anatomy_arm_damroll anatomy_wrist_hitroll anatomy_deaf_duration weapon_check_skill weapon_critical_check weapon_fumble_check weapon_skill_lines quick_step_threshold quick_step_miss_threshold indomitable_rage_duration indomitable_rage_hitroll indomitable_rage_damroll indomitable_rage_fear_save devastating_critical_damage plain_critical_damage critical_attack_threshold vicious_attack_threshold bare_hand_damage unarmed_damage_bonus vicious_strike_bonus_damage boiling_blood_threshold boiling_blood_damage sidestep_threshold dodge_agility_score dodge_floor dodge_ceiling dodge_monk_chance dodge_specialist_bonus dodge_drow_roll shield_block_rating_score shield_block_dex_score shield_block_monk_score shield_block_flaying_score improved_shield_combat_threshold improved_shield_combat_damage monk_riposte_chance monk_rise_rest parry_dex_bonus parry_wis_bonus expert_parry_score parry_specialist_score parry_sword_score four_hand_threshold four_hand_late_threshold double_attack_threshold triple_attack_threshold quadruple_attack_threshold extra_attack_note battle_senses_threshold battle_senses_duration shadow_movement_threshold shadow_movement_duration double_strike_threshold devotion_zealot_bonus zealot_regain_threshold critical_attack_roll critical_attack_disarm_roll critical_attack_vitality critical_attack_vitality_floor""".split(),
+    "reavers.c": ["flame_reaver_2h_penalty"],
+    "fight.c": """reaver_round_line soul_trap_hit_points soul_trap_threshold soul_trap_group_threshold soul_trap_cap mangle_rating_needed expert_parry_mangle_penalty mangle_chance mangle_damage mangle_disarm_roll riposte_specialist_score riposte_lucky_share riposte_unlucky_share followup_riposte_threshold followup_riposte_blow followup_riposte_second_blow arcane_riposte_threshold arcane_riposte_damage disperse_flames_roll disperse_flames_level_roll flame_mastery_roll flame_mastery_level_roll flame_mastery_damage fist_of_dragon_roll blindfighting_to_hit_penalty blindfighting_ac_penalty blindfighting_defense_threshold parry_blind_score tainted_blade_roll tainted_blade_damage tainted_blade_bleed tainted_blade_rounds tainted_blade_interval blade_lines anatomy_strike_threshold vicious_strike_anatomy_bonus anatomy_torso_damage anatomy_leg_vitality anatomy_arm_damroll anatomy_wrist_hitroll anatomy_deaf_duration weapon_check_skill weapon_critical_check weapon_fumble_check weapon_skill_lines quick_step_threshold quick_step_miss_threshold indomitable_rage_duration indomitable_rage_hitroll indomitable_rage_damroll indomitable_rage_fear_save devastating_critical_damage plain_critical_damage critical_attack_threshold vicious_attack_threshold bare_hand_damage unarmed_damage_bonus vicious_strike_bonus_damage boiling_blood_threshold boiling_blood_damage sidestep_threshold dodge_agility_score dodge_floor dodge_ceiling dodge_monk_chance dodge_specialist_bonus dodge_drow_roll shield_block_rating_score shield_block_dex_score shield_block_monk_score shield_block_flaying_score improved_shield_combat_threshold improved_shield_combat_damage monk_riposte_chance monk_rise_rest parry_dex_bonus parry_wis_bonus expert_parry_score parry_specialist_score parry_sword_score four_hand_threshold four_hand_late_threshold double_attack_threshold triple_attack_threshold quadruple_attack_threshold extra_attack_note battle_senses_threshold battle_senses_duration shadow_movement_threshold shadow_movement_duration double_strike_threshold devotion_zealot_bonus zealot_regain_threshold critical_attack_roll critical_attack_disarm_roll critical_attack_vitality critical_attack_vitality_floor""".split(),
     "dam_mods.c": """arcane_block_threshold arcane_block_reduction""".split(),
     "range.c": """enchant_arrow_damage enchant_arrows_mark_duration enchant_arrows_effect_top point_blank_shot_threshold point_blank_shot_lag archery_speed_limit archery_hit_skill archery_range_hit_skill archery_speed_per_shot archery_skill_damage archery_fumble_roll archery_fumble_tenths indirect_shot_threshold cursed_arrows_threshold critical_shot_threshold critical_shot_factor shadow_archery_threshold arrow_block_chance""".split(),
     "grapple.c": """bearhug_threshold bearhug_pin_bonus bearhug_free_arms_roll bearhug_duration bearhug_lag bearhug_target_lag bearhug_miss_lag bearhug_interval bearhug_base_damage bearhug_damage_roll bearhug_rest""".split(),
@@ -237,7 +238,11 @@ void randomize(uint64_t seed);
 static std::map<int, int> ratings;
 int GET_CHAR_SKILL_P(P_char, int skill) { auto it = ratings.find(skill); return it == ratings.end() ? 0 : it->second; }
 static std::map<std::string, int> asked;
-float get_property(const char *key, double fallback) { asked[key]++; return (float)fallback; }
+static float flame_penalty = -1;
+float get_property(const char *key, double fallback) {
+    asked[key]++;
+    return !std::strcmp(key,"reavers.flame.penalty.pulse.2hSlashing") && flame_penalty >= 0 ? flame_penalty : (float)fallback;
+}
 int get_property(const char *key, int fallback) { asked[key]++; return fallback; }
 int STAT_INDEX(int v) { return std::min(51, std::max(0, v / 3)); }
 struct dex_app_type dex_app[52];
@@ -399,8 +404,8 @@ static void check_rolls() {
                      improved_shield_combat_damage(rolls, c));
                 SAME(number(0, 3), critical_attack_roll(rolls));
                 SAME(number(0, 2), critical_attack_disarm_roll(rolls));
-                SAME(number(1, get_property("skill.arcane.block.dam.reduction", .4) *
-                                   GET_CHAR_SKILL(c, SKILL_ARCANE_BLOCK)),
+                SAME(number(1, MAX(1, (int)(get_property("skill.arcane.block.dam.reduction", .4) *
+                                   GET_CHAR_SKILL(c, SKILL_ARCANE_BLOCK)))),
                      arcane_block_reduction(rolls, c));
                 SAME(number(4, 16) * get_property("archery.enchantArrows.damage.mod", 1), enchant_arrow_damage(rolls));
                 SAME(number(0, GET_CHAR_SKILL(c, SKILL_ARCHERY) / 25), archery_skill_damage(rolls, c));
@@ -483,6 +488,15 @@ static void check_moves() {
 }
 
 static void check_pages() {
+    char_data reaver{}; reaver.player.m_class=CLASS_REAVER; reaver.player.spec=SPEC_FLAME_REAVER;
+    assert(contains(two_h_flaying_facts(&reaver), "  As a flame reaver, one makes your combat round 3 pulses longer.\n"));
+    flame_penalty = 4.5;
+    assert(contains(two_h_flaying_facts(&reaver), "  As a flame reaver, one makes your combat round 4.5 pulses longer.\n"));
+    flame_penalty = 0;
+    assert(two_h_flaying_facts(&reaver).find("pulses longer") == std::string::npos);
+    flame_penalty = -1; reaver.player.spec=SPEC_ICE_REAVER;
+    assert(two_h_flaying_facts(&reaver).find("flame reaver") == std::string::npos);
+
     dam_factor[DF_DODGE_AGI_MODIFIER] = 1.2f;
     dam_factor[DF_TIGERPALM] = 0.65f;
     dam_factor[DF_RAGED] = 1.2f;

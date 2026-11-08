@@ -1799,10 +1799,10 @@ revalidate_movement:
 			enter_message(ch, tch, exitnumb, amsg, was_in, new_room);
 
 			calming = 0;
-			if (!IS_ELITE(tch) && !IS_INVADER(ch) &&
+			if (!IS_ELITE(tch) &&
 			    (((GET_LEVEL(tch) - GET_LEVEL(ch)) <= calming_level_gap()) ||
 			     !calming_gap_roll(live_rolls)) &&
-			    has_innate(ch, INNATE_CALMING))
+			    innate_calming_active(ch))
 			{
 				calming = calming_delay();
 			}

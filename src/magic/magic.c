@@ -2556,11 +2556,11 @@ P_char make_mirror(P_char ch)
 	image->specials.act |= ACT_SPEC_DIE;
 
 	int duration = setup_pet(image, ch, 30, PET_NOCASH);
-	/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+	/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 	if (duration >= 0)
 	{
-		duration += number(1, 10);
-		add_event(event_pet_death, (duration + 1) * 60 * 4, image, NULL, NULL, 0, NULL, 0);
+		const int delay = duration * PULSES_IN_TICK + (number(1, 10) + 1) * WAIT_MIN;
+		add_event(event_pet_death, delay, image, NULL, NULL, 0, NULL, 0);
 	}
 
 	/* string it */
@@ -2919,7 +2919,7 @@ void spell_elemental_swarm(int level, P_char ch, char * /*arg*/, int /*type*/, P
 	{
 		int duration = setup_pet(mob, ch, 1, PET_NOCASH | PET_NOORDER | PET_NOAGGRO);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		// Controlled combat summons last 5-30 real seconds, unless control is permanent.
 		if (duration >= 0)
 		{
 			duration = elemental_swarm_lifetime(live_rolls);
@@ -3262,11 +3262,12 @@ void spell_conjour_elemental(int level, P_char ch, char *arg, int /*type*/, P_ch
 		    TO_CHAR);
 		duration = setup_pet(mob, ch, 400 / STAT_INDEX(GET_C_INT(mob)), PET_NOCASH);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 		if (duration >= 0)
 		{
-			duration += number(1, 10);
-			schedule_elemental_death(mob, (duration + 1) * 60 * 4);
+			const int delay =
+				duration * PULSES_IN_TICK + (number(1, 10) + 1) * WAIT_MIN;
+			schedule_elemental_death(mob, delay);
 		}
 	}
 }
@@ -3383,7 +3384,7 @@ void spell_living_stone(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	{
 		int duration = setup_pet(mob, ch, 1, PET_NOCASH | PET_NOORDER | PET_NOAGGRO);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		// Controlled combat summons last 5-10 real seconds, unless control is permanent.
 		if (duration >= 0)
 		{
 			duration = living_stone_lifetime(live_rolls);
@@ -3505,7 +3506,7 @@ void spell_greater_living_stone(int level, P_char ch, char * /*arg*/, int /*type
 
 	int duration = setup_pet(mob, ch, 1, PET_NOCASH | PET_NOORDER | PET_NOAGGRO);
 	add_follower(mob, ch);
-	/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+	// Greater Living Stone lasts 7-12 real seconds, unless control is permanent.
 	if (duration >= 0)
 	{
 		duration = greater_living_stone_lifetime(live_rolls);
@@ -3906,11 +3907,12 @@ void conjure_specialized(P_char ch, [[maybe_unused]] int level, bool mephit)
 		duration = setup_pet(mob, ch, duration, PET_NOCASH);
 
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 		if (duration >= 0)
 		{
-			duration += number(1, 10);
-			schedule_elemental_death(mob, (duration + 1) * 60 * 4);
+			const int delay =
+				duration * PULSES_IN_TICK + (number(1, 10) + 1) * WAIT_MIN;
+			schedule_elemental_death(mob, delay);
 		}
 	}
 }
@@ -4098,12 +4100,12 @@ void spell_conjour_greater_elemental(int level, P_char ch, char *arg, int /*type
 
 		duration = setup_pet(mob, ch, 400 / STAT_INDEX(GET_C_INT(mob)), PET_NOCASH);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 		if (duration >= 0)
 		{
-			duration += number(1, 10);
-			add_event(event_pet_death, (duration + 1) * 60 * 4, mob, NULL, NULL, 0,
-				  NULL, 0);
+			const int delay =
+				duration * PULSES_IN_TICK + (number(1, 10) + 1) * WAIT_MIN;
+			add_event(event_pet_death, delay, mob, NULL, NULL, 0, NULL, 0);
 		}
 	}
 }
@@ -4185,12 +4187,12 @@ void spell_summon_greater_demon(int level, P_char ch, P_char /*victim*/, P_obj /
 
 		int duration = setup_pet(mob, ch, 30, PET_NOCASH);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 		if (duration >= 0)
 		{
-			duration += number(1, 10);
-			add_event(event_pet_death, (duration + 1) * 60 * 4, mob, NULL, NULL, 0,
-				  NULL, 0);
+			const int delay =
+				duration * PULSES_IN_TICK + (number(1, 10) + 1) * WAIT_MIN;
+			add_event(event_pet_death, delay, mob, NULL, NULL, 0, NULL, 0);
 		}
 	}
 }
@@ -4525,9 +4527,8 @@ void spell_bigbys_crushing_hand(int level, P_char ch, char * /*arg*/, int /*type
 	spell_damage(ch, victim, dam, SPLDAM_GENERIC, 0, &messages);
 }
 
-// Damage of one barrage missile, before the target's save: average ~45 per missile, so from
-// 135+ at 51 to 180 at 55 plus 25% chance of 225 at 56. Made damage level-independent,
-// since average number of missiles grows with level.
+// Damage of one barrage missile before saves/modifiers: 30d11 averages 180.
+// Damage is level-independent; the average missile count grows with level.
 static int missile_barrage_damage(const Rolls &rolls)
 {
 	return rolls.dice(30, 11);
@@ -12436,7 +12437,7 @@ std::string blur_innate_facts(P_char /*ch*/)
 	extern int archery_blur_speed();
 	return fact("Your attacks each round", "+1") +
 	       fact("Archery speed", "+" + std::to_string(archery_blur_speed())) +
-	       "  You get it when you log in.\n";
+	       "  It is permanent; temporary blur ending cannot remove it.\n";
 }
 
 std::string blur_facts(P_char /*ch*/)
@@ -16189,13 +16190,7 @@ void spell_barkskin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 static int grow_spike_damage(const Rolls &rolls, int level)
 {
 	int temp = MIN(20, (level / 2 + 1));
-	int dam = rolls.dice(6 * temp, 6);
-
-	if (level > 50)
-	{
-		dam = rolls.dice(6 * temp, 7);
-	}
-	return dam;
+	return rolls.dice(6 * temp, level > 50 ? 7 : 6);
 }
 
 // A successful save halves earth spike damage.
@@ -17722,7 +17717,8 @@ static int elemental_shield_duration()
 
 std::string elemental_shield_facts(P_char /*ch*/)
 {
-	return fact("Duration", game_hours(elemental_shield_duration()));
+	return fact("Duration", game_hours(elemental_shield_duration())) +
+	       "  Melee hits of 5 damage or less do not trigger shield retaliation.\n";
 }
 
 void spell_fireshield(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
@@ -20679,6 +20675,10 @@ int CheckMobRemoveableSpellBits(P_char ch, RemoveableSpellBit *spellBits, int co
 
 	for (int i = 0; i < countSpellBits; i++)
 	{
+		if (affectVector == 3 && spellBits[i].bit == AFF3_BLUR &&
+		    has_innate(ch, INNATE_BLUR))
+			continue;
+
 		if (IS_SET(*bitStore, spellBits[i].bit) &&
 		    !affected_by_spell(ch, spellBits[i].spell) &&
 		    (nosave || !NewSaves(ch, SAVING_SPELL, saveMod)))
@@ -20969,7 +20969,7 @@ void spell_dispel_magic(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 			return;
 		}
 
-		/* 5% chance of totally destroying the object <Cackle> */
+		/* 20% chance of totally destroying this eligible non-artifact magic object. */
 		if (!dispel_magic_destroy_roll(live_rolls) && !IS_TRUSTED(ch))
 		{
 			send_to_char("&+YUh oh!&N\n", ch);
@@ -24823,7 +24823,7 @@ void spell_vampire(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] in
 			{
 				stop_follower(tch);
 				setup_pet(tch, ch, 2, PET_NOORDER);
-				// force pets to die after 30 minutes when trance is cast, to remove the pet links
+				// Clean up pets after 1800 pulses (7.5 real minutes) to remove the pet links.
 				add_event(event_pet_death, 1800, tch, NULL, NULL, 0, NULL, 0);
 			}
 		}

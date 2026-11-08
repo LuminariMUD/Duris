@@ -3236,6 +3236,7 @@ std::string pyrokinesis_facts(P_char ch)
 		fact("Fire damage first, on an NPC only", show(fire) + ", and it cannot kill") +
 		fact("If the NPC fails its save", show({ pyrokinesis_failed_fire(fire.low),
 							 pyrokinesis_failed_fire(fire.high) })) +
+		"  Players take no fire component; psionic damage and penalties still apply.\n" +
 		fact("Chance a target may try to shrug it",
 		     std::to_string(pyrokinesis_shrug_below() -
 				    pyrokinesis_shrug_roll(lowest_rolls)) +
@@ -3313,7 +3314,7 @@ void spell_pyrokinesis(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 
 	else
 	{
-		// spell_damage(ch, victim, fire_dam, SPLDAM_FIRE, SPLDAM_NOSHRUG | SPLDAM_NODEFLECT | RAWDAM_NOKILL, 0);
+		// Pyrokinesis intentionally has no fire-damage component against players.
 		if (IS_ALIVE(victim))
 		{
 			if ((IS_AFFECTED2(victim, AFF2_FIRE_AURA) &&
@@ -4269,7 +4270,7 @@ std::string ethereal_rift_facts(P_char /*ch*/)
 void spell_ethereal_rift(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			 P_obj /*obj*/)
 {
-	int to_room, dam, found = 0;
+	int to_room, found = 0;
 	P_char tmp, tmp_next;
 
 	if (!ch)
@@ -4283,10 +4284,6 @@ void spell_ethereal_rift(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
 		send_to_char("Nice try...\r\n", ch);
 		return;
 	}
-
-	dam = 1;
-	if (dam <= 0)
-		dam = 1;
 
 	do
 	{
@@ -4391,7 +4388,7 @@ std::string ether_warp_facts(P_char ch)
 void spell_ether_warp(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		      P_obj /*obj*/)
 {
-	int to_room, dam, temp;
+	int to_room, temp;
 	P_char tmp, tmp_next;
 	int distance;
 
@@ -4403,12 +4400,6 @@ void spell_ether_warp(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 
 	if (!victim)
 		victim = ch;
-
-	dam = 70 - ((GET_LEVEL(ch) / 2) + number(10, 50));
-	if (dam <= 0)
-	{
-		dam = 1;
-	}
 
 	if (IS_PC(victim) && IS_ILLITHID(ch) && !IS_TRUSTED(ch) && !IS_ILLITHID(victim) &&
 	    GET_LEVEL(victim) < ether_warp_protected_below())

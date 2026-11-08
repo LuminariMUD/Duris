@@ -113,10 +113,12 @@ struct song_description
 	  { "chaos", bard_chaos, INSTRUMENT_DRUMS, SONG_CHAOS, SONG_AGGRESSIVE },
 	  { "cowardice", bard_cowardice, INSTRUMENT_DRUMS, SONG_COWARDICE, SONG_AGGRESSIVE },
 	  { "discord", bard_discord, INSTRUMENT_FLUTE, SONG_DISCORD, 0 },
+	  // Hostile eligibility is checked inside bard_dissonance, without damage-song aggro.
 	  { "dissonance", bard_dissonance, INSTRUMENT_HORN, SONG_DISSONANCE, 0 },
 	  { "dragons", bard_dragons, INSTRUMENT_HORN, SONG_DRAGONS, SONG_ALLIES },
 	  { "drifting", bard_drifting, INSTRUMENT_DRUMS, SONG_DRIFTING, SONG_SELF_ONLY },
-	  { "flight", bard_flight, INSTRUMENT_HORN, SONG_FLIGHT, 0 },
+	  { "flight", bard_flight, INSTRUMENT_HORN, SONG_FLIGHT, SONG_ALLIES },
+	  // Calming, forgetfulness and peace intentionally also reach non-allies.
 	  { "forgetfulness", bard_forgetfulness, INSTRUMENT_MANDOLIN, SONG_FORGETFULNESS, 0 },
 	  { "harming", bard_harming, INSTRUMENT_LYRE, SONG_HARMING, SONG_AGGRESSIVE },
 	  { "harmony", bard_harmony, INSTRUMENT_FLUTE, SONG_HARMONY, 0 },
@@ -818,77 +820,6 @@ void bard_drifting(int level, P_char ch, P_char victim, int /*song*/)
 	}
 }
 
-/*
-*void bard_healing(int l, P_char ch, P_char victim, int song)
-{
-  struct affected_type af;
-  int empower = GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG);
-
-  if( !IS_ALIVE(ch) )
-    return;
-
-  if(IS_NPC(ch))
-  {
-    empower += 100;
-  }
-
-  if(GET_SPEC(ch, CLASS_BARD, SPEC_MINSTREL))
-  {
-    if(IS_AFFECTED(victim, AFF_BLIND) &&
-        GET_CHAR_SKILL(ch, SONG_HEALING) >= 90)
-    {
-      spell_cure_blind(GET_LEVEL(ch), ch, NULL, SPELL_TYPE_SPELL, victim, NULL);
-    }
-    if(IS_AFFECTED2(victim, AFF2_POISONED) &&
-        GET_CHAR_SKILL(ch, SONG_HEALING) >= 50)
-    {
-      spell_remove_poison(GET_LEVEL(ch), ch, NULL, SPELL_TYPE_SPELL, victim, NULL);
-    }
-    if(GET_CHAR_SKILL(ch, SONG_HEALING) >= 70 &&
-      (affected_by_spell(victim, SPELL_DISEASE) ||
-      affected_by_spell(victim, SPELL_PLAGUE)))
-    {
-      spell_cure_disease(GET_LEVEL(ch), ch, NULL, SPELL_TYPE_SPELL, victim, NULL);
-    }
-  }
-  else if(GET_SPEC(ch, CLASS_BARD, SPEC_DISHARMONIST))
-  {
-    if(IS_AFFECTED2(ch, AFF2_SILENCED) &&
-        GET_CHAR_SKILL(ch, SONG_HEALING) >= 90)
-    {
-      affect_from_char(ch, SPELL_SILENCE);
-    }
-  }
-
-  if(is_linked_to(ch, victim, LNK_SONG))
-  {
-    return;
-  }
-
-  if(!affected_by_spell(victim, SONG_HEALING))
-  {
-    memset(&af, 0, sizeof(af));
-    af.bitvector4 = AFF4_REGENERATION;
-    af.type = SONG_HEALING;
-    af.location = APPLY_HIT_REG;
-    af.modifier = (int) (11 * l * get_property("song.bard.healing.mod", 1.000) + (empower / 10));
-
-    linked_affect_to_char(victim, &af, ch, LNK_SONG);
-  }
-
-  if(!affected_by_spell(ch, SONG_HEALING))
-  {
-    memset(&af, 0, sizeof(af));
-    af.bitvector4 = AFF4_REGENERATION;
-    af.type = SONG_HEALING;
-    af.location = APPLY_HIT_REG;
-    af.modifier = (int) (11 * l * get_property("song.bard.healing.mod", 1.000) + (empower / 10));
-
-    linked_affect_to_char(ch, &af, ch, LNK_SONG);
-  }
-}
-*/
-
 // What a verse heals the singer, at song level `level`, and what it heals anyone else.
 static int song_healing_amount(P_char ch, int level)
 {
@@ -1010,14 +941,6 @@ void bard_healing(int level, P_char ch, P_char victim, int /*song*/)
 			{
 				spell_cure_disease(GET_LEVEL(ch), ch, NULL, SPELL_TYPE_SPELL,
 						   victim, NULL);
-			}
-		}
-		else if (GET_SPEC(ch, CLASS_BARD, SPEC_DISHARMONIST))
-		{
-			if (IS_AFFECTED2(ch, AFF2_SILENCED) &&
-			    GET_CHAR_SKILL(ch, SONG_HEALING) >= 90)
-			{
-				affect_from_char(ch, SPELL_SILENCE);
 			}
 		}
 
@@ -1589,7 +1512,7 @@ std::string song_flight_facts(P_char ch)
 	       fact("Vitality regeneration while you sing",
 		    "+" + std::to_string(song_flight_move_regen(
 				  level, GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG)))) +
-	       song_everyone_facts() + "  Leaving the room ends the regeneration.\n" +
+	       song_allies_facts() + "  Leaving the room ends the regeneration.\n" +
 	       song_common_facts(ch, SONG_FLIGHT);
 }
 
@@ -1724,19 +1647,26 @@ static int song_heroism_pulse()
 	return -1;
 }
 
-// The singer's pulses when another listener came first in the room.
+// The singer's level-scaled pulses, independent of listener order.
 static int song_heroism_singer_pulse(int l)
 {
 	return -1 * l / 20;
 }
 
+static int song_heroism_hit_dam(int level, int empower)
+{
+	return (level / 10) + (empower / 15);
+}
+
 std::string song_heroism_facts(P_char ch)
 {
 	const int level = GET_LEVEL(ch);
+	const int empower = GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG) + (IS_NPC(ch) ? 100 : 0);
 	return fact("Combat pulse and spell pulse", std::to_string(song_heroism_pulse())) +
-	       fact("Yours instead, when a listener hears it before you",
-		    std::to_string(song_heroism_singer_pulse(level)) + " at song level " +
-			    std::to_string(level)) +
+	       fact("Yours instead", std::to_string(song_heroism_singer_pulse(level)) +
+					     " at song level " + std::to_string(level)) +
+	       fact("Hitroll and damroll for you and listeners",
+		    "+" + std::to_string(song_heroism_hit_dam(level, empower))) +
 	       (level >= song_heroism_haste_level() ?
 			"  It also casts haste at your song level on those without it.\n" :
 			"") +
@@ -1746,75 +1676,37 @@ std::string song_heroism_facts(P_char ch)
 
 void bard_heroism(int l, P_char ch, P_char victim, int /*song*/)
 {
-	struct affected_type af;
-	int empower = GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG);
-
-	if (IS_NPC(ch))
-		empower += 100;
+	const int empower = GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG) + (IS_NPC(ch) ? 100 : 0);
 
 	if (GET_LEVEL(ch) >= song_heroism_haste_level() && !IS_AFFECTED(victim, AFF_HASTE))
 		spell_haste(l, ch, 0, 0, victim, NULL);
 
-	if (!affected_by_spell(victim, SONG_HEROISM))
+	for (P_char recipient : { victim, ch })
 	{
-		memset(&af, 0, sizeof(af));
+		if (affected_by_spell(recipient, SONG_HEROISM))
+			continue;
+
+		struct affected_type af
+		{
+		};
 		af.type = SONG_HEROISM;
 		af.location = APPLY_COMBAT_PULSE;
-		af.modifier = song_heroism_pulse();
-		linked_affect_to_char(victim, &af, ch, LNK_SONG);
+		af.modifier = recipient == ch ? song_heroism_singer_pulse(l) : song_heroism_pulse();
+		linked_affect_to_char(recipient, &af, ch, LNK_SONG);
 		af.location = APPLY_SPELL_PULSE;
-		af.modifier = song_heroism_pulse();
-		linked_affect_to_char(victim, &af, ch, LNK_SONG);
-		if (IS_MELEE_CLASS(victim))
-			send_to_char("&+yYour combat maneuvers seem faster...\r\n", victim);
-		else
-			send_to_char("&+cYour spell casting seems faster...\r\n", victim);
-	}
-
-	if (!affected_by_spell(victim, SONG_HEROISM))
-	{
-		memset(&af, 0, sizeof(af));
-		af.duration = l / 3;
-		af.type = SONG_HEROISM;
+		linked_affect_to_char(recipient, &af, ch, LNK_SONG);
 		af.location = APPLY_DAMROLL;
-		af.modifier = (l / 10) + (empower / 15);
-		affect_to_char(victim, &af);
-
+		af.modifier = song_heroism_hit_dam(l, empower);
+		linked_affect_to_char(recipient, &af, ch, LNK_SONG);
 		af.location = APPLY_HITROLL;
-		af.modifier = (l / 10) + (empower / 15);
-		affect_to_char(victim, &af);
-		send_to_char("&+WA sense of &+yheroism &+Wgrows in your &+rheart.\r\n&N", victim);
-	}
+		linked_affect_to_char(recipient, &af, ch, LNK_SONG);
 
-	if (!affected_by_spell(ch, SONG_HEROISM))
-	{
-		memset(&af, 0, sizeof(af));
-		af.type = SONG_HEROISM;
-		af.location = APPLY_COMBAT_PULSE;
-		af.modifier = song_heroism_singer_pulse(l);
-		linked_affect_to_char(ch, &af, ch, LNK_SONG);
-		af.location = APPLY_SPELL_PULSE;
-		af.modifier = song_heroism_singer_pulse(l);
-		linked_affect_to_char(ch, &af, ch, LNK_SONG);
-		if (IS_MELEE_CLASS(ch))
-			send_to_char("&+yYour combat maneuvers seem faster...\r\n", victim);
+		if (IS_MELEE_CLASS(recipient))
+			send_to_char("&+yYour combat maneuvers seem faster...\r\n", recipient);
 		else
-			send_to_char("&+cYour spell casting seems faster...\r\n", victim);
-	}
-
-	if (!affected_by_spell(ch, SONG_HEROISM))
-	{
-		memset(&af, 0, sizeof(af));
-		af.duration = l / 3;
-		af.type = SONG_HEROISM;
-		af.location = APPLY_DAMROLL;
-		af.modifier = (l / 10) + (empower / 15);
-		affect_to_char(ch, &af);
-
-		af.location = APPLY_HITROLL;
-		af.modifier = (l / 10) + (empower / 15);
-		affect_to_char(ch, &af);
-		send_to_char("&+WA sense of &+yheroism &+Wgrows in your &+rheart.\r\n&N", victim);
+			send_to_char("&+cYour spell casting seems faster...\r\n", recipient);
+		send_to_char("&+WA sense of &+yheroism &+Wgrows in your &+rheart.\r\n&N",
+			     recipient);
 	}
 }
 
@@ -2361,7 +2253,8 @@ std::string song_dissonance_facts(P_char ch)
 	       fact("That singer's lag", seconds(song_dissonance_target_lag())) +
 	       fact("Chance to free a pet with its master here", chance_under(power, 1, 2000)) +
 	       fact("A freed pet dies after", seconds(song_dissonance_pet_death_delay())) +
-	       "  Not your group or gods. Each verse does this once for everyone in the room.\n" +
+	       "  Only eligible hostile targets in the room, excluding your group and gods.\n"
+	       "  Each verse checks each such target once.\n" +
 	       song_common_facts(ch, SONG_DISSONANCE);
 }
 

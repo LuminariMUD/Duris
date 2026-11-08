@@ -293,11 +293,10 @@ static int old_invigorate(P_char ch, int level) {
     return movepoints;
 }
 
-static int old_grow_spike(int level) {
+static int expected_grow_spike(int level) {
     int temp = MIN(20, (level / 2 + 1));
-    int dam = dice(6 * temp, 6);
-    if (level > 50) dam = dice(6 * temp, 7);
-    return dam;
+    // Approved formula: no discarded d6 roll above level 50.
+    return dice(6 * temp, level > 50 ? 7 : 6);
 }
 
 static int old_natures_touch(P_char ch, int level) {
@@ -431,7 +430,7 @@ int main() {
                                 number(-20, 20); },
                    [=] { return vital_intercession_pool(live_rolls, level); },
                    { vital_intercession_pool(lowest_rolls, level), vital_intercession_pool(highest_rolls, level) });
-        same_rolls([=] { return old_grow_spike(level); }, [=] { return grow_spike_damage(live_rolls, level); },
+        same_rolls([=] { return expected_grow_spike(level); }, [=] { return grow_spike_damage(live_rolls, level); },
                    { grow_spike_damage(lowest_rolls, level), grow_spike_damage(highest_rolls, level) });
         for (int sign : { 1, -1 })
             assert(sleep_duration(sign * level) == old_sleep(sign * level));
@@ -768,7 +767,7 @@ def check_melee_damage_skin_chain():
     # Each branch, in its order of precedence, with the share it reads.
     position = -1
     for spell, share in (("STONE_SKIN", "stone_skin_melee_share()"), ("BIOFEEDBACK", "biofeedback_melee_share()"),
-                         ("SHADOW_SHIELD", "stone_skin_melee_share()"), ("IRONWOOD", "ironwood_melee_share()")):
+                         ("SHADOW_SHIELD", "shadow_shield_melee_share()"), ("IRONWOOD", "ironwood_melee_share()")):
         branch = (f"if (affected_by_spell(victim, SPELL_{spell}) && !(flags & PHSDAM_NOREDUCE)) "
                   f"{{ reduction = 1. - {share}; skin = SPELL_{spell}; }}")
         assert body.find(branch) > position, branch

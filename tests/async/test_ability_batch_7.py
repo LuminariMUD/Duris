@@ -169,7 +169,7 @@ HANDLER_CALLS = {
         "spell_comet": ["dam = comet_damage(live_rolls, level)", "dam = comet_star_damage(live_rolls, level)",
                         "dam = comet_failed_save(dam)"],
         "spell_cosmic_vacuum": ["success_chance = cosmic_success_chance(GET_LEVEL(ch), GET_LEVEL(victim))",
-                                "success_chance <= cosmic_success_roll(live_rolls)",
+                                "success_chance < cosmic_success_roll(live_rolls)",
                                 "af.duration = cosmic_saved_duration(level)",
                                 "af.duration = cosmic_failed_duration(level)",
                                 "af.modifier = cosmic_vacuum_ac(level, GET_AC(victim))",
@@ -177,7 +177,7 @@ HANDLER_CALLS = {
         "spell_single_supernova": ["dam = supernova_damage(live_rolls, level)", "dam = supernova_player_damage(dam)",
                                    "dam = supernova_area_damage(dam)",
                                    "int success_chance = cosmic_success_chance(GET_LEVEL(ch), GET_LEVEL(victim))",
-                                   "success_chance <= cosmic_success_roll(live_rolls)",
+                                   "success_chance < cosmic_success_roll(live_rolls)",
                                    "af.duration = cosmic_saved_duration(level)",
                                    "af.duration = cosmic_failed_duration(level)",
                                    "af.modifier = supernova_constitution(level)"],
@@ -500,7 +500,8 @@ int main() {
         assert(wall_of_air_stat_bonus(&walker) == 3);
     }
     assert(conjured_elemental_charm(4) == 100);
-    assert(conjured_elemental_death_delay(1) == 2 * WAIT_MIN);
+    assert(conjured_elemental_death_delay(1, 1) == PULSES_IN_TICK + 2 * WAIT_MIN);
+    assert(conjured_elemental_death_delay(100, 10) == 100 * PULSES_IN_TICK + 11 * WAIT_MIN);
     assert(arctic_blast_recast_blasts(2, 6) == 7);
     // The takedown changes as the handler wrote them, the binding wind's included.
     assert(tempest_takedown_unlucky(14.0) == 7.0);
@@ -556,7 +557,7 @@ int main() {
                                      "  Elemental's level: 22-45 at your level, 56\n"
                                      "  Its hit points: 144-376 with your charisma\n"
                                      "  Its hitroll and damroll: 7-15\n"
-                                     "  It dies after its charm's ticks as minutes, plus: 2 minutes to 11 minutes\n"
+                                     "  It dies after its charm, plus: 2 minutes to 11 minutes\n"
                                      "  Its charm depends on its intelligence; a globe of shadows or unholy\n"
                                      "  alliance makes the charm permanent, and then it does not die.\n"
                                      "  Only one elemental at a time; safe rooms block it.\n");
@@ -594,14 +595,14 @@ int main() {
                                                   "  Share of it the other ally takes: 50%\n"));
     assert(contains(comet_facts(&ch), "  Damage: 92-552 at your level, 56\n"
                                       "  If the target fails its save: 110-662\n"));
-    assert(contains(cosmic_vacuum_facts(&ch), "  Chance to work: 49-79%, higher the more you outlevel the target\n"
+    assert(contains(cosmic_vacuum_facts(&ch), "  Chance to work: 50-80%, higher the more you outlevel the target\n"
                                               "  Lasts if the target saves: 18 seconds\n"
                                               "  Lasts if it fails: 5-6 game hours (6.25-7.5 minutes)\n"
                                               "  Armor class: 56 worse at your level, 56, at most to 100\n"
                                               "  All saving throws: 9 worse\n"));
     assert(contains(supernova_facts(&ch), "  Damage: 457-496 to each target at your level, 56\n"
                                           "  Against a player: 228-248\n"
-                                          "  Chance a survivor also burns: 49-79%, higher the more you outlevel the target\n"
+                                          "  Chance a survivor also burns: 50-80%, higher the more you outlevel the target\n"
                                           "  Its constitution: -5\n"));
     assert(contains(supernova_facts(&ch), "  You are then knocked out: 0.25 seconds, left prone\n"));
     assert(contains(ethereal_discharge_facts(&ch), "  Damage per spell stripped: 28\n"
@@ -817,8 +818,8 @@ def check_sources():
                      "conjured_elemental_hit_points(live_rolls, GET_LEVEL(mob), charisma)",
                      "int charisma = conjured_elemental_charisma(ch)",
                      "conjured_elemental_charm(STAT_INDEX(GET_C_INT(mob)))",
-                     "duration += conjured_elemental_late_death_roll(live_rolls)",
-                     "conjured_elemental_death_delay(duration)"):
+                     "conjured_elemental_late_death_roll(live_rolls)",
+                     "conjured_elemental_death_delay("):
             assert call in body, f"{handler} does not call {call}"
     # Each property reads its own key.
     for function, key in (("tempest_player_damage", "spell.area.damage.to.pc"),

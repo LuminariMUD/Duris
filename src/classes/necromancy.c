@@ -2250,16 +2250,6 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 		return;
 	}
 
-	mob = read_mobile(real_mobile(golem_data[which_type].vnum), REAL);
-
-	if (!mob)
-	{
-		logit(LOG_DEBUG, "create_golem(): mob %d not loadable",
-		      golem_data[which_type].vnum);
-		send_to_char("Bug in create_golem.  Tell a god!\r\n", ch);
-		return;
-	}
-
 	clevel = obj->value[CORPSE_LEVEL];
 	if (IS_SET(obj->value[CORPSE_FLAGS], PC_CORPSE) && (clevel < 0))
 		clevel = -clevel;
@@ -2269,6 +2259,16 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	{
 		act("You are not powerful enough to animate that corpse!", FALSE, ch, 0, 0,
 		    TO_CHAR);
+		return;
+	}
+
+	mob = read_mobile(real_mobile(golem_data[which_type].vnum), REAL);
+
+	if (!mob)
+	{
+		logit(LOG_DEBUG, "create_golem(): mob %d not loadable",
+		      golem_data[which_type].vnum);
+		send_to_char("Bug in create_golem.  Tell a god!\r\n", ch);
 		return;
 	}
 
@@ -2315,6 +2315,19 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	summoned_pet_mark(mob, static_cast<summoned_pet_kind>(which_type + 15));
 
 	char_to_room(mob, ch->in_room, 0);
+
+	if (IS_SET(obj->value[CORPSE_FLAGS], PC_CORPSE))
+	{
+		logit(LOG_CORPSE, "%s got raised as %s while equipped ( by %s in room %d ).",
+		      obj->short_description, golem_data[which_type].name,
+		      (IS_PC(ch) ? GET_NAME(ch) : ch->player.short_descr),
+		      world[ch->in_room].number);
+		wizlog(57, "%s got raised as %s while equipped ( by %s in room %d ).",
+		       obj->short_description, golem_data[which_type].name,
+		       (IS_PC(ch) ? GET_NAME(ch) : ch->player.short_descr),
+		       world[ch->in_room].number);
+		corpselog = TRUE;
+	}
 
 	if (obj->contains)
 	{

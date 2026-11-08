@@ -8236,7 +8236,7 @@ void attack(P_char ch, P_char victim)
 			skl += GET_LEVEL(ch);
 		}
 
-		if (has_innate(victim, INNATE_CALMING) &&
+		if (innate_calming_active(victim) &&
 		    (number(0, 120) <= calming_switch_threshold(GET_LEVEL(victim))))
 		{
 			skl -= calming_switch_penalty(GET_CHAR_SKILL(ch, SKILL_SWITCH_OPPONENTS));
@@ -8635,7 +8635,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 	/* you must be size more than size down or same size of centaur/drider to try bashing */
 	if (ch_size < vict_size - 1 ||
 	    ((has_innate(victim, INNATE_HORSE_BODY) || has_innate(victim, INNATE_SPIDER_BODY) ||
-	      GET_RACE(ch) == RACE_QUADRUPED) &&
+	      GET_RACE(victim) == RACE_QUADRUPED) &&
 	     ch_size <= vict_size))
 	{
 		act("$n makes a futile attempt to bash $N, but $E is simply immovable.", FALSE, ch,
@@ -8789,7 +8789,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 	bool bigger_victim = FALSE;
 	if (vict_size > ch_size ||
 	    ((has_innate(victim, INNATE_HORSE_BODY) || has_innate(victim, INNATE_SPIDER_BODY) ||
-	      GET_RACE(ch) == RACE_QUADRUPED) &&
+	      GET_RACE(victim) == RACE_QUADRUPED) &&
 	     ch_size == vict_size))
 	{
 		bigger_victim = TRUE;
@@ -12192,7 +12192,7 @@ static int whirlwind_failed_vitality()
 // What a whirlwind takes from vitality regeneration.
 static int whirlwind_move_regen()
 {
-	return (int)(get_property("skill.whirlwind.movement.drain", 60));
+	return (int)(get_property("skill.whirlwind.movement.drain", 10));
 }
 
 // How long, in pulses, a whirlwind lasts.
@@ -13785,7 +13785,8 @@ std::string shriek_facts(P_char ch)
 	       "  deflected. Not underwater or in a safe room.\n";
 }
 
-// Shriek:  skill level/2 + 1d20 area damage = 51 - 70 damage @100 skill, usable once every 5 minutes.
+// Shriek: 2 * skill + 4 * 1d20 (4-80), halved base on a save.
+// At skill 100: 204-280 unsaved or 104-180 saved, before modifiers; five-minute rest.
 void do_shriek(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	int skl_lvl, basedamage, actualdam, savemod, count, res;
@@ -13888,7 +13889,7 @@ void do_shriek(P_char ch, char * /*argument*/, int /*cmd*/)
 			actualdam = basedamage;
 		}
 
-		// Apply the actualdamage to the person + 1d20 randomness.
+		// Apply the base damage plus 4 * 1d20 randomness.
 		// Note: spell_damage will engage victims (if they live), but not cause bashes/backstabs/etc so ch won't die.
 		//       Should this change, we might want to look at GET_POS(ch) vs POS_STANDING to see if they got knocked down.
 		res = spell_damage(ch, person, actualdam + shriek_roll_damage(live_rolls),

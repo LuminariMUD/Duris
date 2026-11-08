@@ -1756,15 +1756,10 @@ void spell_arieks_shattering_iceball(int level, P_char ch, char * /*arg*/, int /
 
 /* owie! */
 
-// Elemental power: how much harder scathing wind's save is, and the factor on earthen spells.
+// Elemental power: how much harder scathing wind's save is.
 int elemental_power_save_change(int level)
 {
 	return (int)(level / 10);
-}
-
-float elemental_power_area_factor()
-{
-	return get_property("damage.increase.elementalist", 1.150);
 }
 
 static int scathing_wind_damage(const Rolls &rolls, int level)
@@ -1921,12 +1916,6 @@ void spell_single_earthen_rain(int level, P_char ch, char * /*arg*/, int /*type*
 		return;
 	}
 
-	// Spell does SPLDAM_EARTH now.
-	if (has_innate(ch, INNATE_ELEMENTAL_POWER))
-	{
-		dam = (int)(dam * elemental_power_area_factor());
-	}
-
 	if (IS_PC(ch) && IS_PC(victim))
 	{
 		dam = dam * get_property("spell.area.damage.to.pc", 0.5);
@@ -1978,16 +1967,6 @@ void spell_earthen_rain(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	}
 }
 
-// Elemental power raises the level earthen grasp's damage dice use.
-static int earthen_grasp_level(int level, P_char ch)
-{
-	if (has_innate(ch, INNATE_ELEMENTAL_POWER))
-	{
-		level = (int)(level * elemental_power_area_factor());
-	}
-	return level;
-}
-
 static int earthen_grasp_damage(const Rolls &rolls, int level)
 {
 	return rolls.dice(level, 12);
@@ -2000,11 +1979,8 @@ static int earthen_grasp_saved_damage(const Rolls &rolls, int level)
 
 std::string earthen_grasp_facts(P_char ch)
 {
-	const int level = earthen_grasp_level(GET_LEVEL(ch), ch);
-	return fact("Damage level",
-		    std::to_string(level) + (level == GET_LEVEL(ch) ?
-						     ", your level" :
-						     ", raised by elemental power")) +
+	const int level = GET_LEVEL(ch);
+	return fact("Damage level", std::to_string(level) + ", your level") +
 	       fact("Earth damage on a grasp",
 		    show({ earthen_grasp_damage(lowest_rolls, level),
 			   earthen_grasp_damage(highest_rolls, level) }) +
@@ -2137,8 +2113,6 @@ void earthen_grasp(int level, P_char ch, P_char victim, bool greater)
 			// From minimum 5 sec to absolute max at 15 sec.
 			af.duration = (attdiff <= 0) ? 5 * WAIT_SEC : attdiff + 5 * WAIT_SEC;
 		}
-
-		level = earthen_grasp_level(level, ch);
 
 		int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_EARTHEN_GRASP);
 		if (!NewSaves(victim, SAVING_SPELL, mod))
