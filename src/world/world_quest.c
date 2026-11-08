@@ -808,8 +808,23 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 				ch->only.pc->quest_type, remaining);
 			if (recipient.status != world_quest_target_status::valid)
 			{
+				using status = world_quest_target_status;
+				const bool blocked = recipient.status == status::blocked;
+				const char *state =
+					blocked					 ? "blocked" :
+					recipient.status == status::unavailable	 ? "unavailable" :
+					recipient.status == status::needs_origin ? "needs_origin" :
+										   "unproven";
+				logit(LOG_STATUS,
+				      "World quest share refused: pid=%d recipient=%d type=%d "
+				      "target=%d status=%s work=%zu rejections={%s}",
+				      GET_PID(ch), GET_PID(victim), ch->only.pc->quest_type,
+				      ch->only.pc->quest_mob_vnum, state, recipient.work,
+				      recipient.rejections.c_str());
 				send_to_char(
-					"Your fellow adventurer cannot currently use this task's target.\r\n",
+					blocked ?
+						"Your fellow adventurer is temporarily blocked from this task's target.\r\n" :
+						"Your fellow adventurer cannot currently use this task's target.\r\n",
 					ch);
 				return;
 			}

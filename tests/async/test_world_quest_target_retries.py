@@ -28,19 +28,21 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
     for vnum, proc in ((67262, "mace_of_sea"), (67237, "serpent_blade"),
                        (67242, "lich_spine"), (67276, "sword_whirlwinds"),
                        (36884, "kvasir_dagger"), (22962, "hammer_titans"),
-                       (32862, "aboleth_pendant")):
+                       (32862, "aboleth_pendant"), (3833, "glades_dagger")):
         assert re.search(rf"obj_index\[real_object0\({vnum}\)\]\.func\.obj\s*=\s*{proc};",
                          assignments)
+    # special() keeps using ch after an object proc returns, so these burns cannot kill.
+    object_procs = repo_source("specs.object.c").read_text()
+    for damage in (r"number\(120, 240\), SPLDAM_HOLY,\s+SPLDAM_NOSHRUG \| RAWDAM_NOKILL",
+                   r"4, SPLDAM_GENERIC, RAWDAM_NOKILL"):
+        assert re.search(rf"spell_damage\(ch, ch, {damage}", object_procs)
     # Identity-only dependencies must never be invoked by target validation.
     # The reported weapons and their neighbors below use full production bodies.
     policy = repo_source("world/world_quest_policy.c").read_text()
     object_audit = policy[policy.index("auto object_handler ="):
                           policy.index("for (P_obj object = actor->carrying;")]
     safe_procs = re.findall(r"proc == (\w+)", object_audit)
-    linked_procs = {"board", "artifact_hide", "ring_of_regeneration", "tracks",
-                    "blood_stains", "set_proc", "master_set", "mace_of_sea",
-                    "serpent_blade", "lich_spine", "sword_whirlwinds", "kvasir_dagger",
-                    "hammer_titans", "aboleth_pendant"}
+    linked_procs = {"board", "artifact_hide", "tracks", "blood_stains", "set_proc"}
     identity_stubs = "\n".join(
         f"int {name}(P_obj, P_char, int, char *) {{ std::abort(); }}"
         for name in safe_procs if name not in linked_procs)

@@ -15,8 +15,9 @@
 #ifndef DURIS_WORLD_QUEST_POLICY_H
 #define DURIS_WORLD_QUEST_POLICY_H
 
-#include <vector>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "core/structs.h"
 #include "world/world_quest.h"
@@ -51,6 +52,7 @@ struct world_quest_target_check
 	world_quest_target_status status = world_quest_target_status::unproven;
 	int map_room = NOWHERE;
 	size_t work = 0;
+	std::string rejections; // Diagnostic summary when status is not valid.
 };
 
 world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_vnum,

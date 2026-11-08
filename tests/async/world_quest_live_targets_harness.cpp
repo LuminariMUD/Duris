@@ -64,6 +64,7 @@ int target_zone_average = -1;
 int shown_map = NOWHERE, map_calls = 0;
 std::string feedback;
 std::vector<std::string> replacement_logs;
+std::vector<std::string> share_logs;
 void run_payment(P_char, int origin, int fee, bool committed);
 void run_map_payment(P_char, int fee);
 void assert_equipment_sets_ignore_ask(P_char);
@@ -180,6 +181,11 @@ int unknown_room(int, P_char, int, char *)
 	std::abort();
 }
 int unknown_object(P_obj, P_char, int, char *)
+{
+	std::abort();
+}
+// Object 3833's identity (#770). Validation must never run its body.
+int glades_dagger(P_obj, P_char, int, char *)
 {
 	std::abort();
 }
@@ -378,7 +384,8 @@ int singleton_shop_id(P_char)
 }
 void logit(const char *destination, const char *format, ...)
 {
-	if (strncmp(format, "World quest replacement failed:", 31))
+	const bool share = !strncmp(format, "World quest share refused:", 26);
+	if (!share && strncmp(format, "World quest replacement failed:", 31))
 		return;
 	assert(!strcmp(destination, LOG_STATUS));
 	char text[4096];
@@ -387,7 +394,7 @@ void logit(const char *destination, const char *format, ...)
 	const int length = vsnprintf(text, sizeof(text), format, arguments);
 	va_end(arguments);
 	assert(length >= 0 && static_cast<size_t>(length) < sizeof(text));
-	replacement_logs.emplace_back(text);
+	(share ? share_logs : replacement_logs).emplace_back(text);
 }
 bool has_innate(P_char, int)
 {
@@ -1011,6 +1018,7 @@ int main(int argc, char **argv)
 	{
 		hide_artifact.R_num = 0;
 		regeneration_ring.R_num = 1;
+		hide_artifact.wear_flags = regeneration_ring.wear_flags = ITEM_TAKE;
 		objects[0].func.obj = artifact_hide;
 		objects[1].func.obj = ring_of_regeneration;
 		player.carrying = &hide_artifact;
@@ -1049,6 +1057,7 @@ int main(int argc, char **argv)
 		share_limit = 2;
 		obj_data item{}, container{}, blocker{};
 		item.R_num = 0;
+		item.wear_flags = ITEM_TAKE;
 		container.R_num = -1;
 		container.type = ITEM_CONTAINER;
 		container.loc_p = LOC_CARRIED;
@@ -1074,6 +1083,7 @@ int main(int argc, char **argv)
 			const auto before = recipient_state;
 			history_reads.clear();
 			feedback.clear();
+			share_logs.clear();
 			char request[] = "share friend";
 			do_quest(&player, request, 0);
 			assert(feedback.find(message) != std::string::npos);
@@ -1166,39 +1176,73 @@ int main(int argc, char **argv)
 				objects[1].func.obj = burbul_map_obj;
 			}
 		}
-		// Actual/unknown interceptors are invisible to special() inside a bag.
-		for (obj_proc_type proc : { burbul_map_obj, unknown_object })
-		{
-			objects[0].func.obj = proc;
-			for (int location : { LOC_CARRIED, LOC_WORN, LOC_INSIDE })
+		// Portable gear never decides ASK eligibility: its owner can bag, drop or
+		// swap it, as with the reported dagger. A fixed object running an actual or
+		// unknown interceptor still refuses ASK until it is out of special()'s reach.
+		for (const auto &[item_vnum, proc] :
+		     { std::pair<int, obj_proc_type>{ 3833, glades_dagger },
+		       { 29328, burbul_map_obj },
+		       { 2005, unknown_object } })
+			for (bool portable : { true, false })
 			{
-				item.loc_p = location;
-				if (location == LOC_INSIDE)
-					item.loc.inside = &container;
-				else
-					item.loc.carrying = &recipient;
-				recipient.carrying = location == LOC_CARRIED ? &item :
-						     location == LOC_INSIDE  ? &container :
-									       nullptr;
-				recipient.equipment[WIELD] = location == LOC_WORN ? &item : nullptr;
-				container.contains = location == LOC_INSIDE ? &item : nullptr;
-				const bool allowed = preferred_type == FIND_AND_KILL ||
-						     location == LOC_INSIDE;
-				check(allowed ? status::valid : status::unproven);
-				share(allowed, allowed ? "You've shared your quest" : refused);
-				if (proc == burbul_map_obj)
+				objects[0].virtual_number = item_vnum;
+				objects[0].func.obj = proc;
+				item.wear_flags = portable ? ITEM_TAKE : 0;
+				for (int location : { LOC_CARRIED, LOC_WORN, LOC_INSIDE })
 				{
-					move(&recipient, 3);
-					char message[] = "burbul map";
-					assert(special(&recipient, CMD_ASK, message) ==
-					       (location != LOC_INSIDE));
-					move(&recipient, 0);
+					item.loc_p = location;
+					if (location == LOC_INSIDE)
+						item.loc.inside = &container;
+					else
+						item.loc.carrying = &recipient;
+					recipient.carrying = location == LOC_CARRIED ? &item :
+							     location == LOC_INSIDE  ? &container :
+										       nullptr;
+					recipient.equipment[WIELD] = location == LOC_WORN ? &item :
+											    nullptr;
+					container.contains = location == LOC_INSIDE ? &item :
+										      nullptr;
+					const bool allowed = preferred_type == FIND_AND_KILL ||
+							     portable || location == LOC_INSIDE;
+					check(allowed ? status::valid : status::unproven);
+					share(allowed,
+					      allowed ? "You've shared your quest" : refused);
+					if (!allowed)
+					{
+						const std::string example =
+							"actor_object_handler=1(example=" +
+							std::to_string(item_vnum) + ")";
+						assert(share_logs.size() == 1 &&
+						       share_logs[0].find("status=unproven") !=
+							       std::string::npos &&
+						       share_logs[0].find(example) !=
+							       std::string::npos);
+					}
+					if (proc == burbul_map_obj)
+					{
+						move(&recipient, 3);
+						char message[] = "burbul map";
+						assert(special(&recipient, CMD_ASK, message) ==
+						       (location != LOC_INSIDE));
+						move(&recipient, 0);
+					}
+				}
+				// The dagger cannot hide a genuine interceptor in the target's scene.
+				if (portable && proc == glades_dagger)
+				{
+					rooms[3].contents = &blocker;
+					check(preferred_type == FIND_AND_ASK ? status::unproven :
+									       status::valid);
+					rooms[3].contents = nullptr;
 				}
 			}
-		}
-
+		objects[0].func.obj = nullptr;
 		recipient.carrying = nullptr;
 		recipient.equipment[WIELD] = nullptr;
+		container.contains = nullptr;
+		check(status::valid); // A recipient without the dagger.
+		share(true, "You've shared your quest");
+
 		consent = false;
 		share(false, "needs to consent");
 		consent = true;
@@ -1216,13 +1260,18 @@ int main(int argc, char **argv)
 		fresh.erase(vnum);
 		share(false, "already done this quest");
 		fresh.insert(vnum);
+		const char *blocked = "temporarily blocked from this task's target";
 		recipient.specials.affected_by |= AFF_BLIND;
-		share(false, refused);
+		share(false, blocked);
+		assert(share_logs.size() == 1 &&
+		       share_logs[0].find("pid=42 recipient=88") != std::string::npos &&
+		       share_logs[0].find("status=blocked") != std::string::npos &&
+		       share_logs[0].find("visibility=") != std::string::npos);
 		recipient.specials.affected_by &= ~AFF_BLIND;
 		if (preferred_type == FIND_AND_ASK)
 		{
 			recipient.specials.affected_by2 |= AFF2_SILENCED;
-			share(false, refused);
+			share(false, blocked);
 			recipient.specials.affected_by2 &= ~AFF2_SILENCED;
 		}
 		assert(wallet_debits == 0 && history_writes == 0);
@@ -1784,8 +1833,13 @@ int main(int argc, char **argv)
 			player.equipment[0] = nullptr;
 			rooms[3].contents = &blocker;
 			intercepted();
-			objects[0].func.obj = tracks;
-			check(status::valid); // Audited cosmetic objects still allow ASK.
+			// Audited fixed objects still allow ASK, including the fixed portal
+			// outline (object 12410) bound to artifact_hide.
+			for (auto procedure : { tracks, artifact_hide })
+			{
+				objects[0].func.obj = procedure;
+				check(status::valid);
+			}
 			rooms[3].contents = nullptr;
 			objects[0].func.obj = nullptr;
 			check(status::valid);

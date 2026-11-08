@@ -744,6 +744,21 @@ struct quest_target_request
 		return false;
 	}
 
+	std::string rejections() const
+	{
+		std::string summary;
+		for (size_t index = 0; index < quest_rejection_count; ++index)
+			if (rejected[index])
+			{
+				char entry[128];
+				snprintf(entry, sizeof(entry), "%s%s=%zu(example=%d)",
+					 summary.empty() ? "" : ",", quest_rejection_names[index],
+					 rejected[index], examples[index]);
+				summary += entry;
+			}
+		return summary;
+	}
+
 	quest_target_request(P_char ch, int origin, int accepted_level, int accepted_target = 0)
 		: actor(ch)
 		, level(accepted_level)
@@ -905,61 +920,18 @@ struct quest_target_request
 				return true;
 			if (object->R_num > top_of_objt)
 				return reject(reason, -1);
+			// Portable gear is player-controlled: it can be bagged or dropped, and
+			// it can change after assignment. It never makes a target unusable.
+			if (CAN_WEAR(object, ITEM_TAKE))
+				return true;
 			const auto proc = obj_index[object->R_num].func.obj;
-			// Audited ASK-safe identities only. Command guards run before combat
-			// payloads, RNG or effects; CMD_ASK is below the legacy cmd/1000 range.
-			// Complex/data-dependent procedures remain unproven, even if a
-			// particular invocation happens to return false.
-			if (!proc || proc == board || proc == artifact_hide ||
-			    proc == ring_of_regeneration || proc == tracks ||
-			    proc == blood_stains || proc == set_proc ||
-			    // Explicit combat-event guards.
-			    proc == barovia_undead_necklace || proc == bloodfeast ||
-			    proc == dagger_of_wind || proc == deflect_ioun || proc == dwarfslayer ||
-			    proc == elvenkind_cloak || proc == encrusted_eq_proc ||
-			    proc == generic_parry_proc || proc == generic_riposte_proc ||
-			    proc == generic_shield_block_proc || proc == githyanki ||
-			    proc == imprison_armor || proc == khaziddea_blade ||
-			    proc == kvasir_dagger || proc == leather_vest || proc == lich_spine ||
-			    proc == lightning_armor || proc == lightning_sword ||
-			    proc == mace_dragondeath || proc == mace_of_sea ||
-			    proc == madman_shield || proc == mob_vecna_procs || proc == neg_orb ||
-			    proc == orb_of_the_sea || proc == righteous_blade ||
-			    proc == serpent_blade || proc == sevenoaks_longsword ||
-			    proc == sword_whirlwinds || proc == tendrils || proc == torment ||
-			    proc == transparent_blade || proc == unholy_avenger_bloodlust ||
-			    proc == vecna_boneaxe || proc == vecna_death_mask ||
-			    proc == vecna_dispel || proc == vecna_minifist ||
-			    proc == vecna_pestilence || proc == xmas_cap ||
-			    // Legacy damage-command guards.
-			    proc == alch_rod || proc == brainripper || proc == confusionsword ||
-			    proc == critical_attack_proc || proc == demo_scimitar ||
-			    proc == dispator || proc == doom_blade_Proc || proc == faith ||
-			    proc == flaming_axe_of_azer || proc == fun_dagger ||
-			    proc == giantbane || proc == githpc_special_weap || proc == hammer ||
-			    proc == hammer_titans || proc == head_guard_sword ||
-			    proc == ljs_sword || proc == lucky_weapon || proc == mankiller ||
-			    proc == mindbreaker || proc == mistweave || proc == mrinlor_whip ||
-			    proc == nightbringer || proc == nightcrawler_dagger ||
-			    proc == ogre_warlords_sword || proc == ogrebane ||
-			    proc == rax_red_dagger || proc == rod_of_magic ||
-			    proc == shimmering_longsword || proc == sinister_tactics_staff ||
-			    proc == stormbringer || proc == sword_named_magik ||
-			    proc == tiamat_stinger || proc == undead_trident ||
-			    proc == vareena_statue || proc == woundhealer_scimitar ||
-			    proc == wuss_sword || proc == zarthos_vampire_slayer ||
-			    // Periodic-only guards (including direct master-set bindings).
-			    proc == aboleth_pendant || proc == alch_bag ||
-			    proc == artifact_biofeedback || proc == artifact_shadow_shield ||
-			    proc == artifact_stone || proc == blind_boots || proc == blindbadge ||
-			    proc == dragon_skull_helm || proc == dranum_mask ||
-			    proc == earthquake_gauntlet || proc == forest_corpse ||
-			    proc == fumblegaunts || proc == fw_ruby_monocle ||
-			    proc == guild_badge || proc == khildarak_warhammer ||
-			    proc == living_necroplasm || proc == ljs_armor || proc == master_set ||
-			    proc == mir_fire || proc == mox_totem || proc == priest_rudder ||
-			    proc == revenant_helm || proc == thanksgiving_wings ||
-			    proc == thrusted_eq_proc || proc == tripboots)
+			// Fixed objects, including the random/crafted item blanks, pass only
+			// with audited ASK-safe identities. Other procedures remain unproven,
+			// even if a particular invocation happens to return false.
+			if (!proc || proc == board || proc == artifact_hide || proc == tracks ||
+			    proc == blood_stains || proc == mir_fire || proc == mob_vecna_procs ||
+			    proc == vareena_statue || proc == set_proc ||
+			    proc == thrusted_eq_proc || proc == encrusted_eq_proc)
 				return true;
 			return reject(reason, obj_index[object->R_num].virtual_number);
 		};
@@ -1113,6 +1085,8 @@ world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_v
 	{
 		result.status = value;
 		result.work = request.work.work;
+		if (value != status::valid)
+			result.rejections = request.rejections();
 		return result;
 	};
 	if (request.work.exhausted)
@@ -1150,12 +1124,18 @@ world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_v
 						    8 * (request.population.at(mob->in_room) + 1)))
 						return finish(status::unproven);
 					if (!ac_can_see_from(ch, mob, mob->in_room))
+					{
+						request.reject(rejected_visibility, GET_VNUM(mob));
 						interaction = status::blocked;
+					}
 					else if (type == FIND_AND_ASK &&
 						 aggressive_to_at(mob, ch, mob->in_room))
+					{
 						// Aggression can depend on memory, faction or random
 						// player protection. It cannot alone authorize a reroll.
+						request.reject(rejected_aggression, GET_VNUM(mob));
 						interaction = status::unproven;
+					}
 				}
 				candidates.push_back({ mob, interaction });
 			}
@@ -1372,20 +1352,7 @@ quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vn
 	{
 		if (ch && IS_PC(ch) && ch->only.pc->quest_replacement_due)
 		{
-			std::string rejections;
-			if (request)
-				for (size_t index = 0; index < quest_rejection_count; ++index)
-					if (request->rejected[index])
-					{
-						char entry[128];
-						snprintf(entry, sizeof(entry),
-							 "%s%s=%zu(example=%d)",
-							 rejections.empty() ? "" : ",",
-							 quest_rejection_names[index],
-							 request->rejected[index],
-							 request->examples[index]);
-						rejections += entry;
-					}
+			const std::string rejections = request ? request->rejections() : "";
 			const auto region = request ? quest_region_for_room(request->origin_room) :
 						      world_quest_region{};
 			logit(LOG_STATUS,
