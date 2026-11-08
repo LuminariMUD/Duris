@@ -316,7 +316,8 @@ callbacks+='\n'+'\n'.join(function(ROOT/'src/magic/magic.c',s) for s in (
     'static int vitality_hit_points(','static int vitality_duration('))
 callbacks+='\n'+function(ROOT/'src/magic/magic.c','void spell_vitality(').replace(
     'void spell_vitality(', 'static void real_spell_vitality(', 1)
-with tempfile.TemporaryDirectory(prefix='duris-swords-') as directory:
+(ROOT/'bin/tests').mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix='duris-swords-', dir=ROOT/'bin/tests') as directory:
     source=Path(directory)/'harness.cpp'; binary=Path(directory)/'harness'
     source.write_text(scope['platform']+scope['fixture']+scope['boundary']+
         native_boundary.replace('// INSERT_AFFECTS',affects)+HARNESS.replace('// INSERT_CALLBACKS',callbacks))
