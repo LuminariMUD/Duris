@@ -28412,3 +28412,102 @@ Single-file rooms restrict who you can reach. Most room-wide area
 spells cannot be cast there; single-target room spells require an
 adjacent target unless you are casting on yourself. Ranged spells
 have their own checks. Read 'help group' for group ranks and positions.
+#
+Black Kush
+Black Kush is a smoking herb. Read 'help smoke' for using herbs and
+smoking equipment. Its effects depend on the herb's strength and your
+attributes: it modifies Intelligence, Wisdom and Power, lowers Strength
+and Agility, and slows ordinary combat rounds. Psionicists also receive
+a mana-regeneration bonus. Blue Haze halves the new dose's duration.
+Smoking it again while affected extends an existing effect's duration.
+#
+Lifeleak
+Lifeleak is a poison, not a spell you cast by that name. Each poison
+pulse removes 10 hit points, stopping at 1 HP. Pulses normally occur
+every 20 seconds; Slow Poison stretches that interval to 60 seconds.
+The poison can wear off after a pulse. Read 'help remove poison',
+'help slow poison' and 'help mixpoison'.
+#
+Moveleak
+Moveleak is a poison that removes 10 movement points per pulse, stopping
+at zero. Pulses normally occur every 10 seconds; Slow Poison stretches
+that interval to 30 seconds. The poison can wear off after a pulse.
+Read 'help remove poison', 'help slow poison' and 'help mixpoison'.
+#
+Saving Throws
+Saving throws help resist attacks and other hostile effects. Lower
+save values are generally better. The attack determines which save it
+uses and what success changes; saving does not always prevent the
+entire effect. Read 'help saving throw' and the particular ability's
+help or 'spells info <spell>' for its defenses and outcomes.
+#
+Lockpick
+Use 'pick <door or container>' with suitable lock picks. Some locks
+cannot be picked, and picks can break. Read 'help pick locks' for the
+command; 'skills info pick lock' shows your skill's current mechanics.
+#
+Detect Subversion
+Detect Subversion is a passive Bounty Hunter innate from level 30.
+It helps reveal illusions when looking at creatures and objects.
+It has no activation command or separate mana cost. Use 'innates'
+to check your available innates and 'help bounty hunter' for the spec.
+#
+Battlefield Aid
+Battlefield Aid is a passive Bounty Hunter innate from level 41.
+It is listed among the specialization's innates, but its old first-aid
+and bandaging bonuses are not used by the current bandage command.
+There is no separate activation command. Read 'help bandage' for the
+healing that the current skill provides.
+See also: Bandage, Bounty Hunter.
+#
+Interception
+Interception is the passive innate named Intercept, gained by Bounty
+Hunters at level 31. While standing, it can stop an incoming attack
+and temporarily reduce that attacker's attacks. Luck affects success.
+It cannot intercept an attacker already held by this effect.
+Use 'innate info intercept' for your rolls and duration.
+See also: Bounty Hunter.
+#
+Named Equipment Stats / Named Eq Sets / Namedsets
+Read 'help named equipment sets' for matching pieces, hit-point
+bonuses, spell thresholds, origin rules and cooldowns. Use 'namedreport'
+to see each supported zone's spells and required piece counts.
+Use 'score' to inspect your visible active effects.
+#
+Barbarian Skills
+Barbarian is a race. Your class and specialization determine your
+learned skill progression; the race also grants its own innates.
+Use 'skills' for your skills, 'innates' for available innates, and
+'help barbarian' for the race. Use 'skills <class name>' to
+browse a class's skill progression.
+#
+Rested Experience
+At login, at least nine hours offline grants Rested; at least twenty
+hours grants Well-Rested. These grant 150% and 200% of ordinary eligible
+experience respectively and do not stack with each other. The login
+grant lasts 150 ticks; new characters receive a starting Well-Rested
+grant on first entry. Account-menu option 8 checks offline eligibility.
+Read 'help rested' and 'help well-rested' for the related effects.
+#
+Shiplist
+At a dock, use 'list' to inspect hulls, weapons, equipment and cargo.
+Read 'help ship list' for those listings and 'help ship commands'
+for ship operation. There is no separate player 'shiplist' command.
+#
+Create Chest
+Inside a MariaDB-backed locker, use 'eq chest create <name> [password]'
+to buy a private chest for 500 platinum, up to five per locker.
+Read 'help eq chest' for access, payment and management rules.
+#
+Sorc Skills
+Use 'skills' to list your own skills or 'skills sorcerer' for
+the base-class catalog. Read 'help sorcerer skills' for the full base
+progression and your specialization's help for changes to that list.
+Use 'spells' to browse spells and 'spells info <spell>' for details.
+#
+Exp Loss
+Death can cost experience and levels from level 30 onward. Arena
+deaths are exempt from this ordinary experience penalty; Liches have
+separate level-loss handling. Read 'help death' for death and corpse
+recovery, and 'help experience' for progression. 'exp' shows your
+current experience. A routine reboot does not impose a death penalty.
