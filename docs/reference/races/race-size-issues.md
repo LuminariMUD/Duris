@@ -589,8 +589,10 @@ mechanics. Avoid incidental CON scaling or Wither balance changes.
 
 ## Behaviors to preserve unless explicitly rebalanced
 
-- **Giant weapon handling is racial.** Ogre/Minotaur/Firbolg's hand discount
-  does not establish that every effectively Giant character should receive it.
+- **Weapon handling follows base size for PCs.** The explicit
+  [2026-11-08 follow-up](race-misc.md#2-huge-player-races-two-handed-weapons-in-one-hand)
+  extends the discount to every Huge player race, adding Wight. Effective growth
+  still does not grant it; NPCs retain their racial giant list.
 - **Dwarf giant avoidance has an explicit target list.** Troll, Ogre, and NPC
   Giant qualify; the full `IS_GIANT` roster does not. Current facts text names
   these targets. Expand it only if the innate should cover all giant identities.
@@ -604,7 +606,7 @@ mechanics. Avoid incidental CON scaling or Wither balance changes.
   shorter than another Medium race without a bug. Do not derive all combat
   rules from inches or rewrite racial stats just to unify representations.
 
-[Weapon predicate](../../../src/core/utils.h#L770),
+[Weapon hand cost](../../../src/cmd/actobj.c#L104),
 [giant avoidance](../../../src/combat/fight.c#L9326),
 [AI preferences](../../../src/mob/mobact.c#L6415).
 
