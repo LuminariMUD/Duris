@@ -298,6 +298,16 @@ struct copyover_binary_promotion
 		candidate_fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 		if (candidate_fd < 0)
 			return false;
+		struct stat directory = {};
+		if (fstat(candidate_fd, &directory) != 0 || directory.st_uid != geteuid() ||
+		    (directory.st_mode & 0077))
+		{
+			// The name may have been replaced after mkdtemp. Do not claim a binary
+			// through, or remove, a directory that another user can control.
+			candidate_directory.clear();
+			errno = ESTALE;
+			return false;
+		}
 		// Keep the checked entry private and resolve it through the same directory
 		// descriptor even if an ancestor pathname is replaced before publication.
 		if (renameat(AT_FDCWD, DMS_STAGED_BINARY, candidate_fd, "binary") != 0)
