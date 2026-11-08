@@ -11209,8 +11209,7 @@ void do_rearkick(P_char ch, char *argument, int /*cmd*/)
       act("WHOP! $n landed heavily on $s ass!",
         FALSE, ch, 0, victim, TO_ROOM);
       CharWait(ch, PULSE_VIOLENCE*3);
-      if (damage(ch, ch, 10, DAMAGE_FALLING))
-        return;
+      damage(ch, ch, 10, DAMAGE_FALLING);
     } else {
       SET_POS(ch, POS_STANDING + STAT_NORMAL);
     }

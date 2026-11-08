@@ -5,6 +5,11 @@ import subprocess
 import tempfile
 from _paths import ROOT, extract_function
 
+# Apocalypse's banishment moves its target, so the loop must save the next person first.
+apocalypse = extract_function('magic/magic.c', 'void event_apocalypse(')
+banish = apocalypse.index('astral_banishment(ch, tch')
+assert apocalypse.rindex('tch_next = tch->next_in_room', 0, banish) > apocalypse.rindex('for (tch =', 0, banish)
+
 fixture = r'''
 #include "abilities/abilities.h"
 #include "core/prototypes.h"
@@ -95,7 +100,8 @@ void Stun(P_char, P_char, int, bool) {}
 void do_flee(P_char, char *, int) {}
 void obj_from_char(P_obj) {}
 P_obj unequip_char(P_char, int, bool) { return nullptr; }
-void extract_obj(P_obj, int) {}
+static int extracted_objects;
+void extract_obj(P_obj, int) { ++extracted_objects; }
 void obj_to_room(P_obj, int) {}
 P_obj create_money(int, int, int, int) { return nullptr; }
 int real_room(int) { return 1; }
@@ -187,6 +193,18 @@ static void sticks() {
     kill_on_hit = target;
     spell_sticks_to_snakes(50, caster, nullptr, 0, target, nullptr);
     assert(damage_calls == 1);
+    clear_room();
+    // The first arrow kills: the others are still detached and must be extracted.
+    caster = person(); target = person();
+    obj_data arrows[3]{};
+    for (int i = 0; i < 3; ++i) {
+        arrows[i].type = ITEM_MISSILE; arrows[i].value[3] = MISSILE_ARROW;
+        arrows[i].next_content = i < 2 ? &arrows[i + 1] : nullptr;
+    }
+    target->carrying = &arrows[0];
+    kill_on_hit = target; damage_calls = extracted_objects = 0;
+    spell_sticks_to_snakes(50, caster, nullptr, 0, target, nullptr);
+    assert(damage_calls == 1 && extracted_objects == 3);
     clear_room();
 }
 int main() {

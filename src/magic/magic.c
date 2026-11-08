@@ -10328,13 +10328,18 @@ void spell_sticks_to_snakes(int level, P_char ch, char * /*arg*/, [[maybe_unused
 			break;
 	}
 
-	while (arrows && result == DAM_NONEDEAD)
+	// Every detached arrow must be extracted, even after a hit kills someone.
+	while (arrows)
 	{
-		arrow_messages.obj = arrows;
-		dam_type = find_dam_type(OBJ_SHORT(arrows));
-		// Increase the regular arrow damage by 25%.
-		result = spell_damage(ch, victim, 5 * dice(arrows->value[1], arrows->value[2]),
-				      dam_type, SPLDAM_ALLGLOBES, &arrow_messages);
+		if (result == DAM_NONEDEAD)
+		{
+			arrow_messages.obj = arrows;
+			dam_type = find_dam_type(OBJ_SHORT(arrows));
+			// Increase the regular arrow damage by 25%.
+			result = spell_damage(ch, victim,
+					      5 * dice(arrows->value[1], arrows->value[2]),
+					      dam_type, SPLDAM_ALLGLOBES, &arrow_messages);
+		}
 		obj = arrows;
 		arrows = arrows->next_content;
 		obj->next_content = NULL;
@@ -25237,8 +25242,10 @@ void event_apocalypse(P_char ch, [[maybe_unused]] P_char victim, P_obj /*obj*/, 
 	else if (d->next_affect == 4)
 	{
 		i = 0;
-		for (tch = world[ch->in_room].people; tch; tch = tch->next_in_room)
+		for (tch = world[ch->in_room].people; tch; tch = tch_next)
 		{
+			// Banishment moves tch to another room's list.
+			tch_next = tch->next_in_room;
 			if (should_area_hit(ch, tch) && !number(0, 2))
 			{
 				astral_banishment(ch, tch, BANISHMENT_UNHOLY_WORD, d->level);
