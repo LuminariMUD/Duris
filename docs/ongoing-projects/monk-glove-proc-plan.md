@@ -1,18 +1,20 @@
 # Monk glove melee proc plan
 
-Status: framework implemented and validated; content pilot remains (2026-11-08). The research worktree was clean at
-`4fddd48b4`; implementation stays on `branch/monk-glove-proc-research` for the
-framework PR, followed by a dependent content-pilot PR. The baseline research is
-separated in [PR #804](https://github.com/LuminariMUD/Duris/pull/804), stacked on
-[PR #797](https://github.com/LuminariMUD/Duris/pull/797). Neither PR authorizes a
-production deployment. No existing release tag will be moved; this feature does
-not need a release tag before review.
+Status: implementation and four-glove pilot validated; ready for review (2026-11-08).
+
+The supplied worktree is now on `branch/monk-glove-proc-pilot`. Its parent framework
+is `branch/monk-glove-proc-research`, [PR #805](https://github.com/LuminariMUD/Duris/pull/805),
+stacked on research [PR #804](https://github.com/LuminariMUD/Duris/pull/804).
+The editor prerequisite [#797](https://github.com/LuminariMUD/Duris/pull/797) landed
+in master as `84c2410d3`; the remaining stack is synchronized through master
+`15d3a7749`. This goal performs no production deployment or release tagging.
 
 ## Current execution / handoff
 
 - **Outcome:** explicitly opted-in primary gloves proc on player monks' resolved
   barehand attacks, including ripostes and the separate PvP pressure strike.
-  Inspection, runtime/editor valuation, delayed actions and persistence must agree.
+  Inspection, packed-proc valuation eligibility/formula, delayed actions and
+  persistence must agree.
 - **Non-goals:** weight/damage formula changes, new proc or scheduler systems,
   global cooldowns, specialization multipliers and production operations.
 - **Files:** the framework file list below, existing focused runtime fixtures,
@@ -66,13 +68,105 @@ not need a release tag before review.
   `branch/monk-glove-proc-research`, implementation `ff8d8f283` plus the prerequisite
   merge `e378275a0`. Research [#804](https://github.com/LuminariMUD/Duris/pull/804)
   and editor build [#797](https://github.com/LuminariMUD/Duris/pull/797) precede it.
-- Remaining project work: the dependent authored-content pilot, its before/after
-  runtime values, progression/spec/PvE/PvP samples and player identify check.
-  Choose and record the owned-copy policy before any production activation.
-  No production glove is enabled by the framework.
+- Delivered pilot: four authored gloves, native before/after values, 40 short
+  progression/spec/PvE/PvP samples, deterministic live-effect proof and player
+  identify visibility. Owned-copy policy is **future copies only** (below).
+  The framework PR contains no authored glove changes; the dependent pilot does.
+- Final refreshed proof passed on both backends using `bin/tests/*-server-current`:
+  ordinary Monk punches, removing gloves, save/restart, staff inspection, two
+  actual weapon sources, a separate real Warrior's unarmed attacks and returning
+  the same saved gloves to the Monk. The fixture uses a bound NPC template for a
+  stable passive target; live flag changes can be recomputed by restore/balance.
+  It fills the secondary weapon slot because a devastating critical can otherwise
+  create a separate legitimate barehand follow-up. Real active-opponent runs also
+  observed a barehand Monk riposte activating gloves while a weapon was wielded.
+- No implementation work remains in the two delivered chunks. Review/merge the
+  research, framework and pilot PRs in order. Deployment is outside this goal.
 
 Researched 2026-11-08 against `b9bcce5e1c0081d373382c0e9cd3f18d48832b84`.
 Companion inventory: [105 monk glove candidates, ascending ivalue](monk-proc.md).
+
+## Implemented content pilot
+
+Ablation: four authored records, one existing single-impact damage spell (shocking
+grasp, spell 37), no native callback or binding change. Use fixed levels 12 / 18 /
+24 / 30 and a conservative 1-in-60 roll per qualifying strike for all four. The
+spell's ordinary saves and lightning defenses apply; this adds neither a new
+effect implementation nor an implicit MAGIC flag. The glove's own spell level,
+not the monk's level, drives base proc damage; ordinary save and damage modifiers
+still apply.
+
+Selected records and unchanged physical stats:
+
+- **21575**, iron knuckles: AR 6, +1 damroll, 1 lb, not MAGIC; L28 bounty-hunter
+  drop. Level-12 shocking grasp; lower progression/acquisition anchor.
+- **500110**, gloves of the monk: AR 4, +1 damroll, 1 lb, MAGIC; Mu L60 drop.
+  Level-18 shocking grasp. Low item value does **not** make this an early drop.
+- **76052**, sunstone knuckles: AR 8, +3 DEX_MAX, +3 hitroll, 0 lb, not MAGIC;
+  Monk/Berserker/Dreadlord allow-list. Level-24 shocking grasp; Omoona L60 drop.
+- **5817**, razor-knuckled blood crystal gloves: AR 20, +15 HP, +4 damroll,
+  protect/detect evil, 4 lb, MAGIC; Thrulmar quest and Chaos monk/Illusionist kits.
+  Level-30 shocking grasp. Its 5813 input weighs -10 lb: that +14 lb upgrade cost
+  remains visible and unchanged. Illusionists gain no offensive glove proc.
+
+**Owned-copy policy: future copies only.** Enable the flag/packed fields in these
+four authored templates for newly instantiated drops, quest rewards and kits.
+Do not retrofit existing player items, recovered floor items or pets' gear. Their
+saved flags/values remain authoritative; reboot is not a migration. There is no
+production data update, UID replacement, per-hit template overlay or SQL migration
+to run for this policy. Persisted newly created copies retain the configuration
+using the framework's verified existing backends.
+
+Runtime `itemvalue()` results, with all other recorded stats preserved:
+21575 **13 → 15**, 500110 **10 → 11**, 76052 **91 → 97**, 5817 **216 → 222**.
+`python3 tests/async/test_monk_glove_pilot.py` passes under ASan/UBSan: the actual
+dispatcher and shocking-grasp implementation execute 5,760 controlled qualifying
+opportunities and exactly 96 activations, one per complete 60-roll cycle. Fixed
+levels are checked across actor levels 1/30/56, specs 0/1/2/3 and both hooks;
+saves, dice endpoints and the damage sink are controlled only in this unit proof.
+
+Live-probe correction: the object loader accepts E descriptions only before
+A modifiers. Pilot messages were moved before the existing affects; the regression
+now pins this format. The corrected live checks and samples passed.
+Earlier message-based activation counts are discarded.
+
+Corrected live sampling completed: **40 six-second PvE/PvP cases**, levels 1 and
+30 plus level-56 Dragon/Snake/Chi, counted at the real terminal proc hook with a
+read-only GDB breakpoint. Counts were 21575 **28/0**, 500110 **30/0**, 76052
+**27/0**, 5817 **29/0** (qualifying strikes / activations): **114 / 0** total,
+55 PvE and 59 PvP opportunities. The expected count at 1-in-60 is 1.9; zero is
+possible in such a small sample (about 14.7% under independent uniform rolls).
+Do not infer a sustained proc rate or tune from these short bursts. The fixture
+uses high HP and a hitroll boost; normal game misses, additional hits and other
+combat mechanics still run. GDB changes no selection, damage or eligibility.
+
+A separate live check uses an extra disposable sunstone instance with denominator
+1, and confirms both the actual shocking-grasp spell and the player spark message.
+The authored templates and the unforced samples remain 1-in-60. Real identify
+checks also pass: scope is visible to ordinary players, while packed spell names
+remain gated to level-56+ conjurers. The shared editor regression verifies the new
+packed contribution on common fixtures; the native values above are server
+valuations, not a rewrite of the editor's older general valuation rules.
+
+Reproduce with:
+
+- `python3 tests/async/test_monk_glove_pilot.py`
+- `python3 tests/async/run_monk_glove_pilot.py --binary bin/tests/monk-flatfile-server --output bin/monk-pilot-samples.json`
+- `python3 tests/async/run_monk_glove_pilot.py --binary bin/tests/monk-flatfile-server-current --verify-only --output bin/monk-refresh-pilot-verification.json`
+
+Integration was refreshed through master `15d3a7749` after #797 landed as
+`84c2410d3`. #804 now targets master; #805 is synchronized with it. Both server
+profiles were rebuilt and focused sanitizer/lifecycle/value/persistence checks
+rerun successfully. The 40-case sample predates that refresh; actual effect and
+identify checks pass on the refreshed binary as well.
+
+Final integration proof passed with both refreshed backend builds:
+`python3 tests/async/run_monk_glove_journey.py --flatfile bin/tests/monk-flatfile-server-current --mariadb bin/tests/monk-sql-server-current`.
+The final fixture is committed in parent `bd3c4e405` and included by the pilot.
+It uses a real Warrior for the non-Monk check, avoiding any change to the staff
+controller's primary class/authority. Both gifts retain the same configured glove.
+The source changes and focused checks are complete; only PR review/merge remains.
+No production operation was performed by this goal.
 
 ## Recommendation
 
@@ -84,13 +178,13 @@ This gives builders a familiar way to add a spell proc to another glove without 
 
 ## What the code already provides
 
-- [`hit()`](../../src/combat/fight.c#L7873) distinguishes barehand attacks with `weapon == nullptr`. Its [final proc block](../../src/combat/fight.c#L8706) currently requires a weapon. Passing gloves as the attack's weapon would be wrong: that would interfere with attack type, damage dice, skills, poison, and other weapon-specific logic.
+- [`hit()`](../../src/combat/fight.c#L7873) distinguishes barehand attacks with `weapon == nullptr`. At the research baseline its final proc block required a weapon; the framework adds a separate captured-glove branch. Passing gloves as the attack's weapon would be wrong: that would interfere with attack type, damage dice, skills, poison, and other weapon-specific logic.
 - [`weapon_proc()`](../../src/combat/fight.c#L8729) already accepts an object without requiring `ITEM_WEAPON`. It chooses either packed spells or the object's assigned callback with `CMD_MELEE_HIT` and the actual victim pointer. Those are alternative routes, not two procs to run together.
 - [`melee_proc_target()`](../../src/specs/specs.object.c#L101) already accepts an object worn by the attacker. A glove callback can use it without changing the event or payload format.
 - [`GET_CLASS(ch, CLASS_MONK)`](../../src/core/utility.c#L5060) includes the primary and secondary class. Dragon, Snake, and Chi are [specializations of `CLASS_MONK`](../../src/core/structs.h#L2410), so the dispatcher needs no specialization switch.
 - [`monk_superhit()`](../../src/combat/fight.c#L11334) bypasses `hit()`. The [attack scheduler](../../src/combat/fight.c#L10441) substitutes this pressure-point strike for two normal attack opportunities against players. Hooking only `hit()` would omit it.
 - [`MonkRiposte()`](../../src/combat/fight.c#L9680) already calls `hit(..., nullptr)`. It will inherit the normal hook. Snake's [`monk_critic()`](../../src/combat/fight.c#L6999) is part of a strike's resolution and must not receive a second proc dispatch.
-- The 314 hand-slot records from the inventory were rechecked against the current source: all are unchanged, and all have zero `value[5..7]`. This is evidence that packed glove spells would be new content, not evidence that every native glove callback should suddenly receive melee-hit events.
+- At the research checkpoint, all 314 inventoried hand-slot records were unchanged and had zero `value[5..7]`. The four pilot records are now the explicit exceptions. This is evidence that packed glove spells would be new content, not evidence that every native glove callback should suddenly receive melee-hit events.
 
 ## Gameplay contract
 
@@ -101,18 +195,18 @@ The framework implements these rules. Content activation and balance remain in t
 3. **Which gloves:** only the pair equipped in `WEAR_HANDS`, explicitly opted in as described below. No inventory scan, other armor slots, or fallback to `WEAR_HANDS_2`. Four-handed races get one source and one opportunity, not two. A glove such as 83505 can still participate when worn in the primary glove slot.
 4. **When:** once when a qualifying strike reaches its post-damage proc point and both participants remain valid in the original room and height. Misses, attacks stopped before that point, lethal base hits, and interrupted/relocated attacks do not proc. Match existing weapon-proc contact semantics; do not add a new requirement that final HP loss be positive. Armor, shields, and immunity can reduce a resolved hit's damage.
 5. **Pressure-point strike:** one opportunity after `monk_superhit()` resolves and both participants survive. Its cost of two normal attacks does not grant two rolls. Preserve the function's existing return/hit-count behavior when damage ends the fight.
-6. **Other attacks:** barehand ripostes and legitimate additional `hit()` attacks get their own opportunity. Do not hook `melee_damage()` globally: kicks, spell damage, retaliation damage, and Snake's extra pressure-point damage would otherwise become additional proc sources. The existing vampiric-touch early return in `hit()` also remains an early return; it does not reach this proc point.
+6. **Other attacks:** barehand ripostes and legitimate additional `hit()` attacks get their own opportunity. A weapon round can contain a separate barehand riposte or a devastating critical's follow-up when its secondary slot is empty; those are separate eligible strikes. Do not hook `melee_damage()` globally: kicks, spell damage, retaliation damage, and Snake's extra pressure-point damage would otherwise become additional proc sources. The existing vampiric-touch early return in `hit()` also remains an early return; it does not reach this proc point.
 7. **Specializations:** identical admission and chance rules. Any later spec-specific effect belongs in that effect's implementation and balance review, not in the common dispatch path.
 
 ## One explicit item opt-in
 
-Add `ITEM2_MONK_PROC` to `extra2_flags`. At this baseline, `BIT_20` is the next unused defined bit in that flag family; verify it again before implementation. Keep existing numeric flag assignments stable.
+`ITEM2_MONK_PROC` occupies `BIT_20` in `extra2_flags`. It was free both at the research baseline and in refreshed master `15d3a7749`; existing numeric flag assignments remain stable.
 
 A valid proc glove is an `ITEM_ARMOR` or `ITEM_WORN` object with `ITEM_WEAR_HANDS` and `ITEM2_MONK_PROC`. Put that small object predicate beside the existing helpers in [`objmisc.h`](../../src/item/objmisc.h). It has actual consumers in combat, valuation, inspection, and delayed-action validation.
 
 The flag is needed because “has a native callback” does not mean “intended to proc on monk punches.” Existing gloves may have periodic, defensive, command, or set callbacks. Making every glove receive a new event can revive dormant behavior. The flag makes each addition deliberate, including on shared-class equipment such as 5817.
 
-Register its name in [`extra2_bits`](../../src/core/common.c#L497). **That array is positional and currently stops at bit 17 even though `defines.h` defines bits 18 (`ACCOUNT_BOUND`) and 19 (`ENHANCED`).** Add the correctly positioned entries for those existing bits before the bit-20 entry; appending `MONK_PROC` directly would name the wrong bit. The [area editor shares `common.c`](../../areas/de/src/Makefile#L41), so do not create another flag table.
+Register its name in [`extra2_bits`](../../src/core/common.c#L497). **That array is positional and at baseline stopped at bit 17 even though `defines.h` defined bits 18 (`ACCOUNT_BOUND`) and 19 (`ENHANCED`).** Add the correctly positioned entries for those existing bits before the bit-20 entry; appending `MONK_PROC` directly would name the wrong bit. The [area editor shares `common.c`](../../areas/de/src/Makefile#L41), so do not create another flag table.
 
 Use the current object format and stored flag word. No new object type, schema column, event ID, class skill, character timer, or central glove-vnum registry is needed. `ITEM2_MAGIC` remains a separate decision: opting into a proc must not silently change barehand weapon-immunity handling.
 
@@ -166,16 +260,16 @@ Qualification as a barehand strike is decided when the action starts. A schedule
 
 These are part of a usable feature, not a reason to introduce another framework.
 
-- **Runtime ivalue:** [`itemvalue()`](../../src/economy/tradeskill.c#L2038) currently credits packed spells only on items with `ITEM_WIELD`. Extend that eligibility to valid opted-in gloves, using the same formula and ensuring the denominator is positive. Keep the gloves' armor valuation. Do not award a flat bonus merely for having the flag, and do not turn the object into a weapon to get a value.
+- **Runtime ivalue:** at baseline [`itemvalue()`](../../src/economy/tradeskill.c#L2038) credited packed spells only on items with `ITEM_WIELD`. Extend that eligibility to valid opted-in gloves, using the same formula and ensuring the denominator is positive. Keep the gloves' armor valuation. Do not award a flat bonus merely for having the flag, and do not turn the object into a weapon to get a value.
 - **Editor ivalue:** the area editor has its own [equivalent calculation](../../areas/de/src/obj/object.cpp#L1081). Make the same narrow eligibility change there; avoid a separate valuation-refactoring project.
-- **Staff inspection:** [`stat`'s proc explanation](../../src/cmd/actwiz.c#L2032) currently lives under `ITEM_WEAPON`. Show the opted-in glove's spell level/chance or native callback and its monk/primary-slot scope as well. Keep the armor stats. The generic [`setbit` fields](../../src/cmd/actset.c#L917) already expose `extra2` and `val5..val7`.
+- **Staff inspection:** at baseline [`stat`'s proc explanation](../../src/cmd/actwiz.c#L2032) lived under `ITEM_WEAPON`. Show the opted-in glove's spell level/chance or native callback and its monk/primary-slot scope as well. Keep the armor stats. The generic [`setbit` fields](../../src/cmd/actset.c#L917) already expose `extra2` and `val5..val7`.
 - **Player inspection:** add a clear “activates on a monk's barehand strikes when worn on the primary hands” description. Preserve existing information access: [`identify`](../../src/magic/magic.c#L14475) reveals packed spell names to level-56+ conjurers; do not silently expose weapon proc details to everyone while adding glove support. Factor only the small shared display code actually needed by both item types.
 - **Encrusting:** `do_encrust` clones armor and worn items into vnum 1251, keeps `extra2_flags`, and overwrites `value[5..7]` with the jewel's spell at 1/30. Left alone, it would replace an opted-in glove's authored proc with a crafter-chosen one, and the copy would fall outside any update of the selected vnums. Refuse to encrust opted-in gloves.
 - **Persistence:** the fields already exist, but template changes are not guaranteed to reach owned copies. [SQL restoration](../../src/sql/sql_player.c#L1055) restores the instance's extra2 flags; [world recovery](../../src/world/world_recovery_pipeline.c#L1493) restores saved values and flags. Prove fresh loading and save/reload on both supported backends. Before enabling production content, explicitly choose and document whether existing copies are updated. If retroactive coverage is intended, prepare a targeted, rerunnable content update for the selected vnums that preserves UIDs, ownership, enhancements, and unrelated flags/values. Do not add a per-hit template overlay or assume reboot alone refreshes old copies.
 
 ## Small implementation sequence
 
-### 1. Framework and fixture proof
+### 1. Framework and fixture proof — delivered in #805
 
 Implement the opt-in, the two attack hooks, delayed validation, valuation, and inspection. Use a test-only glove with a deterministic effect to prove both packed and native routing. Enable no production glove as a side effect of introducing the flag.
 
@@ -188,7 +282,7 @@ Expected files:
 - `src/cmd/actwiz.c`, `src/magic/magic.c`: inspection.
 - Focused tests and the relevant monk/builder help explaining the final behavior.
 
-### 2. Small content pilot
+### 2. Small content pilot — delivered on `branch/monk-glove-proc-pilot`
 
 Select a few gloves from [the inventory](monk-proc.md), keeping their current stats visible beside the proposed effect and recalculated ivalue. Useful review anchors are 500110 (explicit monk identity), 44424 (punching identity), 76052 (narrow melee class list), and 5817 (Chaos monk main gloves). These are not a claim that their acquisition order matches their ivalue.
 
