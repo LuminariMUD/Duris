@@ -754,6 +754,7 @@ void assign_innates()
 	ADD_RACIAL_INNATE(INNATE_DAYVISION, RACE_HARPY, 1);
 	ADD_RACIAL_INNATE(INNATE_PERCEPTION, RACE_HARPY, 1);
 	ADD_RACIAL_INNATE(INNATE_FLY, RACE_HARPY, 1);
+	ADD_RACIAL_INNATE(INNATE_LEAP, RACE_HARPY, 1);
 	ADD_RACIAL_INNATE(INNATE_ULTRAVISION, RACE_DRAGONKIN, 1);
 	ADD_RACIAL_INNATE(INNATE_ULTRAVISION, RACE_GARGOYLE, 1);
 	ADD_RACIAL_INNATE(INNATE_DAYVISION, RACE_GARGOYLE, 1);
@@ -1767,22 +1768,22 @@ std::string throw_lightning_innate_facts(P_char ch)
 	       innate_rest_facts(INNATE_THROW_LIGHTNING, 0) +
 	       fact("Your lag", seconds(throw_lightning_lag())) +
 	       "  In combat only, and it hits your opponent when it strikes.\n"
-	       "  Trying out of combat still spends a use.\n"
+	       "  You must be fighting; rejection spends no use.\n"
 	       "  Globes and spirit wards do not stop it.\n"
 	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void do_throw_lightning(P_char ch, char * /*argument*/, int /*cmd*/)
 {
-	if (!check_innate_time(ch, INNATE_THROW_LIGHTNING))
-	{
-		send_to_char("You're too tired to be electrifying.\n", ch);
-		return;
-	}
-
 	if (!IS_FIGHTING(ch))
 	{
 		send_to_char("You are not in the heat of combat!  You cannot feel the call!\n", ch);
+		return;
+	}
+
+	if (!check_innate_time(ch, INNATE_THROW_LIGHTNING))
+	{
+		send_to_char("You're too tired to be electrifying.\n", ch);
 		return;
 	}
 
@@ -2683,7 +2684,7 @@ std::string ud_invisibility_innate_facts(P_char /*ch*/)
 	return fact("Effect", "makes you invisible") +
 	       fact("Duration", game_hours(ud_invisibility_innate_duration())) +
 	       innate_rest_facts(INNATE_UD_INVISIBILITY, 0) +
-	       "  Only in the underdark or underworld; trying elsewhere still spends a use.\n"
+	       "  Only in the underdark or underworld; rejection spends no use.\n"
 	       "  It does nothing if you are already invisible.\n";
 }
 
@@ -2694,15 +2695,15 @@ void do_ud_invisibility(P_char ch, char * /*arg*/, int /*cmd*/)
 	if (IS_AFFECTED(ch, AFF_INVISIBLE))
 		return;
 
-	if (!check_innate_time(ch, INNATE_UD_INVISIBILITY))
-	{
-		send_to_char("You're too tired to do that right now.\n", ch);
-		return;
-	}
-
 	if (!IS_UD_MAP(ch->in_room) && !IS_UNDERWORLD(ch->in_room))
 	{
 		send_to_char("There don't appear to be enough shadows here.\n", ch);
+		return;
+	}
+
+	if (!check_innate_time(ch, INNATE_UD_INVISIBILITY))
+	{
+		send_to_char("You're too tired to do that right now.\n", ch);
 		return;
 	}
 
@@ -2735,22 +2736,22 @@ std::string strength_innate_facts(P_char /*ch*/)
 	       fact("Duration", game_hours(strength_innate_duration())) +
 	       innate_rest_facts(INNATE_STRENGTH, 0) +
 	       fact("Your lag", seconds(strength_innate_lag()) + " if it works") +
-	       "  Trying with strength already on you still spends a use.\n";
+	       "  Existing strength enhancement prevents use without spending a charge.\n";
 }
 
 void do_strength(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	struct affected_type af;
 
-	if (!check_innate_time(ch, INNATE_STRENGTH))
-	{
-		send_to_char("You're too tired to do that right now.\n", ch);
-		return;
-	}
-
 	if (affected_by_spell(ch, SPELL_STRENGTH))
 	{
 		send_to_char("You're already affected by strength enhancement!\n", ch);
+		return;
+	}
+
+	if (!check_innate_time(ch, INNATE_STRENGTH))
+	{
+		send_to_char("You're too tired to do that right now.\n", ch);
 		return;
 	}
 
@@ -2807,12 +2808,22 @@ std::string enlarge_innate_facts(P_char /*ch*/)
 	       fact("Duration", game_hours(enlarge_innate_duration())) +
 	       innate_rest_facts(INNATE_ENLARGE, 0) +
 	       fact("Your lag", seconds(enlarge_innate_lag())) +
-	       "  Already enlarged or in titan form, it spends a use for nothing.\n";
+	       "  Already enlarged or in titan form, it spends no use.\n";
 }
 
 void do_enlarge(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	struct affected_type af;
+
+	if (IS_AFFECTED3(ch, AFF3_ENLARGE) || IS_AFFECTED5(ch, AFF5_TITAN_FORM) ||
+	    affected_by_spell(ch, SPELL_ENLARGE))
+	{
+		act("You try to grow, but, alas, you're already as big as you're going to get.",
+		    TRUE, ch, 0, 0, TO_CHAR);
+		act("$n screws up $s face trying to grow!", TRUE, ch, 0, 0, TO_ROOM);
+		CharWait(ch, enlarge_innate_lag());
+		return;
+	}
 
 	if (!check_innate_time(ch, INNATE_ENLARGE))
 	{
@@ -2820,26 +2831,14 @@ void do_enlarge(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 
-	if (IS_AFFECTED3(ch, AFF3_ENLARGE) || IS_AFFECTED5(ch, AFF5_TITAN_FORM))
-	{
-		act("You try to grow, but, alas, you're already as big as you're going to get.",
-		    TRUE, ch, 0, 0, TO_CHAR);
-		act("$N screws up $S face trying to grow!", TRUE, ch, 0, 0, TO_ROOM);
-		CharWait(ch, enlarge_innate_lag());
-		return;
-	}
+	bzero(&af, sizeof(af));
+	af.type = SPELL_ENLARGE;
+	af.duration = enlarge_innate_duration();
+	af.bitvector3 = AFF3_ENLARGE;
+	affect_to_char(ch, &af);
 
-	if (!affected_by_spell(ch, SPELL_ENLARGE))
-	{
-		bzero(&af, sizeof(af));
-		af.type = SPELL_ENLARGE;
-		af.duration = enlarge_innate_duration();
-		af.bitvector3 = AFF3_ENLARGE;
-		affect_to_char(ch, &af);
-
-		act("You grow to about twice your normal size!", TRUE, ch, 0, 0, TO_CHAR);
-		act("$N grows to about twice $S normal size!", TRUE, ch, 0, ch, TO_NOTVICT);
-	}
+	act("You grow to about twice your normal size!", TRUE, ch, 0, 0, TO_CHAR);
+	act("$N grows to about twice $S normal size!", TRUE, ch, 0, ch, TO_NOTVICT);
 	CharWait(ch, enlarge_innate_lag());
 }
 

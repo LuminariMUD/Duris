@@ -18,6 +18,7 @@ from _source_contract import function_bodies, strip_comments
 
 # Shared functions and their pages, by file. Order matters: later ones call earlier ones.
 SHARED = {
+    "economy/tradeskill.c": [],
     "classes/bard.c": "echo_song_level bard_pulse hasted_bard_pulse get_bard_pulse bard_blind_play_rating echo_chance echo_roll echo_delay".split(),
     "classes/drannak.c": "intercept_luck_roll intercept_attack_roll intercept_duration".split(),
     "combat/fight.c": """acid_blood_min_hit acid_blood_dodge_base acid_blood_dodge_divisor spell_absorb_damage_divisor leap_chance_floor leap_chance_top intercept_attack_share rapier_dirk_chance rapier_dirk_more_hits_roll rapier_dirk_more_hits
@@ -68,6 +69,7 @@ INNATE_INTERCEPT intercept classes/drannak.c
 INNATE_DISEASED_BITE diseased_bite classes/innates.c
 INNATE_HATRED hatred classes/innates.c
 INNATE_HOLY_CRUSADE holy_crusade classes/innates.c
+INNATE_BATTLEAID battlefield_aid economy/tradeskill.c
 INNATE_LEAP leap combat/fight.c
 INNATE_RAPIER_DIRK rapier_dirk classes/innates.c
 INNATE_RESURRECTION resurrection classes/innates.c
@@ -139,7 +141,7 @@ INNATE_FOREST_SIGHT forest_sight world/map.c
 """.strip().splitlines()]
 
 NO_NUMBERS = """HOLY_COMBAT INNATE_BOW_MASTERY INNATE_DAMAGE_SPREAD INNATE_DAYVISION INNATE_OUTDOOR_SNEAK
-    INNATE_SPEED INNATE_UD_SNEAK INNATE_WARDING_FAITH INNATE_ARCANE_RUDIMENTS INNATE_BATTLEAID INNATE_DET_SUBVERSION
+    INNATE_SPEED INNATE_UD_SNEAK INNATE_WARDING_FAITH INNATE_ARCANE_RUDIMENTS INNATE_DET_SUBVERSION
     INNATE_DECEPTIVE_FLEE INNATE_HORSE_BODY INNATE_SENSE_WEAKNESS INNATE_SPIDER_BODY INNATE_SNEAK INNATE_AIR_AFFINITY
     INNATE_ASTRAL_NATIVE INNATE_EARTH_AFFINITY INNATE_FIRE_AFFINITY INNATE_WATER_AFFINITY INNATE_BARTER INNATE_ANTI_GOOD
     INNATE_BLOOD_SCENT INNATE_DAUNTLESS INNATE_FLY INNATE_HOLY_LIGHT INNATE_INFRAVISION INNATE_INVISIBILITY
@@ -663,7 +665,7 @@ def check_sources():
         uses = re.findall(rf"\b{constant}\b(?!\s+\d)", everything)
         adds = re.findall(rf"ADD_(?:RACIAL|CLASS)_INNATE\({constant}\b", everything)
         assert len(uses) == len(adds), f"{constant} now has an effect: reclassify it"
-    # Battlefield aid's only reads are behind a dead return and an unregistered command.
+    # Obsolete first-aid systems stay disabled; modern bandaging owns Battlefield Aid.
     assert 'send_to_char("Try using the bandage instead.", ch);\n\treturn;' in source("classes/new_skills.c").read_text(errors="replace")
     assert "do_OLD_bandage" not in source("cmd/interp.c").read_text(errors="replace")
 
@@ -700,11 +702,15 @@ GOLDEN = """== blindsinging
   Your healing when you kill an evil being: 2 per level of the victim
   Up to: 330 hit points
   Plague, blackmantle and flamestrike can block some of it.
+== battlefield_aid
+  Successful bandaging stabilizes a dying target still below positive HP
+  to 1 hit point. Normal bandaging requirements and costs apply.
 == leap
   Thri-kreen or harpy: chance to avoid an attacker of your level: 13 in 100
   Lowest and highest chance: 1 in 100, 20 in 100
   It compares your agility, your load, and your level with the attacker's.
-  It needs you standing and not gazed at. These races have it at any level.
+  It needs you standing and not gazed at. Thri-kreen unlock it at level 21;
+  harpies at level 1.
 == rapier_dirk
   With a sword and a dagger or short sword, damage you deal: 110% of normal
   Damage you take: 90% of normal
