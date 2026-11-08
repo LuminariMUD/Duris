@@ -261,8 +261,8 @@ static int arcane_block_threshold(P_char victim)
 // The percent of a spell's damage an arcane block disperses.
 static int arcane_block_reduction(const Rolls &rolls, P_char victim)
 {
-	return rolls.number(1, get_property("skill.arcane.block.dam.reduction", .4) *
-				       GET_CHAR_SKILL(victim, SKILL_ARCANE_BLOCK));
+	return rolls.number(1, MAX(1, (int)(get_property("skill.arcane.block.dam.reduction", .4) *
+					    GET_CHAR_SKILL(victim, SKILL_ARCANE_BLOCK))));
 }
 
 std::string arcane_block_facts(P_char ch)

@@ -59,7 +59,8 @@ float get_property(const char *key, double fallback) {
     auto found = properties.find(key);
     return found == properties.end() ? fallback : found->second;
 }
-int GET_CHAR_SKILL_P(P_char, int skill) { assert(skill == SKILL_ARCANE_BLOCK); return 100; }
+static int arcane_skill = 100;
+int GET_CHAR_SKILL_P(P_char, int skill) { assert(skill == SKILL_ARCANE_BLOCK); return arcane_skill; }
 bool has_innate(P_char, int id) { return elemental && id == INNATE_ELEMENTAL_POWER; }
 int number(int low, int) { return low; }
 int dice(int count, int) { return count * 4; }
@@ -146,6 +147,9 @@ int main() {
     assert(elemental_power_save_change(50) == 5);
     assert(arcane_block_reduction(lowest_rolls, &victim) == 1);
     assert(arcane_block_reduction(highest_rolls, &victim) == 40);
+    arcane_skill = 1;
+    assert(arcane_block_reduction(lowest_rolls, &victim) == 1);
+    assert(arcane_block_reduction(highest_rolls, &victim) == 1);
     assert(spell_penetration_threshold(5) == 10);
     assert(spell_penetration_threshold(50) == 50);
     assert(spell_penetration_threshold(100) == 60);
