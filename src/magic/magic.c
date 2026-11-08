@@ -23395,6 +23395,8 @@ void spell_oldjudgement(int level, P_char ch, P_char victim, P_obj /*obj*/)
 		the_room = ch->in_room;
 	}
 
+	const uint64_t caster_runtime_id = ch->runtime_id;
+	const int caster_room = ch->in_room;
 	max_affected = (int)(get_property("spell.judgement.maxAffected", 4.000));
 
 	i = 0;
@@ -23465,7 +23467,18 @@ void spell_oldjudgement(int level, P_char ch, P_char victim, P_obj /*obj*/)
 							});
 						if (movement.status ==
 						    forced_move_status::interrupted)
-							return;
+						{
+							P_char caster =
+								find_character_by_runtime_id(
+									caster_runtime_id);
+							if (caster != ch || !IS_ALIVE(caster) ||
+							    caster->in_room != caster_room)
+								return;
+							// Earlier debuffs still count even when this target's move is interrupted.
+							if (++i >= max_affected)
+								break;
+							continue;
+						}
 						if (movement.status == forced_move_status::arrived)
 						{
 							act("$n flies in, crashing on the floor!",

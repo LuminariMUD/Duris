@@ -44,7 +44,8 @@ static std::vector<P_char> live;
 static std::list<char_link_data> links;
 static std::vector<std::string> fixture_messages;
 static bool lance_present=true, mounted_during_entry;
-static int damage_calls, reschedules;
+static int damage_calls, reschedules, judgement_limit=4;
+static bool multiple_targets=false;
 enum class Hook { none, veto, seal, lose_passdoor, redirect, extract, kill, remove_weapon, remove_actor, redirect_actor };
 static Hook leave_hook, enter_hook;
 static P_char hook_target;
@@ -65,13 +66,13 @@ int number(int low,int high) {
 }
 int dice(int,int) { return 1; }
 const Rolls live_rolls={dice,number};
-float get_property(const char *,double fallback) { return fallback; }
+float get_property(const char *key,double fallback) { return strcmp(key,"spell.judgement.maxAffected")==0 ? judgement_limit : fallback; }
 int get_property(const char *,int fallback) { return fallback; }
 int panic_corruption_int(const char *,const char *,...) { abort(); }
 int BOUNDED(int low,int value,int high) { return std::clamp(value,low,high); }
 room_affect *get_spell_from_room(P_room,int) { return nullptr; }
 int spell_damage(P_char,P_char,double,int,uint,damage_messages*,int*) { return DAM_NONEDEAD; }
-bool should_area_hit(P_char,P_char ch) { return ch==&target; }
+bool should_area_hit(P_char,P_char ch) { return ch==&target || (multiple_targets && ch==&witness); }
 void stop_fighting(P_char) {}
 bool resists_spell(P_char,P_char) { return false; }
 bool NewSaves(P_char,int,int) { return false; }
@@ -231,7 +232,7 @@ driver = r'''
 static void reset(int route,unsigned flags,unsigned pass_mask) {
  actor={}; target={}; mount={}; witness={}; lance={}; links.clear(); live.clear(); fixture_messages.clear();
  for(auto &room:rooms) room={}; north={}; placements=damage_calls=reschedules=0; character_removal_generation=0;
- rng_route=route; castle_wall=spell_wall=false; lance_present=true;
+ rng_route=route; castle_wall=spell_wall=false; lance_present=true; multiple_targets=false; judgement_limit=4;
  leave_hook=enter_hook=Hook::none; hook_target=nullptr; mounted_during_entry=false;
  int id=0;
  for(P_char ch:{&actor,&target,&mount,&witness}) {
@@ -369,6 +370,23 @@ int main() {
  reset(0,0,7); rooms[0].sector_type=SECT_INSIDE; hook_target=&target; leave_hook=Hook::extract;
  spell_tempest(56,&actor,nullptr,0,&target,nullptr); ++cases;
  assert(char_in_list(&actor) && !char_in_list(&target));
+ // A single target's room procedure must not cancel the rest of an area effect.
+ for(int route : {1,2}) for(Hook hook : {Hook::veto,Hook::extract,Hook::redirect}) {
+  reset(route,EX_CLOSED,2); multiple_targets=true;
+  witness.specials.alignment=-1000; witness.specials.affected_by2=AFF2_PASSDOOR;
+  hook_target=&witness;
+  if(hook==Hook::redirect) enter_hook=hook; else leave_hook=hook;
+  run(route); ++cases; assert(target.in_room==1);
+ }
+ // Interrupted targets still consume Judgement's existing affected-target limit.
+ reset(2,EX_CLOSED,2); multiple_targets=true; judgement_limit=1;
+ witness.specials.alignment=-1000; witness.specials.affected_by2=AFF2_PASSDOOR;
+ hook_target=&witness; leave_hook=Hook::veto; run(2); ++cases;
+ assert(target.in_room==0);
+ // The dying guardian also continues past an immovable target.
+ reset(1,EX_CLOSED,2); SET_POS(&actor,STAT_DEAD); multiple_targets=true;
+ witness.specials.affected_by2=AFF2_PASSDOOR; hook_target=&witness; leave_hook=Hook::veto;
+ run(1); ++cases; assert(target.in_room==1);
  // A weapon removed by arrival scripts must not be dereferenced after movement.
  reset(4,0,7); hook_target=&actor; enter_hook=Hook::remove_weapon; run(4); ++cases;
  assert(actor.in_room==1 && target.in_room==1 && mount.in_room==1 && damage_calls==0);

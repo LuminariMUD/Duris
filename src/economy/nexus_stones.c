@@ -894,6 +894,8 @@ void nexus_guardian_energy_burst(P_char ch, bool show_message = true)
 	}
 
 	const int source_room = ch->in_room;
+	const uint64_t source_runtime_id = ch->runtime_id;
+	const bool source_was_alive = IS_ALIVE(ch);
 	std::vector<uint64_t> targets;
 	for (tch = world[source_room].people; tch; tch = tch->next_in_room)
 		targets.push_back(tch->runtime_id);
@@ -927,7 +929,13 @@ void nexus_guardian_energy_burst(P_char ch, bool show_message = true)
 									     source_room, false);
 					    });
 			if (movement.status == forced_move_status::interrupted)
-				return;
+			{
+				P_char source = find_character_by_runtime_id(source_runtime_id);
+				if (source != ch || source->in_room != source_room ||
+				    (source_was_alive && !IS_ALIVE(source)))
+					return;
+				continue;
+			}
 			if (movement.status == forced_move_status::arrived)
 			{
 				act("$n flies in, crashing on the floor!", TRUE, tch, 0, 0,
