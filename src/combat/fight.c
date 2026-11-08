@@ -11178,8 +11178,8 @@ void perform_violence(void)
 
 		for (i = 0; i < real_attacks; i++)
 		{
-			if (!GET_OPPONENT(ch) || !is_char_in_room(ch, room) ||
-			    !is_char_in_room(opponent, room))
+			if (!is_char_in_room(ch, room) || !is_char_in_room(opponent, room) ||
+			    !GET_OPPONENT(ch))
 			{
 				break;
 			}

@@ -2517,17 +2517,21 @@ bool check_disruptive_blow(P_char ch)
 
 			if (success > disruptive_blow_stop_margin())
 			{
-				if (melee_damage(tch, ch, disruptive_blow_damage(live_rolls), 0,
-						 &messages) == DAM_NONEDEAD)
+				const int result = melee_damage(
+					tch, ch, disruptive_blow_damage(live_rolls), 0, &messages);
+				if (result == DAM_NONEDEAD)
 				{
 					StopCasting(ch);
 					return TRUE;
 				}
+				return result != DAM_CHARDEAD;
 			}
 			else if (success > disruptive_blow_hit_margin())
 			{
-				melee_damage(tch, ch, disruptive_blow_damage(live_rolls), 0,
-					     &messages2);
+				const int result = melee_damage(
+					tch, ch, disruptive_blow_damage(live_rolls), 0, &messages2);
+				if (result != DAM_NONEDEAD)
+					return result != DAM_CHARDEAD;
 			}
 			else
 			{

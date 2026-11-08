@@ -17,6 +17,9 @@ start = violence.index("if (!affected_by_spell(opponent, SKILL_BATTLE_SENSES)")
 end = violence.index("if (IS_DRAGOON(opponent)", start)
 battle = violence[start:end]
 assert "battle_senses_duration()" in battle
+round_loop = violence[violence.index("if (!is_char_in_room(ch, room) || !is_char_in_room(opponent, room) ||"):]
+assert round_loop.index("!is_char_in_room(ch, room)") < round_loop.index("!GET_OPPONENT(ch)")
+assert "make_bloodstain(victim);" in function("actoff.c", "void event_bleedproc(")
 block = function("fight.c", "int blockSucceed(")
 assert not re.search(r"\bpercent\b", block)
 assert "number(0, attackerweaponskill) > number(0, learned)" in block
@@ -34,6 +37,10 @@ notches = observer[observer.index("if (idok == 1)"):observer.rindex("}")].rstrip
 interrupt = function("sparser.c", "bool check_disruptive_blow(")
 interrupt_notch = re.search(r'notch_skill\(\w+, SKILL_DISRUPTIVE_BLOW, 17\)', interrupt).group()
 stun = re.search(r'Stun\(victim, \w+, PULSE_VIOLENCE, FALSE\);', function("actoff.c", "void event_sneaky_strike(")).group()
+
+disruptive = "\n".join(function("sparser.c", signature) for signature in (
+    "static int disruptive_blow_damage(", "static int disruptive_blow_hit_margin(",
+    "static int disruptive_blow_stop_margin(", "bool check_disruptive_blow("))
 
 cpp = r'''#include "abilities/abilities.h"
 #include "core/prototypes.h"
@@ -68,6 +75,9 @@ void make_bloodstain(P_char) {}
 int raw_damage(P_char,P_char,double,uint,damage_messages *,int *) { ++damage_calls; return damage_status; }
 int melee_damage(P_char,P_char,double,int,damage_messages *,int *) { ++damage_calls; return damage_status; }
 void Stun(P_char,P_char source,int,bool) { stun_source=source; }
+P_room world;
+static int stops;
+void StopCasting(P_char) { ++stops; }
 nevent_schedule_result add_event(event_func,int,P_char,P_char,P_obj,int,const void *data,int) {
     ++pending; next_round=*static_cast<const int *>(data); return {};
 }
@@ -91,6 +101,7 @@ cpp += function("actoff.c", "int sneaky_strike_bleed_damage(") + "\n"
 cpp += function("actoff.c", "static int sneaky_strike_bleed_rounds(") + "\n"
 cpp += function("specs.object.c", "static int trap_bleed_count(") + "\n"
 cpp += function("actoff.c", "void event_bleedproc(") + "\n" + block
+cpp += "\n" + disruptive
 cpp += "\nvoid senses(P_char opponent) {" + battle + "}\n"
 cpp += "bool anatomy_proc() { return " + selection + ";}\n"
 cpp += "bool reflects(P_char victim) {return " + reflection + ";}\n"
@@ -153,6 +164,19 @@ int main() {
         learn=gains; roll=51; notches=activations=0; senses(&defender); assert(notches==1 && activations==0);
         roll=50; senses(&defender); assert(notches==2 && activations==1);
     }
+    learn=false; room_data room{}; world=&room; char_data caster{}, merc{}; pc_only_data mpc{};
+    merc.only.pc=&mpc; mpc.skills[SKILL_DISRUPTIVE_BLOW].learned=100;
+    caster.specials.position=merc.specials.position=STAT_NORMAL+POS_STANDING;
+    caster.player.race=merc.player.race=RACE_HUMAN; caster.in_room=merc.in_room=0;
+    room.people=&merc; merc.next_in_room=&caster;
+    caster.specials.fighting=&merc; merc.specials.fighting=&caster;
+    for(int margin : {0,50}) { // the stop branch, then the hit-only branch
+        roll=margin;
+        damage_status=DAM_VICTDEAD; assert(check_disruptive_blow(&caster)); // caster gone: never keep casting
+        damage_status=DAM_CHARDEAD; stops=0; assert(!check_disruptive_blow(&caster)); assert(stops==0); // merc gone: loop stops, caster goes on
+    }
+    roll=0; damage_status=DAM_NONEDEAD; stops=0; assert(check_disruptive_blow(&caster)); assert(stops==1);
+    roll=50; stops=0; assert(!check_disruptive_blow(&caster)); assert(stops==0);
     std::puts("PASS #715 combat effects: exact bleed rounds, blocked counters, death/movement, percentages, owners and activation boundaries");
 }
 '''

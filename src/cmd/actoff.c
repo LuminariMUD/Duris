@@ -6916,7 +6916,7 @@ void event_bleedproc(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 		act("$n&+r's wound gushes &+Rblood &+rall over the surrounding area.", TRUE, victim,
 		    NULL, NULL, TO_NOTVICT);
 	}
-	make_bloodstain(ch);
+	make_bloodstain(victim);
 
 	if (--count > 0)
 	{
