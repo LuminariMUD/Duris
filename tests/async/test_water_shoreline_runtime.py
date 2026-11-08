@@ -146,6 +146,7 @@ functions = [
     ('utility.c', 'bool has_water_form_travel('),
     ('utility.c', 'int move_cost('),
     ('actmove.c', 'int crippled_move_cost('),
+    ('actmove.c', 'static bool walking_door_allows('),
     ('actmove.c', 'static bool water_crossing_valid('),
     ('actmove.c', 'static bool completing_water_crossing('),
     ('actmove.c', 'static int can_enter_room_internal('),
@@ -294,6 +295,35 @@ int main() {
     auto *freed=new char_data(ch); character_list=freed; mode=2;
     assert(!do_simple_move(freed,0,0)); character_list=&ch; mode=0;
     assert(pool.objs_used==0 && ne_event_counter==0);
+
+    // Closed-door permission belongs to every riding participant, including charge approaches.
+    int door_cases=0;
+    for(int companion_kind : {0,1,2}) {
+        for(unsigned flags : {0U,unsigned(EX_CLOSED),unsigned(EX_CLOSED|EX_LOCKED),
+                               unsigned(EX_CLOSED|EX_PICKPROOF),unsigned(EX_CLOSED|EX_LOCKED|EX_PICKPROOF)}) {
+            for(unsigned mask=0;mask<(companion_kind?4U:2U);++mask) {
+                reset(); ch.affected=nullptr; ch.player.level=56;
+                rooms[0].sector_type=rooms[1].sector_type=SECT_FIELD;
+                exits[0].exit_info=flags;
+                SET_POS(&ch,STAT_NORMAL+POS_STANDING);
+                for(P_char companion : {&mount,&rider}) {
+                    companion->player.level=56;
+                    SET_POS(companion,STAT_NORMAL+POS_STANDING);
+                    companion->specials.affected_by2=(mask&2)?AFF2_PASSDOOR:0;
+                    GET_VITALITY(companion)=100;
+                }
+                ch.specials.affected_by2=(mask&1)?AFF2_PASSDOOR:0;
+                linked_mount=companion_kind==1; linked_rider=companion_kind==2;
+                const bool allowed=!(flags&EX_CLOSED) ||
+                    ((mask&1) && (!companion_kind || (mask&2)) &&
+                     (flags & (EX_LOCKED|EX_PICKPROOF))!=(EX_LOCKED|EX_PICKPROOF));
+                const bool moved=do_simple_move(&ch,DIR_NORTH,0);
+                assert(moved==allowed && ch.in_room==(allowed?1:0));
+                ++door_cases;
+            }
+        }
+    }
+    printf("Walking doors: %d permission cases, including mounts and riders, passed.\n",door_cases);
     puts("Water shoreline: native command/scheduler, timed directions, interruption, exact costs and isolated entry exception passed.");
 }
 '''

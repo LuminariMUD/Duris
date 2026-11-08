@@ -1960,7 +1960,7 @@ int shop_keeper(P_char keeper, P_char ch, int cmd, char *arg)
 		/* Steal */
 		arg = one_argument(arg, argm);
 		one_argument(arg, victim_name);
-		if (keeper == get_char_room(victim_name, ch->in_room))
+		if (keeper == get_char_room_vis(ch, victim_name))
 		{
 			snprintf(argm, MAX_INPUT_LENGTH,
 				 "shout Guards! Come arrest %s for being a thief!",
@@ -2024,7 +2024,7 @@ int shop_keeper(P_char keeper, P_char ch, int cmd, char *arg)
 		}
 	if (((cmd == CMD_CAST) || (cmd == CMD_RECITE) || (cmd == CMD_USE) || (cmd == CMD_WILL)) &&
 	    (!shop_index[shop_nr].magic_allowed &&
-	     (shop_index[number_of_shops].shop_is_roaming ||
+	     (shop_index[shop_nr].shop_is_roaming ||
 	      (keeper->in_room == real_room(GET_HOME(keeper))))))
 	{
 		/*
@@ -2039,7 +2039,7 @@ int shop_keeper(P_char keeper, P_char ch, int cmd, char *arg)
 		 * Kill or Hit
 		 */
 		one_argument(arg, argm);
-		if ((keeper == get_char_room(argm, ch->in_room)) ||
+		if ((keeper == get_char_room_vis(ch, argm)) ||
 		    ((cmd == CMD_HITALL) && isname("all", argm)))
 		{
 			shopping_kill(arg, ch, keeper, shop_nr);

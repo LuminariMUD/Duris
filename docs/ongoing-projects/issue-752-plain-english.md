@@ -16,11 +16,11 @@ A locked door that can be picked, or a pickproof door that is unlocked, can stil
 
 Imagine two rooms separated by one of those protected doors. You have passdoor magic active. Trying to walk through the door fails, as intended.
 
-A successful Tempest knockback can nevertheless throw you into the other room. The ability checks the doorway differently and then moves you directly.
+A successful Squall knockback can nevertheless throw you into the other room. The ability checks the doorway differently and then moves you directly.
 
 The same problem appears in:
 
-- Tempest knockback.
+- Squall knockback.
 - A nexus guardian energy burst.
 - A conjured golem throwing a small opponent.
 - The knockback branch used by Judgement.
@@ -48,7 +48,13 @@ The builder checker called zcheck describes the ordinary walking rule correctly.
 
 # Status and further detail
 
-This is an investigation, with no gameplay fix or deployment. The issue remains open for implementation and testing in a running game.
+[The fix in PR 850](https://github.com/LuminariMUD/Duris/pull/850) makes all five abilities check whether each person being moved can cross the door. A charger cannot lend passdoor to a victim or mount. The charger stays on their mount; a thrown victim leaves their own mount behind.
+
+Walking also checks everyone again after departure scripts run, so a script that closes the door or removes passdoor can stop the move. Interrupted moves restore surviving travelers without undoing a script's decision to send someone elsewhere. Lance charges stop if an approach or arrival script removes the target, mount, or equipped lance; a lance destroyed by wear is no longer used afterward.
+
+Tests cover all five abilities, mounted movement, and room scripts that interrupt a move. A disposable local game also confirmed that Squall cannot throw someone through the protected door, and that unlocking the door allows the expected movement.
+
+This has not been deployed to the live game.
 
 [GitHub issue 752](https://github.com/LuminariMUD/Duris/issues/752) contains the detailed findings and links to the technical report. The source examined was the November 8 2026 master snapshot `dd31e9f2d`.
 

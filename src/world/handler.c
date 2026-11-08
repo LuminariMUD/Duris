@@ -1192,51 +1192,39 @@ bool isname( const char *match, const char *namelist )
 
 bool isname(const char *str, const char *namelist)
 {
-	int i = 0, j = 0, k = 0, k2 = 0;
-	char tstr[MAX_STRING_LENGTH];
-
 	if (!str || !namelist)
 		return FALSE;
 
-	// eat leading spaces in str
-	while (*(str + k) == ' ')
-		k++;
-
-	if (!*(str + k))
+	while (*str == ' ')
+		str++;
+	if (!*str)
 		return FALSE;
 
-	// lowercase the search string now, so we don't have to do it over and
+	// Preserve literal hyphenated keywords before trying a combination.
+	for (const char *word = namelist; *word;)
+	{
+		size_t i = 0;
+		while (str[i] && word[i] && LOWER(str[i]) == LOWER(word[i]))
+			i++;
+		if (!str[i] && (!word[i] || word[i] == ' '))
+			return TRUE;
+		word += strcspn(word, " ");
+		if (*word)
+			word++;
+	}
 
-	for (k2 = 0; *(str + k); k++)
-		tstr[k2++] = LOWER(*(str + k));
-	tstr[k2] = 0;
+	if (!strchr(str, '-'))
+		return FALSE;
 
 	for (;;)
 	{
-		for (i = 0;; i++, j++)
-		{
-			if (!tstr[i])
-			{
-				if (!*(namelist + j) || (*(namelist + j) == ' '))
-					return TRUE;
-				break;
-			}
-			else
-			{
-				if (!*(namelist + j))
-					return FALSE;
-
-				if (tstr[i] != LOWER(*(namelist + j)))
-					break;
-			}
-		}
-
-		// skip to next name
-		for (; *(namelist + j) && (*(namelist + j) != ' '); j++)
-			;
-		if (!*(namelist + j))
+		const char *hyphen = strchr(str, '-');
+		const std::string part(str, hyphen ? size_t(hyphen - str) : strlen(str));
+		if (part.empty() || !isname(part.c_str(), namelist))
 			return FALSE;
-		j++; // first char of new name
+		if (!hyphen)
+			return TRUE;
+		str = hyphen + 1;
 	}
 }
 
@@ -2490,7 +2478,7 @@ P_char get_char_room(const char *name, int room)
 		return (0);
 
 	for (i = world[room].people, j = 1; i && (j <= k); i = i->next_in_room)
-		if (isname(tmp, IS_NPC(i) ? FirstWord(i->player.name) : GET_NAME(i)))
+		if (isname(tmp, GET_NAME(i)))
 		{
 			if (j == k && !IS_AFFECTED(i, AFF_HIDE))
 				return (i);
