@@ -511,6 +511,9 @@ flagDef extra2_bits[] = { { "SILVER", "Made of silver", 1, 0 },
 			  { "CRAFTED", "Crafted Item", 0, 0 },
 			  { "QUESTITEM", "Quest Item", 0, 0 },
 			  { "TRANSPARENT", "Transparent Item", 1, 0 },
+			  { "ACCOUNT_BOUND", "Account bound item", 0, 0 },
+			  { "ENHANCED", "Enhanced Item", 0, 0 },
+			  { "MONK_PROC", "Monk barehand proc", 1, 0 },
 			  {} };
 
 flagDef room_bits[] = { { "DARK", "Dark", 1, 0 },

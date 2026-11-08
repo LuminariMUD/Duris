@@ -1,6 +1,75 @@
 # Monk glove melee proc plan
 
-Status: proposed implementation; no combat, item, or persistence changes made.
+Status: framework implemented and validated; content pilot remains (2026-11-08). The research worktree was clean at
+`4fddd48b4`; implementation stays on `branch/monk-glove-proc-research` for the
+framework PR, followed by a dependent content-pilot PR. The baseline research is
+separated in [PR #804](https://github.com/LuminariMUD/Duris/pull/804), stacked on
+[PR #797](https://github.com/LuminariMUD/Duris/pull/797). Neither PR authorizes a
+production deployment. No existing release tag will be moved; this feature does
+not need a release tag before review.
+
+## Current execution / handoff
+
+- **Outcome:** explicitly opted-in primary gloves proc on player monks' resolved
+  barehand attacks, including ripostes and the separate PvP pressure strike.
+  Inspection, runtime/editor valuation, delayed actions and persistence must agree.
+- **Non-goals:** weight/damage formula changes, new proc or scheduler systems,
+  global cooldowns, specialization multipliers and production operations.
+- **Files:** the framework file list below, existing focused runtime fixtures,
+  monk/builder help; authored object records only in the dependent pilot.
+- **Proof:** sanitizer-backed executable combat/dispatcher/runtime tests, focused
+  lifecycle regressions, both builds and formatting, persistence on both backends,
+  and an isolated gameplay journey. Record actual results here before each PR.
+- **Ablation:** retain the existing dispatcher, packed encoding, continuation and
+  item-action adapter. Use the adapter's captured source slot to distinguish
+  pending glove actions even after their flag is cleared. No new runtime category
+  or configuration namespace is needed. The plan already excludes speculative
+  machinery; no requirement is dropped.
+- Prerequisite [PR #797](https://github.com/LuminariMUD/Duris/pull/797),
+  `branch/fix-editor-valuation-build`, fixes two pre-existing staff-editor build
+  blockers (missing C++20 and the removed `AFF2_MINOR_INVIS` symbol). The required
+  touched-file format check also necessitated formatting that legacy editor file;
+  the framework PR is based on #804 so its review excludes both the mechanical diff
+  and the 105-entry research catalog.
+- Implemented: bit-20 opt-in and correct flag names; shared glove predicate;
+  pre-damage capture and terminal dispatch in `hit()` / `monk_superhit()`;
+  malformed packed-glove rejection; delayed source-slot/class/flag validation;
+  runtime/editor packed valuation; shared weapon/glove inspection; monk help.
+- Found and fixed an immediate packed-bundle lifetime gap: check the existing
+  continuation between effects so participant/source extraction or relocation
+  stops the bundle. Existing weapon behavior and spell selection remain covered.
+- Passed: MariaDB and flatfile server builds (`make -C src -j4`, then
+  `make -C src PERSISTENCE_BACKEND=flatfile -j4`); normal editor build; sanitizer
+  weapon-action and sword-action suites; `test_monk_glove_tools.py`;
+  `test_sql_item_instance_fields.py`; attack-continuation and item-proc-guard suites.
+  Staff debug editor build passed in #797's worktree. Compiled outputs are under
+  `bin/`; no production environment or running local stack was touched.
+- Also passed: `test_combat_start_lifetime.py`, `test_riposte_lifetime.py`,
+  `test_world_recovery_pipeline.py`, and `test_world_recovery_codec.py` (including
+  packed values and all three upper extra2 bits). `./scripts/format.sh --check`
+  and normal + debug editor builds pass with the final framework sources.
+- Real-game proof passed on **both** backend builds:
+  `python3 tests/async/run_monk_glove_journey.py --flatfile bin/tests/monk-flatfile-server --mariadb bin/tests/monk-sql-server`.
+  The disposable fixture creates an ordinary level-one monk, loads and equips a
+  deterministic test glove, observes actual punches and player proc messages,
+  removes/re-equips it, saves and restarts, then verifies staff inspection,
+  actual weapon hits and non-monk exclusions. Fixture staff use `hit`, because
+  `kill` at OVERLORD is the intentional instant-slay command. Only fixture state
+  is promoted; no real account or DB is used. Both disposable DB and game roots
+  are removed by the journey.
+- The sanitizer runtime additionally checks every specialization and secondary
+  monk admission through real `monk_superhit()`, one native dispatch per strike,
+  fatal base-hit suppression, removal/extraction/relocation cancellation, invalid
+  packed data, delayed class/flag/slot cancellation, busy suppression and retaining
+  an already-started action when a separate weapon is later equipped.
+- Framework review: [PR #805](https://github.com/LuminariMUD/Duris/pull/805),
+  `branch/monk-glove-proc-research`, implementation `ff8d8f283` plus the prerequisite
+  merge `e378275a0`. Research [#804](https://github.com/LuminariMUD/Duris/pull/804)
+  and editor build [#797](https://github.com/LuminariMUD/Duris/pull/797) precede it.
+- Remaining project work: the dependent authored-content pilot, its before/after
+  runtime values, progression/spec/PvE/PvP samples and player identify check.
+  Choose and record the owned-copy policy before any production activation.
+  No production glove is enabled by the framework.
 
 Researched 2026-11-08 against `b9bcce5e1c0081d373382c0e9cd3f18d48832b84`.
 Companion inventory: [105 monk glove candidates, ascending ivalue](monk-proc.md).
@@ -25,7 +94,7 @@ This gives builders a familiar way to add a spell proc to another glove without 
 
 ## Gameplay contract
 
-These are recommended defaults for implementation, rather than claims about current behavior.
+The framework implements these rules. Content activation and balance remain in the pilot.
 
 1. **Who:** `IS_PC(ch) && GET_CLASS(ch, CLASS_MONK)`. This includes unspecialized monks, Dragon, Snake, Chi, and characters with monk as a secondary class. NPCs and pets do not gain offensive glove procs in this player-balance change. Existing glove periodic and defensive behavior retains its own rules.
 2. **Which attack:** the actual strike is barehanded. An actual weapon hit uses its weapon proc only. Do not add another strength, weight, martial-arts rating, or free-hands requirement: the existing equipment and attack rules already apply those consequences. A held item or shield can reduce attack opportunities without creating a separate glove eligibility rule.
@@ -140,7 +209,7 @@ Extend the existing [weapon-action runtime tests](../../tests/async/test_weapon_
 - Ivalue increases for the actual packed effect, does not increase for an empty marker, and agrees with the editor for the fixtures. Flag round-trips preserve bits 18 and 19. New and persisted item instances retain the intended configuration on both backends.
 - A local gameplay journey proves an equipped monk's real attacks can trigger the proc, and unequipping the gloves stops it. Repeat with a non-monk and an actual weapon. Verify player messages and staff inspection alongside the journey.
 
-Run `./scripts/format.sh --check`, the focused tests, and `make -C src` after C/C++ implementation; build the touched area editor with `make -C areas/de/src`. Build and test outputs stay under `bin/`. This planning change needs no server build or gameplay run.
+Run `./scripts/format.sh --check`, the focused tests, and `make -C src` after C/C++ implementation; build the touched area editor with `make -C areas/de/src`. Build and test outputs stay under `bin/`. The baseline research needed no build; implementation results are recorded above.
 
 ## Scope kept small
 
@@ -148,4 +217,4 @@ The outcome is weapon-style effects on explicitly selected monk gloves throughou
 
 There is no new proc language, registry, item type, event bus, spell executor, timer service, or specialization hierarchy. Existing weight and barehand damage formulas are outside this change. Production effect choices, values, and treatment of already-owned copies must be recorded in the content pilot; they cannot be inferred from the candidate catalog alone.
 
-Plan verification: read the owning combat, class, item-action, valuation, editor, inspection, and persistence code; rechecked all 314 catalogued glove records against current source. The proposed runtime behavior has not been implemented or playtested.
+Plan verification: read the owning combat, class, item-action, valuation, editor, inspection, and persistence code; rechecked all 314 catalogued glove records against current source. That was the research baseline; current implementation and proof are recorded in the execution / handoff section above.

@@ -2035,7 +2035,9 @@ int itemvalue(P_obj obj)
 
 	// Has a old school proc (Up to three spells).
 	// Can un-comment the debug stuff if you want to modify this.
-	if (IS_SET(obj->wear_flags, ITEM_WIELD) && (obj->value[5] > 0))
+	if ((IS_SET(obj->wear_flags, ITEM_WIELD) ||
+	     (IS_MONK_PROC_GLOVE(obj) && obj->value[6] > 0)) &&
+	    obj->value[5] > 0 && obj->value[7] > 0)
 	{
 		int spells[3];
 		int spellcirclesum, numspells;

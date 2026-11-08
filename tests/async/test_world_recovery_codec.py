@@ -15,6 +15,7 @@ FLOOR = (SRC / "redis_floor_store.c").read_text(encoding="ascii")
 
 HARNESS = r'''
 #include "persistence/copyover.h"
+#include "core/defines.h"
 #include "world/world_recovery_codec.h"
 
 #include <array>
@@ -109,6 +110,8 @@ int main()
     std::strcpy(item.action_description, "a cavern snake");
     item.affect_modifiers[0] = -5;
     item.bitvector5 = 0x0102030405060708ULL;
+    item.extra2_flags = ITEM2_MONK_PROC | ITEM2_ACCOUNT_BOUND | ITEM2_ENHANCED;
+    item.values[5] = 32; item.values[6] = 20; item.values[7] = 30;
     item.values[0] = -99;
     item.timers[0] = 0x0102030405060708LL;
     memcpy(item.name, "golden", 7);
@@ -137,6 +140,8 @@ int main()
            decoded_item.timers[0] == item.timers[0] && !strcmp(decoded_item.name, "golden"));
 
     assert(decoded_item.wear_flags == item.wear_flags);
+    assert(decoded_item.extra2_flags == item.extra2_flags);
+    assert(decoded_item.values[5] == 32 && decoded_item.values[6] == 20 && decoded_item.values[7] == 30);
     assert(!std::strcmp(decoded_item.action_description, item.action_description));
     assert(decoded_item.affect_modifiers[0] == -5 && decoded_item.bitvector5 == item.bitvector5);
     assert(encoded_object[3200] == 4 && encoded_object[3203] == 1);

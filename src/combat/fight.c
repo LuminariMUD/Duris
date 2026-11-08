@@ -7858,6 +7858,22 @@ std::string boiling_blood_facts(P_char ch)
 	       "    (a vicious strike on you doesn't graze)\n";
 }
 
+static attack_continuation capture_monk_glove_proc(P_char ch, P_char victim, P_obj weapon)
+{
+	if (weapon || !IS_PC(ch) || !GET_CLASS(ch, CLASS_MONK) ||
+	    !IS_MONK_PROC_GLOVE(ch->equipment[WEAR_HANDS]))
+		return {};
+	return begin_attack_continuation(ch, victim, ch->equipment[WEAR_HANDS], WEAR_HANDS);
+}
+
+static void dispatch_monk_glove_proc(const attack_continuation &continuation)
+{
+	const auto checked = check_attack_continuation(continuation);
+	if (checked.can_continue() && IS_PC(checked.actor) &&
+	    GET_CLASS(checked.actor, CLASS_MONK) && IS_MONK_PROC_GLOVE(checked.weapon))
+		weapon_proc(checked.weapon, checked.actor, checked.target);
+}
+
 /*
 	 * this performs an attack of ch on victim using weapon currently
 	 * wielded as primary.
@@ -8187,6 +8203,8 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 		victim = checked.target;
 		weapon = checked.weapon;
 	}
+
+	const auto monk_glove = capture_monk_glove_proc(ch, victim, weapon);
 
 	/* The blind and eyeless cannot see "flashing lights." - Lucrot */
 	if (IS_AFFECTED4(victim, AFF4_DAZZLER) && !IS_AFFECTED5(ch, AFF5_DAZZLEE) &&
@@ -8708,6 +8726,8 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	{
 		weapon_proc(weapon, ch, victim);
 	}
+	else if (!weapon)
+		dispatch_monk_glove_proc(monk_glove);
 
 	return TRUE;
 }
@@ -8729,6 +8749,23 @@ static void cast_packed_weapon_spell(P_obj obj, P_char ch, P_char victim, int sp
 bool weapon_proc(P_obj obj, P_char ch, P_char victim)
 {
 	struct extra_descr_data *ex;
+	if (IS_MONK_PROC_GLOVE(obj))
+	{
+		if (obj->value[5] < 0 ||
+		    (obj->value[5] && (obj->value[6] <= 0 || obj->value[7] <= 0)))
+			return FALSE;
+		bool gap = false;
+		for (int packed = obj->value[5] % 1000000000, i = 0; i < 3; ++i, packed /= 1000)
+		{
+			const int spell = packed % 1000;
+			if (!spell)
+				gap = true;
+			else if (gap || spell >= MAX_SKILLS || !skills[spell].spell_pointer)
+				return FALSE;
+		}
+		if (obj->value[5] && !(obj->value[5] % 1000000000))
+			return FALSE;
+	}
 	// These native state machines use values[5..7] for state, not packed spells.
 	// A retained positive legacy energy value must not select the generic path.
 	if ((OBJ_VNUM(obj) == 21 || OBJ_VNUM(obj) == 22) && native_artifact_owns(OBJ_VNUM(obj)))
@@ -8773,7 +8810,7 @@ bool weapon_proc(P_obj obj, P_char ch, P_char victim)
 	const int spells[3] = { obj->value[5] % 1000, obj->value[5] % 1000000 / 1000,
 				obj->value[5] % 1000000000 / 1000000 };
 	const int count = (spells[0] != 0) + (spells[1] != 0) + (spells[2] != 0);
-	const int room = ch->in_room;
+	const auto continuation = begin_attack_continuation(ch, victim, obj);
 
 	if (!count)
 		return FALSE;
@@ -8786,7 +8823,7 @@ bool weapon_proc(P_obj obj, P_char ch, P_char victim)
 	else
 	{
 		for (int i = count - 1;
-		     i >= 0 && is_char_in_room(ch, room) && is_char_in_room(victim, room); i--)
+		     i >= 0 && check_attack_continuation(continuation).can_continue(); i--)
 			cast_packed_weapon_spell(obj, ch, victim, spells[i]);
 	}
 	return TRUE;
@@ -11358,8 +11395,10 @@ bool monk_superhit(P_char ch, P_char victim, int *damAccumulator)
 	// Caps at 225 on a 3k hps target (7.5% max health).
 	else if (dam > 225)
 		dam = 225;
-	melee_damage(ch, victim, dam, PHSDAM_NOREDUCE | PHSDAM_TOUCH, &monk_superhit_messages,
-		     damAccumulator);
+	const auto monk_glove = capture_monk_glove_proc(ch, victim, nullptr);
+	if (melee_damage(ch, victim, dam, PHSDAM_NOREDUCE | PHSDAM_TOUCH, &monk_superhit_messages,
+			 damAccumulator) == DAM_NONEDEAD)
+		dispatch_monk_glove_proc(monk_glove);
 
 	return TRUE;
 }

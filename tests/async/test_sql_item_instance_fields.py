@@ -21,14 +21,15 @@ int main()
     bless.extra2 = ITEM2_BLESS;
     bless.next = &original;
     item.affects = &bless;
-    item.extra2_flags = ITEM2_BLESS | ITEM2_ENHANCED;
+    const auto permanent = ITEM2_ENHANCED | ITEM2_ACCOUNT_BOUND | ITEM2_MONK_PROC;
+    item.extra2_flags = ITEM2_BLESS | permanent;
 
     player_item_snapshot snapshot{};
     snapshot.extra2_flags = item.extra2_flags;
     snapshot.dynamic_affects = {{bless.type, 0, bless.extra2},
                                 {original.type, 0, original.extra2}};
-    assert(sql_item_permanent_extra2(snapshot) == ITEM2_ENHANCED);
-    assert(sql_item_permanent_extra2(item) == ITEM2_ENHANCED);
+    assert(sql_item_permanent_extra2(snapshot) == permanent);
+    assert(sql_item_permanent_extra2(item) == permanent);
 
     original.extra2 = ITEM2_BLESS;
     snapshot.dynamic_affects.back().extra2 = ITEM2_BLESS;
