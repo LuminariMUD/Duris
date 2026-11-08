@@ -568,15 +568,17 @@ static void check_pages() {
                              "  Only while fighting, and not while riding.\n");
     ch = viewer(viewers[9], 56);
     set_ratings(40);
-    EXACT(meditate_facts, "  Chance a spell's recovery skips its extra half: 41 in 101\n"
-                          "  Chance your recovery time halves: 40 in 101\n"
+    EXACT(meditate_facts, "  Roll chance to skip a recovery's extra half: 41 in 101\n"
+                          "  Roll chance to halve a new recovery interval: 40 in 101\n"
+                          "  Learning from a Meditation check also makes that check succeed.\n"
                           "  Base mana recovery, if you use mana: 1000 while you meditate\n"
                           "  Your lag: 4 seconds\n"
                           "  You must be sitting. An attack on you or most commands end it.\n");
     ratings.erase(SKILL_ADVANCED_MEDITATION);
     ch = viewer(viewers[10], 56);
-    EXACT(meditate_facts, "  Chance a spell's recovery skips its extra half: 41 in 101\n"
-                          "  Chance your recovery time halves: 40 in 101\n"
+    EXACT(meditate_facts, "  Roll chance to skip a recovery's extra half: 41 in 101\n"
+                          "  Roll chance to halve a new recovery interval: 40 in 101\n"
+                          "  Learning from a Meditation check also makes that check succeed.\n"
                           "  Base mana recovery, if you use mana: 1000 while you meditate\n"
                           "  Your lag: 4 seconds\n"
                           "  You must be sitting. An attack on you or most commands end it.\n");
