@@ -12436,7 +12436,7 @@ std::string blur_innate_facts(P_char /*ch*/)
 	extern int archery_blur_speed();
 	return fact("Your attacks each round", "+1") +
 	       fact("Archery speed", "+" + std::to_string(archery_blur_speed())) +
-	       "  You get it when you log in.\n";
+	       "  It is permanent; temporary blur ending cannot remove it.\n";
 }
 
 std::string blur_facts(P_char /*ch*/)
@@ -20677,6 +20677,10 @@ int CheckMobRemoveableSpellBits(P_char ch, RemoveableSpellBit *spellBits, int co
 
 	for (int i = 0; i < countSpellBits; i++)
 	{
+		if (affectVector == 3 && spellBits[i].bit == AFF3_BLUR &&
+		    has_innate(ch, INNATE_BLUR))
+			continue;
+
 		if (IS_SET(*bitStore, spellBits[i].bit) &&
 		    !affected_by_spell(ch, spellBits[i].spell) &&
 		    (nosave || !NewSaves(ch, SAVING_SPELL, saveMod)))

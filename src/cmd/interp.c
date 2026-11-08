@@ -2517,8 +2517,8 @@ void command_interpreter(P_char ch, char *argument)
 					// 5% chance to fail sneak.
 					if ((exec_char->in_room == old_room) || !SNEAK(exec_char) ||
 					    !number(0, 19))
-						// 5% chance for calming to work.
-						if (!has_innate(ch, INNATE_CALMING) ||
+						// Calming usually suppresses this check, except in enemy hometowns.
+						if (!innate_calming_active(exec_char) ||
 						    !calming_command_roll(live_rolls))
 							// And the charisma calm chance.
 							if (number(1, 100) > CALMCHANCE(exec_char))
@@ -3957,7 +3957,7 @@ void check_aggro_from_command(P_char exec_char)
 	// Chance of aggro mobs not attacking.
 	calming_chance = CALMCHANCE(exec_char);
 	// Innate calming is +10% chance for this type of aggro check.
-	if (has_innate(exec_char, INNATE_CALMING))
+	if (innate_calming_active(exec_char))
 	{
 		calming_chance += calming_chance_bonus();
 	}
@@ -4038,7 +4038,7 @@ void check_aggro_from_command(P_char exec_char)
 				{
 					exec_char = exec_master;
 					calming_chance = CALMCHANCE(exec_char) +
-							 (has_innate(exec_char, INNATE_CALMING) ?
+							 (innate_calming_active(exec_char) ?
 								  calming_chance_bonus() :
 								  0);
 					exec_master = NULL;

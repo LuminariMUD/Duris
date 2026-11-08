@@ -569,7 +569,7 @@ HANDLER_CALLS = {
     ("world/handler.c", "ALL"): ["<= calming_level_gap()) || !calming_gap_roll(live_rolls)", "calming = calming_delay();", "!IS_BLOODLUST && has_innate(i, INNATE_VULN_SUN)"],
     ("cmd/actmove.c", "ALL"): ["<= calming_level_gap()) || !calming_gap_roll(live_rolls)", "calming = calming_delay();"],
     ("mob/mobact.c", "ALL"): ["calming_notarget_roll(live_rolls) <= calming_notarget_percent()", "<= calming_level_gap()) || !calming_gap_roll(live_rolls)", "calming = calming_delay();"],
-    ("cmd/interp.c", "ALL"): ["!has_innate(ch, INNATE_CALMING) || !calming_command_roll(live_rolls)", "calming_chance += calming_chance_bonus();", "(has_innate(exec_char, INNATE_CALMING) ? calming_chance_bonus() : 0)", "calming_chance >= number(1, 100)"],
+    ("cmd/interp.c", "ALL"): ["!innate_calming_active(exec_char) || !calming_command_roll(live_rolls)", "calming_chance += calming_chance_bonus();", "(innate_calming_active(exec_char) ? calming_chance_bonus() : 0)", "calming_chance >= number(1, 100)"],
     ("world/limits.c", "hit_regen"): ["regeneration_sleeping_multiple() * get_innate_regeneration(ch)", "regeneration_resting_multiple() * get_innate_regeneration(ch)"],
     ("world/map.c", "map_view_distance"): ["return eyeless_map_range();", "dayblind_infravision_bonus()", "n = dayblind_underdark_range();", "n > forest_map_cap()", "n = forest_map_cap();", "n += perception_map_bonus();"],
     ("cmd/track.c", "show_tracks"): ["skill += perception_track_bonus();", "percent -= farsee_track_bonus();", "percent -= ophidian_track_bonus();", "chance = track_sense_chance(GET_LEVEL(ch));"],
@@ -758,7 +758,8 @@ GOLDEN = """== blindsinging
   A mount that bucks never throws you.
 == calming
   Extra wait before an aggressive mob attacks: 2.5 seconds
-  Elites and some hometowns ignore it. A mob over 5 levels above you waits
+  Innate Calming is disabled in enemy hometowns.
+  Elites ignore the extra wait. A mob over 5 levels above you waits
   only 1 in 4 times.
   Chance a mob picking a target passes you over: 76 in 102
   Your commands that draw an aggression check: 1 in 20
@@ -860,7 +861,7 @@ GOLDEN = """== blindsinging
 == blur
   Your attacks each round: +1
   Archery speed: +20
-  You get it when you log in.
+  It is permanent; temporary blur ending cannot remove it.
 == evasion
   Way of the dragon: chance to avoid spell damage: 14 in 100
   Way of the snake: chance to avoid an area spell: 40 in 100

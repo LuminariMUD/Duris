@@ -370,6 +370,18 @@ void generic_char_event(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void * 
 
 void event_sundamage(P_char ch, P_char victim, P_obj obj, void *data);
 
+// Enemy hometown guards ignore innate Calming; other locations retain it.
+bool innate_calming_active(P_char ch)
+{
+	if (!has_innate(ch, INNATE_CALMING) || ch->in_room == NOWHERE)
+		return false;
+	const int town = CHAR_IN_TOWN(ch);
+	if (!town)
+		return true;
+	return !((IS_RACEWAR_EVIL(ch) && IS_SET(hometowns[town - 1].flags, JUSTICE_GOODHOME)) ||
+		 (IS_RACEWAR_GOOD(ch) && IS_SET(hometowns[town - 1].flags, JUSTICE_EVILHOME)));
+}
+
 // Innate calming's numbers. An aggressive mob waits longer before it attacks unless it is
 // too far above its target, and even then on this roll coming up 0.
 int calming_delay()
@@ -425,7 +437,8 @@ std::string calming_innate_facts(P_char ch)
 {
 	const int calm = CALMCHANCE(ch) + calming_chance_bonus();
 	return fact("Extra wait before an aggressive mob attacks", seconds(calming_delay())) +
-	       "  Elites and some hometowns ignore it. A mob over " +
+	       "  Innate Calming is disabled in enemy hometowns.\n"
+	       "  Elites ignore the extra wait. A mob over " +
 	       std::to_string(calming_level_gap()) +
 	       " levels above you waits\n"
 	       "  only " +
@@ -1874,18 +1887,12 @@ bool char_to_room(P_char ch, int room, int dir)
 	 * thing of the past.
 	 */
 
-	int nocalming = 0;
 	int calming = 0;
-	if ((IS_RACEWAR_GOOD(ch) &&
-	     IS_SET(hometowns[VNUM2TOWN(world[ch->in_room].number) - 1].flags, JUSTICE_GOODHOME)) ||
-	    (IS_RACEWAR_EVIL(ch) &&
-	     IS_SET(hometowns[VNUM2TOWN(world[ch->in_room].number) - 1].flags, JUSTICE_EVILHOME)))
-		nocalming = 1;
 
-	if (t_ch && !IS_ELITE(t_ch) && !nocalming &&
+	if (t_ch && !IS_ELITE(t_ch) &&
 	    (((GET_LEVEL(t_ch) - GET_LEVEL(ch)) <= calming_level_gap()) ||
 	     !calming_gap_roll(live_rolls)) &&
-	    has_innate(ch, INNATE_CALMING))
+	    innate_calming_active(ch))
 		calming = calming_delay();
 
 	if (t_ch && is_aggr_to(ch, t_ch))
