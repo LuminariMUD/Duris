@@ -109,6 +109,11 @@ Mixed potions explain the unsupported magic and still apply their other usable
 spells or non-magical damage, with the normal consumption and no-magic rules.
 This does not enable any other area spell through `quaff`.
 
+Salchemist throwing also refuses any potion containing either spell before the
+throw roll, lag, cooldown or consumption. This includes mixed potions: the whole
+bottle is retained, so no sibling spell is lost. Throwing supplies no Gate plane
+and does not dispatch Call Lightning's area target.
+
 Named raw cast types differ from these command routes: Gate accepts only
 `SPELL_TYPE_SPELL`; Call Lightning retains its raw spell/scroll/staff behavior
 and explicitly refuses potion and wand calls. The older raw staff behavior

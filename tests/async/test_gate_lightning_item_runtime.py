@@ -35,6 +35,9 @@ commands = "\n".join(extract_function(path, signature) for path, signature in [
     ("cmd/actoth.c", "void do_recite("),
     ("cmd/actoth.c", "int combat_mind_quaff_chance("),
     ("cmd/actoth.c", "void do_quaff("),
+    ("cmd/actnew.c", "static int throw_potion_lag("),
+    ("cmd/actnew.c", "static int throw_potion_rest("),
+    ("cmd/actnew.c", "bool throw_potion("),
 ])
 devices = devices.replace("// INSERT_COMMANDS", '#include "world/epic.h"\n#include "combat/damage.h"\n' + commands)
 spells = (ROOT / "src/magic/spells.c").read_text()
@@ -97,6 +100,7 @@ int spell_damage(P_char,P_char,double damage,int type,uint,damage_messages *,int
     return DAM_NONEDEAD;
 }
 bool has_innate(P_char,int) { return false; }
+int chance_throw_potion(P_char,P_char) { assert(false); return 0; }
 bool gain_epic(P_char,int,int,int) { return true; }
 affected_type *affect_to_char(P_char,affected_type *af) {
     assert(af->type==TAG_POTION_TIMER); ++potion_timers; return nullptr;
@@ -216,6 +220,15 @@ static void lightning_devices() {
     }
 }
 static void potions() {
+    for(int spell:{SPELL_GATE,SPELL_CALL_LIGHTNING}) for(bool mixed:{false,true}) {
+        spell_scene s(ITEM_POTION); s.source->value[1]=spell;
+        s.source->value[2]=mixed?2:0; s.source->value[3]=0;
+        const int waits=unrelated_wait_changes;
+        throw_potion(s.actor,s.source,s.target,nullptr);
+        assert(!extracts && !potion_timers && calls.empty() && portals.empty());
+        assert(s.actor->carrying==s.source && unrelated_wait_changes==waits);
+        assert(said("cannot be invoked by throwing a potion"));
+    }
     for(int spell:{SPELL_GATE,SPELL_CALL_LIGHTNING}) for(int sibling:{0,1,3}) {
         spell_scene s(ITEM_POTION); s.source->value[1]=spell;
         s.source->value[2]=sibling==1?2:0; s.source->value[3]=0;
