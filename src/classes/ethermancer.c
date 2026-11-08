@@ -2481,13 +2481,17 @@ void spell_tempest(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 	act("$n &+Wraises &+y$s hands to the sky calling forth a &+cfreezing &+ysquall.", FALSE, ch,
 	    0, 0, TO_NOTVICT);
 
+	const uint64_t caster_runtime_id = ch->runtime_id;
 	cast_as_damage_area(ch, spell_single_tempest, level, victim,
 			    get_property("spell.area.minChance.squallTempest", 90),
 			    get_property("spell.area.chanceStep.squallTempest", 10));
 
+	if (find_character_by_runtime_id(caster_runtime_id) != ch || !IS_ALIVE(ch) ||
+	    ch->in_room != room)
+		return;
+
 	if (world[room].sector_type == SECT_INSIDE || IS_ROOM(room, ROOM_INDOORS))
-		act("&+wYou have difficulty summoning the squall.&n", FALSE, ch, 0, victim,
-		    TO_CHAR);
+		act("&+wYou have difficulty summoning the squall.&n", FALSE, ch, 0, 0, TO_CHAR);
 
 	zone_spellmessage(ch->in_room, FALSE, "&+wYou feel a bitterly &+Ccold&+w wisp of air.\r\n",
 			  "&+wYou feel a bitterly &+Ccold&+w wisp of air from the %s.\r\n");

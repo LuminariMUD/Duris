@@ -31,10 +31,16 @@ struct participant
 	P_char pointer;
 	uint64_t runtime_id;
 
-	P_char live() const
+	P_char present() const
 	{
 		P_char ch = find_character_by_runtime_id(runtime_id);
-		return ch == pointer && IS_ALIVE(ch) ? ch : nullptr;
+		return ch == pointer ? ch : nullptr;
+	}
+
+	P_char live() const
+	{
+		P_char ch = present();
+		return IS_ALIVE(ch) ? ch : nullptr;
 	}
 };
 
@@ -222,14 +228,22 @@ forced_move_result move_forced(P_char actor, P_char victim, int direction,
 	const participant kicker{ actor, actor->runtime_id };
 	const participant target{ victim, victim->runtime_id };
 	const int source = victim->in_room;
-	if (!at_source(kicker, source) || !at_source(target, source) || !valid_room(source))
+	const bool actor_was_alive = IS_ALIVE(actor);
+	// A guardian's CMD_DEATH burst has a dead, still-registered source. A source
+	// that was alive must remain alive; every moved character must always be alive.
+	auto actor_at_source = [&]()
+	{
+		P_char ch = kicker.present();
+		return ch && ch->in_room == source && (!actor_was_alive || IS_ALIVE(ch));
+	};
+	if (!actor_at_source() || !at_source(target, source) || !valid_room(source))
 		return { forced_move_status::interrupted };
 	forced_exit plan{};
 	const forced_block blocked = plan_exit(victim, source, direction, plan);
 	if (blocked != forced_block::none)
 		return { forced_move_status::blocked, blocked };
 	char_from_room(victim);
-	if (!at_source(kicker, source))
+	if (!actor_at_source())
 	{
 		recover(kicker, source);
 		recover(target, source);
@@ -247,7 +261,7 @@ forced_move_result move_forced(P_char actor, P_char victim, int direction,
 	departure();
 	const bool entered = char_to_room(target.live(), plan.destination, direction);
 	P_char moved = target.live();
-	if (entered && moved && moved->in_room == plan.destination && at_source(kicker, source))
+	if (entered && moved && moved->in_room == plan.destination && actor_at_source())
 		return { forced_move_status::arrived };
 	recover(target, source);
 	return { forced_move_status::interrupted };

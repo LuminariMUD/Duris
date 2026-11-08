@@ -44,8 +44,8 @@ static std::vector<P_char> live;
 static std::list<char_link_data> links;
 static std::vector<std::string> fixture_messages;
 static bool lance_present=true, mounted_during_entry;
-static int damage_calls;
-enum class Hook { none, veto, seal, lose_passdoor, redirect, extract, kill, remove_weapon, remove_actor };
+static int damage_calls, reschedules;
+enum class Hook { none, veto, seal, lose_passdoor, redirect, extract, kill, remove_weapon, remove_actor, redirect_actor };
 static Hook leave_hook, enter_hook;
 static P_char hook_target;
 static obj_data lance{};
@@ -57,7 +57,7 @@ bool check_castle_walls(int,int) { return castle_wall; }
 int check_wall(int,int) { return spell_wall; }
 void act(const char *text,int,P_char ch,P_obj,void *target,int) { assert(!ch || char_in_list(ch)); assert(!target || char_in_list(static_cast<P_char>(target))); fixture_messages.emplace_back(text); }
 void send_to_char(const char *text,P_char ch) { assert(char_in_list(ch)); fixture_messages.emplace_back(text); }
-void CharWait(P_char,int) {}
+void CharWait(P_char ch,int) { assert(char_in_list(ch) && IS_ALIVE(ch)); }
 int number(int low,int high) {
  if(rng_route==4 && low==0 && high==4) return 3;
  if(rng_route==1 && low==0 && high==100) return 100; // fail nexus agility dodge
@@ -110,6 +110,19 @@ void gmcp_char_vitals(P_char) {}
 
 
 
+int cast_as_damage_area(P_char ch,void (*spell)(int,P_char,char*,int,P_char,P_obj),int level,P_char,float,float) {
+ spell(level,ch,nullptr,0,&target,nullptr); return 1;
+}
+void zone_spellmessage(int room,bool,const char*,const char*) { assert(room>=0 && room<=top_of_world); }
+bool StatSave(P_char,int,int) { assert(false); return true; }
+bool make_wet(P_char,int) { assert(false); return false; }
+void spell_earthen_rain(int,P_char,char*,int,P_char,P_obj) { assert(false); }
+void spell_greater_earthen_grasp(int,P_char,char*,int,P_char,P_obj) { assert(false); }
+void spell_scathing_wind(int,P_char,char*,int,P_char,P_obj) { assert(false); }
+nevent_schedule_result add_event(event_func,int,P_char ch,P_char,P_obj,int,const void*,int) {
+ assert(char_in_list(ch) && IS_ALIVE(ch)); ++reschedules;
+ return {nevent_schedule_status::scheduled,{}};
+}
 void logit(const char*,const char*,...) {}
 P_obj find_live_object(P_obj obj,uint64_t uid) { return lance_present && obj==&lance && obj->obj_uid==uid ? obj:nullptr; }
 P_char find_character_by_runtime_id(uint64_t id) {
@@ -187,10 +200,12 @@ bool char_to_room(P_char ch,int room,int dir) {
   if(hook==Hook::kill) { SET_POS(ch,STAT_DEAD); return false; }
   if(hook==Hook::remove_weapon) lance_present=false;
   if(hook==Hook::remove_actor) forget(&actor);
+  if(hook==Hook::redirect_actor) place(&actor,2);
  }
  return true;
 }
 '''
+prelude += re.search(r'struct fury_data\n\{.*?\n};', (root/'src/magic/smagic.c').read_text(), re.S)[0]+'\n'
 prelude += re.search(r'^#define BANISHMENT_HOLY_WORD.*$', (root/'src/magic/magic.c').read_text(), re.M)[0]+'\n'
 prelude += (root/'src/cmd/actoff.c').read_text().split('#include')[0]
 functions=[extract_function('affects.c','P_char get_linked_char('),
@@ -201,6 +216,7 @@ for m in re.finditer(r'static (?:int|double) (tempest_\w+)\(',text):
  name=m.group(1)
  functions.append(extract_function('ethermancer.c',m.group()))
 functions.append(extract_function('ethermancer.c','void spell_single_tempest('))
+functions.append(extract_function('ethermancer.c','void spell_tempest('))
 functions.append(extract_function('nexus_stones.c','void nexus_guardian_energy_burst('))
 functions.append(extract_function('magic.c','void spell_oldjudgement('))
 functions.append(extract_function('specs.mobile.c','int conj_specpet_golem('))
@@ -208,11 +224,13 @@ text=(root/'src/cmd/actoff.c').read_text()
 for m in re.finditer(r'static (?:int|double) (lance_charge_\w+)\(',text):
  functions.append(extract_function('actoff.c',m.group()))
 functions.append(extract_function('actoff.c','void lance_charge('))
+for signature in ['static int elemental_fury_level(', 'static int elemental_fury_interval(', 'void event_elemental_fury(']:
+ functions.append(extract_function('smagic.c',signature))
 
 driver = r'''
 static void reset(int route,unsigned flags,unsigned pass_mask) {
  actor={}; target={}; mount={}; witness={}; lance={}; links.clear(); live.clear(); fixture_messages.clear();
- for(auto &room:rooms) room={}; north={}; placements=damage_calls=0; character_removal_generation=0;
+ for(auto &room:rooms) room={}; north={}; placements=damage_calls=reschedules=0; character_removal_generation=0;
  rng_route=route; castle_wall=spell_wall=false; lance_present=true;
  leave_hook=enter_hook=Hook::none; hook_target=nullptr; mounted_during_entry=false;
  int id=0;
@@ -234,7 +252,7 @@ static void reset(int route,unsigned flags,unsigned pass_mask) {
  if(route==4) link_char(&actor,&mount,LNK_RIDING);
 }
 static void run(int route) {
- if(route==0) spell_single_tempest(56,&actor,nullptr,0,&target,nullptr);
+ if(route==0) spell_tempest(56,&actor,nullptr,0,&target,nullptr);
  else if(route==1) nexus_guardian_energy_burst(&actor,false);
  else if(route==2) spell_oldjudgement(56,&actor,nullptr,nullptr);
  else if(route==3) { actor.specials.fighting=&target; conj_specpet_golem(&actor,nullptr,0,nullptr); }
@@ -336,6 +354,21 @@ int main() {
   reset(4,0,7); hook_target=&mount; enter_hook=hook; run(4); ++cases;
   assert(actor.in_room==1 && target.in_room==1 && !GET_MOUNT(&actor) && damage_calls==0);
  }
+ // CMD_DEATH dispatch runs after the guardian is marked dead; only the victim moves.
+ for(unsigned flags : {unsigned(EX_CLOSED),sealed}) {
+  reset(1,flags,2); SET_POS(&actor,STAT_DEAD); run(1); ++cases;
+  assert(target.in_room==(flags==sealed?0:1));
+ }
+ // The periodic caller must not reschedule itself after a Squall entry script invalidates its caster.
+ for(const Hook hook:{Hook::none,Hook::remove_actor,Hook::redirect_actor}) {
+  reset(0,0,7); hook_target=&target; enter_hook=hook;
+  fury_data fury{0,3}; event_elemental_fury(&actor,nullptr,nullptr,&fury); ++cases;
+  assert(reschedules==(hook==Hook::none?1:0));
+ }
+ // The indoor post-cast message has no target reference after an arrival hook removes one.
+ reset(0,0,7); rooms[0].sector_type=SECT_INSIDE; hook_target=&target; leave_hook=Hook::extract;
+ spell_tempest(56,&actor,nullptr,0,&target,nullptr); ++cases;
+ assert(char_in_list(&actor) && !char_in_list(&target));
  // A weapon removed by arrival scripts must not be dereferenced after movement.
  reset(4,0,7); hook_target=&actor; enter_hook=Hook::remove_weapon; run(4); ++cases;
  assert(actor.in_room==1 && target.in_room==1 && mount.in_room==1 && damage_calls==0);

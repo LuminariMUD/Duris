@@ -792,12 +792,20 @@ void event_elemental_fury(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *dat
 		spell_scathing_wind(elemental_fury_level(ch), ch, NULL, SPLDAM_FIRE, NULL, NULL);
 		break;
 	case 3:
+	{
+		const uint64_t caster_runtime_id = ch->runtime_id;
+		const int source_room = ch->in_room;
 		act("&+CThe winds abruptly drop below freezing, blowing in the icy chill of the north!&n",
 		    FALSE, ch, 0, 0, TO_ROOM);
 		act("&+CThe winds abruptly drop below freezing, blowing in the icy chill of the north!&n",
 		    FALSE, ch, 0, 0, TO_CHAR);
 		spell_tempest(elemental_fury_level(ch), ch, NULL, SPELL_TYPE_SPELL, NULL, NULL);
+		// Squall's arrival hooks may remove or redirect the caster.
+		if (find_character_by_runtime_id(caster_runtime_id) != ch || !IS_ALIVE(ch) ||
+		    ch->in_room != source_room)
+			return;
 		break;
+	}
 	default:
 		return;
 	}
