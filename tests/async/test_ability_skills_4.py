@@ -731,8 +731,8 @@ static void check_pages() {
                            "  condition, and otherwise 1 in 41 brings strong magic.\n"
                            "  Each of its first 3 affects improves by: 5\n"
                            "  Stat maximums and saving throws improve by: 2\n"
-                           "  Armor is multiplied by: 2\n"
-                           "    (later affects on the item also carry the total so far)\n"
+                           "  Armor always improves, with larger gains at high skill.\n"
+                           "  Each affect improves independently, up to its limit of -120 or +120.\n"
                            "  It takes a repairable item in perfect condition, and no artifacts.\n");
     EXACT(slip_facts, "  Chance to slip something to someone: 100 less its weight, in 100\n"
                       "    Less, while you fight: 20\n"

@@ -122,13 +122,13 @@ static int spellbind_condition_loss(const Rolls &rolls)
 // What spellbinding adds to an item's affects.
 static int spellbind_bonus(int skill)
 {
-	return skill / 20;
+	return MAX(1, skill / 20);
 }
 
-// What it adds to a stat maximum, takes off a save, and multiplies armor by.
+// The fine improvement for stat maximums, saves and armor scaling.
 static int spellbind_fine_bonus(int skill)
 {
-	return skill / 50;
+	return MAX(1, skill / 50);
 }
 
 struct spellbind_context
@@ -168,7 +168,7 @@ void spellbind_committed(P_char ch, bool committed, const epic_command_result &,
 		return;
 	}
 	act("You successfully bind some magic to the item...", FALSE, ch, 0, 0, TO_CHAR);
-	int total = 0;
+	int strong_bonus = 0;
 	if (!spellbind_success_damage_roll(live_rolls) && !IS_TRUSTED(ch))
 	{
 		set_obj_condition(item, item->condition - (spellbind_condition_loss(live_rolls)));
@@ -178,34 +178,27 @@ void spellbind_committed(P_char ch, bool committed, const epic_command_result &,
 	{
 		setsuffix_obj_new(item);
 		act("...you feel &+YSTRONG&n magic flowing this time...", FALSE, ch, 0, 0, TO_CHAR);
-		total = 1;
+		strong_bonus = 1;
 	}
 	SET_BIT(item->extra_flags, ITEM_NOREPAIR | ITEM_NOLOCATE);
 	for (int index = 0; index < 3; ++index)
 	{
-		if (item->affected[index].location >= APPLY_LUCK_MAX ||
-		    item->affected[index].modifier == 0 || item->affected[index].modifier >= 120 ||
-		    item->affected[index].modifier <= -120)
+		auto &affect = item->affected[index];
+		if (affect.location >= APPLY_LUCK_MAX || affect.modifier == 0 ||
+		    affect.modifier >= 120 || affect.modifier <= -120)
 			continue;
 		const int bonus = spellbind_bonus(context.skill);
-		if (is_stat_max(item->affected[index].location))
-			total += item->affected[index].modifier +
-				 spellbind_fine_bonus(context.skill);
-		else if (is_neg_good(item->affected[index].location))
-		{
-			if (item->affected[index].location >= APPLY_SAVING_PARA &&
-			    item->affected[index].location <= APPLY_SAVING_SPELL)
-				total = item->affected[index].modifier - total -
-					spellbind_fine_bonus(context.skill);
-			else if (item->affected[index].location == APPLY_ARMOR)
-				total = item->affected[index].modifier *
-					(spellbind_fine_bonus(context.skill) + total);
-			else
-				total = item->affected[index].modifier + total + bonus;
-		}
-		else
-			total = item->affected[index].modifier + total + bonus;
-		item->affected[index].modifier = total;
+		int improvement = bonus + strong_bonus;
+		if (is_stat_max(affect.location) ||
+		    (affect.location >= APPLY_SAVING_PARA && affect.location <= APPLY_SAVING_SPELL))
+			improvement = spellbind_fine_bonus(context.skill) + strong_bonus;
+		else if (affect.location == APPLY_ARMOR)
+			improvement =
+				MAX(1, abs(affect.modifier) * (spellbind_fine_bonus(context.skill) +
+							       strong_bonus - 1));
+		const int total = affect.modifier +
+				  (is_neg_good(affect.location) ? -improvement : improvement);
+		affect.modifier = BOUNDED(-120, total, 120);
 	}
 	char description[MAX_STRING_LENGTH];
 	snprintf(description, sizeof(description), "%s %s", item->name, GET_NAME(ch));
@@ -1045,8 +1038,8 @@ std::string spellbind_facts(P_char ch)
 		    std::to_string(spellbind_bonus(skill))) +
 	       fact("Stat maximums and saving throws improve by",
 		    std::to_string(spellbind_fine_bonus(skill))) +
-	       fact("Armor is multiplied by", std::to_string(spellbind_fine_bonus(skill))) +
-	       "    (later affects on the item also carry the total so far)\n"
+	       "  Armor always improves, with larger gains at high skill.\n"
+	       "  Each affect improves independently, up to its limit of -120 or +120.\n"
 	       "  It takes a repairable item in perfect condition, and no artifacts.\n";
 }
 
@@ -1054,13 +1047,9 @@ void do_spellbind(P_char ch, char *argument, int /*cmd*/)
 {
 	char arg[MAX_STRING_LENGTH];
 	char buf[MAX_STRING_LENGTH];
-	char tempbuf[MAX_STRING_LENGTH];
 	P_obj item;
-	bool neggood;
 	int total_epic_points = GET_EPIC_POINTS(ch);
-	int bonus;
 	int skill = GET_CHAR_SKILL(ch, SKILL_SPELLBIND);
-	int total = 0;
 
 	if (!IS_ALIVE(ch))
 		return;
@@ -1148,93 +1137,6 @@ void do_spellbind(P_char ch, char *argument, int /*cmd*/)
 				     critical_deadline_class::interactive, spellbind_committed,
 				     &context, sizeof(context)))
 		send_to_char("The epic transaction service is busy. Please try again.\n", ch);
-	return;
-
-	if (!number(0, 2) && !IS_TRUSTED(ch))
-	{
-		item->condition = item->condition - number(1, 20);
-		act("...however, you damaged it a bit...", FALSE, ch, 0, 0, TO_CHAR);
-	}
-	// Once in a while give a bonus to skill -- Unless you're an immortal, then you always get the bonus.
-	else if (!number(0, 40) || IS_TRUSTED(ch))
-	{
-		setsuffix_obj_new(item);
-		act("...you feel &+YSTRONG&n magic flowing this time...", FALSE, ch, 0, 0, TO_CHAR);
-		total += 1;
-	}
-
-	SET_BIT(item->extra_flags, ITEM_NOREPAIR);
-
-	// The nolocate flag allows imms to lookup. Not creating a new flag.
-	if (!IS_SET(item->extra_flags, ITEM_NOLOCATE))
-		SET_BIT(item->extra_flags, ITEM_NOLOCATE);
-
-	for (int i = 0; i < 3; i++)
-	{
-		bonus = 0;
-		total = 0;
-		neggood = is_neg_good(item->affected[i].location);
-
-		// Don't want to mess with race max, pulse or bad applies etc...
-		if (item->affected[i].location >= APPLY_LUCK_MAX)
-			continue;
-
-		// Applying the bonus to a zero value is pointless.
-		if (item->affected[i].modifier == 0)
-			continue;
-
-		// High and low values are hazardous since the values
-		// roll over into positive and negative.
-		if (item->affected[i].modifier >= 120)
-			continue;
-
-		if (item->affected[i].modifier <= -120)
-			continue;
-
-		bonus = (int)(skill / 20);
-
-		// Limiting stat max modifiers otherwise it'll get out of
-		// control real quickly.
-		if (is_stat_max(item->affected[i].location))
-		{
-			total += item->affected[i].modifier + ((int)(skill / 50));
-		}
-		else if (neggood)
-		{
-			if (item->affected[i].location >= APPLY_SAVING_PARA &&
-			    item->affected[i].location <= APPLY_SAVING_SPELL)
-			{
-				total = item->affected[i].modifier + ((total * -1) - (skill / 50));
-			}
-			else if (item->affected[i].location == APPLY_ARMOR)
-			{
-				total = (int)(item->affected[i].modifier *
-					      ((int)(skill / 50) + total));
-			}
-			else
-			{
-				total = (int)(item->affected[i].modifier - (-total - bonus));
-			}
-		}
-		else
-		{
-			total = (int)(item->affected[i].modifier + total + bonus);
-		}
-		item->affected[i].modifier = total;
-	}
-
-	snprintf(tempbuf, MAX_STRING_LENGTH, "%s %s", item->name, GET_NAME(ch));
-	set_keywords(item, tempbuf);
-	if (IS_RACEWAR_GOOD(ch))
-		snprintf(tempbuf, MAX_STRING_LENGTH, "%s &+yenc&+Yha&+ynted by &+L%s&n",
-			 item->short_description, GET_NAME(ch));
-	else if (IS_RACEWAR_EVIL(ch))
-		snprintf(tempbuf, MAX_STRING_LENGTH, "%s &+renc&+Rha&+rnted by &+L%s&n",
-			 item->short_description, GET_NAME(ch));
-	else
-		snprintf(tempbuf, MAX_STRING_LENGTH, "%s &+wenc&+Wha&+wnted by &+L%s&n",
-			 item->short_description, GET_NAME(ch));
-	set_short_description(item, tempbuf);
 }
 
 static int encrust_lag()
