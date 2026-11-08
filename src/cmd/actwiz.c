@@ -12372,7 +12372,9 @@ struct line_info
 // To sort the players by zone in where command using qsort.
 int where_compare(const void *line1, const void *line2)
 {
-	return ((line_info *)line1)->room_number > ((line_info *)line2)->room_number;
+	const int room1 = ((const line_info *)line1)->room_number;
+	const int room2 = ((const line_info *)line2)->room_number;
+	return (room1 > room2) - (room1 < room2);
 }
 
 // Does a lookup and shows where things are in game.
@@ -12389,7 +12391,7 @@ void do_where(P_char ch, char *argument, int /*cmd*/)
 	P_char t_ch;
 
 	int line_count;
-	struct line_info lines[MAX_CONNECTIONS];
+	struct line_info lines[MAX_CONNECTIONS + 1]; // One extra row for the truncation warning.
 
 	buf[0] = 0;
 	length = 0;
@@ -12412,6 +12414,7 @@ void do_where(P_char ch, char *argument, int /*cmd*/)
 	if (!*argument)
 	{
 		strcpy(buf, "Players:\n--------\n");
+		send_to_char(buf, ch);
 
 		for (d = descriptor_list; d; d = d->next)
 		{
@@ -12510,6 +12513,7 @@ void do_where(P_char ch, char *argument, int /*cmd*/)
 			strcpy(buf, "Players (&+Rbuggy&n):\n--------------\n");
 		}
 
+		send_to_char(buf, ch);
 		for (d = descriptor_list; d; d = d->next)
 		{
 			t_ch = d->character;
@@ -12675,6 +12679,7 @@ void do_where(P_char ch, char *argument, int /*cmd*/)
 	if (is_abbrev(argument, "zone"))
 	{
 		strcpy(buf, "Players in this zone:\n---------------------\n");
+		length = strlen(buf);
 
 		for (d = descriptor_list; d; d = d->next)
 		{
@@ -12706,6 +12711,7 @@ void do_where(P_char ch, char *argument, int /*cmd*/)
 						snprintf(buf2, MAX_STRING_LENGTH,
 							 "   ...the list is too long...\n");
 						strcat(buf, buf2);
+						break;
 					}
 					strcat(buf, buf2);
 					length = strlen(buf);
@@ -12716,7 +12722,10 @@ void do_where(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 	else if (is_abbrev(argument, "trap"))
+	{
 		do_traplist(ch, argument, 0);
+		return;
+	}
 
 	args = one_argument(argument, buf);
 	if (is_abbrev(buf, "stat"))

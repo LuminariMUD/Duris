@@ -6126,17 +6126,6 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		if (type == WALL_OF_STONE || type == WALL_OF_BONES || type == WATCHING_WALL ||
 		    type == WALL_OF_ICE)
 			dam = GET_DAMROLL(ch);
-		else if (type == WATCHING_WALL && illusionist && IS_ALIVE(illusionist) &&
-			 GET_PID(illusionist) == obj->value[5])
-		{
-			dam = GET_DAMROLL(ch);
-			if (ch->in_room != illusionist->in_room && !number(0, 1))
-			{
-				send_to_char("&+WYou receive a vision from elsewhere.\r\n",
-					     illusionist);
-				new_look(illusionist, "", CMD_LOOK, obj->loc.room);
-			}
-		}
 		else if (type == WALL_OF_IRON)
 			dam = GET_DAMROLL(ch) / 2;
 		else if (type == WALL_OF_FORCE)
