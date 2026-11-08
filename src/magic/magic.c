@@ -25210,6 +25210,9 @@ void event_apocalypse(P_char ch, [[maybe_unused]] P_char victim, P_obj /*obj*/, 
 				{
 					spell_wither(GET_LEVEL(ch), ch, 0, SPELL_TYPE_SPELL, tch,
 						     0);
+					// Wither can kill undead.
+					if (!IS_ALIVE(tch))
+						continue;
 				}
 
 				if (!number(0, 2))

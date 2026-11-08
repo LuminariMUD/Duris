@@ -4427,6 +4427,9 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 	// Just making sure.
 	if (!ch || !victim)
 		return DAM_NONEDEAD;
+	// A target killed earlier in the same effect has already lost its NPC data.
+	if (!IS_ALIVE(victim))
+		return DAM_VICTDEAD;
 	if (training_dummy_is(ch))
 		return DAM_NONEDEAD;
 	if (collector_presence_is_npc(ch) || collector_presence_is_npc(victim))
