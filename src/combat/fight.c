@@ -176,10 +176,16 @@ float biofeedback_melee_share()
 	return get_property("damage.reduction.biofeedback", 0.65);
 }
 
-// The share of what is left of a melee hit that stone skin lets through. Shadow shield shares it.
+// The share of what is left of a melee hit that stone skin lets through.
 float stone_skin_melee_share()
 {
 	return get_property("damage.reduction.stoneSkin", 0.75);
+}
+
+// The share of what is left of a melee hit that shadow shield lets through.
+float shadow_shield_melee_share()
+{
+	return get_property("damage.reduction.shadowShield", 0.70);
 }
 
 // What barkskin multiplies fire damage by.
@@ -5617,7 +5623,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	}
 	else if (affected_by_spell(victim, SPELL_SHADOW_SHIELD) && !(flags & PHSDAM_NOREDUCE))
 	{
-		reduction = 1. - stone_skin_melee_share();
+		reduction = 1. - shadow_shield_melee_share();
 		skin = SPELL_SHADOW_SHIELD;
 	}
 	else if (affected_by_spell(victim, SPELL_IRONWOOD) && !(flags & PHSDAM_NOREDUCE))
