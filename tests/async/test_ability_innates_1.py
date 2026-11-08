@@ -581,7 +581,7 @@ PALADIN_PAGES = r"""
   Its hitroll loss: its hitroll * 56 / 60
   For: 20-21 game hours (25-26.25 minutes)
   Worst roar, 1 in 101: your hitroll loss: your hitroll * its level / 100
-  And the target's armor class: +1 + its level / 2
+  And your armor class: +1 + its level / 2
   For: 24-25 game hours (30-31.25 minutes)
   Uses: 1 before it rests
   Rest: all uses return 12 minutes after the first

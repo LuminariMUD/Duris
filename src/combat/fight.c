@@ -7632,6 +7632,17 @@ static std::string weapon_skill_lines(P_char ch, int rating)
 		    chance_under(weapon_fumble_check(ch, checked) + 1, 1, 101));
 }
 
+// A reaver's combat round runs longer with some weapons.
+static std::string reaver_round_line(const char *reaver, float penalty)
+{
+	if (penalty <= 0)
+		return "";
+	char pulses[32];
+	snprintf(pulses, sizeof(pulses), "%g", penalty);
+	return std::string("  As ") + reaver + ", one makes your combat round " + pulses +
+	       " pulses longer.\n";
+}
+
 std::string one_h_flaying_facts(P_char ch)
 {
 	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_1H_FLAYING)) +
@@ -7640,8 +7651,12 @@ std::string one_h_flaying_facts(P_char ch)
 
 std::string two_h_flaying_facts(P_char ch)
 {
+	extern float flame_reaver_2h_penalty();
 	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_2H_FLAYING)) +
-	       "  A flaying weapon can't be parried, and you can't parry wielding one first.\n";
+	       "  A flaying weapon can't be parried, and you can't parry wielding one first.\n" +
+	       (GET_SPEC(ch, CLASS_REAVER, SPEC_FLAME_REAVER) ?
+			reaver_round_line("a flame reaver", flame_reaver_2h_penalty()) :
+			"");
 }
 
 std::string one_h_piercing_facts(P_char ch)
@@ -7655,17 +7670,6 @@ std::string one_h_slashing_facts(P_char ch)
 		return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_1H_SLASHING)) +
 		       "    (with a short sword: as a thief, any other blade counts as rating 0)\n";
 	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_1H_SLASHING));
-}
-
-// A reaver's combat round runs longer with some weapons.
-static std::string reaver_round_line(const char *reaver, float penalty)
-{
-	if (penalty <= 0)
-		return "";
-	char pulses[32];
-	snprintf(pulses, sizeof(pulses), "%g", penalty);
-	return std::string("  As ") + reaver + ", one makes your combat round " + pulses +
-	       " pulses longer.\n";
 }
 
 std::string one_h_bludgeon_facts(P_char ch)
@@ -11176,7 +11180,7 @@ void perform_violence(void)
 				// 10% chance on shaman spell knowledge + 5% POW modifier
 				if (((1 +
 				      (GET_CHAR_SKILL(opponent, SKILL_SPELL_KNOWLEDGE_SHAMAN) / 10) +
-				      (GET_C_POW(ch) / 20))) >= number(1, 100))
+				      (GET_C_POW(opponent) / 20))) >= number(1, 100))
 				{
 					act("You smell &+rblood&n as you maneuver your &+Gdr&+Lag&+Gon&n into battle!",
 					    FALSE, opponent, 0, 0, TO_CHAR);
