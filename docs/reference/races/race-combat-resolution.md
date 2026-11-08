@@ -248,11 +248,15 @@ For example, the saturated stored caps are Gnome 40, Human 50, Ogre 75, before
 adding their STR contributions. Float rounding can affect an integer boundary;
 the current Troll factor 1.18 produces a stored cap 58 in the executed fixture.
 
-The old `damage.totalOutput.racial.*` properties are inactive: the loader
-forces the racial output factor to 1. Class factors are active, and multiclass
-PCs use the larger of their two class factors. The all-race table below records
-the active damroll factors rather than implying the obsolete output values
-still compensate racial tempo.
+Follow-up on 2026-11-09: `damage.totalOutput.racial.*` is active with every
+shipped entry reset to **1.000**, including NPC races; absent racial entries also
+use 1.000. This preserves the previous neutral racial output. Class factors are
+unchanged, and multiclass PCs use the larger of their two class factors. Racial
+and class factors multiply. Non-neutral factors appear as signed passive entries
+in `race innates` and `class innates`; these apply to ordinary melee (including
+unarmed attacks), archery and explicit consumers, not every spell or special
+attack. See [modifier transparency](race-misc.md#3-visible-racial-and-class-attack-damage-modifiers).
+The all-race table below records the separate damroll-cap factors.
 [Damroll cap](../../../src/magic/affects.c#L929),
 [table loading](../../../src/magic/affects.c#L3470),
 [class selection](../../../src/magic/affects.c#L1920).

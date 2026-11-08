@@ -12992,8 +12992,9 @@ valid classes and their available specializations, racial stat factors and
 combat/spell speed. Its class list uses the current character creation
 restrictions, including enabled classes.
 
-Race innates lists only that race's abilities, including abilities gained at
-later levels. An asterisk marks a passive ability. Use help <ability name> for
+Race innates lists that race's abilities, including abilities gained at
+later levels. A nonzero melee and archery damage bonus or penalty is also
+shown as a passive feature; see help attack damage modifiers. An asterisk marks a passive ability. Use help <ability name> for
 details about an innate, or help <race name> for more lore and racial traits.
 
 Multiword race names work without quotes, such as race info mountain dwarf.
@@ -27967,7 +27968,8 @@ use skills <class or specialization> and spells <class or specialization>.
 
 Use specialize at level 30. See help specialization for requirements.
 Class innates lists inherited abilities, unlock levels, and active/passive
-markers. Use help <ability name> for usage, or race innates <race> for racial
+markers. Nonzero melee and archery damage bonuses or penalties are also
+shown; see help attack damage modifiers. Use help <ability name> for usage, or race innates <race> for racial
 abilities.
 
 Names accept case-insensitive full names, spaces/hyphens and unique prefixes.
@@ -28561,3 +28563,26 @@ deaths are exempt from this ordinary experience penalty; Liches have
 separate level-loss handling. Read 'help death' for death and corpse
 recovery, and 'help experience' for progression. 'exp' shows your
 current experience. A routine reboot does not impose a death penalty.
+
+#
+ATTACK DAMAGE MODIFIERS
+===========================================================================
+Race innates and class innates show a passive melee and archery damage bonus
+or penalty when it differs from zero. For example, +15% multiplies that
+attack's damage by 1.15; -17.5% multiplies it by 0.825. Neutral modifiers
+are omitted. These features are always applied when their attack qualifies;
+you do not need to activate or train them.
+
+They affect ordinary melee attacks, including unarmed attacks, and archery.
+Spells and special attacks have their own rules: backstab and the Monk's
+HP-based special hit do not use this modifier. It does not increase your
+accuracy, attack count or attack speed, and later defenses still apply.
+
+Racial and class modifiers multiply: +15% from both gives +32.25%, not +30%.
+Multiclass characters use the higher of their two class multipliers.
+Specializations use their base class modifier: Thief and Assassin use Rogue.
+
+Use race innates <race> or class innates <class or specialization> to view
+the current values. These modifiers are separate from your damroll limit.
+===========================================================================
+See also: RACE, CLASS, INNATE, MULTICLASS

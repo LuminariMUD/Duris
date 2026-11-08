@@ -4895,7 +4895,8 @@ use skills <class or specialization> and spells <class or specialization>.
 
 Use specialize at level 30. See help specialization for requirements.
 Class innates lists inherited abilities, unlock levels, and active/passive
-markers. Use help <ability name> for usage, or race innates <race> for racial
+markers. Nonzero melee and archery damage bonuses or penalties are also
+shown; see help attack damage modifiers. Use help <ability name> for usage, or race innates <race> for racial
 abilities.
 
 Names accept case-insensitive full names, spaces/hyphens and unique prefixes.
@@ -29411,5 +29412,30 @@ legend. Use info or a specialization catalog for specialization access.
 
 Skills, Race, Classes, Specialization, Multiclass, Spell circle, Cast,
 Memorize, Pray, Scribe
+
+#0
+
+Attack damage modifiers
+Attack damage modifiers - Last Edited: 2026-11-09
+============================================================
+Race innates and class innates show a passive melee and archery damage bonus
+or penalty when it differs from zero. For example, +15% multiplies that
+attack's damage by 1.15; -17.5% multiplies it by 0.825. Neutral modifiers
+are omitted. These features are always applied when their attack qualifies;
+you do not need to activate or train them.
+
+They affect ordinary melee attacks, including unarmed attacks, and archery.
+Spells and special attacks have their own rules: backstab and the Monk's
+HP-based special hit do not use this modifier. It does not increase your
+accuracy, attack count or attack speed, and later defenses still apply.
+
+Racial and class modifiers multiply: +15% from both gives +32.25%, not +30%.
+Multiclass characters use the higher of their two class multipliers.
+Specializations use their base class modifier: Thief and Assassin use Rogue.
+
+Use race innates <race> or class innates <class or specialization> to view
+the current values. These modifiers are separate from your damroll limit.
+===========================================================================
+See also: RACE, CLASS, INNATE, MULTICLASS
 
 #0

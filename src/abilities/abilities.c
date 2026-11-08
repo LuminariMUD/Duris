@@ -152,6 +152,17 @@ std::string share_percent(float share)
 	return std::to_string(std::lround(share * 100)) + "%";
 }
 
+std::string damage_modifier_innate(float multiplier)
+{
+	if (multiplier == 1.0f)
+		return "";
+	char percent[32];
+	// Preserve fractional bonuses (Monk is -17.5%) without float representation noise.
+	std::snprintf(percent, sizeof(percent), "%+.3g%%", (multiplier - 1.0) * 100.0);
+	return "*&+cMelee and archery damage:&n " + std::string(percent) +
+	       " (passive)\n  See &+Whelp attack damage modifiers&n for scope and stacking.\n";
+}
+
 std::string info_field(const std::string &label, const std::string &value)
 {
 	return "  &+c" + label + ":&n " + value + "\n";
