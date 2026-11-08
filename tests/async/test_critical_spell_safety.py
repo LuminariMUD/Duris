@@ -55,8 +55,9 @@ void affect_from_char(P_char ch, int) {
 }
 P_nevent get_scheduled(P_char, event_func_type) { return reinterpret_cast<P_nevent>(1); }
 void disarm_char_nevents(P_char, event_func_type) { ++disarmed; }
-nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, const void *, int) {
-    ++scheduled; return {};
+static P_char event_target;
+nevent_schedule_result add_event(event_func, int, P_char, P_char target, P_obj, int, const void *, int) {
+    ++scheduled; event_target = target; return {};
 }
 int spell_damage(P_char ch, P_char victim, double amount, int, uint, damage_messages *, int *) {
     ++damage_calls; last_damage = amount;
@@ -83,7 +84,14 @@ void char_from_room(P_char ch) { ch->in_room = NOWHERE; }
 bool char_to_room(P_char ch, int room, int) { ++moved; ch->in_room = room; return true; }
 void CharWait(P_char, int ticks) { waited += ticks; }
 void KnockOut(P_char, int) { assert(false); }
-static int weakened;
+static int weakened, stunned, fled;
+bool fear_check(P_char, bool) { return false; }
+void do_flee(P_char ch, char *, int) { assert(ch->in_room == 1); ++fled; }
+void Stun(P_char, P_char attacker, int, bool) { assert(attacker->in_room == 1); ++stunned; }
+void zone_spellmessage(int, bool, const char *, const char *) {}
+void send_to_room(const char *, int) {}
+P_char get_random_char_in_room(int, P_char, int) { return nullptr; }
+struct call_lightning_data { int room; int waves; int level; };
 int get_default_save_mod(P_char victim, P_char aggressor, int, int) {
     return victim->player.level - aggressor->player.level;
 }
@@ -116,6 +124,11 @@ affected_type *affect_to_char(P_char, affected_type *) { ++weakened; return null
     ('magic.c', 'static int frostbite_strength('),
     ('magic.c', 'static int frostbite_duration('),
     ('magic.c', 'void spell_frostbite('),
+    ('magic.c', 'static int call_lightning_damage('),
+    ('magic.c', 'static int call_lightning_stun('),
+    ('magic.c', 'static int call_lightning_more_strikes('),
+    ('magic.c', 'static int call_lightning_interval('),
+    ('magic.c', 'void event_call_lightning('),
 ]) + r'''
 static char_data alive() {
     char_data ch{};
@@ -277,6 +290,23 @@ static void frostbite() {
         if (result != DAM_CHARDEAD && result != DAM_BOTHDEAD) delete caster;
     }
 }
+static void call_lightning() {
+    release_on_damage = true;
+    for (int result : {DAM_NONEDEAD, DAM_VICTDEAD, DAM_CHARDEAD, DAM_BOTHDEAD}) {
+        auto caster = new char_data(alive()), victim = new char_data(alive());
+        caster->in_room = victim->in_room = 1;
+        call_lightning_data data{1, 0, 50};
+        damage_result = result;
+        stunned = fled = scheduled = 0;
+        event_target = victim;
+        event_call_lightning(caster, victim, nullptr, &data);
+        assert((stunned + fled != 0) == (result == DAM_NONEDEAD));
+        assert(scheduled == (result == DAM_NONEDEAD || result == DAM_VICTDEAD));
+        if (result == DAM_VICTDEAD) assert(!event_target); // A dead target is never rescheduled.
+        if (result != DAM_VICTDEAD && result != DAM_BOTHDEAD) delete victim;
+        if (result != DAM_CHARDEAD && result != DAM_BOTHDEAD) delete caster;
+    }
+}
 int main(int argc, char **argv) {
     assert(argc == 2);
     if (!std::strcmp(argv[1], "wave")) wave();
@@ -284,6 +314,7 @@ int main(int argc, char **argv) {
     else if (!std::strcmp(argv[1], "radial")) radial();
     else if (!std::strcmp(argv[1], "heavens")) heavens();
     else if (!std::strcmp(argv[1], "frostbite")) frostbite();
+    else if (!std::strcmp(argv[1], "lightning")) call_lightning();
     else assert(false);
     std::printf("PASS critical spell safety: %s\n", argv[1]);
 }
@@ -298,5 +329,5 @@ with tempfile.TemporaryDirectory(prefix='critical-spells-', dir=out) as temporar
                     '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
                     '-g', '-Isrc', str(cpp), '-o', str(binary)], cwd=ROOT, check=True)
     results = [subprocess.run([str(binary), case], timeout=30).returncode
-               for case in ('wave', 'golem', 'radial', 'heavens', 'frostbite')]
+               for case in ('wave', 'golem', 'radial', 'heavens', 'frostbite', 'lightning')]
     assert not any(results), results

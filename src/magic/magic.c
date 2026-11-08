@@ -5926,15 +5926,15 @@ void event_call_lightning(P_char ch, P_char vict, P_obj /*obj*/, void *data)
 	{
 		return;
 	}
-	else if (!fear_check(vict) && !IS_GREATER_RACE(vict) && !IS_ELITE(vict) &&
-		 result != DAM_VICTDEAD && !NewSaves(vict, SAVING_FEAR, 0))
+	else if (result == DAM_NONEDEAD && !fear_check(vict) && !IS_GREATER_RACE(vict) &&
+		 !IS_ELITE(vict) && !NewSaves(vict, SAVING_FEAR, 0))
 	{
 		send_to_char(
 			"The &+Rma&+rss&+Riv&+re &+mbolt&n of &+Clig&+ch&+Wtn&+Cing&n is intimidating!\n",
 			vict);
 		do_flee(vict, 0, 0);
 	}
-	else if (result != DAM_VICTDEAD && !IS_ELITE(vict) && !IS_GREATER_RACE(vict))
+	else if (result == DAM_NONEDEAD && !IS_ELITE(vict) && !IS_GREATER_RACE(vict))
 	{
 		Stun(vict, ch, call_lightning_stun(), TRUE);
 	}
@@ -5956,8 +5956,9 @@ void event_call_lightning(P_char ch, P_char vict, P_obj /*obj*/, void *data)
 				"&+WA clap of &+Lthunder&n &+Wbellows off to the %s.\n");
 		}
 
-		add_event(event_call_lightning, call_lightning_interval(), ch, vict, NULL, 0,
-			  clData, sizeof(struct call_lightning_data));
+		add_event(event_call_lightning, call_lightning_interval(), ch,
+			  result == DAM_VICTDEAD ? nullptr : vict, NULL, 0, clData,
+			  sizeof(struct call_lightning_data));
 	}
 	else
 	{

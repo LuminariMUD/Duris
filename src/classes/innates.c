@@ -5216,9 +5216,9 @@ void branch(P_char ch, P_char victim)
 	else
 	{
 		CharWait(victim, branch_target_lag());
-		melee_damage(ch, victim, branch_damage(ch), PHSDAM_NOENGAGE | PHSDAM_NOSHIELDS,
-			     &messages);
-		SET_POS(victim, POS_PRONE + GET_STAT(victim));
+		if (melee_damage(ch, victim, branch_damage(ch), PHSDAM_NOENGAGE | PHSDAM_NOSHIELDS,
+				 &messages) == DAM_NONEDEAD)
+			SET_POS(victim, POS_PRONE + GET_STAT(victim));
 	}
 	if (IS_NPC(ch) && IS_PC_PET(ch))
 		CharWait(ch, branch_pet_lag());
