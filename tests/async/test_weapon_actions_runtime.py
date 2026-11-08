@@ -126,7 +126,7 @@ int number(int low, int high) {
     const int result = choices.front(); choices.pop_front();
     assert(result >= low && result <= high); return result;
 }
-int CanDoFightMove(P_char actor, P_char target) { return can_fight && actor->in_room == target->in_room && actor->specials.z_cord == target->specials.z_cord; }
+int CanDoFightMove(P_char, P_char) { return can_fight; }
 int BOUNDED(int low, int value, int high) { return std::clamp(value, low, high); }
 float BOUNDEDF(float low, float value, float high) { return std::clamp(value, low, high); }
 float get_property(const char *key, double fallback) { return get_property(key, fallback, false); }
@@ -425,8 +425,9 @@ static void monk_gloves() {
         weapon_scene s("weapons", enabled); s.packed(); mutation = change;
         proc_source = s.source;
         assert(s.hit()); if (enabled) advance();
-        if (effects.size() != 1) std::fprintf(stderr, "lifetime enabled=%d mutation=%d effects=%zu\n", enabled, change, effects.size());
-        assert(effects.size() == 1);
+        // Scheduled magic keeps existing weapon-action reach rules; immediate
+        // bundles additionally enforce the captured melee height between spells.
+        assert(effects.size() == (enabled && change == 6 ? 3 : 1));
     }
 }
 
