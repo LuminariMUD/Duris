@@ -316,9 +316,10 @@ static int world_quest_roll_item_count(int quota)
 	// Every possible outcome must fit the existing snapshot object limit.
 	if (quota < 1 || static_cast<size_t>(quota) > PLAYER_SNAPSHOT_MAX_OBJECTS)
 		return 0;
+	// One guaranteed item plus these rolls averages 2N/(N+1) items.
 	int count = 1;
 	for (int kill = 1; kill < quota; ++kill)
-		if (number(1, 100) <= 10)
+		if (number(1, quota + 1) == 1)
 			++count;
 	return count;
 }
