@@ -270,7 +270,7 @@ void worker_main()
 		}
 		{
 			std::lock_guard<std::mutex> lock(pipeline_mutex);
-			if (cancelled_ids.erase(job.request.request_id))
+			if (cancelled_ids.count(job.request.request_id))
 				result.outcome = player_load_outcome::cancelled;
 			inflight_id = 0;
 			inflight_pid = 0;
@@ -444,6 +444,7 @@ bool player_load_pipeline_wait(player_load_request request, player_load_result *
 				*result_out = std::move(*found);
 				completions.erase(found);
 				active_ids.erase(request.request_id);
+				cancelled_ids.erase(request.request_id);
 				record_delivery_locked(request.request_id);
 				refresh_health_locked();
 				return true;

@@ -22,6 +22,10 @@ def run(binary):
     with tempfile.TemporaryDirectory(prefix="shaman-totems-", dir=build) as temporary:
         runtime = Path(temporary)
         journey.make_fixture(runtime)
+        # Combat-only scavengers must not steal the totems this journey drops.
+        zone = runtime / "areas_mini/mini.zon"
+        zone.write_text("".join(line for line in zone.read_text().splitlines(keepends=True)
+                                if not line.startswith(("M ", "G "))))
         # Give the fixture's quartz totem a neck slot to exercise non-hand equipment.
         objects = runtime / "areas_mini/mini.obj"
         before, quartz = objects.read_text().split("#111\n", 1)
