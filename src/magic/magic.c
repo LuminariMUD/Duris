@@ -2556,11 +2556,11 @@ P_char make_mirror(P_char ch)
 	image->specials.act |= ACT_SPEC_DIE;
 
 	int duration = setup_pet(image, ch, 30, PET_NOCASH);
-	/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+	/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 	if (duration >= 0)
 	{
-		duration += number(1, 10);
-		add_event(event_pet_death, (duration + 1) * 60 * 4, image, NULL, NULL, 0, NULL, 0);
+		const int delay = duration * PULSES_IN_TICK + (number(1, 10) + 1) * WAIT_MIN;
+		add_event(event_pet_death, delay, image, NULL, NULL, 0, NULL, 0);
 	}
 
 	/* string it */
@@ -4187,12 +4187,12 @@ void spell_summon_greater_demon(int level, P_char ch, P_char /*victim*/, P_obj /
 
 		int duration = setup_pet(mob, ch, 30, PET_NOCASH);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		/* if the pet will stop being charmed after a bit, also make it suicide 2-11 real minutes later */
 		if (duration >= 0)
 		{
-			duration += number(1, 10);
-			add_event(event_pet_death, (duration + 1) * 60 * 4, mob, NULL, NULL, 0,
-				  NULL, 0);
+			const int delay =
+				duration * PULSES_IN_TICK + (number(1, 10) + 1) * WAIT_MIN;
+			add_event(event_pet_death, delay, mob, NULL, NULL, 0, NULL, 0);
 		}
 	}
 }

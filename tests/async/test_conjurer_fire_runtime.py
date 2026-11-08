@@ -183,6 +183,8 @@ functions = [
     ('magic.c','void spell_solar_flare('),
 ]
 ether = source('ethermancer.c').read_text()
+# Charm lengths are game ticks: no summon may count them as real minutes.
+assert '(duration + 1) * 60 * 4' not in source('magic.c').read_text(errors='replace') + ether
 functions += [('ethermancer.c', match.group()) for match in re.finditer(
     r'^static int (?:conjured_elemental_|conjure_air_|conjure_void_|conjure_ice_)[^\n]+', ether, re.M)]
 functions += [('ethermancer.c', 'void '+name+'(') for name in
