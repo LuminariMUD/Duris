@@ -1655,7 +1655,7 @@ std::string jin_touch_facts(P_char ch)
 			    jin_touch_rated_damage(jin_touch_damage(highest_rolls, ch), rating) })) +
 		"    (past the target's armor and skin spells)\n" +
 		fact("Before you can chant it again", seconds(jin_touch_rest())) +
-		fact("Your lag", seconds(jin_touch_lag()) + ", even if it's still resting") +
+		fact("Your lag", seconds(jin_touch_lag())) +
 		fact("Your lag if you fail", seconds(jin_touch_failed_lag()));
 	if (rating >= jin_touch_weaken_rating())
 		text += fact("Target's armor class, on a further roll",

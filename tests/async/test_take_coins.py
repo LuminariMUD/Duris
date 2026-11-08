@@ -27,7 +27,7 @@ void LockerMovementAudit::Commit() {}
 
 
 
-struct bulk_get_state { std::vector<std::string> haul; };
+struct bulk_get_state { int32_t room = 0; std::vector<std::string> haul; };
 static std::string actor_text, room_text;
 static P_obj room_container = nullptr, extracted = nullptr;
 static int room_acts = 0, corpse_writes = 0, relabels = 0;
