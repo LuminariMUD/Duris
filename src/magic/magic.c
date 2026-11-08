@@ -2919,7 +2919,7 @@ void spell_elemental_swarm(int level, P_char ch, char * /*arg*/, int /*type*/, P
 	{
 		int duration = setup_pet(mob, ch, 1, PET_NOCASH | PET_NOORDER | PET_NOAGGRO);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		// Controlled combat summons last 5-30 real seconds, unless control is permanent.
 		if (duration >= 0)
 		{
 			duration = elemental_swarm_lifetime(live_rolls);
@@ -3384,7 +3384,7 @@ void spell_living_stone(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	{
 		int duration = setup_pet(mob, ch, 1, PET_NOCASH | PET_NOORDER | PET_NOAGGRO);
 		add_follower(mob, ch);
-		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+		// Controlled combat summons last 5-10 real seconds, unless control is permanent.
 		if (duration >= 0)
 		{
 			duration = living_stone_lifetime(live_rolls);
@@ -3506,7 +3506,7 @@ void spell_greater_living_stone(int level, P_char ch, char * /*arg*/, int /*type
 
 	int duration = setup_pet(mob, ch, 1, PET_NOCASH | PET_NOORDER | PET_NOAGGRO);
 	add_follower(mob, ch);
-	/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
+	// Greater Living Stone lasts 7-12 real seconds, unless control is permanent.
 	if (duration >= 0)
 	{
 		duration = greater_living_stone_lifetime(live_rolls);
@@ -4527,9 +4527,8 @@ void spell_bigbys_crushing_hand(int level, P_char ch, char * /*arg*/, int /*type
 	spell_damage(ch, victim, dam, SPLDAM_GENERIC, 0, &messages);
 }
 
-// Damage of one barrage missile, before the target's save: average ~45 per missile, so from
-// 135+ at 51 to 180 at 55 plus 25% chance of 225 at 56. Made damage level-independent,
-// since average number of missiles grows with level.
+// Damage of one barrage missile before saves/modifiers: 30d11 averages 180.
+// Damage is level-independent; the average missile count grows with level.
 static int missile_barrage_damage(const Rolls &rolls)
 {
 	return rolls.dice(30, 11);
@@ -16191,13 +16190,7 @@ void spell_barkskin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 static int grow_spike_damage(const Rolls &rolls, int level)
 {
 	int temp = MIN(20, (level / 2 + 1));
-	int dam = rolls.dice(6 * temp, 6);
-
-	if (level > 50)
-	{
-		dam = rolls.dice(6 * temp, 7);
-	}
-	return dam;
+	return rolls.dice(6 * temp, level > 50 ? 7 : 6);
 }
 
 // A successful save halves earth spike damage.
@@ -17724,7 +17717,8 @@ static int elemental_shield_duration()
 
 std::string elemental_shield_facts(P_char /*ch*/)
 {
-	return fact("Duration", game_hours(elemental_shield_duration()));
+	return fact("Duration", game_hours(elemental_shield_duration())) +
+	       "  Melee hits of 5 damage or less do not trigger shield retaliation.\n";
 }
 
 void spell_fireshield(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
@@ -20973,7 +20967,7 @@ void spell_dispel_magic(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 			return;
 		}
 
-		/* 5% chance of totally destroying the object <Cackle> */
+		/* 20% chance of totally destroying this eligible non-artifact magic object. */
 		if (!dispel_magic_destroy_roll(live_rolls) && !IS_TRUSTED(ch))
 		{
 			send_to_char("&+YUh oh!&N\n", ch);
@@ -24827,7 +24821,7 @@ void spell_vampire(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] in
 			{
 				stop_follower(tch);
 				setup_pet(tch, ch, 2, PET_NOORDER);
-				// force pets to die after 30 minutes when trance is cast, to remove the pet links
+				// Clean up pets after 1800 pulses (7.5 real minutes) to remove the pet links.
 				add_event(event_pet_death, 1800, tch, NULL, NULL, 0, NULL, 0);
 			}
 		}

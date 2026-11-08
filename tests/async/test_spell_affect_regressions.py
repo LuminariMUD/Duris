@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parents[2]
 bard = (SRC / "bard.c").read_text()
 psionics = (SRC / "psionics.c").read_text()
 magic = (SRC / "magic.c").read_text()
+score = (SRC / "actinf.c").read_text()
+assert score.count('strcat(buf, " &+GSong of &+WProtection&n");') == 1
 
 bard_start = index(bard, "void bard_sleep(int l,")
 bard_end = index(bard, "void bard_calm(", bard_start)

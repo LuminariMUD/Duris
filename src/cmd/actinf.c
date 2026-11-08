@@ -6668,9 +6668,6 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 	if (affected_by_spell(ch, SONG_PROTECTION))
 		strcat(buf, " &+GSong of &+WProtection&n");
 
-	if (affected_by_spell(ch, SONG_PROTECTION))
-		strcat(buf, " &+GSong of &+WProtection&n");
-
 	if (affected_by_spell(ch, SONG_REVELATION))
 		strcat(buf, " &+GSong of &+cR&+Ce&+cv&+Ce&+cl&+Ca&+ct&+Ci&+co&+Cn&n");
 

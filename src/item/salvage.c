@@ -516,7 +516,7 @@ void do_salvage(P_char ch, char *argument, int /*cmd*/)
 		checked_snprintf(debugBuf + strlen(debugBuf), MAX_STRING_LENGTH - strlen(debugBuf),
 				 ", Newcost(skill): %d", newcost);
 
-	// 67% chance to get 2 salvaged materials.
+	// One-in-three chance to get 2 salvaged materials.
 	if (!salvage_pieces_roll(live_rolls))
 	{
 		act("&+w...and at least you &+ysalvaged&n a decent amount.", FALSE, ch, 0, 0,
