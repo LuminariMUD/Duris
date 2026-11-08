@@ -127,5 +127,5 @@ For implementation acceptance, exercise all five routes plus normal walking, wit
 - Native ability reproduction: 45 scenarios completed under ASan/UBSan.
 - Native walking comparison: 8 door scenarios completed under ASan/UBSan.
 - Existing `test_water_shoreline_runtime.py`: passed.
-- Repository safe gate `make test-all`: running; final result will be recorded before handoff.
+- Repository safe gate `make test-all`: passed, including development/production builds, all 1,001 regressions (zero failures/timeouts/signals), and the native signal-handler check. The regression phase took 1,028.89 seconds. Existing combat edge cases, controlled flee, falling, and water shoreline runtime suites passed.
 - Runtime fix, deployment, and full ability journeys in a running game: follow-up work.
