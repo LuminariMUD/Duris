@@ -318,7 +318,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                 # bounded batches. Let it settle before injecting copyover faults.
                 deadline = time.monotonic() + 180
                 while True:
-                    status = command(client, 'world persistence')
+                    status = paged(client, 'world persistence', 'artifact_guild')
                     if re.search(r'artifact_guild .*dirty_artifacts=0 dirty_guilds=0 .*history_pending=0', status):
                         break
                     assert time.monotonic() < deadline, status
