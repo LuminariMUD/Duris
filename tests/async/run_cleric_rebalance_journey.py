@@ -48,16 +48,11 @@ def cast(client, spell, target, expected):
     return bytes(client.transcript[start:]).decode(errors='replace')
 
 
-def saved_affects(sql, inspector, state, pid):
-    if sql:
-        text = sql(f'SELECT type,duration,flags,modifier,location FROM player_affects WHERE pid={pid} ORDER BY id')
-        return [list(map(int, line.split('\t'))) for line in text.splitlines()]
-    return json.loads(subprocess.check_output([str(inspector), str(state), 'cleric-inspect', str(pid)], text=True))
+def saved_affects(sql, pid):
+    text = sql(f'SELECT type,duration,flags,modifier,location FROM player_affects WHERE pid={pid} ORDER BY id')
+    return [list(map(int, line.split('\t'))) for line in text.splitlines()]
 
-def seed_cleric(sql, inspector, state, pid, spec, level):
-    if not sql:
-        subprocess.run([str(inspector), str(state), 'cleric-seed', str(pid), str(spec), str(level)], check=True)
-        return
+def seed_cleric(sql, pid, spec, level):
     sql(f'UPDATE player_data SET level={level},highest_level={level},m_class=32,secondary_class=0,spec={spec},base_hit=2000,hit_diff=500 WHERE pid={pid}')
     sql(f'DELETE FROM player_skills WHERE pid={pid}; DELETE FROM player_affects WHERE pid={pid}')
     for number in SPELLS:
@@ -70,7 +65,7 @@ def seed_cleric(sql, inspector, state, pid, spec, level):
         sql(f"INSERT INTO player_affects(pid,type,duration,flags,modifier) VALUES({pid},{spell_id('TAG_MEMORIZE')},-1,{MEM_STORE},{number})")
 
 
-def run(binary, backend, inspector):
+def run(binary, backend):
     with tempfile.TemporaryDirectory(prefix='cleric-' + backend + '-', dir=ROOT / 'bin/tests') as temporary:
         root = Path(temporary)
         configure(root, False)
@@ -87,12 +82,8 @@ def run(binary, backend, inspector):
         # Copy the miniature scene and keep all saves/listeners inside this fixture.
         (root / 'help').symlink_to(ROOT / 'help', target_is_directory=True)
         with authority(backend, root) as (env, sql):
-            state = Path(env.get('FLATFILE_STATE_DIR', root / 'unused-state'))
-            if not sql:
-                (state / 'domains').mkdir(mode=0o700)
-                subprocess.run([str(inspector), str(state), 'seed-combat'], check=True)
             env['COPYOVER_STATE_FILE'] = str(root/'copyover.state')
-            server = Server(binary, root, state, 'cleric', env)
+            server = Server(binary, root, None, 'cleric', env)
             clients = []
             evidence = {'backend': backend,
                         'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
@@ -119,10 +110,10 @@ def run(binary, backend, inspector):
                 server.stop()
 
             def saved(pid):
-                return saved_affects(sql,inspector,state,pid)
+                return saved_affects(sql,pid)
 
             def seed(pid,spec,level):
-                seed_cleric(sql,inspector,state,pid,spec,level)
+                seed_cleric(sql,pid,spec,level)
 
             try:
                 server.start()
@@ -138,10 +129,7 @@ def run(binary, backend, inspector):
                     save(client, name)
                 print('Created Cleric party and staff', flush=True)
                 stop()
-                if sql:
-                    sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{journey.CHARACTER}'")
-                else:
-                    journey.make_overlord(state, journey.CHARACTER)
+                sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{journey.CHARACTER}'")
                 for pid in range(2,len(NAMES)+2):
                     seed(pid, 2 if pid < 4 else (3 if pid == 4 else 1), 56)
                 server.start()
@@ -274,10 +262,7 @@ def run(binary, backend, inspector):
                 stop()
                 # Shorten only the saved test timers to prove restored expiry
                 # without an eleven-minute wall-clock sleep in this journey.
-                if sql:
-                    sql('UPDATE player_affects SET duration=40 WHERE pid=2 AND (flags & 1) != 0')
-                else:
-                    subprocess.run([str(inspector),str(state),'cleric-expire','2'],check=True)
+                sql('UPDATE player_affects SET duration=40 WHERE pid=2 AND (flags & 1) != 0')
                 server.start()
                 healer = login(NAMES[0])
                 server.client = healer
@@ -302,8 +287,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--backend', choices=("mariadb",), default="mariadb")
-    parser.add_argument('--inspector', type=Path, default=ROOT/'bin/tests/cleric-inspector')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    result = run(args.binary.resolve(), args.backend, args.inspector.resolve())
+    result = run(args.binary.resolve(), args.backend)
     args.output.write_text(json.dumps(result, indent=2) + '\n')
