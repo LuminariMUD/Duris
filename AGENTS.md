@@ -14,6 +14,7 @@ Write the simplest code that fully solves the task. Build only what is needed no
 
 ## Working conventions
 
+- **Persistence:** MariaDB only - flat-file persistence is NOT supported
 - **Scope:** Keep changes narrow and follow the style of nearby code.
 - **Format:** `.clang-format` is authoritative for touched C/C++ code. `./scripts/format.sh` formats your changed lines; `--check` only verifies. `./scripts/install-hooks.sh` installs the hook that enforces it at commit time.
 - **Build:** Run `make -C src` after C/C++ changes. The executable is `bin/server/dms_new`. All compiled artifacts belong under `bin/` and must not be committed.
