@@ -45,7 +45,14 @@ with tempfile.TemporaryDirectory(prefix="auction-boot-cleanup-") as temporary:
                 assert child.poll() is None and time.monotonic() < deadline
                 time.sleep(.01)
             actual_wait = child.wait
-            child.wait = lambda timeout=None: actual_wait(timeout=.1)
+            wait_calls = 0
+
+            def wait(timeout=None):
+                nonlocal wait_calls
+                wait_calls += 1
+                return actual_wait(timeout=.1 if ignore_term and wait_calls == 1 else timeout)
+
+            child.wait = wait
             return child
 
         clock = iter((0, 181))
@@ -71,6 +78,6 @@ with tempfile.TemporaryDirectory(prefix="auction-boot-cleanup-") as temporary:
             for child in children:
                 if child.poll() is None:
                     child.kill()
-                child.wait()
+                subprocess.Popen.wait(child, timeout=10)
 
 print("failed auction boots reap cooperative and SIGTERM-ignoring children")
