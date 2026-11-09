@@ -347,7 +347,6 @@ for attempt in range(1, REPEATS + 1):
                         client = None
                         phase = output_path.stem + ":shutdown"
                         stop_server(process, output, output_path)
-                        # rtype is not stored on MariaDB; a camp shows as a saved holder.
                         assert_mace_owner(mace_uid, "player_items")
                 finally:
                     if client is not None:
@@ -386,8 +385,8 @@ for attempt in range(1, REPEATS + 1):
                     phase = "restart_recovery"
                     client = reconnect_character(
                         port,
-                        # rtype is always 0 on MariaDB, after a crash or a camp alike.
-                        return_message="Welcome to Duris",
+                        return_message=("Restoring items and pets from crash save info..." if CRASH_PHASE else
+                                        "You break camp and get ready to move on"),
                         expected_room=None,
                     )
                     client.send("inventory")

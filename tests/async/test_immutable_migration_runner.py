@@ -51,6 +51,8 @@ class FakeExecutor:
 class ImmutableMigrationRunnerTest(unittest.TestCase):
     def test_online_zone_story_parts_scope_and_lock_mode(self):
         manifest = runner.load_manifest()
+        # The online mode is sealed to the manifest that ended at 0061.
+        manifest = runner.replace(manifest, migrations=manifest.migrations[:62])
         step = manifest.migrations[-1]
         environment = {
             "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
