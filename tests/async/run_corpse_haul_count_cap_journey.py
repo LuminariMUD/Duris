@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
-"""Real server corpse haul at the item-count cap on both persistence backends."""
+"""Real server corpse haul at the item-count cap on MariaDB."""
 
 from pathlib import Path
-import os
 import signal
 import subprocess
 import sys
 import tempfile
 import time
-import uuid
 
 import test_flatfile_combat_journey as journey
 
@@ -57,59 +55,14 @@ def add_stock(runtime):
 
 def run(binary, backend):
     assert backend == "mariadb"
-    database = "haul_cap_" + uuid.uuid4().hex[:12]
-    host = os.environ.get("TEST_DB_HOST", "127.0.0.1")
-    assert host in ("127.0.0.1", "localhost")
-    port = os.environ.get("TEST_DB_PORT", "3307")
-    env = dict(PATH=os.environ.get("PATH", "/usr/bin:/bin"), ENVIRONMENT="local",
-               PERSISTENCE_MODE=backend + "-primary", REDIS="FALSE",
-               CHAOS_MUD="FALSE", LISTEN_ADDRESS="127.0.0.1",
-               DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1")
-    if value := os.environ.get("LD_LIBRARY_PATH"):
-        env["LD_LIBRARY_PATH"] = value
-    state = None
-    state_root = None
-    sql = None
-    if backend == "mariadb":
-        password = os.environ["TEST_DB_PASSWORD"]
-        env.update(DB_HOST=host, DB_PORT=port, DB_NAME=database,
-                   DB_USER=os.environ.get("TEST_DB_USER", "root"), DB_PASSWD=password,
-                   MYSQL_PWD=password, DB_ALLOWED_TARGETS=host + "/" + database,
-                   DB_TLS="FALSE")
-        mysql = ["mysql", "--protocol=tcp", "-h", host, "-P", port,
-                 "-u", env["DB_USER"], "-N", "-B", "--unbuffered"]
-
-        def sql(statement, selected=True):
-            return subprocess.check_output(mysql + ([database] if selected else []),
-                                           input=statement, text=True, env=env).strip()
-
-        sql("CREATE DATABASE " + database, False)
-    else:
-        (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-        state = tempfile.TemporaryDirectory(prefix="haul-cap-state-")
-        state_root = Path(state.name)
-        (state_root / "domains").mkdir(mode=0o700)
-        subprocess.run([str(journey.INSPECTOR), str(state_root), "seed-combat"], check=True)
-        env["FLATFILE_STATE_DIR"] = str(state_root)
-
-    def owner_count(pid):
-        if sql:
+    with journey.mariadb_authority() as (env, sql):
+        def owner_count(pid):
             return int(sql(f"SELECT COUNT(*) FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND vnum IN (15,22810,22811) AND state=1"))
-        return sum(item["vnum"] in (15, 22810, 22811)
-                   for item in journey.inspect_authority(state_root)["player_items"])
 
-    def wallet(pid):
-        if sql:
+        def wallet(pid):
             return [int(value) for value in sql(
                 f"SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}").split()]
-        return journey.inspect_authority(state_root)["wallet"]
 
-    try:
-        if sql:
-            sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
-            for args in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
-                subprocess.run(["python3", "scripts/migration_runner.py", *args],
-                               cwd=ROOT, env=env, check=True)
         (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="haul-cap-", dir=ROOT / "bin/tests") as temporary:
             runtime = Path(temporary)
@@ -176,7 +129,7 @@ def run(binary, backend):
                 assert "3s" in first and "Nothing acquired." not in first, first
                 actor.send("save")
                 actor.expect("Saving Taverek.", timeout=30)
-                pid = int(sql("SELECT pid FROM player_data WHERE name='Taverek'")) if sql else 1
+                pid = int(sql("SELECT pid FROM player_data WHERE name='Taverek'"))
                 assert wallet(pid) == [0, 3, 0, 0]
                 assert owner_count(pid) == 0
                 actor.send("look in corpse")
@@ -247,11 +200,6 @@ def run(binary, backend):
                     process.send_signal(signal.SIGTERM)
                     process.wait(timeout=30)
                 output.close()
-    finally:
-        if sql:
-            sql("DROP DATABASE " + database, False)
-        if state:
-            state.cleanup()
 
 
 if __name__ == "__main__":

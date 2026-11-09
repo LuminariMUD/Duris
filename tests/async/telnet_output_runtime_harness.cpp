@@ -1,5 +1,8 @@
 #include "core/structs.h"
 #include "net/mccp.h"
+#include "net/mxp.h"
+#include "net/telnet.h"
+#include "net/gmcp.h"
 #include <gnutls/gnutls.h>
 #include <algorithm>
 #include <cassert>
@@ -31,12 +34,26 @@ void __free(void *value, const char *, int)
 {
 	free(value);
 }
+void *__malloc(size_t bytes, const char *, const char *, int)
+{
+	return calloc(1, bytes);
+}
 int raw_write_to_descriptor(P_desc, const char *, int);
 int write_to_descriptor_binary(P_desc, const unsigned char *, size_t);
 static std::string delivered, retry_record;
 static std::vector<int> results;
 static size_t call_index;
 static bool tls;
+
+int parse_telnet_options(P_desc, char *, int);
+void gmcp_handle_negotiation(P_desc d, int command)
+{
+	d->gmcp_enabled = command == DO;
+}
+void gmcp_handle_input(P_desc, const char *, size_t) {}
+void ttype_handle_negotiation(P_desc, int) {}
+void ttype_handle_subnegotiation(P_desc, const unsigned char *, int) {}
+void mssp_send(P_desc) {}
 
 static ssize_t send_bytes(const void *data, size_t len)
 {
@@ -134,9 +151,62 @@ static void copyover_mccp(const std::string &text)
 
 int main()
 {
+	// Exercise the actual Telnet parser and MXP negotiation, including incomplete
+	// requests. Other protocol handlers are captured boundaries in this fixture.
+	descriptor_data mxp{}, websocket{};
+	websocket.websocket = 1;
+	reset(false, {});
+	mxp_negotiate(nullptr);
+	mxp_negotiate(&websocket);
+	assert(delivered.empty());
+	mxp_negotiate(&mxp);
+	assert(mxp.mxp_state == MXP_SENT_DO && delivered == std::string("\xff\xfd\x5b", 3));
+	mxp_negotiate(&mxp);
+	assert(delivered.size() == 3);
+	auto reply = [&](unsigned char command, unsigned char option = TELOPT_MXP)
+	{
+		char bytes[] = { (char)IAC, (char)command, (char)option };
+		for (int size : { 1, 2 })
+			assert(parse_telnet_options(&mxp, bytes, size) == 0);
+		assert(parse_telnet_options(&mxp, bytes, 3) == 3);
+	};
+	reply(WONT);
+	assert(mxp.mxp_state == MXP_SENT_WILL &&
+	       delivered.substr(3) == std::string("\xff\xfb\x5b", 3));
+	reply(DO);
+	assert(mxp.mxp_state == MXP_ENABLED && !mxp.gmcp_enabled);
+	assert(delivered.substr(6) == std::string("\xff\xfa\x5b\xff\xf0\x1b[7z", 9));
+	const auto negotiated = delivered;
+	reply(DO);
+	reply(WILL);
+	assert(delivered == negotiated);
+	reply(DO, TELOPT_GMCP);
+	assert(mxp.gmcp_enabled && mxp.mxp_state == MXP_ENABLED);
+	reply(DONT, TELOPT_GMCP);
+	assert(!mxp.gmcp_enabled && mxp.mxp_state == MXP_ENABLED);
+	reply(DONT);
+	assert(mxp.mxp_state == MXP_OFF);
+	const auto disabled = delivered;
+	reply(DONT);
+	assert(delivered == disabled);
+	reply(WILL); // Explicit re-enable without a fresh connection.
+	assert(mxp.mxp_state == MXP_ENABLED);
+	reply(WONT);
+	assert(mxp.mxp_state == MXP_OFF);
+	mxp_negotiate(&mxp);
+	reply(WONT);
+	reply(DONT);
+	assert(mxp.mxp_state == MXP_OFF);
+	telnet_free_output(&mxp);
+
+	const OutputLinks links{ { 0, 5, OutputLinkKind::Command, "help a\"&<>" } };
+	const std::string mxp_wire = mxp_render_output("label", links, false, TL_BLINK);
+	assert(mxp_wire.find("<SEND HREF=\"help a&quot;&amp;&lt;&gt;\">") != std::string::npos);
+	assert(mxp_wire.find("label\x1b[1z</SEND>\x1b[7z") != std::string::npos);
 	std::string banner;
 	for (int i = 0; i < 50000; ++i)
 		banner += (char)('a' + i % 26);
+	banner += mxp_wire; // The same linked bytes must survive partial writes and MCCP.
 	for (bool use_tls : { false, true })
 	{
 		descriptor_data d{};
@@ -224,5 +294,13 @@ int main()
 		telnet_free_output(&d);
 	}
 	copyover_mccp(banner);
+	descriptor_data legacy{};
+	legacy.cp437 = 1;
+	reset(false, {});
+	const OutputLinks unicode_url{ { 0, 2, OutputLinkKind::Url, "https://example.test/é" } };
+	const auto unicode_wire = mxp_render_output("é", unicode_url, false, TL_BLINK);
+	assert(write_to_descriptor(&legacy, unicode_wire.c_str()) == 0);
+	assert(delivered.find("https://example.test/%C3%A9") != std::string::npos &&
+	       delivered.find('\x82') != std::string::npos);
 	puts("Telnet/TLS short-write, backpressure, failure, cleanup and MCCP tests passed");
 }

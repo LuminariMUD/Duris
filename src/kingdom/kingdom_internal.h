@@ -422,6 +422,7 @@ void kingdom_guards_refresh_all(void);
  * they were posted, which is the state the pre-2026-09-04 module shipped.
  * Self-gates on the prototype being present. */
 void kingdom_guards_bind_proc(void);
+void kingdom_bind_banner_procs(void);
 
 /* --- the roster (kingdom_guards.c) --- */
 /* Guards on the books, empty slots skipped. */
@@ -523,6 +524,7 @@ void kingdom_node_reap_room(int rnum);
  * start the reload sweep. Called from kingdom_initialize(); self-gates on
  * kingdom_enabled(), so it is safe to call unconditionally. */
 void kingdom_harvest_initialize(void);
+void kingdom_bind_node_procs(void);
 void kingdom_harvest_shutdown(void);
 
 /* --- kingdom_display.c : status, map overlay and the 9x9 ring grid --- *
