@@ -46,6 +46,7 @@ int curr_ingame_good = 0, curr_ingame_evil = 0;
 int max_ingame_good = 0, max_ingame_evil = 0;
 P_desc descriptor_list = nullptr;
 P_char character_list = nullptr;
+void character_list_add(P_char ch) { ch->next = character_list; character_list = ch; }
 mm_ds *dead_desc_pool = nullptr;
 int used_descs = 0, top_of_world = 0;
 char_data restored[6] = {};
