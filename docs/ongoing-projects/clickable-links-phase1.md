@@ -1,6 +1,7 @@
 # Clickable links: Phase 1 implementation plan
 
-Date: 2026-11-09. Status: implementation in progress.
+Date: 2026-11-09. Status: implementation and available-client qualification complete;
+ready for review. No merge or deployment performed.
 
 ## Outcome and scope
 
@@ -43,9 +44,9 @@ No database migration or help-content rewrite is expected.
 - Mudlet should use native MXP for the new scrolling-output links; changing the
   `durisclient` package is not an expected dependency.
 
-The earlier 2-4 hour estimate covers implementation and verification, including
-DurisWeb, but is provisional. Reassess after the queue/pager slice below is proven;
-do not trade away acceptance criteria to fit the estimate.
+The original estimate was provisional; complete queue/pager ownership, literal
+URL handling and real-client qualification required additional work. Final
+verification and remaining compatibility limits are recorded below.
 
 ## Existing code and reuse points
 
@@ -698,6 +699,9 @@ client without changing user profiles. The goal remains active.
 
 ### Chunk 8: real clients, hotboot and native compatibility
 
+Review: [PR #951](https://github.com/LuminariMUD/Duris/pull/951), commits
+`fb85ca258` and `08ab8e120`, stacked on #942. Labels: `bug`, `documentation`.
+
 The real isolated MariaDB server and /play browser passed account entry,
 help-reference activation during active paging, keyboard activation of retained
 history targets, a help search-result click, exact external query-string URLs
@@ -751,8 +755,69 @@ snooper, quote/fallback, URI-punctuation and greeting-layout regressions.
 make -C src -j8, formatting, Telnet/TLS short-write/backpressure/MCCP runtime and
 copyover evidence tests pass. Logs:
 bin/tests/phase1-native-compat-{output,asan,build,telnet,copyover}.log.
-The final compatibility PR and review metadata are being prepared. Native and
-browser feature qualification is complete; nothing has been merged or deployed.
+Native and browser feature qualification is complete; nothing has been merged
+or deployed.
+
+### Official Mudlet package verification
+
+The user identified `/home/aiwithapex/projects/durisclient` as the official
+client. It is `LuminariMUD/duris-client`, source revision
+`e4f6cc6`, package v2.5.3. Its `Core.Hello` identifies as `Mudlet-ArjUI`, so the
+server recognizes the Mudlet name prefix rather than only the bare name. The
+actual output-loop regression covers both names and an independent snooper.
+
+Built that exact source with `python3 build.py --check` and
+`python3 build.py -o /tmp/clickable-links-official.mpackage`, leaving the client
+checkout clean. Installed the resulting package in a fresh isolated Mudlet
+5.1.1 profile connected to a new disposable MariaDB MUD. Map requests used the
+client's existing loopback map fixture. No real account, live profile or public
+map service was involved.
+
+Real mouse clicks through the official `ArjUI_Console` passed before and after
+a real native hotboot on the same accepted socket, starting with MCCP enabled.
+The existing copyover path ends that compression stream; the proof is original
+socket continuity, not a claim that the old zlib stream survives exec. The
+package's `selectCurrentLine` / `copy` / `appendBuffer` / `deleteLine` route
+retains native link actions. A copied help link replaced the active pager and
+sent exactly one `help Weather`; a copied URL opened exactly
+`https://example.test/?x=1&name=two` and sent no game command. These assertions
+passed again after hotboot, including the `Mudlet-ArjUI` client-name path.
+
+Evidence: `bin/tests/phase1-official-client-links.json` pins the full client and
+server SHAs, built archive hash, socket observation and actual action results;
+`bin/tests/phase1-official-client-live.log` records the fixture. Screenshots and
+the isolated profile are under `/tmp/clickable-links-official/`, including
+`help.png`, `help-clicked.png`, `after-hotboot.png` and
+`post-hotboot-click.png`. The fixture exited successfully after an explicit
+completion signal and normal MUD shutdown. No official client source, version,
+changelog or distributed package needed a change.
+
+### Final review handoff
+
+All implementation commits are pushed. Review/merge the server stack in order:
+[909](https://github.com/LuminariMUD/Duris/pull/909) →
+[913](https://github.com/LuminariMUD/Duris/pull/913) →
+[917](https://github.com/LuminariMUD/Duris/pull/917) →
+[921](https://github.com/LuminariMUD/Duris/pull/921) →
+[934](https://github.com/LuminariMUD/Duris/pull/934) →
+[942](https://github.com/LuminariMUD/Duris/pull/942) →
+[951](https://github.com/LuminariMUD/Duris/pull/951).
+The browser [PR #161](https://github.com/LuminariMUD/DurisWeb/pull/161) targets
+its own master and uses the server contract from #942. PRs are open for review
+with appropriate labels; ordinary repository review gates remain in force.
+No release tag is appropriate before review/merge and deployment.
+
+Implementation scope is closed: help links and explicit HTTP/HTTPS URLs only,
+native MXP plus browser presentation, with readable legacy fallback. The final
+audit reuses the executable boundary, transport, parser, paging and allocation
+failure evidence recorded in Chunks 1–6, the 50 focused browser tests and
+required frontend quality/build checks, real browser/server qualification, and
+actual native/official-package clicks and hotboot. No speculative client
+adapter, link registry, periodic stream, extra settings or package fork was
+needed. Mudlet 4.19.1 remains source-inspected rather than runtime-qualified;
+the conditional minimum-version check could not run without that binary.
+Production rollout and website-news publication are separate, unauthorized
+operations, not outstanding implementation tasks.
 
 ## Scope review
 
