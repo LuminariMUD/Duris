@@ -28,9 +28,12 @@ Notes from building so far:
   camp and `extractlink` cases use a second, mortal character in room 1457.
 - No artifact prototype is no-rent, and the coin pile isn't, so section 1 has no
   coin or artifact handling.
-- Section 4 tests a public chest made with `eq sort none`. Private chests use the
-  existing `locker_container_access_allowed` check, which a leave invalidates first,
-  so a private chest is only cleared while the visitor has it open.
+- The journey caught a real gap in section 4: leaving or closing a private chest
+  ended the access the hand-back relied on, so a no-rent item stayed in it. The
+  locker now remembers which private chests the visitor opened that visit.
+- The locker-room crumble rule in section 1 was dropped as unreachable. `camp` and
+  `quit` are refused inside a locker, there is no inn there, and idle void and
+  `extractlink` move the character out first.
 
 Rechecked after merging master at `ddbcaa90a`:
 
@@ -42,10 +45,13 @@ Rechecked after merging master at `ddbcaa90a`:
 - Doom blade (352) and holy blade (426) get no-rent and transient from their
   prototypes, so their help in section 6 still holds after
   [#915](https://github.com/LuminariMUD/Duris/pull/915) changed how they are summoned.
-- The section 6 help text is present in `help_index` and `duris_help_parsed.hlp`.
+- The section 6 help text is present in both help sources, and the journey reads the
+  flame blade, doom blade, holy blade, rent, camp and locker topics through the live
+  `help` command.
 
-Not run directly: the private chest hand-back, soulbound and locker-room crumbling,
-the idle-void exit, `make test-db` and a full burn-in.
+The journey also runs a public and a private chest, soulbound crumbling and the
+idle-void exit. A full burn-in was not run; that skill stops the server and is only
+for an explicit request.
 
 ## Outcome and scope
 
@@ -141,7 +147,7 @@ Rules, for worn items, carried items and items inside bags, staff included:
   "`$p` is no-rent and falls to the floor."
 - These crumble with a message instead: `ITEM_NODROP` (36 prototypes once section
   5 is done) and `ITEM2_SOULBIND`, because they can't be dropped, and anything when
-  the character is in a locker room or `NOWHERE`.
+  the character is in `NOWHERE`.
 - Transient items need no special case. `obj_to_room` already dissolves them.
 
 `purge_drop_item` ([actwiz.c:5306](../../src/cmd/actwiz.c#L5306)) is the closest
@@ -182,14 +188,14 @@ room contents, including chests and bags:
 - A no-rent item goes back to the user with `obj_to_char` and a notice.
 - A no-rent item without `ITEM_TAKE` is discarded. 55 of the 147 no-rent locker
   rows in the local database are blood stains.
-- Only touch a private chest the user can open, and record the take with
+- Only touch a private chest the visitor opened this visit, and record the take with
   `LockerMovementAudit` so the chest log stays accurate.
 
 This also returns items already stored, the next time someone visits, so decision
 3 needs no separate code. The existing artifact check isn't enough because it only
 sees the top level of the room. Leave
 [locker_async.c:498](../../src/persistence/locker_async.c#L498) as it is, so a
-no-rent item in a private chest the visitor can't open stays stored.
+no-rent item in a private chest the visitor didn't open stays stored.
 
 ### 5. Seven items lose the flag
 

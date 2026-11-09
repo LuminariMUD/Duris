@@ -330,6 +330,16 @@ def run(binary, backend, inspector, evidence_dir):
                 assert all(vnum in saved for _, vnum in CONJURED), saved
                 evidence["checks"].append("the four conjured weapons survive rent")
 
+                for topic, expected in (("flame blade", "Until you leave the game"),
+                                        ("doom blade", "Until you leave the game"),
+                                        ("holy blade", "destroyed or you leave the game"),
+                                        ("rent", "fall to the floor when you leave"),
+                                        ("camp", "fall to the floor when you finish"),
+                                        ("locker storage", "are handed back")):
+                    text = " ".join(command(client, "help " + topic).split())
+                    assert expected in text, topic + ": " + text[-800:]
+                evidence["checks"].append("help states the no-rent rules")
+
                 command(client, "goto " + str(CAMP_ROOM))
                 command(client, "setbit room here flag ROOM_MAGIC_LIGHT 1")
                 command(client, "setbit room here flag SAFE 1")
