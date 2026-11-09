@@ -29558,7 +29558,6 @@ void spell_ensis_unguis(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, 
 		return;
 	}
 
-	blade->extra_flags |= ITEM_NORENT;
 	blade->bitvector = 0;
 	blade->value[6] = GET_LEVEL(ch);
 
@@ -29611,7 +29610,6 @@ void spell_lancea_cineralae(int /*level*/, P_char ch, char * /*arg*/, int /*type
 		return;
 	}
 
-	blade->extra_flags |= ITEM_NORENT;
 	blade->bitvector = 0;
 	blade->value[6] = GET_LEVEL(ch);
 
@@ -29664,7 +29662,6 @@ void spell_simulacrum_anguis(int /*level*/, P_char ch, char * /*arg*/, int /*typ
 		return;
 	}
 
-	blade->extra_flags |= ITEM_NORENT;
 	blade->bitvector = 0;
 	blade->value[6] = GET_LEVEL(ch);
 

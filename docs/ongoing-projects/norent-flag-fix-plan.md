@@ -13,8 +13,8 @@ done.
 | PR | Sections | Branch | State |
 |---|---|---|---|
 | [#933](https://github.com/LuminariMUD/Duris/pull/933) | 1, 2, 3 and their tests | `branch/norent-flag-fix` | In review |
-| Next | 4 (lockers) | `branch/norent-flag-fix-lockers` | Built and tested |
-| Next | 5 (seven items, auction refusal) | `branch/norent-flag-fix-items` | Not started |
+| [#937](https://github.com/LuminariMUD/Duris/pull/937) | 4 (lockers) | `branch/norent-flag-fix-lockers` | In review |
+| Next | 5 (seven items, auction refusal) | `branch/norent-flag-fix-items` | Built and tested |
 | Next | 6 (help and docs) | `branch/norent-flag-fix-help` | Not started |
 
 Notes from building so far:

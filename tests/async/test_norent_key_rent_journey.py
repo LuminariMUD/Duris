@@ -27,6 +27,8 @@ MORTAL, MORTAL_ACCOUNT = "Campwarden", "Campacct"
 INN, KEY, BAG, SIBLING, TICKET = 40454, 40401, 48, 15, 47003
 SHOP, SHOP_KEY = 5848, 5783
 CAMP_ROOM, BANK, BLOOD_STAIN = 1457, 16590, 4
+AUCTION = 16885
+CONJURED = (("ensis unguis", 56), ("lancea cineralae", 93), ("simulacrum anguis", 171), ("wind blade", 98))
 NORENT = 8388608
 FALLS, CRUMBLES = "is no-rent and falls to the floor", "is no-rent and crumbles to dust"
 
@@ -305,6 +307,29 @@ def run(binary, backend, inspector, evidence_dir):
                 login()
                 assert not on_floor(client, "ticket"), "no-drop item reached the floor"
                 evidence["checks"].append("a no-drop no-rent item crumbles")
+
+                command(client, "goto " + str(AUCTION))
+                assert "created" in command(client, "load obj " + str(TICKET)).lower()
+                command(client, "setbit obj ticket extra NORENT 0")
+                command(client, "setbit obj ticket extra TRANSIENT 1")
+                text = command(client, "auction offer ticket 1 2")
+                assert "You can't sell that item" in text, text
+                command(client, "goto " + str(INN))
+                assert "You drop" in command(client, "drop ticket")
+                evidence["checks"].append("the auction house refuses a transient item")
+
+                for spell, vnum in CONJURED:
+                    command(client, "cast '" + spell + "'", timeout=30)
+                    time.sleep(8)
+                    deadline = time.monotonic() + 30
+                    while not any(row[1] == vnum for row in save()["items"]):
+                        assert time.monotonic() < deadline, spell + " never arrived"
+                        time.sleep(1)
+                rent()
+                login()
+                saved = {row[1] for row in save()["items"]}
+                assert all(vnum in saved for _, vnum in CONJURED), saved
+                evidence["checks"].append("the four conjured weapons survive rent")
 
                 command(client, "goto " + str(CAMP_ROOM))
                 command(client, "setbit room here flag ROOM_MAGIC_LIGHT 1")
