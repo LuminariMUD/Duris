@@ -1,7 +1,7 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: standalone conversions and the full907-file regression/native/build gate passed. All three recorded DB-fixture findings have focused passing fixes. The complete154-leg gate is running after those corrections; final readiness remains pending.
-Date: 2026-11-09.
+Status: complete for review. Every issue-listed conversion, supported standalone scenario and naming update is implemented and qualified. Full gates passed907/907 regression files and154/154 DB legs; all work is pushed as labeled, ready PRs or already merged prerequisites.
+Started: 2026-11-09. Final qualification: 2026-11-10 (Asia/Jerusalem).
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
 Review head: `branch/issue-870-nexus-combat-fixture`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
@@ -246,7 +246,7 @@ from a clean worktree with explicitly provisioned test prerequisites.
 - [x] Record for every batch: tested commit, exact command/flags, binary hash
   where available, result and the ignored evidence path. Every supported
   scenario above needs runtime proof; note obsolete scenarios and their reason.
-- [ ] Run the final regression suite and DB suite to completion. Check the
+- [x] Run the final regression suite and DB suite to completion. Check the
   earlier `nexus_journey` failure against current code; if it recurs, diagnose it
   and run the focused reproducer. A focused rerun does not make a failed aggregate
   result disappear. Preserve both results and repair task-blocking failures.
@@ -256,7 +256,7 @@ from a clean worktree with explicitly provisioned test prerequisites.
 - [x] Review the final diff with ablation: every edit must support a listed
   conversion, its actual consumer, or required proof. Keep unrelated defects
   separate and preserve unrelated worktree changes.
-- [ ] Push the implementation and prepare a PR that names this plan, #870 and
+- [x] Push the implementation and prepare a PR that names this plan, #870 and
   any still-open base PRs, with exact validation results and unresolved limits.
   Reconcile the stack with master without duplicating landed patches. Do not
   claim the issue complete while required scenarios or dependency findings remain
@@ -786,14 +786,13 @@ Failed aggregate results are preserved; focused successes never replace them.
 
 ### Git state and final scope audit
 
-- Review branch: `branch/issue-870-world-recovery-alert`, ready bug #970 after
-  ready bug #965. Code commit `caa1a4ba7`; later commits update only this tracker.
+- Review branch: `branch/issue-870-nexus-combat-fixture`, ready bug #973 after
+  ready bug #970. Code commit `dcb850712`; later commits update only this tracker.
   Qualified source integration is `6fba71dbf`; no published history was rewritten.
-- Independent reviews merged #880/#887/#890–#893/#895–#897/#903/#918. #922 now
-  targets master. Pending review order is #922 → #923 → #924 → #925 → #926 → #928 →
-  #931 → #938 → #948 → #949 → #954 → #955 → #957 → #958 → #961 → #962 → #963 → #965 →
-  #970. Appropriate enhancement/bug/documentation labels are present. Completed
-  chunks are ready; only #958 stays draft until the complete final gate passes.
+- Independent reviews merged prerequisites through #931. #938 now targets master.
+  Pending review order is #938 → #948 → #949 → #954 → #955 → #957 → #958 → #961 →
+  #962 → #963 → #965 → #970 → #973. Appropriate enhancement/bug/documentation
+  labels are present. Every open chunk, including #958, is ready for review.
 - Final diff/ablation audit against002ad622e:180 paths;126 strictly mechanical
   test/helper renames and54 scoped conversion/consumer/fixture/documentation or
   reproduced-defect changes. Two obsolete C++ snapshot writers are deleted;
@@ -808,58 +807,74 @@ Failed aggregate results are preserved; focused successes never replace them.
   tests used private synthetic fixtures. No GitHub merge, release or deployment
   was performed by this task; no CI wait/full burn-in is a completion requirement.
 
-### Current final-gate continuation
+### Nexus combat-fixture precondition and failed-attempt handling
 
-- **Only active controller:68920**, unchanged `make test-db`, all154 legs after
-  all three committed DB-fixture corrections. Output/status:
-  `final-test-db-retry3.log`/`.exit`; terminal logs will be copied to
-  `final-db-retry3/`. Both complete154-log archives and the explicitly interrupted
-  failed attempt were preserved before bin/tests/db reuse. Prior aggregate
-  controllers88225/56758/34613 and every focused probe are terminal.
-- Await the authoritative terminal result; do not start a duplicate run or call
-  a focused pass a green aggregate. Resolve any actual further finding separately.
-- If all154 legs pass: update the two remaining checklist items, publish final
-  evidence/this plan, mark #958 ready, and verify clean/pushed Git plus PR labels/
-  readiness. Then complete the goal and return the worktree/plan paths. No merge
-  or deployment is requested.
+- The next DB attempt completed all parallel legs, with corrected pet/world
+  recovery passing, but Nexus timed out waiting for a mortal kill. The real
+  prepared guardian had current/max/base HP1/30000/30000 and regeneration+14.
+  Native parries/mace absorption could let the intended one-HP target recover.
+  Failure/stat evidence: `nexus-regen-capacity-failure.log`.
+- Ready bug #973, code `dcb850712`, makes only that existing fixture precondition
+  stable: set the live guardian's base HP to1, use native restore to balance its
+  maxima, then require current/max/base HP1/1/1 before mortal combat. Evidence
+  records the actual values. Native defenses/procs, the60s window, player base
+  stats and all capture/cooldown/epic/cargo/restart/expiry/unique-guardian checks
+  are preserved. No production template, native source, schema or chance changed.
+- The complete focused journey exited0: `nexus-combat-fixture-fixed.log`/`.exit`.
+  Marduk and Enlil both passed mortal guardian defeat/full capture/epics; real
+  cargo/contraband bonus/exclusion, cold scores/ownership/guardians/placements,
+  expiry/neutral reload and one-guardian checks passed. Player base stats stayed
+  unchanged. The corrected case also passed in the final full parallel gate.
+- The known-failed attempt's remaining serial tail was explicitly interrupted
+  to start the corrected full gate sooner. All group members were verified
+  descendants of the owned workspace controller before SIGINT; none remained
+  after cleanup. No unrelated process was targeted. This is a partial failed
+  attempt, not a completed154-leg run:151 passes, one Nexus failure and two
+  unfinished serial legs. Its153 logs, including partial artifact output, are in
+  `final-db-retry2/`; raw stdout in `final-test-db-retry2.log`; explicit status in
+  `final-test-db-retry2-interrupted.json`. Both earlier complete runs had already
+  passed the unchanged serial cases; the final run below executes all154 again.
 
-### Nexus combat-fixture precondition
+### Completion and handoff
 
-- Aggregate34613 completed all parallel legs. The corrected pet and world-
-  recovery cases passed, but nexus_journey timed out waiting for a mortal kill.
-  Preserve that failure in `nexus-regen-capacity-failure.log`; do not relabel the
-  aggregate as successful from its later focused repair.
-- The real prepared guardian diagnostic showed current/max/base HP1/30000/30000
-  and regeneration+14. The old fixture reduced only current HP; parries and the
-  native mace absorption could let that supposedly one-HP target regenerate.
-  The fixture already intends a weakened live boss for a capture/state journey,
-  with level1/armor1000/agility1 and mortal attackers; it is not a raid-balance test.
-- Outcome/files: make that existing precondition stable in test_mysql_nexus_journey.py.
-  Set only the live guardian's base HP to1, use native restore (which balances its
-  maxima), and require a live stat report showing current/max/base HP all1 before
-  mortal combat. Record the actual base/max values in evidence. Preserve native
-  defenses/procs, the60s window, player base stats and every capture/cooldown/
-  epic/cargo/restart/expiry/unique-guardian assertion. No production/template,
-  native source, schema, chance or timeout change.
-- Complete focused journey exited0 under the disposable wrapper:
-  `nexus-combat-fixture-fixed.log`/`.exit`. Both Marduk and Enlil passed mortal
-  guardian defeat/full capture/epics; actual cargo/contraband bonus and exclusion,
-  cold scores/ownership/guardians/placements, expiry/neutral reload and one-guardian
-  checks also passed. Player base stats remained unchanged; ordinary image6dfb5020….
-- The907-file gate remains valid: direct dependency search finds this DB-only
-  journey only in exclusion-name sets and their contract test. A complete154-leg
-  gate with this committed correction is required; final readiness remains pending.
-- The focused correction is pushed at dcb850712 in ready/labeled bug
-  [#973](https://github.com/LuminariMUD/Duris/pull/973), based on #970. Its focused
-  controller3720 is terminal0.
-- To avoid spending more time on a known-failed attempt,34613's remaining serial
-  tail was deliberately interrupted after its parallel results and the qualified
-  Nexus repair were available. All members of its private process group were
-  verified descendants of the owned workspace controller before SIGINT; cleanup
-  verified that none remained. No unrelated process was targeted.
-- This is explicitly a partial failed attempt:151 passing legs, one Nexus failure,
-  two unfinished serial legs. Its153 log files (including partial artifact output)
-  are preserved in `final-db-retry2/`; raw stdout in `final-test-db-retry2.log` and
-  status in `final-test-db-retry2-interrupted.json`. It is not a completed154-leg
-  run or substitute for success. The unchanged serial cases passed both earlier
-  complete attempts; the new68920 run still executes every required leg.
+- **Final full DB gate passed154/154**, no failed markers,2876s, make exit0:
+  `make test-db`, `final-test-db-retry3.log`/`.exit`, all154 matching archived
+  logs in `final-db-retry3/`. The audit compared every PASS name against the
+  actual runner manifest, required the exact154-name set, and verified archive
+  hashes against bin/tests/db. All serial artifact/guild and live latency checks
+  completed successfully. The8-mortal/god budget run recorded no slow tick,
+  no slow callback, no slow command and no deferred pulse inside its25ms budget.
+- **Final full regression/native/build gate passed907/907**, zero timeouts or
+  signals,261.13s, exit0: `make test-all -j4 TEST_JOBS=8`,
+  `final-test-all-retry1.log`/`.exit`. Development and production image hashes
+  were rechecked and match the qualified images above. Later changes affect
+  only excluded DB journeys and this tracker; direct dependency inspection
+  confirms the907-file gate's tested inputs and native code remain unchanged.
+- All supported standalone modes and concrete consumers are covered by the
+  per-batch proof above, including six pwipe modes, all weapon/item families,
+  all copyover transports/world modes, complete named sets/rollback/chest/report
+  and the preserved historical Assassin comparison. No original requirement,
+  command or assertion was silently dropped. Retired backend-only pwipe behavior
+  has the explicit early-configuration rejection disposition above.
+- Every checklist item is complete. All integration findings were repaired in
+  separate focused commits/PRs with original failure and passing proof retained.
+  The final scope/name/protected-file and binary/archive audits passed; no new
+  backend, generic fixture/resource framework, alias or unneeded layer remains.
+- Current review branch/worktree:
+  `branch/issue-870-nexus-combat-fixture` at
+  `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
+  Source code commit `dcb850712`; later commits publish the final tracker only.
+  This document's commit is the final handoff publication; all source is pushed.
+- Independent reviews merged conversion prerequisites through #931. Their
+  reviewed runner bodies match the qualified copies after mechanical naming
+  normalization. #938 now targets master. Remaining review order:
+  #938 → #948 → #949 → #954 → #955 → #957 → #958 → #961 → #962 → #963 → #965 → #970 →
+  #973. All open chunks are ready and appropriately labeled; #958 was explicitly
+  marked ready after the complete final gates passed. No pending CI wait or
+  required runtime scenario remains.
+- Controller68920 is terminal0. All earlier aggregate/focused processes are
+  terminal; there is no active qualification job to restart. The intended end
+  state is tested local work plus GitHub branches/PRs ready for review. No merge,
+  release, server worktree, deployment or production operation was performed by
+  this task. Subsequent independent master features are not relabeled as tested
+  by this frozen integration; its explicit provenance remains above.
