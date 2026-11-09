@@ -75,6 +75,7 @@ extern char *specdata[][MAX_SPEC];
 extern int racial_shrug_data[];
 extern float combat_by_race[][3];
 extern float combat_by_class[][2];
+extern int damroll_cap;
 
 void do_levitate(P_char, char *, int);
 void do_darkness(P_char, char *, int);
@@ -344,6 +345,10 @@ string list_innates(int race, int cls, int spec)
 	}
 	return_str =
 		damage_modifier_innate(race ? combat_by_race[race][1] : combat_by_class[cls][1]);
+	// Same calculation apply_affs() uses to enforce the cap.
+	if (race)
+		return_str += "*&+cMax damroll (gear + buffs):&n " +
+			      std::to_string((int)(damroll_cap * combat_by_race[race][2])) + "\n";
 	found = !return_str.empty();
 	for (innate = 0; innate <= LAST_INNATE; innate++)
 	{
