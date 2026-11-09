@@ -849,3 +849,7 @@ Failed aggregate results are preserved; focused successes never replace them.
   journey only in exclusion-name sets and their contract test. Await34613's
   terminal result, archive its complete154 logs, then rerun the complete DB gate
   with this committed fixture correction. Final readiness remains pending.
+- The focused correction is pushed at dcb850712 in ready/labeled bug
+  [#973](https://github.com/LuminariMUD/Duris/pull/973), based on #970. Its focused
+  controller3720 is terminal0. Only the full aggregate34613 is live; do not start
+  a duplicate aggregate while its serial recovery/latency cases finish.
