@@ -52,6 +52,19 @@ static void web_presentation_matrix()
 	       "https://example.test/?x=1&name=two");
 	cJSON_Delete(root);
 
+	// Presentation must describe the bytes the bounded terminal serializer kept.
+	// Newline expansion can truncate a queue entry that fits the markup limit.
+	websocket_packets.clear();
+	send_to_char((string(40000, '\n') + "tail").c_str(), &player, LOG_NONE);
+	assert(process_output(&d) == 1 && websocket_packets[&d].size() == 1);
+	root = cJSON_Parse(websocket_packets[&d][0].c_str());
+	assert(root);
+	terminal = observe_mxp(cJSON_GetStringValue(cJSON_GetObjectItem(root, "data"))).first;
+	terminal.erase(std::remove(terminal.begin(), terminal.end(), '\r'), terminal.end());
+	snapshot = cJSON_GetObjectItem(root, "presentation");
+	assert(!snapshot || terminal == cJSON_GetStringValue(cJSON_GetObjectItem(snapshot, "text")));
+	cJSON_Delete(root);
+
 	for (bool control : { false, true })
 	{
 		websocket_packets.clear();

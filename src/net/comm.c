@@ -4808,6 +4808,8 @@ int process_output(P_desc t)
 			continue;
 		}
 
+		if (presented && presentation_fits && !output_message_fits_serializers(buf))
+			presentation_fits = false;
 		const auto frame =
 			presented && presentation_fits ?
 				freeze_output_links(buf, links, t->term_type == TERM_GENERIC) :
