@@ -1735,8 +1735,7 @@ void enter_game(P_desc d)
 
 	send_to_char(WELC_MESSG, ch);
 	ch->desc = d;
-	ch->next = character_list;
-	character_list = ch;
+	character_list_add(ch);
 
 	// Need to walk through ch->affects, and drop AFFTYPE_OFFLINE timers.
 	for (afp1 = ch->affected; afp1; afp1 = afp2)

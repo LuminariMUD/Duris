@@ -105,6 +105,8 @@ SHIP_OBJS = $(SHIP_SRCS:%.c=ships/%.o)
 
 OBJS =  $(SHIP_OBJS) \
 				 item/item_actions.o \
+				 item/item_value.o \
+				 item/item_value_runtime.o \
 				 item/item_removal_audit.o \
 				 item/legacy_object_identity.o \
 				 item/native_artifact_actions.o \

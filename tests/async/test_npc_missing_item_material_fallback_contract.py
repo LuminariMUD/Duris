@@ -33,7 +33,7 @@ assert "load_npc_missing_item_material" not in db
 assert db.count("enhance_on_npc_item_reset_skipped(mob, obj);") == 2
 for marker in ("case 'G': /* obj_to_char */", "case 'E': /* object to equipment list */"):
     block = db[db.index(marker):]
-    rejected = block.index("!ITEM_LOAD_CHECK(obj, ival, ZCMD.arg4)")
+    rejected = block.index("!ITEM_LOAD_CHECK(obj, ZCMD.arg4)")
     window = block[rejected:rejected + 500]
     fallback_call = window.index("enhance_on_npc_item_reset_skipped(mob, obj);")
     extract = window.index("extract_obj(obj);")

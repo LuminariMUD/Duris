@@ -31,17 +31,14 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
-
 #include <stdio.h>
 #include <string.h>
+#include <string>
 
 #include "../fh.h"
 #include "../types.h"
 
 #include "object.h"
-
-
 
 extern bool g_readFromSubdirs;
 extern uint g_numbObjTypes;
@@ -52,164 +49,153 @@ extern uint g_numbObjTypes;
 
 void writeObjecttoFile(FILE *objectFile, const objectType *obj)
 {
-  char strn[512], i;
-  extraDesc *descNode;
+	char strn[512], i;
+	extraDesc *descNode;
 
+	// write the object number
 
- // write the object number
+	fprintf(objectFile, "#%u\n", obj->objNumber);
 
-  fprintf(objectFile, "#%u\n", obj->objNumber);
+	// next, the object keyword list
 
- // next, the object keyword list
+	createKeywordString(obj->keywordListHead, strn, 511);
+	lowstrn(strn);
+	strcat(strn, "\n");
 
-  createKeywordString(obj->keywordListHead, strn, 511);
-  lowstrn(strn);
-  strcat(strn, "\n");
+	fputs(strn, objectFile);
 
-  fputs(strn, objectFile);
+	// next, the short name of the object
 
- // next, the short name of the object
+	fprintf(objectFile, "%s~\n", obj->objShortName);
 
-  fprintf(objectFile, "%s~\n", obj->objShortName);
+	// next, the long name of the object
 
- // next, the long name of the object
+	fprintf(objectFile, "%s~\n", obj->objLongName);
 
-  fprintf(objectFile, "%s~\n", obj->objLongName);
+	// add another line with nothing but a tilde cuz it must be there
 
- // add another line with nothing but a tilde cuz it must be there
+	fputs("~\n", objectFile);
 
-  fputs("~\n", objectFile);
+	// next, write the type, material, size, space, extra flag, wear flag,
+	// extra2 flag, anti flag and anti2 flag
 
- // next, write the type, material, size, space, extra flag, wear flag,
- // extra2 flag, anti flag and anti2 flag
+	fprintf(objectFile,
+		"%u %u %u %u "
+		"%u %u "
+		"%u %u %u %u %u\n",
+		obj->objType, obj->material, obj->size, obj->space,
 
-  fprintf(objectFile, "%u %u %u %u " "%u %u " "%u %u %u %u %u\n",
-                                    obj->objType,
-                                    obj->material,
-                                    obj->size,
-                                    obj->space,
+		obj->craftsmanship, obj->damResistBonus,
 
-                                    obj->craftsmanship,
-                                    obj->damResistBonus,
+		obj->extraBits, obj->wearBits, obj->extra2Bits, obj->antiBits, obj->anti2Bits);
 
-                                    obj->extraBits,
-                                    obj->wearBits,
-                                    obj->extra2Bits,
-                                    obj->antiBits,
-                                    obj->anti2Bits);
+	// next, the "values"
 
- // next, the "values"
+	fprintf(objectFile, "%d %d %d %d %d %d %d %d\n", obj->objValues[0], obj->objValues[1],
+		obj->objValues[2], obj->objValues[3], obj->objValues[4], obj->objValues[5],
+		obj->objValues[6], obj->objValues[7]);
 
-  fprintf(objectFile, "%d %d %d %d %d %d %d %d\n",
-          obj->objValues[0], obj->objValues[1],
-          obj->objValues[2], obj->objValues[3],
-          obj->objValues[4], obj->objValues[5],
-          obj->objValues[6], obj->objValues[7]);
+	// next, the weight, worth, and condition
 
- // next, the weight, worth, and condition
+	fprintf(objectFile, "%d %u %u", obj->weight, obj->worth, obj->condition);
 
-  fprintf(objectFile, "%d %u %u",
-          obj->weight, obj->worth, obj->condition);
+	// if aff1 and/or aff2/3/4 flags are non-zero, write them
 
- // if aff1 and/or aff2/3/4 flags are non-zero, write them
+	if (obj->affect1Bits || obj->affect2Bits || obj->affect3Bits || obj->affect4Bits)
+	{
+		fprintf(objectFile, " %u %u %u %u\n", obj->affect1Bits, obj->affect2Bits,
+			obj->affect3Bits, obj->affect4Bits);
+	}
+	else
+	{
+		fputs("\n", objectFile);
+	}
 
-  if (obj->affect1Bits || obj->affect2Bits || obj->affect3Bits || obj->affect4Bits)
-  {
-    fprintf(objectFile, " %u %u %u %u\n",
-            obj->affect1Bits, obj->affect2Bits,
-            obj->affect3Bits, obj->affect4Bits);
-  }
-  else
-  {
-    fputs("\n", objectFile);
-  }
+	if (obj->affect5Bits)
+		fprintf(objectFile, "B5 %llu\n", obj->affect5Bits);
 
- // write all the extra descs
+	// write all the extra descs
 
-  descNode = obj->extraDescHead;
+	descNode = obj->extraDescHead;
 
-  while (descNode)
-  {
-    fputs("E\n", objectFile);
+	while (descNode)
+	{
+		fputs("E\n", objectFile);
 
-    writeExtraDesctoFile(objectFile, descNode);
+		writeExtraDesctoFile(objectFile, descNode);
 
-    descNode = descNode->Next;
-  }
+		descNode = descNode->Next;
+	}
 
- // write the object apply info
+	// write the object apply info
 
-  for (i = 0; i < NUMB_OBJ_APPLIES; i++)
-  {
-    if (obj->objApply[i].applyWhere)
-    {
-      fprintf(objectFile, "A\n%u %d\n", obj->objApply[i].applyWhere,
-                                        obj->objApply[i].applyModifier);
-    }
-  }
+	for (i = 0; i < NUMB_OBJ_APPLIES; i++)
+	{
+		if (obj->objApply[i].applyWhere)
+		{
+			fprintf(objectFile, "A\n%u %d\n", obj->objApply[i].applyWhere,
+				obj->objApply[i].applyModifier);
+		}
+	}
 
- // write trap info, if any
+	// write trap info, if any
 
-  if (obj->trapBits)
-  {
-    fprintf(objectFile, "T\n%u %d %d %u\n",
-            obj->trapBits, obj->trapDam, obj->trapCharge, obj->trapLevel);
-  }
+	if (obj->trapBits)
+	{
+		fprintf(objectFile, "T\n%u %d %d %u\n", obj->trapBits, obj->trapDam,
+			obj->trapCharge, obj->trapLevel);
+	}
 }
-
 
 //
 // writeObjectFile : Write the object file - contains all the objects
 //
 
-void writeObjectFile(const char *filename)
+bool writeObjectFile(const char *filename)
 {
-  FILE *objectFile;
-  char objectFilename[512] = "";
-  char strn[512];
+	FILE *objectFile;
 
-  uint numb = getLowestObjNumber();
-  const uint highest = getHighestObjNumber();
+	uint numb = getLowestObjNumber();
+	const uint highest = getHighestObjNumber();
 
+	// assemble the filename of the object file
 
- // assemble the filename of the object file
+	const std::string objectFilename = std::string(g_readFromSubdirs ? "obj/" : "") +
+					   (filename ? filename : getMainZoneNameStrn()) + ".obj";
 
-  if (g_readFromSubdirs) 
-    strcpy(objectFilename, "obj/");
+	// open the object file for writing
 
-  if (filename) 
-    strcat(objectFilename, filename);
-  else 
-    strcat(objectFilename, getMainZoneNameStrn());
+	if ((objectFile = fopen(objectFilename.c_str(), "wb")) == NULL)
+	{
+		_outtext("Couldn't open ");
+		_outtext(objectFilename.c_str());
+		_outtext(" for writing - aborting\n");
 
-  strcat(objectFilename, ".obj");
+		return false;
+	}
 
+	const std::string message = "Writing " + objectFilename + " - " +
+				    std::to_string(g_numbObjTypes) + " object type" +
+				    plural(g_numbObjTypes) + "\n";
+	_outtext(message.c_str());
 
- // open the object file for writing
+	while (numb <= highest)
+	{
+		const objectType *obj = findObj(numb);
 
-  if ((objectFile = fopen(objectFilename, "wb")) == NULL)
-  {
-    _outtext("Couldn't open ");
-    _outtext(objectFilename);
-    _outtext(" for writing - aborting\n");
+		if (obj)
+			writeObjecttoFile(objectFile, obj);
 
-    return;
-  }
+		numb++;
+	}
 
-  sprintf(strn, "Writing %s - %u object type%s\n",
-          objectFilename, g_numbObjTypes, plural(g_numbObjTypes));
-
-  _outtext(strn);
-
-  while (numb <= highest)
-  {
-    const objectType *obj = findObj(numb);
-
-    if (obj) 
-      writeObjecttoFile(objectFile, obj);
-
-    numb++;
-  }
-
-  fclose(objectFile);
+	const bool write_failed = ferror(objectFile);
+	if (fclose(objectFile) != 0 || write_failed)
+	{
+		_outtext("Couldn't write ");
+		_outtext(objectFilename.c_str());
+		_outtext(" - save failed. Output may be partial; changes remain unsaved.\n");
+		return false;
+	}
+	return true;
 }
