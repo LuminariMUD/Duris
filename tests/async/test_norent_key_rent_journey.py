@@ -269,12 +269,13 @@ def run(binary, backend, inspector, evidence_dir):
                 assert on_floor(client, "small"), "shop key did not land on the floor"
                 evidence["checks"].append("a shop-bought no-rent item falls")
 
-                assert "created" in command(client, "load obj " + str(TICKET)).lower()
-                command(client, "setbit obj ticket extra NODROP 1")
-                rent(gone=TICKET, message=CRUMBLES)
-                login()
-                assert not on_floor(client, "ticket"), "no-drop item reached the floor"
-                evidence["checks"].append("a no-drop no-rent item crumbles")
+                for field, flag in (("extra", "NODROP"), ("extra2", "SOULBIND")):
+                    assert "created" in command(client, "load obj " + str(TICKET)).lower()
+                    command(client, "setbit obj ticket " + field + " " + flag + " 1")
+                    rent(gone=TICKET, message=CRUMBLES)
+                    login()
+                    assert not on_floor(client, "ticket"), flag + " item reached the floor"
+                    evidence["checks"].append("a " + flag + " no-rent item crumbles")
 
                 command(client, "goto " + str(CAMP_ROOM))
                 command(client, "setbit room here flag ROOM_MAGIC_LIGHT 1")
@@ -302,6 +303,16 @@ def run(binary, backend, inspector, evidence_dir):
                 wait_mortal_saved(before)
                 assert on_floor(client, "ticket"), "link-dead ticket did not land on the floor"
                 evidence["checks"].append("a link-dead character's no-rent item falls on extractlink")
+
+                mortal_with_ticket()
+                before = mortal_revision()
+                command(client, "setbit char " + MORTAL + " timer 16")
+                mortal.expect("pulled into a void", timeout=100)
+                mortal.close()
+                mortal = None
+                wait_mortal_saved(before)
+                assert on_floor(client, "ticket"), "idle-voided ticket did not land on the floor"
+                evidence["checks"].append("an idle-voided character's no-rent item falls")
                 command(client, "goto " + str(INN))
 
                 active_uid = grant(KEY, "golden", "golden key", True)
