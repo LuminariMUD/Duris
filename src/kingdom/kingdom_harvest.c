@@ -1600,20 +1600,8 @@ bool kingdom_resource_spend(kingdom_realm &realm, const long costs[KRES_MAX])
  * -- tops up only the shortfall; on a cold boot it seeds to quota one reload
  * interval after boot.
  */
-void kingdom_harvest_initialize(void)
+void kingdom_bind_node_procs(void)
 {
-	/* End any previous life's reload chain before starting a new one; see
-	 * kingdom_node_generation. */
-	kingdom_node_generation++;
-	kingdom_nodes_running = false;
-	kingdom_terrain_cache.clear();
-
-	if (!kingdom_enabled())
-	{
-		logit(LOG_KINGDOM, "nodes: kingdoms are disabled; no harvest nodes placed.");
-		return;
-	}
-
 	/*
 	 * real_object(), NOT real_object0(). real_object0() answers 0 for a
 	 * vnum that is not in the database as well as for the first object in
@@ -1648,6 +1636,23 @@ void kingdom_harvest_initialize(void)
 			obj_index[r_num].func.obj = kingdom_node_proc;
 		}
 	}
+}
+
+void kingdom_harvest_initialize(void)
+{
+	/* End any previous life's reload chain before starting a new one; see
+	 * kingdom_node_generation. */
+	kingdom_node_generation++;
+	kingdom_nodes_running = false;
+	kingdom_terrain_cache.clear();
+
+	if (!kingdom_enabled())
+	{
+		logit(LOG_KINGDOM, "nodes: kingdoms are disabled; no harvest nodes placed.");
+		return;
+	}
+
+	kingdom_bind_node_procs();
 
 	kingdom_node_resolve_windows();
 

@@ -68,22 +68,29 @@ static void circles()
     initialize_skills();
     assert(skills[SPELL_EARTH_FORM].m_class[flag2idx(CLASS_CONJURER)-1].rlevel[SPEC_EARTH] == 10);
     assert(skills[SPELL_EARTHEN_TOMB].m_class[flag2idx(CLASS_CONJURER)-1].rlevel[SPEC_EARTH] == 12);
-    assert(get_mincircle(SPELL_EARTH_FORM) == 13); // LEGACY F01: should be 10.
-    assert(get_mincircle(SPELL_EARTHEN_TOMB) == 13); // LEGACY F01: should be 12.
+    assert(get_mincircle(SPELL_EARTH_FORM) == 10);
+    assert(get_mincircle(SPELL_EARTHEN_TOMB) == 12);
+    assert(get_mincircle(SPELL_GIRILALS_GRANITE_HAMMER) == 11);
+    assert(get_mincircle(SPELL_ILESHS_SMASHING_FURY) == 12);
+    auto earth = packed(SPELL_EARTH_FORM);
+    assert(itemvalue(&earth) == 60); // Formerly 78 at the fallback circle 13.
+    earth.value[5] = SPELL_EARTHEN_TOMB;
+    assert(itemvalue(&earth) == 72); // Formerly 78.
 
     assert(get_mincircle(FIRST_SPELL - 1) == 0);
     assert(get_mincircle(LAST_SPELL + 1) == 0);
+    assert(get_mincircle(-1) == 0 && get_mincircle(INT_MAX) == 0);
     for (int spell : {FIRST_SPELL, LAST_SPELL})
     {
         skills[spell] = Skill{};
         assert(get_mincircle(spell) == 13); // Valid, unregistered retains its fallback.
         skills[spell].m_class[0].rlevel[0] = 2;
-        assert(get_mincircle(spell) == 13); // LEGACY F01: first class is skipped.
+        assert(get_mincircle(spell) == 2);
         skills[spell] = Skill{};
         skills[spell].m_class[CLASS_COUNT - 1].rlevel[MAX_SPEC] = 3;
-        assert(get_mincircle(spell) == 13); // LEGACY F01: last specialization is skipped.
+        assert(get_mincircle(spell) == 3);
         skills[spell].m_class[CLASS_COUNT - 1].rlevel[MAX_SPEC - 1] = 4;
-        assert(get_mincircle(spell) == 4);
+        assert(get_mincircle(spell) == 3); // A later, worse registration cannot replace the minimum.
         skills[spell].m_class[1].rlevel[0] = 2;
         assert(get_mincircle(spell) == 2);
     }
@@ -292,6 +299,7 @@ def main():
         source.write_text(HARNESS.replace("// CALLBACKS", identities).replace("// PRODUCTION", production))
         subprocess.run([
             "g++", "-std=c++20", "-g", "-O1", "-D_PFILE_", "-Isrc",
+            "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
             "-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all",
             "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
             str(source), rel("skills.c"), str(HARNESS_STUBS), "src/item/item_value.c",

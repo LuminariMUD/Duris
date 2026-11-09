@@ -493,7 +493,7 @@ void save_properties(P_char ch)
 	sql_log(ch, WIZLOG, "Saved properties");
 }
 
-bool initialize_properties()
+bool initialize_property_values()
 {
 	struct property loaded[MAX_PROPERTIES];
 	int count = load_properties(loaded);
@@ -504,6 +504,13 @@ bool initialize_properties()
 		FREE(duris_properties[i].key);
 	memcpy(duris_properties, loaded, count * sizeof(struct property));
 	properties_count = count;
+	return true;
+}
+
+bool initialize_properties()
+{
+	if (!initialize_property_values())
+		return false;
 	item_actions_reload();
 	apply_properties();
 	return true;

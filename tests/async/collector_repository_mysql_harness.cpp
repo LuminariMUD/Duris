@@ -2,6 +2,8 @@
 #include "economy/collector_repository.h"
 #include "persistence/critical_command_repository.h"
 #include "player/player_snapshot_codec.h"
+#include "player/player_snapshot_repository.h"
+#include <openssl/sha.h>
 
 #include <mysql.h>
 
@@ -896,9 +898,7 @@ int main()
 		hex_bytes(blob.data(), blob.size()) +
 		"') WHERE listing_id=" + std::to_string(LISTING));
 
-	// Purchase advances the owner revisions, persists the exact recoverable item row and
-	// transfers custody to the permanent beneficiary. The wallet is memory's: the submit
-	// took the price, so the repository leaves the wallet and bank rows alone.
+	// Purchase advances custody and debits the purse with the exact recoverable item row.
 	collector_command_payload purchase;
 	purchase.action = collector_action::purchase;
 	purchase.listing = LISTING;
@@ -920,14 +920,67 @@ int main()
 	purchase.items[0] = { ITEM_UID, ITEM_UID, 0, 6, 1002, item_custody_state::active };
 	purchase.item_blob_size = static_cast<uint32_t>(blob.size());
 	std::copy(blob.begin(), blob.end(), purchase.item_blob.begin());
+	auto stale_payment = purchase;
+	stale_payment.expected_wallet_revision = 1;
+	apply(command_for(stale_payment), critical_apply_outcome::terminal_failure, ESTALE);
+	execute("UPDATE player_data SET gold=4 WHERE pid=" + std::to_string(PLAYER_PID));
+	apply(command_for(purchase), critical_apply_outcome::terminal_failure, ENOSPC);
+	assert(scalar("SELECT COUNT(*) FROM player_items WHERE obj_uid=" +
+		      std::to_string(ITEM_UID)) == 0);
+	assert(text("SELECT CONCAT(owner_type,':',owner_id,':',item_revision) FROM item_current_owner WHERE item_uid=" +
+		    std::to_string(ITEM_UID)) == "10:7001:6");
+	execute("UPDATE player_data SET gold=10 WHERE pid=" + std::to_string(PLAYER_PID));
 	const critical_command purchase_command = command_for(purchase);
+	player_snapshot before_delivery = {};
+	before_delivery.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+	before_delivery.pid = static_cast<int>(PLAYER_PID);
+	before_delivery.revision = 1;
+	before_delivery.components = PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_INVENTORY;
+	before_delivery.encoded_size_bound = 8192;
+	before_delivery.status_integers = { { player_status_field::copper, 0, 0, false },
+					    { player_status_field::silver, 0, 0, false },
+					    { player_status_field::gold, 10, 0, false },
+					    { player_status_field::platinum, 0, 0, false } };
+	// Old inventory components may already be retained by load admission. The new
+	// purchase is absent from this capture and must be retained by its receipt too.
+	execute("SELECT i.id,COALESCE(o.root_item_uid,i.obj_uid) FROM player_items i "
+		"LEFT JOIN item_current_owner o ON o.item_uid=i.obj_uid WHERE i.pid=" +
+		std::to_string(PLAYER_PID));
+	MYSQL_RES *retained = mysql_store_result(database);
+	assert(retained);
+	while (MYSQL_ROW row = mysql_fetch_row(retained))
+		before_delivery.retained_items.rows.push_back(
+			{ strtoull(row[0], nullptr, 10), strtoull(row[1], nullptr, 10) });
+	mysql_free_result(retained);
+	before_delivery.retained_items.bytes =
+		before_delivery.retained_items.rows.size() * sizeof(player_retained_item_row);
+	before_delivery.pending_trade.operation = purchase_command.operation_id.bytes;
+	before_delivery.pending_trade.payment = -static_cast<int64_t>(entry.price_value);
+	std::vector<uint8_t> encoded_purchase;
+	assert(critical_command_encode(purchase_command, &encoded_purchase) ==
+	       critical_command_codec_result::ok);
+	SHA256(encoded_purchase.data(), encoded_purchase.size(),
+	       before_delivery.pending_trade.command_hash.data());
+	execute("CREATE TRIGGER reject_collector_debit BEFORE UPDATE ON player_data FOR EACH ROW "
+		"BEGIN IF NEW.pid=" +
+		std::to_string(PLAYER_PID) +
+		" THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='collector debit refusal'; END IF; END");
+	const auto refused = critical_command_repository_apply(database, purchase_command);
+	assert(refused.outcome != critical_apply_outcome::applied && refused.error_code == 1644);
+	assert(scalar("SELECT COUNT(*) FROM player_items WHERE obj_uid=" +
+		      std::to_string(ITEM_UID)) == 0);
+	assert(text("SELECT CONCAT(owner_type,':',owner_id,':',item_revision) FROM item_current_owner WHERE item_uid=" +
+		    std::to_string(ITEM_UID)) == "10:7001:6");
+	assert(text("SELECT CONCAT(gold,':',wallet_revision) FROM player_data WHERE pid=" +
+		    std::to_string(PLAYER_PID)) == "10:0");
+	execute("DROP TRIGGER reject_collector_debit");
 	result = apply(purchase_command);
 	entry = result.entry;
 	assert(entry.status == collector::state::purchased && entry.revision == 4 &&
 	       entry.item_revision == 7 && result.materialized_item_id != 0);
 	assert(text("SELECT CONCAT(copper,':',silver,':',gold,':',platinum,':',wallet_revision) "
 		    "FROM player_data WHERE pid=" +
-		    std::to_string(PLAYER_PID)) == "0:0:10:0:0");
+		    std::to_string(PLAYER_PID)) == "0:0:5:0:1");
 	assert(scalar("SELECT bank_revision FROM account_banks WHERE account_name='" +
 		      std::string(ACCOUNT_NAME) + "' AND racewar=1") == 0);
 	assert(text("SELECT CONCAT(vnum,':',weight,':',cost,':',value2,':',item_condition) FROM "
@@ -936,6 +989,25 @@ int main()
 	const uint64_t materialized_item_id =
 		scalar("SELECT id FROM player_items WHERE obj_uid=" + std::to_string(ITEM_UID));
 	assert(materialized_item_id == result.materialized_item_id);
+	for (int replay = 0; replay < 2; ++replay)
+	{
+		assert(player_snapshot_repository_apply(database, before_delivery).outcome ==
+		       player_save_apply_outcome::applied);
+		assert(scalar("SELECT id FROM player_items WHERE obj_uid=" +
+			      std::to_string(ITEM_UID)) == materialized_item_id);
+		assert(text("SELECT CONCAT(gold,':',wallet_revision) FROM player_data WHERE pid=" +
+			    std::to_string(PLAYER_PID)) == "5:1");
+	}
+	auto wrong_receipt = before_delivery;
+	wrong_receipt.revision = 2;
+	wrong_receipt.pending_trade.command_hash[0] ^= 1;
+	const auto wrong_save = player_snapshot_repository_apply(database, wrong_receipt);
+	assert(wrong_save.outcome == player_save_apply_outcome::terminal_failure &&
+	       wrong_save.error_code == EBADMSG);
+	assert(scalar("SELECT id FROM player_items WHERE obj_uid=" + std::to_string(ITEM_UID)) ==
+	       materialized_item_id);
+	assert(text("SELECT CONCAT(gold,':',wallet_revision) FROM player_data WHERE pid=" +
+		    std::to_string(PLAYER_PID)) == "5:1");
 	assert(scalar("SELECT COUNT(*) FROM player_item_affects a JOIN player_items i ON "
 		      "i.id=a.item_id WHERE i.obj_uid=" +
 		      std::to_string(ITEM_UID) + " AND a.location=1 AND a.modifier=7") == 1);
