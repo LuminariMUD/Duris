@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Full-world flight discovery, tickets, copyover and restart on disposable authority.
 
-No arguments runs the flat-file leg; --backend mariadb --server PATH runs under
-with_disposable_mariadb.sh. No checkout .env or running game is used.
+Run under with_disposable_mariadb.sh; --server PATH uses an existing build.
+Without --server, build the MariaDB server with its real 250 ms clock.
+No checkout .env or running game is used.
 """
 import argparse
 from contextlib import contextmanager
@@ -46,13 +47,7 @@ MASK = sum(1 << (mob - 47015) for mob, _, _ in STOPS)
 @contextmanager
 def authority(backend, runtime):
     with journey.mariadb_authority() as (env, sql):
-        # The maintained importer reads only the copied fixture sources and explicit test DB.
-        (runtime / 'scripts').mkdir()
-        importer = runtime / 'scripts/import_help_to_prod.sh'
-        shutil.copy2(ROOT / 'scripts/import_help_to_prod.sh', importer)
-        imported = subprocess.run(['bash', str(importer), '--local'], input='yes\n',
-                                  text=True, env=env, capture_output=True, timeout=90)
-        assert imported.returncode == 0, imported.stdout[-4000:] + imported.stderr[-4000:]
+        journey.import_help(runtime, env)
         yield env, sql
 
 
@@ -68,7 +63,6 @@ def command(client, text, timeout=20):
 
 
 def run(binary, backend, interruptions_only=False, reconnect_only=False, skip_interruptions=False):
-    inspector = journey.INSPECTOR
     with tempfile.TemporaryDirectory(prefix='flight-' + backend + '-', dir=ROOT / 'bin/tests') as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)
@@ -127,13 +121,10 @@ def run(binary, backend, interruptions_only=False, reconnect_only=False, skip_in
                 client.expect('Saving ' + name + '.', timeout=60)
 
             def progress():
-                if sql:
-                    row = sql("SELECT learned_flight_stops,exp,level,copper,silver,gold,platinum FROM player_data WHERE name='" + PLAYER + "'")
-                    fields = [int(x) for x in row.split('\t')]
-                    return {'learned_flight_stops': fields[0], 'experience': fields[1],
-                            'level': fields[2], 'wallet': fields[3:]}
-                return json.loads(subprocess.check_output([str(inspector), env['FLATFILE_STATE_DIR'],
-                                                          'inspect', '1'], text=True))
+                row = sql("SELECT learned_flight_stops,exp,level,copper,silver,gold,platinum FROM player_data WHERE name='" + PLAYER + "'")
+                fields = [int(x) for x in row.split('\t')]
+                return {'learned_flight_stops': fields[0], 'experience': fields[1],
+                        'level': fields[2], 'wallet': fields[3:]}
 
             def visit(room):
                 moved = command(god, 'goto ' + str(room))
@@ -492,7 +483,7 @@ def run(binary, backend, interruptions_only=False, reconnect_only=False, skip_in
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--backend', choices=('flatfile', 'mariadb'), default='flatfile')
+    parser.add_argument('--backend', choices=('mariadb',), default='mariadb')
     parser.add_argument('--server', type=Path)
     focus = parser.add_mutually_exclusive_group()
     focus.add_argument('--interruptions-only', action='store_true',
@@ -512,30 +503,24 @@ def main():
         # runs cannot share one MariaDB server, so a MariaDB leg gets its own container.
         child = [sys.executable, __file__, '--interruptions-only', '--backend', args.backend,
                  *(['--server', str(args.server)] if args.server else [])]
-        if args.backend == 'mariadb':
-            child.insert(0, str(ROOT / 'tests/async/with_disposable_mariadb.sh'))
+        child.insert(0, str(ROOT / 'tests/async/with_disposable_mariadb.sh'))
         # The MariaDB wrapper's bash defers SIGTERM until its command ends, so that leg
         # gets its own process group and the signal reaches the Python child directly.
-        # A flat-file child stays in this group, where the runner's deadline kill reaches it.
         interruptions = subprocess.Popen(child, cwd=ROOT,
-                                         process_group=0 if args.backend == 'mariadb' else None)
+                                         process_group=0)
     try:
         with tempfile.TemporaryDirectory(prefix='flight-build-', dir=ROOT / 'bin/tests') as temporary:
             build = Path(temporary)
             if args.server:
                 binary = args.server.resolve()
             else:
-                assert args.backend == 'flatfile', 'pass a MariaDB binary with --server'
                 binary = journey.build_flatfile_server(build / 'server', real_clock=True)
             run(binary, args.backend, args.interruptions_only, args.reconnect_only,
                 skip_interruptions=interruptions is not None)
     except BaseException:
         if interruptions:
             # SIGTERM, so that the child and a MariaDB leg's wrapper still clean up.
-            if args.backend == 'mariadb':
-                os.killpg(interruptions.pid, signal.SIGTERM)
-            else:
-                interruptions.terminate()
+            os.killpg(interruptions.pid, signal.SIGTERM)
             interruptions.wait()
         raise
     if interruptions:
