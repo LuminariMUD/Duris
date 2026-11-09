@@ -2339,7 +2339,7 @@ int assoc_founder(P_char mob, P_char pl, int cmd, char *arg)
 
 int get_mincircle(int spell)
 {
-	int i, j;
+	// Valid spells without a positive registration retain the legacy circle 13.
 	int lowest = 13;
 
 	// If not a spell, return 0.
@@ -2348,18 +2348,11 @@ int get_mincircle(int spell)
 		return 0;
 	}
 
-	// Skip CLASS_NONE..
-	for (i = 1; i < CLASS_COUNT; i++)
-	{
-		for (j = 0; j < MAX_SPEC; j++)
-		{
-			if ((skills[spell].m_class[i].rlevel[j] > 0) &&
-			    (skills[spell].m_class[i].rlevel[j] <= lowest))
-			{
-				lowest = skills[spell].m_class[i].rlevel[j];
-			}
-		}
-	}
+	// Classes are zero-based; MAX_SPEC is the last index, not the array size.
+	for (const auto &class_info : skills[spell].m_class)
+		for (const auto circle : class_info.rlevel)
+			if (circle > 0 && circle < lowest)
+				lowest = circle;
 
 	return lowest;
 }

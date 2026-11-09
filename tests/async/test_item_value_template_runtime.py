@@ -14,8 +14,10 @@ import csv
 import hashlib
 import subprocess
 import tempfile
+import argparse
+import json
 
-from _paths import ROOT
+from _paths import ROOT, extract_function
 
 
 HARNESS = r'''
@@ -35,6 +37,8 @@ HARNESS = r'''
 #include "kingdom/kingdom.h"
 #include "world/vnum.obj.h"
 #include "mob/studioproc.h"
+#include "item/random_equipment.h"
+#include "item/random_equipment_config.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -52,11 +56,73 @@ void update_stat_data();
 void ne_init_event_pool();
 static unsigned long long identities = 1000000;
 static unsigned long rolls;
+static bool seeded_rng;
 static bool corpus;
 static int compared;
 static FILE *reference_scores;
 extern "C" unsigned long long __wrap__Z25persistence_next_item_uidv() { return ++identities; }
-extern "C" int __wrap__Z6numberii(int low, int) { ++rolls; return low; }
+extern "C" int __real__Z6numberii(int, int);
+extern "C" int __wrap__Z6numberii(int low, int high) {
+    ++rolls; return seeded_rng ? __real__Z6numberii(low, high) : low;
+}
+
+#if CIRCLE_BASELINE
+extern Skill skills[];
+// BASELINE_CIRCLE
+static bool before_context;
+extern "C" int __real__Z13get_mincirclei(int);
+extern "C" int __wrap__Z13get_mincirclei(int spell) {
+    return before_context ? get_mincircle_before(spell) : __real__Z13get_mincirclei(spell);
+}
+static FILE *deltas;
+static void circle_delta(const char *cohort, int id, P_obj object) {
+    const auto random = rolls;
+    const auto ids = identities;
+    before_context = true;
+    const int old_score = itemvalue(object);
+    before_context = false;
+    const int new_score = itemvalue(object);
+    assert(rolls == random && identities == ids);
+    std::fprintf(deltas, "%s,%d,%d,%d,%d\n", cohort, id, old_score, new_score, object->value[5]);
+}
+
+static void generated_deltas() {
+    boot_random_equipment_config();
+    FILE *pool = std::fopen("generator-circles.csv", "w"); assert(pool);
+    std::fputs("spell,self_only,before,after\n", pool);
+    for (const auto &entry : spells_data)
+        std::fprintf(pool, "%d,%d,%d,%d\n", entry.spell, entry.self_only,
+                     get_mincircle_before(entry.spell), __real__Z13get_mincirclei(entry.spell));
+    assert(!std::fclose(pool));
+    char_data finder{};
+    pc_only_data pc{};
+    finder.only.pc = &pc;
+    finder.player.name = const_cast<char *>("ValuationFixture");
+    finder.player.level = 56;
+    finder.curr_stats.Luk = 160;
+    extern P_room world;
+    extern int top_of_world;
+    extern zone_data *zone_table;
+    for (int room = 0; room <= top_of_world; ++room)
+        if (!zone_table[world[room].zone].hometown &&
+            strip_ansi(zone_table[world[room].zone].name) != zone_table[world[room].zone].name) {
+            finder.in_room = room;
+            break;
+        }
+    seeded_rng = true;
+    int count = 0;
+    for (int seed = 1; seed <= 16; ++seed)
+    for (int level : {1, 20, 40, 60, 62})
+    for (int slot = 0; slot < MAX_SLOT; ++slot) {
+        randomize(seed * 100000 + level * 1000 + slot);
+        P_obj object = create_random_eq(&finder, 56, level, slot, -1);
+        assert(object);
+        circle_delta("generated", ++count, object);
+        extract_obj(object);
+    }
+    std::printf("seeded native generator comparisons: %d samples\n", count);
+}
+#endif
 
 static void fixture_files()
 {
@@ -125,6 +191,9 @@ static void parity(object_template &prototype, const char *label)
         std::fprintf(stderr, "%s: template=%d runtime=%d\n", label, from_template, runtime);
         std::abort();
     }
+#if CIRCLE_BASELINE
+    if (corpus) circle_delta("template", obj_index[prototype.R_num].virtual_number, instance);
+#endif
     extract_obj(instance);
     assert(object_list == objects && obj_index[prototype.R_num].number == count);
     if (ne_event_counter != events) {
@@ -147,6 +216,19 @@ int main(int argc, char **)
     dead_obj_pool = mm_create("OBJS", sizeof(obj_data), offsetof(obj_data, next), 4);
     ne_init_event_pool();
     if (corpus) {
+#if CIRCLE_BASELINE
+        deltas = std::fopen("circle-deltas.csv", "w"); assert(deltas);
+        std::fputs("cohort,id,before,after,packed_spells\n", deltas);
+        FILE *circles = std::fopen("changed-circles.csv", "w"); assert(circles);
+        std::fputs("spell,before,after\n", circles);
+        for (int spell = FIRST_SPELL; spell <= LAST_SPELL; ++spell) {
+            const int old_circle = get_mincircle_before(spell);
+            const int new_circle = __real__Z13get_mincirclei(spell);
+            if (old_circle != new_circle)
+                std::fprintf(circles, "%d,%d,%d\n", spell, old_circle, new_circle);
+        }
+        assert(!std::fclose(circles));
+#endif
         reference_scores = std::fopen("reference-scores.csv", "w"); assert(reference_scores);
         for (int rnum = 0; rnum <= top_of_objt; ++rnum) {
             assert(cache_object_template(obj_index[rnum].virtual_number));
@@ -155,6 +237,10 @@ int main(int argc, char **)
         }
         std::printf("effective-world native constructor/template parity: %d templates\n", compared);
         assert(!std::fclose(reference_scores));
+#if CIRCLE_BASELINE
+        generated_deltas();
+        assert(!std::fclose(deltas));
+#endif
         return 0;
     }
     assert(kingdom_enabled());
@@ -207,6 +293,11 @@ int main(int argc, char **)
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--circle-baseline", help="Git revision providing the unchanged pre-fix circle lookup")
+    parser.add_argument("--delta-output", type=Path, help="Directory for circle-fix qualification evidence")
+    args = parser.parse_args()
+    assert bool(args.circle_baseline) == bool(args.delta_output), "provide both circle comparison arguments"
     configuration = ["make", "-s", "--no-print-directory", "-C", "src",
                      "--eval=.PHONY: ivalue-objects ivalue-libs",
                      "--eval=ivalue-objects:;@echo $(DMS_OBJS)",
@@ -219,7 +310,20 @@ def main():
     with tempfile.TemporaryDirectory(prefix="item-value-engine-", dir=build) as tmp:
         path = Path(tmp)
         source, binary = path / "test.cpp", path / "test"
-        source.write_text(HARNESS)
+        code = HARNESS
+        baseline_flags = []
+        if args.circle_baseline:
+            for file in ("src/item/item_value.c", "src/item/item_value_runtime.c"):
+                old = subprocess.check_output(["git", "show", f"{args.circle_baseline}:{file}"],
+                                              cwd=ROOT, text=True)
+                assert old == (ROOT / file).read_text(), "circle-only comparison requires unchanged numeric/runtime adapters"
+            old = path / "tradeskill-before.c"
+            old.write_text(subprocess.check_output([
+                "git", "show", f"{args.circle_baseline}:src/economy/tradeskill.c"], cwd=ROOT, text=True))
+            function = extract_function(old, "int get_mincircle(int spell)\n{")
+            code = code.replace("// BASELINE_CIRCLE", function.replace("get_mincircle(", "get_mincircle_before(", 1))
+            baseline_flags = ["-DCIRCLE_BASELINE=1", "-Wl,--wrap=_Z13get_mincirclei"]
+        source.write_text(code)
         comm = next(item for item in objects if item.endswith("/net/comm.o"))
         renamed = path / "comm.o"
         subprocess.run(["objcopy", "--redefine-sym", "main=duris_server_main", comm, str(renamed)], check=True)
@@ -228,12 +332,12 @@ def main():
             "g++", "-std=c++20", "-g", "-DTEST_MUD", "-Isrc", "-I/usr/include/mysql",
             "-I/usr/include/libxml2", str(source), *objects, "-rdynamic",
             "-Wl,--wrap=_Z25persistence_next_item_uidv", "-Wl,--wrap=_Z6numberii",
-            *libraries, "-o", str(binary),
+            *baseline_flags, *libraries, "-o", str(binary),
         ], cwd=ROOT, check=True)
         world = path / "world"
         (world / "areas").mkdir(parents=True)
         (world / "lib").mkdir()
-        for name in ("duris.properties", "kingdom.cfg", "item_abilities.json"):
+        for name in ("duris.properties", "kingdom.cfg", "item_abilities.json", "random_equipment.cfg"):
             shutil.copyfile(ROOT / "lib" / name, world / "lib" / name)
         shutil.copyfile(ROOT / "areas/AREA", world / "areas/AREA")
         for name in ("obj", "trg", "mob", "wld", "zon"):
@@ -294,9 +398,45 @@ def main():
                             ("kingdom_config", world / "lib/kingdom.cfg"),
                             ("item_abilities", world / "lib/item_abilities.json")):
             assert provenance[label + "_sha256"] == hashlib.sha256(file.read_bytes()).hexdigest()
-        assert provenance["formula_revision"] == "ival-legacy-v1"
+        assert provenance["formula_revision"] == "ival-v2-class-spec-extents"
         assert provenance["context"] == "configured-healthy-boot"
         assert provenance["mini_mode"] == "0" and provenance["no_specials"] == "0"
+        if args.delta_output:
+            args.delta_output.mkdir(parents=True, exist_ok=True)
+            with (world / "circle-deltas.csv").open() as file:
+                rows = list(csv.DictReader(file))
+            changed = [row for row in rows if row["before"] != row["after"]]
+            with (args.delta_output / "changed-values.csv").open("w", newline="") as file:
+                writer = csv.DictWriter(file, fieldnames=["cohort", "id", "before", "after", "packed_spells"])
+                writer.writeheader()
+                writer.writerows(changed)
+            shutil.copyfile(world / "changed-circles.csv", args.delta_output / "changed-circles.csv")
+            shutil.copyfile(world / "generator-circles.csv", args.delta_output / "generator-circles.csv")
+            summary = {
+                "baseline_revision": args.circle_baseline,
+                "circle_functions_sha256": {
+                    "before": hashlib.sha256(function.encode()).hexdigest(),
+                    "after": hashlib.sha256(extract_function(
+                        "tradeskill.c", "int get_mincircle(int spell)\n{").encode()).hexdigest(),
+                },
+                "formula_revision": provenance["formula_revision"],
+                "provenance": provenance,
+                "compared": {kind: sum(row["cohort"] == kind for row in rows)
+                             for kind in ("template", "generated")},
+                "changed": {kind: sum(row["cohort"] == kind for row in changed)
+                            for kind in ("template", "generated")},
+                "generated_seeds": "seed=1..16; source_level=1,20,40,60,62; every native slot; finder_level=56/luck=160",
+                "score_derived_consumer_effects": {
+                    "status": "none in measured cohorts" if not changed else "requires cohort analysis",
+                    "families": ["salvage quality/breakage", "craft/forge level/recipe/material/XP",
+                                 "enhancement source/donor/result/price", "quest floors/zone weights",
+                                 "faerie bag 25/50/125"],
+                    "basis": "Exact before/after score equality implies no threshold, material, XP, or currency delta"
+                             if not changed else "Inspect changed-values.csv before rollout",
+                },
+            }
+            (args.delta_output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+            print("circle repair deltas:", summary["compared"], summary["changed"], flush=True)
         (world / "areas_mini").symlink_to(ROOT / "areas_mini", target_is_directory=True)
         for flag, mode, specials in (("-s", "0", "1"), ("--minimal", "1", "0")):
             target = world / ("report" + flag)
