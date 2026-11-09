@@ -2,7 +2,7 @@
 """Synthetic unit/runtime regression for held newbie creation grants (issue #160).
 
 Links the production grant queue, movement runtime, ownership registry and codecs.
-Only coordinator delivery, player lookup, and world mutation are fixtures. No DB,
+Coordinator delivery, starter-intent storage, player lookup and world mutation are fixtures. No DB,
 Redis, sockets, journal, or game instance is used. Requires Linux g++/OpenSSL and
 ASan/UBSan like the existing item-movement runtime tests; scheduling is explicit.
 """
@@ -20,6 +20,8 @@ int ordered_command_number(const char *);
 #include "classes/necromancy.h"
 #include "item/item_movement_transaction.h"
 #include "item/item_ownership_runtime.h"
+#include "item/starter_kit_intent.h"
+#include "player/player_revision_state.h"
 #include "persistence/persistence_checkpoint.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_codec.h"
@@ -33,6 +35,9 @@ int ordered_command_number(const char *);
 #include <map>
 #include <string>
 #include <utility>
+
+bool starter_kit_intent_bind(uint32_t pid, const critical_command &) { assert(pid == 42); return true; }
+bool starter_kit_intent_finish(uint32_t pid, const critical_command &, bool) { assert(pid == 42); return true; }
 
 P_obj object_list = nullptr;
 P_char character_list = nullptr;
@@ -177,6 +182,7 @@ struct fixture
     {
         item_movement_transaction_reset_for_tests();
         item_ownership_runtime_reset();
+        player_revision_reset_for_tests();
         submitted.clear(); publications.clear(); extractions.clear(); dirty.clear(); commands.clear();
         fixture_messages.clear(); submit_result = critical_submit_result::accepted;
         pc.pid = 42; other_pc.pid = 43;
@@ -227,6 +233,30 @@ static void deliver(const critical_completion &completion)
 }
 int main()
 {
+    // Acceptance by the writer is insufficient: the captured starter baseline
+    // must actually be written before any creation command can be admitted.
+    {
+        fixture f;
+        assert(player_revision_hydrate(42, 10));
+        player_revision_t baseline = 0;
+        assert(player_revision_mark(42, PLAYER_COMPONENT_STATUS, &baseline));
+        assert(baseline == 11);
+        assert(player_revision_acknowledge_durable(42, baseline, PLAYER_COMPONENT_STATUS));
+        assert(item_creation_grant_defer(&f.actor, [&](P_char, P_obj *root) {
+            *root = &f.bag;
+            return item_creation_prepare_result::ready;
+        }, true));
+        item_creation_grant_prepare_pulse();
+        assert(submitted.empty() && OBJ_NOWHERE(&f.bag));
+        assert(item_creation_grant_blocks_commands(&f.actor));
+        for (int i = 0; i < 3; ++i) item_movement_transaction_handle_completions(nullptr, 0);
+        assert(submitted.empty());
+        assert(player_revision_record_written(42, baseline));
+        item_movement_transaction_handle_completions(nullptr, 0);
+        assert(submitted.size() == 1 && item_creation_grant_blocks_commands(&f.actor));
+        deliver(next_completion(critical_apply_outcome::applied));
+        assert(publications[100] == 1 && !item_creation_grant_blocks_commands(&f.actor));
+    }
     // A final-publication callback runs exactly once and may safely enqueue the
     // next creation after the completed request releases its queue slot.
     {
@@ -623,7 +653,7 @@ def main() -> int:
             "-ffunction-sections", "-fdata-sections", "-fsanitize=address,undefined",
             "-Isrc", str(source), rel("item_movement_transaction.c"),
             rel("item_ownership_runtime.c"), rel("item_transfer_command.c"),
-            rel("critical_command.c"), rel("player_snapshot_capture.c"),
+            rel("critical_command.c"), rel("player_revision_state.c"), rel("player_snapshot_capture.c"),
             rel("player_snapshot_codec.c"), "-Wl,--gc-sections", "-lcrypto", str(HARNESS_STUBS), "-o", str(binary),
         ], cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True)

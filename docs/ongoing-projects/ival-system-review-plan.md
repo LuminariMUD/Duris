@@ -41,11 +41,27 @@ anchors refer to the reviewed baseline.
 
 Implementation checkout:
 `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
+Matching remote checkout on `duris-staging`:
+`/home/staging/duris-worktrees/ival-system-improvements`.
+Both checkouts use the tracked plan at
+`docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
+`origin/branch/ival-proclib-event-ownership`; its initial synchronized commit is
+`c9822bbd3`. Uncommitted Chunk 8 implementation remains in the local checkout
+and is not included in this synchronization. These are development worktrees;
+creating them does not deploy or change the running server.
+
 Initial implementation branch: `branch/ival-system-improvements`, plan commit
 `df2bfe359`, based on `c5db5ed5b`. Persistence remains MariaDB only. Dependent
 implementation chunks will use stacked branches/PRs; no release tag or deployment
 is appropriate before review and qualification.
 Plan PR: [#876](https://github.com/LuminariMUD/Duris/pull/876), against `master`.
+
+Current Git status verified 2026-11-09: PRs #876, #877, #878, #879, #884, #885,
+#886, #889, and #894 were merged by external review. PR #902 is the current open
+feature PR, now targeting `master`. Branch/base descriptions below record the
+original delivery order. The worktree incorporates reviewed master `341bd84ee`
+through non-rewriting merge `0f61c60f7`; no production deployment was performed by
+this task. Refresh remote state before continuing if other review work advances it.
 
 ### Chunk 1 — remove unused reset/recovery valuations (F15, partial)
 
@@ -289,6 +305,8 @@ new valuation input without introducing an unreviewed weight.
 ### Chunk 6 — preserve bank 5 through editor object I/O (implemented)
 
 Branch: `branch/ival-editor-b5-roundtrip`, based on `branch/ival-editor-object-formatting`.
+Published: [PR #894](https://github.com/LuminariMUD/Duris/pull/894) (bug label),
+implementation `c697d5e7b` and evidence `a8b6f2311`, stacked on #889.
 Formatting prerequisite: `a3b901b18`,
 [PR #889](https://github.com/LuminariMUD/Duris/pull/889) (enhancement label),
 stacked on #886. Only pre-existing formatting drift in the object structure,
@@ -346,15 +364,126 @@ five touched C/C++ files. The revision-wide wrapper check produced only the NTFS
 mode artifact described above, with no text diff. Implementation: `c697d5e7b`;
 the filename repair is the preceding `8b7438a71` commit.
 
+External review merged this work in #894 / `341bd84ee`, adding rejection of
+indented next-line negative masks and propagation of object-save errors so the
+editor keeps dirty state after open/write/close failure. Those reviewed changes
+are retained after merging master into this worktree. The expanded native object
+test passed 74 valid round trips, all invalid-mask cases, and successful/failed
+save-zone workflows after integration. The binding-catalog test, full server
+build, and both maintained editor builds also passed after that integration.
+
 **Ablation:** one stored field and one optional record in the existing parser and
 writer suffice. Reuse the native I/O helpers; no parallel parser, converter,
 framework, or valuation-policy change is needed.
 
-Next: finish editor bank-5 read/write preservation with a native round trip,
-then continue the native binding/context catalog and full-context reporting.
+### Chunk 7 — expose compiled object bindings without boot side effects (implemented)
+
+Branch: `branch/ival-object-binding-catalog`, based on `branch/ival-editor-b5-roundtrip`.
+Published: `e723e27bc`, [PR #902](https://github.com/LuminariMUD/Duris/pull/902)
+(enhancement label), stacked on #894. Ready for review.
+
+**Outcome:** make the existing 479 object-stage and 20 room-stage object bindings
+available as immutable metadata. Normal boot applies those same stage-specific
+tables, and offline context can consume them without mobile/room/ship setup or
+native callback execution. Preserve assignment order, overrides, missing-vnum
+fallback policy, and the `no_specials` boot gate.
+
+**Non-goals:** native-proc repricing, fixing the legacy index-0 fallback, board or
+generic-switch wiring, full offline boot/context, or formula changes. Other binding
+owners and normalized object fields must still be reconciled before F07 is done.
+
+**Files:** `src/specs/specs.assign.c`, a small metadata header, and affected
+binding/valuation regression checks. No new service, registry framework, dynamic
+configuration, or callback execution path is needed.
+
+**Proof:** the following checks passed:
+
+```text
+python3 tests/async/test_object_binding_catalog.py
+python3 tests/async/test_spec_assign_vnums.py
+python3 tests/async/test_chaos_kit_policy.py
+python3 tests/async/test_tutorial_spellup_bindings.py
+python3 tests/async/test_world_quest_target_retries.py
+make -C src -j4
+clang-format --style=file --dry-run --Werror src/specs/specs.assign.c src/specs/object_bindings.h
+```
+
+The authored-world check still covers 1,286 assignments and 12 guild-guard
+placements. Quest validation passed 317 native target/creation/payment cases
+plus history-policy scenarios. These are isolated executable checks, not live
+MUD or database qualification. Formatting/clang-tidy commit checks passed.
+
+The native extraction comparison against `a8b6f2311` matched all 499 resulting
+bindings and their lookup sequence across 17 complete/partial-world cases. It
+also verified unchanged non-object boot code tokens and no preprocessor
+conditionals in the moved assignments. `test_object_binding_catalog.py` compiles
+the actual binding translation unit with distinct inert callback identities;
+it exercises immutable inspection, separate stages, the vnum-30 override,
+missing-vnum fallback, and empty catalogs without callback execution or linked
+world/mobile/object-creation services. This is binding parity, not full valuation
+or native-callback behavior qualification.
+
+Binding owners to reconcile next include `src/cmd/boards.c` (board metadata),
+`src/economy/{mining.c,nexus_stones.c}`, `src/kingdom/{kingdom_guards.c,
+kingdom_harvest.c}`, `src/mob/studioproc.c`, `src/combat/ctf.c`, and the generic
+switch in `src/world/db.c`. Trace their owning initializers before invoking them
+offline; pointer assignment must be separable from runtime/data-loading work.
+`src/specs/specs.library.c:proclibObj_add()` also installs
+`proclib_obj_cmd_bridge` while remembering an incumbent, and invokes a library's
+`CMD_SET_PERIODIC` hook. Consequently, constructor-side proc-library behavior
+and incumbent routing must be modeled explicitly; raw fields plus the compiled
+catalog alone do not prove normalized live-score parity. Reconcile this with
+F05/F07/F09/F11/F12 before treating corpus output as authoritative.
+
+### Chunk 8 — read-only normalized template valuation and offline context (in progress)
+
+Branch: `branch/ival-readonly-template-values`, based on `branch/ival-object-binding-catalog`.
+
+**Outcome:** evaluate normalized template fields through the shared calculation,
+without object creation, UID allocation, callbacks, or events. Share the existing
+power-field normalization and proc-library parameter decoding. Initialize spell,
+racial/property, and effective binding metadata for offline reporting, and replace
+report-only live-object reads with the existing template cache. Record provenance
+and fail on missing required context instead of publishing guessed scores.
+
+**Non-goals:** coefficient changes, arithmetic fixes, new proc weights, full game
+boot, database access, or a parallel parser/calculator. Existing legacy scoring
+and explicit no-registration policy remain intact in this context repair.
+
+**Files:** the valuation adapter and normalization owner, proc-library metadata,
+binding owners' data-only setup, property loading, offline object/report boot,
+and native context/parity tests.
+
+**Proof:** native runtime/template score and field parity for stat, native proc,
+packed proc, racial, armor/shield, ignored, and normalization fixtures; real
+decoder/valuation functions; zero inspection UID/event/object-count changes;
+offline CLI context/error/provenance checks and effective-world qualification.
+
+**Ablation:** reuse the template parser/cache, shared numeric evaluator, actual
+decoders, and binding tables. Split metadata loading from runtime startup only
+where the offline caller needs it; add no service, rule engine, input dialect,
+or persistent item-score cache.
+
+#### Constructor repair discovered by native parity qualification
+
+Branch: `branch/ival-proclib-event-ownership`, based on `branch/ival-object-binding-catalog`.
+The real engine comparison found that `instantiate_object_template_impl()` reset
+`obj->nevents`/`nevents_tail` after `proclibObj_add()` had attached a periodic event.
+Extraction then could not cancel it: the hummer reference left one scheduled
+event after its object was freed. Remove this late reset; the constructor's
+initial `memset` already initializes both owner lists before registration.
+
+`python3 tests/async/test_newbie_object_template.py` passed under ASan/UBSan with
+new assertions that both accepted and no-argument libraries retain their event
+owner links. This is an independent lifecycle fix, published before the larger
+read-only feature. The full real-engine comparison remains part of Chunk 8 and
+will verify cancellation with actual library/scheduler/cleanup code.
+
+Next: finish the native binding/context catalog and full-context reporting.
 The shared arithmetic now supplies the server and editor; do not reintroduce a
 copied formula while completing diagnostics and template normalization.
-The published PR stack remains open for review; none has been merged or deployed.
+Published parent chunks have been merged externally; current PR state is recorded
+at the start of this implementation log. No deployment was performed by this task.
 No formula-changing slice is complete without the delta qualification below.
 
 Concrete context work to resume: `boot_material_rarity_objects()` in
@@ -851,9 +980,13 @@ Build indexes completely or fail/report partial construction rather than silentl
 skipping allocation failures.
 
 Keep indexes boot-scoped for now. Config explicitly requires restart; do not add
-hot reload or a general invalidation framework without a real caller. If a future
-change modifies valuation context at runtime, rebuild all dependent indexes and
-quest profiles together before publishing it.
+hot reload or a general invalidation framework without a real caller. Existing
+proc-library attachment already mutates the prototype callback during object
+construction and through the staff add command (`specs.library.c`); this is not
+only a possible future change. Resolve its incumbent/instance valuation semantics
+under F09/F11, then prove that boot indexes and quest profiles use the same stable
+context. Any supported later context change must update all dependent consumers
+together before publishing it.
 
 **Acceptance:** duplicate applies, equal-score ties, collisions, empty ranges,
 allocation failure, and candidate-load failures; same chosen result for existing
