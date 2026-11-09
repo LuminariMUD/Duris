@@ -1364,6 +1364,8 @@ void apply_affs(P_char, int);
 void balance_affects(P_char);
 void char_from_room(P_char);
 bool char_to_room(P_char, int, int);
+// Only the ordinary movement executor may preserve Essence during placement.
+bool char_to_room(P_char, int, int, bool ordinary_movement);
 void equip_char(P_char, P_obj, int, int);
 void extract_char(P_char);
 void hold_durable_pet_items(P_char);
@@ -2080,6 +2082,7 @@ char *next_page(char *, struct descriptor_data *);
 int count_pages(char *, struct descriptor_data *);
 void paginate_string(char *, struct descriptor_data *);
 void page_string(struct descriptor_data *, char *, int);
+void free_paging_data(struct descriptor_data *);
 void show_string(struct descriptor_data *, const char *);
 
 /* storage_lockers.c */
@@ -2618,6 +2621,7 @@ void spell_cure_serious(int, P_char, char *, int, P_char, P_obj);
 void spell_curse(int, P_char, char *, int, P_char, P_obj);
 void spell_cyclone(int, P_char, char *, int, P_char, P_obj);
 void spell_doom_blade(int, P_char, char *, int, P_char, P_obj);
+void spell_holy_blade(int, P_char, char *, int, P_char, P_obj);
 void spell_darkness(int, P_char, char *, int, P_char, P_obj);
 void spell_detect_evil(int, P_char, char *, int, P_char, P_obj);
 void spell_detect_good(int, P_char, char *, int, P_char, P_obj);

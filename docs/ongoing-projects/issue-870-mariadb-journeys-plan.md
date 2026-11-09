@@ -1027,3 +1027,24 @@ This is an estimate, not a time limit or permission to omit required proof.
   actual cooldown messages while still requiring expiry and the original
   `Nothing new seems to happen.` outcome. This is fixture synchronization,
   not a changed potion policy or discarded assertion.
+
+- Integrated `002ad622e` without rewriting history. The only conflict was the
+  reviewed shop journey: preserve its paid fresh-bag SIGKILL mode and use the
+  current MariaDB import/builder names. Both native save repairs remain intact.
+  The post-integration executable pipeline harness passed all existing and new
+  failure/partial/stale/retry legs. All150 changed Python modules compile, and
+  `git diff --check origin/master` passes. Existing upstream help-index trailing
+  spaces are preserved rather than mixed into this task's diff.
+- PR #918 now targets master because its prerequisite #897 is merged. The
+  rest of the pending stack retains its dependency order; no PR was merged here.
+- The ordering-repair revised matrix exited0 with36 openings; its source/runtime
+  manifest and report are retained as `assassin-qualified-ordering-binaries.json`
+  and `assassin-qualified-ordering-results-revised-matrix.json`. The following
+  scenarios correctly rejected source changes from this reviewed-master merge.
+  Prepare the integrated revision and run revised scenarios after build/hooks.
+- Build/SQL harness controller session16775 is running the final integrated
+  native build, deep checkpoint claim matrix and compatibility relink. Its
+  `integrated-*.exit` files record terminal results. After those pass, resume
+  wear824/rollback/chest/report and qualify integrated Assassin scenarios, then
+  run `make test-all` and `make test-db` to completion. Reuse the explicitly
+  versioned unchanged original/cleanse12/12 matrix evidence; no rebalance claim.
