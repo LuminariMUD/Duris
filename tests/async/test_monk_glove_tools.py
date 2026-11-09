@@ -15,7 +15,7 @@ RUNTIME = r'''
 #include <cmath>
 static index_data index_data_fixture[1]{};
 P_index obj_index = index_data_fixture;
-const stat_data stat_factor[301]{};
+extern const stat_data stat_factor[LAST_RACE + 1]{};
 int get_mincircle(int spell) { return spell == 32 ? 1 : 0; }
 int get_ival_from_proc(obj_proc_type) { assert(false); return 0; }
 // FUNCTIONS
@@ -67,15 +67,16 @@ int main() {
 (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="monk-glove-tools-", dir=ROOT / "bin/tests") as tmp:
     for name, code, source, signature in (
-        ("runtime", RUNTIME, "tradeskill.c", "int itemvalue(P_obj obj)"),
+        ("runtime", RUNTIME, None, None),
         ("editor", EDITOR, "../areas/de/src/obj/object.cpp", "int itemvalue(objectType *obj)"),
     ):
         path = Path(tmp) / (name + ".cpp")
-        path.write_text(code.replace("// FUNCTIONS", extract_function(source, signature)))
+        path.write_text(code.replace("// FUNCTIONS", extract_function(source, signature)
+                                     if source else ""))
         binary = path.with_suffix("")
         command = ["g++", "-std=c++20", "-g", "-O1", "-fsanitize=address,undefined",
                    "-fno-omit-frame-pointer", "-Isrc", "-Iareas/de/src", str(path)]
-        command += [str(HARNESS_STUBS)] if name == "runtime" else ["-D_DE_", "-D__UNIX__"]
+        command += [str(HARNESS_STUBS), "src/item/item_value.c", "src/item/item_value_runtime.c"] if name == "runtime" else ["-D_DE_", "-D__UNIX__"]
         subprocess.run(command + ["-o", str(binary)], cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True, env=dict(os.environ,
             ASAN_OPTIONS="detect_leaks=1:halt_on_error=1", UBSAN_OPTIONS="halt_on_error=1"))

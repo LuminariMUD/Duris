@@ -178,6 +178,48 @@ before database/listener startup; no live environment or player data was used.
 existing caller. No error framework, output transaction, or new report mode is
 needed. The path change removes truncation rather than adding another limit.
 
+### Chunk 4 — isolate shared arithmetic from runtime context (F11, in progress)
+
+Branch: `branch/ival-shared-evaluator`, based on `branch/ival-report-errors`.
+
+**Outcome:** move the existing numeric calculation into `src/item/item_value.c`
+with plain input/context data in `item_value.h`; move circle/proc/racial resolution
+and the compatible `itemvalue(P_obj)` entry point into `item_value_runtime.c`.
+Expose the base, multiplier, unrounded value, floor/utility policy, and score from
+the same calculation. Preserve all legacy arithmetic and coefficients in this
+extraction, including the defects pinned in Chunk 2.
+
+**Non-goals:** arithmetic repairs, new weights, full context initialization,
+editor migration, or full-world delta qualification in this structural slice.
+Those original requirements remain open and will use this shared calculation.
+The legacy circle/proc-price definitions remain in `tradeskill.c` for the
+separate metadata extraction; the new engine adapter resolves them. The current
+breakdown contains scalar totals, not yet per-term/unsupported-input diagnostics.
+
+**Files:** the item valuation module, `src/Makefile`, removal of the numeric implementation
+from `src/economy/tradeskill.c`, and the existing native valuation harnesses.
+
+**Proof:** the extraction matched the native function from commit `7b994069e` on
+25,000 synthetic mixed-input fixtures seeded with `0x4956414c`, with no score
+deltas. The comparison compiled both implementations under ASan/UBSan and checked
+object/index immutability, zero game-RNG use, and breakdown consistency. It is
+structural parity evidence, not the effective-world delta report required for
+formula changes. Controlled circle/native/racial context was shared by both
+implementations.
+
+The existing enhancement, monk tools, and authored monk pilot checks passed with
+the production numeric module and adapter linked as separate translation units.
+The characterization harness now also compiles the numeric module alone in both
+server and `_DE_` editor modes, without engine globals/stubs; it exercises explicit
+context, floor/utility policy, and scalar breakdown consistency. Native
+characterization, final build, formatting, and commit checks must finish before
+publishing this chunk.
+
+**Ablation:** one numeric implementation and a thin engine adapter serve the
+traced runtime/editor/report consumers. Keep current proc pricing and circle
+policy intact; a new rule engine, calculator language, or persistent cache adds
+nothing needed by this extraction.
+
 Next: continue remaining Stage 1 work and the shared evaluator/context work.
 All four published PRs are open for review; none has been merged or deployed.
 No formula-changing slice is complete without the delta qualification below.
@@ -188,8 +230,9 @@ setup is `assign_spell_pointers()` in `src/net/sparser.c` (calls
 `initialize_skills()`), and racial factors come from `update_stat_data()` in
 `src/world/db.c` after properties load. Native bindings live in
 `assign_objects()` in `src/specs/specs.assign.c`; **do not call that whole
-function in offline mode**: it also writes mobile bindings and calls
-`assign_ship_crew_funcs()`. Reuse/expose the actual object-binding data without
+function in offline mode**: it also writes mobile and room bindings. Additional
+object bindings occur in `assign_rooms()`, which also calls
+`assign_ship_crew_funcs()`. Reuse/expose all actual object-binding data without
 those runtime effects, and reconcile parsed `object_template` fields with
 `convertObj()` before using a read-only view. This is the next missing evidence
 needed for full-context corpus deltas and F07/F11/F12, not a reason to substitute
@@ -810,6 +853,8 @@ partial deliveries and their verification are recorded in the implementation log
 ### Stage 2 — extract the calculation with behavior preserved
 
 - [ ] Create the item-owned evaluator and thin runtime adapter (F11).
+  Numeric extraction and scalar breakdown are in progress in Chunk 4; legacy
+  metadata ownership and detailed diagnostics remain pending.
 - [ ] Preserve legacy first-match proc values while replacing duplicate chains
   with explicit metadata; keep repricing and override semantics in later changes.
 - [ ] Add the breakdown and read-only template path; migrate inspection users
