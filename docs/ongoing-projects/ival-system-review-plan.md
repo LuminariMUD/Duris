@@ -440,6 +440,8 @@ F05/F07/F09/F11/F12 before treating corpus output as authoritative.
 ### Chunk 8 — read-only normalized template valuation and offline context (implemented)
 
 Branch: `branch/ival-readonly-template-runtime`, based on `branch/ival-ctf-binding-metadata`.
+Published: `a61a6b8f1`, [PR #930](https://github.com/LuminariMUD/Duris/pull/930)
+(enhancement and bug labels), stacked on #927. Ready for review.
 
 **Outcome:** evaluate normalized template fields through the shared calculation,
 without object creation, UID allocation, callbacks, or events. Share the existing
