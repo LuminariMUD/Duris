@@ -16,6 +16,7 @@
 
 #include "net/ansi.h"
 #include "net/output_channel.h"
+#include "net/output_links.h"
 #include <array>
 #include <cstdint>
 #include <map>
@@ -132,6 +133,8 @@ struct OutputContext
 	const char *original_message = nullptr;
 	OutputRole role = OutputRole::None;
 	const OutputChatMessage *chat = nullptr;
+	std::span<const OutputLink> links{}; // Borrowed byte ranges into this send's markup.
+	bool links_prepared = false; // Pager/chunk replay retains complete original URL targets.
 };
 
 inline OutputContext recipient_output_context(OutputChannel channel,

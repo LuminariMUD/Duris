@@ -8,5 +8,8 @@ tests. Distinguish verified behavior from balance estimates and design judgments
 Start with the [class overview](../CLASSES.md) for shared rules and the catalogue.
 The [class points proposal](../CLASS-POINTS.md) provides a balance review framework.
 
+- [Multiclassing](multiclass.md): eligibility, ordered class pairs, progression
+  resets, secondary skill and spell rules, costs, and removing a secondary class.
+
 Proposed changes belong in [design](../../design/); temporary investigations belong
 in [ongoing projects](../../ongoing-projects/). Consolidate lasting findings here.

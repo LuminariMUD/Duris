@@ -19,6 +19,7 @@
 #include "core/utils.h"
 #include <stdio.h>
 #include <string.h>
+#include <vector>
 #include "guild/assocs.h"
 #include "combat/damage.h"
 #include "world/graph.h"
@@ -838,7 +839,7 @@ bool Mob_Furious(P_char ch, P_char /*victim*/, int chance)
 bool DragonCombat(P_char ch, int awe)
 {
 	int breath_chance;
-	P_char tchar1 = NULL, tchar2 = NULL;
+	P_char tchar1 = NULL;
 	bool bIsPet = false;
 	P_char chMaster = NULL;
 
@@ -900,9 +901,24 @@ bool DragonCombat(P_char ch, int awe)
 				     RMFR_CROSS_ZONE_BARRIER),
 			0);
 
-		for (tchar1 = world[ch->in_room].people; tchar1; tchar1 = tchar2)
+		// A flee can move or remove anyone, so roar at who is here now and recheck each of
+		// them when it is their turn.
+		const int roar_room = ch->in_room;
+		const uint64_t roarer_id = ch->runtime_id;
+		const auto roarer_gone = [&]()
+		{ return find_character_by_runtime_id(roarer_id) != ch || !IS_ALIVE(ch); };
+		std::vector<uint64_t> target_ids;
+		for (tchar1 = world[roar_room].people; tchar1; tchar1 = tchar1->next_in_room)
+			target_ids.push_back(tchar1->runtime_id);
+
+		for (uint64_t target_id : target_ids)
 		{
-			tchar2 = tchar1->next_in_room;
+			if (roarer_gone())
+				return TRUE;
+
+			tchar1 = find_character_by_runtime_id(target_id);
+			if (!IS_ALIVE(tchar1) || tchar1->in_room != roar_room)
+				continue;
 
 			if (grouped(tchar1, ch))
 			{
@@ -959,25 +975,31 @@ bool DragonCombat(P_char ch, int awe)
 				if (GET_LEVEL(tchar1) < (GET_LEVEL(ch) / 2))
 				{
 					do_flee(tchar1, 0, 2); /* panic flee, no save */
+					if (roarer_gone())
+						return TRUE;
+					tchar1 = find_character_by_runtime_id(target_id);
 				}
 
-				if (GET_LEVEL(tchar1) >= GET_LEVEL(ch))
+				// Someone who panicked out of the room is past the roar; someone who
+				// could not get away can still be scared.
+				if (IS_ALIVE(tchar1) && tchar1->in_room == roar_room)
 				{
-					if (!NewSaves(tchar1, SAVING_FEAR, -5))
+					if (GET_LEVEL(tchar1) >= GET_LEVEL(ch))
 					{
-						do_flee(tchar1, 0, 1);
+						if (!NewSaves(tchar1, SAVING_FEAR, -5))
+						{
+							do_flee(tchar1, 0, 1);
+						}
+					}
+					else if (!NewSaves(tchar1, SAVING_FEAR, -2))
+					{
+						do_flee(tchar1, 0, 1); /* fear, but not panic */
 					}
 				}
-				else if (!NewSaves(tchar1, SAVING_FEAR, -2))
-				{
-					do_flee(tchar1, 0, 1); /* fear, but not panic */
-				}
 			}
-			if (ch->in_room != tchar1->in_room)
-			{
-				if (IS_FIGHTING(tchar1))
-					stop_fighting(tchar1);
-			}
+			tchar1 = find_character_by_runtime_id(target_id);
+			if (tchar1 && tchar1->in_room != roar_room && IS_FIGHTING(tchar1))
+				stop_fighting(tchar1);
 		}
 		return TRUE;
 	}
@@ -1019,7 +1041,6 @@ bool DragonCombat(P_char ch, int awe)
 	 */
 	if (number(0, breath_chance))
 		return FALSE;
-	/*    }*/
 
 	BreathWeapon(ch, -1);
 

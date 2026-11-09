@@ -25,7 +25,7 @@
 #define ACT_NOEOL 128
 #define ACT_PRIVATE 256
 
-#define SEND_TO_Q(messg, desc) write_to_q((messg), &(desc)->output, 1)
+#define SEND_TO_Q(messg, desc) write_output((messg), &(desc)->output)
 
 // Discard queued gameplay and an unfinished input line, preserving output.
 void flush_input_queue(P_desc descriptor);

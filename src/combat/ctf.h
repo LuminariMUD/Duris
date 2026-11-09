@@ -55,6 +55,7 @@ struct ctfData
 };
 
 int init_ctf();
+void assign_ctf_object_procs();
 int load_ctf();
 int ctf_flag_proc(P_obj, P_char, int, char *);
 void ctf_notify(const char *, int);
