@@ -703,9 +703,14 @@ This is an estimate, not a time limit or permission to omit required proof.
   variant binary SHA-256:
   `1576a431f07c49a21f18c79aa85fe0146e98ca83c8b269be4a850d7f3e8b62b8`.
   Build log: `bin/tests/issue-870/named-set-compat-build.log`.
-- Next qualification command:
-  `python3 tests/async/named_set_gameplay.py bin/tests/named-set-rollback-source/dms-115-catalog`.
-  It self-enters the disposable wrapper when needed. Inspect its terminal result
+- Current named-set qualification:
+  `python3 tests/async/named_set_gameplay.py bin/tests/named-set-rollback-source/dms-115-catalog`,
+  running from `cacfbc8be`; log `bin/tests/issue-870/named-set-sequence-run.log`.
+  Artifacts: `bin/tests/named-set-mariadb-sequence-ununney2` (private SQL dump is
+  retained on exit). Transfer already passed two-level native give, original UID/
+  origin/parent/slot persistence through nested/worn reboots and independent
+  ordinary Armor non-stacking at -90 Armor Points. Edit/clone is in progress.
+  The entry self-enters the disposable wrapper. Inspect its terminal result
   and every case before marking batch3 complete; preserve failures and repair
   actual defects without dropping cases. Historical assassin comparison,
   naming/docs and full regression/DB gates still follow. No whole-issue claim.
