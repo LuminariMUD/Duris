@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "economy/auction_repository.h"
+#include "economy/currency_value.h"
 #include "item/item_claim_repository.h"
 
 #include "item/item_transfer_command.h"
@@ -405,8 +406,8 @@ bool auction_repository_execute(MYSQL *connection, const critical_command &comma
 	result->action = payload.action;
 	*result_code = 0;
 	*mutation_applied = false;
-	// The wallet is memory's: the submit took the fee or the bid, and the completion
-	// gives back what wallet_value_delta does not keep.
+	// Listing/bid escrow is live: completion returns what wallet_value_delta does not
+	// keep. Prepared money claims credit the SQL purse with pickup consumption below.
 	if (payload.action == auction_action::list)
 	{
 		if (payload.listing_fee < 0 || payload.start_price < 0 ||
@@ -587,7 +588,9 @@ bool auction_repository_execute(MYSQL *connection, const critical_command &comma
 		MYSQL_ROW row = query ? mysql_fetch_row(query) : nullptr;
 		uint64_t money = 0;
 		const bool found = row && parse_u64(row[0], &money) && money > 0 &&
-				   money <= INT_MAX;
+				   (payload.value > 0 ?
+					    static_cast<uint64_t>(payload.value) <= money :
+					    money <= INT_MAX);
 		if (query)
 			mysql_free_result(query);
 		if (!found)
@@ -595,14 +598,66 @@ bool auction_repository_execute(MYSQL *connection, const critical_command &comma
 			*result_code = ENOENT;
 			return true;
 		}
-		if (!execute(connection,
-			     "UPDATE auction_money_pickups SET money=0,claim_revision=claim_revision+1 "
-			     "WHERE pid=" +
-				     std::to_string(payload.actor_pid) +
-				     " AND money=" + std::to_string(money)) ||
+		const int64_t claimed = payload.value > 0 ? payload.value :
+							    static_cast<int64_t>(money);
+		if (payload.value > 0)
+		{
+			// New claims credit the purse with the pickup receipt in this transaction.
+			// A lost reply or departed actor reloads the credited wallet, not an empty claim.
+			if (!execute(
+				    connection,
+				    "SELECT copper,silver,gold,platinum,wallet_revision FROM player_data WHERE pid=" +
+					    std::to_string(payload.actor_pid) +
+					    " AND account_name='" +
+					    escape(connection, payload.account_name.data(),
+						   strlen(payload.account_name.data())) +
+					    "' AND racewar=" + std::to_string(payload.racewar) +
+					    " FOR UPDATE"))
+				return false;
+			query = mysql_store_result(connection);
+			row = query ? mysql_fetch_row(query) : nullptr;
+			uint64_t values[5] = {};
+			bool valid = row != nullptr;
+			for (size_t index = 0; valid && index < 5; ++index)
+				valid = parse_u64(row[index], &values[index]) &&
+					(index == 4 || values[index] <= INT_MAX);
+			if (query)
+				mysql_free_result(query);
+			if (!valid || values[4] != payload.expected_wallet_revision)
+			{
+				*result_code = ESTALE;
+				return true;
+			}
+			currency_vector before = {}, after = {};
+			for (size_t index = 0; index < 4; ++index)
+				before.amount[index] = static_cast<int64_t>(values[index]);
+			if (!currency_wallet_after_value(before, claimed, &after))
+			{
+				*result_code = ENOSPC;
+				return true;
+			}
+			if (!execute(connection,
+				     "UPDATE player_data SET copper=" +
+					     std::to_string(after.amount[0]) +
+					     ",silver=" + std::to_string(after.amount[1]) +
+					     ",gold=" + std::to_string(after.amount[2]) +
+					     ",platinum=" + std::to_string(after.amount[3]) +
+					     ",wallet_revision=wallet_revision+1 WHERE pid=" +
+					     std::to_string(payload.actor_pid)) ||
+			    mysql_affected_rows(connection) != 1)
+				return false;
+			result->wallet = after;
+			result->wallet_revision = values[4] + 1;
+		}
+		if (!execute(connection, "UPDATE auction_money_pickups SET money=money-" +
+						 std::to_string(claimed) +
+						 ",claim_revision=claim_revision+1 "
+						 "WHERE pid=" +
+						 std::to_string(payload.actor_pid) +
+						 " AND money=" + std::to_string(money)) ||
 		    mysql_affected_rows(connection) != 1)
 			return false;
-		result->wallet_value_delta = static_cast<int64_t>(money);
+		result->wallet_value_delta = claimed;
 		result->event_type = auction_event_type::money_claimed;
 	}
 	else if (payload.action == auction_action::claim_item)

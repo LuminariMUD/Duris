@@ -1237,16 +1237,25 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 	if (row)
 	{
 		const auto *lengths = mysql_fetch_lengths(rows);
-		divine_trade_result result;
 		valid = lengths && row[0] && lengths[0] == tag.command_hash.size() &&
 			!memcmp(row[0], tag.command_hash.data(), tag.command_hash.size()) &&
-			row[1] && !strcmp(row[1], "19") && row[2] && !strcmp(row[2], "1") &&
-			row[3] && (!strcmp(row[3], "0") || !strcmp(row[3], "1")) && row[4] &&
-			divine_trade_result_decode(reinterpret_cast<const uint8_t *>(row[4]),
-						   lengths[4], &result) &&
-			result.pid == static_cast<uint32_t>(snapshot->pid) &&
-			result.payment == tag.payment &&
-			result.wallet_revision == tag.wallet_revision + 1;
+			row[1] && row[2] && !strcmp(row[2], "1") && row[3] &&
+			(!strcmp(row[3], "0") || !strcmp(row[3], "1"));
+		if (valid && !strcmp(row[1], "7"))
+			// The hash binds the actor, exact claim amount and wallet revision. A new
+			// money claim writes that credit with its inbox receipt atomically.
+			valid = tag.payment > 0 && !tag.has_cargo_effect;
+		else if (valid)
+		{
+			divine_trade_result result;
+			valid = !strcmp(row[1], "19") && row[4] &&
+				divine_trade_result_decode(
+					reinterpret_cast<const uint8_t *>(row[4]), lengths[4],
+					&result) &&
+				result.pid == static_cast<uint32_t>(snapshot->pid) &&
+				result.payment == tag.payment &&
+				result.wallet_revision == tag.wallet_revision + 1;
+		}
 		committed = valid && !strcmp(row[3], "1");
 	}
 	mysql_free_result(rows);
