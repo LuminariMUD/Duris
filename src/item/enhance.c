@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <float.h>
 #include "net/comm.h"
 #include "world/db.h"
 #include "world/events.h"
@@ -18,6 +19,7 @@
 #include "core/prototypes.h"
 #include "magic/spells.h"
 #include "core/structs.h"
+#include "core/config_parse.h"
 #include "core/utils.h"
 #include "item/enhance.h"
 #include "item/item_removal_audit.h"
@@ -107,9 +109,9 @@ void enhance(P_char ch, P_obj source, P_obj material)
 {
 	char buf[MAX_STRING_LENGTH];
 	P_obj robj;
-	int cost, searchcount, maxsearch, sval;
-	int newval, minval, chluck, wearflags;
-	int cascade_dir, cascade_step, cascade_ival;
+	int cost, sval, chluck, wearflags;
+	int64_t searchcount, maxsearch, newval, minval, cascade_step, cascade_ival;
+	int cascade_dir;
 	struct enhance_index_entry *entry;
 
 	if (!ch || !source || !material)
@@ -139,7 +141,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 			     ch);
 		return;
 	}
-	minval = sval - enhance_material_ival_delta;
+	minval = static_cast<int64_t>(sval) - enhance_material_ival_delta;
 	searchcount = 0;
 	maxsearch = enhance_search_max_attempts;
 	// Only search matching wear flags unless none matching, then just search source wear flags.
@@ -161,12 +163,14 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	}
 
 	// Can enhance up to 3x level, same as forge/craft. --Eikel
-	if (sval > GET_LEVEL(ch) * enhance_level_gate_multiplier)
+	const int64_t level_limit =
+		static_cast<int64_t>(GET_LEVEL(ch)) * enhance_level_gate_multiplier;
+	if (sval > level_limit)
 	{
 		snprintf(
 			buf, MAX_STRING_LENGTH,
-			"This item has ival %d; at your level you can enhance items up to ival %d.\r\n",
-			sval, GET_LEVEL(ch) * enhance_level_gate_multiplier);
+			"This item has ival %d; at your level you can enhance items up to ival %lld.\r\n",
+			sval, static_cast<long long>(level_limit));
 		send_to_char(buf, ch);
 		return;
 	}
@@ -180,8 +184,8 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		snprintf(source_description, MAX_STRING_LENGTH, "%s", source->short_description);
 		checked_snprintf(
 			buf, MAX_STRING_LENGTH,
-			"&+REnhancing %s requires an item with at least an &+Witem value of: %d&n\r\n",
-			source_description, minval);
+			"&+REnhancing %s requires an item with at least an &+Witem value of: %lld&n\r\n",
+			source_description, static_cast<long long>(minval));
 		send_to_char(buf, ch);
 		return;
 	}
@@ -206,25 +210,25 @@ void enhance(P_char ch, P_obj source, P_obj material)
 
 	if (number(1, enhance_luck_extreme_range) < chluck)
 	{
-		newval = sval + enhance_ival_gain_extreme;
+		newval = static_cast<int64_t>(sval) + enhance_ival_gain_extreme;
 		maxsearch *= 4;
 		send_to_char("&+YYou feel &+MEXTREMELY Lucky&+Y!\r\n", ch);
 	}
 	else if (number(1, enhance_luck_very_range) < chluck)
 	{
-		newval = sval + enhance_ival_gain_very;
+		newval = static_cast<int64_t>(sval) + enhance_ival_gain_very;
 		maxsearch *= 3;
 		send_to_char("&+YYou feel &+MVery Lucky&+Y!\r\n", ch);
 	}
 	else if (number(1, enhance_luck_lucky_range) < chluck)
 	{
-		newval = sval + enhance_ival_gain_lucky;
+		newval = static_cast<int64_t>(sval) + enhance_ival_gain_lucky;
 		maxsearch *= 2;
 		send_to_char("&+YYou feel &+MLucky&+Y!\r\n", ch);
 	}
 	else
 	{
-		newval = sval + enhance_ival_gain_normal;
+		newval = static_cast<int64_t>(sval) + enhance_ival_gain_normal;
 	}
 
 	const int64_t max_result_value =
@@ -259,12 +263,14 @@ void enhance(P_char ch, P_obj source, P_obj material)
 								    (newval - cascade_step);
 			}
 
-			if (cascade_ival <= sval || cascade_ival > max_result_value)
+			if (cascade_ival <= sval || cascade_ival > max_result_value ||
+			    cascade_ival > INT_MAX)
 				continue;
 
 			/* Look up in hash table */
-			for (entry = enhance_ival_table[enhance_hash(cascade_ival)]; entry;
-			     entry = entry->next)
+			for (entry = enhance_ival_table[enhance_hash(
+				     static_cast<int>(cascade_ival))];
+			     entry; entry = entry->next)
 			{
 				if (entry->ival != cascade_ival)
 					continue;
@@ -464,6 +470,8 @@ static int enhance_stat_cap(int base_modifier)
 {
 	if (base_modifier <= 0)
 		return 0;
+	if (enhance_stat_cap_multiplier >= SCHAR_MAX)
+		return SCHAR_MAX;
 	const double cap = base_modifier * enhance_stat_cap_multiplier;
 	return cap >= SCHAR_MAX ? SCHAR_MAX : static_cast<int>(cap);
 }
@@ -805,12 +813,14 @@ void do_enhance(P_char ch, char *argument, int /*cmd*/)
 				ch);
 			return;
 		}
-		if (source_value > GET_LEVEL(ch) * enhance_level_gate_multiplier)
+		const int64_t level_limit =
+			static_cast<int64_t>(GET_LEVEL(ch)) * enhance_level_gate_multiplier;
+		if (source_value > level_limit)
 		{
 			snprintf(
 				rest, sizeof(rest),
-				"&+yThis item has ival %d; at your level you can enhance items up to ival %d.\r\n",
-				source_value, GET_LEVEL(ch) * enhance_level_gate_multiplier);
+				"&+yThis item has ival %d; at your level you can enhance items up to ival %lld.\r\n",
+				source_value, static_cast<long long>(level_limit));
 			send_to_char(rest, ch);
 			return;
 		}
@@ -1241,7 +1251,7 @@ void thanksgiving_proc(P_char ch)
 static void enhance_load_essence_drop(P_char ch, P_char killer)
 {
 	int reward = 0;
-	int moblvl = GET_LEVEL(ch);
+	int64_t moblvl = GET_LEVEL(ch);
 
 	if (!enhance_essence_drop_enabled)
 		return;
@@ -1274,8 +1284,9 @@ static void enhance_load_essence_drop(P_char ch, P_char killer)
 		}
 		if (number(1, primary_roll_max) < moblvl)
 		{
-			debug("enhancematload: mob: '%s' (%d) moblvl %d%s", J_NAME(ch),
-			      GET_VNUM(ch), moblvl, IS_ELITE(ch) ? " ELITE." : ".");
+			debug("enhancematload: mob: '%s' (%d) moblvl %lld%s", J_NAME(ch),
+			      GET_VNUM(ch), static_cast<long long>(moblvl),
+			      IS_ELITE(ch) ? " ELITE." : ".");
 			if (number(1, max_roll_max) < moblvl)
 			{
 				switch (number(1, 8))
@@ -1633,6 +1644,59 @@ static struct enhance_essence_zone_rule *enhance_find_essence_zone_rule(int zone
 		 *  load_enhance_config() — Parse lib/enhance.cfg for settings and bitvector masks
 		 * =============================================================================
 		 */
+static int enhance_config_int(const char *key, const char *text, int previous, int low, int high)
+{
+	int value;
+	if (!config_parse_int(text, value) || value < low || value > high)
+	{
+		logit(LOG_STATUS, "Invalid enhancement config %s=%s; retaining previous value.",
+		      key, text);
+		return previous;
+	}
+	return value;
+}
+
+static double enhance_config_real(const char *key, const char *text, double previous,
+				  double maximum)
+{
+	double value;
+	if (!config_parse_double(text, value) || value <= 0 || value > maximum)
+	{
+		logit(LOG_STATUS, "Invalid enhancement config %s=%s; retaining previous value.",
+		      key, text);
+		return previous;
+	}
+	return value;
+}
+
+static bool enhance_config_zone_rule(char *text, enhance_essence_zone_rule &rule)
+{
+	int values[4]{};
+	int count = 0;
+	for (char *field = text;;)
+	{
+		if (count == 4)
+			return false;
+		char *colon = strchr(field, ':');
+		if (colon)
+			*colon = '\0';
+		char *end = field + strlen(field);
+		while (end > field && isspace(static_cast<unsigned char>(end[-1])))
+			*--end = '\0';
+		while (isspace(static_cast<unsigned char>(*field)))
+			++field;
+		if ((*field && !config_parse_int(field, values[count])) ||
+		    values[count] < (count ? 0 : 1))
+			return false;
+		++count;
+		if (!colon)
+			break;
+		field = colon + 1;
+	}
+	rule = { values[0], values[1], values[2], values[3] };
+	return true;
+}
+
 void load_enhance_config(void)
 {
 	FILE *fp;
@@ -1640,21 +1704,37 @@ void load_enhance_config(void)
 	char section[64];
 	int section_idx;
 	int i, line_num;
-	char flag_name[128];
 	char *p, *eq, *comma;
-
-	fp = fopen("lib/enhance.cfg", "r");
-	if (!fp)
-	{
-		fprintf(stderr, "WARNING: Cannot open lib/enhance.cfg — using defaults.\n");
-		logit(LOG_STATUS, "WARNING: Cannot open lib/enhance.cfg — using defaults.");
-		return;
-	}
 
 	section[0] = '\0';
 	section_idx = -1;
 	line_num = 0;
-	/* Reloads must not retain stale opt-ins or pool exclusions. */
+	/* Every load starts from compiled defaults, including a missing file. */
+	enhance_ival_cap = 95;
+	enhance_material_ival_delta = 5;
+	enhance_guild_insignia_ival_bonus = 5;
+	enhance_cost_low_ival_threshold = 20;
+	enhance_cost_low_amount = 1000;
+	enhance_cost_high_amount = 10000;
+	enhance_search_vnum_min = 1300;
+	enhance_search_vnum_max = 134000;
+	enhance_search_max_attempts = 20000;
+	enhance_wear_skip_mask = ITEM_TAKE | ITEM_HOLD | ITEM_ATTACH_BELT | ITEM_WEAR_BACK;
+	enhance_original_max_roll = 4;
+	enhance_original_cascade_down_first = 1;
+	enhance_level_gate_multiplier = 3;
+	enhance_mod_max_steps = 3;
+	enhance_luck_extreme_range = 1200;
+	enhance_luck_very_range = 800;
+	enhance_luck_lucky_range = 400;
+	enhance_ival_gain_extreme = 4;
+	enhance_ival_gain_very = 3;
+	enhance_ival_gain_lucky = 2;
+	enhance_ival_gain_normal = 1;
+	enhance_stat_cap_multiplier = 1.5;
+	enhance_stat_platinum_base = 1000;
+	enhance_stat_platinum_per_ival = 100;
+	enhance_stat_material_quantity_multiplier = 1.0;
 	enhance_allow_mask = 0;
 	enhance_allow_mask2 = 0;
 	enhance_allow_mask3 = 0;
@@ -1672,9 +1752,36 @@ void load_enhance_config(void)
 	enhance_pool_excluded_zone_count = 0;
 	enhance_pool_excluded_vnum_count = 0;
 
+	fp = fopen("lib/enhance.cfg", "r");
+	if (!fp)
+	{
+		fprintf(stderr, "WARNING: Cannot open lib/enhance.cfg — using defaults.\n");
+		logit(LOG_STATUS, "WARNING: Cannot open lib/enhance.cfg — using defaults.");
+		return;
+	}
+
 	while (fgets(line, sizeof(line), fp))
 	{
 		line_num++;
+		if (!strchr(line, '\n'))
+		{
+			int next = fgetc(fp);
+			if (next != EOF && next != '\n')
+			{
+				while (next != EOF && next != '\n')
+					next = fgetc(fp);
+				logit(LOG_STATUS, "Ignoring overlong enhancement config line %d.",
+				      line_num);
+				continue;
+			}
+		}
+		if (char *comment = strchr(line, '#'))
+			*comment = '\0';
+		p = line;
+		while (*p == ' ' || *p == '\t')
+			++p;
+		if (p != line)
+			memmove(line, p, strlen(p) + 1);
 
 		/* Strip trailing whitespace / newline */
 		p = line + strlen(line);
@@ -1689,6 +1796,14 @@ void load_enhance_config(void)
 		/* Detect section header */
 		if (line[0] == '[')
 		{
+			char *closing = strchr(line, ']');
+			if (!closing || closing[1])
+			{
+				section_idx = -1;
+				logit(LOG_STATUS, "Invalid enhancement section on line %d.",
+				      line_num);
+				continue;
+			}
 			p = line + 1;
 			i = 0;
 			while (*p && *p != ']' && i < (int)sizeof(section) - 1)
@@ -1718,16 +1833,28 @@ void load_enhance_config(void)
 			else if (!strcmp(section, "bitvector5"))
 				section_idx = 14;
 			else if (!strcmp(section, "spell"))
+			{
 				section_idx = 20;
+				logit(LOG_STATUS,
+				      "Enhancement [spell] section is unsupported and is not enforced.");
+			}
 			else
+			{
 				section_idx = -1;
+				logit(LOG_STATUS, "Unsupported enhancement section [%s].", section);
+			}
 			continue;
 		}
 
 		/* Parse key = value lines */
 		eq = strchr(line, '=');
 		if (!eq)
+		{
+			if (section_idx >= 0)
+				logit(LOG_STATUS, "Malformed enhancement setting on line %d.",
+				      line_num);
 			continue;
+		}
 
 		*eq = '\0';
 		/* Trim key */
@@ -1735,9 +1862,9 @@ void load_enhance_config(void)
 		while (*p == ' ' || *p == '	')
 			p++;
 		char *key = p;
-		p = eq - 1;
-		while (p > key && (*p == ' ' || *p == '	'))
-			*p-- = '\0';
+		p = eq;
+		while (p > key && (p[-1] == ' ' || p[-1] == '\t'))
+			*--p = '\0';
 
 		/* Trim value */
 		p = eq + 1;
@@ -1747,203 +1874,213 @@ void load_enhance_config(void)
 
 		if (section_idx == 0)
 		{
-			/* [settings] section */
-			int ival = atoi(val);
-
 			if (!strcmp(key, "enhance.ival.cap"))
-				enhance_ival_cap = ival;
+				enhance_ival_cap =
+					enhance_config_int(key, val, enhance_ival_cap, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.material.ival.delta"))
-				enhance_material_ival_delta = ival;
+				enhance_material_ival_delta = enhance_config_int(
+					key, val, enhance_material_ival_delta, INT_MIN, INT_MAX);
 			else if (!strcmp(key, "enhance.guild.insignia.ival.bonus"))
-				enhance_guild_insignia_ival_bonus = ival;
+				enhance_guild_insignia_ival_bonus = enhance_config_int(
+					key, val, enhance_guild_insignia_ival_bonus, INT_MIN,
+					INT_MAX);
 			else if (!strcmp(key, "enhance.cost.low.ival.threshold"))
-				enhance_cost_low_ival_threshold = ival;
+				enhance_cost_low_ival_threshold = enhance_config_int(
+					key, val, enhance_cost_low_ival_threshold, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.cost.low.amount"))
-				enhance_cost_low_amount = ival;
+				enhance_cost_low_amount = enhance_config_int(
+					key, val, enhance_cost_low_amount, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.cost.high.amount"))
-				enhance_cost_high_amount = ival;
+				enhance_cost_high_amount = enhance_config_int(
+					key, val, enhance_cost_high_amount, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.search.vnum.min"))
-				enhance_search_vnum_min = ival;
+				enhance_search_vnum_min = enhance_config_int(
+					key, val, enhance_search_vnum_min, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.search.vnum.max"))
-				enhance_search_vnum_max = ival;
+				enhance_search_vnum_max = enhance_config_int(
+					key, val, enhance_search_vnum_max, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.search.max.attempts"))
-				enhance_search_max_attempts = ival;
+				enhance_search_max_attempts = enhance_config_int(
+					key, val, enhance_search_max_attempts, 1, INT_MAX);
 			else if (!strcmp(key, "enhance.wear.skip.mask"))
-				enhance_wear_skip_mask = ival;
+				enhance_wear_skip_mask = enhance_config_int(
+					key, val, enhance_wear_skip_mask, INT_MIN, INT_MAX);
 			else if (!strcmp(key, "enhance.original.max.roll"))
-				enhance_original_max_roll = ival;
+				enhance_original_max_roll = enhance_config_int(
+					key, val, enhance_original_max_roll, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.original.cascade.down.first"))
-				enhance_original_cascade_down_first = ival;
-			else if (!strcmp(key, "enhance.level.gate.multiplier") && ival > 0)
-				enhance_level_gate_multiplier = ival;
-			else if (!strcmp(key, "enhance.mod.max.steps") && ival > 0)
-				enhance_mod_max_steps = ival;
+				enhance_original_cascade_down_first = enhance_config_int(
+					key, val, enhance_original_cascade_down_first, 0, 1);
+			else if (!strcmp(key, "enhance.level.gate.multiplier"))
+				enhance_level_gate_multiplier = enhance_config_int(
+					key, val, enhance_level_gate_multiplier, 1, INT_MAX);
+			else if (!strcmp(key, "enhance.mod.max.steps"))
+				enhance_mod_max_steps = enhance_config_int(
+					key, val, enhance_mod_max_steps, 1, INT_MAX);
 			else if (!strcmp(key, "enhance.luck.extreme.range"))
-				enhance_luck_extreme_range = ival;
+				enhance_luck_extreme_range = enhance_config_int(
+					key, val, enhance_luck_extreme_range, 1, INT_MAX);
 			else if (!strcmp(key, "enhance.luck.very.range"))
-				enhance_luck_very_range = ival;
+				enhance_luck_very_range = enhance_config_int(
+					key, val, enhance_luck_very_range, 1, INT_MAX);
 			else if (!strcmp(key, "enhance.luck.lucky.range"))
-				enhance_luck_lucky_range = ival;
+				enhance_luck_lucky_range = enhance_config_int(
+					key, val, enhance_luck_lucky_range, 1, INT_MAX);
 			else if (!strcmp(key, "enhance.ival.gain.extreme"))
-				enhance_ival_gain_extreme = ival;
+				enhance_ival_gain_extreme = enhance_config_int(
+					key, val, enhance_ival_gain_extreme, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.ival.gain.very"))
-				enhance_ival_gain_very = ival;
+				enhance_ival_gain_very = enhance_config_int(
+					key, val, enhance_ival_gain_very, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.ival.gain.lucky"))
-				enhance_ival_gain_lucky = ival;
+				enhance_ival_gain_lucky = enhance_config_int(
+					key, val, enhance_ival_gain_lucky, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.ival.gain.normal"))
-				enhance_ival_gain_normal = ival;
-			/* skip unknown settings silently */
+				enhance_ival_gain_normal = enhance_config_int(
+					key, val, enhance_ival_gain_normal, 0, INT_MAX);
+			else
+				logit(LOG_STATUS, "Unknown enhancement setting %s in [%s].", key,
+				      section);
 		}
 		else if (section_idx == 1)
 		{
-			/* [enhance_stat] section: explicit on/off gate for the stat lane. */
 			if (!strcmp(key, "enhance_stat.enabled"))
-				enhance_stat_enabled = atoi(val) ? 1 : 0;
+				enhance_stat_enabled =
+					enhance_config_int(key, val, enhance_stat_enabled, 0, 1);
 			else if (!strcmp(key, "enhance_stat.npc_material_fallback.enabled"))
-				enhance_stat_npc_material_fallback_enabled = atoi(val) ? 1 : 0;
-			else if (!strcmp(key, "enhance_stat.cap.multiplier") &&
-				 strtod(val, NULL) > 0.0)
-				enhance_stat_cap_multiplier = strtod(val, NULL);
-			else if (!strcmp(key, "enhance_stat.platinum.base") && atoi(val) >= 0)
-				enhance_stat_platinum_base = atoi(val);
-			else if (!strcmp(key, "enhance_stat.platinum.per.ival") && atoi(val) >= 0)
-				enhance_stat_platinum_per_ival = atoi(val);
-			else if (!strcmp(key, "enhance_stat.material.quantity.mult") &&
-				 strtod(val, NULL) > 0.0)
-				enhance_stat_material_quantity_multiplier = strtod(val, NULL);
+				enhance_stat_npc_material_fallback_enabled = enhance_config_int(
+					key, val, enhance_stat_npc_material_fallback_enabled, 0, 1);
+			else if (!strcmp(key, "enhance_stat.cap.multiplier"))
+				enhance_stat_cap_multiplier = enhance_config_real(
+					key, val, enhance_stat_cap_multiplier, DBL_MAX);
+			else if (!strcmp(key, "enhance_stat.platinum.base"))
+				enhance_stat_platinum_base = enhance_config_int(
+					key, val, enhance_stat_platinum_base, 0, INT_MAX);
+			else if (!strcmp(key, "enhance_stat.platinum.per.ival"))
+				enhance_stat_platinum_per_ival = enhance_config_int(
+					key, val, enhance_stat_platinum_per_ival, 0, INT_MAX);
+			else if (!strcmp(key, "enhance_stat.material.quantity.mult"))
+				enhance_stat_material_quantity_multiplier = enhance_config_real(
+					key, val, enhance_stat_material_quantity_multiplier,
+					INT_MAX);
+			else
+				logit(LOG_STATUS, "Unknown enhancement setting %s in [%s].", key,
+				      section);
 		}
 		else if (section_idx == 4)
 		{
 			if (!strcmp(key, "enhance.essence_drop.enabled"))
-				enhance_essence_drop_enabled = atoi(val) ? 1 : 0;
-			else if (!strcmp(key, "enhance.essence_drop.primary_roll_max") &&
-				 atoi(val) > 0)
-				enhance_essence_primary_roll_max = atoi(val);
-			else if (!strcmp(key, "enhance.essence_drop.max_roll_max") && atoi(val) > 0)
-				enhance_essence_max_roll_max = atoi(val);
-			else if (!strcmp(key, "enhance.essence_drop.elite_level_multiplier") &&
-				 atoi(val) > 0)
-				enhance_essence_elite_level_multiplier = atoi(val);
-			else if (!strcmp(key, "enhance.essence_drop.minimum_level") &&
-				 atoi(val) >= 1 && atoi(val) <= 100)
-				enhance_essence_minimum_level = atoi(val);
-			else if (!strcmp(key, "enhance.essence_drop.maximum_level") &&
-				 atoi(val) >= 1)
-				enhance_essence_maximum_level = atoi(val);
+				enhance_essence_drop_enabled = enhance_config_int(
+					key, val, enhance_essence_drop_enabled, 0, 1);
+			else if (!strcmp(key, "enhance.essence_drop.primary_roll_max"))
+				enhance_essence_primary_roll_max = enhance_config_int(
+					key, val, enhance_essence_primary_roll_max, 1, INT_MAX);
+			else if (!strcmp(key, "enhance.essence_drop.max_roll_max"))
+				enhance_essence_max_roll_max = enhance_config_int(
+					key, val, enhance_essence_max_roll_max, 1, INT_MAX);
+			else if (!strcmp(key, "enhance.essence_drop.elite_level_multiplier"))
+				enhance_essence_elite_level_multiplier = enhance_config_int(
+					key, val, enhance_essence_elite_level_multiplier, 1,
+					INT_MAX);
+			else if (!strcmp(key, "enhance.essence_drop.minimum_level"))
+				enhance_essence_minimum_level = enhance_config_int(
+					key, val, enhance_essence_minimum_level, 1, 100);
+			else if (!strcmp(key, "enhance.essence_drop.maximum_level"))
+				enhance_essence_maximum_level = enhance_config_int(
+					key, val, enhance_essence_maximum_level, 1, INT_MAX);
+			else
+				logit(LOG_STATUS, "Unknown enhancement setting %s in [%s].", key,
+				      section);
 		}
 		else if (section_idx == 5 && !strcmp(key, "zone"))
 		{
-			/* [essence_drop_zone] — sparse per-zone essence drop overrides.
-					 * Format: zone=<vzone>[:<primary_roll_max>[:<max_roll_max>[:<elite_mult>]]]
-					 * Any numeric field omitted or 0 inherits the global [essence_drop] default.
-					 * Examples:
-					 *   zone=50              (zone 50, all globals)
-					 *   zone=50:2000         (zone 50, primary=2000, rest global)
-					 *   zone=50:2000:3000    (zone 50, primary=2000, max=3000, rest global)
-					 *   zone=50:2000:3000:2  (zone 50, primary=2000, max=3000, elite_mult=2)
-					 */
-			int vzone, pval, mval, eval;
-			char *colon, *rest;
-			vzone = atoi(val);
-			if (vzone <= 0 ||
-			    enhance_essence_zone_rule_count >= ENHANCE_ESSENCE_MAX_ZONE_RULES)
-				continue;
-			pval = mval = eval = 0; /* 0 = inherit global default */
-			rest = val;
-			colon = strchr(rest, ':');
-			if (colon)
-			{
-				pval = atoi(colon + 1);
-				rest = colon + 1;
-				colon = strchr(rest, ':');
-				if (colon)
-				{
-					mval = atoi(colon + 1);
-					rest = colon + 1;
-					colon = strchr(rest, ':');
-					if (colon)
-						eval = atoi(colon + 1);
-				}
-			}
-			enhance_essence_zone_rules[enhance_essence_zone_rule_count].zone_number =
-				vzone;
-			enhance_essence_zone_rules[enhance_essence_zone_rule_count]
-				.primary_roll_max = pval;
-			enhance_essence_zone_rules[enhance_essence_zone_rule_count].max_roll_max =
-				mval;
-			enhance_essence_zone_rules[enhance_essence_zone_rule_count]
-				.elite_level_multiplier = eval;
-			enhance_essence_zone_rule_count++;
+			enhance_essence_zone_rule rule{};
+			if (enhance_essence_zone_rule_count >= ENHANCE_ESSENCE_MAX_ZONE_RULES ||
+			    !enhance_config_zone_rule(val, rule))
+				logit(LOG_STATUS,
+				      "Invalid or excessive enhancement zone rule on line %d.",
+				      line_num);
+			else
+				enhance_essence_zone_rules[enhance_essence_zone_rule_count++] =
+					rule;
 		}
 		else if (section_idx == 2 && !strcmp(key, "zone"))
 		{
-			if (enhance_pool_excluded_zone_count < ENHANCE_MAX_POOL_EXCLUSIONS)
+			int value;
+			if (!config_parse_int(val, value) || value < 0 ||
+			    enhance_pool_excluded_zone_count >= ENHANCE_MAX_POOL_EXCLUSIONS)
+				logit(LOG_STATUS,
+				      "Invalid or excessive enhancement zone exclusion on line %d.",
+				      line_num);
+			else
 				enhance_pool_excluded_zones[enhance_pool_excluded_zone_count++] =
-					atoi(val);
+					value;
 		}
 		else if (section_idx == 3 && !strcmp(key, "vnum"))
 		{
-			if (enhance_pool_excluded_vnum_count < ENHANCE_MAX_POOL_EXCLUSIONS)
+			int value;
+			if (!config_parse_int(val, value) || value < 1 ||
+			    enhance_pool_excluded_vnum_count >= ENHANCE_MAX_POOL_EXCLUSIONS)
+				logit(LOG_STATUS,
+				      "Invalid or excessive enhancement vnum exclusion on line %d.",
+				      line_num);
+			else
 				enhance_pool_excluded_vnums[enhance_pool_excluded_vnum_count++] =
-					atoi(val);
+					value;
 		}
 		else if (section_idx >= 10 && section_idx <= 14)
 		{
-			/* [bitvector] through [bitvector5] sections */
-			/* Format: FLAG_NAME = ival, allowed */
+			/* The first column is reference-only; the second is a strict boolean. */
 			comma = strchr(val, ',');
 			if (!comma)
-				continue;
-
-			*comma = '\0';
-			/* Trim allowed value */
-			p = comma + 1;
-			while (*p == ' ' || *p == '	')
-				p++;
-			int allowed = atoi(p);
-
-			/* Trim flag name from key */
-			strncpy(flag_name, key, sizeof(flag_name) - 1);
-			flag_name[sizeof(flag_name) - 1] = '\0';
-
-			/* Look up flag name */
-			int bit_section = section_idx - 10; /* 0=bitvector, 1=bitvector2, ... */
-			for (i = 0; enhance_flag_lookup[i].name; i++)
 			{
+				logit(LOG_STATUS, "Invalid enhancement flag row %s.", key);
+				continue;
+			}
+			p = comma + 1;
+			while (*p == ' ' || *p == '\t')
+				++p;
+			int allowed;
+			if (!config_parse_int(p, allowed) || allowed < 0 || allowed > 1)
+			{
+				logit(LOG_STATUS, "Invalid enhancement flag permission for %s.",
+				      key);
+				continue;
+			}
+			const int bit_section = section_idx - 10;
+			unsigned long *masks[] = { &enhance_allow_mask, &enhance_allow_mask2,
+						   &enhance_allow_mask3, &enhance_allow_mask4,
+						   &enhance_allow_mask5 };
+			for (i = 0; enhance_flag_lookup[i].name; ++i)
 				if (enhance_flag_lookup[i].section == bit_section &&
-				    !strcmp(flag_name, enhance_flag_lookup[i].name))
+				    !strcmp(key, enhance_flag_lookup[i].name))
 				{
 					if (allowed)
-					{
-						switch (bit_section)
-						{
-						case 0:
-							SET_BIT(enhance_allow_mask,
-								enhance_flag_lookup[i].bit);
-							break;
-						case 1:
-							SET_BIT(enhance_allow_mask2,
-								enhance_flag_lookup[i].bit);
-							break;
-						case 2:
-							SET_BIT(enhance_allow_mask3,
-								enhance_flag_lookup[i].bit);
-							break;
-						case 3:
-							SET_BIT(enhance_allow_mask4,
-								enhance_flag_lookup[i].bit);
-							break;
-						case 4:
-							SET_BIT(enhance_allow_mask5,
-								enhance_flag_lookup[i].bit);
-							break;
-						}
-					}
+						*masks[bit_section] |= enhance_flag_lookup[i].bit;
+					else
+						*masks[bit_section] &= ~enhance_flag_lookup[i].bit;
 					break;
 				}
-			}
+			if (!enhance_flag_lookup[i].name)
+				logit(LOG_STATUS, "Unknown enhancement flag %s in [%s].", key,
+				      section);
 		}
-		/* ignore [enhance_stat] and [spell] sections for now */
+		else if (section_idx >= 0 && section_idx != 20)
+			logit(LOG_STATUS, "Unknown enhancement setting %s in [%s].", key, section);
+	}
+
+	if (enhance_search_vnum_min > enhance_search_vnum_max)
+	{
+		logit(LOG_STATUS, "Invalid enhancement search range; using compiled defaults.");
+		enhance_search_vnum_min = 1300;
+		enhance_search_vnum_max = 134000;
+	}
+	if (enhance_essence_minimum_level > enhance_essence_maximum_level)
+	{
+		logit(LOG_STATUS,
+		      "Invalid enhancement essence level range; using compiled defaults.");
+		enhance_essence_minimum_level = 1;
+		enhance_essence_maximum_level = 1000000;
 	}
 
 	fclose(fp);
@@ -2046,8 +2183,10 @@ void load_enhance_index(void)
 
 	count = 0;
 
-	for (vnum = enhance_search_vnum_min; vnum <= enhance_search_vnum_max; vnum++)
+	for (int64_t candidate = enhance_search_vnum_min; candidate <= enhance_search_vnum_max;
+	     ++candidate)
 	{
+		vnum = static_cast<int>(candidate);
 		obj = read_object(vnum, VIRTUAL);
 		if (!obj)
 			continue;

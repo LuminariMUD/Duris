@@ -1307,6 +1307,62 @@ qualify the current provider paths: Craft normalizes/imports through
 `crafting_get_player_recipes`, while Forge currently reads SQL directly; do not
 assume identical book filtering/import behavior from the existing contract test.
 
+### Chunk 20 — validate enhancement config and widen consumers (F08, implemented)
+
+Branch: `branch/ival-enhance-config-bounds`, based on `branch/ival-recipe-selection`.
+
+**Outcome:** complete finite/ranged numeric parsing, deterministic compiled
+defaults before opening the file, guarded sparse rules/exclusions/masks and
+validated range relationships. Widen level/donor/gain/search/drop arithmetic
+before operations and validate candidate scores before integer hashing.
+
+**Non-goals:** spell-section enforcement/reference pricing (F10), proc/index
+architecture or bounded search work (F09/F13), new balance weights, hot reload,
+persistence or deployment.
+
+**Files:** existing enhancement module/config/native tests and this handoff;
+reuse `core/config_parse.h` without another parser/framework.
+
+**Proof:** actual shipped/missing/invalid/repeated-load config, full numeric
+boundaries, sparse rules, masks, relationships and malformed/overlong lines;
+native economic refusal/success and widened arithmetic regressions plus server
+build and relevant existing contracts. Preserve default behavior and RNG draws.
+
+**Ablation:** retain the current key dispatch and globals; add only local domain
+validation around the shared scalar parsers and widen the existing calculations.
+
+**Validation:** native before/after comparison of all 33 shipped scalar settings,
+five masks and sparse/exclusion counts is identical against `be77948ec9`.
+The shipped sparse/exclusion counts are all zero. Complete-value, finite-scale
+and missing-file opt-in regressions fail against that parent and pass now.
+Snapshots and the tested configuration hash are recorded in
+[`ival-evidence/f08-enhance-config/summary.json`](ival-evidence/f08-enhance-config/summary.json).
+
+The maintained native enhancement test executes distinct valid settings, invalid
+and duplicate fields, strict booleans, missing-file reset from nondefault settings
+with both opt-ins/all masks/rules/exclusions populated, overlong lines, comments,
+malformed/unsupported sections, range relationships, sparse inheritance/rule
+limits and permissions in every bank. A later valid flag zero clears its bit;
+invalid duplicate values retain the previous valid state. Sparse rule first-match
+ordering remains unchanged. `[spell]` is now explicitly reported/documented as
+unsupported; auditing its required representation policy remains F10.
+
+Fatal ASan/UBSan/float-cast-overflow checks cover wide donor/level/gain/attempt
+arithmetic, candidate-score checks before hashing, a one-entry INT_MAX index
+endpoint, finite extreme stat-cap scales and elite essence multiplication, with
+the normal success/refusal/pouch cases retained. Config arithmetic failures
+preserve source/donor/wallet and avoid invalid loads. Existing enhancement,
+essence, pool and crafting contracts pass; server build passes. No Ival formula,
+storage input, database, migration or production operation changes occur.
+
+**Continuation:** finish property/authoring/admission bounds, F10's supported-spell
+audit and exact displayed-versus-debited currency amounts, and F13's bounded
+index/search work. Copper-value comments are corrected while legacy key names
+remain compatible; current player display precision still needs F10. Qualify
+material-family validity at enhancement targets and skipped-NPC-item fallback
+during the remaining consumer/F16 journeys; do not infer that a positive
+template score proves a valid material family. Full MariaDB journeys remain F16.
+
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization

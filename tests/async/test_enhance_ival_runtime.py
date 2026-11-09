@@ -3,6 +3,7 @@
 
 import subprocess
 import tempfile
+import shutil
 from pathlib import Path
 
 from _paths import HARNESS_STUBS, ROOT, source, extract_function
@@ -15,11 +16,16 @@ HARNESS = r"""
 #include <unordered_set>
 #include <vector>
 #include <limits>
+#include <cstdarg>
+#include <cstdio>
+#include <fstream>
+#include <filesystem>
 
 #include "item/enhance.c"
 
 static index_data indices[12]{};
 index_data *obj_index = indices;
+index_data *mob_index = indices;
 int top_of_objt = static_cast<int>(std::size(indices)) - 1;
 P_room world = nullptr;
 struct zone_data *zone_table = nullptr;
@@ -39,6 +45,7 @@ static bool refuse_pouch_write;
 static int unavailable_vnum;
 static int charges;
 static int rolls;
+static std::vector<std::string> config_logs;
 static std::string output;
 static std::string keywords;
 static std::string description;
@@ -65,7 +72,11 @@ int get_mincircle(int spell) {
 }
 int get_ival_from_proc(obj_proc_type) { std::abort(); }
 int number(int low, int high) { ++rolls; return lucky ? low : high; }
-void logit(const char *, const char *, ...) {}
+void logit(const char *, const char *format, ...) {
+    char buffer[2048]; va_list args; va_start(args, format);
+    std::vsnprintf(buffer, sizeof(buffer), format, args); va_end(args);
+    config_logs.emplace_back(buffer);
+}
 bool chaos_starter_materials_enabled() { return true; }
 P_obj chaos_material_pouch_find(P_char) { return active_pouch; }
 void set_obj_extra_flags(P_obj obj, unsigned flags) { obj->extra_flags = flags; }
@@ -653,6 +664,152 @@ static void test_superior(superior_case probe = superior_case::ordinary)
     enhance_stat_table[enhance_stat_hash(APPLY_STR)] = nullptr;
 }
 
+static bool config_logged(const char *text) {
+    for (const auto &line : config_logs) if (line.find(text) != std::string::npos) return true;
+    return false;
+}
+static void config_file(const std::string &text) {
+    std::ofstream file("lib/enhance.cfg"); assert(file);
+    file << text; file.close(); assert(!file.fail());
+    config_logs.clear(); load_enhance_config();
+}
+static void restore_config() {
+    std::filesystem::copy_file("lib/enhance-shipped.cfg", "lib/enhance.cfg", std::filesystem::copy_options::overwrite_existing);
+    config_logs.clear(); load_enhance_config();
+}
+static std::vector<int> config_integers() {
+    return {enhance_ival_cap, enhance_material_ival_delta, enhance_guild_insignia_ival_bonus,
+        enhance_cost_low_ival_threshold, enhance_cost_low_amount, enhance_cost_high_amount,
+        enhance_search_vnum_min, enhance_search_vnum_max, enhance_search_max_attempts,
+        enhance_wear_skip_mask, enhance_original_max_roll, enhance_original_cascade_down_first,
+        enhance_level_gate_multiplier, enhance_mod_max_steps, enhance_luck_extreme_range,
+        enhance_luck_very_range, enhance_luck_lucky_range, enhance_ival_gain_extreme,
+        enhance_ival_gain_very, enhance_ival_gain_lucky, enhance_ival_gain_normal,
+        enhance_stat_enabled, enhance_stat_npc_material_fallback_enabled, enhance_stat_platinum_base,
+        enhance_stat_platinum_per_ival, enhance_essence_drop_enabled, enhance_essence_primary_roll_max,
+        enhance_essence_max_roll_max, enhance_essence_elite_level_multiplier,
+        enhance_essence_minimum_level, enhance_essence_maximum_level};
+}
+static void test_config()
+{
+    const auto compiled = config_integers();
+    const double cap_default = enhance_stat_cap_multiplier, quantity_default = enhance_stat_material_quantity_multiplier;
+    restore_config();
+    auto shipped = compiled; shipped[21] = 1;
+    assert(config_integers() == shipped && enhance_stat_cap_multiplier == 1.5 && enhance_stat_material_quantity_multiplier == 1);
+    assert(config_logged("not enforced"));
+    config_file("  [settings] # comment\n"
+        "enhance.ival.cap=99\nenhance.material.ival.delta=-7\nenhance.guild.insignia.ival.bonus=-3\n"
+        "enhance.cost.low.ival.threshold=22\nenhance.cost.low.amount=1001\nenhance.cost.high.amount=10002\n"
+        "enhance.search.vnum.min=10\nenhance.search.vnum.max=20\nenhance.search.max.attempts=44\n"
+        "enhance.wear.skip.mask=7\nenhance.original.max.roll=8\nenhance.original.cascade.down.first=0\n"
+        "enhance.level.gate.multiplier=4\nenhance.mod.max.steps=6\nenhance.luck.extreme.range=201\n"
+        "enhance.luck.very.range=202\nenhance.luck.lucky.range=203\nenhance.ival.gain.extreme=5\n"
+        "enhance.ival.gain.very=6\nenhance.ival.gain.lucky=7\nenhance.ival.gain.normal=8\n"
+        "[enhance_stat]\nenhance_stat.enabled=1\nenhance_stat.npc_material_fallback.enabled=1\n"
+        "enhance_stat.cap.multiplier=2.25\nenhance_stat.platinum.base=111\nenhance_stat.platinum.per.ival=123\n"
+        "enhance_stat.material.quantity.mult=.5\n[essence_drop]\nenhance.essence_drop.enabled=0\n"
+        "enhance.essence_drop.primary_roll_max=501\nenhance.essence_drop.max_roll_max=502\n"
+        "enhance.essence_drop.elite_level_multiplier=3\nenhance.essence_drop.minimum_level=10\n"
+        "enhance.essence_drop.maximum_level=90\n[bitvector]\nAFF_HASTE=0,1\n"
+        "[bitvector2]\nAFF2_GLOBE=0,1\n[bitvector3]\nAFF3_REDUCE=0,1\n"
+        "[bitvector4]\nAFF4_NOFEAR=0,1\n[bitvector5]\nAFF5_PROT_UNDEAD=0,1\n"
+        "[essence_drop_zone]\nzone=42:1:2:3\n[pool_exclude_zone]\nzone=7\n[pool_exclude_vnum]\nvnum=90000");
+    assert((config_integers() == std::vector<int>{99,-7,-3,22,1001,10002,10,20,44,7,8,0,4,6,201,202,203,5,6,7,8,1,1,111,123,0,501,502,3,10,90}));
+    assert(enhance_stat_cap_multiplier == 2.25 && enhance_stat_material_quantity_multiplier == .5);
+    assert(config_logs.size() == 1); // Only the successful-load record.
+    assert(enhance_allow_mask && enhance_allow_mask2 && enhance_allow_mask3 && enhance_allow_mask4 && enhance_allow_mask5);
+    assert(enhance_essence_zone_rule_count == 1 && enhance_pool_excluded_zone_count == 1 && enhance_pool_excluded_vnum_count == 1);
+    std::filesystem::remove("lib/enhance.cfg"); config_logs.clear(); load_enhance_config();
+    assert(config_integers() == compiled && enhance_stat_cap_multiplier == cap_default && enhance_stat_material_quantity_multiplier == quantity_default);
+    assert(!enhance_allow_mask && !enhance_allow_mask2 && !enhance_allow_mask3 && !enhance_allow_mask4 && !enhance_allow_mask5);
+    assert(!enhance_essence_zone_rule_count && !enhance_pool_excluded_zone_count && !enhance_pool_excluded_vnum_count);
+    config_file("[settings]\nenhance.ival.cap=12junk\nenhance.material.ival.delta=999999999999999999999999\n"
+        "enhance.cost.low.amount=-1\nenhance.search.max.attempts=0\nenhance.original.cascade.down.first=2\n"
+        "enhance.level.gate.multiplier=0\nenhance.mod.max.steps=0\nenhance.luck.extreme.range=0\n"
+        "enhance.ival.gain.normal=-1\nenhance.typo=1\n=123\nmissing_equal\n"
+        "[enhance_stat]\nenhance_stat.enabled=2\nenhance_stat.npc_material_fallback.enabled=broken\n"
+        "enhance_stat.cap.multiplier=nan\nenhance_stat.platinum.base=-1\n"
+        "enhance_stat.platinum.per.ival=2147483648\nenhance_stat.material.quantity.mult=inf\n"
+        "[essence_drop]\nenhance.essence_drop.enabled=2\nenhance.essence_drop.primary_roll_max=0\n"
+        "enhance.essence_drop.minimum_level=101\nenhance.essence_drop.maximum_level=0\n");
+    assert(config_integers() == compiled && enhance_stat_cap_multiplier == cap_default && enhance_stat_material_quantity_multiplier == quantity_default);
+    assert(config_logged("Invalid enhancement config") && config_logged("Unknown enhancement setting") && config_logged("Malformed enhancement setting"));
+    config_file("[enhance_stat]\nenhance_stat.enabled=1\nenhance_stat.enabled=bad\n"
+        "enhance_stat.cap.multiplier=2\nenhance_stat.cap.multiplier=1e9999\n");
+    assert(enhance_stat_enabled == 1 && enhance_stat_cap_multiplier == 2);
+    config_file("[settings]\nenhance.ival.cap=9" + std::string(1200, ' ') + "junk\nenhance.cost.low.amount=7\n");
+    assert(enhance_ival_cap == 95 && enhance_cost_low_amount == 7 && config_logged("overlong"));
+    config_file("[settings] trailing\nenhance.ival.cap=7\n[unknown]\nenhance.ival.cap=8\n");
+    assert(enhance_ival_cap == 95 && config_logged("Invalid enhancement section") && config_logged("Unsupported enhancement section"));
+    config_file("[settings]\nenhance.search.vnum.min=20\nenhance.search.vnum.max=10\n"
+        "[essence_drop]\nenhance.essence_drop.minimum_level=90\nenhance.essence_drop.maximum_level=80\n");
+    assert(enhance_search_vnum_min == 1300 && enhance_search_vnum_max == 134000);
+    assert(enhance_essence_minimum_level == 1 && enhance_essence_maximum_level == 1000000);
+    config_file("[essence_drop_zone]\nzone=42: 2000 :0:2 # inline comment\nzone=43::4000\n"
+        "zone=0:1\nzone=44:1junk\nzone=45:-1\nzone=46:1:2:3:4\n"
+        "[pool_exclude_zone]\nzone=7\nzone=oops\n[pool_exclude_vnum]\nvnum=90000\nvnum=-1\n");
+    assert(enhance_essence_zone_rule_count == 2 && enhance_essence_zone_rules[0].zone_number == 42);
+    assert(enhance_essence_zone_rules[0].primary_roll_max == 2000 && enhance_essence_zone_rules[0].max_roll_max == 0 && enhance_essence_zone_rules[0].elite_level_multiplier == 2);
+    assert(enhance_essence_zone_rules[1].zone_number == 43 && enhance_essence_zone_rules[1].primary_roll_max == 0 && enhance_essence_zone_rules[1].max_roll_max == 4000);
+    assert(enhance_pool_excluded_zone_count == 1 && enhance_pool_excluded_zones[0] == 7);
+    assert(enhance_pool_excluded_vnum_count == 1 && enhance_pool_excluded_vnums[0] == 90000);
+    config_file("[bitvector]\nAFF_HASTE=reference,1\nAFF_HASTE=0,0\nAFF_FARSEE=0,1\nAFF_FARSEE=0,bad\n"
+        "AFF_INVISIBLE=0,2\nAFF_NOT_REAL=0,1\n[bitvector2]\nAFF2_GLOBE=0,1\n"
+        "[bitvector3]\nAFF3_REDUCE=0,1\n[bitvector4]\nAFF4_NOFEAR=0,1\n"
+        "[bitvector5]\nAFF5_PROT_UNDEAD=0,1\n");
+    assert(enhance_allow_mask == AFF_FARSEE && enhance_allow_mask2 == AFF2_GLOBE && enhance_allow_mask3 == AFF3_REDUCE);
+    assert(enhance_allow_mask4 == AFF4_NOFEAR && enhance_allow_mask5 == AFF5_PROT_UNDEAD);
+    assert(config_logged("Invalid enhancement flag permission") && config_logged("Unknown enhancement flag"));
+    std::string many = "[essence_drop_zone]\n";
+    for (int zone = 1; zone <= 260; ++zone) many += "zone=" + std::to_string(zone) + "\n";
+    config_file(many);
+    assert(enhance_essence_zone_rule_count == ENHANCE_ESSENCE_MAX_ZONE_RULES && config_logged("excessive"));
+    restore_config();
+}
+
+static void test_wide_arithmetic()
+{
+    for (auto &bucket : enhance_ival_table) bucket = nullptr;
+    char_data ch{}; ch.player.level = 60; ch.in_room = NOWHERE; ch.curr_stats.Luk = 100;
+    GET_PLATINUM(&ch) = 20;
+    auto &source = fixture(0, 90010);
+    auto &donor = fixture(1, 90011);
+    source.affected[0] = donor.affected[0] = {APPLY_HIT, 10};
+    const auto original_source = source, original_donor = donor;
+    enhance_level_gate_multiplier = INT_MAX;
+    enhance_material_ival_delta = INT_MIN;
+    enhance(&ch, &source, &donor);
+    assert(output.find("requires an item") != std::string::npos && charges == 0 && GET_MONEY(&ch) == 20000);
+    assert(!std::memcmp(&source, &original_source, sizeof(source)) && !std::memcmp(&donor, &original_donor, sizeof(donor)));
+    clear_attempt();
+    enhance_material_ival_delta = 5;
+    enhance_search_max_attempts = INT_MAX; enhance_original_max_roll = 0;
+    enhance_ival_gain_extreme = INT_MAX; lucky = true;
+    const int before_luck_rolls = rolls;
+    enhance(&ch, &source, &donor);
+    assert(output.find("at your level") == std::string::npos && charges == 0 && GET_MONEY(&ch) == 20000);
+    assert(loads.empty() && extracted.empty() && rolls == before_luck_rolls + 1); clear_attempt(); lucky = false;
+    enhance_stat_cap_multiplier = std::numeric_limits<double>::max();
+    assert(enhance_stat_cap(1) == SCHAR_MAX && enhance_stat_cap(127) == SCHAR_MAX);
+    enhance_search_vnum_min = enhance_search_vnum_max = INT_MAX;
+    load_enhance_index();
+    assert((loads == std::vector<int>{INT_MAX})); clear_attempt();
+    restore_config();
+    room_data rooms[1]{}; zone_data zones[1]{};
+    world = rooms; zone_table = zones; top_of_zone_table = 0; zones[0].number = 42;
+    char_data mob{}, killer{}; npc_only_data npc{}; mob.only.npc = &npc;
+    mob.specials.act = ACT_ISNPC | ACT_ELITE; mob.player.level = 60;
+    mob.player.short_descr = const_cast<char *>("an elite"); killer.player.name = const_cast<char *>("Tester");
+    fixture(11, 400253);
+    enhance_essence_primary_roll_max = enhance_essence_max_roll_max = enhance_essence_elite_level_multiplier = INT_MAX;
+    const int before_rolls = rolls;
+    enhance_load_essence_drop(&mob, &killer);
+    assert(result && OBJ_VNUM(result) == 400253 && rolls == before_rolls + 3);
+    clear_attempt(); world = nullptr; zone_table = nullptr; top_of_zone_table = -1;
+    restore_config();
+}
+
 static void test_unavailable()
 {
     char_data ch{};
@@ -690,7 +847,7 @@ int main()
 {
     const auto expected_mask = ITEM_TAKE | ITEM_HOLD | ITEM_ATTACH_BELT | ITEM_WEAR_BACK;
     assert(enhance_wear_skip_mask == expected_mask);
-    load_enhance_config();
+    test_config();
     assert(enhance_wear_skip_mask == expected_mask);
     test_replacement();
     test_essence();
@@ -700,6 +857,7 @@ int main()
     test_superior(superior_case::zero_modifier);
     test_superior(superior_case::duplicate_applies);
     test_unavailable();
+    test_wide_arithmetic();
 }
 """
 
@@ -727,7 +885,11 @@ def main():
             cwd=ROOT,
             check=True,
         )
-        subprocess.run([binary], cwd=ROOT, check=True)
+        (Path(tmp) / "lib").mkdir()
+        for name in ("enhance.cfg", "enhance-shipped.cfg"):
+            shutil.copyfile(ROOT / "lib/enhance.cfg", Path(tmp) / "lib" / name)
+        result = subprocess.run([binary], cwd=tmp, capture_output=True, text=True)
+        assert result.returncode == 0, result.stdout + result.stderr
     print("native enhancement iVal regression passed")
 
 
