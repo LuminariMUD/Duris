@@ -128,6 +128,7 @@ bool player_save_pipeline_drain(uint64_t) { return true; }
 bool redis_world_recovery_drain(uint64_t) { return true; }
 bool redis_world_checkpoint_for_copyover(redis_copyover_checkpoint *) { std::abort(); }
 int write_to_descriptor(P_desc, const char *) { assert(false); return -1; }
+void mxp_negotiate(P_desc) { std::abort(); } // This fixture restores no player descriptors.
 void redis_world_writer_release() {}
 void redis_world_writer_reclaim_after_copyover() {}
 bool return_from_staff_switch(P_desc) { std::abort(); }

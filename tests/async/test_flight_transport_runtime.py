@@ -38,14 +38,17 @@ base = base.replace('assert(!GET_RIDER(ch));\n\tscheduled.erase(ch);',
 base = ('#include "core/prototypes.h"\n'
         '#include "combat/attack_continuation.h"\n'
         'static uint64_t fixture_runtime_id = 0;\n'
-        'static bool move_riding_companions(P_char, int, int);\n') + base
+        'static bool move_riding_companions(P_char, int, int, bool);\n') + base
+base = base.replace('bool char_to_room(P_char ch, int room, int direction)',
+                    'bool char_to_room(P_char ch, int room, int direction, bool ordinary_movement)')
+base += '\n' + extract_function('handler.c', 'bool char_to_room(P_char ch, int room, int dir)')
 base = base.replace('P_char ch = new char_data{};',
                     'P_char ch = new char_data{}; ch->runtime_id = ++fixture_runtime_id;')
 base = base.replace('''	if (P_char rider = GET_RIDER(ch))
 	{
 		char_from_room(rider);
 		char_to_room(rider, room, -1);
-	}''', '\tif (!move_riding_companions(ch, room, direction)) return false;')
+	}''', '\tif (!move_riding_companions(ch, room, direction, ordinary_movement)) return false;')
 movement = extract_function('handler.c', 'static bool move_riding_companions(')
 
 links = '\n'.join(extract_function('affects.c', signature) for signature in (

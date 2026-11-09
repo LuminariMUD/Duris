@@ -165,6 +165,9 @@ static_assert(TAG_INFO_COOLDOWN < SP_TAG_TRIG && SP_TAG_COUNTER <= MAX_AFFECT_TY
 /* db.c boot_db(), after assign_spell_pointers() (the parser resolves
    spell names through spells[], which is empty before that point). */
 void studioproc_boot(void);
+// Same parser and object binding rules; requires mobile/object/room metadata,
+// skips non-object records, and starts no callbacks or scheduled work.
+void studioproc_boot_object_bindings(void);
 
 /* actcomm.c do_say(), last statement: a PC spoke in ch->in_room.  Also
    delivers CMD_SAY to object instance proclibs, which special() never

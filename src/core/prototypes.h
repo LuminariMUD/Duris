@@ -789,6 +789,7 @@ void board_load_board(const char *, char **, char **, int *);
 void board_reset_board(char **, char **, int *);
 void board_save_board(const char *, char **, char **, int *);
 void initialize_boards(void);
+void assign_board_object_procs(void);
 
 /* chaos.c */
 
@@ -883,7 +884,8 @@ void MemReport(void);
 void boot_db(int);
 void boot_pose_messages(void);
 void boot_world(int);
-void boot_zones(int);
+// Offline metadata loading does not initialize randomized reset timers.
+void boot_zones(int, bool initialize_reset_timers = true);
 void clear_char(P_char);
 uint64_t allocate_character_runtime_id();
 P_char find_character_by_runtime_id(uint64_t);
@@ -1364,6 +1366,8 @@ void apply_affs(P_char, int);
 void balance_affects(P_char);
 void char_from_room(P_char);
 bool char_to_room(P_char, int, int);
+// Only the ordinary movement executor may preserve Essence during placement.
+bool char_to_room(P_char, int, int, bool ordinary_movement);
 void equip_char(P_char, P_obj, int, int);
 void extract_char(P_char);
 void hold_durable_pet_items(P_char);
@@ -2064,7 +2068,7 @@ void event_patrol_move(P_char ch, P_char vict, P_obj obj, void *data);
 
 /* modify.c */
 
-void page_string_real(struct descriptor_data *d, char *str);
+void page_string_real(struct descriptor_data *d, char *str, std::span<const OutputLink> links = {});
 int replace_str(char **, char *, char *, int, int);
 void format_text(char **, int, struct descriptor_data *, int);
 void parse_action(int, char *, struct descriptor_data *);
@@ -2080,12 +2084,14 @@ char *next_page(char *, struct descriptor_data *);
 int count_pages(char *, struct descriptor_data *);
 void paginate_string(char *, struct descriptor_data *);
 void page_string(struct descriptor_data *, char *, int);
+void free_paging_data(struct descriptor_data *);
 void show_string(struct descriptor_data *, const char *);
 
 /* storage_lockers.c */
 
 bool locker_container_access_allowed(P_char actor, P_obj container);
 bool locker_leave_for_extraction(P_char ch);
+void locker_return_norent_items(P_char ch);
 bool personal_locker_in_use(const char *char_name);
 void for_debug_print_char_list(P_char ch);
 
@@ -2618,6 +2624,7 @@ void spell_cure_serious(int, P_char, char *, int, P_char, P_obj);
 void spell_curse(int, P_char, char *, int, P_char, P_obj);
 void spell_cyclone(int, P_char, char *, int, P_char, P_obj);
 void spell_doom_blade(int, P_char, char *, int, P_char, P_obj);
+void spell_holy_blade(int, P_char, char *, int, P_char, P_obj);
 void spell_darkness(int, P_char, char *, int, P_char, P_obj);
 void spell_detect_evil(int, P_char, char *, int, P_char, P_obj);
 void spell_detect_good(int, P_char, char *, int, P_char, P_obj);
@@ -2989,6 +2996,7 @@ void trapdamage(P_char ch, P_obj obj);
 
 /* properties.c */
 bool initialize_properties();
+bool initialize_property_values();
 void do_properties(P_char, char *, int);
 void do_difficulty(P_char, char *, int);
 void do_pulse(P_char, char *, int);
