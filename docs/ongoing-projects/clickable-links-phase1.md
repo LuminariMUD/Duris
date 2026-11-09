@@ -469,6 +469,9 @@ real help/URL producers; ordinary help output is not clickable yet.
 
 ### Chunk 4: authored help references and search results
 
+Review: [PR #921](https://github.com/LuminariMUD/Duris/pull/921), implementation
+commit `b34e608ef`, stacked on #917; labels `enhancement`, `documentation`.
+
 Implemented real help producers on `branch/clickable-links-help`:
 
 - Existing `wiki_help(string)` / `wiki_help_single(string)` and prose consumers
@@ -508,7 +511,8 @@ and `bin/tests/phase1-help-{spells,class}.log`. Normal and ASan/UBSan integratio
 `make -C src -j8` and formatting checks passed. The help-cache, flat-file help
 catalog, reported-latency, pager and native Telnet runtime checks also pass; the
 cold real-help spell/class regressions retain their existing browser facts and
-permissions. Commit hooks remain required before this chunk is pushed.
+permissions. Commit-time formatting and tidy passed; the branch is pushed for
+review.
 
 Next: shared HTTP/HTTPS URL recognition (including literal query ampersands and
 color transitions), negotiated browser text/chat presentation, DurisWeb rendering
