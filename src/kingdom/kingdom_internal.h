@@ -395,9 +395,8 @@ long kingdom_upkeep_due(const kingdom_realm &realm);
 void kingdom_apply_arrears(kingdom_realm &realm);
 void kingdom_clear_arrears(kingdom_realm &realm);
 /* Make a money-bearing change durable as ONE unit: the guild whose treasury
- * moved and the realm record that explains why. One SQL transaction under
- * MariaDB; one recovery-journal transaction under the flat-file build. True means
- * queued under MariaDB, committed under flat-file. payment_pending lasts until
+ * moved and the realm record that explains why. One SQL transaction. True means
+ * queued. payment_pending lasts until
  * the paired commit succeeds; failures retry without another debit and never
  * let the generic flush publish the record alone. Used by upkeep, claim
  * and convert -- any path that debits a treasury and records the result. */

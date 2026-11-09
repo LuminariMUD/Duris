@@ -2,9 +2,7 @@
  * the writer. This image is frozen after the writer stops and before world cleanup;
  * boot replays it before any owner can load or custody cleanup can run. */
 #include "persistence/locker_recovery.h"
-#include "persistence/persistence_mode.h"
 #include "persistence/persistence_observability.h"
-#include "flatfile/flatfile_player_repository.h"
 #include "flatfile/flatfile_store.h"
 #include "player/player_snapshot_codec.h"
 #include "core/prototypes.h"
@@ -79,12 +77,6 @@ struct reader
 	}
 };
 
-std::string backend()
-{
-	const char *root = persistence_mode_flatfile_root();
-	return root ? std::string("flatfile:") + root : backend_identity;
-}
-
 bool encode(const std::vector<locker_recovery_entry> &entries,
 	    const std::vector<player_snapshot> &players, bool complete, std::vector<uint8_t> *bytes)
 {
@@ -92,7 +84,7 @@ bool encode(const std::vector<locker_recovery_entry> &entries,
 		return false;
 	*bytes = { 'L', 'S', 'R', 1 };
 	number(*bytes, complete ? 1 : 0);
-	text(*bytes, backend());
+	text(*bytes, backend_identity);
 	number(*bytes, static_cast<uint32_t>(entries.size()));
 	std::unordered_set<uint64_t> uids;
 	for (const auto &entry : entries)
@@ -147,7 +139,7 @@ bool decode(const std::vector<uint8_t> &bytes, std::vector<locker_recovery_entry
 	if (CRYPTO_memcmp(digest.data(), bytes.data() + payload_size, digest.size()))
 		return false;
 	reader input{ bytes, 4 };
-	if (input.number() != 1 || input.text() != backend())
+	if (input.number() != 1 || input.text() != backend_identity)
 		return false;
 	const uint32_t count = input.number();
 	if (!input.ok || count > entry_max)
@@ -207,20 +199,6 @@ player_save_apply_result apply(locker_recovery_entry &entry)
 		entry.contents.owner_assoc_id = atoi(name.c_str() + 6);
 	else if (!name.starts_with("account."))
 		entry.contents.owner_name = name.substr(0, name.rfind(".locker"));
-	if (const char *root = persistence_mode_flatfile_root())
-	{
-		// Native flat-file lockers currently expose only public chests.
-		if (entry.chest_id)
-			return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-		flatfile_locker_save save;
-		save.locker_name = entry.contents.locker_name;
-		save.owner_assoc_id = entry.contents.owner_assoc_id;
-		save.racewar = static_cast<int8_t>(entry.contents.racewar);
-		save.race = static_cast<int8_t>(entry.contents.race);
-		save.items = entry.contents.items;
-		std::string error;
-		return flatfile_locker_snapshot_apply(root, save, &error);
-	}
 	if (entry.chest_id)
 		return locker_chest_snapshot_repository_apply(DB, { entry.locker_id, entry.chest_id,
 								    entry.contents.items });
@@ -264,25 +242,16 @@ bool locker_recovery_boot(void)
 {
 	try
 	{
-		const char *root = persistence_mode_flatfile_root();
-		if (!root)
+		backend_identity = std::string("mariadb:") + sql_persistence_db_name();
+		for (const char *key : { "DB_HOST", "DB_PORT", "DB_SOCKET" })
 		{
-			backend_identity = std::string("mariadb:") + sql_persistence_db_name();
-			for (const char *key : { "DB_HOST", "DB_PORT", "DB_SOCKET" })
-			{
-				const char *value = getenv(key);
-				backend_identity += std::string(":") + (value ? value : "");
-			}
+			const char *value = getenv(key);
+			backend_identity += std::string(":") + (value ? value : "");
 		}
-		directory = root ? std::string(root) + "/locker-shutdown" :
-				   "runtime/locker-shutdown";
-		bool runtime_created = false;
-		if (!root)
-		{
-			runtime_created = mkdir("runtime", 0700) == 0;
-			if (!runtime_created && errno != EEXIST)
-				return false;
-		}
+		directory = "runtime/locker-shutdown";
+		const bool runtime_created = mkdir("runtime", 0700) == 0;
+		if (!runtime_created && errno != EEXIST)
+			return false;
 		if (mkdir(directory.c_str(), 0700) && errno != EEXIST)
 			return false;
 		std::string error;
@@ -349,14 +318,8 @@ bool locker_recovery_boot(void)
 		}
 		for (const auto &player : players)
 		{
-			player_save_apply_result result;
-			if (root)
-			{
-				std::string detail;
-				result = flatfile_player_snapshot_apply(root, player, &detail);
-			}
-			else
-				result = player_snapshot_repository_apply(DB, player);
+			const player_save_apply_result result =
+				player_snapshot_repository_apply(DB, player);
 			if (result.outcome != player_save_apply_outcome::applied &&
 			    result.outcome != player_save_apply_outcome::already_applied)
 			{

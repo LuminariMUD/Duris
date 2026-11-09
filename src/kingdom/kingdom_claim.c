@@ -33,11 +33,6 @@
  *                 without the other. This is the guarantee the design asks
  *                 for, and this is the mode that delivers it.
  *
- *      flat-file  the debited guild and realm catalogue after-images share
- *                 one recovery journal. The journal is durable before either
- *                 image, so a crash after one write is completed on the next
- *                 authority access rather than losing the paid change.
- *
  *  The claim stands in memory while its paired save is pending. MariaDB keeps
  *  payment_pending until the guild receipt confirms COMMIT, and later guild
  *  writes keep the current realm paired. Failed captures retry without another
@@ -365,7 +360,7 @@ static void kingdom_refresh_index(const kingdom_realm &realm)
  * kingdom_upkeep_retry_pending() lands the pair -- whatever the record holds
  * by then, this abandon's shrink included, since the record is written whole.
  *
- * True when the write is accepted (queued on MariaDB, committed on flat-file).
+ * True when the write is accepted (queued).
  * False -- held for a pending payment, or a
  * write that failed -- leaves the realm dirty and logs everything needed to
  * reconstruct the write by hand. */
@@ -397,9 +392,8 @@ bool kingdom_persist_realm(kingdom_realm &realm)
 /* Make a realm change durable TOGETHER WITH the guild whose treasury it
  * belongs to, by way of kingdom_persist_payment().
  *
- * True means accepted: under MariaDB one transaction has been queued and the
- * pending flag lasts through COMMIT; under the flat-file build the after-images
- * have committed through their shared recovery journal.
+ * True means accepted: one transaction has been queued and the pending flag
+ * lasts through COMMIT.
  *
  * False means the change stands in memory (any debit is kept -- there is no
  * refund path), kingdom_persist_payment() has flagged the realm

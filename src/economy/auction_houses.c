@@ -12,11 +12,8 @@
 #include "economy/auction_room_registry.h"
 #include "economy/auction_transaction.h"
 #include "economy/currency_transaction.h"
-#include "flatfile/flatfile_auction_repository.h"
-#include "flatfile/flatfile_offline_message_repository.h"
 #include "item/item_ownership_runtime.h"
 #include "persistence/persistence_checkpoint.h"
-#include "persistence/persistence_mode.h"
 #include <algorithm>
 #include <cerrno>
 #include <climits>

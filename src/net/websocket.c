@@ -9,7 +9,6 @@
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
-#include "persistence/persistence_mode.h"
 #include "sql/sql_pool.h"
 #include "core/utils.h"
 #include "net/websocket.h"
@@ -279,7 +278,7 @@ static int websocket_send_http_response(struct descriptor_data *d, const char *s
 
 static int websocket_send_health_response(struct descriptor_data *d)
 {
-	const int persistence_ready = !persistence_mode_requires_mysql() || sql_pool_is_active();
+	const int persistence_ready = sql_pool_is_active();
 	return websocket_send_http_response(
 		d, persistence_ready ? "200 OK" : "503 Service Unavailable",
 		"Content-Type: application/json\r\nCache-Control: no-store\r\n",

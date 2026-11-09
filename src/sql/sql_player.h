@@ -51,7 +51,6 @@ bool sql_player_exists(const char *name);
 
 // The statements of one rename, for one writer job: the player row, everything the name
 // keys, and the ship they own (NULL for none), saved as it is (under its new owner).
-// None on flat-file, which has no rename.
 std::vector<std::string> sql_rename_character_statements(int pid, const char *old_name,
 							 const char *new_name,
 							 struct ShipData *ship);
@@ -65,9 +64,8 @@ bool sql_load_player_shapechanges(P_char ch);
 // player delete
 // ============================================================================
 
-// The characters' pids and names, read at boot and kept current in memory (MariaDB; the
-// flat-file lookups read the identity store). sql_get_player_name() gives only an active
-// character's name.
+// The characters' pids and names, read at boot and kept current in memory.
+// sql_get_player_name() gives only an active character's name.
 bool sql_player_names_load(void);
 void sql_player_names_set(int pid, const char *name);
 void sql_player_names_forget(int pid);

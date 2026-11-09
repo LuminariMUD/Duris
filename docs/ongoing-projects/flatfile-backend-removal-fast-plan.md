@@ -377,7 +377,8 @@ renaming or relocation, removing now-unused test shims, historical documentation
 cleanup, the `file:flatfile-*` rows in `migrations/data_lifecycle_manifest.json`
 and the validator entries that require them, peripheral tooling cleanup
 (coverage, fuzz, and `scripts/validate_colorization_journey.py`), and full-suite
-qualification. Repair a peripheral tool now if a required first-pass command
+qualification, and removing the submitter-less `shop_trade_*` path and its
+no-op hooks. Repair a peripheral tool now if a required first-pass command
 actually depends on it. Do not weaken MariaDB persistence or recovery to make the
 initial deletion faster.
 
@@ -395,7 +396,36 @@ and pick up at the first step not marked done.
 
 | Step | Branch | State |
 | --- | --- | --- |
-| 2a. Strip `__NO_MYSQL__`, Makefile | `branch/flatfile-backend-removal-plan` | done |
+| 2a. Strip `__NO_MYSQL__`, Makefile | `branch/flatfile-backend-removal-plan` | done (#859) |
+| 2b + 3. Runtime dispatch, delete backend | `branch/flatfile-removal-runtime` | done |
+
+### Steps 2b and 3 evidence
+
+Every dispatch site now keeps its MariaDB branch and `persistence_mode_get()`,
+`persistence_mode_requires_mysql()`, and `persistence_mode_flatfile_root()` are
+gone. `persistence_mode_configure()` rejects any value except unset, empty, or
+`mariadb-primary`. These two steps ship together because deleting the mode
+queries is what makes the deleted repositories uncompilable.
+
+`src/flatfile` keeps `flatfile_store`, `flatfile_help_catalog`,
+`flatfile_shopkeeper_capture`, and two headers trimmed to record types:
+`flatfile_shopkeeper_repository.h` and `flatfile_ship_repository.h`. The ship
+header is a new finding: the divine trade command codec is shared with the SQL
+path and carries `flatfile_ship_crew_record`/`flatfile_ship_slot_record`.
+
+Also removed because only the deleted paths used them: `divine_trade_flatfile`,
+`artifact_population_flatfile`, `boon_shop_transaction`, `boon_shop_command`,
+`kingdom_restore.h`, the flat boon helpers in `boon.c`, and `item_claim_log_item`.
+
+Left in place on purpose: `shop_trade_transaction`, `shop_trade_runtime`, and
+`shop_trade_command` have no submitter after this change, but seven files call
+their no-op busy/ready/capture hooks and `shop.c` shares the payload type.
+Removing them is ordinary dead-code cleanup, recorded under deferred work.
+
+Proof so far: the server, `pfile`, and `telemetry-state` build at `-Og` under
+`-Werror`, and `run_mysql_bank_restart_journey.py` passes on the new binary.
+Baseline on the starting commit: `make test-all` 1011 of 1011 passed in 18
+minutes.
 
 ### Step 2a evidence
 

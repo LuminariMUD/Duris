@@ -17,7 +17,6 @@
 
 #include "core/prototypes.h"
 #include "core/utils.h"
-#include "persistence/persistence_mode.h"
 
 #include <chrono>
 #include <map>
@@ -64,8 +63,8 @@ const artifact_mana_profile *profile_for(P_obj source)
 artifact_mana_runtime &service()
 {
 	if (!runtime)
-		runtime = std::make_unique<artifact_mana_runtime>(artifact_mana_persistent_backend(
-			persistence_mode_requires_mysql(), persistence_mode_flatfile_root()));
+		runtime =
+			std::make_unique<artifact_mana_runtime>(artifact_mana_persistent_backend());
 	return *runtime;
 }
 } // namespace

@@ -24,7 +24,6 @@
  */
 
 #include "kingdom/kingdom_internal.h"
-#include "kingdom/kingdom_restore.h"
 
 #include "core/structs.h"
 
@@ -53,20 +52,6 @@ namespace
  * the new counter on every save and zero it on every load. Break the build
  * instead: the queries below enumerate exactly these four. */
 static_assert(KRES_MAX == 4, "kingdom_db persists exactly four resource counters");
-
-/* The resource counters are declared `long` but travel as a fixed-width
- * int64_t on disk and as %ld in SQL. If long ever narrows, the flat-file
- * round-trip would truncate silently instead of failing. */
-static_assert(sizeof(long) >= sizeof(int64_t),
-	      "kingdom resource counters must round-trip through int64_t");
-
-/* The flat-file encoder writes the realm's `int` fields as int32_t while the
- * decoder reads them back through sizeof(T) on the `int` field itself. That is
- * symmetric only while the two are the same width, so pin it here: a narrower
- * int would desynchronise the payload cursor and silently misread every record
- * after the first rather than fail the checksum. */
-static_assert(sizeof(int) == sizeof(int32_t),
-	      "kingdom realm integers are encoded as int32_t and decoded as int");
 
 /* One realm per association at most: a row count read out of a table must
  * never authorise an unbounded allocation. */

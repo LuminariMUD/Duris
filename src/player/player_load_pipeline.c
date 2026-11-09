@@ -16,7 +16,6 @@
 #include "player/player_save_worker.h"
 #include "sql/sql_thread_init.h"
 
-#include "flatfile/flatfile_player_repository.h"
 #include "persistence/persistence_observability.h"
 #include "sql/sql_pool.h"
 

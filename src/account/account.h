@@ -56,8 +56,8 @@ struct acct_chars
 	int last_room;
 	long last_save;
 	long played; /* seconds played, as of the last save */
-	/* The character's own racewar (RACEWAR_*). It keys the flat-file identity, wallet
-	 * and bank, as GET_RACEWAR() keys the MariaDB bank; 0 when not yet known. */
+	/* The character's own racewar (RACEWAR_*), as GET_RACEWAR() keys the bank; 0 when
+	 * not yet known. */
 	char player_racewar;
 	struct acct_chars *next;
 };
@@ -143,8 +143,8 @@ void account_apply_verified_email(
 	struct acct_entry *fresh, const char *email,
 	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
 	struct descriptor_data *keep_session, account_recovery_apply_done done);
-/* Reads the named account: on the writer, behind the saves queued before it, while d
- * waits with its input held (MariaDB), or at once (flat-file). done runs while d is still
+/* Reads the named account on the writer, behind the saves queued before it, while d
+ * waits with its input held. done runs while d is still
  * connected, with the account, which it then owns, or null when there is none; ok is
  * false when the read failed. */
 using account_read_done =

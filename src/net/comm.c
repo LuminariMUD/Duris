@@ -25,7 +25,6 @@
 #include "core/prototypes.h"
 #include "item/named_set_effects.h"
 #include "world/world_singletons.h"
-#include "flatfile/flatfile_shopkeeper_restore.h"
 #include "economy/shopkeeper_boot.h"
 #include "item/item_actions.h"
 #include "item/artifact_mana.h"
@@ -148,7 +147,6 @@
 #include "economy/shop_trade_transaction.h"
 #include "item/item_uid_allocator.h"
 #include "item/item_claim_repository.h"
-#include "flatfile/flatfile_item_repository.h"
 #include "economy/auction_transaction.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/divine_trade_command.h"
@@ -164,7 +162,6 @@
 #include "economy/divine_boon_runtime.h"
 #include "economy/divine_boon_selection.h"
 #include "economy/divine_boon_activity.h"
-#include "economy/boon_shop_transaction.h"
 #include "world/zone_touch_transaction.h"
 #include "world/epic_transaction.h"
 #include "world/vnum.mob.h"
@@ -203,22 +200,6 @@ long sentbytes = 0;
 long receivedbytes = 0;
 bool game_booted = FALSE;
 
-static bool hydrate_flatfile_system_item_owner(void)
-{
-	const char *root = persistence_mode_flatfile_root();
-	const item_owner_identity owner = { item_owner_type::system, 0, 0 };
-	uint64_t revision = 0;
-	std::vector<flatfile_item_ownership_record> items;
-	std::string error;
-	const auto loaded =
-		root ? flatfile_item_repository_load_owner(root, owner, &revision, &items, &error) :
-		       flatfile_item_repository_result::invalid;
-	if (loaded == flatfile_item_repository_result::not_found)
-		return item_ownership_runtime_hydrate_owner(owner, 0);
-	return loaded == flatfile_item_repository_result::ok && items.empty() &&
-	       item_ownership_runtime_hydrate_owner(owner, revision);
-}
-
 // A player's active ownership record whose item no stored payload carries is an item
 // the player no longer holds, and no save releases it (ADR 0002). No character is in
 // memory yet, so the records are deleted here, before the writer starts. A failure
@@ -233,23 +214,9 @@ static void reap_unheld_player_items_at_boot(void)
 		return;
 	}
 	uint64_t deleted = 0;
-	if (persistence_mode_requires_mysql())
-	{
-		if (const unsigned int failed =
-			    reap_unheld_player_items(DB, &deleted, &population.retained_uids))
-			logit(LOG_STATUS, "Item ownership reap failed: error=%u", failed);
-	}
-	else
-	{
-		const char *root = persistence_mode_flatfile_root();
-		std::string error;
-		const auto result = flatfile_item_repository_reap_unheld_player_items(
-			root ? root : "", &deleted, &error, &population.retained_uids);
-		if (result != flatfile_item_repository_result::ok &&
-		    result != flatfile_item_repository_result::unchanged &&
-		    result != flatfile_item_repository_result::not_found)
-			logit(LOG_STATUS, "Item ownership reap failed: %s", error.c_str());
-	}
+	if (const unsigned int failed =
+		    reap_unheld_player_items(DB, &deleted, &population.retained_uids))
+		logit(LOG_STATUS, "Item ownership reap failed: error=%u", failed);
 	if (deleted)
 		logit(LOG_STATUS,
 		      "Item ownership reap: records of items no player holds deleted=%llu",
@@ -390,7 +357,6 @@ static void critical_gameplay_handle_completions(const critical_completion *comp
 	artifact_guild_transaction_handle_completions(completions, count);
 	boon_reward_transaction_handle_completions(completions, count);
 	divine_trade_runtime_completions(completions, count);
-	boon_shop_transaction_handle_completions(completions, count);
 	zone_touch_transaction_handle_completions(completions, count);
 }
 
@@ -794,8 +760,7 @@ int main(int argc, char **argv)
 	boot_account_reward_config();
 	if (pwipe_resume_epoch)
 	{
-		const bool ready = persistence_mode_requires_mysql() &&
-				   sql_resume_pwipe(pwipe_resume_epoch);
+		const bool ready = sql_resume_pwipe(pwipe_resume_epoch);
 		logit(LOG_STATUS,
 		      ready ? "SQL pwipe recovery is ready for filesystem cleanup." :
 			      "SQL pwipe recovery refused or incomplete; startup remains fenced.");
@@ -807,13 +772,10 @@ int main(int argc, char **argv)
 		fatal_boot_error("pwipe-launch", launch_error.c_str());
 	logit(LOG_STATUS, "%s", pwipe_launch_status(time(NULL)).c_str());
 
-	if (persistence_mode_requires_mysql() && initialize_mysql() < 0)
+	if (initialize_mysql() < 0)
 	{
 		fatal_boot_error("comm", "MySQL initialization failed!");
 	}
-	if (!persistence_mode_requires_mysql() &&
-	    !item_uid_allocator_reserve(nullptr, ITEM_UID_BOOT_RESERVATION))
-		fatal_boot_error("comm", "Could not reserve a collision-free flat item UID range");
 	if (copyover_boot && copyover_prepare_boot() != copyover_boot_result::ready)
 		fatal_boot_error(
 			"copyover",
@@ -845,11 +807,8 @@ int main(int argc, char **argv)
 	if (!locker_recovery_boot())
 		fatal_boot_error(
 			"locker_recovery",
-			"Locker shutdown recovery unresolved; preserve runtime/locker-shutdown (or FLATFILE_STATE_DIR/locker-shutdown) and follow the locker recovery runbook");
-	if (!persistence_mode_requires_mysql() && !hydrate_flatfile_system_item_owner())
-		fatal_boot_error("comm",
-				 "Could not hydrate the flat-file system item-owner revision");
-	if (persistence_mode_requires_mysql() && !sql_hydrate_item_owner_revisions())
+			"Locker shutdown recovery unresolved; preserve runtime/locker-shutdown and follow the locker recovery runbook");
+	if (!sql_hydrate_item_owner_revisions())
 		logit(LOG_STATUS,
 		      "Authoritative item owner revisions unavailable; movement fails closed.");
 	const auto &population = artifact_population_prepare_boot(copyover_boot);
@@ -2875,15 +2834,6 @@ void game_loop(int port, int sslport)
 	if (!mini_mode)
 	{
 		reconcile_shopkeepers(copyover_restores_world());
-		if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-		{
-			std::string error;
-			const char *root = persistence_mode_flatfile_root();
-			if (!flatfile_shopkeeper_bootstrap_new(root ? root : "", &error))
-				fatal_boot_error("shopkeeper", "new shop initialization failed: %s",
-						 error.empty() ? "invalid authoritative state" :
-								 error.c_str());
-		}
 		initialize_transport();
 		// The world is final: every artifact that boot, a copyover or a restored
 		// generation loads is in place, so the lists read now are not stale.

@@ -70,10 +70,6 @@
 #include "persistence/locker_async.h"
 #include "persistence/maintenance_scheduler.h"
 #include "persistence/persistence_observability.h"
-#include "flatfile/flatfile_account_adapter.h"
-#include "flatfile/flatfile_identity_repository.h"
-#include "flatfile/flatfile_account_delete.h"
-#include "persistence/persistence_mode.h"
 #include "ships/ships.h"
 #include "guild/assocs.h"
 #include "net/poll.h"
@@ -1733,9 +1729,8 @@ void account_confirm_char(P_desc d, char *arg)
 						    ch->specials.was_in_room;
 		if (!sync_account_character_projection(ch, projection_room, TRUE))
 		{
-			statuslog(
-				56,
-				"&+RALERT&n: loaded flat-file account character projection save failed");
+			statuslog(56,
+				  "&+RALERT&n: loaded account character projection save failed");
 			persistence_alert(AVATAR, "account", "redacted", "none", "none",
 					  "write_failed",
 					  "loaded character projection save failed");
@@ -2840,8 +2835,7 @@ bool save_account_character_departure(P_char ch)
 }
 
 /* A session waiting for the writer holds its input (comm.c) until the reply, which finds
- * it by this id, so a connection closed meanwhile just drops the reply. On flat-file the
- * reply comes at once. */
+ * it by this id, so a connection closed meanwhile just drops the reply. */
 uint64_t wait_for_writer(P_desc d)
 {
 	static uint64_t sequence = 0;

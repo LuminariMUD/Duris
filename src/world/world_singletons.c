@@ -16,7 +16,6 @@
 
 #include "core/prototypes.h"
 #include "core/utils.h"
-#include "persistence/persistence_mode.h"
 #include "sql/sql_player.h"
 #include <unordered_set>
 #include <vector>
@@ -201,9 +200,6 @@ void remember_boot_shopkeepers()
 
 bool snapshot_shopkeepers_for_copyover()
 {
-	// Flat-file trades already commit their full stock and custody atomically.
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-		return true;
 	if (!sql_save_dirty_shopkeepers(true))
 		return false;
 	std::unordered_set<int> saved;
@@ -262,8 +258,7 @@ void reconcile_shopkeepers(bool recovered_inventory)
 		}
 		if (!keeper)
 			continue;
-		// Recovery can load a fixed keeper away from its configured room.
-		// The flat-file catalog requires the home room for fixed shops. The
+		// Recovery can load a fixed keeper away from its configured room. The
 		// historical roaming dealer in the replicated set also needs its anchor.
 		if ((!shop_index[shop].shop_is_roaming || is_replicated_shop(shop)) &&
 		    !place_shopkeeper_at_home(keeper, shop))

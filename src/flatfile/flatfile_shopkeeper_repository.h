@@ -15,9 +15,7 @@
 #ifndef DURIS_FLATFILE_SHOPKEEPER_REPOSITORY_H
 #define DURIS_FLATFILE_SHOPKEEPER_REPOSITORY_H
 
-#include "flatfile/flatfile_authority_transaction.h"
 #include "player/player_snapshot.h"
-#include "economy/shop_trade_command.h"
 
 #include <array>
 #include <cstdint>
@@ -43,46 +41,5 @@ struct flatfile_shopkeeper_record
 	std::vector<flatfile_shopkeeper_affect_record> affects;
 	std::vector<player_item_snapshot> items;
 };
-
-enum class flatfile_shopkeeper_result
-{
-	ok,
-	not_found,
-	already_exists,
-	stale,
-	invalid,
-	io_error
-};
-
-struct flatfile_shopkeeper_trade_mutation
-{
-	uint64_t shop_revision = 0;
-	flatfile_authority_after_image after_image;
-};
-
-flatfile_shopkeeper_result
-flatfile_shopkeeper_establish(const std::string &root,
-			      const std::vector<flatfile_shopkeeper_record> &records,
-			      std::string *error);
-// Prepare only new shop IDs; the caller commits this with their item custody.
-flatfile_shopkeeper_result
-flatfile_shopkeeper_prepare_addition(const std::string &root, const flatfile_authority_lock &lock,
-				     const std::vector<flatfile_shopkeeper_record> &records,
-				     flatfile_authority_after_image *after_image,
-				     std::string *error);
-flatfile_shopkeeper_result
-flatfile_shopkeeper_list(const std::string &root, std::vector<flatfile_shopkeeper_record> *records,
-			 std::string *error);
-// Advance existing shop records by one revision; commit with new stock custody.
-flatfile_shopkeeper_result
-flatfile_shopkeeper_prepare_restock(const std::string &root, const flatfile_authority_lock &lock,
-				    const std::vector<flatfile_shopkeeper_record> &records,
-				    flatfile_authority_after_image *after_image,
-				    std::string *error);
-flatfile_shopkeeper_result
-flatfile_shopkeeper_prepare_trade(const std::string &root, const flatfile_authority_lock &lock,
-				  const shop_trade_payload &payload,
-				  flatfile_shopkeeper_trade_mutation *mutation,
-				  unsigned int *result_code, std::string *error);
 
 #endif

@@ -47,7 +47,6 @@
 #include "world/map.h"
 #include "core/mm.h"
 #include "item/objmisc.h"
-#include "persistence/persistence_mode.h"
 #include "redis/redis_presence_runtime.h"
 #include "redis/redis_floor_runtime.h"
 #include "player/player_save_pipeline.h"
@@ -4637,11 +4636,6 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 	const bool pwipe = !str_cmp(arg, "pwipe");
 	if (pwipe)
 	{
-		if (!persistence_mode_requires_mysql())
-		{
-			send_to_char("Pwipe is unavailable in flatfile-primary mode.\r\n", ch);
-			return;
-		}
 		if (GET_LEVEL(ch) < OVERLORD)
 		{
 			send_to_char(

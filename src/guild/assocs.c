@@ -637,8 +637,8 @@ void Guild::initialize()
 	sql_load_all_guilds();
 }
 
-// Flat-file saves remain synchronous. MariaDB captures current state on the
-// ordered writer; only its own receipt can clear the dirty indication.
+// MariaDB captures current state on the ordered writer; only its own receipt can clear
+// the dirty indication.
 bool Guild::save()
 {
 	if (!sql_save_guild(this))

@@ -38,12 +38,10 @@
 #include "persistence/copyover.h"
 #include "world/epic.h"
 #include "item/enhance.h"
-#include "flatfile/flatfile_artifact_repository.h"
 #include "combat/justice.h"
 #include "combat/training_dummy.h"
 #include "core/mm.h"
 #include "item/objmisc.h"
-#include "persistence/persistence_mode.h"
 #include "redis/redis_world_runtime.h"
 #include "ships/ships.h"
 #include "world/specs.prototypes.h"
@@ -439,20 +437,6 @@ void boot_db(int mini_mode)
 	logit(LOG_STATUS, "Boot db -- BEGIN.");
 	fprintf(stderr, "\nBoot db -- BEGIN.\n");
 	boot_time = time(0);
-	if (!persistence_mode_requires_mysql())
-	{
-		std::string error;
-		const auto ensured =
-			flatfile_artifact_ensure(persistence_mode_flatfile_root(), &error);
-		if (ensured != flatfile_artifact_result::ok &&
-		    ensured != flatfile_artifact_result::already_exists)
-			fatal_boot_error("db", "Could not establish flat artifact catalog: %s",
-					 error.empty() ? "invalid artifact authority" :
-							 error.c_str());
-		if (!artifacts_load())
-			fatal_boot_error("db", "Could not hydrate flat artifact memory");
-	}
-
 	logit(LOG_STATUS, "Resetting the game time:");
 	fprintf(stderr, "Resetting the game time:\n");
 	reset_time();
@@ -751,8 +735,7 @@ void boot_db(int mini_mode)
 		logit(LOG_STATUS, "Reloading Shopkeepers.");
 		// Durable catalogs retain full stock properties and revision state.
 		// Native recovery reuses their matching UID bodies before reconciliation.
-		if (!copyover_restores_world() || copyover_has_durable_shopkeepers() ||
-		    persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+		if (!copyover_restores_world() || copyover_has_durable_shopkeepers())
 			restore_shopkeepers();
 		remember_boot_shopkeepers();
 

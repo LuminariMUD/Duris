@@ -280,8 +280,7 @@ struct ShipFragData shipfrags[20];
  * TO_DELETE, and then brings up the cargo market, Cyric's Revenge and the
  * automatons quest.
  *
- * A failed ship load is fatal under the flat-file backend, where the ship
- * file is the sole authority; under MySQL it is logged and boot continues.
+ * A failed ship load is logged and boot continues.
  */
 void initialize_ships()
 {
@@ -3301,7 +3300,7 @@ bool drain_pending_ship_saves(void)
 /*
  * Load every ship from persistent storage at boot.
  *
- * Dispatches to the SQL or flat-file backend.  Ships that fail validation are
+ * Ships that fail validation are
  * skipped with a log line rather than aborting the load; ships flagged
  * TO_DELETE are loaded and then removed by initialize_ships().
  *

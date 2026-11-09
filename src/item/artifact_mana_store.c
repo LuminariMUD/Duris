@@ -1,7 +1,7 @@
 /****************************************************************************
  *
  *  File: artifact_mana_store.c                                 Part of Duris
- *  Usage: artifact mana storage: flat-file and SQL reads and writes
+ *  Usage: artifact mana storage: SQL reads and writes
  *
  *  Copyright 1990, 1991 - see LICENSE for complete information
  *
@@ -14,23 +14,16 @@
 
 #include "item/artifact_mana_store.h"
 
-#include "flatfile/flatfile_store.h"
 #include "sql/sql_pool.h"
 #include "sql/sql_thread_init.h"
 
 #include <array>
 #include <charconv>
 #include <cstring>
-#include <openssl/crypto.h>
-#include <openssl/sha.h>
 #include <vector>
 
 namespace
 {
-constexpr std::array<uint8_t, 8> magic = { 'D', 'U', 'R', 'M', 'A', 'N', 'A', 1 };
-constexpr size_t payload_size = 8 + 8 * 8;
-constexpr size_t file_size = payload_size + SHA256_DIGEST_LENGTH;
-
 std::array<uint64_t, 8> fields(const artifact_mana_record &r)
 {
 	return { r.uid,	     r.profile_id,   r.profile_revision, r.version,
@@ -40,46 +33,6 @@ std::array<uint64_t, 8> fields(const artifact_mana_record &r)
 artifact_mana_record from_fields(const std::array<uint64_t, 8> &f)
 {
 	return { f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7] };
-}
-
-std::string filename(uint64_t uid)
-{
-	return "artifact-mana-" + std::to_string(uid);
-}
-
-std::vector<uint8_t> encode(const artifact_mana_record &record)
-{
-	std::vector<uint8_t> bytes(magic.begin(), magic.end());
-	for (uint64_t value : fields(record))
-		for (unsigned index = 0; index < 8; ++index)
-			bytes.push_back(static_cast<uint8_t>(value >> (index * 8)));
-	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
-	SHA256(bytes.data(), bytes.size(), digest.data());
-	bytes.insert(bytes.end(), digest.begin(), digest.end());
-	return bytes;
-}
-
-artifact_mana_read read_flat(const std::string &root, uint64_t uid, artifact_mana_record &record)
-{
-	std::vector<uint8_t> bytes;
-	const auto result =
-		flatfile_read(root + "/domains", filename(uid), file_size, &bytes, nullptr);
-	if (result == flatfile_read_result::not_found)
-		return artifact_mana_read::missing;
-	if (result != flatfile_read_result::ok || bytes.size() != file_size ||
-	    memcmp(bytes.data(), magic.data(), magic.size()))
-		return artifact_mana_read::error;
-	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
-	SHA256(bytes.data(), payload_size, digest.data());
-	if (CRYPTO_memcmp(digest.data(), bytes.data() + payload_size, digest.size()))
-		return artifact_mana_read::error;
-	std::array<uint64_t, 8> values = {};
-	for (size_t field = 0; field < values.size(); ++field)
-		for (unsigned index = 0; index < 8; ++index)
-			values[field] |= uint64_t(bytes[8 + field * 8 + index]) << (index * 8);
-	record = from_fields(values);
-	return artifact_mana_valid(record) && record.uid == uid ? artifact_mana_read::found :
-								  artifact_mana_read::error;
 }
 
 struct mysql_thread_scope
@@ -161,13 +114,10 @@ bool write_sql(MYSQL *connection, uint64_t expected, const artifact_mana_record 
 }
 } // namespace
 
-artifact_mana_read artifact_mana_store_read(bool sql, const std::string &root, uint64_t uid,
-					    artifact_mana_record &record)
+artifact_mana_read artifact_mana_store_read(uint64_t uid, artifact_mana_record &record)
 {
 	if (!uid)
 		return artifact_mana_read::error;
-	if (!sql)
-		return read_flat(root, uid, record);
 	mysql_thread_scope thread;
 	if (!thread.ready)
 		return artifact_mana_read::error;
@@ -179,31 +129,11 @@ artifact_mana_read artifact_mana_store_read(bool sql, const std::string &root, u
 	return result;
 }
 
-bool artifact_mana_store_write(bool sql, const std::string &root, uint64_t expected,
-			       const artifact_mana_record &record)
+bool artifact_mana_store_write(uint64_t expected, const artifact_mana_record &record)
 {
 	if (!artifact_mana_valid(record) || record.version <= expected ||
 	    (!expected && (record.version != 1 || record.reserve)))
 		return false;
-	if (!sql)
-	{
-		int lock = -1;
-		const auto directory = root + "/domains";
-		if (!flatfile_lock_acquire(directory, ".artifact-mana.lock", &lock, nullptr))
-			return false;
-		artifact_mana_record stored;
-		const auto result = read_flat(root, record.uid, stored);
-		const bool identical = result == artifact_mana_read::found && stored == record;
-		const bool allowed = (expected && result == artifact_mana_read::found &&
-				      stored.version == expected) ||
-				     (!expected && result == artifact_mana_read::missing);
-		const bool written =
-			identical ||
-			(allowed && flatfile_atomic_write(directory, filename(record.uid),
-							  encode(record), nullptr));
-		flatfile_lock_release(lock);
-		return written;
-	}
 	mysql_thread_scope thread;
 	if (!thread.ready)
 		return false;

@@ -13,7 +13,6 @@
 #include "cmd/interp.h"
 #include "item/item_movement_transaction.h"
 #include "item/objmisc.h"
-#include "persistence/persistence_mode.h"
 #include "magic/spells.h"
 #include "world/vnum.obj.h"
 #include "economy/crafting.h"
@@ -423,8 +422,7 @@ int *crafting_get_player_recipes(P_char ch, int *count)
 		return NULL;
 
 	recipes = sql_get_player_recipes(GET_PID(ch), count);
-	if (recipes != NULL || *count != 0 ||
-	    persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+	if (recipes != NULL || *count != 0)
 	{
 		int i, kept = 0;
 		for (i = 0; i < *count; i++)

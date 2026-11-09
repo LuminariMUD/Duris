@@ -104,8 +104,6 @@ using namespace std;
 #define GH_ROOM_TYPE_LOOM 12
 #define GH_ROOM_TYPE_JEWELLER 13
 #define GH_ROOM_TYPE_GUILDSTORE 14
-/* The flat-file validator's bound (FLATFILE_GUILDHALL_ROOM_TYPE_COUNT) must
- * move with this; guildhall_db.c static_asserts the pair. */
 #define GH_ROOM_NUM_TYPES 15
 
 /*
