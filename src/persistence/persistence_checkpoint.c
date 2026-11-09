@@ -101,6 +101,7 @@ void event_flush_dirty_players(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, 
 			if (character->player.time.logon > 0)
 				mark_player_dirty_components(GET_PID(character),
 							     PLAYER_COMPONENT_STATUS);
+			locker_return_norent_items(character);
 			player_save_pipeline_checkpoint_dirty(character, RENT_CRASH,
 							      room_vnum(character));
 			// A locker is checkpointed with the character inside it.

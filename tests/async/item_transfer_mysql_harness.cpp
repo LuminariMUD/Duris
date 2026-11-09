@@ -4,6 +4,7 @@
 #include "item/item_uid_allocator.h"
 #include "player/player_snapshot.h"
 #include "player/player_snapshot_codec.h"
+#include "player/player_snapshot_repository.h"
 
 #include <algorithm>
 #include <cassert>
@@ -13,6 +14,7 @@
 #include <cstring>
 #include <limits>
 #include <mysql.h>
+#include <openssl/sha.h>
 #include <string>
 #include <vector>
 
@@ -765,6 +767,151 @@ int main()
 	const auto collision_after_revision = apply(connection, 27, frozen);
 	assert(collision_after_revision.outcome == critical_apply_outcome::terminal_failure &&
 	       collision_after_revision.error_code == EEXIST);
+
+	// A paid creation is one receipt: exact wallet debit and every item UID
+	// commit together, and replay can neither recharge nor remint.
+	execute(connection, "UPDATE player_data SET copper=0,silver=0,gold=0,platinum=100,"
+			    "wallet_revision=0 WHERE pid=4000000001");
+	item_uid_allocator_reset_for_tests();
+	assert(item_uid_allocator_reserve(connection, 12));
+	auto paid_batch = [&](uint64_t revision, int64_t price)
+	{
+		const uint64_t first = item_uid_allocator_next();
+		const uint64_t child = item_uid_allocator_next();
+		const uint64_t other = item_uid_allocator_next();
+		auto purchase = multi_root_creation_payload(first, child, other,
+							    owner_revision(connection, system),
+							    owner_revision(connection, player_one));
+		purchase.reason_id = -price;
+		purchase.paid_creation = true;
+		purchase.paid_wallet_revision = revision;
+		return std::pair{ purchase, first };
+	};
+	const auto [paid, paid_uid] = paid_batch(0, 11);
+	const auto purchase = apply(connection, 242, paid);
+	assert(purchase.outcome == critical_apply_outcome::applied);
+	item_transfer_result paid_result{};
+	assert(item_transfer_command_decode_result(purchase.result_payload.data(),
+						   purchase.result_size, &paid_result));
+	assert(paid_result.root_item_uid == paid_uid && paid_result.corpse_revision == 1);
+	assert(scalar(connection, "SELECT copper+10*silver+100*gold+1000*platinum FROM player_data "
+				  "WHERE pid=4000000001") == 99989);
+	assert(scalar(connection,
+		      ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid BETWEEN " +
+		       std::to_string(paid_uid) + " AND " + std::to_string(paid_uid + 2) +
+		       " AND owner_type=1 AND owner_id=4000000001")
+			      .c_str()) == 3);
+	assert(apply(connection, 242, paid).outcome == critical_apply_outcome::already_applied);
+	assert(scalar(connection, "SELECT copper+10*silver+100*gold+1000*platinum FROM player_data "
+				  "WHERE pid=4000000001") == 99989);
+	const auto [unaffordable, refused_uid] = paid_batch(1, 100000);
+	const auto no_funds = apply(connection, 243, unaffordable);
+	assert(no_funds.outcome == critical_apply_outcome::terminal_failure &&
+	       no_funds.error_code == ENOSPC);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
+				   std::to_string(refused_uid))
+					  .c_str()) == 0);
+	const auto [stale, stale_uid] = paid_batch(0, 11);
+	const auto wrong_revision = apply(connection, 244, stale);
+	assert(wrong_revision.outcome == critical_apply_outcome::terminal_failure &&
+	       wrong_revision.error_code == ESTALE);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
+				   std::to_string(stale_uid))
+					  .c_str()) == 0);
+	execute(connection,
+		"CREATE TRIGGER fail_paid_creation BEFORE UPDATE ON player_data "
+		"FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected wallet refusal'");
+	const auto [injected, injected_uid] = paid_batch(1, 11);
+	assert(apply(connection, 245, injected).outcome != critical_apply_outcome::applied);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
+				   std::to_string(injected_uid))
+					  .c_str()) == 0);
+	assert(scalar(connection, "SELECT copper+10*silver+100*gold+1000*platinum FROM player_data "
+				  "WHERE pid=4000000001") == 99989);
+	execute(connection, "DROP TRIGGER fail_paid_creation");
+
+	// A checkpoint captured before the paid grant's live callback contains its
+	// bag but not the detached purchase. The receipt keeps that SQL subtree and
+	// settles the wallet exactly once while unrelated snapshot state still saves.
+	const item_owner_identity new_buyer = { item_owner_type::player, 23003, 0 };
+	execute(connection, "INSERT INTO player_data(pid,name,platinum,wallet_revision) "
+			    "VALUES(23003,'PaidContainer',100,0)");
+	item_uid_allocator_reset_for_tests();
+	assert(item_uid_allocator_reserve(connection, 4));
+	const uint64_t saved_bag_uid = item_uid_allocator_next();
+	root_uid = child_uid = saved_bag_uid;
+	assert(apply(connection, 246,
+		     payload(system, new_buyer, item_transfer_reason::creation,
+			     owner_revision(connection, system),
+			     owner_revision(connection, new_buyer), ITEM_TRANSFER_ABSENT_REVISION,
+			     1))
+		       .outcome == critical_apply_outcome::applied);
+	const uint64_t paid_bag_uid = item_uid_allocator_next();
+	const uint64_t paid_child_uid = item_uid_allocator_next();
+	const uint64_t paid_other_uid = item_uid_allocator_next();
+	auto paid_in_bag = multi_root_creation_payload(paid_bag_uid, paid_child_uid, paid_other_uid,
+						       owner_revision(connection, system),
+						       owner_revision(connection, new_buyer));
+	paid_in_bag.to_owner = new_buyer;
+	paid_in_bag.target_root_item_uid = saved_bag_uid;
+	paid_in_bag.target_parent_item_uid = saved_bag_uid;
+	paid_in_bag.expected_target_parent_revision = 1;
+	paid_in_bag.reason_id = -11;
+	paid_in_bag.paid_creation = true;
+	paid_in_bag.paid_wallet_revision = 0;
+	critical_command paid_command{};
+	assert(item_transfer_command_build(&paid_command, operation(247), paid_in_bag,
+					   critical_source_site::operator_repair,
+					   critical_deadline_class::interactive));
+	paid_command.accepted_at_usec = 1;
+	std::vector<uint8_t> encoded_paid_command;
+	assert(critical_command_encode(paid_command, &encoded_paid_command) ==
+	       critical_command_codec_result::ok);
+	assert(apply(connection, 247, paid_in_bag).outcome == critical_apply_outcome::applied);
+	player_snapshot early{};
+	early.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+	early.pid = 23003;
+	early.revision = 1;
+	early.components = PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_EQUIPMENT |
+			   PLAYER_COMPONENT_INVENTORY;
+	early.save_intent = 1;
+	early.room_vnum = 3001;
+	early.encoded_size_bound = 8192;
+	early.wallet_revision = 0;
+	early.recipes_are_external = true;
+	early.status_strings.push_back({ player_status_string_field::name, "PaidContainer" });
+	early.status_integers.push_back({ player_status_field::level, 20, 0, false });
+	early.status_integers.push_back({ player_status_field::copper, 0, 0, true });
+	early.status_integers.push_back({ player_status_field::silver, 0, 0, true });
+	early.status_integers.push_back({ player_status_field::gold, 0, 0, true });
+	early.status_integers.push_back({ player_status_field::platinum, 100, 0, false });
+	early.items.push_back(physical_item(saved_bag_uid, 1001, PLAYER_SNAPSHOT_NO_PARENT));
+	early.pending_trade.operation = operation(247).bytes;
+	SHA256(encoded_paid_command.data(), encoded_paid_command.size(),
+	       early.pending_trade.command_hash.data());
+	early.pending_trade.payment = -11;
+	early.pending_trade.wallet_revision = 0;
+	assert(player_snapshot_repository_apply(connection, early).outcome ==
+	       player_save_apply_outcome::applied);
+	assert(scalar(connection, "SELECT copper+10*silver+100*gold+1000*platinum FROM player_data "
+				  "WHERE pid=23003") == 99989);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner o JOIN player_items i "
+				   "ON i.obj_uid=o.item_uid AND i.pid=o.owner_id "
+				   "WHERE o.owner_type=1 AND o.owner_id=23003 AND o.state=1 "
+				   "AND o.root_item_uid=" +
+				   std::to_string(saved_bag_uid))
+					  .c_str()) == 4);
+	early.revision = 2;
+	assert(player_snapshot_repository_apply(connection, early).outcome ==
+	       player_save_apply_outcome::applied);
+	assert(scalar(connection, "SELECT copper+10*silver+100*gold+1000*platinum FROM player_data "
+				  "WHERE pid=23003") == 99989);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner o JOIN player_items i "
+				   "ON i.obj_uid=o.item_uid AND i.pid=o.owner_id "
+				   "WHERE o.owner_type=1 AND o.owner_id=23003 AND o.state=1 "
+				   "AND o.root_item_uid=" +
+				   std::to_string(saved_bag_uid))
+					  .c_str()) == 4);
 
 	for (uint8_t id = 1; id <= 27; ++id)
 	{

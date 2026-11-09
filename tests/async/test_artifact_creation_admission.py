@@ -680,6 +680,8 @@ source=source.replace("// TERMINAL_EXTRACTION", terminal_cleanup+"\n"+r"""
 static player_save_pipeline_result terminal_admission=player_save_pipeline_result::queued;
 int calculate_save_room(P_char,int,int room) { return room; }
 void locker_post_save_hook(P_char) {}
+void locker_return_norent_items(P_char) {}
+static void remove_norent_items(P_char) {}
 player_save_pipeline_result player_save_pipeline_request(P_char ch,player_component_mask_t components,int intent,int) {
  assert(ch->carrying && components==PLAYER_CHECKPOINT_COMPONENT_ALL && intent==RENT_CRASH);
  ++writer_state.submitted;

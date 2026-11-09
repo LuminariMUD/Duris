@@ -37,6 +37,8 @@ static std::string last_alert;
 static player_save_pipeline_result outcome = player_save_pipeline_result::queued;
 int calculate_save_room(P_char, int, int) { return 22800; }
 void locker_post_save_hook(P_char) { ++hooks; }
+void locker_return_norent_items(P_char) {}
+static void remove_norent_items(P_char) {}
 deferred_save_slot *find_deferred_save_slot(int) { return &slot; }
 void clear_manual_save_status(int) { ++cleared; }
 player_save_pipeline_result player_save_pipeline_request(P_char ch,
