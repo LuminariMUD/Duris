@@ -903,5 +903,23 @@ These are preserved per-chunk results, not claims that a later binary ran them.
   DB-only run_ journey is not discovered there. Final readiness is still pending.
 - This correction is pushed at caa1a4ba7 in ready/labeled bug
   [#970](https://github.com/LuminariMUD/Duris/pull/970). No focused run remains
-  active; only the full aggregate56758 is live. Its known world_recovery failure
-  still requires a later complete DB rerun with this committed correction.
+  active. Aggregate56758 is now terminal:153/154 passed in2868s, make exit2;
+  only the corrected world_recovery stage assertion failed. Pet, all artifact/
+  guild recovery cases and the game-loop budget passed. All154 logs are preserved
+  in `final-db-retry1/`; stdout/status in `final-test-db-retry1.log`/`.exit`.
+
+### Current final-gate continuation
+
+- **Active full DB controller34613** runs unchanged `make test-db` after both
+  committed DB-fixture corrections. Output/status: `final-test-db-retry2.log`/
+  `.exit`; completed logs will be copied to `final-db-retry2/`. Archive completeness
+  of the prior154-log run was verified before this new run cleared bin/tests/db.
+  Both earlier aggregate controllers88225/56758 and every focused probe are terminal.
+- The907-file regression/native/build pass remains valid. Direct dependency
+  inspection found no included test importing/reading either modified DB-only
+  journey; pet appears only in the exclusion/deadline name sets and their tests.
+  Common helpers and all native sources/binaries remain unchanged.
+- No required work is omitted: await34613's terminal full154-leg result, repair
+  any actual further finding, then publish final evidence, mark #958 ready and
+  verify clean/pushed Git and all PR labels/readiness. Do not start a duplicate
+  run or call a focused pass a green aggregate. No merge/deployment is requested.
