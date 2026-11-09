@@ -3,6 +3,8 @@
 #include "core/utils.h"
 #include "item/item_value.h"
 #include "item/item_value_procs.h"
+#include "item/objmisc.h"
+#include "item/native_artifact_actions.h"
 #include "world/object_template.h"
 #include "core/proc-libs.h"
 #include "mob/studioproclib.h"
@@ -11,6 +13,7 @@
 extern P_index obj_index;
 extern const struct stat_data stat_factor[];
 extern int top_of_objt;
+extern Skill skills[];
 int get_mincircle(int spell);
 
 template <typename Object> static item_value_input item_value_fields(const Object &object)
@@ -96,16 +99,46 @@ static int item_value_with_context(const item_value_input &input, int rnum, cons
 		context.racial_credits[i] = item_value_racial_credit(input.affected[i], name, vnum);
 	if (item_value_has_packed_proc(input))
 	{
-		context.spell_circles[0] = get_mincircle(input.value[5] % 1000);
-		context.spell_circles[1] = get_mincircle(input.value[5] % 1000000 / 1000);
-		context.spell_circles[2] = get_mincircle(input.value[5] % 1000000000 / 1000000);
+		context.callable_packed_spells = 0;
+		for (int packed = input.value[5] % 1000000000, i = 0; i < 3; ++i, packed /= 1000)
+		{
+			const int spell = packed % 1000;
+			if (spell > 0 && spell < MAX_SKILLS && skills[spell].spell_pointer)
+			{
+				context.callable_packed_spells |= 1u << i;
+				context.spell_circles[i] = get_mincircle(spell);
+			}
+		}
+		context.packed_proc_disabled = (vnum == 21 || vnum == 22) &&
+					       native_artifact_configured_owner(vnum);
 	}
 	const auto native_proc = item_value_proc(proc);
 	context.native_proc_credit = native_proc.credit;
 	context.native_proc_policy = native_proc.policy;
+	const bool proc_glove = (input.type == ITEM_ARMOR || input.type == ITEM_WORN) &&
+				(input.wear_flags & ITEM_WEAR_HANDS) &&
+				(input.extra2_flags & ITEM2_MONK_PROC);
+	const bool invalid_glove =
+		proc_glove && input.value[5] &&
+		(!item_value_has_packed_proc(input) ||
+		 !item_value_packed_cast_mask(input, context.callable_packed_spells));
+	const bool native_melee_suppressed =
+		proc && ((item_value_has_packed_proc(input) && !context.packed_proc_disabled) ||
+			 invalid_glove);
+	const bool native_price_suppressed = native_melee_suppressed && native_proc.melee_only &&
+					     !IS_BACKSTABBER(&input);
+	if (native_price_suppressed)
+		context.native_proc_credit = 0;
 	item_value_breakdown detail;
 	const int score = evaluate_item_value(input, context, &detail);
 	detail.native_proc_name = native_proc.name;
+	detail.native_melee_suppressed = native_melee_suppressed;
+	detail.native_price_suppressed = native_price_suppressed;
+	// Existing native prices aggregate melee, periodic and invoke behavior. Retain
+	// that legacy price and expose unresolved decomposition instead of inventing weights.
+	detail.context_complete = detail.context_complete &&
+				  native_proc.policy != item_value_proc_policy::unclassified &&
+				  (!native_melee_suppressed || native_price_suppressed);
 	if (detail.utility_override && !detail.floored && detail.unrounded != 1)
 		debug("Always load obj '%s' %d has stats giving ival %.3lf.", name, vnum,
 		      detail.unrounded);
@@ -125,8 +158,17 @@ int itemvalue(P_obj obj, item_value_breakdown *breakdown)
 		}
 		return 0;
 	}
-	return item_value_with_context(item_value_fields(*obj), obj->R_num, obj->short_description,
-				       obj_index[obj->R_num].func.obj, breakdown);
+	obj_proc_type proc = obj_index[obj->R_num].func.obj;
+	if (proc == proclib_obj_cmd_bridge && !(obj->extra_flags & ITEM_PROCLIB))
+		proc = proclib_chain_incumbent(obj->R_num);
+	const int score = item_value_with_context(item_value_fields(*obj), obj->R_num,
+						  obj->short_description, proc, breakdown);
+	if (breakdown && obj->affects)
+	{
+		breakdown->unpriced_dynamic_effects = true;
+		breakdown->context_complete = false;
+	}
+	return score;
 }
 
 int itemvalue(P_obj obj)
@@ -149,6 +191,8 @@ int itemvalue(const object_template &prototype, item_value_breakdown *breakdown)
 	auto input = item_value_fields(prototype);
 	normalize_item_value_fields(input);
 	obj_proc_type proc = obj_index[rnum].func.obj;
+	if (proc == proclib_obj_cmd_bridge)
+		proc = proclib_chain_incumbent(rnum);
 	if (!proc && prototype.type == ITEM_SWITCH)
 		proc = item_switch;
 	for (const auto &description : prototype.descriptions)

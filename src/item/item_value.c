@@ -32,6 +32,136 @@ bool item_value_has_packed_proc(const item_value_input &input)
 	       obj->value[5] > 0 && obj->value[7] > 0;
 }
 
+const char *item_value_proc_policy_name(item_value_proc_policy policy)
+{
+	switch (policy)
+	{
+	case item_value_proc_policy::none:
+		return "none";
+	case item_value_proc_policy::priced:
+		return "priced";
+	case item_value_proc_policy::utility:
+		return "utility";
+	case item_value_proc_policy::unclassified:
+		return "unclassified";
+	}
+	return "unclassified";
+}
+
+unsigned int item_value_packed_cast_mask(const item_value_input &input,
+					 unsigned int callable_spells)
+{
+	if (!item_value_has_packed_proc(input))
+		return 0;
+	unsigned int populated = 0;
+	int count = 0;
+	for (int packed = input.value[5] % 1000000000, i = 0; i < 3; ++i, packed /= 1000)
+		if (packed % 1000)
+		{
+			populated |= 1u << i;
+			++count;
+		}
+	const unsigned int prefix = (1u << count) - 1;
+	if ((input.type == ITEM_ARMOR || input.type == ITEM_WORN) &&
+	    (input.wear_flags & ITEM_WEAR_HANDS) && (input.extra2_flags & ITEM2_MONK_PROC) &&
+	    (populated != prefix || (callable_spells & populated) != populated))
+		return 0;
+	return prefix & populated & callable_spells;
+}
+
+static void item_value_coverage(const item_value_input &input, item_value_breakdown &detail)
+{
+	const unsigned long long priced[5] = {
+		AFF_AWARE | AFF_BARKSKIN | AFF_BIOFEEDBACK | AFF_DETECT_INVISIBLE | AFF_FARSEE |
+			AFF_FLY | AFF_HASTE | AFF_HIDE | AFF_INFRAVISION | AFF_INVISIBLE |
+			AFF_LEVITATE | AFF_MINOR_GLOBE | AFF_PROTECT_EVIL | AFF_PROTECT_GOOD |
+			AFF_PROT_FIRE | AFF_SENSE_LIFE | AFF_SLOW_POISON | AFF_SNEAK |
+			AFF_STONE_SKIN | AFF_UD_VISION | AFF_WATERBREATH,
+		AFF2_AIR_AURA | AFF2_CONCEALMENT | AFF2_DETECT_EVIL | AFF2_DETECT_GOOD |
+			AFF2_DETECT_MAGIC | AFF2_EARTH_AURA | AFF2_FIRESHIELD | AFF2_FIRE_AURA |
+			AFF2_FLURRY | AFF2_GLOBE | AFF2_PASSDOOR | AFF2_PROT_ACID | AFF2_PROT_COLD |
+			AFF2_PROT_GAS | AFF2_PROT_LIGHTNING | AFF2_SOULSHIELD | AFF2_ULTRAVISION |
+			AFF2_VAMPIRIC_TOUCH | AFF2_WATER_AURA,
+		AFF3_BLUR | AFF3_COLDSHIELD | AFF3_ENLARGE | AFF3_GR_SPIRIT_WARD |
+			AFF3_INERTIAL_BARRIER | AFF3_PASS_WITHOUT_TRACE | AFF3_PROT_ANIMAL |
+			AFF3_REDUCE | AFF3_SPIRIT_WARD | AFF3_TOWER_IRON_WILL,
+		AFF4_BATTLE_ECSTASY | AFF4_DAZZLER | AFF4_DETECT_ILLUSION | AFF4_GLOBE_OF_DARKNESS |
+			AFF4_HAWKVISION | AFF4_HELLFIRE | AFF4_HOLY_SACRIFICE | AFF4_ICE_AURA |
+			AFF4_NEG_SHIELD | AFF4_NOFEAR | AFF4_PHANTASMAL_FORM | AFF4_PROT_LIVING |
+			AFF4_REGENERATION | AFF4_SANCTUARY | AFF4_SENSE_HOLINESS |
+			AFF4_VAMPIRE_FORM | AFF4_WILDMAGIC,
+		0,
+	};
+	const unsigned long long present[] = { input.bitvector, input.bitvector2, input.bitvector3,
+					       input.bitvector4, input.bitvector5 };
+	for (int bank = 0; bank < 5; ++bank)
+	{
+		detail.unpriced_affects[bank] = present[bank] & ~priced[bank];
+		if (bank == 0)
+			detail.unpriced_affects[bank] &= ~(
+				static_cast<unsigned long long>(AFF_SLEEP) | AFF_FEAR | AFF_CHARM);
+		if (detail.unpriced_affects[bank])
+			detail.context_complete = false;
+	}
+	for (int slot = 0; slot < MAX_OBJ_AFFECT; ++slot)
+	{
+		if (!input.affected[slot].modifier || input.affected[slot].location == APPLY_NONE)
+			continue;
+		switch (input.affected[slot].location)
+		{
+		case APPLY_AC:
+		case APPLY_AGI:
+		case APPLY_AGI_MAX:
+		case APPLY_AGI_RACE:
+		case APPLY_CHA:
+		case APPLY_CHA_MAX:
+		case APPLY_CHA_RACE:
+		case APPLY_COMBAT_PULSE:
+		case APPLY_CON:
+		case APPLY_CON_MAX:
+		case APPLY_CON_RACE:
+		case APPLY_DAMROLL:
+		case APPLY_DEX:
+		case APPLY_DEX_MAX:
+		case APPLY_DEX_RACE:
+		case APPLY_HIT:
+		case APPLY_HITROLL:
+		case APPLY_HIT_REG:
+		case APPLY_INT:
+		case APPLY_INT_MAX:
+		case APPLY_INT_RACE:
+		case APPLY_LUCK:
+		case APPLY_LUCK_MAX:
+		case APPLY_MANA:
+		case APPLY_MANA_REG:
+		case APPLY_MOVE:
+		case APPLY_MOVE_REG:
+		case APPLY_POW:
+		case APPLY_POW_MAX:
+		case APPLY_SAVING_BREATH:
+		case APPLY_SAVING_FEAR:
+		case APPLY_SAVING_PARA:
+		case APPLY_SAVING_ROD:
+		case APPLY_SAVING_SPELL:
+		case APPLY_SPELL_PULSE:
+		case APPLY_STR:
+		case APPLY_STR_MAX:
+		case APPLY_STR_RACE:
+		case APPLY_WIS:
+		case APPLY_WIS_MAX:
+		case APPLY_WIS_RACE:
+			break;
+		default:
+			detail.unpriced_apply_slots |= 1u << slot;
+			detail.context_complete = false;
+		}
+	}
+	detail.unpriced_type = !detail.utility_override && input.type != ITEM_WEAPON &&
+			       input.type != ITEM_ARMOR && input.type != ITEM_WORN;
+	if (detail.unpriced_type)
+		detail.context_complete = false;
+}
+
 int evaluate_item_value(const item_value_input &input, const item_value_context &context,
 			item_value_breakdown *breakdown)
 {
@@ -50,6 +180,11 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 	double workingvalue = 0;
 	double multiplier = 1;
 	double mod;
+	double packed_credit = 0;
+	const unsigned int packed_cast_mask =
+		context.packed_proc_disabled ?
+			0 :
+			item_value_packed_cast_mask(input, context.callable_packed_spells);
 
 	if ((obj->wear_flags & ITEM_WEAR_EYES))
 		multiplier *= 1.3;
@@ -78,6 +213,7 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 	if ((obj->wear_flags & ITEM_WEAR_WRIST))
 		multiplier *= 1.1;
 
+	const double after_wear = multiplier;
 	// Aff's add to the base value.
 	if ((obj->bitvector & AFF_STONE_SKIN))
 		workingvalue += 125;
@@ -283,8 +419,10 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 	if ((obj->bitvector4 & AFF4_WILDMAGIC))
 		workingvalue += 240;
 
+	const double flags_base = workingvalue;
+	const double after_flags = multiplier;
 	// Has a old school proc (Up to three spells).
-	if (item_value_has_packed_proc(input))
+	if (packed_cast_mask)
 	{
 		int spells[3];
 		double spellcirclesum;
@@ -298,9 +436,10 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 		// val6 = level * val7 = chance -> 1/30 chance = 1, 1/60 chance = .5, 1/15 chance = 2, etc.
 		mod = ((obj->value[6] > 19) ? obj->value[6] / 10.0 : 1) * (30.0 / obj->value[7]);
 
-		spellcirclesum = context.spell_circles[0];
-		spellcirclesum += context.spell_circles[1];
-		spellcirclesum += context.spell_circles[2];
+		spellcirclesum = 0;
+		for (int i = 0; i < 3; ++i)
+			if (packed_cast_mask & (1u << i))
+				spellcirclesum += context.spell_circles[i];
 
 		// 1 lvl 10 spell  2nd circle 1/60 chance = 1*1* 2*.5 =  1
 		// 1 lvl 60 spell  1st circle 1/30 chance = 1*6* 1*1  =  6
@@ -315,13 +454,14 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 			// If there are none?!, set to 1 anyway.
 			numspells = numspells ? numspells : 1;
 			// Keep the mean and scaled contribution fractional until final quantization.
-			workingvalue += mod * spellcirclesum / numspells;
+			packed_credit = mod * spellcirclesum / numspells;
 		}
 		else
 		{
-			workingvalue += mod * spellcirclesum;
+			packed_credit = mod * spellcirclesum;
 		}
 	}
+	workingvalue += packed_credit;
 
 	workingvalue += context.native_proc_credit;
 
@@ -499,6 +639,9 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 	for (int i : order)
 		multiplier *= apply_factors[i];
 
+	const double applies_base =
+		workingvalue - flags_base - packed_credit - context.native_proc_credit;
+	const double after_applies = multiplier;
 	if (obj->type == ITEM_WEAPON)
 	{
 		const double dice_count = obj->value[1];
@@ -532,6 +675,9 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 		multiplier += mod / 500.;
 	}
 
+	const double type_base = workingvalue - flags_base - packed_credit -
+				 context.native_proc_credit - applies_base;
+	const double after_type = multiplier;
 	// Two handed items have less ival.
 	if ((obj->extra_flags & ITEM_TWOHANDS))
 	{
@@ -557,6 +703,17 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 		*breakdown = { workingvalue,	 multiplier, unrounded, floored,
 			       utility_override, score,	     invalid };
 		breakdown->native_proc_policy = context.native_proc_policy;
+		breakdown->packed_credit = packed_credit;
+		breakdown->packed_cast_mask = packed_cast_mask;
+		breakdown->flags_base = flags_base;
+		breakdown->applies_base = applies_base;
+		breakdown->type_base = type_base;
+		breakdown->native_base = context.native_proc_credit;
+		breakdown->after_wear = after_wear;
+		breakdown->after_flags = after_flags;
+		breakdown->after_applies = after_applies;
+		breakdown->after_type = after_type;
+		item_value_coverage(input, *breakdown);
 	}
 	return score;
 }

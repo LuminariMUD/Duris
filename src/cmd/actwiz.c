@@ -8,6 +8,7 @@
  * ***************************************************************************
  */
 
+#include "item/item_value.h"
 #include "core/prototypes.h"
 #include "item/named_set_origin.h"
 #include "persistence/copyover.h"
@@ -1953,10 +1954,34 @@ void do_stat(P_char ch, char *argument, int cmd, P_obj object)
 					 buf2);
 		}
 
+		item_value_breakdown valuation;
+		const int score = itemvalue(j, &valuation);
 		checked_snprintf(
 			o_buf + strlen(o_buf), MAX_STRING_LENGTH - strlen(o_buf),
-			"&+YWeight: &N%d&+Y lbs   Value: &N%s   &+YCondition: &N%d   &+YItem Value: &N%d\n", //%d(%d%%)\n",
-			j->weight, comma_string((long)(j->cost)), j->condition, itemvalue(j));
+			"&+YWeight: &N%d&+Y lbs   Value: &N%s   &+YCondition: &N%d   &+YItem Value: &N%d\n",
+			j->weight, comma_string((long)(j->cost)), j->condition, score);
+		checked_snprintf(
+			o_buf + strlen(o_buf), MAX_STRING_LENGTH - strlen(o_buf),
+			"&+YIval base terms:&N flags %.6g, applies %.6g, type %.6g, packed %.6g, native %.6g = %.6g\n"
+			"&+YMultiplier checkpoints:&N wear %.6g, flags %.6g, applies %.6g, type %.6g, final %.6g; unrounded %.6g\n"
+			"&+YIval policy:&N proc %s (%s), utility %s, native melee suppressed %s, coverage %s\n",
+			valuation.flags_base, valuation.applies_base, valuation.type_base,
+			valuation.packed_credit, valuation.native_base, valuation.base,
+			valuation.after_wear, valuation.after_flags, valuation.after_applies,
+			valuation.after_type, valuation.multiplier, valuation.unrounded,
+			valuation.native_proc_name ? valuation.native_proc_name : "unresolved",
+			item_value_proc_policy_name(valuation.native_proc_policy),
+			valuation.utility_override ? "yes" : "no",
+			valuation.native_melee_suppressed ? "yes" : "no",
+			valuation.context_complete ? "complete" : "unpriced/estimated");
+		checked_snprintf(
+			o_buf + strlen(o_buf), MAX_STRING_LENGTH - strlen(o_buf),
+			"&+YUnpriced inputs:&N affects %llx/%llx/%llx/%llx/%llx, apply slots %x, type %s, dynamic %s\n",
+			valuation.unpriced_affects[0], valuation.unpriced_affects[1],
+			valuation.unpriced_affects[2], valuation.unpriced_affects[3],
+			valuation.unpriced_affects[4], valuation.unpriced_apply_slots,
+			valuation.unpriced_type ? "yes" : "no",
+			valuation.unpriced_dynamic_effects ? "yes" : "no");
 		//, j->max_condition, (int) (((float) j->condition / j->max_condition) * 100)); wipe2011
 
 		checked_snprintf(

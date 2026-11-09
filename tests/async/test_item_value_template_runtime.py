@@ -223,7 +223,8 @@ static void value_delta(const char *cohort, int id, P_obj object) {
             floor_gained += new_floor && !old_floor;
         }
     }
-    std::fprintf(deltas, "%d,%d,%d,%d,%d,%d,%d,%d,%u,%d,%d,%zu,%d", obj_index[object->R_num].func.obj ? item_value_proc(obj_index[object->R_num].func.obj).credit : 0,
+    item_value_breakdown resolved; itemvalue(object, &resolved);
+    std::fprintf(deltas, "%d,%d,%d,%d,%d,%d,%d,%d,%u,%d,%d,%zu,%d", static_cast<int>(resolved.native_base),
                  source_eligible_reward(object), vnum, zone >= 0 ? zone_table[zone].number : -1, floor_lost, floor_gained,
                  count, dense, callbacks, object->value[6], object->value[7], apply_kinds.size(), apply_stages);
     for (const auto &apply : object->affected)
@@ -687,7 +688,9 @@ def main():
                 old_object = path / "item_value_before.o"
                 subprocess.run(["g++", "-std=c++20", "-g", "-Isrc", "-Devaluate_item_value=evaluate_item_value_before",
                                 "-Ditem_value_has_packed_proc=item_value_has_packed_proc_before",
-                                "-Ditem_value_material_quantities=item_value_material_quantities_before", "-c", str(old_numeric),
+                                "-Ditem_value_material_quantities=item_value_material_quantities_before",
+                                "-Ditem_value_packed_cast_mask=item_value_packed_cast_mask_before",
+                                "-Ditem_value_proc_policy_name=item_value_proc_policy_name_before", "-c", str(old_numeric),
                                 "-o", str(old_object)], cwd=ROOT, check=True)
                 objects.append(str(old_object))
                 old_runtime = path / "item_value_runtime_before.c"
@@ -696,6 +699,7 @@ def main():
                 subprocess.run(["g++", "-std=c++20", "-g", "-Isrc", "-Ditemvalue=itemvalue_before",
                                 "-Devaluate_item_value=evaluate_item_value_before",
                                 "-Ditem_value_has_packed_proc=item_value_has_packed_proc_before",
+                                "-Ditem_value_packed_cast_mask=item_value_packed_cast_mask_before",
                                 *old_runtime_flags, "-c", str(old_runtime),
                                 "-o", str(old_runtime_object)], cwd=ROOT, check=True)
                 objects.append(str(old_runtime_object))
@@ -756,6 +760,15 @@ def main():
                     assert score == expected[vnum], (vnum, score, expected[vnum])
                     reported[vnum] = score
         assert reported == expected
+        with (output / "item-values.csv").open() as file:
+            valuations = list(csv.DictReader(file))
+        assert {int(row["template_vnum"]): int(row["itemvalue"]) for row in valuations} == expected
+        for row in valuations:
+            base = sum(float(row[name]) for name in ("flags_base", "applies_base", "type_base", "packed_base", "native_base"))
+            assert abs(base - float(row["base"])) < 1e-6
+            assert abs(float(row["base"]) * float(row["multiplier"]) - float(row["unrounded"])) < 1e-6
+            assert row["proc_policy"] in ("none", "priced", "utility", "unclassified")
+            assert 0 <= int(row["packed_cast_mask"]) <= 7
         provenance = dict(line.split("=", 1) for line in
                           (output / "material-rarity-README.txt").read_text().splitlines()
                           if "=" in line)

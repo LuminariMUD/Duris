@@ -11,6 +11,7 @@ struct item_value_proc_entry
 	const char *name;
 	int credit;
 	item_value_proc_policy policy;
+	bool melee_only = false;
 };
 
 std::span<const item_value_proc_entry> item_value_proc_entries();

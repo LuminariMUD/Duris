@@ -14,7 +14,7 @@ db = (SRC / "db.c").read_text()
 
 # These shared APIs avoid a copied parser/formula. They do not establish full
 # valuation-context parity, which is tracked separately in the ival plan (F07).
-assert "cache_object_template" in report and "itemvalue(*obj)" in report
+assert "cache_object_template" in report and "itemvalue(*obj, &detail)" in report
 assert "material_start_vnum" in report
 assert "read_object(" not in report and "extract_obj(" not in report
 
@@ -97,7 +97,7 @@ def check_output_failures():
     build = root / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)
     filenames = ("material-rarity-summary.csv", "material-rarity-recipes.csv",
-                 "material-rarity-exclusions.csv", "material-rarity-README.txt")
+                 "material-rarity-exclusions.csv", "material-rarity-README.txt", "item-values.csv")
     with tempfile.TemporaryDirectory(prefix="material-report-io-", dir=build) as tmp:
         base = Path(tmp)
         source, binary = base / "test.cpp", base / "test"
@@ -124,7 +124,7 @@ def check_output_failures():
         run(good, True, "written to")
         assert all((good / name).is_file() for name in filenames)
         assert "count_mode=one-per-required-material" in (good / filenames[3]).read_text()
-        assert "formula_revision=ival-v7-numeric-bounds" in (good / filenames[3]).read_text()
+        assert "formula_revision=ival-v8-proc-semantics" in (good / filenames[3]).read_text()
         assert "quantity_scope=nominal-unscaled-composition" in (good / filenames[3]).read_text()
         assert "quantity_scale=1\n" in (good / filenames[3]).read_text()
         bad = subprocess.run([str(binary), str(base / "bad-template")], capture_output=True,

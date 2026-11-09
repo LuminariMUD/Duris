@@ -69,15 +69,27 @@ checks passed. Existing results were reused after the plan-only revision.
 
 ## B — finish valuation semantics and explanation (F05/F06/F09/F11)
 
-**In progress:** `branch/ival-semantics`, based on #978. Extracting the 321 unique
-legacy callback mappings into item-owned policy metadata, preserving first-match
-prices and exposing utility/unclassified status. Remaining B acceptance below
-still applies; no new weights are being chosen.
-Native comparison against `c0b82df5e` passes all 321 mappings (90 utilities).
-Characterization, isolated server/editor numeric tests, monk/editor and enhancement
-fixtures plus the server build pass. Packed-route/coverage/breakdown work and the
-batch corpus qualification remain pending; the updated baseline adapter is not
-yet exercised. Do not claim B complete or publish it as review-ready.
+**Implemented and qualified:** `branch/ival-semantics`, based on #978; publication
+follows commit checks. The 321 unique mappings retain first-match prices, with
+90 explicit utility policies. Twenty callbacks proven to use the common melee-only
+gate lose inactive credit on packed non-backstab weapons; backstab, periodic and
+invoke routes retain credit. Unsplit legacy native prices are labeled incomplete
+when normal melee is suppressed, rather than assigned invented replacement weights.
+Sparse slots, missing callbacks, invalid gloves and configured artifacts 21/22
+match dispatch; instance proc-library bridges no longer reprice plain siblings.
+Staff output and `item-values.csv` expose terms, checkpoints and unpriced coverage.
+
+Native characterization/67 priced-bit coverage, weapon/artifact/sword/monk and
+enhancement fixtures, report I/O, server and maintained editor builds pass.
+The exact-parent comparison against `c0b82df5e` covers **19,334 templates + 8,720
+generated samples**, with one changed template and no generated changes. Native
+constructor/template and actual CLI parity, provenance, reconciled report rows
+and read-only evaluation pass. Evidence: [f09-procs](ival-evidence/f09-procs/).
+Item **99432: 338 → 111**; minimum level 113 → 37, recipe admission 0 → 1,
+high/low units 68/2 → 23/0, XP 338000 → 111000, nominal superior fee 34800 → 12100
+copper. It crosses the faerie-bag 125 ceiling; zone 994 unit-fit quest weights fall
+about 9.85–10.74%, without quest-floor/count changes. D must exercise this newly
+eligible authored item in its shared command/persistence fixture bundle.
 
 **Files:** existing `src/item/item_value*`, the proc chain in
 `src/economy/tradeskill.c`, relevant packed/native dispatch, existing staff/report
@@ -190,15 +202,13 @@ by the batch. Codec/source-contract tests alone never prove a persistence journe
 
 Local: `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
 Remote: `duris-staging:/home/staging/duris-worktrees/ival-system-improvements`.
-Latest review-ready implementation: `branch/ival-enhancement-contract`, PR #978,
-based on `branch/ival-focused-delivery-plan` (#977). Work continues on
-`branch/ival-semantics` for B. Synchronize committed work to the remote worktree.
+Latest batch: `branch/ival-semantics` for B, based on `branch/ival-enhancement-contract`
+(#978). Synchronize committed work to the remote worktree. A and B are implemented;
+C and D remain open.
 
-Published formula: `ival-v7-numeric-bounds`; B's in-progress formula is
-`ival-v8-proc-semantics`. Archive/evidence links above preserve
+Current formula: `ival-v8-proc-semantics`. Archive/evidence links above preserve
 baseline revisions and earlier PRs. Read the relevant historical finding when
 needed; do not reload the entire archive or restart the audit. The next
-implementation action is B's packed dispatch/glove/artifact 21/22 routing, then
-coverage/breakdown and the single batch delta report. `native_artifact_owns()`
-mutates configuration; valuation must use a read-only context instead of calling
-it. Preserve this distinction when matching the weapon dispatch exception.
+implementation action is C: use normalized templates for enhancement indexes,
+planning and quest profiles, bound faerie-bag selection, then finish locker sorting
+and the identified descriptions. Reuse the completed B qualification.

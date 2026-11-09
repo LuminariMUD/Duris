@@ -72,6 +72,13 @@ int get_mincircle(int spell) {
     assert(spell == 32 || spell == 33);
     return spell == 32 ? 1 : 2;
 }
+static obj_proc_type previous_proc;
+obj_proc_type proclib_chain_incumbent(int) { return previous_proc; }
+int proclib_obj_cmd_bridge(P_obj,P_char,int,char*) { assert(false); return 0; }
+bool native_artifact_configured_owner(int) { return false; }
+Skill skills[MAX_AFFECT_TYPES + 1];
+static void fixture_spell(int,P_char,char*,int,P_char,P_obj) { assert(false); }
+static const bool prepared_spells = [] { for (int id : {32,33,37}) skills[id].spell_pointer=fixture_spell; return true; }();
 item_value_proc_entry item_value_proc(obj_proc_type proc) { assert(!proc); return {nullptr, "none", 0, item_value_proc_policy::none}; }
 int number(int low, int high) { ++rolls; return lucky ? low : high; }
 void logit(const char *, const char *format, ...) {
