@@ -30,21 +30,9 @@ the ordinary save acknowledgement confirms completion. A failed save admission r
 choice. Changes apply only to future output for that recipient. Resetting one channel leaves all other
 channels intact; resetting all also restores motion-on. Authored colors remain authored in every mode.
 
-The maintained [live walkthrough](../../scripts/validate_colorization_journey.py) boots the real server
-against a temporary flatfile authority, creates two synthetic accounts on separate loopback addresses,
-selects cyan/red chat colors, previews a third color, checks invalid/incomplete input, saves, reconnects,
-and verifies independent terminal/GMCP choices and reset-one/all. It uses a 30-line repeated room and a
-12-line screen to force paging: refresh replays the same frame, new looks move water one position,
-unrelated chat does not consume a room step, foliage drifts coherently, and Static/motion-off stay fixed.
-The completed run passed **65 checks and 15 captured frames**; its
-[synthetic report](../data/colorization/live-journey.json) includes actual ANSI output.
-
-This live journey used the removed flat-file backend and has not been converted to MariaDB yet; see #870.
-
-The script has no existing-server connection option. It creates and removes its own state, certificate,
-accounts and listeners, does not load `.env`, and reports only synthetic checks and rendered frames.
-Guild membership and language/visibility edge cases use the compiled real-command harness below;
-new characters in the live walkthrough are not promoted to fabricate a guild session.
+The [standalone walkthrough](../../scripts/validate_colorization_journey.py) is being
+converted to MariaDB under [#870](https://github.com/LuminariMUD/Duris/issues/870);
+its reproduction commands will be updated after runtime qualification.
 
 ## Runtime, transport and persistence evidence
 

@@ -606,10 +606,6 @@ int main()
 
 def main():
     tradeskill = source("tradeskill.c").read_text()
-    # Compile the real valuation function, isolating unrelated spell and object procs.
-    itemvalue = tradeskill.split("int itemvalue(P_obj obj)\n", 1)[1].split(
-        "\nvoid do_salvation(", 1
-    )[0]
     get_matstart = tradeskill.split("int get_matstart(P_obj obj)\n", 1)[1].split(
         "\nvoid do_refine(", 1
     )[0]
@@ -617,15 +613,15 @@ def main():
         cpp = Path(tmp) / "enhance.cpp"
         binary = Path(tmp) / "enhance"
         cpp.write_text(
-            HARNESS + "\nint itemvalue(P_obj obj)\n" + itemvalue
-            + "\nint get_matstart(P_obj obj)\n" + get_matstart
+            HARNESS + "\nint get_matstart(P_obj obj)\n" + get_matstart
         )
         subprocess.run(
             [
                 "g++", "-std=c++20", "-g", "-ffunction-sections", "-fdata-sections",
                 "-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all",
                 "-fno-pie", "-no-pie", "-Isrc", str(cpp), str(HARNESS_STUBS),
-                "src/core/safe_format.c", "src/item/salvage.c", "-Wl,--gc-sections", "-lbsd", "-o", str(binary),
+                "src/core/safe_format.c", "src/item/salvage.c", "src/item/item_value.c",
+                "src/item/item_value_runtime.c", "-Wl,--gc-sections", "-lbsd", "-o", str(binary),
             ],
             cwd=ROOT,
             check=True,

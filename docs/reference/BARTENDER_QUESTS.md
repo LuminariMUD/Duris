@@ -624,7 +624,7 @@ DURIS_WORLD_QUEST_JOURNEY=gameplay \
   python3 tests/async/run_world_quest_dual_backend.py
 ```
 
-That focused run qualifies one case, not the full default matrix.
+That focused run qualifies one MariaDB gameplay case, not the full matrix.
 The gameplay debugger sets the disposable Chaos actor's requested level and
 selects an otherwise eligible zone/prototype with ordinary outward/return paths
 for completion testing. Production selection still validates the chosen target.

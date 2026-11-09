@@ -2577,8 +2577,7 @@ void event_bardsong(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 		return;
 	}
 
-	REMOVE_BIT(ch->specials.affected_by, AFF_HIDE);
-
+	// A verse alone preserves hide; commands and song effects keep their reveal rules.
 	song_chance = bard_calc_chance(ch, song);
 	// Ok, this averages song_chance with 75, if song_chance < 75, so closer to 3/4 chance to complete verse.
 	//   So, @1 chance -> 38%, @25 chance -> 50%, and at 75%, it stays 75%.
