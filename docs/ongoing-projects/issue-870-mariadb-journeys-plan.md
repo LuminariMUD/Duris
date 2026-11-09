@@ -1,6 +1,6 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: standalone conversions and the full907-file regression/native/build gate passed. First DB run153/154; its sole pet-reader failure is repaired and qualified. Full154-leg DB retry is running; final readiness remains pending.
+Status: standalone conversions and the full907-file regression/native/build gate passed. All three recorded DB-fixture findings have focused passing fixes. The complete154-leg gate is running after those corrections; final readiness remains pending.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
 Review head: `branch/issue-870-nexus-combat-fixture`. See the latest qualification notes before continuing.
@@ -794,8 +794,8 @@ Failed aggregate results are preserved; focused successes never replace them.
   #931 → #938 → #948 → #949 → #954 → #955 → #957 → #958 → #961 → #962 → #963 → #965 →
   #970. Appropriate enhancement/bug/documentation labels are present. Completed
   chunks are ready; only #958 stays draft until the complete final gate passes.
-- Final diff/ablation audit against002ad622e:180 paths;127 strictly mechanical
-  test/helper renames and53 scoped conversion/consumer/fixture/documentation or
+- Final diff/ablation audit against002ad622e:180 paths;126 strictly mechanical
+  test/helper renames and54 scoped conversion/consumer/fixture/documentation or
   reproduced-defect changes. Two obsolete C++ snapshot writers are deleted;
   only the five documented native save files differ. Every retained addition
   has a traced caller or concrete failing proof. No extra backend, generic
@@ -810,11 +810,12 @@ Failed aggregate results are preserved; focused successes never replace them.
 
 ### Current final-gate continuation
 
-- **Only active controller:34613**, unchanged `make test-db`, all154 legs after
-  both committed DB-fixture corrections. Output/status:
-  `final-test-db-retry2.log`/`.exit`; terminal logs will be copied to
-  `final-db-retry2/`. Prior154-log archives were checked before bin/tests/db reuse.
-  Both previous aggregate controllers88225/56758 and every focused probe are terminal.
+- **Only active controller:68920**, unchanged `make test-db`, all154 legs after
+  all three committed DB-fixture corrections. Output/status:
+  `final-test-db-retry3.log`/`.exit`; terminal logs will be copied to
+  `final-db-retry3/`. Both complete154-log archives and the explicitly interrupted
+  failed attempt were preserved before bin/tests/db reuse. Prior aggregate
+  controllers88225/56758/34613 and every focused probe are terminal.
 - Await the authoritative terminal result; do not start a duplicate run or call
   a focused pass a green aggregate. Resolve any actual further finding separately.
 - If all154 legs pass: update the two remaining checklist items, publish final
@@ -824,7 +825,7 @@ Failed aggregate results are preserved; focused successes never replace them.
 
 ### Nexus combat-fixture precondition
 
-- Aggregate34613 is still collecting all154 legs. The corrected pet and world-
+- Aggregate34613 completed all parallel legs. The corrected pet and world-
   recovery cases passed, but nexus_journey timed out waiting for a mortal kill.
   Preserve that failure in `nexus-regen-capacity-failure.log`; do not relabel the
   aggregate as successful from its later focused repair.
@@ -846,10 +847,19 @@ Failed aggregate results are preserved; focused successes never replace them.
   cold scores/ownership/guardians/placements, expiry/neutral reload and one-guardian
   checks also passed. Player base stats remained unchanged; ordinary image6dfb5020….
 - The907-file gate remains valid: direct dependency search finds this DB-only
-  journey only in exclusion-name sets and their contract test. Await34613's
-  terminal result, archive its complete154 logs, then rerun the complete DB gate
-  with this committed fixture correction. Final readiness remains pending.
+  journey only in exclusion-name sets and their contract test. A complete154-leg
+  gate with this committed correction is required; final readiness remains pending.
 - The focused correction is pushed at dcb850712 in ready/labeled bug
   [#973](https://github.com/LuminariMUD/Duris/pull/973), based on #970. Its focused
-  controller3720 is terminal0. Only the full aggregate34613 is live; do not start
-  a duplicate aggregate while its serial recovery/latency cases finish.
+  controller3720 is terminal0.
+- To avoid spending more time on a known-failed attempt,34613's remaining serial
+  tail was deliberately interrupted after its parallel results and the qualified
+  Nexus repair were available. All members of its private process group were
+  verified descendants of the owned workspace controller before SIGINT; cleanup
+  verified that none remained. No unrelated process was targeted.
+- This is explicitly a partial failed attempt:151 passing legs, one Nexus failure,
+  two unfinished serial legs. Its153 log files (including partial artifact output)
+  are preserved in `final-db-retry2/`; raw stdout in `final-test-db-retry2.log` and
+  status in `final-test-db-retry2-interrupted.json`. It is not a completed154-leg
+  run or substitute for success. The unchanged serial cases passed both earlier
+  complete attempts; the new68920 run still executes every required leg.
