@@ -25,6 +25,7 @@
 #include "economy/currency_transaction.h"
 #include "economy/currency_value.h"
 #include "item/objmisc.h"
+#include "item/item_value.h"
 #include "combat/chaos_materials.h"
 
 /* Forward declarations for hash functions used in enhance() and do_enhance() */
@@ -602,15 +603,12 @@ static bool build_superior_enhancement_plan(P_obj item, struct superior_enhancem
 		low_vnum = get_matstart(target_obj);
 		extract_obj(target_obj);
 		high_vnum = low_vnum + 4;
-		const int64_t material_value = static_cast<int64_t>(target->ival) + 4;
-		const double low_count =
-			(material_value % 5) * enhance_stat_material_quantity_multiplier + 0.999999;
-		const double high_count =
-			(material_value / 5) * enhance_stat_material_quantity_multiplier + 0.999999;
-		if (!(low_count >= 0 && low_count < INT_MAX + 1.0) ||
-		    !(high_count >= 0 && high_count < INT_MAX + 1.0) ||
-		    !superior_plan_add_material(plan, low_vnum, static_cast<int>(low_count)) ||
-		    !superior_plan_add_material(plan, high_vnum, static_cast<int>(high_count)))
+		int high_count, low_count;
+		if (!item_value_material_quantities(target->ival,
+						    enhance_stat_material_quantity_multiplier,
+						    high_count, low_count) ||
+		    !superior_plan_add_material(plan, low_vnum, low_count) ||
+		    !superior_plan_add_material(plan, high_vnum, high_count))
 			return FALSE;
 
 		++proposed.affected[i].modifier;

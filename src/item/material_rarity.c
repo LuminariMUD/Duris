@@ -297,7 +297,8 @@ bool write_material_rarity_report(const char *output_dir)
 		}
 		vnum = obj_index[rnum].virtual_number;
 		ival = itemvalue(*obj);
-		if (ival < 1)
+		// The report uses unscaled base quantities and counts ingredient identities.
+		if (!item_value_material_quantities(ival, 1.0, high_quantity, low_quantity))
 		{
 			write_exclusion(exclusions, obj, vnum, "nonpositive-itemvalue", ival);
 			excluded_templates++;
@@ -320,11 +321,6 @@ bool write_material_rarity_report(const char *output_dir)
 			continue;
 		}
 
-		/* Canonical craft decomposition: one high-quality unit every five itemvalue
-		 * points, with the remainder represented by lowest-quality units. */
-		const int64_t material_value = static_cast<int64_t>(ival) + 4;
-		high_quantity = material_value / 5;
-		low_quantity = material_value % 5;
 		display_name(source_name, sizeof(source_name), obj->short_description.c_str());
 		material_template_name(low_vnum, low_name, sizeof(low_name));
 		material_template_name(high_vnum, high_name, sizeof(high_name));
@@ -374,10 +370,13 @@ bool write_material_rarity_report(const char *output_dir)
 		"qualifying_templates=%ld\nexcluded_templates=%ld\ningredient_contributions=%ld\n\n",
 		qualifying_templates, excluded_templates, total_material_units);
 	fprintf(readme, "count_mode=one-per-required-material\n");
+	fprintf(readme, "quantity_scale=1\nquantity_scope=nominal-unscaled-composition\n");
 	fprintf(readme,
 		"Each template contributes one to each distinct required material identity.\n");
 	fprintf(readme,
-		"Declared recipe stack quantities remain in material-rarity-recipes.csv.\n\n");
+		"Nominal unscaled stack quantities remain in material-rarity-recipes.csv.\n"
+		"Configured crafting/enhancement multipliers and player recipe eligibility are not applied.\n"
+		"Ingredient-identity shares do not estimate quantity demand, obtainability or economic scarcity.\n\n");
 	fprintf(readme,
 		"Scope: static object templates only. This is not reset frequency, loot probability,\n");
 	fprintf(readme, "player stock, replenishment rate, or economic scarcity.\n");

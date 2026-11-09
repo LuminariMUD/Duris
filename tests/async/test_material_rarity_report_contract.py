@@ -105,7 +105,7 @@ def check_output_failures():
         subprocess.run([
             "g++", "-std=c++20", "-g", "-O1", "-Wall", "-Wextra", "-Werror",
             "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
-            "-Isrc", str(source), rel("material_rarity.c"), str(HARNESS_STUBS),
+            "-Isrc", str(source), rel("material_rarity.c"), "src/item/item_value.c", str(HARNESS_STUBS),
             "-Wl,--wrap=fopen", "-lcrypto", "-o", str(binary),
         ], cwd=root, check=True)
         env = {**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
@@ -125,6 +125,8 @@ def check_output_failures():
         assert all((good / name).is_file() for name in filenames)
         assert "count_mode=one-per-required-material" in (good / filenames[3]).read_text()
         assert "formula_revision=ival-v7-numeric-bounds" in (good / filenames[3]).read_text()
+        assert "quantity_scope=nominal-unscaled-composition" in (good / filenames[3]).read_text()
+        assert "quantity_scale=1\n" in (good / filenames[3]).read_text()
         bad = subprocess.run([str(binary), str(base / "bad-template")], capture_output=True,
                              text=True, env={**env, "BAD_TEMPLATE": "1"}, cwd=base)
         assert bad.returncode == 1 and "cannot parse object template 123" in bad.stderr

@@ -14,6 +14,7 @@ HARNESS = r"""
 #include <string>
 #include <unordered_set>
 #include <vector>
+#include <limits>
 
 #include "item/enhance.c"
 
@@ -572,6 +573,17 @@ static void test_superior(superior_case probe = superior_case::ordinary)
     assert(output.find("No superior enhancement") != std::string::npos);
     assert(charges == 0 && materials == initial_materials && item.affected[1].modifier == 2);
     clear_attempt();
+    enhance_stat_material_quantity_multiplier = multiplier;
+
+    for (double invalid_scale : {0., -1., std::numeric_limits<double>::infinity(),
+                                  std::numeric_limits<double>::quiet_NaN()}) {
+        enhance_stat_material_quantity_multiplier = invalid_scale;
+        do_enhance(&ch, command, 0);
+        assert(output.find("No superior enhancement") != std::string::npos);
+        assert(charges == 0 && GET_MONEY(&ch) == 20000 && materials == initial_materials);
+        assert(item.affected[0].modifier == 2 && item.affected[1].modifier == 2);
+        clear_attempt();
+    }
     enhance_stat_material_quantity_multiplier = multiplier;
 
     materials.clear();

@@ -1037,6 +1037,70 @@ F14. Also validate racial stat-property conversion before the `sh_int` casts in
 property input must be rejected before conversion. Real MariaDB journeys remain
 F16; this chunk performs no database, migration or production operation.
 
+### Chunk 15 — share checked material quantities and plan XP (F08/F14, implemented)
+
+Branch: `branch/ival-material-bounds`, based on `branch/ival-numeric-bounds`.
+
+**Outcome:** one pure checked raw/scaled material calculation serves crafting,
+superior enhancement and the static report. Reject nonfinite/nonpositive scales
+and unrepresentable counts before conversion. Compute and validate crafting XP
+in the existing plan before any consume/grant; execution uses the planned value.
+Preserve the historical `score + 4` decomposition and upward quantity rounding.
+
+**Non-goals:** config parser replacement, level/gain/radius bounds, new weights,
+formula changes, report counting-policy changes, persistence or deployment.
+
+**Files:** existing item-value numeric module/header, crafting plan/commands,
+enhancement plan, material report and their existing native tests; this handoff.
+
+**Proof:** exact quantity boundaries, finite/invalid scales, tiny positive scales,
+fractional ceilings and INT_MAX; unchanged outputs on failure; XP overflow refusal
+before economic work; native successful and refused enhancement paths and the production crafting plan,
+full native corpus/report comparison and maintained builds.
+
+**Ablation:** add one scalar helper to the already shared numeric module because
+three real consumers duplicate this arithmetic. No new module or generic checked-
+arithmetic framework is needed. Keep XP in the existing crafting plan.
+
+**Validation:** native production-plan tests under ASan/UBSan and float-cast-
+overflow cover 1/4/5/6/9/10, INT_MAX and adjacent values; invalid/nonfinite/extreme
+scales, tiny positive scales and fractional ceilings within 1e-6 of an integer.
+Failed quantity/XP checks leave output parameters and plans unchanged. At the
+default 1,000 XP per iVal, 2,147,483 gives 2,147,483,000 XP; the next score is
+rejected before a plan is returned. Craft and Forge use that checked plan field
+at their existing XP award sites, after the same plan check that precedes input
+consumption. Full economic command/persistence journeys remain F16.
+
+The native superior command verifies nonpositive/nonfinite/oversized scales
+preserve source, wallet and materials, including duplicate tribute aggregation.
+All existing success/refusal/pouch cases pass. Production report I/O tests pass
+and explicitly verify `quantity_scale=1` and nominal-unscaled composition labels.
+The report retains its template eligibility and ingredient-identity denominator;
+it states that gameplay scales/recipe eligibility and economic scarcity are not
+part of these percentages. Both maintained editor builds and crafting module,
+recipe-persistence and craft/enhance regression contracts pass.
+
+**Measured effects:** native comparison against `c5fbb485cd` covers 19,334
+effective templates and 8,720 generated samples with zero score changes. Numeric
+formula identity stays `ival-v7-numeric-bounds`. Under shipped configuration,
+two templates exceed the XP integer limit, both outside the mortal level gate;
+no admitted mortal recipe is newly excluded. Generated samples have no XP
+overflow. The exact corpus/CLI comparison passed before the final report-label
+text change; current writer tests verify those labels and the final server build
+passed afterward. Evidence is in
+[`ival-evidence/f14-materials/`](ival-evidence/f14-materials/).
+
+The rounding correction is intentional for near-integer nondefault scales:
+score 1 at scale 1.00000001 needs two high units, where the previous enhancement
+epsilon yielded one. Shipped scale 1.0 retains exact existing quantities. The
+report's unscaled quantities remain separate from configured gameplay costs.
+
+**Continuation:** strict config parsing, level/gain/radius bounds, salvage-derived
+config arithmetic, authoring/property conversion and F16 journeys remain open.
+Do not infer all consumer behavior from score equality: qualifier projections
+hold current rules/configuration fixed; the direct changed-rule tests above
+cover quantity/XP checks. No database, migration or production operation occurred.
+
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization
@@ -1719,7 +1783,8 @@ partial deliveries and their verification are recorded in the implementation log
   work (F15). Preserve unrelated gameplay/RNG behavior.
   Reset/recovery and retired-helper removal is implemented in Chunk 1; locker and
   description work remains pending.
-- [ ] Share material quantity arithmetic and keep report semantics explicit.
+- [x] Share material quantity arithmetic and keep report semantics explicit.
+  Implemented and qualified in Chunk 15; full economic journeys remain F16.
 
 ### Stage 5 — integration qualification and rollout evidence
 
