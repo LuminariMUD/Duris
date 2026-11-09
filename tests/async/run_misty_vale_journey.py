@@ -34,7 +34,7 @@ def run(binary, evidence_path):
         runtime = Path(tmp)
         _, critical, output_path = setup_run_root(runtime)
         process, clients = None, []
-        with authority('flatfile', runtime) as (env, _), output_path.open('w') as output:
+        with authority('mariadb', runtime) as (env, sql), output_path.open('w') as output:
             plain, tls, websocket = journey.available_ports()
             env.update(CRITICAL_COMMAND_JOURNAL_DIR=str(critical), DURIS_TLS_PORT=str(tls),
                        DURIS_WEBSOCKET_PORT=str(websocket),
@@ -128,7 +128,7 @@ def run(binary, evidence_path):
                     client.send('save')
                     client.expect('Saving ' + name + '.', timeout=60)
                 stop()
-                journey.make_overlord(Path(env['FLATFILE_STATE_DIR']), GOD)
+                journey.make_overlord(sql, GOD)
                 boot()
                 god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
                 cmd(god, 'vis 0')
