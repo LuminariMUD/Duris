@@ -159,8 +159,6 @@ The initial implementation was validated on 2026-09-13 against master
 `9e0bfac62` in a disposable Linux container. The MariaDB server build, item-action
 ASan/UBSan harness, all 12 nevent regression scripts, casting queue/gate tests,
 spell scheduling rejection and abort tests, player timing contract, room leave
-veto contract, difficulty property contract, and formatting checks passed. The
-flat-file boot preflight also built its own server and verified game-loop entry,
-health responses, clean shutdown, and controlled failure for missing world data.
+veto contract, difficulty property contract, and formatting checks passed.
 The full repository regression suite and an enabled in-game pilot were not run
 for this foundation slice.

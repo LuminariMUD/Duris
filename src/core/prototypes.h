@@ -887,6 +887,9 @@ void boot_zones(int);
 void clear_char(P_char);
 uint64_t allocate_character_runtime_id();
 P_char find_character_by_runtime_id(uint64_t);
+/** The only way onto character_list; extract_char pairs it with forget_live_character. */
+void character_list_add(P_char);
+void forget_live_character(P_char);
 void clear_object(P_obj);
 void ensure_pconly_pool(void);
 void free_char(P_char);
@@ -1374,6 +1377,8 @@ void extract_obj(P_obj obj,
 void obj_from_char(P_obj);
 // The object a pointer kept across a wait still names, or NULL once it was extracted.
 P_obj find_live_object(P_obj expected, uint64_t uid);
+void remember_live_object(P_obj);
+void forget_live_object(P_obj);
 void obj_from_obj(P_obj);
 // For a caller that saves the container itself, after the item's new owner.
 void obj_from_obj_unsaved(P_obj);

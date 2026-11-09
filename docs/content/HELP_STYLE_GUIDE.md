@@ -91,7 +91,7 @@ ability. Item use follows item masks and body rules; avoid blanket promises that
 a class can equip every weapon, armor piece, or artifact.
 
 The importer assigns category `0` to parsed-help and help-index topics. Those
-pages need complete authored lists in both database and flat-file builds.
+pages need complete authored lists before they are imported into MariaDB.
 Database pages explicitly assigned dynamic categories receive code-generated
 sections: race `25`, class `9`, specialization `16`, and class-skillset `10`.
 Do not duplicate those sections in the authored body of a dynamic page.
@@ -151,5 +151,5 @@ Racial innate lists are maintained by `scripts/sync_race_innate_help.py`; its
 `docs/lib/information/command_attributes.txt` and restart after changing it.
 
 A local file edit does not publish database-backed help. Use the documented
-import/refresh procedure only for an authorized target. Flat-file help reloads
-on restart; database help refreshes through its catalog worker.
+import/refresh procedure only for an authorized target. Help refreshes through
+its database catalog worker.

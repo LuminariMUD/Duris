@@ -83,8 +83,8 @@ def run(binary: pathlib.Path) -> None:
 
             # The full world restores the corpse where the character died.
             process = boot(binary, run_root, environment, port, "second.out")
-            # MariaDB keeps no last-exit reason, so this login prints the normal text.
-            client = journey.reconnect_character(port, "Welcome to Duris", expected_room=None)
+            client = journey.reconnect_character(port, "You rejoin the land of the living",
+                                                 expected_room=None)
             journey.require("a small wooden mace" in listing(client, "look in corpse"),
                             "the restored corpse lost the mace")
             client.send("get mace corpse")
@@ -99,7 +99,8 @@ def run(binary: pathlib.Path) -> None:
 
             # The loot is the character's after a restart, and gone from the corpse.
             process = boot(binary, run_root, environment, port, "third.out")
-            client = journey.reconnect_character(port, "Welcome to Duris", expected_room=None)
+            client = journey.reconnect_character(port, "You break camp and get ready to move on",
+                                                 expected_room=None)
             client.send("inventory")
             client.expect("a small wooden mace", timeout=10)
             corpse = listing(client, "look in corpse")
@@ -117,7 +118,8 @@ def run(binary: pathlib.Path) -> None:
 
             # The mace is in the corpse after a restart, not with the character.
             process = boot(binary, run_root, environment, port, "fourth.out")
-            client = journey.reconnect_character(port, "Welcome to Duris", expected_room=None)
+            client = journey.reconnect_character(port, "You break camp and get ready to move on",
+                                                 expected_room=None)
             journey.require("a small wooden mace" not in listing(client, "inventory"),
                             "the mace put into the corpse came back to the character")
             journey.require("a small wooden mace" in listing(client, "look in corpse"),

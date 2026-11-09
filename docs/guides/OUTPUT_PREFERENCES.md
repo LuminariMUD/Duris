@@ -39,8 +39,7 @@ Metadata fingerprints were measured on isolated MySQL 8 and MariaDB 10.11 schema
 No production migration was executed during implementation.
 
 SQL checkpoint and load repositories carry the field in the existing status query
-and transaction. Legacy SQL character load/save paths also carry it. Flatfile
-STATUS merges replace it; unrelated component merges retain it. The player
+and transaction. Legacy SQL character load/save paths also carry it. The player
 snapshot wire versions are 5 (normal) and 6 (death). Readers still accept versions
 1–4 with empty preferences; old executables cannot read the new snapshot
 versions. Rollback therefore requires a compatible reader or restoration of
@@ -56,7 +55,7 @@ identity, and add no retention store or policy decision.
 
 Run `python3 tests/async/test_output_preferences.py` for the preference codec,
 ownership, reset, motion, admission, and reconnect contracts. Existing snapshot,
-pet restore, and flatfile repository tests cover the extended saved state and
+pet restore and SQL repository tests cover the extended saved state and
 compatibility with previous normal/death snapshots.
 
 `tests/async/run_output_preferences_mysql.sh` creates and removes a disposable
