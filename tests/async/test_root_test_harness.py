@@ -303,6 +303,38 @@ with tempfile.TemporaryDirectory(prefix="duris-runner-") as scratch:
         assert runner.main() == 0, output.getvalue()
     assert "2 passed, 0 failed" in output.getvalue(), output.getvalue()
 
+    # A strict pulse-budget check must run after compiler-heavy pool jobs finish,
+    # even if history/discovery puts it first. Every selected test still runs.
+    pooled = [tests_dir / f"test_pool_{name}.py" for name in ("one", "two")]
+    for path in pooled:
+        other = next(item.stem for item in pooled if item != path)
+        path.write_text(
+            "import pathlib, time\n"
+            "path = pathlib.Path(__file__)\n"
+            "path.with_suffix('.active').touch()\n"
+            "path.with_suffix('.started').touch()\n"
+            "deadline = time.monotonic() + 10\n"
+            f"while not path.with_name('{other}.started').exists():\n"
+            "    assert time.monotonic() < deadline, 'pooled tasks did not overlap'\n"
+            "    time.sleep(.01)\n"
+            "time.sleep(.1)\n"
+            "path.with_suffix('.active').unlink()\n"
+            "path.with_suffix('.done').touch()\n")
+    latency = tests_dir / "test_telemetry_posthog.py"
+    latency.write_text(
+        "import pathlib\n"
+        "root = pathlib.Path(__file__).parent\n"
+        "assert all((root / (name + '.done')).exists() for name in ('test_pool_one', 'test_pool_two'))\n"
+        "assert not list(root.glob('test_pool_*.active'))\n")
+    output = io.StringIO()
+    with mock.patch.object(runner, "ROOT", Path(scratch)), \
+         mock.patch.object(runner, "TEST_DIRECTORY", tests_dir), \
+         mock.patch.object(runner, "discover_tests", return_value=[latency, *pooled]), \
+         mock.patch.object(sys, "argv", ["runner", "--jobs", "2"]), \
+         mock.patch.dict(os.environ), contextlib.redirect_stdout(output):
+        assert runner.main() == 0, output.getvalue()
+    assert "3 passed, 0 failed" in output.getvalue(), output.getvalue()
+
     # Stopping the runner, by Ctrl-C or by a SIGTERM from a supervisor or `timeout`, ends
     # the test it is running with everything it started, and starts no other.
     shutil.copy(RUNNER, tests_dir.parent / RUNNER.name)

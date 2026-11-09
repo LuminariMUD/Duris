@@ -364,8 +364,8 @@ def main() -> int:
         os.environ.setdefault("CCACHE_SLOPPINESS", "file_macro")
         os.environ.setdefault("CCACHE_NOHASHDIR", "1")
     jobs = args.jobs or automatic_jobs()
-    # One pool, longest first: the long journeys start at once and the short tests fill
-    # the workers around them, where a separate journey phase ran after the last short test.
+    # A longest-first pool starts slow tests early and fills spare workers with
+    # short tests. The strict telemetry pulse-budget check runs separately below.
     ordered = longest_first(tests)
     started = time.monotonic()
     started_utc = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -417,7 +417,11 @@ def main() -> int:
                 stop_running_tests()
                 raise
 
-    run_all(ordered, jobs)
+    # This test measures a hard wall-clock pulse budget. Run it after the
+    # compilation pool so scheduler contention is not counted as game-thread work.
+    isolated = [path for path in ordered if path.name == "test_telemetry_posthog.py"]
+    run_all([path for path in ordered if path not in isolated], jobs)
+    run_all(isolated, 1)
 
     write_history(results, started_utc, args.match, jobs)
     if failures:

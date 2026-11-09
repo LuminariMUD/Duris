@@ -92,7 +92,8 @@ python3 tests/async/run_migration_runner_engines.py
 ```
 
 `TEST_JOBS=0` is the default and selects up to sixteen workers based on available
-CPUs. Test output is buffered per process so parallel failures remain readable,
+CPUs. The PostHog HTTPS pulse-budget test runs after the pool finishes so
+concurrent compiler jobs from this run do not distort its 250 ms wall-clock check. Test output is buffered per process so parallel failures remain readable,
 and a failing test's output is printed as soon as it fails. A test still running
 900 s after it started, or a journey 1800 s after, is ended with everything it
 started and reported as `TIMEOUT`; a test ended by a signal is reported by the

@@ -3,7 +3,7 @@
 Status: conversions, naming and standalone journey qualification are complete. First full regression:903/907 passed; four findings are being repaired. Database gate and whole-issue completion remain pending.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-artifact-inventory-catalog`. See the latest qualification notes before continuing.
+Review head: `branch/issue-870-telemetry-test-scheduling`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -752,7 +752,7 @@ These are preserved per-chunk results, not claims that a later binary ran them.
   stage order, preserving later overrides and rejecting missing/unreadable tables.
   `test_artifact_source_inventory.py` passed the byte-identical tracked171-row
   inventory with80 bindings/69 callbacks and explicit override checks; the native
- 499-entry catalog ASan/UBSan test passed too. No JSON loss was regenerated.
+  499-entry catalog ASan/UBSan test passed too. No JSON loss was regenerated.
   Evidence `test_{artifact_source_inventory,object_binding_catalog}-inventory-catalog-fixed.log`/`.exit`.
 - Telemetry passed reducer and first HTTPS matrix, then its second-build pin
   case measured448292us against the existing250000us pulse limit under the
@@ -764,6 +764,19 @@ These are preserved per-chunk results, not claims that a later binary ran them.
 - #938, #948 and #955 are now ready with the exact integrated runtime results
   and explicit linked follow-ups. #958 remains draft until both aggregate gates
   and the final audit pass. Current repair branch:
-  #961 is ready for the save-fixture callers after #958. Current branch
-  `branch/issue-870-artifact-inventory-catalog` contains the separately qualified
-  inventory consumer after #961; timing scheduling remains before aggregate retry.
+  #961 and #962 are ready for the save-fixture callers and inventory consumer
+  after #958. Current branch `branch/issue-870-telemetry-test-scheduling` adds
+  only the separately qualified hard-latency test scheduling fix after #962.
+
+- Telemetry scheduling outcome: preserve the250ms pulse budget and every selected
+  test while keeping this concrete hard-clock check after the compilation pool.
+  Files: existing runner/root-harness regression, testing guide and this tracker.
+  No native transport change, new target, option, resource framework or tolerance.
+  An executable three-test scheduling regression put telemetry first and failed
+  on the old runner (missing completed-pool markers). With the fix, the two pool
+  jobs overlap and telemetry follows both; all3 pass, and existing worker-limit,
+  timeout/signal/process cleanup contracts also pass. Logs
+  `runner-telemetry-isolation-{repro,fixed}.log`, fixed `.exit`0.
+- All four first-aggregate findings now have focused passing proof. Full aggregate
+  success still requires rerunning test-all and test-db; earlier903/907 remains
+  the recorded failed aggregate and the DB gate has not yet run.
