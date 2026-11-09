@@ -1,9 +1,9 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: partial conversions, telemetry performance, racial/cast, divine refusal, all pwipe modes, colorization and Discord passed. Weapon/copyover mode matrices are finishing; batches 3–6 remain.
+Status: batches 1, 2 and 4 are qualified, including every weapon, copyover and live-item mode. Named sets/historical assassin comparison, naming/docs and aggregate gates remain.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-discord-game-journey`. See the current-work section before continuing.
+Review head: `branch/issue-870-item-mana-journeys`. See the current-work section before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -139,9 +139,9 @@ with existing bounded settling patterns where writes are asynchronous.
   and disabled refusal, retry, exempt targets and mixed orders.
 - [x] `run_spellcast_racial_multiplier_journey.py`: seed MariaDB and run every
   configured multiplier; keep ordinary mortal casts and timing comparisons.
-- [ ] `run_weapon_actions_journey.py`: seed MariaDB and preserve the existing
+- [x] `run_weapon_actions_journey.py`: seed MariaDB and preserve the existing
   family, enable/disable, completion, cancellation and reaction matrix.
-- [ ] `run_copyover_runtime_journey.py`: use one MariaDB setup for ordinary and
+- [x] `run_copyover_runtime_journey.py`: use one MariaDB setup for ordinary and
   Redis-fault paths. Preserve original sockets, plain/MCCP, TLS/WebSocket paths
   present in the runner, reconnect, failure/success, fresh/full-world and
   non-root cases. Reuse its existing private Redis fault setup.
@@ -197,18 +197,18 @@ fixture only after checking all callers; do not retain it as a compatibility shi
 
 ### 4. Convert the four live item journeys together
 
-- [ ] `run_item_pilot_journey.py`: make its existing `Server` helper use the
+- [x] `run_item_pilot_journey.py`: make its existing `Server` helper use the
   disposable MariaDB environment. Replace `seed-combat`, `seed-item` and
   `seed-item-operator` inspector operations with SQL or existing gameplay
   fixture operations. Read `artifact_mana` instead of decoding domain files.
   Preserve identity, reserve/version, enabled/disabled, interruption, crash,
   restart and family-specific behavior.
-- [ ] `run_item_mana_encounter_journey.py`: retain sustained NPC combat,
+- [x] `run_item_mana_encounter_journey.py`: retain sustained NPC combat,
   immediate player-encounter refusal, recharge and committed reserve checks.
-- [ ] `run_item_config_journey.py`: retain real operator toggles/reload,
+- [x] `run_item_config_journey.py`: retain real operator toggles/reload,
   pending-action cancellation, invalid configuration, revision/clamping and
   private metrics checks using SQL-backed state.
-- [ ] `run_item_overlap_journey.py`: retain both native dual-weapon overlap
+- [x] `run_item_overlap_journey.py`: retain both native dual-weapon overlap
   and ordinary mortal spellcast overlap, reusing the converted pilot/caster setup.
 
 Proof: run the pilot's complete family/case matrix and all three consumers;
@@ -584,19 +584,38 @@ This is an estimate, not a time limit or permission to omit required proof.
   deadline to both families: the original 45-second packed window timed out while
   the player dodged every melee hit (failure log retained). All three packed cases
   now passed: legacy damage, 2.002s warning-to-hit, and .250s flee with no damage
-  and a fizzle. Avernus's unforced 1/25 selection matrix remains running.
-  [PR #924](https://github.com/LuminariMUD/Duris/pull/924) is draft until all cases pass.
+  and a fizzle. Avernus off/hold and enabled/hold passed, but its flee case
+  timed out before a natural selection within600s. `9f914ede8` raises only the
+  synthetic Avernus NPC to the mortal cap56, improving ordinary hit frequency;
+  native 1/25 selection and damage/timing/cancellation assertions remain unchanged.
+  The complete Avernus matrix passed: disabled damage18.268s, enabled windup2.002s,
+  flee.250s with no damage and fizzle. Packed's three cases were already green.
+  Prior partial results/failure remain under `pre-fixture-repair-weapon-avernus*`.
+  [PR #924](https://github.com/LuminariMUD/Duris/pull/924) is ready; the active weapon
+  guide now publishes both exact disposable commands.
 - Copyover: `d3df89e40` uses one shared MariaDB setup for ordinary and Redis modes,
   removes the duplicate schema installer, and replaces corrupt-snapshot injection
   with a real rejecting player-save SQL trigger. The first plain case already
   passed all failures and successful socket/session recovery; default MCCP and
-  Redis fault modes also passed. Fresh/full-world modes remain running.
+  Redis fault and fresh minimal-world modes also passed. Both full-world fresh
+  and preserving hotboot modes subsequently passed, plain and MCCP in each.
   UID10001 first failed before boot: Linux protected_regular blocks O_CREAT on
   the ordinary user's shared /tmp port-lock file. `cfea325b8` reopens that same
   existing lock without O_CREAT on PermissionError; confirmed root r+ succeeds.
-  Keep shared fcntl reservations. The full UID10001 retry is running; its initial
-  failure is retained. [PR #926](https://github.com/LuminariMUD/Duris/pull/926)
-  remains draft until the complete matrix passes.
+  Keep shared fcntl reservations. Both UID10001 plain/MCCP retries passed; initial
+  failure retained. Full-world first failed before injected file-open failure:
+  fresh absent-artifact catalog rows publish asynchronously in batches4. Use the
+  existing paged `world persistence` health output to await zero dirty/pending
+  artifact/guild work; repeat after replacement boot before the mismatched-account
+  rehearsal (`004272af6`, `e74ff78a6`, `de0ae203c`). Native guards stay intact.
+  The prior full-world run passed its actual exec and original socket recovery,
+  then failed at the second drain before mismatch injection. Both earlier failures
+  and the initial pager mistake are retained. All eleven cases now passed:
+  default minimal, fresh minimal, preserving full-world, fresh full-world and
+  UID10001 (plain/MCCP each), plus Redis checkpoint/failed-replacement faults.
+  Plain fresh cases also refused a mismatched authenticated account on the inherited
+  socket. Logs: `copyover-{default,redis,fresh,full-world,full-world-preserve,nonroot}-run.log`.
+  [PR #926](https://github.com/LuminariMUD/Duris/pull/926) is qualified for review.
 - Discord: `a98106d9e` seeds staff in MariaDB. The unchanged bridge sink is at
   `/home/aiwithapex/projects/discord-mud-chat/scripts/testing/duris-game-sink.js`,
   clean checkout `70865ecafb0aeb9b9ac71da37696e416d892ce4c`. Its dependencies load
@@ -608,6 +627,49 @@ This is an estimate, not a time limit or permission to omit required proof.
   fixture expectation: failed exec removes sealed recovery files. Initial failure
   retained as `discord-game-initial-failed-exec.log`; success `discord-game-run.log`.
   [PR #928](https://github.com/LuminariMUD/Duris/pull/928) is ready after #926.
-- Next: finish weapon/copyover matrices and update their PRs, then continue
-  named sets and historical assassin comparison, four item journeys, naming/docs,
-  and full regression/DB gates. No aggregate or whole-issue completion is claimed.
+- Live item conversion: `aa5f4f231`, `branch/issue-870-item-mana-journeys`, uses
+  `mariadb_authority()` and the Server helper's existing environment injection.
+  Keep Server's current signature: eleven other real journeys still import it;
+  no new helper API or duplicate server fixture is needed. `mana_rows(sql)` reads
+  all eight authority columns from `artifact_mana`, preserving reserve/version,
+  crash/restart, recharge and clamping assertions. No binary file decoder remains.
+  Native artifacts are created by real staff `load obj` commands after offline SQL
+  promotion, saved and demoted to their original mortal levels; check the resulting
+  actual UID instead of fabricating UID1000922. Corpse custody uses existing
+  `inspect_authority(sql)`. The existing optional failure-retention mode captures
+  the private synthetic SQL dump in place of copying retired domain files.
+- The overlap fixture modified mini objects/resets after configure had copied
+  them into the generated world. Area-debugger mode2 reads those generated files;
+  copy the two modified inputs so dual-weapon/caster cases exercise their intended
+  equipment. `6a079045d` replaces obsolete boon-toggle response expectations with
+  the current automatic-boon response, preserving the native behavior.
+  All four parsers/compiles and diff checks pass. Every runtime case passed:
+  Studio complete/abort and crash, Tsunami disabled/complete/abort including real
+  corpse loot and unchanged mana, Ioun real incoming spell/paid deflection,
+  operator toggles/reload/invalid catalog/private metrics, sustained PvE and low-
+  reserve player refusal/recharge, and both dual-weapon/mortal-cast overlaps.
+  `4487cc3a6` checkpoints the carried Studio source before the crash-only case;
+  otherwise the test killed the process before saving the picked-up item at all.
+  Its pending action still never revives and the committed debit remains exact.
+  Reused unchanged passing complete/abort evidence and reran the affected crash
+  case with `--family studio --case on-crash`; both raw JSONs and their three-case
+  aggregate are retained. Initial boon and missing-checkpoint failures remain.
+  Evidence: `item-pilot-{studio,studio-crash,tsunami,ioun}*.json/.log`,
+  `item-{config,encounter,overlap}*.json/.log`. Native ioun took173.415s to intercept;
+  recharge took5.506s from1500 to3000 units; dual sources completed33.534s;
+  ordinary mortal casting overlapped its own passive release in4.755s.
+  [PR #931](https://github.com/LuminariMUD/Duris/pull/931) is qualified for review.
+  The active item rollout runbook now supplies all reproduction commands.
+- Named-set discovery: the six runners form a real shared-authority sequence:
+  transfer produces gear/containers and a measured baseline consumed by edit/clone,
+  pet and shop runners. Rollback copies the authority and changes binaries twice.
+  SQL lifetime must span that sequence and the rollback copy must preserve its
+  source SQL as well as filesystem evidence. Do not create independent databases
+  per consumer or replace generated gear with guessed UIDs. No named-set edit yet;
+  inspect the retained compatibility source/catalog before choosing its MariaDB build.
+- Current head: `branch/issue-870-item-mana-journeys`; no live test sessions remain
+  from this batch. #922, #923, #924, #925, #926, #928 and #931 are qualified; the
+  earlier stack remains as listed above. All PRs carry enhancement/bug/documentation
+  labels as appropriate. Do not merge or deploy without the user's instruction.
+- Next: named sets and historical assassin comparison, then naming/docs and full
+  regression/DB gates. No aggregate or whole-issue completion is claimed.
