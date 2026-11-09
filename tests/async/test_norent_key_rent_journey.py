@@ -299,12 +299,13 @@ def run(binary, backend, inspector, evidence_dir):
                 assert on_floor(client, "small"), "shop key did not land on the floor"
                 evidence["checks"].append("a shop-bought no-rent item falls")
 
-                assert "created" in command(client, "load obj " + str(TICKET)).lower()
-                command(client, "setbit obj ticket extra NODROP 1")
-                rent(gone=TICKET, message=CRUMBLES)
-                login()
-                assert not on_floor(client, "ticket"), "no-drop item reached the floor"
-                evidence["checks"].append("a no-drop no-rent item crumbles")
+                for field, flag in (("extra", "NODROP"), ("extra2", "SOULBIND")):
+                    assert "created" in command(client, "load obj " + str(TICKET)).lower()
+                    command(client, "setbit obj ticket " + field + " " + flag + " 1")
+                    rent(gone=TICKET, message=CRUMBLES)
+                    login()
+                    assert not on_floor(client, "ticket"), flag + " item reached the floor"
+                    evidence["checks"].append("a " + flag + " no-rent item crumbles")
 
                 command(client, "goto " + str(AUCTION))
                 assert "created" in command(client, "load obj " + str(TICKET)).lower()
@@ -356,6 +357,20 @@ def run(binary, backend, inspector, evidence_dir):
                 assert on_floor(client, "ticket"), "link-dead ticket did not land on the floor"
                 evidence["checks"].append("a link-dead character's no-rent item falls on extractlink")
 
+                mortal_with_ticket()
+                before = mortal_revision()
+                command(client, "setbit char " + MORTAL + " timer 16")
+                # An autosave can move the revision first, so watch the floor. The next
+                # tick voids the mortal, and the void closes its connection.
+                deadline = time.monotonic() + 100
+                while not on_floor(client, "ticket"):
+                    assert time.monotonic() < deadline, "idle-voided ticket did not land on the floor"
+                    time.sleep(1)
+                wait_mortal_saved(before)
+                mortal.close()
+                mortal = None
+                evidence["checks"].append("an idle-voided character's no-rent item falls")
+
                 command(client, "goto " + str(BANK))
                 command(client, "setbit room here flag SAFE 1")
                 command(client, "setbit room here flag ROOM_MAGIC_LIGHT 1")
@@ -376,6 +391,23 @@ def run(binary, backend, inspector, evidence_dir):
                 assert "ticket" in command(client, "inventory").lower(), "chest ticket was not handed back"
                 assert stored_in_lockers(TICKET) == 0
                 evidence["checks"].append("a locker hands back a no-rent item from a chest")
+
+                enter_locker()
+                for line, reply in (("eq chest create vault norent-secret", "Private chest 'vault' created"),
+                                    ("open vault", "You open the 'vault' chest"),
+                                    ("put ticket vault", "Ok.")):
+                    client.send(line)
+                    client.expect(reply, timeout=60)
+                command(client, "score")
+                leave_locker()
+                assert "ticket" in command(client, "inventory").lower(), "private chest ticket was not handed back"
+                assert stored_in_lockers(TICKET) == 0
+                evidence["checks"].append("a locker hands back a no-rent item from an open private chest")
+
+                enter_locker()
+                assert "Leave first" in command(client, "camp"), "camp must stay refused inside a locker"
+                leave_locker()
+                evidence["checks"].append("nobody can camp out from inside a locker")
                 command(client, "goto " + str(INN))
                 assert "You drop" in command(client, "drop ticket")
                 assert on_floor(client, "ticket")
