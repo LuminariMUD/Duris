@@ -30,9 +30,18 @@ the ordinary save acknowledgement confirms completion. A failed save admission r
 choice. Changes apply only to future output for that recipient. Resetting one channel leaves all other
 channels intact; resetting all also restores motion-on. Authored colors remain authored in every mode.
 
-The [standalone walkthrough](../../scripts/validate_colorization_journey.py) is being
-converted to MariaDB under [#870](https://github.com/LuminariMUD/Duris/issues/870);
-its reproduction commands will be updated after runtime qualification.
+The [standalone walkthrough](../../scripts/validate_colorization_journey.py) uses a
+fresh disposable MariaDB schema and synthetic accounts. Build `bin/server/dms_new`,
+then run from the repository root:
+
+```sh
+tests/async/with_disposable_mariadb.sh python3 scripts/validate_colorization_journey.py \
+  --server bin/server/dms_new --report bin/tests/colorization-journey.json
+```
+
+The 2026-11-09 conversion under [#870](https://github.com/LuminariMUD/Duris/issues/870)
+passed all 65 command/recipient/persistence checks and 15 rendered frames, including
+GMCP/terminal color agreement, reconnect, frozen paging, scenery motion and authored art.
 
 ## Runtime, transport and persistence evidence
 

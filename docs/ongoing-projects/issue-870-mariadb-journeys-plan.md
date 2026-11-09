@@ -150,7 +150,7 @@ with existing bounded settling patterns where writes are asynchronous.
   companion bridge's `scripts/testing/duris-game-sink.js` via `--node-driver`;
   verify the actual checkout/path and Node dependencies before running. The
   local sink must remain isolated from the real Discord service.
-- [ ] `scripts/validate_colorization_journey.py`: replace inspector setup and
+- [x] `scripts/validate_colorization_journey.py`: replace inspector setup and
   saved-state dependencies with MariaDB; retain ANSI, paging, rendering,
   permission and persistence checks and its synthetic report.
 - [ ] `run_pwipe_runtime_journey.py`: remove the obsolete flat-file rejection
@@ -566,6 +566,13 @@ This is an estimate, not a time limit or permission to omit required proof.
   `024e32b9dd95cf654ed9dbcadb937785d444b20967dbd11ce73d845aed3c875e`.
   Latest native ASan/UBSan, creation-batch/reconciliation, newbie and prompt checks
   and `make -C src -j4` passed. Final aggregate gates must qualify this integration.
+- Colorization: `9939996fb`, `branch/issue-870-colorization-journey`, removes
+  inspector/state setup and uses the shared MariaDB authority. All 65 checks and
+  15 frames passed (two accounts, independent recipient GMCP/ANSI colors, saved
+  choices/reconnect, paging, coherent animation, motion/static, authored mural,
+  previews and shutdown). Evidence: `colorization-run.log`, `colorization.json`;
+  binary SHA-256 024e32b9dd95… above. The active release guide now gives the exact
+  disposable MariaDB reproduction command. No native gameplay/rendering change.
 - Weapon actions: `2b52eaf2e` uses the shared MariaDB authority and removes the
   inspector option. `92d835596` applies the existing ten-minute natural-selection
   deadline to both families: the original 45-second packed window timed out while
