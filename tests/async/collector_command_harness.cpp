@@ -153,6 +153,12 @@ int main()
 	assert(has_fence(command, critical_entity_type::item, 101, 6));
 	assert(collector_command_decode_payload(command, &decoded) &&
 	       decoded.expected_to_owner_revision == 20 && decoded.capacity_admitted);
+	auto legacy_purchase = command;
+	legacy_purchase.payload_version = 1;
+	assert(collector_command_decode_payload(legacy_purchase, &decoded) &&
+	       decoded.action == collector_action::purchase);
+	legacy_purchase.payload_version = 3;
+	assert(!collector_command_decode_payload(legacy_purchase, &decoded));
 	buy.capacity_admitted = false;
 	assert(!collector_command_build(&command, operation(), buy, critical_source_site::command,
 					critical_deadline_class::interactive));

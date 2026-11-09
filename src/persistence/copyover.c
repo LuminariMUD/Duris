@@ -37,6 +37,7 @@
 #include "core/defines.h"
 #include "core/files.h"
 #include "net/gmcp.h"
+#include "net/mxp.h"
 #include "net/mccp.h"
 #include "core/mm.h"
 #include "ships/ships.h"
@@ -107,6 +108,8 @@ static size_t copyover_desc_bytes_for_version(int version)
 		return offsetof(copyover_desc, gmcp_supports);
 	if (version < 20)
 		return offsetof(copyover_desc, account_name);
+	if (version < 22)
+		return offsetof(copyover_desc, mxp_enabled);
 	return sizeof(copyover_desc);
 }
 
@@ -486,6 +489,7 @@ static int write_desc_entry(FILE *fp, P_desc d)
 	strlcpy(entry.host2, d->host2, sizeof(entry.host2));
 	entry.term_type = d->term_type;
 	entry.gmcp_enabled = d->gmcp_enabled;
+	entry.mxp_enabled = d->mxp_state == MXP_ENABLED;
 	entry.gmcp_supports = d->gmcp_supports;
 	entry.gmcp_interests = d->gmcp_interests;
 	entry.gmcp_session_generation = d->gmcp_session_generation;
@@ -920,6 +924,8 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 		    (!memchr(desc.account_name, 0, sizeof desc.account_name) ||
 		     (desc.ship_id &&
 		      (desc.ship_room_slot < 0 || desc.ship_room_slot >= MAX_SHIP_ROOM))))
+			return false;
+		if (desc.mxp_enabled > 1)
 			return false;
 		if (header.version >= 18)
 		{
@@ -2153,6 +2159,9 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		strlcpy(d->host2, desc_entry.host2, sizeof(d->host2));
 		d->term_type = desc_entry.term_type;
 		d->gmcp_enabled = desc_entry.gmcp_enabled;
+		d->mxp_state = desc_entry.mxp_enabled ? MXP_ENABLED : MXP_OFF;
+		if (!desc_entry.mxp_enabled)
+			mxp_negotiate(d); // Old records/default-off peers negotiate before tags.
 		d->gmcp_supports = desc_entry.gmcp_supports & GMCP_IMPLEMENTED_SUPPORTS;
 		d->gmcp_interests = desc_entry.gmcp_interests & d->gmcp_supports &
 				    GMCP_INTEREST_STREAMS;

@@ -2344,7 +2344,7 @@ static void remove_norent_item(P_char ch, P_obj item, P_obj container)
 	}
 	// A ghost being extracted may not be in any room.
 	if (IS_SET(item->extra_flags, ITEM_NODROP) || IS_SET(item->extra2_flags, ITEM2_SOULBIND) ||
-	    ch->in_room == NOWHERE)
+	    ch->in_room == NOWHERE || IS_ROOM(ch->in_room, ROOM_LOCKER))
 	{
 		act("$p is no-rent and crumbles to dust.", TRUE, ch, item, 0, TO_CHAR);
 		act("$p is no-rent and crumbles to dust.", TRUE, ch, item, 0, TO_ROOM);
@@ -2401,6 +2401,7 @@ bool persistence_save_character_terminal(P_char ch, int type)
 	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !GET_NAME(ch))
 		return false;
 
+	locker_return_norent_items(ch);
 	if (type == RENT_INN || type == RENT_CAMPED || type == RENT_LINKDEAD)
 		remove_norent_items(ch);
 
@@ -2437,6 +2438,7 @@ bool persistence_save_character_terminal_database_acknowledged(P_char ch, int ty
 {
 	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !GET_NAME(ch))
 		return false;
+	locker_return_norent_items(ch);
 	const int room = calculate_save_room(ch, type, ch->in_room);
 	if (player_save_pipeline_terminal(ch, type, room, 5000) !=
 	    player_save_terminal_result::database_acknowledged)
