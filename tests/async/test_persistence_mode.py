@@ -14,6 +14,7 @@ MAKEFILE = (SRC / "Makefile").read_text()
 PROBE = r'''
 #include "persistence/persistence_mode.h"
 
+#include <cassert>
 #include <cstdio>
 #include <cstring>
 
@@ -22,6 +23,13 @@ int main()
     char error[2048] = {};
     if (!persistence_mode_configure(error, sizeof(error)))
     {
+        char sentinel = 'x';
+        assert(!persistence_mode_configure(nullptr, 8));
+        assert(!persistence_mode_configure(&sentinel, 0) && sentinel == 'x');
+        assert(!persistence_mode_configure(&sentinel, 1) && sentinel == '\0');
+        char truncated[8] = {};
+        assert(!persistence_mode_configure(truncated, sizeof(truncated)));
+        assert(!std::strcmp(truncated, "invalid"));
         std::puts(error);
         return 1;
     }
@@ -39,7 +47,8 @@ with tempfile.TemporaryDirectory(prefix="persistence-mode-") as directory:
     binary = temp / "probe"
     probe.write_text(PROBE)
     subprocess.run(
-        ["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", f"-I{SRC}", str(SOURCE), str(probe),
+        ["g++", "-std=c++20", "-O2", "-D_FORTIFY_SOURCE=3", "-Wall", "-Wextra", "-Werror",
+         "-Wformat=2", "-Wformat-truncation=2", f"-I{SRC}", str(SOURCE), str(probe),
          "-o", str(binary)],
         check=True,
     )
