@@ -1678,8 +1678,13 @@ def test_the_banner_ticks_and_can_be_broken() -> None:
     if bind:
         code = strip_comments(bind[0])
         check("kingdom_guard_proc" in code and "kingdom_champion_proc" in code
-              and "kingdom_banner_proc" in code,
+              and "kingdom_bind_banner_procs();" in code,
               "all three procs are bound, or the feature is inert world data")
+    banners = function_bodies(guards, r"\bvoid\s+kingdom_bind_banner_procs\s*\(")
+    check(len(banners) == 1, "kingdom banner binding has one owner", f"{len(banners)}")
+    if banners:
+        code = strip_comments(banners[0])
+        check("kingdom_banner_proc" in code, "banner binding installs its proc")
         check("real_object(" in code and "real_object0(" not in code,
               "banner prototypes resolve with real_object(), never real_object0() "
               "-- which answers 0 both for the first object and for a missing vnum")

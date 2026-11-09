@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
-"""Real shop commands and cold restart on disposable flat-file/MariaDB state."""
+"""Real shop commands and cold restart on disposable MariaDB state."""
 
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import shutil
 import signal
-import struct
 import subprocess
 import tempfile
 import time
-import fcntl
 
 import test_flatfile_combat_journey as journey
 from test_flight_network_journey import authority, command
@@ -90,11 +87,10 @@ PH 0 0 -1
     assert generated.returncode == 0, generated.stdout[-4000:] + generated.stderr[-4000:]
 
 
-def run(binary, backend, report):
+def run(binary, backend, report, crash_paid_fresh=False):
     report.parent.mkdir(parents=True, exist_ok=True)
     evidence = {"backend": backend, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
                 "purchases": [], "checks": [], "passed": False}
-    inspector = ROOT / "bin/tests/shop-multi-buy-inspector"
     with tempfile.TemporaryDirectory(prefix="shop-journey-", dir=ROOT / "bin/tests") as temporary:
         runtime = Path(temporary)
         _, critical, log = setup_run_root(runtime)
@@ -148,27 +144,22 @@ def run(binary, backend, report):
                 return response
 
             def inspect():
-                if sql:
-                    wallet = [int(value) for value in sql(
-                        f"SELECT copper,silver,gold,platinum FROM player_data WHERE name='{PLAYER}'").split("\t")]
-                    # Saved physical rows are MariaDB's live inventory source;
-                    # legacy sales can leave historical custody-only records.
-                    rows = sql("SELECT i.item_uid,i.vnum,i.root_item_uid,COALESCE(i.parent_item_uid,0),"
-                               "COALESCE(parent.obj_uid,0),i.item_revision FROM item_current_owner i "
-                               "JOIN player_items physical ON physical.obj_uid=i.item_uid AND physical.pid=i.owner_id "
-                               "LEFT JOIN player_items parent ON parent.id=physical.container_id "
-                               f"JOIN player_data p ON p.pid=i.owner_id WHERE i.owner_type=1 AND p.name='{PLAYER}' "
-                               "AND i.state=1 ORDER BY i.item_uid")
-                    items = [dict(zip(("uid", "vnum", "root", "parent", "physical_parent", "revision"), map(int, row.split("\t"))))
-                             for row in rows.splitlines()]
-                    return {"wallet": wallet, "player_items": items}
-                return json.loads(subprocess.check_output([str(inspector), env["FLATFILE_STATE_DIR"], "inspect", "1"], text=True))
+                wallet = [int(value) for value in sql(
+                    f"SELECT copper,silver,gold,platinum FROM player_data WHERE name='{PLAYER}'").split("\t")]
+                # Saved physical rows are MariaDB's live inventory source;
+                # legacy sales can leave historical custody-only records.
+                rows = sql("SELECT i.item_uid,i.vnum,i.root_item_uid,COALESCE(i.parent_item_uid,0),"
+                           "COALESCE(parent.obj_uid,0),i.item_revision FROM item_current_owner i "
+                           "JOIN player_items physical ON physical.obj_uid=i.item_uid AND physical.pid=i.owner_id "
+                           "LEFT JOIN player_items parent ON parent.id=physical.container_id "
+                           f"JOIN player_data p ON p.pid=i.owner_id WHERE i.owner_type=1 AND p.name='{PLAYER}' "
+                           "AND i.state=1 ORDER BY i.item_uid")
+                items = [dict(zip(("uid", "vnum", "root", "parent", "physical_parent", "revision"), map(int, row.split("\t"))))
+                         for row in rows.splitlines()]
+                return {"wallet": wallet, "player_items": items}
 
             def operations():
-                if sql:
-                    return int(sql("SELECT COUNT(*) FROM critical_operation_inbox WHERE command_type=5"))
-                path = Path(env["FLATFILE_STATE_DIR"]) / "domains/shop_trade_operations"
-                return struct.unpack_from("<I", path.read_bytes(), 56)[0] if path.exists() else 0
+                return int(sql("SELECT COUNT(*) FROM critical_operation_inbox WHERE command_type=5"))
 
             def money(god, platinum=100, copper=0):
                 for denomination, amount in (("platinum", platinum), ("gold", 0), ("silver", 0), ("copper", copper)):
@@ -210,8 +201,7 @@ def run(binary, backend, report):
                                              email=name.lower() + "@example.invalid")
                     save(client, name)
                 stop()
-                if sql:
-                    sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
+                sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
                 boot()
                 god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
                 assert "No room exists" not in command(god, f"goto {ROOM}")
@@ -219,10 +209,66 @@ def run(binary, backend, report):
                 command(god, "setbit room here flag ROOM_MAGIC_LIGHT 1")
                 command(god, "setbit room here flag SAFE 1")
                 command(player, "drop all")
+                if crash_paid_fresh:
+                    money(god)
                 for vnum, keyword in ((BAG, "bag"), (SMALL_BAG, "smallbag")):
                     loaded = command(god, f"load obj {vnum}")
                     assert "created" in loaded, loaded
                     assert "Ok." in command(god, f"give {keyword} {PLAYER}")
+                if crash_paid_fresh:
+                    # A fresh bag has no saved owner. The debit and produced UID
+                    # must survive the same crash, even before the output callback.
+                    def financial_state():
+                        row = sql(
+                            "SELECT p.copper+10*p.silver+100*p.gold+1000*p.platinum,"
+                            "(SELECT COUNT(*) FROM item_current_owner o JOIN player_items i "
+                            "ON i.obj_uid=o.item_uid WHERE o.owner_type=1 AND o.owner_id=p.pid "
+                            f"AND o.state=1 AND i.vnum={RATION}) FROM player_data p "
+                            f"WHERE p.name='{PLAYER}'")
+                        return tuple(map(int, row.split("\t")))
+
+                    before_wallet, before_items = financial_state()
+                    assert before_wallet == 100000 and before_items == 0
+                    player.send("buy ration bag 1")
+                    deadline = time.monotonic() + 15
+                    while time.monotonic() < deadline:
+                        wallet, items = financial_state()
+                        if wallet < before_wallet:
+                            os.kill(process.pid, signal.SIGSTOP)
+                            break
+                        time.sleep(.005)
+                    else:
+                        raise AssertionError("paid fresh-bag purchase did not commit")
+                    paid_wallet, paid_items = financial_state()
+                    assert paid_wallet == wallet and paid_items == items
+                    process.kill()
+                    process.wait(timeout=10)
+                    for client in clients:
+                        client.close()
+                    clients.clear()
+                    boot()
+                    player = login(PLAYER, ACCOUNT)
+                    restored_wallet, restored_items = financial_state()
+                    assert (restored_wallet, restored_items) == (paid_wallet, paid_items)
+                    assert 0 < before_wallet - restored_wallet < before_wallet
+                    assert restored_items == 1, (
+                        "paid fresh-bag purchase lost the item after crash",
+                        before_wallet, restored_wallet, restored_items)
+                    uid, parent, physical_parent = map(int, sql(
+                        "SELECT o.item_uid,COALESCE(o.parent_item_uid,0),"
+                        "COALESCE(b.obj_uid,0) FROM item_current_owner o "
+                        "JOIN player_items i ON i.obj_uid=o.item_uid "
+                        "LEFT JOIN player_items b ON b.id=i.container_id "
+                        f"WHERE o.owner_type=1 AND o.owner_id=(SELECT pid FROM player_data WHERE name='{PLAYER}') "
+                        f"AND o.state=1 AND i.vnum={RATION}").split("\t"))
+                    assert uid and parent and parent == physical_parent
+                    assert "test ration" in command(player, "look in bag")
+                    evidence["paid_fresh_bag_crash"] = {
+                        "wallet_before": before_wallet, "wallet_after": restored_wallet,
+                        "item_uid": uid, "parent_uid": parent}
+                    evidence["passed"] = True
+                    print("PASS paid fresh-bag wallet, item UID and parent across SIGKILL/restart", flush=True)
+                    return
                 assert "created" in command(god, f"load obj {BAG}")
                 money(god)
                 # Qualify the carried bag as restored ordinary player state;
@@ -310,14 +356,13 @@ def run(binary, backend, report):
                 assert "20 of 20 items delivered" in free_purchase and operations() == before_ops + 1
                 assert re.search(r"Coins carried:[^\r\n]+", command(god, "score"))[0] == staff_coins
                 evidence["checks"].append("trusted purchase delivers twenty items in one operation without charging")
-                if backend == "flatfile":
-                    # LOAD deliberately waits for a holder's next save. The free
-                    # purchase must establish this fresh bag before claiming it.
-                    assert "created" in command(god, f"load obj {BAG}")
-                    before_ops = operations()
-                    free_fresh = action(god, "buy ration purchasebag 2", "2 of 2 items delivered")
-                    assert free_fresh.count("You now have a test ration.") == 2 and operations() == before_ops + 1
-                    evidence["checks"].append("free purchase into an unsaved staff bag preserves readable custody")
+                # LOAD deliberately waits for a holder's next save. The free
+                # purchase must establish this fresh bag before claiming it.
+                assert "created" in command(god, f"load obj {BAG}")
+                before_ops = operations()
+                free_fresh = action(god, "buy ration purchasebag 2", "2 of 2 items delivered")
+                assert free_fresh.count("You now have a test ration.") == 2 and operations() == before_ops + 1
+                evidence["checks"].append("free purchase into an unsaved staff bag preserves readable custody")
                 save(god, GOD)
                 save(player, PLAYER)
                 completed = inspect()
@@ -326,8 +371,7 @@ def run(binary, backend, report):
                 assert len(purchased) == 108 and len({row["uid"] for row in purchased}) == 108, len(purchased)
                 assert sum(row["parent"] == bags[BAG] for row in purchased) == 105
                 assert sum(row["parent"] == bags[SMALL_BAG] for row in purchased) == 3
-                if sql:
-                    assert all(row["physical_parent"] == row["parent"] for row in purchased)
+                assert all(row["physical_parent"] == row["parent"] for row in purchased)
                 stop()
                 boot()
                 god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
@@ -337,52 +381,49 @@ def run(binary, backend, report):
                 assert restored["wallet"] == completed["wallet"]
                 assert restored["player_items"] == completed["player_items"], "cold restart changed purchase identities/topology"
                 evidence["checks"].append("cold restart preserves all 108 ration UIDs, parentage and wallet")
-                if backend == "flatfile":
-                    command(god, f"goto {ROOM}")
-                    command(god, "transfer " + PLAYER)
-                    # Trusted quit is immediate; this controls actor unload
-                    # without introducing a camp timer into the writer stall.
-                    command(god, "setbit char " + PLAYER + " level 62")
-                    command(god, "setbit char " + PLAYER + " pcact MORTALIZED off")
-                    before_quit = inspect()
-                    trinket_uid = next(row["uid"] for row in before_quit["player_items"] if row["vnum"] == TRINKET)
-                    lock_path = Path(env["FLATFILE_STATE_DIR"]) / "domains/.critical-authority.lock"
-                    # Keep the writer stalled until the game thread enters quit.
-                    # It cannot deliver a completion until that handler unloads
-                    # the actor, even if the writer commits during its account I/O.
-                    wait_channel = Path(f"/proc/{process.pid}/wchan")
-                    with lock_path.open("a+b") as held:
-                        fcntl.flock(held, fcntl.LOCK_EX)
-                        try:
-                            player.send("sell trinket\nquit")
-                            player.expect("Your sale is being processed.", timeout=5)
-                            deadline = time.monotonic() + 5
-                            # Command logs are buffered until quit returns. The
-                            # parent can instead observe the main thread waiting
-                            # for account authority, behind our file lock.
-                            while wait_channel.read_text().strip() not in ("futex_wait_queue", "locks_lock_inode_wait"):
-                                assert time.monotonic() < deadline, ("quit did not reach account I/O", wait_channel.read_text())
-                                time.sleep(.02)
-                        finally:
-                            fcntl.flock(held, fcntl.LOCK_UN)
+                command(god, f"goto {ROOM}")
+                command(god, "transfer " + PLAYER)
+                # Trusted quit is immediate; this controls actor unload
+                # without introducing a camp timer into the writer stall.
+                command(god, "setbit char " + PLAYER + " level 62")
+                command(god, "setbit char " + PLAYER + " pcact MORTALIZED off")
+                before_quit = inspect()
+                trinket_uid = next(row["uid"] for row in before_quit["player_items"] if row["vnum"] == TRINKET)
+                # Sales apply in memory; their snapshots catch up on the writer.
+                # Hold the actual player/shop/log tables through quit, then prove
+                # the offline save and buyback settle exactly once after release.
+                held = subprocess.Popen(
+                    ["mysql", "--protocol=tcp", "--skip-ssl", "-h", env["DB_HOST"],
+                     "-P", env["DB_PORT"], "-u", env["DB_USER"], "-N", "-B",
+                     "--unbuffered", env["DB_NAME"]], stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE, text=True, env=env, bufsize=1)
+                try:
+                    held.stdin.write("LOCK TABLES player_items WRITE, shopkeeper_items WRITE, log_entries WRITE; SELECT 'held';\n")
+                    held.stdin.flush()
+                    assert held.stdout.readline().strip() == "held"
+                    player.send("sell trinket\nquit")
+                    player.expect("The shopkeeper gives you", timeout=5)
                     player.expect("ACCOUNT MENU", timeout=30)
-                    player.close(); clients.remove(player)
-                    player = login(PLAYER, ACCOUNT)
-                    save(player, PLAYER)
-                    paid = inspect()
-                    value = lambda wallet: sum(amount * (10 ** index) for index, amount in enumerate(wallet))
-                    assert value(paid["wallet"]) > value(before_quit["wallet"]), "offline sale lost its payment"
-                    assert all(row["uid"] != trinket_uid for row in paid["player_items"]), "offline sale returned its sold UID"
-                    assert {row["uid"] for row in paid["player_items"] if row["vnum"] == RATION} == {row["uid"] for row in purchased}
-                    stop(); boot()
-                    god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
-                    save(player, PLAYER)
-                    assert inspect()["wallet"] == paid["wallet"], "offline sale paid twice after restart"
-                    command(god, f"goto {ROOM}"); command(god, "transfer " + PLAYER)
-                    assert "finite stock trinket" in action(player, "buy trinket", "You now have a finite stock trinket.")
-                    save(player, PLAYER)
-                    assert next(row["uid"] for row in inspect()["player_items"] if row["vnum"] == TRINKET) == trinket_uid
-                    evidence["checks"].append("sale and quit behind a stalled writer: payment once, no returned sold UID, stable buyback after restart")
+                finally:
+                    held.communicate("UNLOCK TABLES;\n", timeout=15)
+                    assert held.returncode == 0
+                player.close(); clients.remove(player)
+                player = login(PLAYER, ACCOUNT)
+                save(player, PLAYER)
+                paid = inspect()
+                value = lambda wallet: sum(amount * (10 ** index) for index, amount in enumerate(wallet))
+                assert value(paid["wallet"]) > value(before_quit["wallet"]), "offline sale lost its payment"
+                assert all(row["uid"] != trinket_uid for row in paid["player_items"]), "offline sale returned its sold UID"
+                assert {row["uid"] for row in paid["player_items"] if row["vnum"] == RATION} == {row["uid"] for row in purchased}
+                stop(); boot()
+                god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
+                save(player, PLAYER)
+                assert inspect()["wallet"] == paid["wallet"], "offline sale paid twice after restart"
+                command(god, f"goto {ROOM}"); command(god, "transfer " + PLAYER)
+                assert "finite stock trinket" in action(player, "buy trinket", "You now have a finite stock trinket.")
+                save(player, PLAYER)
+                assert next(row["uid"] for row in inspect()["player_items"] if row["vnum"] == TRINKET) == trinket_uid
+                evidence["checks"].append("memory sale and quit behind a stalled SQL writer: payment once, no returned sold UID, stable buyback after restart")
                 evidence["passed"] = True
                 stop()
                 print("[PASS]", backend, "real shop batches and cold restart", flush=True)
@@ -404,19 +445,21 @@ def run(binary, backend, report):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("flatfile", "mariadb"), default="flatfile")
+    parser.add_argument("--backend", choices=("mariadb",), default="mariadb")
     parser.add_argument("--server", type=Path)
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--crash-paid-fresh", action="store_true")
     args = parser.parse_args()
+    if args.crash_paid_fresh and args.backend != "mariadb":
+        parser.error("crash-paid-fresh requires MariaDB")
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     subprocess.run(["make", "build-area-tools"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     with tempfile.TemporaryDirectory(prefix="shop-build-", dir=ROOT / "bin/tests") as build:
         if args.server:
             binary = args.server.resolve()
         else:
-            assert args.backend == "flatfile", "pass a MariaDB executable with --server"
             binary = journey.build_flatfile_server(Path(build) / "server")
-        run(binary, args.backend, args.report or ROOT / f"bin/qualification/issue454/{args.backend}-journey.json")
+        run(binary, args.backend, args.report or ROOT / f"bin/qualification/issue454/{args.backend}-journey.json", args.crash_paid_fresh)
 
 
 if __name__ == "__main__":

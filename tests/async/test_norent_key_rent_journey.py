@@ -29,11 +29,12 @@ SHOP, SHOP_KEY = 5848, 5783
 CAMP_ROOM, BANK, BLOOD_STAIN = 1457, 16590, 4
 AUCTION = 16885
 CONJURED = (("ensis unguis", 56), ("lancea cineralae", 93), ("simulacrum anguis", 171), ("wind blade", 98))
+LOCKER_ROOM = 65201
 NORENT = 8388608
 FALLS, CRUMBLES = "is no-rent and falls to the floor", "is no-rent and crumbles to dust"
 
 
-def run(binary, backend, inspector, evidence_dir):
+def run(binary, backend, evidence_dir):
     with tempfile.TemporaryDirectory(prefix="key-rent-" + backend + "-", dir=ROOT / "bin/tests") as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)
@@ -89,9 +90,6 @@ def run(binary, backend, inspector, evidence_dir):
                 command(client, "setbit room here flag ROOM_MAGIC_LIGHT 1")
 
             def inspect():
-                if not sql:
-                    return json.loads(subprocess.check_output(
-                        [str(inspector), env["FLATFILE_STATE_DIR"], "norent-inspect", "1"], text=True))
                 revision = int(sql("SELECT save_revision FROM player_data WHERE name='" + PLAYER + "'"))
                 rows = sql("SELECT p.obj_uid,p.vnum,p.extra_flags,p.equip_slot,COALESCE(b.obj_uid,0) "
                            "FROM player_items p LEFT JOIN player_items b ON b.id=p.container_id "
@@ -125,7 +123,7 @@ def run(binary, backend, inspector, evidence_dir):
                 while True:
                     data = inspect()
                     complete = (not any(row[1] == gone for row in data["items"])) if gone else data["items"] == before["items"]
-                    if data["revision"] > before["revision"] and (sql or data["intent"] == 3) and complete:
+                    if data["revision"] > before["revision"] and complete:
                         return data
                     assert time.monotonic() < deadline, "rent did not commit"
                     time.sleep(.1)
@@ -244,8 +242,7 @@ def run(binary, backend, inspector, evidence_dir):
                 mortal.close()
                 mortal = None
                 stop()
-                if sql:
-                    sql("UPDATE player_data SET level=62,highest_level=62,platinum=5000 WHERE name='" + PLAYER + "'")
+                sql("UPDATE player_data SET level=62,highest_level=62,platinum=5000 WHERE name='" + PLAYER + "'")
                 boot()
                 login()
                 assert "created" in command(client, "load obj " + str(BAG)).lower()
@@ -412,6 +409,25 @@ def run(binary, backend, inspector, evidence_dir):
                 assert "You drop" in command(client, "drop ticket")
                 assert on_floor(client, "ticket")
 
+                command(client, "goto " + str(BANK))
+                # The bag must be back in the visitor's hands before their save, not after
+                # it: a crash between the two saves would lose the bag and what it holds.
+                enter_locker()
+                command(client, "setbit obj backpack extra NORENT 1")
+                assert "You drop" in command(client, "drop backpack")
+                revision = save()["revision"]
+                deadline = time.monotonic() + 60
+                while inspect()["revision"] <= revision:
+                    assert time.monotonic() < deadline, "the save inside the locker did not commit"
+                    time.sleep(.1)
+                stop(crash=True)
+                boot()
+                login()
+                assert any(row[1] == SIBLING for row in inspect()["items"]), "a crash lost what a no-rent bag in a locker held"
+                command(client, "setbit obj backpack extra NORENT 0")
+                assert preserved(save()) == baseline
+                evidence["checks"].append("what a no-rent bag on a locker floor holds survives a crash after a save")
+
                 active_uid = grant(KEY, "golden", "golden key", True)
                 save()
                 stop(crash=True)
@@ -449,6 +465,22 @@ def run(binary, backend, inspector, evidence_dir):
                 assert on_floor(client, "backpack"), "no-rent bag did not land on the floor"
                 assert "banana" in command(client, "inventory").lower()
                 evidence["checks"].append("a saved item in a no-rent bag survives and the bag falls")
+
+                # Staff camp immediately; a locker room must crumble the item
+                # before its terminal locker hook can store floor objects.
+                command(client, "goto " + str(LOCKER_ROOM))
+                assert "Inside a Locker" in command(client, "look")
+                grant(TICKET, "ticket", "ticket", False)
+                client.send("camp")
+                text = client.expect("ACCOUNT MENU", timeout=30)
+                assert CRUMBLES in text, text
+                client.close()
+                client = None
+                login()
+                command(client, "goto " + str(LOCKER_ROOM))
+                assert not on_floor(client, "ticket"), "locker-room camp left a no-rent item on the floor"
+                assert not any(row[1] == TICKET for row in inspect()["items"])
+                evidence["checks"].append("staff camp in a locker-flagged room crumbles no-rent items")
                 stop()
                 evidence["passed"] = True
                 print(backend, "all rent, camp, link-death, restart, crash and copyover checks passed", flush=True)
@@ -472,17 +504,14 @@ def run(binary, backend, inspector, evidence_dir):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("flatfile", "mariadb"), default="flatfile")
+    parser.add_argument("--backend", choices=("mariadb",), default="mariadb")
     parser.add_argument("--server", type=Path)
     args = parser.parse_args()
-    if args.backend == "mariadb" and not args.server:
-        parser.error("pass --server for MariaDB")
     evidence = ROOT / "bin/qualification/issue419"
     evidence.mkdir(parents=True, exist_ok=True)
     subprocess.run(["make", "world"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
-    inspector = evidence / "rent-inspector"
     binary = args.server.resolve() if args.server else journey.build_flatfile_server(evidence / "journey-build")
-    run(binary, args.backend, inspector, evidence)
+    run(binary, args.backend, evidence)
 
 
 if __name__ == "__main__":

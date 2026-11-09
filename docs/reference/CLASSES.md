@@ -16,7 +16,7 @@ classes; its point estimates are distinct from these implemented rules.
 - [Creation and alignment](#creation-and-alignment)
 - [Specializations](#specializations)
 - [Learning, spell circles, and resources](#learning-spell-circles-and-resources)
-- [Multiclassing](#multiclassing)
+- [Multiclassing](classes/multiclass.md)
 - [Stats, equipment, and identity](#stats-equipment-and-identity)
   - [Monk equipment and weight](#monk-equipment-and-weight)
 - [Unavailable commands and temporary forms](#unavailable-commands-and-temporary-forms)
@@ -30,9 +30,9 @@ creation-policy choices, and `class info <class or specialization>` for a
 profile. `class specs <class>` compares named paths with your race permission;
 `class innates <class or specialization>` includes inherited class grants,
 unlock levels, and active/passive markers. Non-neutral class attack-damage
-factors are also shown as signed passive features, with fractional penalties preserved. Specializations inherit the base
-class factor; multiclass combat uses the higher class factor, multiplied by the
-racial factor. These cover ordinary melee and archery rather than every spell
+factors are also shown as signed passive features, with fractional penalties
+preserved. Specializations inherit the base class factor. These cover ordinary
+melee and archery rather than every spell
 or special attack; see [scope and settings](races/race-misc.md#3-visible-racial-and-class-attack-damage-modifiers).
 Names match the skills and spells browsers, including spaces/hyphens and unique abbreviations. Assassin and Thief
 resolve to Rogue specializations; standalone legacy IDs are labelled roster
@@ -317,10 +317,6 @@ Preparation/resource modes are selected by the class/race predicates in
   not make the character undead. See [mount.c](../../src/classes/mount.c) and
   the [Dragoon spellcasting contract](../../tests/async/test_dragoon_spellcasting.py).
 
-For multiclass characters, primary class and race can select the preparation
-path; the two classes are not interchangeable. Inspect those predicates rather
-than assuming all casters use mana or all spells use a spellbook.
-
 The maximum supported level is not the currently unlocked level.
 [frag_cap.cfg](../../lib/frag_cap.cfg) configures the 72-hour Good/Evil frag race.
 Positive ordinary awards pool by chosen faction; the round leader receives a
@@ -330,78 +326,6 @@ equalize them. Fresh seasons start 31/31 and finish 56/56. Hardcore retains its
 requirements still apply. See [the engine](../../src/combat/frag_cap.c),
 [the progression reference](CODEBASE.md#frag-based-level-caps), and
 [limits.c](../../src/world/limits.c).
-
-## Multiclassing
-
-Only **Human and Orc PCs** can use the ordinary multiclass command. `multiclass`
-lists possible secondary classes; selection happens through `multiclass <class>`
-in a room with `multiclass_proc` (assigned VNUMs 17 and 52904). The checked-in
-[properties](../../lib/duris.properties) require **level 50** and **0 epic
-points**. The epic requirement is a balance threshold, not a deduction.
-Without these properties, the listing handler defaults to level 41, while the
-room defaults to level 50 and 250 epics; use configured values rather than
-treating either fallback as the current policy.
-
-The following are the ordered candidate pairs from `allowed_secondary_classes`
-in [constant.c](../../src/core/constant.c). The final target must also have a
-non-forbidden cell for the character's race in the original `class_table`;
-`can_char_multi_to_class` in [utility.c](../../src/core/utility.c) does not use
-the creation switches or all-classes override. The helper checks that cell's
-legality, not its alignment code against the character's current alignment.
-
-| Primary class | Candidate secondary classes before race filtering |
-| --- | --- |
-| Warrior | Mercenary; Cleric |
-| Ranger | Warrior; Druid; Rogue; Psionicist |
-| Paladin | Warrior |
-| Anti-Paladin | Warrior |
-| Cleric | Druid; Bard; Warrior; Shaman |
-| Shaman | Conjurer; Druid; Cleric; Blighter |
-| Sorcerer | Conjurer |
-| Conjurer | Sorcerer; Shaman; Bard |
-| Rogue | Bard; Mercenary |
-| Mercenary | Rogue; Warrior |
-| Bard | Sorcerer; Rogue; Illusionist; Conjurer |
-| Reaver | Sorcerer; Rogue; Psionicist |
-| Ethermancer | Sorcerer; Shaman |
-| Summoner | Sorcerer; Shaman |
-
-All other primary-class rows have no candidates. Reversing a pair need not be
-legal: Paladin can add Warrior, while Warrior cannot add Paladin. The much
-larger `multiclass_names` table supplies display names and is not eligibility.
-For example, Ranger's Psionicist candidate is filtered out for Human because
-Human's Psionicist cell is forbidden.
-
-Multiclassing is a restart of progression. The
-[room handler](../../src/specs/specs.room.c) calls `do_start` before assigning
-the secondary class, resetting level to 1 and XP to 1. It preserves played time,
-clears the specialization, restores the character, forgets prepared spells,
-refunds epic skills, and clears XP trophies. `do_start_impl` also resets ordinary
-learned skills and prestige and puts a guilded character on parole. The room
-does not reject an existing specialization; it clears it. This is distinct
-from `specialize`, which rejects an existing secondary class.
-
-For skill metadata, `SKILL_DATA_ALL` keeps primary-only requirements, adds **5**
-to secondary-only `rlevel`, and takes the lower primary/adjusted secondary
-requirement for a shared grant. Thus secondary-only ordinary skills require
-five extra character levels. Its current cap multipliers are **100% primary /
-95% secondary**. Spell circles have a separate rule in `get_spell_circle`:
-use the primary spell's circle when present; otherwise a secondary-only spell
-costs **one extra circle**, provided the result fits within the supported
-circles. Do not apply the metadata helper's `+5` as the casting-circle rule.
-
-The usual multiclass preparation factors are **1.75**. Epic rewards available
-only through the secondary class apply additional **2x epic-point / 3x coin**
-cost factors to the normal purchase cost. Those factors do not apply to a
-reward already allowed by the primary class. The relevant resource path and
-purchase prerequisites still apply.
-
-Removing a secondary class uses the assigned altar route. Object VNUM 44165 is assigned `unmulti_altar`, which
-accepts `pray altar`; `unmulti` in [actinf.c](../../src/cmd/actinf.c) requires
-**100 epic points**. Its successful in-memory purchase callback clears secondary class
-and spec, forgets prepared spells, and updates skills. It does not restore the
-pre-multiclass level, XP, or skill snapshot. An assigned altar is not evidence
-that a player has acquired access to it in a deployed world.
 
 ## Stats, equipment, and identity
 
@@ -414,9 +338,8 @@ stats used by an ability, rather than assuming a single universal best stat.
 - `calculate_hitpoints2` in [affects.c](../../src/magic/affects.c) combines level,
   constitution, racial constitution, class modifiers, and other bonuses. The
   `hitpoints.class.<ClassName>` properties are inputs to this formula, not a
-  direct multiplier of final displayed HP. For multiclass PCs it takes the
-  larger class modifier. Illithids have a separate branch. Dragoon currently has
-  no explicit HP property and uses the loader's `1.0` fallback.
+  direct multiplier of final displayed HP. Illithids have a separate branch.
+  Dragoon currently has no explicit HP property and uses the loader's `1.0` fallback.
 - Innates are assigned in [innates.c](../../src/classes/innates.c) by race,
   class, specialization, and unlock level. An active innate has a handler;
   a passive can have a null handler and an effect consumed elsewhere. For
@@ -425,11 +348,10 @@ stats used by an ability, rather than assuming a single universal best stat.
   A name on the list is not a guarantee that its conditions are met.
 - Item restrictions live in [handler.c](../../src/world/handler.c) and wear/use
   commands in [actobj.c](../../src/cmd/actobj.c), using class/race allow or deny
-  masks and body/equipment rules. Some checks deliberately use only the primary
-  class. The creation switches do not remove these restrictions.
-- `GET_CLASS` includes secondary class; `GET_PRIME_CLASS` does not. `GET_SPEC`
-  checks primary class plus spec slot. True race, effective race for an innate,
-  and displayed/disguised race also differ. The definitions in
+  masks and body/equipment rules. The creation switches do not remove these
+  restrictions.
+- `GET_SPEC` checks primary class plus spec slot. True race, effective race for
+  an innate, and displayed/disguised race also differ. The definitions in
   [utility.c](../../src/core/utility.c), [utils.h](../../src/core/utils.h), and
   `innates.c` determine which identity each feature uses.
 
