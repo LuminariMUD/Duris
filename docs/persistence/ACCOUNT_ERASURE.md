@@ -24,11 +24,8 @@ failure leaves the fence in place rather than reopening the account.
 
 MariaDB performs disposition and removal in one transaction, locks and verifies the
 fence, rejects identities involved in an open auction, deletes character state, and
-removes the account credential last. Flat-file mode uses the existing complete
-character-deletion authority transaction for each identity, then atomically removes
-shared account banks, active membership, and the credential through the recoverable
-authority journal. Both paths report success only after credential and character
-membership reconciliation.
+removes the account credential last. Success is reported only after credential
+and character membership reconciliation.
 
 No per-account archive is created. Normal full-system backups remain the operator's
 recovery mechanism within their existing retention policy; restoring one does not
@@ -82,7 +79,6 @@ has been scanned, and the erased account remains uncredentialed and unloadable.
 python3 scripts/account_erasure.py inspect
 python3 tests/async/test_account_erasure.py
 python3 tests/async/test_account_deletion_contract.py
-python3 tests/async/test_flatfile_character_delete.py
 tests/async/run_account_erasure_schema_mysql.sh
 ```
 

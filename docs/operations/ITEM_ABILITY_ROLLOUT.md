@@ -1,6 +1,6 @@
 # Item ability rollout and rollback
 
-This runbook covers the initial delivery of [#290](https://github.com/LuminariMUD/Duris/issues/290), through #291–#297. It prepares a deployment; it does not authorize production changes. The master, every category and the five native artifact flags ship disabled. See the [verification record](../testing/ITEM_ABILITY_ROLLOUT.md) for the distinction between real server encounters, forced native callback fixtures and benchmarks.
+This runbook covers the initial delivery of [#290](https://github.com/LuminariMUD/Duris/issues/290), through #291–#297. It prepares a deployment; it does not authorize production changes. The master, every category and the five native artifact flags ship disabled. Use the current focused runtime and MariaDB repository tests linked from the feature references; controlled harnesses and benchmarks do not establish live-server rollout readiness.
 
 ## Delivered roster and editor boundary
 
@@ -23,8 +23,8 @@ DurisStudio is a private editor outside this repository, so its boundary is a st
 ## Prepare a wave
 
 1. Record the server revision, backend, wave roster, catalog/profile revisions, costs and responsible operator. Synthetic test budgets are test inputs, not approved production balance.
-2. Qualify a coherent backup using [BACKUPS.md](BACKUPS.md), including players, item custody, world/corpse/locker state, journals and mana. Flat-file backups must use the managed path that takes the mana writer lock.
-3. SQL installations require additive **0016_artifact_mana**, applied and verified through the immutable migration runner after 0015. Preserve history and manifest checksums. It adds the InnoDB per-UID authority without filling items. Flat-file primary uses protected `domains/artifact-mana-<uid>` records and needs no SQL migration. Storage failure never switches mana to another backend.
+2. Qualify a coherent backup using [BACKUPS.md](BACKUPS.md), including players, item custody, world/corpse/locker state, journals and mana.
+3. MariaDB requires additive **0016_artifact_mana**, applied and verified through the immutable migration runner after 0015. Preserve history and manifest checksums. It adds the InnoDB per-UID authority without filling items. Storage failure never switches mana to another backend.
 4. Rehearse restore/startup with the intended binary and schema in isolation. Verify stable UIDs, retained depletion, empty new/cloned pools and schema compatibility. Run the linked verification commands and native permission/group/race/class checks for the selected roster.
 5. Complete the private editor handoff before promising an editor authoring workflow.
 

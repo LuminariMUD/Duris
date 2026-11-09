@@ -113,6 +113,19 @@ int main()
 	PurgeCorpseFile(&corpse);
 	assert(alerts == std::vector<std::string>{ "corpse:remove:queue_failed" });
 
+	// While the boot restore runs, a purge leaves the saved row alone.
+	reset();
+	skip_corpse_save = 1;
+	PurgeCorpseFile(&corpse);
+	assert(queued.empty() && alerts.empty());
+
+	// A corpse without a name has no row to remove, and does not crash.
+	reset();
+	corpse.action_description = nullptr;
+	PurgeCorpseFile(&corpse);
+	assert(queued.empty() && alerts.empty());
+	corpse.action_description = const_cast<char *>("corpse-routing-fixture");
+
 	// A corpse never saved has nothing to remove.
 	reset();
 	corpse.value[CORPSE_SAVEID] = 0;

@@ -44,10 +44,8 @@ epic award path; that does not make it a zone-story completion.
   state, selection, routes, completion, maps, and sharing.
 - [specs.mobile.c](../../src/specs/specs.mobile.c): `world_quest()` handles
   bartender requests, fees, abandonment, and replacement.
-- [sql.c](../../src/sql/sql.c) and
-  flatfile_world_quest_history.c:
-  bartender completion history and daily allowance, through the
-  `sql_world_quest_*` interface on both builds.
+- [sql.c](../../src/sql/sql.c): bartender completion history and daily allowance
+  through the `sql_world_quest_*` interface.
 - [zone_story_quest_runtime.c](../../src/world/zone_story_quest_runtime.c),
   [zone_story_quest_production.c](../../src/world/zone_story_quest_production.c),
   and [zone_story_quest_feature.c](../../src/world/zone_story_quest_feature.c):
@@ -214,12 +212,10 @@ per season determine percentages; repeated completions remain history.
 
 The season uses the SQL season epoch when available, then positive
 `ZONE_STORY_SEASON_ID`, then 1. This service has its own persisted state,
-separate from the player's bartender fields and epic task affects. SQL uses
-the `0026_zone_story_quest_state` repository; flatfile uses
-`<FLATFILE_ROOT>/domains/zone-story-quests.state`. Flatfile saves replace the
-checked state file atomically. SQL saves enqueue a whole-state upsert; a
-successful enqueue is not a commit acknowledgment. Immediate serialization,
-flatfile-write, or SQL-enqueue rejection restores the prior in-memory tracker
+separate from the player's bartender fields and epic task affects. MariaDB uses
+the `0026_zone_story_quest_state` repository. Saves enqueue a whole-state upsert;
+a successful enqueue is not a commit acknowledgment. Immediate serialization
+or SQL-enqueue rejection restores the prior in-memory tracker
 state, and the legacy caller logs the failure but continues rewards. A later
 SQL writer failure is logged asynchronously and does not perform that rollback.
 

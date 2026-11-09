@@ -22,8 +22,8 @@ private durability, purchase, or audit completion code. It captures:
 
 The image uses the existing item/player snapshot codecs, a versioned envelope
 and SHA-256 integrity check. Its directory/file permissions are 0700/0600. It is
-bound to the configured backend and database connection settings (or flat-file
-root). It contains private player/item data: restrict access and include it in
+bound to the configured MariaDB connection settings. It contains private
+player/item data: restrict access and include it in
 the same backup and retention policy as player persistence.
 
 Publication runs in a child that uses only filesystem syscalls and never touches
@@ -37,11 +37,8 @@ drains; pwipe does not create a shutdown image.
 
 ## Restart
 
-The recovery directory is relative to the game's data directory:
-
-- MariaDB: `runtime/locker-shutdown/`.
-- Flat-file: `$FLATFILE_STATE_DIR/locker-shutdown/` (native private chests remain
-  unavailable on that backend).
+The recovery directory is `runtime/locker-shutdown/`, relative to the game's data
+directory. This image supplements MariaDB persistence; it does not replace it.
 
 Boot locks the directory and checks recovery **before hydrating ownership
 revision caches, artifact population
@@ -90,7 +87,7 @@ evidence, and the last database/backup state must be reviewed explicitly.
 When boot reports `Locker shutdown recovery unresolved`:
 
 1. Keep player admission stopped. Preserve the entire directory, console/file
-   reports and a consistent database/flat-file backup before changing anything.
+   reports and a consistent database backup before changing anything.
 2. If storage or database access failed, repair access and restart with the same
    backend, database and data directory. A valid image whose apply failed will
    retry automatically. Do not copy the image to another database or clear it to

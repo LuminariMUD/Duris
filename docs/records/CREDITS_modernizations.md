@@ -65,8 +65,7 @@ The tree at `4b56d8a1e` (2026-08-07, the last commit before the first one) again
 All three files added to `.github/` in the first two weeks, and 96% of the lines:
 
 - **`quality.yml`** (2026-08-27): the format check, the warning profile, a full
-  warnings-as-errors compile, and a second job that builds without MySQL, boots the game loop
-  and runs the flat-file authority tests.
+  warnings-as-errors compile, and game-loop and persistence tests.
 - **`security.yml`** (2026-08-27): CodeQL analysis, a Trivy dependency scan, a security
   baseline with an SBOM, and an enforced vulnerability policy.
 - **Dependabot** configuration.
@@ -97,9 +96,6 @@ All three files added to `.github/` in the first two weeks, and 96% of the lines
 - **One item, one owner:** the `item_current_owner` table and its transactional ownership
   primitive (`cab7e556f`, 2026-08-27), then the cut-over of live items, lockers and auction
   settlement onto it. Its primary key is still what stops one item having two owners.
-- **A flat-file backend:** all 82 files of `src/flatfile/`, so the server builds, boots and
-  runs with no MySQL at all: identities, accounts, players, items, auctions, shops, artifacts,
-  alliances and world quests.
 - **Redis world recovery:** grown from 3 source files to 42, with authenticated recovery
   generations and scoped maintenance.
 - **Accounts:** permanent account deletion, with the erasure carried into backups.

@@ -26,6 +26,7 @@
 #define COMMAND_LATENCY_LOG_PREFIX_SIZE 40
 #define COMMAND_LATENCY_PLAYER_NAME_LENGTH 64
 #define COMMAND_LATENCY_OPERATION_LENGTH 32
+#define COMMAND_LATENCY_ARGUMENTS_LENGTH 64
 
 typedef enum
 {
@@ -52,6 +53,8 @@ typedef struct
 	long player_id;
 	char player_name[COMMAND_LATENCY_PLAYER_NAME_LENGTH];
 	char operation[COMMAND_LATENCY_OPERATION_LENGTH];
+	char arguments[COMMAND_LATENCY_ARGUMENTS_LENGTH];
+	size_t bulk_items;
 	uint64_t duration_us;
 } command_latency_event;
 
@@ -90,6 +93,10 @@ typedef struct
 void command_latency_event_prepare(command_latency_event *event, command_latency_kind kind,
 				   int connection_state, long player_id, const char *player_name,
 				   const char *canonical_command);
+/* The one exception to the rule above: get and take arguments name only objects. */
+void command_latency_event_set_get_arguments(command_latency_event *event, const char *input);
+void command_latency_note_bulk_items(size_t items);
+size_t command_latency_take_bulk_items(void);
 void command_latency_record(command_latency_tracker *tracker, const command_latency_event *event,
 			    uint64_t duration_us);
 void command_latency_report(const command_latency_tracker *tracker, uint64_t sweep_us,

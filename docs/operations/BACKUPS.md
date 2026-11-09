@@ -1,6 +1,8 @@
 # Full persistence backup and isolated recovery
 
-One policy and one generation format cover both authoritative persistence modes.
+One policy and one generation format cover the required MariaDB database and
+its supporting local journals, receipts and recovery images. Flat-file authority
+backups cannot be created or restored by the current tools.
 Install and approve the policy on a host before it takes backups: a backup that is
 not configured is refused, never given implicit retention. Nothing in the repository
 installs timers or enables a host policy.
