@@ -78,19 +78,6 @@ The live configuration journey separately observed two timed callbacks totaling 
 
 Use a disposable Linux checkout/container with the dependencies in the repository README. All generated binaries, raw logs and temporary evidence belong under ignored `bin/`; the journeys create and remove only their own temporary state. Never point them at production state. An optional `DURIS_KEEP_ITEM_FAILURE=1` preserves a synthetic failing fixture under `bin/pilot-failure-*` for debugging.
 
-```sh
-make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/server/dms_item_actions"
-python3 tests/async/test_flatfile_player_repository.py --build-inspector bin/tests/item-pilot-inspector
-python3 tests/async/run_weapon_actions_journey.py --binary bin/server/dms_item_actions --inspector bin/tests/item-pilot-inspector --family packed
-python3 tests/async/run_weapon_actions_journey.py --binary bin/server/dms_item_actions --inspector bin/tests/item-pilot-inspector --family avernus
-python3 tests/async/run_device_actions_journey.py --binary bin/server/dms_item_actions --inspector bin/tests/item-pilot-inspector
-python3 tests/async/run_item_pilot_journey.py --binary bin/server/dms_item_actions --inspector bin/tests/item-pilot-inspector --family tsunami
-python3 tests/async/run_item_pilot_journey.py --binary bin/server/dms_item_actions --inspector bin/tests/item-pilot-inspector --family studio
-python3 tests/async/run_item_pilot_journey.py --binary bin/server/dms_item_actions --inspector bin/tests/item-pilot-inspector --family ioun
-python3 tests/async/run_item_mana_encounter_journey.py --binary bin/server/dms_item_actions --inspector bin/tests/item-pilot-inspector
-python3 tests/async/run_item_config_journey.py --binary bin/server/dms_item_actions --inspector bin/tests/item-pilot-inspector
-python3 tests/async/run_item_overlap_journey.py --binary bin/server/dms_item_actions --inspector bin/tests/item-pilot-inspector
-python3 tests/async/run_item_action_benchmark.py > bin/item-action-benchmark.json
-```
+The live item journeys used the removed flat-file backend and its inspector and have not been converted to MariaDB yet; see #870.
 
-Run the individual focused Python tests listed above directly; they build their native fixtures. Both `make -C src` and the flat-file build passed locally. SQL migration/CAS integration for #292 passed against disposable MariaDB and MySQL with all 16 migrations applied, verified and reapplied idempotently; no production migration was run. Repository CI additionally verifies each PR before merge. Production rollout and later balance expansion remain separately authorized operations under the runbook.
+Run the individual focused Python tests listed above directly; they build their native fixtures. SQL migration/CAS integration for #292 passed against disposable MariaDB and MySQL with all 16 migrations applied, verified and reapplied idempotently; no production migration was run. Repository CI additionally verifies each PR before merge. Production rollout and later balance expansion remain separately authorized operations under the runbook.

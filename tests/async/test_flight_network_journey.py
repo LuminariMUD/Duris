@@ -45,17 +45,6 @@ MASK = sum(1 << (mob - 47015) for mob, _, _ in STOPS)
 
 @contextmanager
 def authority(backend, runtime):
-    if backend == 'flatfile':
-        env = dict(PATH=os.environ.get('PATH', '/usr/bin:/bin'), ENVIRONMENT='local',
-                   REDIS='FALSE', CHAOS_MUD='FALSE', LISTEN_ADDRESS='127.0.0.1',
-                   DURIS_WEBSOCKET_LISTEN_ADDRESS='127.0.0.1')
-        if 'LD_LIBRARY_PATH' in os.environ:
-            env['LD_LIBRARY_PATH'] = os.environ['LD_LIBRARY_PATH']
-        state = runtime / 'state'
-        state.mkdir(mode=0o700)
-        env.update(PERSISTENCE_MODE='flatfile-primary', FLATFILE_STATE_DIR=str(state))
-        yield env, None
-        return
     with journey.mariadb_authority() as (env, sql):
         # The maintained importer reads only the copied fixture sources and explicit test DB.
         (runtime / 'scripts').mkdir()
@@ -281,8 +270,6 @@ def run(binary, backend, interruptions_only=False, reconnect_only=False, skip_in
                 stop()
                 if sql:
                     sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + GOD + "'")
-                else:
-                    journey.make_overlord(Path(env['FLATFILE_STATE_DIR']), GOD)
                 process = boot()
                 god = login(GOD, GOD_ACCOUNT)
                 player = login(PLAYER, ACCOUNT)

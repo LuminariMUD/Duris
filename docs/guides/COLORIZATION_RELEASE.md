@@ -39,13 +39,7 @@ unrelated chat does not consume a room step, foliage drifts coherently, and Stat
 The completed run passed **65 checks and 15 captured frames**; its
 [synthetic report](../data/colorization/live-journey.json) includes actual ANSI output.
 
-Run from a Linux development checkout with the documented build dependencies:
-
-```sh
-make -C src -j6 PERSISTENCE_BACKEND=flatfile
-python3 tests/async/test_flatfile_player_repository.py --build-inspector bin/tests/color-inspector
-python3 scripts/validate_colorization_journey.py --report bin/colorization-live-journey.json
-```
+This live journey used the removed flat-file backend and has not been converted to MariaDB yet; see #870.
 
 The script has no existing-server connection option. It creates and removes its own state, certificate,
 accounts and listeners, does not load `.env`, and reports only synthetic checks and rendered frames.

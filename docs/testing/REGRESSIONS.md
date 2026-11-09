@@ -5,8 +5,7 @@ what those tests do not cover. Every journey uses synthetic accounts, a private 
 temporary state, and never reads the checkout's `.env`. A MariaDB journey needs
 `TEST_DB_HOST`, `TEST_DB_USER` and `TEST_DB_PASSWORD` for a disposable loopback server
 (`tests/async/with_disposable_mariadb.sh CMD...` supplies one) and creates and drops its
-own schema. Flat-file journeys take a server built with
-`make -C src PERSISTENCE_BACKEND=flatfile DMS_BINARY=/absolute/path/dms_flat`.
+own schema.
 
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
@@ -472,13 +471,6 @@ SQL/Redis state. A SCAN-denying ACL causes post-boundary invalidation to fail an
 keeps SQL fenced. Repaired repeated cleanup preserves unrelated keys and never
 activates incomplete SQL. The command/worker path is qualified separately by the
 real runtime journey; the native harness holds those peripheral callbacks controlled.
-
-Run the real unsupported flat-file path with:
-`python3 tests/async/run_pwipe_runtime_journey.py --flatfile-rejection /absolute/path/to/flatfile/dms_new`.
-It reuses the private world/account/Overlord helpers and verifies immediate rejection,
-unchanged player snapshot and legacy files, preservation of a scheduled reboot,
-then normal save/logout/reconnect/second boot. Evidence is written under
-`bin/analysis/pwipe-runtime-flatfile.json`; no DB or checkout environment is used.
 
 The native reset journey seeds auction custody plus nested siege items with affects
 and descriptions. Actual startup population readers see those bodies before reset
@@ -1709,10 +1701,7 @@ private world; the MariaDB leg is registered in `make test-db`.
 ```sh
 python3 tests/async/test_falling_skills.py
 python3 tests/async/test_falling_world_exits.py
-python3 tests/async/run_falling_skills_journey.py /absolute/path/dms_flat
 python3 tests/async/test_lethal_floor.py
-python3 tests/async/run_lethal_floor_journey.py /absolute/path/dms_flat nonlethal
-python3 tests/async/run_lethal_floor_journey.py /absolute/path/dms_flat lethal
 ```
 
 `test_falling_policy.py` pins the arithmetic, the scaled impact term at speeds 31, 43, 90
@@ -1824,7 +1813,6 @@ disposable database helper.
 
 ```sh
 make -C src -j12 CC='ccache g++' PERSISTENCE_BACKEND=mariadb
-make -C src -j12 CC='ccache g++' PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/server/dms_flatfile"
 make -C areas/src -j8
 mkdir -p bin/tests
 fixture=$(mktemp -d "$PWD/bin/tests/roaming-world-XXXXXX")
@@ -1832,9 +1820,10 @@ cp -a areas "$fixture/"
 mkdir -p "$fixture/bin/areas"
 ln -s "$PWD/bin/areas/tools" "$fixture/bin/areas/tools"
 (cd "$fixture/areas" && ./m_slow)
-python3 tests/async/test_generated_npc_journey.py bin/server/dms_flatfile file "$fixture/areas"
 bash tests/async/with_disposable_mariadb.sh \
-  python3 tests/async/test_generated_npc_journey.py bin/server/dms_new redis "$fixture/areas"
+  python3 tests/async/test_generated_npc_journey.py --server bin/server/dms_new --full-world "$fixture/areas"
+bash tests/async/with_disposable_mariadb.sh \
+  python3 tests/async/test_generated_npc_journey.py --server bin/server/dms_new --mode redis --full-world "$fixture/areas"
 ```
 
 The isolated runs counted 71 fixed targets in 71 distinct rooms on each backend.
@@ -2209,7 +2198,6 @@ finder while retaining the actual killer's room for restrictions and zone reward
 ```sh
 python3 tests/async/test_random_drop_owner_message.py
 python3 tests/async/test_random_equipment_golden.py
-python3 tests/async/run_pet_random_drop_journey.py /absolute/path/to/flatfile/server
 ```
 
 The message test checks death-path wiring and message recipients. The golden harness
@@ -2472,7 +2460,6 @@ wrong: `die_follower` can extract the next NPC, a summoned follower, during the 
 
 ```sh
 python3 tests/async/test_zone_purge_lifetime.py
-python3 tests/async/run_zone_purge_journey.py /absolute/path/dms_flat
 ```
 
 The test compiles the production `zone_purge` and `die_follower` under ASan/UBSan. Its

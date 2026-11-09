@@ -203,8 +203,6 @@ def run(binary, backend):
                 stop()
                 if sql:
                     sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + STAFF + "'")
-                else:
-                    journey.make_overlord(Path(env["FLATFILE_STATE_DIR"]), STAFF)
                     # Identify the synthetic admitted body's uncompressed snapshot.
                     # Its ordinary live saves are allowed; every refused body's bytes
                     # and every account record must stay unchanged during denials.
@@ -343,6 +341,6 @@ def run(binary, backend):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", type=Path, required=True)
-    parser.add_argument("--backend", choices=("mariadb", "flatfile"), required=True)
+    parser.add_argument("--backend", choices=("mariadb",), required=True)
     args = parser.parse_args()
     run(args.server.resolve(strict=True), args.backend)

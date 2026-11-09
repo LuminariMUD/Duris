@@ -33,7 +33,7 @@ def run(binary, output, areas=None):
             (runtime / 'areas').symlink_to(areas, target_is_directory=True)
         (runtime / 'help').symlink_to(ROOT / 'help', target_is_directory=True)
         plain, tls, websocket = journey.available_ports()
-        with authority('flatfile', runtime) as (environment, _):
+        with authority('mariadb', runtime) as (environment, _):
             environment.update(CRITICAL_COMMAND_JOURNAL_DIR=str(critical), DURIS_TLS_PORT=str(tls),
                                DURIS_WEBSOCKET_PORT=str(websocket))
             try:

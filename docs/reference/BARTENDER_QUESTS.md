@@ -611,8 +611,7 @@ accounts/databases/state roots, never the repository `.env` or long-running
 local stack. Its gameplay cases exercise real grants, ordinary outbound/return
 travel, ASK/KILL completion, and partial progress across restart. Its recovery
 case exercises paid maps, invalidation, relogin/restart, and durable free
-replacement. Test-only `DURIS_WORLD_QUEST_BACKEND` selects `mariadb`, `flatfile`,
-or `both` (default). `DURIS_WORLD_QUEST_JOURNEY` selects `recovery`, `gameplay`,
+replacement. `DURIS_WORLD_QUEST_JOURNEY` selects `recovery`, `gameplay`,
 `both` (default), or `audit` for the loaded-world audit/observer timing pass.
 `reported` checks the Quietus, Bloodstone and Tharnadia purchase/abandon/regrant
 reports, consent/sharing/maps with locked exits, restart state for both players,
@@ -621,19 +620,18 @@ only in that run's private properties copy.
 `history` constructs yesterday-only completion history and an aged Tharnadia
 task, then checks real abandonment/regrant and restart. Its disposable MariaDB
 session clock constructs old-query-day/new-publication-day results and is
-restored before the completion marker; flatfile supplies the equivalent
-past-day-history control. `history-failure-restart` rejects history writes,
+restored before the completion marker. `history-failure-restart` rejects history writes,
 credits an unrelated wallet change, and checks recovery through restart and retry.
 Focused gameplay cases can be selected with `DURIS_WORLD_QUEST_GAMEPLAY_CASES=30:1`;
 the full matrix is `11:2,11:1,29:1,29:2,30:1` (KILL=1, ASK=2). For example:
 
 ```sh
-DURIS_WORLD_QUEST_BACKEND=flatfile DURIS_WORLD_QUEST_JOURNEY=gameplay \
+DURIS_WORLD_QUEST_JOURNEY=gameplay \
   DURIS_WORLD_QUEST_GAMEPLAY_CASES=30:1 \
   python3 tests/async/run_world_quest_dual_backend.py
 ```
 
-That focused run qualifies one backend/case, not the full default matrix.
+That focused run qualifies one case, not the full default matrix.
 The gameplay debugger sets the disposable Chaos actor's requested level and
 selects an otherwise eligible zone/prototype with ordinary outward/return paths
 for completion testing. Production selection still validates the chosen target.

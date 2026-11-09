@@ -115,17 +115,10 @@ busy suppression, cancellation, partial bundles, pure/mixed/sparse/random spells
 and defensive random-equipment parity. The real mana arithmetic is used at the
 debit boundary; worker, repository, and game-bridge persistence tests live in #292.
 
-The explicit live test is:
+This live journey used the removed flat-file backend and has not been converted to MariaDB yet; see #870.
+When it ran, it did this:
 
-```sh
-make -C src PERSISTENCE_BACKEND=flatfile
-python3 tests/async/test_flatfile_player_repository.py \
-  --build-inspector bin/tests/coin-death-inspector
-python3 tests/async/run_weapon_actions_journey.py \
-  --binary bin/server/dms_new --output bin/weapon-actions-journey.json
-```
-
-It boots isolated flatfile authorities and a miniature world, creates real
+It booted isolated flat-file authorities and a miniature world, creates real
 accounts/characters over Telnet, equips an NPC with a synthetic magic-missile
 weapon, and exercises actual combat, spell damage, warning output, and flee.
 The fixture uses the ordinary `value[7]=1` selection rate; it adds no production

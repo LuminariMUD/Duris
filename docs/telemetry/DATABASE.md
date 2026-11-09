@@ -222,7 +222,6 @@ python3 tests/async/test_telemetry_migration_tls.py
 python3 scripts/validate_data_lifecycle.py
 python3 scripts/validate_runtime_compatibility.py
 make -C src -j4
-make -C src -j4 PERSISTENCE_BACKEND=flatfile
 ```
 
 `make test-db` runs the repository suite as its `telemetry_repository` leg on a
