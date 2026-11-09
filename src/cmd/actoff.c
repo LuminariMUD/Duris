@@ -4795,9 +4795,21 @@ void do_dragon_roar(P_char ch, char * /*argument*/, int /*cmd*/)
 		}
 		else
 		{
-			for (victim = world[ch->in_room].people; victim;
+			// A flee relinks the fleer into its new room and can move or remove anyone,
+			// so roar at who is here now and recheck each of them when it is their turn.
+			const int roar_room = ch->in_room;
+			const uint64_t roarer_id = ch->runtime_id;
+			std::vector<uint64_t> target_ids;
+			for (victim = world[roar_room].people; victim;
 			     victim = victim->next_in_room)
+				target_ids.push_back(victim->runtime_id);
+
+			for (uint64_t target_id : target_ids)
 			{
+				victim = find_character_by_runtime_id(target_id);
+				if (!IS_ALIVE(victim) || victim->in_room != roar_room)
+					continue;
+
 				if (is_in_dragoon_group(ch, victim) || victim == mount)
 				{
 					if (!affected_by_spell(victim, SKILL_WAR_CRY))
@@ -4864,6 +4876,10 @@ void do_dragon_roar(P_char ch, char * /*argument*/, int /*cmd*/)
 									"The &+Gdr&+Lag&+Gon&n's &+RROAR&n fills you with &+LDREAD&n!\n",
 									victim);
 								do_flee(victim, 0, 0);
+								if (find_character_by_runtime_id(
+									    roarer_id) != ch ||
+								    !IS_ALIVE(ch))
+									return;
 							}
 						}
 					}
