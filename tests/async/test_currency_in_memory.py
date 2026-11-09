@@ -9,11 +9,23 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from _paths import ROOT, rel
+from _paths import ROOT, extract_function, rel
 
 
 HARNESS = r'''
 #include "currency_test_support.h"
+#include "core/prototypes.h"
+
+static std::vector<int> pickup_credits;
+bool insert_money_pickup(int pid, int amount)
+{
+    assert(pid == 44);
+    pickup_credits.push_back(amount);
+    return true;
+}
+void send_to_char(const char *, P_char) {}
+
+// LEGACY_MONEY_HELPERS
 
 int main()
 {
@@ -211,6 +223,56 @@ int main()
     assert(!currency_transaction_publish_world_quest(&alice.ch,80));
     assert(currency_transaction_wallet_busy(&twin.ch));
     currency_transaction_release_world_quest(GET_PID(&twin.ch));
+
+    // The legacy helpers must return the applied result, not just admission.
+    currency_transaction_reset_for_tests();
+    online[0] = &alice.ch;
+    GET_COPPER(&alice.ch)=100; GET_SILVER(&alice.ch)=0;
+    GET_GOLD(&alice.ch)=0; GET_PLATINUM(&alice.ch)=0;
+    assert(currency_transaction_reserve_trade(&alice.ch, -80));
+    auto helper_revision = alice.pc.wallet_revision;
+    assert(SUB_MONEY(&alice.ch, 30, 0) == -1);
+    assert(GET_MONEY(&alice.ch) == 100 && alice.pc.wallet_revision == helper_revision);
+    assert(SUB_MONEY(&alice.ch, 20, 0) == 0 && GET_MONEY(&alice.ch) == 80);
+    currency_transaction_release_trade(44);
+
+    // Bank change would overflow the purse, so admission succeeds but payment fails.
+    GET_COPPER(&alice.ch)=INT_MAX; GET_SILVER(&alice.ch)=0;
+    GET_BALANCE_COPPER(&alice.ch)=0; GET_BALANCE_SILVER(&alice.ch)=1;
+    GET_BALANCE_GOLD(&alice.ch)=0; GET_BALANCE_PLATINUM(&alice.ch)=0;
+    helper_revision = alice.pc.wallet_revision;
+    assert(SUB_BALANCE(&alice.ch, 1, 0) == -1);
+    assert(GET_BALANCE_SILVER(&alice.ch) == 1 && GET_COPPER(&alice.ch) == INT_MAX);
+    assert(alice.pc.wallet_revision == helper_revision);
+    GET_COPPER(&alice.ch)=0;
+    assert(SUB_BALANCE(&alice.ch, 1, 0) == 0);
+    assert(GET_BALANCE_SILVER(&alice.ch) == 0 && GET_COPPER(&alice.ch) == 9);
+    assert(SUB_BALANCE(nullptr, 1, 0) == -1);
+    char_data npc{}; npc.specials.act=ACT_ISNPC;
+    assert(SUB_BALANCE(&npc, 1, 0) == -1);
+
+    // A refused reward takes the existing pickup-credit path exactly once.
+    GET_COPPER(&alice.ch)=0; GET_PLATINUM(&alice.ch)=INT_MAX-1;
+    assert(currency_transaction_reserve_trade(&alice.ch, 1000));
+    helper_revision = alice.pc.wallet_revision;
+    ADD_MONEY(&alice.ch, 1000);
+    assert(GET_PLATINUM(&alice.ch) == INT_MAX-1 && alice.pc.wallet_revision == helper_revision);
+    assert((pickup_credits == std::vector<int>{1000}));
+    currency_transaction_release_trade(44);
+    ADD_MONEY(&alice.ch, 1000);
+    assert(GET_PLATINUM(&alice.ch) == INT_MAX && pickup_credits.size() == 1);
+
+    // Refused submission also leaves both balances alone and retains a credit.
+    GET_COPPER(&alice.ch)=100; GET_PLATINUM(&alice.ch)=0;
+    assert(currency_transaction_reserve_chest(&alice.ch));
+    helper_revision = alice.pc.wallet_revision;
+    assert(SUB_MONEY(&alice.ch, 1, 0) == -1);
+    GET_BALANCE_COPPER(&alice.ch)=10;
+    assert(SUB_BALANCE(&alice.ch, 1, 0) == -1);
+    ADD_MONEY(&alice.ch, 7);
+    assert(alice.pc.wallet_revision == helper_revision && GET_BALANCE_COPPER(&alice.ch) == 10);
+    assert((pickup_credits == std::vector<int>{1000, 7}));
+    currency_transaction_release_chest(44);
     return 0;
 }
 '''
@@ -220,11 +282,17 @@ int main()
 with tempfile.TemporaryDirectory(prefix="currency-in-memory-", dir=ROOT / "bin/tests") as temporary:
     source = Path(temporary) / "harness.cpp"
     binary = Path(temporary) / "harness"
-    source.write_text(HARNESS)
+    helpers = "\n".join(extract_function("utility.c", signature) for signature in (
+        "static void currency_adjustment_committed(P_char ch, bool committed,\n"
+        "\t\t\t\t\t  const currency_command_result & /*result*/",
+        "void ADD_MONEY(", "int SUB_MONEY(", "int SUB_BALANCE(",
+    ))
+    source.write_text(HARNESS.replace("// LEGACY_MONEY_HELPERS", helpers))
     subprocess.run(
         [
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
             "-Wno-missing-field-initializers", "-g", "-O1", "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
             "-ffunction-sections", "-fdata-sections", "-Isrc", "-Itests/async", "-I/usr/include/mysql",
             str(source), rel("currency_transaction.c"), rel("currency_command.c"),
             rel("critical_command.c"), "-Wl,--gc-sections", "-lcrypto", "-o", str(binary),
@@ -239,3 +307,4 @@ print("[PASS] a deposit saves the player before the bank credit; a withdrawal de
 print("[PASS] the bank of every online character of the account and side changes together")
 
 print("[PASS] pending trades reserve spending and coin capacity without delaying ordinary completions")
+print("[PASS] legacy payments require application and refused credits retain their pickup")

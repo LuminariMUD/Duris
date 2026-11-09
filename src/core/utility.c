@@ -2277,13 +2277,14 @@ void ADD_MONEY(P_char ch, int amount)
 		return;
 	if (IS_PC(ch) && GET_PID(ch) > 0)
 	{
+		const uint64_t revision = ch->only.pc->wallet_revision;
 		if (!currency_transaction_submit_wallet_value(
 			    ch, amount, currency_reason_type::wallet_reward, 0,
 			    critical_source_site::command, critical_deadline_class::interactive,
-			    currency_adjustment_committed, nullptr, 0))
+			    currency_adjustment_committed, nullptr, 0) ||
+		    ch->only.pc->wallet_revision == revision)
 		{
-			logit(LOG_WIZ, "ADD_MONEY: wallet transaction submission failed for pid %d",
-			      GET_PID(ch));
+			logit(LOG_WIZ, "ADD_MONEY: wallet credit failed for pid %d", GET_PID(ch));
 			if (insert_money_pickup(GET_PID(ch), amount))
 				send_to_char(
 					"Your coin credit is waiting at the auction house.\r\n",
@@ -2368,12 +2369,14 @@ static void currency_adjustment_committed(P_char ch, bool committed,
 
 int SUB_BALANCE(P_char ch, int amount, int mode)
 {
-	if (!ch || amount <= 0 || mode != 0)
+	if (!ch || IS_NPC(ch) || !ch->only.pc || GET_PID(ch) <= 0 || amount <= 0 || mode != 0)
 		return -1;
+	const uint64_t revision = ch->only.pc->wallet_revision;
 	if (!currency_transaction_submit_bank_payment(
 		    ch, amount, currency_reason_type::bank_payment, 0,
 		    critical_source_site::command, critical_deadline_class::interactive,
-		    currency_adjustment_committed, nullptr, 0))
+		    currency_adjustment_committed, nullptr, 0) ||
+	    ch->only.pc->wallet_revision == revision)
 		return -1;
 	return 0;
 }
@@ -2389,12 +2392,17 @@ int SUB_MONEY(P_char ch, int amount, int mode)
 	if (mode != 0)
 		return -1;
 	if (IS_PC(ch) && GET_PID(ch) > 0)
-		return currency_transaction_submit_wallet_value(
-			       ch, -(int64_t)amount, currency_reason_type::wallet_spend, 0,
-			       critical_source_site::command, critical_deadline_class::interactive,
-			       currency_adjustment_committed, nullptr, 0) ?
-			       0 :
-			       -1;
+	{
+		// The wallet completes synchronously. Admission alone can still refuse a spend.
+		const uint64_t revision = ch->only.pc->wallet_revision;
+		if (!currency_transaction_submit_wallet_value(
+			    ch, -(int64_t)amount, currency_reason_type::wallet_spend, 0,
+			    critical_source_site::command, critical_deadline_class::interactive,
+			    currency_adjustment_committed, nullptr, 0) ||
+		    ch->only.pc->wallet_revision == revision)
+			return -1;
+		return 0;
+	}
 
 	if (amount > GET_COPPER(ch))
 	{
