@@ -735,6 +735,12 @@ artifacts, each one-of-a-kind. They are unique and only one of each can be
 found in the game, EVER. This is only a list of the current artifacts, not
 including uniques or iouns. 
 
+You may hold one major artifact, one unique and one ioun at a time. If you
+hold two or more of any one type, the periodic artifact check makes all
+artifacts you wear or carry fall to the ground, including other types.
+Inventory counts as well as equipment, and even a brief overlap can trigger
+the check. The forced drop causes no damage or loss of remaining feeding time.
+
 &+LAvernus the life stealer&n
 ---------------------------------------------------------------------------
 &+RKnown Special Power(s)&n: 
@@ -6073,6 +6079,12 @@ means killing someone of the opposite racewar in order to gain a full frag.
 You must reach one full frag to sate your artifact within a number of days
 which varies between each item.  If you fail to feed, your artifact will
 be removed and placed back into the game where it loads, if any.
+
+You may hold one major artifact, one unique and one ioun at a time. If you
+hold two or more of any one type, the periodic artifact check makes all
+artifacts you wear or carry fall to the ground, including other types.
+Inventory counts as well as equipment, and even a brief overlap can trigger
+the check. The forced drop causes no damage or loss of remaining feeding time.
 ===========================================================================
 See also: ARTIFACT, UNIQUE, IOUN
 
@@ -19205,6 +19217,12 @@ unique is one of a kind and therefore artifacts by nature. No unique is
 alike and they all bestow different properties.
 
 For a list of uniques, type "arti unique".
+
+You may hold one major artifact, one unique and one ioun at a time. If you
+hold two or more of any one type, the periodic artifact check makes all
+artifacts you wear or carry fall to the ground, including other types.
+Inventory counts as well as equipment, and even a brief overlap can trigger
+the check. The forced drop causes no damage or loss of remaining feeding time.
 ===========================================================================
 See also: ARTIFACT, IOUN, FEEDING
 
@@ -28586,3 +28604,95 @@ Use race innates <race> or class innates <class or specialization> to view
 the current values. These modifiers are separate from your damroll limit.
 ===========================================================================
 See also: RACE, CLASS, INNATE, MULTICLASS
+#
+Dauntless
+Dauntless is a passive Barbarian racial innate gained at level 41.
+It grants immunity to fear effects that check fear immunity, including
+the fear part of Dragon Roar and Gaze. It needs no activation, mana or
+cooldown. It does not prevent unrelated forced movement.
+Use 'race innates barbarian' to see the racial unlocks.
+See also: Barbarian, Dragon Roar, Gaze.
+#
+Spell Frost Magus
+Read 'help frost magus' for the specialization's changed spell circles
+and 'help ethermancer skills' for its base grants. Use 'spells frost magus'
+to browse the class catalog and 'spells info <spell>' for spell mechanics.
+Listed spells still need to be learned and prepared.
+#
+Sorc Spells
+Read 'help sorcerer skills' for the base spell circles and skill levels.
+Your specialization's help lists additions and removals. Use 'spells'
+for your own spells and 'spells info <spell>' for mechanics.
+See also: Sorcerer, Sorcerer Spells.
+#
+Mix Poison / Mix Poisons
+The command is 'mixpoison', without a space. Use 'mixpoison list' to see
+recipes available at your level and mix skill. With no argument it makes
+three doses of the first eligible recipe whose ingredients you carry,
+using one poison vial and the ingredients. Apply a dose with
+'apply <vial> <weapon>'. Read 'help mixpoison' for recipe requirements.
+#
+Rapier Dirk
+Read 'help rapier and dirk' for the passive sword-and-dirk innate.
+It requires a sword in the primary hand and a dirk in the secondary hand;
+a sword alone does not qualify. There is no separate activation command.
+#
+Namesets
+Read 'help named equipment sets' for matching equipment, bonuses,
+spell thresholds and cooldowns. Use 'namedreport' to see supported zones
+and the number of pieces needed for each spell.
+#
+Race Size
+Ordinary starting races have these base sizes:
+Small: Halfling, Gnome, Goblin, Kobold.
+Medium: Human, Grey Elf, Mountain Dwarf, Githzerai, Drow, Duergar,
+        Orc, Githyanki, Thri-kreen, Tiefling.
+Large: Barbarian, Centaur, Troll, Drider.
+Huge: Firbolg, Ogre, Minotaur.
+
+Size-changing effects have their own limits. Huge or larger player
+base size lets a two-handed weapon cost one hand; Enlarge, Reduce and
+Titan Form do not change that base-size allowance.
+See also: Size, Enlarge, Reduce, Wield.
+#
+Drow Shrug
+Shrugging is racial spell resistance, separate from the 'shrug' social.
+Your race and level determine its base strength; spell penetration and
+spell-specific defenses also matter. Use 'innate info magic resistance'
+for your current chance and 'race innates drow elf' for the racial list.
+See also: Drow Elf, Shrug, Magic Resistance.
+#
+Max Dex / Max_Dex
+Maximum Dexterity is the cap on your effective Dexterity, separate from
+your current Dexterity. An equipment maximum-Dexterity bonus raises both
+the current attribute and its cap. Epic Dexterity has its own training rules.
+Read 'help dexterity' and 'help epic dexterity' for the related attributes.
+#
+Attacks
+Your class, level, skills, weapons and active effects determine your
+ordinary attacks. High Dexterity can grant extra attacks, subject to
+weapon weight and Strength; a bonus is a chance, not a guaranteed swing.
+Monks have separate equipment-weight rules described by
+'help martial arts'. Attack count, attack speed and damage are separate.
+See also: Dexterity, Dual Wield, Haste, Attack Damage Modifiers.
+#
+Pantherskin
+Pantherskin is an object keyword on the black pantherskin robes from
+the Savannah of Broken Trusts. It is equipment, not an ability command.
+Use 'look pantherskin' to inspect a copy you can see, and Identify to
+learn the properties of the actual item; saved or modified copies can
+differ from newly loaded equipment.
+See also: Equipment, Identify, Get.
+#
+Tent
+You do not need a tent object to use 'camp'. Choose suitable dry terrain,
+finish fighting, then remain in place until camping completes. Movement,
+combat or going link-dead interrupts camping. 'camp abort' cancels it.
+The tents placed in zones are individual objects and scenery; inspect
+the one near you with 'look tent'. Read 'help camp' for leaving the game.
+#
+Darkfall
+Darkfall is Darkfall Forest, a wilderness zone. Grellinar, the high ranger,
+is an Epic Agility teacher there. Epic training has its own level,
+eligibility and payment rules; finding a teacher does not grant a skill.
+Read 'help epic' and 'help epic agility' before seeking that training.

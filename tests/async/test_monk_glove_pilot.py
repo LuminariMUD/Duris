@@ -51,13 +51,14 @@ if __name__ == "__main__":
             f"assert(before == {baselines[str(vnum)]['ivalue']} && after > before);",
             f'std::printf("{vnum}: %d -> %d\\n", before, after); }}']
     code += "int main() {\n" + "\n".join(statements) + "\n}\n"
-    code = code.replace("// FUNCTIONS", extract_function("tradeskill.c", "int itemvalue(P_obj obj)"))
+    code = code.replace("// FUNCTIONS", "")
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="monk-pilot-value-", dir=ROOT / "bin/tests") as tmp:
         source = Path(tmp) / "pilot.cpp"; binary = source.with_suffix("")
         source.write_text(code)
         subprocess.run(["g++", "-std=c++20", "-g", "-O1", "-fsanitize=address,undefined",
-            "-fno-omit-frame-pointer", "-Isrc", str(source), str(HARNESS_STUBS), "-o", str(binary)],
+            "-fno-omit-frame-pointer", "-Isrc", str(source), str(HARNESS_STUBS),
+            "src/item/item_value.c", "src/item/item_value_runtime.c", "-o", str(binary)],
             cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True, env=dict(os.environ,
             ASAN_OPTIONS="detect_leaks=1:halt_on_error=1", UBSAN_OPTIONS="halt_on_error=1"))

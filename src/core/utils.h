@@ -1436,7 +1436,7 @@ char *CRYPT2(char *passwd, char *name);
 	 (GET_C_STR(ch) < 181) ? 120 : \
 				 130)
 
-#define ITEM_LOAD_CHECK(item, ival, zone_percent) item_load_check(item, ival, zone_percent)
-bool item_load_check(P_obj item, int ival, int zone_percent);
+#define ITEM_LOAD_CHECK(item, zone_percent) item_load_check(item, zone_percent)
+bool item_load_check(P_obj item, int zone_percent);
 
 #endif /* _DURIS_UTILS_H_ */
