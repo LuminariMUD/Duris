@@ -1398,6 +1398,10 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 					paid_receipt.corpse_revision == tag.wallet_revision + 1;
 			}
 		}
+		else if (valid && !strcmp(row[1], "7"))
+			// The hash binds the actor, exact claim amount and wallet revision. A new
+			// money claim writes that credit with its inbox receipt atomically.
+			valid = tag.payment > 0 && !tag.has_cargo_effect;
 		else if (valid)
 		{
 			divine_trade_result result{};

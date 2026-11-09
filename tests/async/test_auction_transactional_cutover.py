@@ -264,8 +264,13 @@ int main() {
             "claim_operation_id", "claimed_at=CURRENT_TIMESTAMP(6)",
         ):
             self.assertIn(token, repository)
-        # The wallet is memory's: the repository reports what it charged or paid.
-        for token in ("UPDATE player_data", "account_banks", "currency_ledger"):
+        # Money claims commit the credit with pickup consumption. Listing/bid
+        # escrow retains its ordinary live-wallet boundary.
+        money_claim = section(repository, "else if (payload.action == auction_action::claim_money)",
+                              "else if (payload.action == auction_action::claim_item)")
+        self.assertIn("UPDATE player_data", money_claim)
+        self.assertNotIn("UPDATE player_data", repository.replace(money_claim, ""))
+        for token in ("account_banks", "currency_ledger"):
             self.assertNotIn(token, repository)
         self.assertIn("wallet_value_delta", repository)
         auction_branch = generic[generic.index("if (auction_command)"):]
