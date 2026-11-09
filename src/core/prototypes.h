@@ -2620,6 +2620,7 @@ void spell_cure_serious(int, P_char, char *, int, P_char, P_obj);
 void spell_curse(int, P_char, char *, int, P_char, P_obj);
 void spell_cyclone(int, P_char, char *, int, P_char, P_obj);
 void spell_doom_blade(int, P_char, char *, int, P_char, P_obj);
+void spell_holy_blade(int, P_char, char *, int, P_char, P_obj);
 void spell_darkness(int, P_char, char *, int, P_char, P_obj);
 void spell_detect_evil(int, P_char, char *, int, P_char, P_obj);
 void spell_detect_good(int, P_char, char *, int, P_char, P_obj);
