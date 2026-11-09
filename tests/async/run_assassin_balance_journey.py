@@ -121,7 +121,8 @@ def prepare_binaries():
     # verified builder with each immutable source root, keeping the real clock.
     for header, names in {
         "src/core/defines.h": ("CLASS_WARRIOR", "CLASS_ROGUE", "CLASS_CLERIC", "BIT_1", "BIT_2", "BIT_3", "BIT_5", "BIT_6", "BIT_9", "BIT_10", "BIT_13"),
-        "src/magic/spells.h": ("TAG_MEMORIZE", "SONG_DRIFTING", "SPELL_REMOVE_POISON", "SPELL_SLOW_POISON",
+        "src/magic/spells.h": ("TAG_MEMORIZE", "FIRST_SECONDARY_SKILL", "FIRST_AURA", "LAST_AURA",
+                                "FIRST_INSTRUMENT", "LAST_INSTRUMENT", "FIRST_SONG", "SONG_DRIFTING", "SPELL_REMOVE_POISON", "SPELL_SLOW_POISON",
                                 "SKILL_BACKSTAB", "SKILL_1H_PIERCING", "SKILL_APPLY_POISON", "SKILL_MIXPOISON",
                                 "SKILL_CONTROL_FLEE", "SKILL_CRITICAL_STAB", "SKILL_RANGE_WEAPONS", "SKILL_DARTS",
                                 "SKILL_DUAL_WIELD", "SKILL_AWARENESS"),
@@ -206,7 +207,9 @@ def run_revised_scenarios(staff, assassin, victim, sql):
     def inspect():
         victim.send("save")
         victim.expect("Saving Venomtarget.", timeout=30)
-        first = spell_id("SONG_DRIFTING") + 1
+        # Persisted FIRST_POISON..LAST_POISON IDs in spells.h. SONG_DRIFTING
+        # is a macro expression, not an input for the numeric spell-id reader.
+        first = 1536
         return sql("SELECT CONCAT('affect ',pid,' ',type,' ',level,' ',modifier) FROM player_affects "
                    "WHERE type BETWEEN " + str(first) + " AND " + str(first + 6) + " ORDER BY pid,id;"
                    "SELECT CONCAT('coating ',pid,' ',value4) FROM player_items WHERE vnum=22810 ORDER BY pid,id")
@@ -661,8 +664,9 @@ def main():
         result[variant] = run_variant(variant, binary, options.scenarios_only)
     if selected == "all":
         assert len(result["original"]["openings"]) == len(result["cleansed"]["openings"]) == 12
-    path = MANIFEST.with_name("results-scenarios.json" if options.scenarios_only else
-                              "results-matrix.json")
+    filename = "results-scenarios.json" if options.scenarios_only else (
+        "results-matrix.json" if selected == "all" else "results-" + selected + "-matrix.json")
+    path = MANIFEST.with_name(filename)
     path.write_text(json.dumps(result, indent=2) + "\n")
     print("Comparative results:", path, flush=True)
 

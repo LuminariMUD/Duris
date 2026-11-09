@@ -348,13 +348,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("compatibility_server", type=Path, help="current MariaDB build with the pinned 115-row catalog")
     parser.add_argument("--resume", type=Path, help="resume a stopped attempt's saved SQL fixture")
+    parser.add_argument("--allow-binary-change", action="store_true",
+                        help="explicitly replay a saved fixture after a native rebuild; retain prior proof hashes")
     options = parser.parse_args()
+    if options.allow_binary_change and not options.resume:
+        parser.error("--allow-binary-change requires --resume")
     compat = options.compatibility_server.resolve()
     assert compat.is_file(), compat
     if not os.environ.get("TEST_DB_HOST"):
         wrapper = journey.ROOT / "tests/async/with_disposable_mariadb.sh"
         os.execv(wrapper, [str(wrapper), sys.executable, str(Path(__file__).resolve()), str(compat),
-                          *(["--resume", str(options.resume.resolve())] if options.resume else [])])
+                          *(["--resume", str(options.resume.resolve())] if options.resume else []),
+                          *(["--allow-binary-change"] if options.allow_binary_change else [])])
     runtime = options.resume.resolve() if options.resume else Path(tempfile.mkdtemp(
         prefix="named-set-mariadb-sequence-", dir=journey.ROOT / "bin/tests"))
     assert runtime.is_relative_to((journey.ROOT / "bin/tests").resolve())
@@ -374,8 +379,12 @@ def main():
                     "completed": []}
         if options.resume:
             previous = json.loads((runtime / "sequence.json").read_text())
-            assert previous["binary_sha256"] == evidence["binary_sha256"]
-            assert previous["compat_binary_sha256"] == evidence["compat_binary_sha256"]
+            if not options.allow_binary_change:
+                assert previous["binary_sha256"] == evidence["binary_sha256"]
+                assert previous["compat_binary_sha256"] == evidence["compat_binary_sha256"]
+            evidence["reused_from"] = {key: previous[key] for key in (
+                "binary_sha256", "compat_binary_sha256")}
+            evidence["reused_from"]["completed"] = list(previous["completed"])
             frozen = (runtime / "authority.sql").read_bytes()
             assert hashlib.sha256(frozen).hexdigest() == previous["authority_sha256"]
             sql(frozen.decode())
