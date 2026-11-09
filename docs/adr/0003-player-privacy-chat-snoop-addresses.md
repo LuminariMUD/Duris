@@ -90,8 +90,7 @@ Retention for these was pending with the rest of the lifecycle policy (finding P
     snoop the command started: a stop, a move to another target, a quit, the snooper's
     link closing or the snooper leaving the game, and the target switching or coming back
     from a shapechange; when the target leaves, each snooper is told why. `snoop <name> silent <reason>` is level 62 only, and its target is told
-    nothing. Each start and end is a `wiz` row in `log_entries` (the flat-file backend
-    writes it to the wiz log), with "silently" and the reason on a silent start. The
+    nothing. Each start and end is a `wiz` row in `log_entries`, with "silently" and the reason on a silent start. The
     channel spell's shared sight uses the same mechanism and is neither told nor audited.
   - `recall <n> <player>` by an immortal answers "Disabled by Zusuk October 9 2026".
   - The `address_retention` job (below) moves the live logs into `logs/old-logs/<date>/`
@@ -112,8 +111,6 @@ Retention for these was pending with the rest of the lifecycle policy (finding P
     `test_hostname_lookup_cancel.py` closes a connection during its lookup;
     `test_log_retention.py` covers the log files; `run_address_retention_journey.py`
     (in `make test-db`) logs in on MariaDB and runs the prune.
-  - The flat-file backend, which no deployment uses, keeps its account address lists and
-    IP activity files without an age limit; only what it shows is limited.
 - **Docs updated with the code:** the in-game `snoop` help entries, the `recall` entry and
   the privacy lines of the `COMMUNICATIONS UTILITIES CHANNELS` entry in
   `lib/information/help_index`; the personal data inventory in `SECURITY-COMPLIANCE.md`;

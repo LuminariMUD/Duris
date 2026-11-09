@@ -65,9 +65,7 @@ treated as an automatic migration of stored state.
 ## Storage and failure boundary
 
 The runtime serializes completions, credit, names, observations, and daily state
-as one service-state document. Flatfile atomically replaces
-`<FLATFILE_ROOT>/domains/zone-story-quests.state` with a checked envelope. SQL
-uses `zone_story_quest_state` from migration `0026_zone_story_quest_state`; saving
+as one service-state document. MariaDB uses `zone_story_quest_state` from migration `0026_zone_story_quest_state`; saving
 enqueues a whole-state upsert. This enqueue does not acknowledge a database commit.
 Immediate save/enqueue rejection restores the previous in-memory state; later
 SQL writer failures are logged asynchronously without an in-memory rollback.

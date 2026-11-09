@@ -1,6 +1,6 @@
 # Spells command browser
 
-Status: implemented and locally qualified on MySQL and flat-file backends.
+Status: implemented and locally qualified on MariaDB.
 Date: 2026-11-02
 Delivery: one focused spells-browser change, followed by the class browser.
 
@@ -208,7 +208,7 @@ handler readable; preserve unrelated guild, help, and casting behavior.
   entry or book marker is never presented as proof of readiness to cast.
 - [x] Spell info displays correct base/spec circles and losses of access,
   useful personal access, and the intended help. Verify redirects, missing help,
-  and unavailable help on both MySQL and flat-file backends.
+  and unavailable help on MariaDB.
 - [x] Public lookup excludes undefined/internal-only entries while retaining
   specialization-only player spells. Staff info can inspect defined unassigned
   spells from the global catalog with accurate availability labeling.
@@ -218,13 +218,13 @@ handler readable; preserve unrelated guild, help, and casting behavior.
   semantics, including fogged staff where applicable.
 - [x] Real-dispatcher journeys cover every command form, mortal/staff behavior,
   navigation, long output, colors, and paging using disposable authority on both
-  supported persistence backends.
+  MariaDB persistence.
 - [x] Both maintained Spells help topics describe the final interface. Relevant
   skills, race, class-help, spell-eligibility, and help-catalog regressions pass
   for affected paths.
 - [x] Run focused executable tests and isolated journeys,
   `./scripts/format.sh --check`, and `make -C src`. Build and qualify the affected
-  command/help paths on both MySQL and flat-file backends. Report unrun checks;
+  command/help paths on MariaDB. Report unrun checks;
   do not wait for hosted CI to finish or merge, and preserve other review
   requirements.
 
@@ -249,28 +249,3 @@ remain in their existing owners. Specialization catalogs read initialized
 effective grants, while personal views use the character-specific spell rules.
 The standalone Spells topic was added to both maintained help sources, and
 Godspells now documents the explicit staff forms.
-
-Validation completed successfully:
-
-- `make -C src -j4`
-- `make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY=/home/aiwithapex/projects/duris/bin/server/dms_spells_flatfile`
-- `python3 tests/async/test_spells_command.py` (both backend variants under
-  ASan/UBSan, plus the real flat-file help-unavailable path)
-- `python3 tests/async/run_spells_command_journey.py --backend flatfile --server bin/server/dms_spells_flatfile`
-- `tests/async/with_disposable_mariadb.sh python3 tests/async/run_spells_command_journey.py --backend mariadb --server bin/server/dms_new`
-- `python3 tests/async/test_skills_command.py`
-- `python3 tests/async/test_race_command.py`
-- `python3 tests/async/test_memorized_spell_eligibility.py`
-- `python3 tests/async/test_class_helpfiles_contract.py`
-- `python3 tests/async/test_help_cache.py`
-- `python3 tests/async/test_flatfile_help_catalog.py`
-- `python3 scripts/format_help_topics.py`
-- `./scripts/format.sh --check` and `git diff --check`
-
-The real-dispatcher journeys use disposable authority and copied help fixtures
-for redirect/missing-help checks. They cover every command form, initialized
-catalogs, personal and staff access, NPC collisions, case-insensitive alphabetical
-order, colors, 79-column generated output and paging. The class plan's
-`spells <class or specialization>` and `spells info <spell name>` navigation
-matches the delivered interface. No live server, live database or environment
-file was changed.

@@ -8,7 +8,7 @@ references, palettes, or typed recipe parameters, so these live in one JSON file
 Set `DURIS_OUTPUT_PROFILES_FILE` to an absolute path to that file. Startup reads it
 once, after numeric properties and before gameplay. An absent/empty setting leaves
 the registry unconfigured. A bad initial file produces one startup diagnostic and
-Preserve fallback. Both MariaDB and flatfile builds support the same registry.
+Preserve fallback. The MariaDB server supports this registry.
 
 The [versioned sample](../examples/output-profiles-v1.json) demonstrates all six
 recipe kinds, an explicit word dictionary, base/role colors, and channel defaults.

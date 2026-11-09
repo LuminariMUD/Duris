@@ -150,8 +150,8 @@ from the physical tree (for example, items owned by a corpse); it must not be
 replaced with room ownership. Recovery validates the physical tree and the
 corresponding custody entries, materializes the objects, then atomically hydrates
 the runtime ledger. A hydration conflict rolls back newly created objects.
-This path does not call SQL room reconciliation, including in flatfile-primary
-or no-MySQL builds. Redis retains its room-only capture and SQL reconciliation
+This path does not call SQL room reconciliation. Redis retains its room-only
+capture and SQL reconciliation
 rules. Copyover remains an ABI-local process handoff, unlike the portable Redis
 wire format; its custody entries are not a replacement for durable persistence.
 Mob inventory encoding is unchanged. Invalid or truncated object trees or
@@ -176,7 +176,7 @@ UIDs, runtime gear fields, mortal takeability, and mixed fresh/restored
 stubs; this is not a live server restart or an end-to-end loot transaction test.
 
 `tests/async/test_copyover_custody.py` additionally compiles the complete production
-`copyover.c` in no-MySQL mode with the real runtime ownership ledger. It calls
+`copyover.c` with controlled persistence boundaries and the real runtime ownership ledger. It calls
 `copyover_save`, replaces the process with `execv`, and calls `copyover_recover`
 in the new process. It verifies a ledger-backed ground corpse with a nested
 container and generated gloves, including both physical and logical custody

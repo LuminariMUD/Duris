@@ -1,4 +1,5 @@
 #include "economy/divine_trade_runtime.h"
+#include "economy/currency_transaction.h"
 /*****************************************************
  * ship_shop.c
  *
@@ -39,7 +40,8 @@
  * ship_hull_purchase_context and submitted; the ship only changes later, in
  * ship_hull_purchase_committed().  A rejected transaction takes no points;
  * refund_ship_epics() applies only when a committed purchase cannot complete.
- * Everything else in this file is synchronous.
+ * Cargo and contraband also wait for trade settlement. Ordinary currency
+ * payments complete synchronously; their completion delivers the crates.
  *
  * Build time
  * ----------
@@ -72,6 +74,7 @@
 #include "limits.h"
 #include "core/utility.h"
 #include "core/utils.h"
+#include <charconv>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -2095,13 +2098,85 @@ int rename_ship(P_char ch, P_ship ship, char *new_name)
 	return TRUE;
 }
 
+// Check the invoice and stacked slot before either purchase path can take payment.
+static bool ship_crate_order_cost(const ShipSlot &slot, int type, int quantity, int unit_cost,
+				  float bonus, int *cost)
+{
+	if (quantity <= 0 || unit_cost <= 0)
+		return false;
+	const int64_t total = static_cast<int64_t>(quantity) * unit_cost;
+	if (total > INT_MAX)
+		return false;
+	// Preserve the existing float discount rounding, but validate before casting.
+	const double discount = static_cast<float>(total) * bonus;
+	if (!isfinite(discount) || discount < 0 || discount >= total)
+		return false;
+	*cost = static_cast<int>(total) - static_cast<int>(discount);
+	return slot.type != type ||
+	       (slot.val0 >= 0 && slot.val1 >= 0 && slot.val0 <= INT_MAX - quantity &&
+		slot.val1 <= INT_MAX - *cost);
+}
+
+struct ship_crate_purchase
+{
+	P_ship ship;
+	int slot, port, quantity, cost, type;
+};
+static_assert(sizeof(ship_crate_purchase) <= CURRENCY_PENDING_CONTEXT_MAX_BYTES);
+
+// The currency facade completes before returning, so this ship pointer stays valid.
+static void ship_crate_purchase_committed(P_char ch, bool committed,
+					  const currency_command_result &, unsigned int,
+					  const uint8_t *raw_context, size_t context_size)
+{
+	if (!committed || context_size != sizeof(ship_crate_purchase))
+	{
+		send_to_char("Your purchase could not be completed. No crates were loaded.\r\n",
+			     ch);
+		return;
+	}
+	ship_crate_purchase purchase;
+	memcpy(&purchase, raw_context, sizeof(purchase));
+	P_ship ship = purchase.ship;
+	auto &slot = ship->slot[purchase.slot];
+	if (slot.type == purchase.type)
+	{
+		slot.val0 += purchase.quantity;
+		slot.val1 += purchase.cost;
+	}
+	else
+	{
+		slot.type = purchase.type;
+		slot.index = purchase.port;
+		slot.position = SLOT_HOLD;
+		slot.val0 = purchase.quantity;
+		slot.val1 = purchase.cost;
+	}
+	const bool cargo = purchase.type == SLOT_CARGO;
+	const char *commodity = cargo ? cargo_type_name(purchase.port) :
+					contra_type_name(purchase.port);
+	sprintf(buf, "%s: %s bought &+W%d&n %s&n at %s&n [%d] for %s",
+		cargo ? "CARGO" : "CONTRABAND", GET_NAME(ch), purchase.quantity, commodity,
+		ports[purchase.port].loc_name, ports[purchase.port].loc_room,
+		coin_stringv(purchase.cost));
+	statuslog(56, "%s", buf);
+	logit(LOG_SHIP, "%s", strip_ansi(buf).c_str());
+	send_to_char_f(ch, "&+gYou buy &+Y%d &+gcrates of &n%s &+gfor &n%s&+g.&n\n",
+		       purchase.quantity, commodity, coin_stringv(purchase.cost));
+	adjust_ship_market(cargo ? BOUGHT_CARGO : BOUGHT_CONTRA, purchase.port, purchase.port,
+			   purchase.quantity);
+	send_to_char(
+		cargo ? "&+gThank you for your purchase, your cargo is loaded and set to go!&n\n" :
+			"&+gThank you for your 'purchase' &+w*snicker*&+g, your 'cargo' is loaded and set to go!&n\n",
+		ch);
+	currency_transaction_save_first(ch);
+	update_ship_status(ship);
+	queue_ship_save(ship, "ship shop update");
+}
+
 /*
- * "buy cargo <crates>" -- load cargo at the current port.
- *
- * Limited by the lesser of the ship's cargo rating and its remaining weight
- * allowance.  Charges cargo_sell_price() per crate, records the price paid on
- * the slot so profit can be shown later, and moves the market upwards.
- * Always TRUE.
+ * "buy cargo <crates>" -- load cargo at the current port after payment.
+ * Limited by cargo capacity and remaining weight. Always TRUE.
  */
 int buy_cargo(P_char ch, P_ship ship, char *arg)
 {
@@ -2120,59 +2195,31 @@ int buy_cargo(P_char ch, P_ship ship, char *arg)
 		send_to_char("&+gWhat cargo? We don't sell any cargo here!&n\n", ch);
 		return TRUE;
 	}
-	if (SHIP_MAX_CARGO(ship) ==
-	    0) // && !(IS_WARSHIP(ship) && isname( GET_NAME(ch), "Soldon")) )
+	if (SHIP_MAX_CARGO(ship) == 0)
 	{
 		send_to_char("&+gYou ship has no space for cargo.&n\n", ch);
 		return TRUE;
 	}
-	if (!is_number(arg))
-	{
-		send_to_char("&+YSyntax: '&+gbuy &+Gca&+grgo <number of crates>&+Y'.&n\n", ch);
-		return TRUE;
-	}
-	if ((asked_for = atoi(arg)) < 1)
+	const char *end = arg + strlen(arg);
+	const auto parsed = std::from_chars(arg, end, asked_for);
+	if (parsed.ec != std::errc{} || parsed.ptr != end || asked_for < 1)
 	{
 		send_to_char("&+gPlease enter a valid number of crates to buy.&n\n", ch);
 		return TRUE;
 	}
 
-	if (SHIP_AVAIL_CARGO_LOAD(ship) <= 0 &&
-	    !(IS_WARSHIP(ship) && isname(GET_NAME(ch), "Soldon")))
+	if (SHIP_AVAIL_CARGO_LOAD(ship) <= 0)
 	{
 		send_to_char("&+gYou don't have any space left on your ship!&n\n", ch);
 		return TRUE;
 	}
-	if (asked_for > SHIP_AVAIL_CARGO_LOAD(ship) &&
-	    !(IS_WARSHIP(ship) && isname(GET_NAME(ch), "Soldon")))
+	if (asked_for > SHIP_AVAIL_CARGO_LOAD(ship))
 	{
 		send_to_char_f(ch, "&+gYou only have space for &+Y%d&+g more crates!&n\n",
 			       SHIP_AVAIL_CARGO_LOAD(ship));
 		return TRUE;
 	}
 
-	/* Soldon's old bonus for winning frag ship competition.
-	int slot;
-	if( IS_WARSHIP(ship) && isname( GET_NAME(ch), "Soldon") )
-	{
-	  struct ShipSlot *lastSlot = &(ship->slot[MAXSLOTS-1]);
-	  int max_avail = 10 - ((lastSlot->type == SLOT_EMPTY) ? 0 :
-	    (lastSlot->type == SLOT_CARGO && lastSlot->index == rroom) ? lastSlot->val0 : 10);
-	  // Allowing Soldon to have last slot as cargo/contra.
-	  slot = MAXSLOTS-1;
-	  if( ship->slot[slot].type == SLOT_EMPTY || max_avail >= asked_for )
-	  {
-	    send_to_char( "&+YYou open up your secret cargo hold.&n\n\r", ch );
-	  }
-	  else
-	  {
-	    // Set slot to MAX_SLOTS and be done with it.
-	    slot++;
-	  }
-	}
-	else
-	{
-	*/
 	for (slot = 0; slot < MAXSLOTS; ++slot)
 	{
 		if (ship->slot[slot].type == SLOT_CARGO && ship->slot[slot].index == rroom)
@@ -2196,14 +2243,13 @@ int buy_cargo(P_char ch, P_ship ship, char *arg)
 		return TRUE;
 	}
 
-	int unit_cost = cargo_sell_price(rroom);
-	int cost = asked_for * unit_cost;
-
-	// hook for epic bonus
-	cost -= (int)(cost * get_epic_bonus(ch, EPIC_BONUS_CARGO));
-
-	// if (GET_LEVEL(ch) < 50)
-	//     cost = (int) (cost * (float) GET_LEVEL(ch) / 50.0);
+	int cost = 0;
+	if (!ship_crate_order_cost(ship->slot[slot], SLOT_CARGO, asked_for, cargo_sell_price(rroom),
+				   get_epic_bonus(ch, EPIC_BONUS_CARGO), &cost))
+	{
+		send_to_char("The merchants cannot quote that cargo order.\r\n", ch);
+		return TRUE;
+	}
 
 	if (GET_MONEY(ch) < cost)
 	{
@@ -2218,39 +2264,13 @@ int buy_cargo(P_char ch, P_ship ship, char *arg)
 					  divine_trade_goods::cargo))
 		return TRUE;
 
-	int placed = asked_for;
-	if (ship->slot[slot].type == SLOT_CARGO)
-	{
-		ship->slot[slot].val0 += placed;
-		ship->slot[slot].val1 += cost;
-	}
-	else
-	{
-		ship->slot[slot].type = SLOT_CARGO;
-		ship->slot[slot].index = rroom;
-		ship->slot[slot].position = SLOT_HOLD;
-		ship->slot[slot].val0 = placed;
-		ship->slot[slot].val1 = cost;
-	}
-
-	sprintf(buf, "CARGO: %s bought &+W%d&n %s&n at %s&n [%d] for %s", GET_NAME(ch), placed,
-		cargo_type_name(rroom), ports[rroom].loc_name, ports[rroom].loc_room,
-		coin_stringv(cost));
-	statuslog(56, "%s", buf);
-	logit(LOG_SHIP, "%s", strip_ansi(buf).c_str());
-
-	send_to_char_f(ch, "&+gYou buy &+Y%d &+gcrates of &n%s &+gfor &n%s&+g.&n\n", placed,
-		       cargo_type_name(rroom), coin_stringv(cost));
-
-	SUB_MONEY(ch, cost, 0);
-
-	// economy affect
-	adjust_ship_market(BOUGHT_CARGO, rroom, rroom, placed);
-
-	send_to_char("&+gThank you for your purchase, your cargo is loaded and set to go!&n\n", ch);
-
-	update_ship_status(ship);
-	queue_ship_save(ship, "ship shop update");
+	const ship_crate_purchase purchase{ ship, slot, rroom, asked_for, cost, SLOT_CARGO };
+	if (!currency_transaction_submit_wallet_value(
+		    ch, -static_cast<int64_t>(cost), currency_reason_type::wallet_spend, rroom,
+		    critical_source_site::command, critical_deadline_class::interactive,
+		    ship_crate_purchase_committed, &purchase, sizeof(purchase)))
+		send_to_char("Your purchase could not be completed. No crates were loaded.\r\n",
+			     ch);
 	return TRUE;
 }
 
@@ -2294,28 +2314,20 @@ int buy_contra(P_char ch, P_ship ship, char *arg)
 			ch);
 		return TRUE;
 	}
-	if (SHIP_MAX_CONTRA(ship) ==
-	    0) //&& !(IS_WARSHIP(ship) && isname( GET_NAME(ch), "Soldon")) )
+	if (SHIP_MAX_CONTRA(ship) == 0)
 	{
 		send_to_char("&+gYour ship has no places to hide contraband.&n\n", ch);
 		return TRUE;
 	}
-	if (!is_number(arg))
-	{
-		send_to_char("Invalid number of crates!\n"
-			     "&+YSyntax: '&+gbuy &+Gco&+gntraband <number of crates>&+Y'.&n\n",
-			     ch);
-		return TRUE;
-	}
-
-	int asked_for = atoi(arg);
-	if (asked_for < 1)
+	int asked_for = 0;
+	const char *end = arg + strlen(arg);
+	const auto parsed = std::from_chars(arg, end, asked_for);
+	if (parsed.ec != std::errc{} || parsed.ptr != end || asked_for < 1)
 	{
 		send_to_char("&+gPlease enter a valid number of crates to buy.&n\n", ch);
 		return TRUE;
 	}
-	if (SHIP_AVAIL_CARGO_LOAD(ship) <= 0 &&
-	    !(IS_WARSHIP(ship) && isname(GET_NAME(ch), "Soldon")))
+	if (SHIP_AVAIL_CARGO_LOAD(ship) <= 0)
 	{
 		send_to_char("&+gYou don't have any space left on your ship!&n\n", ch);
 		return TRUE;
@@ -2324,12 +2336,6 @@ int buy_contra(P_char ch, P_ship ship, char *arg)
 	int contra_max = int((float)SHIP_MAX_CONTRA(ship) *
 			     ((float)SHIP_MAX_CARGO_LOAD(ship) / (float)SHIP_MAX_CARGO(ship)));
 	int contra_avail = contra_max - SHIP_CONTRA(ship);
-	/* Part of Soldon's reward from winning the ship frag contest.
-	if( IS_WARSHIP(ship) && isname( GET_NAME(ch), "Soldon") )
-	{
-	  contra_avail = 10;
-	}
-	*/
 	if (contra_avail <= 0)
 	{
 		send_to_char(
@@ -2338,15 +2344,6 @@ int buy_contra(P_char ch, P_ship ship, char *arg)
 		return TRUE;
 	}
 	int max_avail = MIN(SHIP_AVAIL_CARGO_LOAD(ship), contra_avail);
-	/* Soldon's reward from winning ship pvp contest
-	if( IS_WARSHIP(ship) && isname( GET_NAME(ch), "Soldon") )
-	{
-	  struct ShipSlot *lastSlot = &(ship->slot[MAXSLOTS-1]);
-
-	  max_avail = 10 - ((lastSlot->type == SLOT_EMPTY) ? 0 :
-	    (lastSlot->type == SLOT_CONTRABAND && lastSlot->index == rroom) ? lastSlot->val0 : 10);
-	}
-	*/
 	if (asked_for > max_avail)
 	{
 		send_to_char_f(
@@ -2355,24 +2352,6 @@ int buy_contra(P_char ch, P_ship ship, char *arg)
 			max_avail);
 		return TRUE;
 	}
-
-	/* More of Soldon's reward.
-	slot = 0;
-	if( IS_WARSHIP(ship) && isname(GET_NAME( ch ), "Soldon") )
-	{
-	  slot = MAXSLOTS-1;
-	}
-	else
-	{
-	  for (slot = 0 ; slot < MAXSLOTS; ++slot)
-	  {
-	    if( ship->slot[slot].type == SLOT_CONTRABAND && ship->slot[slot].index == rroom )
-	    {
-	      break;
-	    }
-	  }
-	}
-	*/
 
 	/* Stack onto this port's contraband already aboard, as cargo does, and
 	 * only then take an empty slot. */
@@ -2401,11 +2380,13 @@ int buy_contra(P_char ch, P_ship ship, char *arg)
 		return TRUE;
 	}
 
-	int unit_cost = contra_sell_price(rroom);
-	int cost = asked_for * unit_cost;
-
-	// if (GET_LEVEL(ch) < 50)
-	//     cost = (int) (cost * (float) GET_LEVEL(ch) / 50.0);
+	int cost = 0;
+	if (!ship_crate_order_cost(ship->slot[slot], SLOT_CONTRABAND, asked_for,
+				   contra_sell_price(rroom), 0, &cost))
+	{
+		send_to_char("The merchants cannot quote that contraband order.\r\n", ch);
+		return TRUE;
+	}
 
 	if (GET_MONEY(ch) < cost)
 	{
@@ -2419,41 +2400,13 @@ int buy_contra(P_char ch, P_ship ship, char *arg)
 					  divine_trade_goods::contraband))
 		return TRUE;
 
-	int placed = asked_for;
-	if (ship->slot[slot].type == SLOT_CONTRABAND)
-	{
-		ship->slot[slot].val0 += placed;
-		ship->slot[slot].val1 += cost;
-	}
-	else
-	{
-		ship->slot[slot].type = SLOT_CONTRABAND;
-		ship->slot[slot].index = rroom;
-		ship->slot[slot].position = SLOT_HOLD;
-		ship->slot[slot].val0 = placed;
-		ship->slot[slot].val1 = cost;
-	}
-
-	sprintf(buf, "CONTRABAND: %s bought &+W%d&n %s&n at %s&n [%d] for %s", GET_NAME(ch), placed,
-		contra_type_name(rroom), ports[rroom].loc_name, ports[rroom].loc_room,
-		coin_stringv(cost));
-	statuslog(56, "%s", buf);
-	logit(LOG_SHIP, "%s", strip_ansi(buf).c_str());
-
-	send_to_char_f(ch, "&+gYou buy &+Y%d &+gcrates of &n%s &+gfor &n%s&+g.&n\n", placed,
-		       contra_type_name(rroom), coin_stringv(cost));
-
-	SUB_MONEY(ch, cost, 0);
-
-	// economy affect
-	adjust_ship_market(BOUGHT_CONTRA, rroom, rroom, placed);
-
-	send_to_char(
-		"&+gThank you for your 'purchase' &+w*snicker*&+g, your 'cargo' is loaded and set to go!&n\n",
-		ch);
-
-	update_ship_status(ship);
-	queue_ship_save(ship, "ship shop update");
+	const ship_crate_purchase purchase{ ship, slot, rroom, asked_for, cost, SLOT_CONTRABAND };
+	if (!currency_transaction_submit_wallet_value(
+		    ch, -static_cast<int64_t>(cost), currency_reason_type::wallet_spend, rroom,
+		    critical_source_site::command, critical_deadline_class::interactive,
+		    ship_crate_purchase_committed, &purchase, sizeof(purchase)))
+		send_to_char("Your purchase could not be completed. No crates were loaded.\r\n",
+			     ch);
 	return TRUE;
 }
 
