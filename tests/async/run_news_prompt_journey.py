@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real news acknowledgement, reload, reconnect, copyover and restart.
 
-Use --backend flatfile or a disposable TEST_DB_* server for --backend mariadb.
+Use a disposable TEST_DB_* server with --backend mariadb.
 The supplied binary is copied into a private full-world fixture. No checkout
 environment, live server, or real player/account data is used.
 """
@@ -131,8 +131,6 @@ def run(binary, backend):
                         "gold=303,platinum=404,exp=12345,epics=505,"
                         "time_unspecced=FROM_UNIXTIME(1000000),frags=606,oldfrags=707 "
                         "WHERE name='" + PLAYER + "'")
-                else:
-                    journey.make_overlord(Path(env['FLATFILE_STATE_DIR']), GOD)
                 boot()
                 player, god = login(), login(GOD, GOD_ACCOUNT)
                 assert '(news)' not in prompt(player) and '(news)' in prompt(god)
@@ -198,7 +196,7 @@ def run(binary, backend):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--backend', choices=('mariadb', 'flatfile'), required=True)
+    parser.add_argument('--backend', choices=("mariadb",), required=True)
     parser.add_argument('--server', type=Path, required=True)
     args = parser.parse_args()
     run(args.server.resolve(), args.backend)

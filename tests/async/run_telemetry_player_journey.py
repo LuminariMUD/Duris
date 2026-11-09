@@ -95,7 +95,7 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
     cloud_state = artifacts / "cloud-smoke"
     cloud_key = None
     tag = "issue59-cloud-smoke" if cloud else "native-gameplay-" + backend
-    scope = "1001" if backend == "flatfile" else "1002"
+    scope = "1002"
     if cloud:
         # Read only the capture settings; never import the host's game/DB environment.
         settings = {}
@@ -343,10 +343,7 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                 stop()
                 assert not received, "disabled telemetry exported events"
                 print("PASS disabled save/reload fixture", backend, flush=True)
-                if backend == "flatfile":
-                    journey.make_overlord(state, journey.CHARACTER)
-                else:
-                    sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{journey.CHARACTER}'")
+                sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{journey.CHARACTER}'")
                 env["TELEMETRY_ENABLED"] = "true"
                 if performance:
                     measurements = []
@@ -597,7 +594,7 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("mariadb", "flatfile"), required=True)
+    parser.add_argument("--backend", choices=("mariadb",), required=True)
     parser.add_argument("--performance", action="store_true", help="Run three paired ordinary-save workloads")
     parser.add_argument("--cloud", action="store_true", help="Send one synthetic campaign, maximum 100 charged attempts; reruns refused")
     args = parser.parse_args()

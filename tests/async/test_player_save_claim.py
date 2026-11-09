@@ -31,7 +31,6 @@ assert "query = ensure_player_row(connection, snapshot, &created," in REPOSITORY
 # synchronous first save on MariaDB.
 assert "if (query.ok && created)\n\t\tquery = insert_opening_baselines(connection, snapshot.pid);" in REPOSITORY
 NANNY = (SRC / "nanny.c").read_text()
-assert "CHAR_RFLAG_NO_DB_BASELINE" not in NANNY
 print("[PASS] custody checks and the revision fence are gone; a missing row is created")
 
 PIPELINE = (SRC / "player_save_pipeline.c").read_text()

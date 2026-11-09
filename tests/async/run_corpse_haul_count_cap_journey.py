@@ -56,7 +56,7 @@ def add_stock(runtime):
 
 
 def run(binary, backend):
-    assert backend in ("mariadb", "flatfile")
+    assert backend == "mariadb"
     database = "haul_cap_" + uuid.uuid4().hex[:12]
     host = os.environ.get("TEST_DB_HOST", "127.0.0.1")
     assert host in ("127.0.0.1", "localhost")
