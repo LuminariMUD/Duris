@@ -123,24 +123,10 @@ ulimit -c unlimited
 
 PERSISTENCE_MODE="${PERSISTENCE_MODE:-mariadb-primary}"
 export PERSISTENCE_MODE
-DATABASE_REQUIRED=0
-FLATFILE_REQUIRED=0
-case "$PERSISTENCE_MODE" in
-  mariadb-primary)
-    DATABASE_REQUIRED=1
-    ;;
-  mariadb-primary-flatfile-fallback)
-    DATABASE_REQUIRED=1
-    FLATFILE_REQUIRED=1
-    ;;
-  flatfile-primary)
-    FLATFILE_REQUIRED=1
-    ;;
-  *)
-    echo "Invalid PERSISTENCE_MODE: $PERSISTENCE_MODE" >&2
-    exit 1
-    ;;
-esac
+if [[ "$PERSISTENCE_MODE" != "mariadb-primary" ]]; then
+  echo "Invalid PERSISTENCE_MODE: $PERSISTENCE_MODE; MariaDB is the only supported backend" >&2
+  exit 1
+fi
 
 if [[ -z "${ENVIRONMENT:-}" ]]; then
   echo "Missing required environment field: ENVIRONMENT" >&2
@@ -173,70 +159,55 @@ if [[ "$ENVIRONMENT" == "production" ]]; then
     exit 1
   fi
 fi
-if (( FLATFILE_REQUIRED == 1 )); then
-  if [[ -z "${FLATFILE_STATE_DIR:-}" ]]; then
-    echo "FLATFILE_STATE_DIR is required for persistence mode $PERSISTENCE_MODE" >&2
+for REQUIRED_DB_FIELD in DB_HOST DB_USER DB_PASSWD DB_NAME DB_ALLOWED_TARGETS; do
+  if [[ -z "${!REQUIRED_DB_FIELD:-}" ]]; then
+    echo "Missing required database field: $REQUIRED_DB_FIELD" >&2
     exit 1
   fi
-  if [[ "$FLATFILE_STATE_DIR" != /* ]]; then
-    echo "FLATFILE_STATE_DIR must be an absolute path" >&2
-    exit 1
+done
+if [[ -n "${DB_PORT:-}" ]] &&
+   { ! [[ "$DB_PORT" =~ ^[0-9]+$ ]] || (( DB_PORT < 1 || DB_PORT > 65535 )); }; then
+  echo "DB_PORT must be between 1 and 65535" >&2
+  exit 1
+fi
+EFFECTIVE_DB_NAME="$DB_NAME"
+if [[ $MUD_PORT -ne $PRODUCTION_PORT && ( "$DB_NAME" == "duris" || "$DB_NAME" == "duris_prod" ) ]]; then
+  EFFECTIVE_DB_NAME="duris_dev"
+fi
+case ",$DB_ALLOWED_TARGETS," in
+  *",$DB_HOST/$EFFECTIVE_DB_NAME,"*) ;;
+  *) echo "Resolved database target is not allow-listed" >&2; exit 1 ;;
+esac
+export DB_NAME="$EFFECTIVE_DB_NAME"
+
+MYSQL_CONNECTION_ARGS=(--connect-timeout=10 -u "$DB_USER")
+# A client unpacked outside the system's prefix reads its own charsets, not another
+# package's, whose different list makes it warn on every call.
+if MYSQL_CLIENT="$(command -v mysql)"; then
+  MYSQL_CHARSETS="$(dirname "$(dirname "$(readlink -f "$MYSQL_CLIENT")")")/share/mysql/charsets"
+  if [[ -d "$MYSQL_CHARSETS" ]]; then
+    MYSQL_CONNECTION_ARGS+=(--character-sets-dir="$MYSQL_CHARSETS")
   fi
 fi
-
-if (( DATABASE_REQUIRED == 1 )); then
-  for REQUIRED_DB_FIELD in DB_HOST DB_USER DB_PASSWD DB_NAME DB_ALLOWED_TARGETS; do
-    if [[ -z "${!REQUIRED_DB_FIELD:-}" ]]; then
-      echo "Missing required database field: $REQUIRED_DB_FIELD" >&2
-      exit 1
-    fi
-  done
-  if [[ -n "${DB_PORT:-}" ]] &&
-     { ! [[ "$DB_PORT" =~ ^[0-9]+$ ]] || (( DB_PORT < 1 || DB_PORT > 65535 )); }; then
-    echo "DB_PORT must be between 1 and 65535" >&2
+if [[ -n "${DB_SOCKET:-}" ]]; then
+  if [[ "$ENVIRONMENT" != "local" ||
+        ( "$DB_HOST" != "localhost" && "$DB_HOST" != "127.0.0.1" && "$DB_HOST" != "::1" ) ]]; then
+    echo "DB_SOCKET is restricted to local loopback mode" >&2
     exit 1
   fi
-  EFFECTIVE_DB_NAME="$DB_NAME"
-  if [[ $MUD_PORT -ne $PRODUCTION_PORT && ( "$DB_NAME" == "duris" || "$DB_NAME" == "duris_prod" ) ]]; then
-    EFFECTIVE_DB_NAME="duris_dev"
-  fi
-  case ",$DB_ALLOWED_TARGETS," in
-    *",$DB_HOST/$EFFECTIVE_DB_NAME,"*) ;;
-    *) echo "Resolved database target is not allow-listed" >&2; exit 1 ;;
-  esac
-  export DB_NAME="$EFFECTIVE_DB_NAME"
-
-  MYSQL_CONNECTION_ARGS=(--connect-timeout=10 -u "$DB_USER")
-  # A client unpacked outside the system's prefix reads its own charsets, not another
-  # package's, whose different list makes it warn on every call.
-  if MYSQL_CLIENT="$(command -v mysql)"; then
-    MYSQL_CHARSETS="$(dirname "$(dirname "$(readlink -f "$MYSQL_CLIENT")")")/share/mysql/charsets"
-    if [[ -d "$MYSQL_CHARSETS" ]]; then
-      MYSQL_CONNECTION_ARGS+=(--character-sets-dir="$MYSQL_CHARSETS")
-    fi
-  fi
-  if [[ -n "${DB_SOCKET:-}" ]]; then
-    if [[ "$ENVIRONMENT" != "local" ||
-          ( "$DB_HOST" != "localhost" && "$DB_HOST" != "127.0.0.1" && "$DB_HOST" != "::1" ) ]]; then
-      echo "DB_SOCKET is restricted to local loopback mode" >&2
-      exit 1
-    fi
-    MYSQL_CONNECTION_ARGS+=(--protocol=socket --socket="$DB_SOCKET")
-  elif [[ "$DB_HOST" == "localhost" || "$DB_HOST" == "127.0.0.1" || "$DB_HOST" == "::1" ]]; then
-    MYSQL_CONNECTION_ARGS+=(--protocol=tcp -h "$DB_HOST" -P "${DB_PORT:-3306}")
-  else
-    if [[ "${DB_TLS:-}" != "TRUE" || ! -f "${DB_SSL_CA:-}" ]]; then
-      echo "Remote database transport requires TLS and a CA file" >&2
-      exit 1
-    fi
-    MYSQL_CONNECTION_ARGS+=(--protocol=tcp -h "$DB_HOST" -P "${DB_PORT:-3306}"
-                            --ssl-ca="$DB_SSL_CA" --ssl-verify-server-cert)
-  fi
-  export MYSQL_PWD="$DB_PASSWD"
-  echo "Validated explicit database configuration for $PERSISTENCE_MODE"
+  MYSQL_CONNECTION_ARGS+=(--protocol=socket --socket="$DB_SOCKET")
+elif [[ "$DB_HOST" == "localhost" || "$DB_HOST" == "127.0.0.1" || "$DB_HOST" == "::1" ]]; then
+  MYSQL_CONNECTION_ARGS+=(--protocol=tcp -h "$DB_HOST" -P "${DB_PORT:-3306}")
 else
-  echo "Validated database-independent configuration for flatfile-primary"
+  if [[ "${DB_TLS:-}" != "TRUE" || ! -f "${DB_SSL_CA:-}" ]]; then
+    echo "Remote database transport requires TLS and a CA file" >&2
+    exit 1
+  fi
+  MYSQL_CONNECTION_ARGS+=(--protocol=tcp -h "$DB_HOST" -P "${DB_PORT:-3306}"
+                          --ssl-ca="$DB_SSL_CA" --ssl-verify-server-cert)
 fi
+export MYSQL_PWD="$DB_PASSWD"
+echo "Validated explicit database configuration for $PERSISTENCE_MODE"
 if (( DEV_MODE == 1 )); then
   echo "Running in DEV mode"
 fi
@@ -249,7 +220,6 @@ fi
 # Serialize cleanup/resume, then bind every read and final update to the same epoch.
 finish_pwipe() (
   local expected_epoch="$1" state updated
-  (( DATABASE_REQUIRED == 1 )) || { echo "Pwipe requires MariaDB" >&2; exit 58; }
   exec 9>"$SERVER_BIN_DIR/.pwipe.lock" || exit 58
   flock -n 9 || { echo "Another filesystem reset is in progress" >&2; exit 58; }
   state=$(mysql "${MYSQL_CONNECTION_ARGS[@]}" -N -B "$EFFECTIVE_DB_NAME" -e \
@@ -310,19 +280,17 @@ while [[ $RESULT != 0 && $RESULT != 55 && $RESULT != 58 ]]; do
   # Refuse to publish the service against a stale or incompatible schema. Local
   # databases can be advanced safely by the guarded immutable runner;
   # production remains read-only and must be migrated through the runbook.
-  if (( DATABASE_REQUIRED == 1 )); then
-    if [[ "$ENVIRONMENT" == "local" ]]; then
-      echo "Applying pending immutable database migrations..."
-      if ! python3 scripts/migration_runner.py run; then
-        echo "Database migrations are not up to date; refusing to boot" >&2
-        exit 1
-      fi
-    fi
-    echo "Verifying runtime database compatibility..."
-    if ! ./migrations/verify_runtime_compatibility.sh; then
-      echo "Database schema is incompatible with this server; refusing to boot" >&2
+  if [[ "$ENVIRONMENT" == "local" ]]; then
+    echo "Applying pending immutable database migrations..."
+    if ! python3 scripts/migration_runner.py run; then
+      echo "Database migrations are not up to date; refusing to boot" >&2
       exit 1
     fi
+  fi
+  echo "Verifying runtime database compatibility..."
+  if ! ./migrations/verify_runtime_compatibility.sh; then
+    echo "Database schema is incompatible with this server; refusing to boot" >&2
+    exit 1
   fi
 
   if [[ $RESULT == 53 || $RESULT == 57 ]]; then
@@ -441,13 +409,11 @@ while [[ $RESULT != 0 && $RESULT != 55 && $RESULT != 58 ]]; do
 	fi
 
   # Record boot time (will be used for shutdown record later)
-  if (( DATABASE_REQUIRED == 1 )); then
-    BOOT_SEASON_EPOCH=$(mysql "${MYSQL_CONNECTION_ARGS[@]}" -N -B "$EFFECTIVE_DB_NAME" -e \
-      "SELECT season_epoch FROM season_reset_state WHERE state_id=1 AND reset_status='active';") || exit 1
-    if ! [[ "$BOOT_SEASON_EPOCH" =~ ^[1-9][0-9]{0,19}$ ]]; then
-      echo "Incomplete season reset; refusing restart. Inspect season_reset_state for recovery." >&2
-      exit 58
-    fi
+  BOOT_SEASON_EPOCH=$(mysql "${MYSQL_CONNECTION_ARGS[@]}" -N -B "$EFFECTIVE_DB_NAME" -e \
+    "SELECT season_epoch FROM season_reset_state WHERE state_id=1 AND reset_status='active';") || exit 1
+  if ! [[ "$BOOT_SEASON_EPOCH" =~ ^[1-9][0-9]{0,19}$ ]]; then
+    echo "Incomplete season reset; refusing restart. Inspect season_reset_state for recovery." >&2
+    exit 58
   fi
 
   BOOT_TIME=$(date +%s)
@@ -495,56 +461,54 @@ while [[ $RESULT != 0 && $RESULT != 55 && $RESULT != 58 ]]; do
 	echo "Mud stopped, reason: ${STOP_REASON} [${RESULT}]"
 
   # Log shutdown to database for server reboot tracking
-  if (( DATABASE_REQUIRED == 1 )); then
-    SHUTDOWN_TIME=$(date +%s)
+  SHUTDOWN_TIME=$(date +%s)
 
-    # Default values for database
-    DB_SHUTDOWN_TYPE="unknown"
-    INITIATED_BY=""
-    SHUTDOWN_REASON=""
+  # Default values for database
+  DB_SHUTDOWN_TYPE="unknown"
+  INITIATED_BY=""
+  SHUTDOWN_REASON=""
 
-    # Parse shutdown info file if it exists
-    if [ -f "logs/shutdown_info.txt" ]; then
-      SHUTDOWN_INFO=$(cat "logs/shutdown_info.txt")
-      INITIATED_BY=$(echo "$SHUTDOWN_INFO" | cut -d'|' -f1)
-      SHUTDOWN_REASON=$(echo "$SHUTDOWN_INFO" | cut -d'|' -f2)
-      # Delete the file after reading
-      rm -f "logs/shutdown_info.txt"
-    fi
+  # Parse shutdown info file if it exists
+  if [ -f "logs/shutdown_info.txt" ]; then
+    SHUTDOWN_INFO=$(cat "logs/shutdown_info.txt")
+    INITIATED_BY=$(echo "$SHUTDOWN_INFO" | cut -d'|' -f1)
+    SHUTDOWN_REASON=$(echo "$SHUTDOWN_INFO" | cut -d'|' -f2)
+    # Delete the file after reading
+    rm -f "logs/shutdown_info.txt"
+  fi
 
-    # Map exit code to database shutdown_type enum
-    case $RESULT in
-      0) DB_SHUTDOWN_TYPE="shutdown";;
-      52) DB_SHUTDOWN_TYPE="reboot";;
-      53) DB_SHUTDOWN_TYPE="copyover";;
-      54) DB_SHUTDOWN_TYPE="autoreboot";;
-      55|58) DB_SHUTDOWN_TYPE="pwipe";;
-      56) DB_SHUTDOWN_TYPE="hung";;
-      57) DB_SHUTDOWN_TYPE="autoreboot_copyover";;
-      139) DB_SHUTDOWN_TYPE="crash";;
-      *) DB_SHUTDOWN_TYPE="unknown";;
-    esac
+  # Map exit code to database shutdown_type enum
+  case $RESULT in
+    0) DB_SHUTDOWN_TYPE="shutdown";;
+    52) DB_SHUTDOWN_TYPE="reboot";;
+    53) DB_SHUTDOWN_TYPE="copyover";;
+    54) DB_SHUTDOWN_TYPE="autoreboot";;
+    55|58) DB_SHUTDOWN_TYPE="pwipe";;
+    56) DB_SHUTDOWN_TYPE="hung";;
+    57) DB_SHUTDOWN_TYPE="autoreboot_copyover";;
+    139) DB_SHUTDOWN_TYPE="crash";;
+    *) DB_SHUTDOWN_TYPE="unknown";;
+  esac
 
-    # Calculate MUD uptime (shutdown_time - boot_time)
-    MUD_UPTIME=$((SHUTDOWN_TIME - BOOT_TIME))
+  # Calculate MUD uptime (shutdown_time - boot_time)
+  MUD_UPTIME=$((SHUTDOWN_TIME - BOOT_TIME))
 
-    # Insert a complete reboot record (boot + shutdown). The issuer and the reason go in
-    # as hex: an apostrophe in a reason ended the string and lost the row.
-    sql_text() {
-      if [[ -z "$1" ]]; then echo NULL; return; fi
-      echo "CONVERT(UNHEX('$(printf '%s' "$1" | od -An -tx1 -v | tr -d ' \n')') USING utf8mb4)"
-    }
-    if mysql "${MYSQL_CONNECTION_ARGS[@]}" "$EFFECTIVE_DB_NAME" -e "
-      INSERT INTO server_reboots
-        (boot_time, shutdown_time, uptime_seconds, shutdown_type, initiated_by, reason)
-      VALUES
-        (${BOOT_TIME}, ${SHUTDOWN_TIME}, ${MUD_UPTIME}, '${DB_SHUTDOWN_TYPE}',
-         $(sql_text "$INITIATED_BY"), $(sql_text "$SHUTDOWN_REASON"));
-    "; then
-      echo "Logged reboot: ${MUD_UPTIME}s uptime, type: ${DB_SHUTDOWN_TYPE}"
-    else
-      echo "Could not record the stop in server_reboots" >&2
-    fi
+  # Insert a complete reboot record (boot + shutdown). The issuer and the reason go in
+  # as hex: an apostrophe in a reason ended the string and lost the row.
+  sql_text() {
+    if [[ -z "$1" ]]; then echo NULL; return; fi
+    echo "CONVERT(UNHEX('$(printf '%s' "$1" | od -An -tx1 -v | tr -d ' \n')') USING utf8mb4)"
+  }
+  if mysql "${MYSQL_CONNECTION_ARGS[@]}" "$EFFECTIVE_DB_NAME" -e "
+    INSERT INTO server_reboots
+      (boot_time, shutdown_time, uptime_seconds, shutdown_type, initiated_by, reason)
+    VALUES
+      (${BOOT_TIME}, ${SHUTDOWN_TIME}, ${MUD_UPTIME}, '${DB_SHUTDOWN_TYPE}',
+       $(sql_text "$INITIATED_BY"), $(sql_text "$SHUTDOWN_REASON"));
+  "; then
+    echo "Logged reboot: ${MUD_UPTIME}s uptime, type: ${DB_SHUTDOWN_TYPE}"
+  else
+    echo "Could not record the stop in server_reboots" >&2
   fi
 
   # A stop sent to the launcher ends the loop here; the server is not started again.
@@ -561,7 +525,6 @@ while [[ $RESULT != 0 && $RESULT != 55 && $RESULT != 58 ]]; do
 done
 
 if [[ "$RESULT" == 55 ]]; then
-  (( DATABASE_REQUIRED == 1 )) || exit 58
   RESET_EPOCH=$(mysql "${MYSQL_CONNECTION_ARGS[@]}" -N -B "$EFFECTIVE_DB_NAME" -e \
     "SELECT season_epoch FROM season_reset_state WHERE state_id=1
      AND season_epoch=$BOOT_SEASON_EPOCH + 1 AND reset_status='resetting'

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Disposable Linux/MariaDB/native recovery integration.
 
-Build bin/server/dms_new with make -C src, and bin/server/dms_restore_flatfile
-with PERSISTENCE_BACKEND=flatfile and an explicit DMS_BINARY path. Then run
+Build bin/server/dms_new with make -C src, then run
 DURIS_RUN_BACKUP_INTEGRATION=1 python3 tests/async/test_persistence_backup_integration.py.
 Requires g++, libcrypto,
 MariaDB server/client tools, bash, openssl and unshare permission (CAP_SYS_ADMIN
@@ -12,10 +11,7 @@ game processes boot in their own network namespaces and are terminated afterward
 All filesystem deletion is limited to this test's TemporaryDirectory. Startup
 timeouts (60s) may need investigation on heavily contended machines.
 """
-import json
 import functools
-import hashlib
-import struct
 import os
 from pathlib import Path
 import shutil
@@ -33,7 +29,6 @@ import persistence_restore as restore
 import build_restore_qualifier as native
 import migration_runner as migrations
 from test_persistence_backup import policy
-from _paths import HARNESS_STUBS
 
 
 def sql(env, query=None, payload=None):
@@ -51,18 +46,15 @@ FIXTURE = ROOT / "bin/tools/persistence_restore_fixture"
 def build_native_fixture():
     native.build()
     sources = []
-    for name in [*native.SOURCES, "frag_cap", "frag_cap_repository", "frag_cap_config",
-                 "flatfile_world_quest_history"]:
+    for name in native.SOURCES:
         found = list((ROOT / "src").rglob(name + ".c"))
         if len(found) != 1:
             raise RuntimeError("ambiguous fixture source")
         sources.append(str(found[0]))
-    subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
-                    "-D__NO_MYSQL__", "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST",
-                    "-Isrc", "-Isrc/no_mysql",
+    subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-Isrc",
                     "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
                     "tests/async/persistence_restore_fixture.cpp", *sources, "-lcrypto", "-lz", "-pthread",
-                    str(HARNESS_STUBS), "-o", str(FIXTURE)], cwd=ROOT, check=True)
+                    "-o", str(FIXTURE)], cwd=ROOT, check=True)
     return FIXTURE
 
 
@@ -74,9 +66,8 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
         for command in ("g++", "mysql", "mysqldump", "mariadbd", "mariadb-install-db", "unshare", "openssl"):
             if not shutil.which(command):
                 raise RuntimeError("integration prerequisite unavailable: " + command)
-        for name in ("dms_new", "dms_restore_flatfile"):
-            if not (ROOT / "bin/server" / name).is_file():
-                raise RuntimeError("build both backend server binaries before integration")
+        if not (ROOT / "bin/server/dms_new").is_file():
+            raise RuntimeError("build the server binary before integration")
         cls.old_umask = os.umask(0o077)
         cls.fixture = FIXTURE
 
@@ -100,97 +91,6 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
         backup.write_json(path, dict(version=1, captured_at=int(time.time()), tombstones=[],
                                     policy_sha256=backup.digest(ROOT / "migrations/data_lifecycle_manifest.json")))
         return path
-
-    @unittest.skipUnless(os.geteuid() == 0, "requires root to model a foreign-owned checkout")
-    def test_isolated_service_boot_from_private_foreign_owned_checkout(self):
-        build_native_fixture()
-        candidate = self.p["restore_root"] / "candidate-private-checkout"
-        candidate.mkdir(mode=0o700)
-        backup.write_json(candidate / "ISOLATED_RESTORE", {"generation": "synthetic"})
-        backup.run([str(self.fixture), "seed", str(candidate / "state")], phase="test")
-        checkout = self.base / "private-checkout"
-        checkout.mkdir(mode=0o700)
-        for name in ("areas_mini", "lib"):
-            shutil.copytree(ROOT / name, checkout / name)
-        for name in ("bin/server/dms_restore_flatfile", "scripts/qualify_service_restore.py"):
-            destination = checkout / name
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(ROOT / name, destination)
-        # Outer root can read this checkout, but mapped namespace root has no
-        # host CAP_DAC_OVERRIDE and cannot traverse it. Do not relax its mode.
-        os.chown(checkout, 65534, 65534)
-        env = dict(restore.clean_environment(candidate), FLATFILE_STATE_DIR=str(candidate / "state"))
-        with mock.patch.object(backup, "ROOT", checkout):
-            restore.service_load(candidate, "flatfile-primary", env)
-        self.assertEqual(checkout.stat().st_uid, 65534)
-        self.assertEqual(checkout.stat().st_mode & 0o777, 0o700)
-
-    def test_flatfile_pending_transaction_account_player_domain_receipt_and_boot(self):
-        build_native_fixture()
-        live = self.base / "live"
-        backup.run([str(self.fixture), "seed", str(live)], phase="test")
-        journals = live.parent / "journals"
-        receipt_relative = "critical/locker-identification/42.receipt"
-        backup.run([str(self.fixture), "seed-receipt", str(journals / "critical/locker-identification")], phase="test")
-        journals.chmod(0o700)
-        (journals / "critical").chmod(0o700)
-        self.p["journal_roots"] = {"critical": journals / "critical"}
-        self.p["live_roots"] = [live, journals / "critical"]
-        receipt_bytes = (journals / receipt_relative).read_bytes()
-        journal_before = backup.inventory(journals)
-        self.assertTrue((live / "domains/.critical-authority-transaction").exists())
-        before = backup.inventory(live, exclude_locks=True)
-        with mock.patch.dict(os.environ, {"FLATFILE_STATE_DIR": str(live)}):
-            result = backup.backup(self.p, "flatfile-primary")
-        generation = self.p["root"] / result["generation"]
-        captured = backup.inventory(generation)
-        self.assertTrue(backup.verify(generation)["pending_transaction"])
-        receipt = restore.restore(self.p, result["generation"], self.ledger())
-        self.assertEqual(receipt["result"], "qualified")
-        self.assertEqual(receipt["checks"], {"accounts": 1, "identities": 1, "players_loaded": 1, "snapshots": 1})
-        candidate = self.p["restore_root"] / receipt["candidate"]
-        self.assertEqual((candidate / "journals" / receipt_relative).read_bytes(), receipt_bytes)
-        self.assertEqual((generation / "journals" / receipt_relative).read_bytes(), receipt_bytes)
-        recovered_before_verify = backup.inventory(candidate / "state", exclude_locks=True)
-        backup.run([str(self.fixture), "verify", str(candidate / "state")], phase="test")
-        self.assertEqual(backup.inventory(candidate / "state", exclude_locks=True), recovered_before_verify)
-        self.assertEqual(backup.inventory(journals), journal_before)
-        # Repeated native verification proves recovery is idempotent.
-        recovered = backup.inventory(candidate / "state", exclude_locks=True)
-        backup.run([str(ROOT / "bin/tools/qualify_flatfile_restore"), str(candidate / "state")], phase="test")
-        self.assertEqual(backup.inventory(candidate / "state", exclude_locks=True), recovered)
-        self.assertEqual(backup.inventory(live, exclude_locks=True), before)
-        self.assertEqual(backup.inventory(generation), captured)
-        self.assertIn(b"Entering game loop.", (candidate / "service.log").read_bytes())
-
-    def test_combat_intents_backup_restore_and_isolated_service_replay(self):
-        build_native_fixture()
-        live = self.base / "live"
-        backup.run([str(self.fixture), "seed", str(live)], phase="test")
-        backup.run([str(self.fixture), "seed-combat", str(live)], phase="test")
-        critical = self.base / "journals/critical"
-        self.p["journal_roots"] = {"critical": critical}
-        self.p["live_roots"] = [live, critical]
-        source_state = backup.inventory(live, exclude_locks=True)
-        source_journals = backup.inventory(critical)
-        with mock.patch.dict(os.environ, {"FLATFILE_STATE_DIR": str(live),
-                                          "CRITICAL_COMMAND_JOURNAL_DIR": str(critical)}):
-            result = backup.schedule(self.p, "flatfile-primary")
-        self.assertEqual(result["result"], "ok")
-        generation = self.p["root"] / result["generation"]
-        captured = backup.inventory(generation)
-        receipt = restore.restore(self.p, generation.name, self.ledger())
-        self.assertEqual(receipt["result"], "qualified")
-        candidate = self.p["restore_root"] / receipt["candidate"]
-        store = candidate / "journals/critical/combat-intents"
-        self.assertFalse(list(store.glob("*.intent")))
-        self.assertEqual({p.name for p in store.glob("*.recorded")},
-                         {"c1" + "00" * 15 + ".recorded", "c2" + "00" * 15 + ".recorded"})
-        backup.run([str(self.fixture), "recover-combat", str(candidate / "state")], phase="test")
-        self.assertEqual(backup.inventory(live, exclude_locks=True), source_state)
-        self.assertEqual(backup.inventory(critical), source_journals)
-        self.assertEqual(backup.inventory(generation), captured)
-        self.assertEqual(backup.status(self.p)["result"], "ok")
 
     def test_locker_receipt_qualification_rejects_corruption_and_unexpected_entries(self):
         build_native_fixture()
@@ -246,52 +146,34 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                     with self.assertRaises(backup.BackupError):
                         backup.run(command, phase="test")
 
-    def test_valid_manifest_with_corrupt_lazy_catalog_never_qualifies(self):
+    def test_qualifier_checks_nonempty_combat_and_starter_records(self):
         build_native_fixture()
-        live = self.base / "live"
-        backup.run([str(self.fixture), "seed", str(live)], phase="test")
-        def kingdom_catalog(realm_id):
-            # Supported v1 frame: count, four int32 identity/claim fields,
-            # four int64 resources, int64 upkeep and two int32 status fields.
-            payload = struct.pack("<I4i5q2i", 1, 1, realm_id, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-            return b"DURKING\0" + struct.pack("<IIQ", 1, len(payload), 1) + hashlib.sha256(payload).digest() + payload
-        (live / "metadata").mkdir(mode=0o700, exist_ok=True)
-        (live / "metadata/kingdom_realms").write_bytes(kingdom_catalog(0))
-
-        # A retained, depleted UID is an independent authority, including when
-        # its old owner snapshot is no longer present in this restore generation.
-        mana_payload = b"DURMANA\x01" + struct.pack("<8Q", 81, 7, 1, 2, 100000, 1, 2, 100)
-        (live / "domains/artifact-mana-81").write_bytes(
-            mana_payload + hashlib.sha256(mana_payload).digest())
-        proof = self.base / "kingdom-format-proof"
-        proof.mkdir(mode=0o700)
-        backup.write_json(proof / "ISOLATED_RESTORE", {"synthetic": True})
-        shutil.copytree(live, proof / "state")
-        backup.run([str(ROOT / "bin/tools/qualify_flatfile_restore"), str(proof / "state")], phase="test")
-        for relative in ("domains/shop_trade_operations",
-                         "metadata/kingdom_realms", "domains/locker_catalog",
-                         "domains/artifact-mana-81"):
-            with self.subTest(catalog=relative):
-                corrupt = live / relative
-                corrupt.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                original = corrupt.read_bytes() if corrupt.exists() else None
-                corrupt.write_bytes(kingdom_catalog(-1) if relative == "metadata/kingdom_realms"
-                                    else b"synthetic-corrupt-native-catalog")
-                with mock.patch.dict(os.environ, {"FLATFILE_STATE_DIR": str(live)}):
-                    result = backup.backup(self.p, "flatfile-primary")
-                generation = self.p["root"] / result["generation"]
-                self.assertIn("state/" + relative, backup.verify(generation)["files"])
-                before = backup.inventory(generation)
-                with mock.patch.object(restore, "service_load") as service:
-                    with self.assertRaises(backup.BackupError):
-                        restore.restore(self.p, result["generation"], self.ledger())
-                    service.assert_not_called()
-                self.assertFalse(list(self.p["restore_root"].glob("candidate-*/QUALIFIED.json")))
-                self.assertEqual(backup.inventory(generation), before)
-                if original is None:
-                    corrupt.unlink()
+        for case in ("combat-valid", "combat-corrupt", "combat-truncated", "starter-valid",
+                     "starter-committed", "starter-corrupt", "starter-wrong-pid"):
+            with self.subTest(case=case):
+                candidate = self.p["restore_root"] / case
+                candidate.mkdir(mode=0o700)
+                backup.write_json(candidate / "ISOLATED_RESTORE", {"synthetic": True})
+                critical = candidate / "journals/critical"
+                combat = case.startswith("combat")
+                seed = ("seed-combat" if combat else
+                        "seed-starter-committed" if case == "starter-committed" else "seed-starter")
+                backup.run([str(self.fixture), seed, str(critical)], phase="test")
+                record = (critical / "combat-intents" / ("c1" + "00" * 15 + ".intent") if combat
+                          else critical / "starter-kits/42.kit")
+                if case.endswith("-corrupt"):
+                    data = record.read_bytes()
+                    record.write_bytes(data[:-1] + bytes([data[-1] ^ 1]))
+                elif case.endswith("-truncated"):
+                    record.write_bytes(record.read_bytes()[:-1])
+                elif case.endswith("-wrong-pid"):
+                    record.rename(record.with_name("43.kit"))
+                command = [str(ROOT / "bin/tools/qualify_flatfile_restore"), "--receipts", str(candidate)]
+                if case.endswith(("-valid", "-committed")):
+                    backup.run(command, phase="test")
                 else:
-                    corrupt.write_bytes(original)
+                    with self.assertRaises(backup.BackupError):
+                        backup.run(command, phase="test")
     def test_mariadb_full_dump_schema_history_values_and_isolated_service_boot(self):
         build_native_fixture()
         source = self.base / "live"
@@ -326,29 +208,45 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
             store = self.p["journal_roots"]["critical"] / "locker-identification"
             backup.run([str(self.fixture), "seed-receipt", str(store)], phase="test")
             receipt_bytes = (store / "42.receipt").read_bytes()
-            combat = self.p["journal_roots"]["critical"] / "combat-intents"
-            combat.mkdir(mode=0o700)
-            (combat / ".service-lock").touch(mode=0o600)
+            critical = self.p["journal_roots"]["critical"]
+            backup.run([str(self.fixture), "seed-combat-recorded", str(critical)], phase="test")
+            backup.run([str(self.fixture), "seed-starter-committed", str(critical)], phase="test")
             with mock.patch.dict(os.environ, env, clear=True):
                 result = backup.backup(self.p, "mariadb-primary")
             generation = self.p["root"] / result["generation"]
             captured = backup.inventory(generation)
+            # Preserve the shared foreign-owned checkout regression on MariaDB:
+            # mapped namespace root cannot traverse this private source directory.
+            checkout = self.base / "private-checkout"
+            checkout.mkdir(mode=0o700)
+            for name in ("areas_mini", "lib"):
+                shutil.copytree(ROOT / name, checkout / name)
+            for name in ("bin/server/dms_new", "scripts/qualify_service_restore.py"):
+                destination = checkout / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / name, destination)
+            os.chown(checkout, 65534, 65534)
             actual_service_load = restore.service_load
             checked = []
             def check_values_then_boot(candidate, mode, restored_env):
                 self.assertNotEqual(restored_env["DB_SOCKET"], env["DB_SOCKET"])
                 self.assertEqual(sql(restored_env, query), expected)
                 checked.append(mode)
-                actual_service_load(candidate, mode, restored_env)
+                with mock.patch.object(backup, "ROOT", checkout):
+                    actual_service_load(candidate, mode, restored_env)
             with mock.patch.object(restore, "service_load", check_values_then_boot):
                 receipt = restore.restore(self.p, result["generation"], self.ledger())
             self.assertEqual(checked, ["mariadb-primary"])
+            self.assertEqual(checkout.stat().st_uid, 65534)
+            self.assertEqual(checkout.stat().st_mode & 0o777, 0o700)
             self.assertEqual(receipt["result"], "qualified")
             self.assertEqual(sql(env, query), expected)
             self.assertEqual(backup.inventory(generation), captured)
             candidate = self.p["restore_root"] / receipt["candidate"]
-            self.assertEqual((candidate / "journals/critical/locker-identification/42.receipt").read_bytes(),
-                             receipt_bytes)
+            restored = candidate / "journals/critical"
+            self.assertEqual((restored / "locker-identification/42.receipt").read_bytes(), receipt_bytes)
+            self.assertTrue((restored / "combat-intents" / ("c2" + "00" * 15 + ".recorded")).exists())
+            self.assertTrue((restored / "starter-kits/42.kit").exists())
             self.assertIn(b"Entering game loop.", (candidate / "service.log").read_bytes())
             sql(env, "INSERT INTO accounts(account_name,confirmed) VALUES('OtherSynthetic',1);"
                      "UPDATE player_data SET account_name='OtherSynthetic' WHERE pid=42;")

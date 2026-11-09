@@ -397,7 +397,22 @@ and pick up at the first step not marked done.
 | Step | Branch | State |
 | --- | --- | --- |
 | 2a. Strip `__NO_MYSQL__`, Makefile | `branch/flatfile-backend-removal-plan` | done (#859) |
-| 2b + 3. Runtime dispatch, delete backend | `branch/flatfile-removal-runtime` | done |
+| 2b + 3. Runtime dispatch, delete backend | `branch/flatfile-removal-runtime` | done (#860) |
+| 4. Launcher, backup, restore, CI, docs | `branch/flatfile-removal-tools` | done |
+| 5. Tests and deferred list | `branch/flatfile-removal-tests` | in progress |
+
+### Step 4 evidence
+
+`cycle_mud.sh` rejects any `PERSISTENCE_MODE` except `mariadb-primary` and ignores
+leftover `FLATFILE_*` settings. `persistence_backup.py` and `persistence_restore.py`
+capture and restore MariaDB only; a flat-file generation in a backup root is now
+rejected as `invalid_generation_manifest`, which the owner's "no flat-file state"
+statement makes acceptable. `qualify_flatfile_restore` is receipts-only and links
+the nine sources from the trial. `build-restore-tools` no longer builds a second
+server, the `flatfile-build` CI job is gone, and the current docs and
+`.env.example` no longer advertise the backend. `check_flatfile_account_locker_conversion.sh`
+and `scripts/restore_flatfile_backup.sh` keep their names; the first is a read-only
+historical check and the second is the generic restore wrapper.
 
 ### Steps 2b and 3 evidence
 

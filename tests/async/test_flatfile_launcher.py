@@ -76,7 +76,7 @@ example = (ROOT / ".env.example").read_text()
 if "GAME_ACCOUNT_PASSWORD=<password>" in example:
     raise AssertionError(".env.example contains a shell-redirection password placeholder")
 
-with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary:
+with tempfile.TemporaryDirectory(prefix="duris-launcher-") as temporary:
     project = pathlib.Path(temporary)
     scripts = project / "scripts"
     scripts.mkdir()
@@ -98,44 +98,63 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     config.write_text(json.dumps(policy))
     config.chmod(0o600)
 
-    flat_env = {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+    # The launcher runs the MariaDB client and migration tools. These stand-ins let it
+    # run a fake server offline; run_launcher_stop_journey.py exercises the real stop
+    # record against MariaDB.
+    stubs = project / "stub-bin"
+    stubs.mkdir()
+    (stubs / "mysql").write_text("#!/bin/sh\necho 1\n")
+    (stubs / "mysql").chmod(0o755)
+    (scripts / "migration_runner.py").write_text("raise SystemExit(0)\n")
+    verify = project / "migrations/verify_runtime_compatibility.sh"
+    verify.write_text("#!/bin/sh\nexit 0\n")
+    verify.chmod(0o755)
+
+    base_env = {
+        "PATH": f"{stubs}:{os.environ.get('PATH', '/usr/bin:/bin')}",
         "ENVIRONMENT": "local",
-        "PERSISTENCE_MODE": "flatfile-primary",
-        "FLATFILE_STATE_DIR": str(project / "state"),
+        "PERSISTENCE_MODE": "mariadb-primary",
+        "DB_HOST": "127.0.0.1",
+        "DB_USER": "test-user",
+        "DB_PASSWD": "test-password",
+        "DB_NAME": "duris_dev",
+        "DB_ALLOWED_TARGETS": "127.0.0.1/duris_dev",
         "BACKUP_POLICY_FILE": str(config),
         "REDIS": "1",
+        # Settings left over from the removed flat-file backend are ignored.
+        "FLATFILE_STATE_DIR": "relative/and/ignored",
+        "FLATFILE_BACKUP_DIR": "relative/and/ignored",
     }
-    checked = run(script, flat_env, "--check-config")
-    if checked.returncode != 0 or "database-independent configuration" not in checked.stdout:
-        raise AssertionError("flat-file config check required a database:\n" + checked.stdout)
+    checked = run(script, base_env, "--check-config")
+    if checked.returncode != 0 or "explicit database configuration" not in checked.stdout:
+        raise AssertionError("valid MariaDB config was rejected:\n" + checked.stdout)
 
-    alternate_port_env = dict(flat_env)
+    alternate_port_env = dict(base_env)
     alternate_port_env["DURIS_DEV_PORT"] = "14000"
     checked = run(script, alternate_port_env, "--dev", "--check-config")
-    if checked.returncode != 0 or "database-independent configuration" not in checked.stdout:
+    if checked.returncode != 0 or "explicit database configuration" not in checked.stdout:
         raise AssertionError("alternate development port was rejected:\n" + checked.stdout)
 
-    production_port_env = dict(flat_env)
+    production_port_env = dict(base_env)
     production_port_env["DURIS_DEV_PORT"] = "7777"
     rejected = run(script, production_port_env, "--dev", "--check-config")
     if rejected.returncode == 0 or "must not use production port 7777" not in rejected.stdout:
         raise AssertionError("development launcher accepted production port 7777")
 
-    invalid_port_env = dict(flat_env)
+    invalid_port_env = dict(base_env)
     invalid_port_env["DURIS_DEV_PORT"] = "not-a-port"
     rejected = run(script, invalid_port_env, "--dev", "--check-config")
     if rejected.returncode == 0 or "must be a decimal port" not in rejected.stdout:
         raise AssertionError("development launcher accepted an invalid port")
 
-    production_env = dict(flat_env)
+    production_env = dict(base_env)
     production_env["ENVIRONMENT"] = "production"
     production_env["DURIS_DEV_PORT"] = "14000"
     rejected = run(script, production_env, "--dev", "--check-config")
     if rejected.returncode == 0 or "require ENVIRONMENT=local" not in rejected.stdout:
         raise AssertionError("development launcher accepted a production environment")
 
-    production_check_env = dict(flat_env)
+    production_check_env = dict(base_env)
     production_check_env.update(
         {
             "ENVIRONMENT": "production",
@@ -143,13 +162,13 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
         }
     )
     checked = run(script, production_check_env, "--production", "--check-config")
-    if checked.returncode != 0 or "database-independent configuration" not in checked.stdout:
+    if checked.returncode != 0 or "explicit database configuration" not in checked.stdout:
         raise AssertionError("valid production secret was rejected:\n" + checked.stdout)
 
     shared_host_env = dict(production_check_env)
     shared_host_env["DURIS_PRODUCTION_PORT"] = "14000"
     checked = run(script, shared_host_env, "--production", "--check-config")
-    if checked.returncode != 0 or "database-independent configuration" not in checked.stdout:
+    if checked.returncode != 0 or "explicit database configuration" not in checked.stdout:
         raise AssertionError("configured production port was rejected:\n" + checked.stdout)
 
     for invalid_production_port in ("0", "04000", "65536", "not-a-port"):
@@ -159,7 +178,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
         if rejected.returncode == 0 or "DURIS_PRODUCTION_PORT must be a decimal port" not in rejected.stdout:
             raise AssertionError(f"production launcher accepted port {invalid_production_port!r}")
 
-    colliding_dev_env = dict(flat_env)
+    colliding_dev_env = dict(base_env)
     colliding_dev_env.update({"DURIS_PRODUCTION_PORT": "14000", "DURIS_DEV_PORT": "14000"})
     rejected = run(script, colliding_dev_env, "--dev", "--check-config")
     if rejected.returncode == 0 or "must not use production port 14000" not in rejected.stdout:
@@ -177,14 +196,8 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     if rejected.returncode == 0 or "must be empty" not in rejected.stdout:
         raise AssertionError("production launcher accepted a weak previous secret")
 
-    missing_root = dict(flat_env)
-    del missing_root["FLATFILE_STATE_DIR"]
-    rejected = run(script, missing_root, "--check-config")
-    if rejected.returncode == 0 or "FLATFILE_STATE_DIR is required" not in rejected.stdout:
-        raise AssertionError("flat-file config accepted a missing state root")
-
     db_env = {
-        "PATH": flat_env["PATH"],
+        "PATH": base_env["PATH"],
         "ENVIRONMENT": "local",
         "PERSISTENCE_MODE": "mariadb-primary",
     }
@@ -226,13 +239,12 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     if rejected.returncode == 0 or "Resolved database target is not allow-listed" not in rejected.stdout:
         raise AssertionError("non-production port kept a production database name")
 
-    fallback_env = dict(flat_env)
-    fallback_env["PERSISTENCE_MODE"] = "mariadb-primary-flatfile-fallback"
-    rejected = run(script, fallback_env, "--check-config")
-    if rejected.returncode == 0 or "Missing required database field: DB_HOST" not in rejected.stdout:
-        raise AssertionError("fallback config stopped requiring database credentials")
+    for obsolete in ("flatfile-primary", "mariadb-primary-flatfile-fallback"):
+        rejected = run(script, dict(base_env, PERSISTENCE_MODE=obsolete), "--check-config")
+        if rejected.returncode == 0 or "Invalid PERSISTENCE_MODE" not in rejected.stdout:
+            raise AssertionError(f"launcher accepted obsolete mode {obsolete}")
 
-    invalid_env = dict(flat_env)
+    invalid_env = dict(base_env)
     invalid_env["PERSISTENCE_MODE"] = "unknown"
     rejected = run(script, invalid_env, "--check-config")
     if rejected.returncode == 0 or "Invalid PERSISTENCE_MODE" not in rejected.stdout:
@@ -253,34 +265,28 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     (project / "bin/server").mkdir(parents=True, exist_ok=True)
     (project / "lib/misc").mkdir(parents=True)
     (project / "logs").mkdir()
-    state_record = project / "state/metadata/timer.test"
-    state_record.parent.mkdir(parents=True, mode=0o700)
-    (project / "state").chmod(0o700)
-    state_record.write_text("durable state\n")
-    state_record.chmod(0o600)
     server = project / "bin/server/dms_new"
     server.write_text("#!/bin/sh\nexit 0\n")
     server.chmod(0o755)
 
     # The backup before a boot is off unless PREBOOT_BACKUP=1: without it the launcher
     # boots and leaves no backup.
-    launched = run(script, flat_env, "--minimal")
+    launched = run(script, base_env, "--minimal")
     if launched.returncode != 0 or "Mud stopped, reason: shutdown [0]" not in launched.stdout:
-        raise AssertionError("flat-file launcher did not boot without a pre-boot backup:\n"
+        raise AssertionError("launcher did not boot without a pre-boot backup:\n"
                              + launched.stdout)
     if "Backing up" in launched.stdout or (project / "backups").exists():
-        raise AssertionError("flat-file launcher took a backup it was not asked for:\n"
+        raise AssertionError("launcher took a backup it was not asked for:\n"
                              + launched.stdout)
-    flat_env["PREBOOT_BACKUP"] = "1"
 
-    nested_backup_env = dict(flat_env)
+    nested_backup_env = dict(base_env, PREBOOT_BACKUP="1")
     nested_config = project / "nested-policy.json"
     nested_config.write_text(json.dumps(dict(policy, root=str(project / "state/backups"))))
     nested_config.chmod(0o600)
     nested_backup_env["BACKUP_POLICY_FILE"] = str(nested_config)
     rejected = run(script, nested_backup_env, "--minimal")
     if rejected.returncode == 0 or "refusing to boot" not in rejected.stdout:
-        raise AssertionError("flat-file launcher ignored an unsafe backup target:\n" + rejected.stdout)
+        raise AssertionError("launcher ignored an unsafe backup target:\n" + rejected.stdout)
 
     # Every boot moves the last run's logs into logs/old-logs/<date>/ and drops the
     # oldest generations until the archive fits its cap.
@@ -294,10 +300,10 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     (logs / "old-logs/2000.01.01-00.00.00/status").write_bytes(b"x" * (2 << 20))
     (logs / "old-logs/2000.01.02-00.00.00").mkdir()
     (logs / "old-logs/2000.01.02-00.00.00/status").write_text("kept\n")
-    capped_env = dict(flat_env, DURIS_LOG_ARCHIVE_MB="1")
+    capped_env = dict(base_env, DURIS_LOG_ARCHIVE_MB="1")
     launched = run(script, capped_env, "--minimal")
     if launched.returncode != 0 or "Mud stopped, reason: shutdown [0]" not in launched.stdout:
-        raise AssertionError("flat-file launcher did not complete without DB tools:\n" + launched.stdout)
+        raise AssertionError("launcher did not complete without DB tools:\n" + launched.stdout)
     rotated = [path for path in (logs / "old-logs").iterdir()
                if path.is_dir() and (path / "latency_trace.log").exists()]
     if (len(rotated) != 1 or (rotated[0] / "status").read_text() != "last run\n"
@@ -311,20 +317,6 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     if (logs / "old-logs/2000.01.01-00.00.00").exists() or \
             not (logs / "old-logs/2000.01.02-00.00.00").exists():
         raise AssertionError("the archive cap did not drop only the oldest generation")
-    forbidden = (
-        "database migrations",
-        "runtime database compatibility",
-        "Logged reboot:",
-        "DB mode enabled",
-        "mysqldump",
-    )
-    if any(message in launched.stdout for message in forbidden):
-        raise AssertionError("flat-file launcher entered a database-only path:\n" + launched.stdout)
-    backups = list((project / "backups").glob("*/state/metadata/timer.test"))
-    if len(backups) != 1 or backups[0].read_text() != "durable state\n":
-        raise AssertionError("flat-file launcher did not back up its selected state root")
-    if backups[0].stat().st_mode & 0o077 or backups[0].parents[1].stat().st_mode & 0o077:
-        raise AssertionError("flat-file launcher created a non-private backup")
 
     # --production logs a staged binary whose stamp is not mariadb/production, leaves it
     # where it is and runs the stamped runtime binary; it exits only when that one is
@@ -366,4 +358,4 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-launcher-") as temporary
     if rejected.returncode == 0 or "requires a mariadb/production server build" not in rejected.stdout:
         raise AssertionError("production launcher ran an unstamped runtime binary:\n" + rejected.stdout)
 
-print("flat-file launcher regression passed")
+print("launcher regression passed")
