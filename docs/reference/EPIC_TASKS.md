@@ -95,11 +95,8 @@ read-only audit, guarded provisioning, diagnostics, and recovery acceptance.
 [EPIC_ZONE_SEED.md](../operations/EPIC_ZONE_SEED.md) describes the separate payout
 seed. Production provisioning remains an explicitly authorized operation.
 
-The catalog's boot refresh reports `database_disabled` in a `__NO_MYSQL__`
-build, and the maintenance path has no flatfile task-roster implementation.
-Flatfile support for epic balances or stone rewards does not imply a working
-zone-task catalog. A zone roll can remain pending there; this source does not
-provide full epic-task parity between backends.
+The task catalog requires the configured MariaDB database and a successful
+boot refresh before zone tasks can be assigned.
 
 ## Completing each task
 
@@ -136,14 +133,11 @@ There are two delivery paths in current source:
   applies effects. Unpublished balances and secondary effects held only in this
   pending map are not automatically replayed after a process crash. The durable
   claim/ledger records alone are not a restored player balance.
-- Prepared delivery is selected for flatfile or Divine-mode stone awards.
+- Prepared delivery is selected for Divine-mode stone awards.
   [divine_boon_delivery.c](../../src/economy/divine_boon_delivery.c) uses a durable
   per-character delivery sequence, ordered receipt application, and a saved
   delivery watermark. STATUS/AFFECTS/SKILLS checkpoints capture the balance and
   task effects together.
-  Flatfile's player-domain repository
-  accepts zone touches with prepared delivery. Legacy unprepared flatfile
-  commands are rejected.
 
 The [stone recovery guide](../guides/epic-stone-recovery.md) describes claim and
 ordinary SQL receipt behavior. Do not generalize its legacy delivery limits to
@@ -266,7 +260,7 @@ and [player saves](../persistence/PLAYER_SAVE_PIPELINE.md).
   real stone reward, saved pending obligation, scheduled catalog recovery,
   and ready player history in disposable MariaDB. It takes `--server`, default
   `bin/server/dms_new`; it may request a rerun after the legitimate 5%
-  alternative roll. It does not establish flatfile catalog support.
+  alternative roll.
 - [test_epic_stone_transaction.py](../../tests/async/test_epic_stone_transaction.py)
   and [test_epic_stone_runtime.py](../../tests/async/test_epic_stone_runtime.py):
   command codecs, rollback/replay, admission, publication, and recovery boundaries.

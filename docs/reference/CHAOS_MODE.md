@@ -236,5 +236,5 @@ python3 tests/async/test_chaos_new_character_kit.py
 python3 tests/async/test_chaos_preentry_grant.py
 python3 tests/async/test_chaos_infinite_starting_grants.py
 python3 tests/async/test_chaos_pouch_help.py
-python3 tests/async/test_flatfile_chaos_new_character_kit.py
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_flatfile_chaos_new_character_kit.py --server bin/server/dms_new
 ```

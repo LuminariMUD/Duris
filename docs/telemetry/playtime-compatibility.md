@@ -29,7 +29,6 @@ measure ([SESSION_STATE.md](SESSION_STATE.md)).
 `player/player_playtime.h` owns the shared calculation, and the immutable capture
 calls it. A later write must not replace an elapsed total with the old live
 baseline.
-The retired regular-player flat-file fallback is not revived or redesigned.
 
 ## Checkpoint ownership and bounded loss
 
@@ -55,7 +54,6 @@ it. A crash loses the totals the writer had not yet written.
 ```sh
 python3 tests/async/test_player_playtime_capture.py
 python3 tests/async/test_playtime_checkpoint.py
-python3 tests/async/test_playtime_flatfile.py
 ```
 
 - Controlled-clock capture: 3,600 + 600 = 4,200; repeat saves; terminal/death
@@ -63,8 +61,6 @@ python3 tests/async/test_playtime_flatfile.py
   staff baseline and wipe-offset arithmetic; unchanged live time fields.
 - Quiet checkpoint: no unrelated dirty components, repeated cycles, eight-player
   continuation boundary preserved.
-- Real flat-file repository: full baseline, status-only elapsed update, duplicate
-  and stale revisions, reload with a fresh session anchor.
 
 With a disposable loopback MariaDB (the journey also runs in `make test-db`):
 
@@ -85,9 +81,8 @@ inside the disposable fixture directory.
 After the copyover the test checks the preserved connection's save and then closes
 the fixture connection; it does not test the account menu.
 
-Build the changed C++ code with `make -C src`. Both MariaDB and flat-file backend
-builds must pass; use a separate `DMS_BINARY` for the latter to avoid replacing the
-binary used by the SQL journey.
+Build the changed C++ code with `make -C src`; MariaDB is the only supported
+persistence backend.
 
 ## Historical data
 

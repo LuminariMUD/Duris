@@ -269,8 +269,7 @@ correction; its latency benefit has not been measured on a representative clone.
 normalized metadata fingerprints are sealed over an inventory that includes it,
 so on the database backend the gate proves the table's engine, collation,
 columns and indexes before gameplay publishes. `kingdom_initialize()` still
-disables kingdoms for the boot when it cannot read the table, which remains
-reachable on the flat-file build, where no boot gate stands in front of it. The
+disables kingdoms for the boot when it cannot read the table. The
 *ledger* is fail-closed too, exactly as it is for every other immutable
 migration: `src/core/runtime_compatibility_contract.h` compiles
 `RUNTIME_MIGRATION_HEAD_ID` and its sequence, and

@@ -3,9 +3,9 @@
 ## Current PostHog path (#59)
 
 Production uses `telemetry_transport_posthog_*` in the existing runtime worker,
-independently of MariaDB or flat-file gameplay. The SQL repository object is no
-longer linked. The older callback/retry path below remains for historical
-repository regression fixtures; it is not a fallback or a second live writer.
+independently of the required MariaDB gameplay persistence. The SQL repository
+object is not linked into the server. The callback/retry interface below is used
+by repository regression fixtures; it is not a second live writer.
 
 Admission still copies into the bounded SPSC queue with the native sequence and
 admission clock. The worker captures a tail fence, consumes each record once,
@@ -189,8 +189,8 @@ exercises saturation, later fresh-key gap admission and immutable rejected keys.
 Health is a copied atomic snapshot. Counters saturate instead of wrapping;
 `queue_depth` includes the retained immutable normal batch and the high-water
 mark is bounded by the configured queue capacity. Health reads do not inspect
-worker-owned repository state or acquire a gameplay lock. A flat-file authority
-returns `flatfile_disabled`, rejects admissions, emits no hidden file, and does
+worker-owned repository state or acquire a gameplay lock. A deliberately disabled
+telemetry backend returns `flatfile_disabled`, rejects admissions, emits no hidden file, and does
 not claim healthy zero activity. If repository initialization disables an already
 queued transport, queued observations remain visible in RAM until joined shutdown.
 Shutdown counts never-attempted detail/control records as drops and records an
