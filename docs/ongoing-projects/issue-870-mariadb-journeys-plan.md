@@ -340,7 +340,7 @@ This is an estimate, not a time limit or permission to omit required proof.
 
 ### Launch gate and shop bootstrap
 
-- Implementation: `014f99194`; no server code changed. Baseline-only document
+- Implementation: `014f99194` and `bd20661cf`; no server code changed. Baseline-only document
   follow-up `8fce01495` is included by merge `cc7af38e9`.
 - Binary SHA-256: `fe10882bac125606e69a8acaba57b32071bfdccdc3e4100a4b4b7742fc7c096c`.
 - Passed: `tests/async/with_disposable_mariadb.sh python3 tests/async/run_pwipe_launch_gate_journey.py --server bin/server/dms_new --backend mariadb`.
@@ -350,11 +350,13 @@ This is an estimate, not a time limit or permission to omit required proof.
   unchanged denied account/player/item state, and real UTC opening all passed.
 - Passed: `tests/async/with_disposable_mariadb.sh python3 tests/async/run_shop_bootstrap_journey.py --server bin/server/dms_new --areas bin/tests/issue-870/world/areas --output bin/tests/issue-870/shop-bootstrap.json`.
   Evidence: that JSON plus `.log` and `shop-bootstrap-run.log`. Both full-world
-  boots passed: 553 shops, 295 retained items, unchanged payloads/custody and
+  boots passed: 552 original shops and 294 retained items in the final run
+  (earlier random resets produced 553/295), unchanged payloads/custody and
   non-regressing owner revisions. A later replay exposed a random world reset
   creating an additional keeper; the comparison now follows all original shop
   IDs and permits newly spawned shops, recording both retained and total counts.
-  Its final runtime qualification is pending. Failure evidence is retained as
+  Final runtime qualification passed after `bd20661cf`; the report records
+  `8d74a4afb`, whose shop code is identical to that commit. Failure evidence is retained as
   `bin/tests/issue-870/new-keeper-failure-shop-bootstrap*`.
   SQL rewrites replace row IDs and advance
   revisions legitimately; NPCs may cast buffs during a game pulse, so their
