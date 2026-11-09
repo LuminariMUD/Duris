@@ -11,7 +11,6 @@
 #include "item/starter_kit_intent.h"
 #include "player/player_revision_state.h"
 #include "economy/boon_reward_transaction.h"
-#include "economy/shop_trade_transaction.h"
 #include "guild/artifact_admission.h"
 #include "guild/artifact_guild_delivery.h"
 #include "guild/artifact_guild_state.h"
@@ -81,15 +80,7 @@ HARNESS_STUB bool currency_transaction_wallet_busy(P_char ch)
 {
 	return currency_transaction_chest_busy(ch);
 }
-HARNESS_STUB bool shop_trade_transaction_blocks_commands(P_char)
-{
-	return false;
-}
 struct player_snapshot;
-HARNESS_STUB bool shop_trade_transaction_capture_items(P_char, player_snapshot *)
-{
-	return true;
-}
 // Isolated affect/abort fixtures have no shoreline movement callback to execute.
 HARNESS_STUB void event_water_crossing(P_char, P_char, P_obj, void *) {}
 // Isolated terminal-save fixtures have no account projection or departure state.
@@ -382,11 +373,6 @@ HARNESS_STUB bool auction_transaction_player_busy(P_char)
 }
 
 HARNESS_STUB bool collector_transaction_player_busy(P_char)
-{
-	return false;
-}
-
-HARNESS_STUB bool shop_trade_transaction_player_busy(P_char)
 {
 	return false;
 }

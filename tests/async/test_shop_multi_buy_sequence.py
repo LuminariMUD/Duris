@@ -32,8 +32,6 @@ PRELUDE = r"""
 #include "economy/shop.h"
 #include "economy/currency_transaction.h"
 #include "economy/currency_value.h"
-#include "economy/shop_trade_runtime.h"
-#include "economy/shop_trade_transaction.h"
 #include "item/item_movement_transaction.h"
 #include <algorithm>
 #include <cassert>

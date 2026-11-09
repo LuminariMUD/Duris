@@ -36,10 +36,6 @@ P_obj object_list;
 static std::deque<critical_command> grants;
 static std::deque<critical_completion> grant_completions;
 static std::string pending_domain;
-bool shop_trade_transaction_player_busy(P_char)
-{
-	return pending_domain == "shop-pending";
-}
 bool auction_transaction_player_busy(P_char)
 {
 	return pending_domain == "auction-pending";
@@ -61,7 +57,6 @@ void locker_identify_pulse() {}
 void private_chest_purchase_pulse() {}
 void sql_chest_log_pulse() {}
 void locker_chest_changes_pulse() {}
-void shop_trade_transaction_handle_completions(const critical_completion *, size_t) {}
 void auction_transaction_handle_completions(const critical_completion *, size_t) {}
 void collector_transaction_handle_completions(const critical_completion *, size_t) {}
 void combat_outcome_transaction_handle_completions(const critical_completion *, size_t) {}

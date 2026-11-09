@@ -144,7 +144,6 @@
 #include "item/item_movement_transaction.h"
 #include "item/starter_kit_intent.h"
 #include "item/item_ownership_runtime.h"
-#include "economy/shop_trade_transaction.h"
 #include "item/item_uid_allocator.h"
 #include "item/item_claim_repository.h"
 #include "economy/auction_transaction.h"
@@ -350,7 +349,6 @@ static void critical_gameplay_handle_completions(const critical_completion *comp
 	sql_chest_log_pulse();
 	locker_chest_changes_pulse();
 	item_movement_transaction_handle_completions(completions, count);
-	shop_trade_transaction_handle_completions(completions, count);
 	auction_transaction_handle_completions(completions, count);
 	collector_transaction_handle_completions(completions, count);
 	combat_outcome_transaction_handle_completions(completions, count);

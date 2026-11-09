@@ -20,7 +20,6 @@
 #include "guild/artifact_admission.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/collector_transaction.h"
-#include "economy/shop_trade_transaction.h"
 #include "persistence/persistence_checkpoint.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_codec.h"
@@ -1714,8 +1713,6 @@ bool item_creation_grant_mark_blocking(P_char actor)
 
 bool item_creation_grant_blocks_commands(P_char actor)
 {
-	if (shop_trade_transaction_blocks_commands(actor))
-		return true;
 	if (!actor || IS_NPC(actor) || GET_PID(actor) <= 0)
 		return false;
 	auto found = creation_grants.find(static_cast<uint32_t>(GET_PID(actor)));
