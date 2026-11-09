@@ -516,6 +516,16 @@ void kingdom_reindex_all(void)
  * Lifecycle
  * ------------------------------------------------------------------ */
 
+void kingdom_initialize_object_bindings(void)
+{
+	kingdom_config_load();
+	if (kingdom_cfg.enabled)
+	{
+		kingdom_bind_node_procs();
+		kingdom_bind_banner_procs();
+	}
+}
+
 /*
  * WIRING NOTE: this must be called AFTER the world, the associations and the
  * guildhalls are loaded. It resolves anchors through real_room0(), prunes

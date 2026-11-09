@@ -15,6 +15,10 @@
 #ifndef _SOJ_PROC_LIB_
 #define _SOJ_PROC_LIB_
 
+// Validate authored object-proclib metadata using the real parameter decoder,
+// without an object, callback invocation, binding change, identity, or event.
+bool valid_object_proclib(const char *name, const char *arguments);
+
 #ifdef SHLIB
 
 typedef struct dynamic_procs
