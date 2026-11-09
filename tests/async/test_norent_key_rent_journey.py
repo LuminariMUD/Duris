@@ -27,6 +27,7 @@ MORTAL, MORTAL_ACCOUNT = "Campwarden", "Campacct"
 INN, KEY, BAG, SIBLING, TICKET = 40454, 40401, 48, 15, 47003
 SHOP, SHOP_KEY = 5848, 5783
 CAMP_ROOM = 1457
+LOCKER_ROOM = 65201
 NORENT = 8388608
 FALLS, CRUMBLES = "is no-rent and falls to the floor", "is no-rent and crumbles to dust"
 
@@ -352,6 +353,22 @@ def run(binary, backend, evidence_dir):
                 assert on_floor(client, "backpack"), "no-rent bag did not land on the floor"
                 assert "banana" in command(client, "inventory").lower()
                 evidence["checks"].append("a saved item in a no-rent bag survives and the bag falls")
+
+                # Staff camp immediately; a locker room must crumble the item
+                # before its terminal locker hook can store floor objects.
+                command(client, "goto " + str(LOCKER_ROOM))
+                assert "Inside a Locker" in command(client, "look")
+                grant(TICKET, "ticket", "ticket", False)
+                client.send("camp")
+                text = client.expect("ACCOUNT MENU", timeout=30)
+                assert CRUMBLES in text, text
+                client.close()
+                client = None
+                login()
+                command(client, "goto " + str(LOCKER_ROOM))
+                assert not on_floor(client, "ticket"), "locker-room camp left a no-rent item on the floor"
+                assert not any(row[1] == TICKET for row in inspect()["items"])
+                evidence["checks"].append("staff camp in a locker-flagged room crumbles no-rent items")
                 stop()
                 evidence["passed"] = True
                 print(backend, "all rent, camp, link-death, restart, crash and copyover checks passed", flush=True)
