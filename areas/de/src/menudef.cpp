@@ -281,8 +281,8 @@ menuChoice objLimitChoiceArr[] = { { "limit override for all objs of type", 0, 0
 				   { 0 } };
 
 #ifdef GODMODE
-const menuChoice objItemValueArr[] = { { "item value: ", 0, 0, 0, mctItemValue, mclNone, mcdDefault,
-					 0, 0 },
+const menuChoice objItemValueArr[] = { { "ival estimate: ", 0, 0, 0, mctItemValue, mclNone,
+					 mcdDefault, 0, 0 },
 				       { 0 } };
 #endif
 

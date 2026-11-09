@@ -266,7 +266,8 @@ long getMenuDataTypeStrn(char *valstrn, const menuChoiceDataType dataType, const
 
 #ifdef GODMODE
 	case mctItemValue:
-		sprintf(valstrn, "%d", itemvalue((objectType *)((char *)entityPtr + offset)));
+		snprintf(valstrn, intMaxLen, "%d (verify on server)",
+			 itemvalue((objectType *)((char *)entityPtr + offset)));
 		break;
 #endif
 
