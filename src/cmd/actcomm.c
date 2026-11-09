@@ -1686,6 +1686,15 @@ int find_action(int cmd)
 	}
 }
 
+static void dragon_action_roar(P_char ch)
+{
+	const uint64_t actor_id = ch->runtime_id;
+	DragonCombat(ch, TRUE);
+	ch = find_character_by_runtime_id(actor_id);
+	if (ch && IS_PC_PET(ch))
+		CharWait(ch, PULSE_VIOLENCE);
+}
+
 void do_action(P_char ch, char *argument, int cmd)
 {
 	int act_nr;
@@ -1705,22 +1714,9 @@ void do_action(P_char ch, char *argument, int cmd)
 			return;
 		}
 	}
-	if (cmd == CMD_ROAR && IS_DRAGON(ch))
+	if (cmd == CMD_ROAR && (IS_DRAGON(ch) || IS_AVATAR(ch) || IS_TITAN(ch)))
 	{
-		DragonCombat(ch, TRUE); /* calls roar section only */
-		if (IS_PC_PET(ch))
-		{
-			CharWait(ch, PULSE_VIOLENCE);
-		}
-		return;
-	}
-	if (cmd == CMD_ROAR && (IS_AVATAR(ch) || IS_TITAN(ch)))
-	{
-		DragonCombat(ch, TRUE);
-		if (IS_PC_PET(ch))
-		{
-			CharWait(ch, PULSE_VIOLENCE);
-		}
+		dragon_action_roar(ch);
 		return;
 	}
 	if (cmd == CMD_TRIP)

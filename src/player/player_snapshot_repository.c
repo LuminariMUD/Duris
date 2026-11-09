@@ -23,6 +23,7 @@
 #include "economy/collector_repository.h"
 #include "economy/divine_trade_result.h"
 #include "item/item_claim_repository.h"
+#include "item/item_transfer_command.h"
 #include "persistence/persistence_observability.h"
 #include "persistence/persistence_log.h"
 #include "player/player_snapshot_codec.h"
@@ -657,12 +658,11 @@ struct claimed_graph
 query_result claim_graph(MYSQL *connection, const item_owner_identity &owner,
 			 const std::vector<player_item_snapshot> &items,
 			 std::vector<claimed_graph> *claims,
-			 std::vector<player_item_snapshot> *written, bool rent_keys = false)
+			 std::vector<player_item_snapshot> *written)
 {
 	claimed_graph claim;
 	claim.owner = owner;
-	const unsigned int failed =
-		claim_items(connection, owner, items, &claim.outcome, rent_keys);
+	const unsigned int failed = claim_items(connection, owner, items, &claim.outcome);
 	if (failed)
 		return { false, failed };
 	*written = item_claim_written_items(items, claim.outcome.left_out);
@@ -804,8 +804,7 @@ query_result apply_items(MYSQL *connection, const player_snapshot &snapshot,
 	if (!result.ok)
 		return result;
 	std::vector<player_item_snapshot> written;
-	result = claim_graph(connection, owner, snapshot.items, claims, &written,
-			     snapshot.save_intent == RENT_INN);
+	result = claim_graph(connection, owner, snapshot.items, claims, &written);
 	if (!result.ok)
 		return result;
 	if (snapshot.pending_world_quest.present && !snapshot.pending_world_quest.fallback_only &&
@@ -1211,6 +1210,146 @@ query_result insert_opening_baselines(MYSQL *connection, int pid)
 	return result;
 }
 
+// A save captured before publication lacks the paid roots. Keep their durable
+// rows and their bag subtree while applying the rest of the capture.
+query_result retain_paid_creation(MYSQL *connection, const std::string &operation,
+				  const item_transfer_result &receipt, player_snapshot *snapshot)
+{
+	if (!(snapshot->components & (PLAYER_COMPONENT_INVENTORY | PLAYER_COMPONENT_EQUIPMENT)))
+		return { true, 0 };
+	const auto ledger_query = execute(
+		connection,
+		"SELECT item_uid FROM item_ownership_ledger WHERE operation_id=UNHEX('" +
+			operation + "') AND to_owner_type=1 AND to_owner_id=" +
+			std::to_string(snapshot->pid) + " AND reason_type=2 AND reason_id=" +
+			std::to_string(snapshot->pending_trade.payment) +
+			" ORDER BY event_index FOR UPDATE");
+	if (!ledger_query.ok)
+		return ledger_query;
+	std::unique_ptr<MYSQL_RES, decltype(&mysql_free_result)> ledger(
+		mysql_store_result(connection), mysql_free_result);
+	if (!ledger)
+		return { false, mysql_errno(connection) ? mysql_errno(connection) : EIO };
+	std::unordered_set<uint64_t> purchased;
+	bool root_present = false;
+	while (MYSQL_ROW row = mysql_fetch_row(ledger.get()))
+	{
+		if (!row[0])
+			return { false, EILSEQ };
+		const uint64_t uid = strtoull(row[0], nullptr, 10);
+		root_present |= uid == receipt.root_item_uid;
+		if (!uid || !purchased.insert(uid).second)
+			return { false, EILSEQ };
+	}
+	if (!root_present || purchased.size() != receipt.item_count)
+		return { false, ESTALE };
+	ledger.reset();
+	const auto item_query = execute(
+		connection,
+		"SELECT i.id,i.obj_uid,COALESCE(i.container_id,0),o.root_item_uid "
+		"FROM player_items i JOIN item_current_owner o ON o.item_uid=i.obj_uid "
+		"WHERE i.pid=" +
+			std::to_string(snapshot->pid) +
+			" AND o.owner_type=1 AND o.owner_id=i.pid AND o.state=1 FOR UPDATE");
+	if (!item_query.ok)
+		return item_query;
+	std::unique_ptr<MYSQL_RES, decltype(&mysql_free_result)> stored(
+		mysql_store_result(connection), mysql_free_result);
+	if (!stored)
+		return { false, mysql_errno(connection) ? mysql_errno(connection) : EIO };
+	struct item_row
+	{
+		uint64_t id, uid, parent, root;
+	};
+	std::unordered_map<uint64_t, item_row> by_id;
+	std::unordered_map<uint64_t, uint64_t> by_uid;
+	if (mysql_num_rows(stored.get()) > PLAYER_SNAPSHOT_MAX_OBJECTS)
+		return { false, E2BIG };
+	while (MYSQL_ROW row = mysql_fetch_row(stored.get()))
+	{
+		if (!row[0] || !row[1] || !row[2] || !row[3])
+			return { false, EILSEQ };
+		const item_row item{ strtoull(row[0], nullptr, 10), strtoull(row[1], nullptr, 10),
+				     strtoull(row[2], nullptr, 10), strtoull(row[3], nullptr, 10) };
+		if (!item.id || !item.uid || !item.root || !by_id.emplace(item.id, item).second ||
+		    !by_uid.emplace(item.uid, item.id).second)
+			return { false, EILSEQ };
+	}
+	stored.reset();
+	std::unordered_set<uint64_t> protected_ids;
+	for (uint64_t uid : purchased)
+	{
+		auto item = by_uid.find(uid);
+		if (item == by_uid.end())
+			return { false, ESTALE };
+		uint64_t id = item->second;
+		for (size_t depth = 0; id && depth <= PLAYER_SNAPSHOT_MAX_DEPTH; ++depth)
+		{
+			auto found = by_id.find(id);
+			if (found == by_id.end())
+				return { false, ESTALE };
+			protected_ids.insert(id);
+			id = found->second.parent;
+		}
+		if (id)
+			return { false, E2BIG };
+	}
+	// Retaining the bag also retains every SQL child whose foreign key names it.
+	for (const auto &[id, row] : by_id)
+	{
+		uint64_t ancestor = row.parent;
+		for (size_t depth = 0; ancestor && depth <= PLAYER_SNAPSHOT_MAX_DEPTH; ++depth)
+		{
+			if (protected_ids.count(ancestor))
+			{
+				protected_ids.insert(id);
+				break;
+			}
+			auto found = by_id.find(ancestor);
+			if (found == by_id.end())
+				return { false, ESTALE };
+			ancestor = found->second.parent;
+		}
+		if (ancestor && !protected_ids.count(ancestor))
+			return { false, E2BIG };
+	}
+	std::unordered_set<uint64_t> protected_uids;
+	for (uint64_t id : protected_ids)
+		protected_uids.insert(by_id.at(id).uid);
+	std::vector<player_item_snapshot> other_items;
+	std::vector<int32_t> remap(snapshot->items.size(), PLAYER_SNAPSHOT_NO_PARENT);
+	for (size_t index = 0; index < snapshot->items.size(); ++index)
+	{
+		auto item = snapshot->items[index];
+		if (protected_uids.count(item.object_uid))
+			continue;
+		if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+		{
+			if (item.parent_index < 0 ||
+			    static_cast<size_t>(item.parent_index) >= index ||
+			    remap[item.parent_index] == PLAYER_SNAPSHOT_NO_PARENT)
+				return { false, ESTALE };
+			item.parent_index = remap[item.parent_index];
+		}
+		remap[index] = static_cast<int32_t>(other_items.size());
+		other_items.push_back(std::move(item));
+	}
+	std::unordered_set<uint64_t> already_retained;
+	for (const auto &row : snapshot->retained_items.rows)
+		already_retained.insert(row.source_row_id);
+	// Existing captured rows already contributed to the snapshot bound. The
+	// receipt can add at most one encoded item-transfer blob beyond that capture.
+	if (snapshot->retained_items.bytes >
+	    PLAYER_SNAPSHOT_MAX_BYTES - ITEM_TRANSFER_ITEM_BLOB_MAX_BYTES)
+		return { false, E2BIG };
+	snapshot->retained_items.bytes += ITEM_TRANSFER_ITEM_BLOB_MAX_BYTES;
+	for (uint64_t id : protected_ids)
+		if (already_retained.insert(id).second)
+			snapshot->retained_items.rows.push_back({ id, by_id.at(id).root });
+	snapshot->items = std::move(other_items);
+	return { true, 0 };
+}
+
 // The critical writer locks inbox before player_data; use that order here too.
 query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 {
@@ -1224,7 +1363,7 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 	}
 	auto query = execute(
 		connection,
-		"SELECT command_hash,command_type,status,result_code=0,result_payload FROM critical_operation_inbox "
+		"SELECT command_hash,command_type,status,result_code=0,result_payload,payload_version FROM critical_operation_inbox "
 		"WHERE operation_id=UNHEX('" +
 			operation + "') FOR UPDATE");
 	if (!query.ok)
@@ -1234,24 +1373,97 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 		return { false, mysql_errno(connection) ? mysql_errno(connection) : EIO };
 	MYSQL_ROW row = mysql_fetch_row(rows);
 	bool valid = true, committed = false;
+	bool collector_receipt = false;
+	collector_command_result purchased = {};
+	bool paid_creation = false;
+	item_transfer_result paid_receipt{};
 	if (row)
 	{
 		const auto *lengths = mysql_fetch_lengths(rows);
-		divine_trade_result result;
 		valid = lengths && row[0] && lengths[0] == tag.command_hash.size() &&
 			!memcmp(row[0], tag.command_hash.data(), tag.command_hash.size()) &&
-			row[1] && !strcmp(row[1], "19") && row[2] && !strcmp(row[2], "1") &&
-			row[3] && (!strcmp(row[3], "0") || !strcmp(row[3], "1")) && row[4] &&
-			divine_trade_result_decode(reinterpret_cast<const uint8_t *>(row[4]),
-						   lengths[4], &result) &&
-			result.pid == static_cast<uint32_t>(snapshot->pid) &&
-			result.payment == tag.payment &&
-			result.wallet_revision == tag.wallet_revision + 1;
+			row[1] && row[2] && !strcmp(row[2], "1") && row[3] &&
+			(!strcmp(row[3], "0") || !strcmp(row[3], "1"));
+		collector_receipt = row[1] && !strcmp(row[1], "18");
+		paid_creation = row[1] && !strcmp(row[1], "5");
+		if (paid_creation)
+		{
+			valid = valid && row[5] && !strcmp(row[5], "8") && tag.payment < 0 &&
+				!tag.has_cargo_effect;
+			if (valid && !strcmp(row[3], "1"))
+			{
+				valid = row[4] &&
+					item_transfer_command_decode_result(
+						reinterpret_cast<const uint8_t *>(row[4]),
+						lengths[4], &paid_receipt) &&
+					paid_receipt.corpse_revision == tag.wallet_revision + 1;
+			}
+		}
+		else if (valid && !strcmp(row[1], "7"))
+			// The hash binds the actor, exact claim amount and wallet revision. A new
+			// money claim writes that credit with its inbox receipt atomically.
+			valid = tag.payment > 0 && !tag.has_cargo_effect;
+		else if (valid && collector_receipt)
+		{
+			valid = row[5] && !strcmp(row[5], "2") && tag.payment < 0 &&
+				!tag.has_cargo_effect;
+			if (valid && !strcmp(row[3], "1"))
+				valid = row[4] &&
+					collector_command_decode_result(
+						reinterpret_cast<const uint8_t *>(row[4]),
+						lengths[4], &purchased) &&
+					purchased.record_present &&
+					purchased.action == collector_action::purchase &&
+					purchased.entry.beneficiary ==
+						static_cast<uint32_t>(snapshot->pid) &&
+					purchased.entry.price_value ==
+						static_cast<uint64_t>(-tag.payment) &&
+					purchased.wallet_revision == tag.wallet_revision + 1 &&
+					purchased.materialized_item_id;
+		}
+		else if (valid)
+		{
+			divine_trade_result result{};
+			valid = !strcmp(row[1], "19") && row[4] &&
+				divine_trade_result_decode(
+					reinterpret_cast<const uint8_t *>(row[4]), lengths[4],
+					&result) &&
+				result.pid == static_cast<uint32_t>(snapshot->pid) &&
+				result.payment == tag.payment &&
+				result.wallet_revision == tag.wallet_revision + 1;
+		}
 		committed = valid && !strcmp(row[3], "1");
 	}
 	mysql_free_result(rows);
 	if (!valid)
-		return { false, EILSEQ };
+		return { false, static_cast<unsigned int>(collector_receipt ? EBADMSG : EILSEQ) };
+	if (paid_creation && committed)
+	{
+		const auto retained =
+			retain_paid_creation(connection, operation, paid_receipt, snapshot);
+		if (!retained.ok)
+			return retained;
+	}
+	if (collector_receipt && committed &&
+	    (snapshot->components & (PLAYER_COMPONENT_INVENTORY | PLAYER_COMPONENT_EQUIPMENT)) &&
+	    std::none_of(snapshot->items.begin(), snapshot->items.end(), [&](const auto &item)
+			 { return item.object_uid == purchased.entry.uid; }) &&
+	    std::none_of(snapshot->retained_items.rows.begin(), snapshot->retained_items.rows.end(),
+			 [&](const auto &item)
+			 { return item.source_row_id == purchased.materialized_item_id; }))
+	{
+		// A save captured before live delivery must not delete the newly purchased UID.
+		try
+		{
+			snapshot->retained_items.rows.push_back(
+				{ purchased.materialized_item_id, purchased.entry.uid });
+			snapshot->retained_items.bytes += sizeof(player_retained_item_row);
+		}
+		catch (const std::bad_alloc &)
+		{
+			return { false, ENOMEM };
+		}
+	}
 	const auto settled = player_snapshot_settle_trade(snapshot, committed);
 	return { settled == player_snapshot_codec_result::ok,
 		 static_cast<unsigned int>(
