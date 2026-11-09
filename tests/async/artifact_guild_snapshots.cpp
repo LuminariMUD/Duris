@@ -2,6 +2,7 @@
 // The writer retains owned SQL and commit receipts; tests decide when each commits.
 #include "guild/artifact.c"
 #include "world/object_template.h"
+#include "persistence/critical_command_completion.h"
 #include "guild/assocs.h"
 #include "sql/sql_player.h"
 #include "kingdom/kingdom_internal.h"

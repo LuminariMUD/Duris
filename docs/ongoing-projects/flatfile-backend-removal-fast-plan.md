@@ -1,6 +1,6 @@
 # Flat-file backend removal: fast approach
 
-Status: implementation in progress; see "Implementation log" at the end.
+Status: first pass implemented in a PR stack; test conversion deferred. See "Implementation log" at the end.
 Date: 2026-11-09.
 Source baseline: `06743dec0`. A recount at `4c2708c96` found no change to
 persistence paths or to the counts below.
@@ -404,22 +404,49 @@ and pick up at the first step not marked done.
 | 2a. Strip `__NO_MYSQL__`, Makefile | `branch/flatfile-backend-removal-plan` | done (#859) |
 | 2b + 3. Runtime dispatch, delete backend | `branch/flatfile-removal-runtime` | done (#860) |
 | 4. Launcher, backup, restore, CI, docs | `branch/flatfile-removal-tools` | done |
-| 5. Tests and deferred list | `branch/flatfile-removal-tests` | in progress |
+| 5. Tests and deferred list | `branch/flatfile-removal-tests` | done |
 
 ### Step 5 evidence
 
 `tests/run_regression_tests.py` now holds `FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`,
-177 exact names, and prints how many it excluded. 49 backend-only `test_flatfile_*`
+174 exact names, and prints how many it excluded. 49 backend-only `test_flatfile_*`
 tests with no other reference, and 37 orphaned harnesses, are deleted. The
 selected harnesses are adapted: persistence mode, build contract, launcher, backup
 unit tests, restore integration (narrowed, with new nonempty combat and starter-kit
 qualifier cases), combat-intent backup, locker shutdown recovery, and the six
 database-suite scripts. `persistence_restore_fixture.cpp` is now receipts-only.
 
-A sample of 25 of the 54 deferred tests that fail by assertion, and the cause
-grouping of all 177, showed harness or source-text breakage, not a MariaDB behavior
-change: 37 build a flat-file server, 86 include or compile deleted code, and 54
-assert source text or stubbed harness behavior.
+When the list stood at 177, its causes were: 37 build a flat-file server, 86 include
+or compile deleted code, and 54 fail an assertion. A sample of 25 of those 54 showed
+source-text or stubbed-harness breakage, not a MariaDB behavior change. The other 29
+were not read individually, so a behavior change hiding among them is not ruled out.
+
+### Final proof (first pass)
+
+Commands are the ones in the Proof section; results at the commit recorded in the PR.
+
+| Check | Result |
+| --- | --- |
+| Starting commit, `make test-all` | 1011 of 1011 passed in 18 minutes |
+| Starting commit, `tests/run_db_tests.sh` | 107 of 112 passed |
+| Strip comparison | 520 of 521 identical; the other differs by one reflowed line |
+| Fresh build under `bin/flatfile-removal-fast`, plus `-O2` production profile | clean under `-Werror` |
+| `python3 tests/run_regression_tests.py` | passes with 174 named exclusions |
+| `tests/run_db_tests.sh` on the fresh server | 102 of 112 passed; 5 more pass individually after the harness repairs below; the last 5 also fail on the starting commit |
+| Restore integration in a root container | all 3 cases passed, including new nonempty combat and starter-kit records |
+
+The fresh-server database run first failed `artifact_guild`, `statistics`,
+`telemetry_repository`, `artifact_mana`, and `last_command`, all on harness compile
+or link errors. Each was repaired and passes when run on its own; the whole suite
+was not repeated afterward, because only test files changed.
+
+Known failures that are not from this work: `world_restart_clean`, `_copyover`,
+`_crash`, `_handover`, and `_taken` fail identically on the untouched starting
+commit, timing out waiting for the `Save` prompt.
+
+First pass is done. Remaining work is the deferred list under "Completion and
+deferred work": each conversion removes a name from
+`FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`, starting at `test_flatfile_combat_journey.py`.
 
 ### Step 4 evidence
 
