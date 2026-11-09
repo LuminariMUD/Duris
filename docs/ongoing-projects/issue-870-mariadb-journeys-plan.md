@@ -3,7 +3,7 @@
 Status: standalone conversions and the full907-file regression/native/build gate passed. First DB run153/154; its sole pet-reader failure is repaired and qualified. Full154-leg DB retry is running; final readiness remains pending.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-pet-expiry-qualification`. See the latest qualification notes before continuing.
+Review head: `branch/issue-870-world-recovery-alert`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -871,3 +871,33 @@ These are preserved per-chunk results, not claims that a later binary ran them.
   retained addition has a traced caller or concrete failing proof. No extra
   backend, generic fixture/resource framework or protected-file diff remains.
   Only the full DB retry and final PR/evidence publication remain.
+
+### World-recovery outage alert fixture
+
+- Retry56758 is still collecting all154 legs. Its pet leg passed in150s under
+  parallel load, but world_recovery failed because the fixture demanded only
+  `publish_failed`; the actual third failed attempt reported `floor_unavailable`.
+  Preserve that result as `world-recovery-outage-phase-failure.log`. Do not call
+  this aggregate green from the later focused results.
+- Native redis_world_runtime.c1010–1042 reports floor_unavailable when a floor
+  barrier is still waiting, cannot be requested, or fails preflight. Lines1065–1074
+  report publish_failed only after reaching the publisher. Redis loss can cause
+  either stage to stop first. The floor worker retries pending mutations while
+  Redis is down, so a still-waiting barrier is a legitimate outage result.
+- Outcome/files: correct that stage assumption in the existing
+  run_world_recovery_journey.py and record its proof here. Accept only those two
+  traced reasons; keep exact third-attempt count, last sequence/age, one-alert
+  suppression, automatic lease recovery, crash restoration, floor UID and default
+  interval/max-age assertions. No native, schema, tolerance, CLI or framework change.
+- Normal focused journey exited0: `world-recovery-alert-phase-fixed.log`/`.exit`.
+  It exercised publish_failed, exactly3 failures, one alert, recovery without
+  restart, crash restoration65s after kill, the physical floor UID and defaults.
+- An isolated validation variant keeps the existing player connected, then gets/
+  drops the floor bag after stopping Redis to force queued floor work. It requires
+  floor_unavailable explicitly and passed the same complete recovery/crash/UID/
+  defaults assertions: `world-recovery-floor-outage-probe.log`/`.exit`0. Both
+  actual native outage paths are proven; no underlying assertion was discarded.
+- Publish this focused follow-up after #965. Let56758 reach its terminal result,
+  preserve its complete logs, then rerun the entire DB gate after this correction.
+  The907-file gate remains valid: its inputs/native code are unchanged and this
+  DB-only run_ journey is not discovered there. Final readiness is still pending.

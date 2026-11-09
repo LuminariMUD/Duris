@@ -209,7 +209,9 @@ def run(binary: Path) -> None:
             alert = wait_for("three failed captures raised no alert", 60,
                              lambda: re.search(ALERT, log("file")))
             reason, failures, sequence, age = alert.groups()
-            assert reason == "publish_failed" and failures == "3", alert.group(0)
+            # Redis loss can stop the upstream floor barrier before the world
+            # publisher runs. Both paths must report the actual failing stage.
+            assert reason in ("publish_failed", "floor_unavailable") and failures == "3", alert.group(0)
             last = acknowledged()[-1]
             assert int(sequence) == last >= first, (alert.group(0), last)
             assert 0 <= int(age) <= time.monotonic() - stopped + 10, alert.group(0)
