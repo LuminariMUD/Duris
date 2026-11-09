@@ -7,7 +7,12 @@ Source inspected: `master` at `fa173cbad`, then merged up to `ddbcaa90a`.
 ## Progress
 
 Each row is one pull request, stacked on the one above it. Nothing is left to build:
-merge them in order, top row first. Line numbers below are from before this work.
+merge them in order, top row first, and retarget the next one at `master` before
+merging each, because deleting a merged base branch closes the PR stacked on it. Each
+PR relies on the one before it. Line numbers below are from before this work.
+
+If master moves and #933 conflicts again, merge master into `branch/norent-flag-fix`,
+then merge each branch into the next one up the table.
 
 | PR | Sections | Branch | State |
 |---|---|---|---|
@@ -26,6 +31,21 @@ Notes from building so far:
 - Section 4 tests a public chest made with `eq sort none`. Private chests use the
   existing `locker_container_access_allowed` check, which a leave invalidates first,
   so a private chest is only cleared while the visitor has it open.
+
+Rechecked after merging master at `ddbcaa90a`:
+
+- #933 conflicted only in the journey test, where master removed the flat-file branch.
+  That is resolved. It is mergeable and was waiting on CI and review at last check.
+- The section 5 prototypes and code edits are intact.
+- The `ITEM_NORENT` lines left in `magic.c` are meant to stay: flame blade (line 8231)
+  under decision 5, and soulbind (lines 29071 and 29346) under decision 4.
+- Doom blade (352) and holy blade (426) get no-rent and transient from their
+  prototypes, so their help in section 6 still holds after
+  [#915](https://github.com/LuminariMUD/Duris/pull/915) changed how they are summoned.
+- The section 6 help text is present in `help_index` and `duris_help_parsed.hlp`.
+
+Not run directly: the private chest hand-back, soulbound and locker-room crumbling,
+the idle-void exit, `make test-db` and a full burn-in.
 
 ## Outcome and scope
 
