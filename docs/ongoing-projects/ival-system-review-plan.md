@@ -47,6 +47,13 @@ implementation chunks will use stacked branches/PRs; no release tag or deploymen
 is appropriate before review and qualification.
 Plan PR: [#876](https://github.com/LuminariMUD/Duris/pull/876), against `master`.
 
+Current Git status verified 2026-11-09: PRs #876, #877, #878, #879, #884, #885,
+#886, #889, and #894 were merged by external review. PR #902 is the current open
+feature PR, now targeting `master`. Branch/base descriptions below record the
+original delivery order. The worktree incorporates reviewed master `341bd84ee`
+through non-rewriting merge `0f61c60f7`; no production deployment was performed by
+this task. Refresh remote state before continuing if other review work advances it.
+
 ### Chunk 1 — remove unused reset/recovery valuations (F15, partial)
 
 Branch: `branch/ival-reset-admission`, based on `branch/ival-system-improvements`.
@@ -348,6 +355,13 @@ five touched C/C++ files. The revision-wide wrapper check produced only the NTFS
 mode artifact described above, with no text diff. Implementation: `c697d5e7b`;
 the filename repair is the preceding `8b7438a71` commit.
 
+External review merged this work in #894 / `341bd84ee`, adding rejection of
+indented next-line negative masks and propagation of object-save errors so the
+editor keeps dirty state after open/write/close failure. Those reviewed changes
+are retained after merging master into this worktree. The expanded native object
+test passed 74 valid round trips, all invalid-mask cases, and successful/failed
+save-zone workflows after integration.
+
 **Ablation:** one stored field and one optional record in the existing parser and
 writer suffice. Reuse the native I/O helpers; no parallel parser, converter,
 framework, or valuation-policy change is needed.
@@ -414,7 +428,8 @@ F05/F07/F09/F11/F12 before treating corpus output as authoritative.
 Next: finish the native binding/context catalog and full-context reporting.
 The shared arithmetic now supplies the server and editor; do not reintroduce a
 copied formula while completing diagnostics and template normalization.
-The published PR stack remains open for review; none has been merged or deployed.
+Published parent chunks have been merged externally; current PR state is recorded
+at the start of this implementation log. No deployment was performed by this task.
 No formula-changing slice is complete without the delta qualification below.
 
 Concrete context work to resume: `boot_material_rarity_objects()` in
