@@ -1,9 +1,9 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: all 14 partial-conversion runners and telemetry performance passed; standalone racial/cast conversion is under qualification. Aggregate gates remain.
+Status: all 14 partial-conversion runners, telemetry performance, racial/cast and divine-refusal journeys passed. Pwipe matched restore is under qualification; later batches and aggregate gates remain.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Branch: `branch/issue-870-mariadb-journeys`.
+Review head: `branch/issue-870-pwipe-mariadb-qualifier`; divine-refusal conversion is its next child branch. See the current-work section before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -32,8 +32,8 @@ The final build and suites must qualify this integrated stack.
 Review dependencies start with [#880](https://github.com/LuminariMUD/Duris/pull/880)
 then [#887](https://github.com/LuminariMUD/Duris/pull/887). #880 adopted
 byte-identical launch-gate and shop-bootstrap repairs from #888, verified with
-`git diff --exit-code` for both files. Retire that duplicate PR and target #890
-at #887; later PRs retain their dependency order.
+`git diff --exit-code` for both files. Duplicate #888 is closed; #890 now
+targets #887. Later PRs retain their dependency order.
 
 Historical qualification notes and binary hashes remain evidence for their
 tested revisions. Historical item delivery evidence is retained explicitly as
@@ -130,14 +130,14 @@ with existing bounded settling patterns where writes are asynchronous.
 
 ### 2. Convert the standalone gameplay, protocol and timing runners
 
-- [ ] `run_racial_pulse_journey.py`: replace inspector seeding with the existing
+- [x] `run_racial_pulse_journey.py`: replace inspector seeding with the existing
   MariaDB authority and player/skill setup; preserve rebalance and reload cases.
-- [ ] `run_cast_timing_probe.py`: replace backend/state setup and preserve its
+- [x] `run_cast_timing_probe.py`: replace backend/state setup and preserve its
   trace-derived timing report, pulse budget and requested cast count.
-- [ ] `run_divine_refusal_journey.py`: replace the embedded snapshot mutation
+- [x] `run_divine_refusal_journey.py`: replace the embedded snapshot mutation
   and obsolete fixture compilation with SQL promotion/seeding; test enabled
   and disabled refusal, retry, exempt targets and mixed orders.
-- [ ] `run_spellcast_racial_multiplier_journey.py`: seed MariaDB and run every
+- [x] `run_spellcast_racial_multiplier_journey.py`: seed MariaDB and run every
   configured multiplier; keep ordinary mortal casts and timing comparisons.
 - [ ] `run_weapon_actions_journey.py`: seed MariaDB and preserve the existing
   family, enable/disable, completion, cancellation and reaction matrix.
@@ -456,9 +456,10 @@ This is an estimate, not a time limit or permission to omit required proof.
 
 ### Current work / next action
 
-- Ready PR stack: #887 baseline → #888 launch/shop bootstrap → #890 login/news/
-  onboarding/death → #891 corpses → #892 cache/flight → #893 Cleric/aura.
-  #895 telemetry and #896 rent/artifact above it are ready. #897 shop conversion is draft pending its reproduced server fix.
+- Ready PR stack: #880 → #887 baseline → #890 login/news/onboarding/death →
+  #891 corpses → #892 cache/flight → #893 Cleric/aura → #895 telemetry →
+  #896 rent/artifact → #903 container-grant repair → #897 shop → #918 racial/cast.
+  #888 is closed because #880 adopted its exact source changes. #897 is ready.
   Every PR has an appropriate documentation, bug or enhancement label. No merge,
   tag/release or deployment was requested or performed.
 - Telemetry performance passed all three paired workloads (six legs, 240 saves):
@@ -470,12 +471,11 @@ This is an estimate, not a time limit or permission to omit required proof.
   Logs, a hash record and copied pair summaries are under `bin/tests/issue-870/`.
   Session `11319` is terminal with exit 0; do not restart it.
 - Shop conversion code: `55927b624`, `branch/issue-870-shop-journey`,
-  [draft PR #897](https://github.com/LuminariMUD/Duris/pull/897). Its full run
-  failed at the preserved fresh/unsaved staff-bag purchase: zero items delivered,
-  no charge, before the delayed-sale leg. The failure and report are preserved
-  as `bin/tests/issue-870/shop-unsaved-bag-failure-*`. Do not drop that case.
-  The new delayed-sale leg holds `critical_operation_inbox` with a dedicated
-  SQL session and requires `ACCOUNT MENU` before unlocking; it is still unrun.
+  [PR #897](https://github.com/LuminariMUD/Duris/pull/897), ready after #903.
+  Initial failures at the fresh/unsaved staff-bag purchase and retired deferred-sale
+  expectation remain under `bin/tests/issue-870/shop-unsaved-bag-failure-*` and
+  `shop-retired-sale-expectation-*`. Both are now resolved; the full journey passed
+  again after upstream integration (`integrated-shop.json` and run log).
 - Server repair is qualified on `branch/issue-870-container-grants-fix`
   before #897. Outcome: newly loaded carried bags can receive a transactional
   child batch without synchronous SQL or a guessed owner/revision. Reuse the
@@ -517,18 +517,72 @@ This is an estimate, not a time limit or permission to omit required proof.
   rejected/thrown read admission, link loss, unloaded resume, moved target,
   reentrant callback and exactly-once failure delivery. Build and the existing
   grant/reconciliation, newbie and prompt checks passed after upstream integration.
-- Pwipe matrix: direct, Redis, Redis re-enable and reward-discard modes passed.
-  The matched restore and website modes failed; preserve their failed reports and
-  logs under `bin/tests/issue-870/`. Restore copied a source-bound locker shutdown
-  image into a different private SQL store. Reconcile that image on the original
-  source before freezing the portable backup; do not clear or bypass the guard.
-  Website donation association needs a verified synthetic email: current signup
-  intentionally stores an empty email until verification. Seed that fixture
-  precondition while the MUD is offline; keep mail/providers disabled.
-- Latest code and plan are committed/pushed on the stacked branches. The worktree
-  may be on a parent while its evidence is updated; check `git status` before
-  editing, then continue from `branch/issue-870-container-grants-fix` for the server repair.
-- Remaining batches 2–6 are still required: standalone gameplay/protocol/timing,
+- Racial/cast conversion: `957cab3ac`, `branch/issue-870-racial-casting`,
+  [PR #918](https://github.com/LuminariMUD/Duris/pull/918), ready after #897.
+  Full racial pulse (21 races, rebalance/help, groundfighting, reflection boundaries,
+  adjustment, saved properties/restart and 100-row listing), multiplier .5/1/2,
+  default 20-cast probe and 20-cast `--budget-usec 2000` probe passed.
+  Commands use `tests/async/with_disposable_mariadb.sh python3 tests/async/<runner>`
+  with `--server bin/server/dms_new` for all three runners. Logs: `racial-pulse-run.log`,
+  `spellcast-multiplier-run.log`, `cast-timing-default-run.log`, `cast-timing-budget-run.log`.
+- Pwipe code: `0de5f6bc9` removes the impossible backend mode; `a8e18cb7b`
+  separates mode-specific failure artifacts; `112f0dddb` seeds the website's
+  verified synthetic donor email. Direct, Redis, Redis re-enable, reward-discard
+  and full website modes passed. CLI help and all six invalid combinations passed
+  (`pwipe-cli.json`). Use the real five-minute countdown; no reduced timing.
+- Matched restore: `04439c766` fixes tar extraction permissions. A focused
+  reproduction proved `filter="data"` creates directories as 0755 under umask022,
+  whereas native recovery locks require private0700. Extract under a temporary
+  umask077, restoring the caller's umask afterwards. Earlier wrong-store-image
+  diagnosis was incorrect: the guard failed before image decoding. Remove the
+  extra reboot/crash-freeze workaround; keep the original clean-stop capture and
+  native checks. The full `--redis --restore bin/server/dms_new` retry is running;
+  inspect its terminal result before claiming that mode passed. First and second
+  failure evidence is retained under `bin/tests/issue-870/`.
+- Website qualification uses a detached private DurisWeb worktree at
+  `bin/tests/issue-870/website`, pinned to `51549c2`, with no `.env` files.
+  Frozen offline pnpm install and backend tsc build passed. Node26.11.1 and
+  pnpm12.10.1 must be on PATH. The wrapper uses `TEST_DB_IMAGE=mysql:8.0`;
+  `--redis --website <absolute-fixture-path> bin/server/dms_new` passed actual
+  HTTP/session/WHO/presence/cache/websocket drain, queued synthetic webhook and
+  exactly-once durable donation delivery. Current signup keeps email empty until
+  verification; seed that verified donor precondition offline. Mail, Discord,
+  analytics and real payment services remain disabled. No website source change.
+- Divine refusal: `e7e83d8c3`, `branch/issue-870-divine-refusal-journey`,
+  qualified above the pwipe branch. SQL promotion replaces the embedded C++
+  snapshot writer/compiler; preserve the shared drain helper's five consumers.
+  `tests/async/with_disposable_mariadb.sh python3 tests/async/run_divine_refusal_journey.py bin/server/dms_new`
+  passed both full A/B scenarios: disabled dispatch2/2, enabled dispatch0/2,
+  retry lock, exempt commands and mixed non-Cleric orders. Evidence:
+  `bin/tests/issue-870/divine-refusal-run.log`; ordinary server SHA-256:
+  `024e32b9dd95cf654ed9dbcadb937785d444b20967dbd11ce73d845aed3c875e`.
+- Other #880 standalone proof: issue37 zone reset/restart/restart-reset and the
+  complete Misty Vale crafting/portals/switches/population/canoe/rod/fishing/reward
+  persistence journey passed. Evidence: `issue37-run.log`,
+  `misty-vale-run.log` and copied reports under `bin/tests/issue-870/`.
+  Their unchanged source was exercised with the recorded 4f13e85355b8… binary.
+- Container follow-up `bbb0aca1b` is pushed on #903 and forwarded through the stack.
+  Current compiled server SHA-256 is
+  `024e32b9dd95cf654ed9dbcadb937785d444b20967dbd11ce73d845aed3c875e`.
+  Latest native ASan/UBSan, creation-batch/reconciliation, newbie and prompt checks
+  and `make -C src -j4` passed. Final aggregate gates must qualify this integration.
+- Weapon actions: `2b52eaf2e` uses the shared MariaDB authority and removes the
+  inspector option. `92d835596` applies the existing ten-minute natural-selection
+  deadline to both families: the original 45-second packed window timed out while
+  the player dodged every melee hit (failure log retained). All three packed cases
+  now passed: legacy damage, 2.002s warning-to-hit, and .250s flee with no damage
+  and a fizzle. Avernus's unforced 1/25 selection matrix remains running.
+- Copyover: `d3df89e40` uses one shared MariaDB setup for ordinary and Redis modes,
+  removes the duplicate schema installer, and replaces corrupt-snapshot injection
+  with a real rejecting player-save SQL trigger. The first plain case already
+  passed all failures and successful socket/session recovery. Default MCCP,
+  Redis faults, fresh/full-world and UID10001 modes still require terminal proof.
+- Discord: `a98106d9e` seeds staff in MariaDB. The unchanged bridge sink is at
+  `/home/aiwithapex/projects/discord-mud-chat/scripts/testing/duris-game-sink.js`,
+  clean checkout `70865ecafb0aeb9b9ac71da37696e416d892ce4c`. Its dependencies load
+  using Node26.11.1; the driver uses loopback config and a mocked Discord client,
+  without dotenv or real Discord access. Full runtime qualification is running.
+- Next: finish matched restore, publish the pwipe and divine-refusal chunks with
+  appropriate labels, then continue weapon actions/copyover/Discord/colorization,
   named sets and historical assassin comparison, four item journeys, naming/docs,
-  full regression/DB gates and qualification of #880's other standalone edits.
-  No aggregate result or whole-issue completion is claimed yet.
+  and full regression/DB gates. No aggregate or whole-issue completion is claimed.
