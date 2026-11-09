@@ -1,6 +1,6 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: planned; implementation has not started.
+Status: implementation in progress; baseline reconciled, launch/shop repairs under test.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
 Branch: `branch/issue-870-mariadb-journeys`.
@@ -33,10 +33,11 @@ implementation work for this branch:
 - #874 fixes refused-save departure cooldowns and corpse deletion during boot.
 - #880 removes dead code and some obsolete branches and updates current docs.
 
-`origin/master` was `37b6c8057` at inspection. It has a documentation commit
-outside this stack. Reconcile current master and the current PR heads before
-implementation/integration, preserving both sets of relevant documentation.
-Do not rewrite published history or change another worktree to accomplish this.
+`origin/master` is `ce0767d30` at implementation start. Merge `4f216b90c`
+incorporates it without rewriting the published stack. Documentation conflicts
+retain the pending #870 journey descriptions and historical item report while
+accepting current MariaDB-only guidance. The baseline reconciliation is a
+separate prerequisite PR so conversion PRs show only their own changes.
 
 The [issue's verification comment](https://github.com/LuminariMUD/Duris/issues/870#issuecomment-6737821455)
 reports 899 regression passes but an interrupted DB run with a nexus failure,
@@ -86,7 +87,7 @@ Each batch should produce a reviewable commit with its focused runtime proof.
 
 ### 1. Establish the disposable test environment and finish partial conversions
 
-- [ ] Confirm the working tree, upstream heads and current instructions. Verify
+- [x] Confirm the working tree, upstream heads and current instructions. Verify
   local compiler, Docker, MariaDB client, Python and Node availability. Use the
   existing disposable wrapper; never source or copy a game `.env` for tests.
   Build this checkout's server and generate any required private world fixture
@@ -259,7 +260,8 @@ from a clean worktree with explicitly provisioned test prerequisites.
   any still-open base PRs, with exact validation results and unresolved limits.
   Reconcile the stack with master without duplicating landed patches. Do not
   claim the issue complete while required scenarios or dependency findings remain
-  unresolved. Mark complete only once the remaining work has landed and is proven.
+  unresolved. The requested deliverable is tested, pushed PRs ready for review;
+  merging this stack and deployment require a separate request.
 
 ## Proof commands and environment
 
@@ -313,9 +315,23 @@ as a working estimate. Historical comparisons and stale runtime fixtures are
 the largest uncertainties; substantial repairs could extend this to 18–24 hours.
 This is an estimate, not a time limit or permission to omit required proof.
 
-## Evidence recorded so far
+## Evidence and handoff
 
-- Planning only: issue/comments, PR heads, review findings, current source,
-  consumers, MariaDB helpers, test runners and rename destinations inspected.
-- The local worktree was created from #880's inspected head. No gameplay or
-  test implementation has changed, and no runtime validation is claimed yet.
+### Baseline reconciliation — 2026-11-09
+
+- Base PRs #873, #874 and #880 remain open at their planned heads. Original
+  worktrees were untouched. No production operation or game `.env` was used.
+- Merge: `4f216b90c`; `make -C src -j4` passed. Build log:
+  `bin/tests/issue-870/build.log`. This is the ordinary 250 ms server.
+- GCC 16's installed C++ headers triggered a Clang 18 diagnostic in the merge
+  hook. Running the hook with `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/x86_64-linux-gnu/c++/13:/usr/include/c++/13/backward`
+  passed formatting and tidy; no hook was bypassed and no source workaround added.
+- Tools verified: Docker 29.9.2, MariaDB client, compiler, Python, Node and gh.
+- Private world: `make -C areas/src -j4`; copy `areas/` to
+  `bin/tests/issue-870/world/areas`, link its `bin/areas/tools` to this checkout's
+  built tools, create `world/lib/misc`, then run `./m_slow` from the private areas.
+  The initial generator run needed that missing lookup-output directory; after
+  creating it, `./make_lookup` completed. Log: `bin/tests/issue-870/world-build.log`.
+- Next: finish launch-gate and shop-bootstrap SQL assertions, run both real
+  journeys, publish their focused PR above the baseline PR, then continue the
+  remaining partial conversions. Nothing else is qualified yet.
