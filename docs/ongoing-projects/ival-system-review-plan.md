@@ -97,6 +97,12 @@ clang tooling to parse this checkout. This is local tool selection, not a source
 or warning-policy exception.
 The commit hooks passed with `CLANG_TIDY=/usr/bin/clang-tidy-18` and
 `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/x86_64-linux-gnu/c++/13:/usr/include/c++/13/backward`.
+On this NTFS checkout, the worktree/revision form of `git clang-format --diff`
+can produce only synthetic `100644 -> 100755` mode changes despite
+`core.fileMode=false`. Keep source modes unchanged. Staged formatting checks and
+direct `clang-format --style=file --dry-run --Werror <touched files>` verify the
+actual content; use a native Linux checkout for the final revision-wide wrapper
+check if its mode-only artifact persists.
 
 **Ablation:** this independent part of Stage 4 can land before evaluator changes
 because it removes a dependency that never affects load admission. Updating the
@@ -280,7 +286,7 @@ reader's unrecognized-extra-data branch rejects `B5`; preserve ordinary records
 and apply/description/trap ordering when adding support, and copy bank 5 into the
 new valuation input without introducing an unreviewed weight.
 
-### Chunk 6 — preserve bank 5 through editor object I/O (in progress)
+### Chunk 6 — preserve bank 5 through editor object I/O (implemented)
 
 Branch: `branch/ival-editor-b5-roundtrip`, based on `branch/ival-editor-object-formatting`.
 Formatting prerequisite: `a3b901b18`,
@@ -322,8 +328,11 @@ commit `8b7438a71` replaces both with strings. The native test executes the full
 writer with a valid nested path longer than 512 bytes and an oversized filename,
 verifying success or a normal open error without buffer overflow.
 
-Both maintained editor builds passed. The final server build and commit/format
-checks must finish before publication.
+Both maintained editor builds and `make -C src -j4` passed. Formatting/clang-tidy
+commit checks passed, and direct whole-file clang-format checks passed for all
+five touched C/C++ files. The revision-wide wrapper check produced only the NTFS
+mode artifact described above, with no text diff. Implementation: `c697d5e7b`;
+the filename repair is the preceding `8b7438a71` commit.
 
 **Ablation:** one stored field and one optional record in the existing parser and
 writer suffice. Reuse the native I/O helpers; no parallel parser, converter,
