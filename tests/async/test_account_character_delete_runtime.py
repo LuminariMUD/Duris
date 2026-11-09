@@ -296,13 +296,13 @@ int main() {
     // guild statements, the locker, the ship and the player row.
     constexpr int statements = 10;
     for(int failure=1;failure<=statements;++failure) {
-        reset(a,d); fail_stage=failure; input(&d,"1"); input(&d,"yes");
+        reset(a,d); fail_stage=failure; input(&d,"1"); input(&d,"Fixture");
         // The session waits for the writer with the character it confirmed.
         assert(d.writer_wait_id && d.character && d.output.find("did not complete")==std::string::npos);
         pulse(); released(d); kept(a);
         assert(d.output.find("did not complete")!=std::string::npos);
         assert(d.output.find("successfully")==std::string::npos && !ship_rows);
-        fail_stage=0; input(&d,"1"); input(&d,"yes"); pulse(); released(d);
+        fail_stage=0; input(&d,"1"); input(&d,"Fixture"); pulse(); released(d);
         deleted(a);
         if (ship_rows!=1 || guild_rows!=2 || executed.size()!=statements) {
             fprintf(stderr,"retry failed: ship_rows=%d guild_rows=%d executed=%zu fail_stage=%d injected=%d\n",
@@ -317,7 +317,7 @@ int main() {
     // A session that closes before the reply: the deletion still lands and memory lets
     // go of the character; nobody is told.
     {
-        reset(a,d); input(&d,"1"); input(&d,"yes");
+        reset(a,d); input(&d,"1"); input(&d,"Fixture");
         P_char waiting = d.character; d.character = nullptr; waiting->desc = nullptr; free_char(waiting);
         descriptor_list = nullptr; pulse();
         assert(!durable_active && runtime_ships==1 && forgotten==3 && a.num_chars==1);
@@ -328,33 +328,39 @@ int main() {
     // Both actual flat deletion entry points must refuse while the artifact fence is held.
     artifact_drain_ready=false;
     { account_deletion_drain_guard guard; assert(!guard.drain()); }
-    reset(a,d); input(&d,"1"); input(&d,"yes"); released(d); kept(a);
+    reset(a,d); input(&d,"1"); input(&d,"Fixture"); released(d); kept(a);
     assert(!backend_calls && artifact_drain_calls >= 2);
     artifact_drain_ready=true;
     { account_deletion_drain_guard guard; assert(guard.drain()); }
-    input(&d,"1"); input(&d,"yes"); released(d); deleted(a); dispose(a);
-    reset(a,d); fail_stage=1; input(&d,"1"); input(&d,"yes"); released(d); kept(a);
-    fail_stage=0; input(&d,"1"); input(&d,"yes"); released(d); deleted(a); dispose(a);
+    input(&d,"1"); input(&d,"Fixture"); released(d); deleted(a); dispose(a);
+    reset(a,d); fail_stage=1; input(&d,"1"); input(&d,"Fixture"); released(d); kept(a);
+    fail_stage=0; input(&d,"1"); input(&d,"Fixture"); released(d); deleted(a); dispose(a);
 #endif
     // A character in the game (linkdead too) or being loaded to enter it would go on
     // playing, unsaved: the confirmation is refused before anything is queued.
     for(bool *busy:{&in_game,&loading}) {
-        reset(a,d); *busy=true; input(&d,"1"); input(&d,"yes");
+        reset(a,d); *busy=true; input(&d,"1"); input(&d,"Fixture");
         released(d); kept(a); assert(!backend_calls);
         assert(d.output.find("in the game; it cannot be deleted now")!=std::string::npos);
         dispose(a);
     }
-    for(const char *cancel:{"no","0","back"}) {
+    // Only the selected character's full name can authorize deletion. A generic yes,
+    // another menu number, a partial name or any other mismatch cancels safely.
+    for(const char *cancel:{"y","yes","n","no","0","back","1","2","","Fix","Other","Fixture extra"}) {
         reset(a,d); input(&d,"1"); input(&d,cancel); released(d);
-        assert(!backend_calls && !audits && durable_active); dispose(a);
+        kept(a);
+        assert(!backend_calls && durable_active);
+        assert(d.output.find("Deletion cancelled")!=std::string::npos);
+        dispose(a);
     }
-    reset(a,d); input(&d,"1"); input(&d,"1"); assert(frees==1 && loads==2); input(&d,"no"); released(d); dispose(a);
     // The load runs on the load worker: the menu waits, then asks for confirmation.
     reset(a,d); async_loads=true; input(&d,"1");
     assert(STATE(&d)==CON_PLAYER_LOAD && !d.character && !loads && d.selected_char_name);
     STATE(&d)=CON_ACCT_DELETE_CHAR; account_delete_char_loaded(&d);
     assert(d.character && loads==1 && !d.selected_char_name);
-    input(&d,"yes");
+    assert(d.output.find("Type &+WFixture&n to confirm deletion")!=std::string::npos);
+    assert(d.output.find("anything else to cancel")!=std::string::npos);
+    input(&d,"fIxTuRe");
 #ifndef __NO_MYSQL__
     pulse();
 #endif
@@ -365,7 +371,12 @@ int main() {
         *other={strdup("Other"),2,0,nullptr};
         if(at_head) a.acct_character_list->next=other;
         else {other->next=a.acct_character_list;a.acct_character_list=other;}
-        a.num_chars=2; input(&d,"1"); input(&d,"yes");
+        a.num_chars=2;
+        // Simulate choosing the wrong row, then typing the name actually intended.
+        input(&d,"2"); assert(!strcmp(GET_NAME(d.character),"Other"));
+        input(&d,"Fixture"); released(d);
+        assert(!backend_calls && durable_active && a.num_chars==2);
+        input(&d,"1"); input(&d,"Fixture");
 #ifndef __NO_MYSQL__
         pulse();
 #endif
@@ -386,5 +397,6 @@ with tempfile.TemporaryDirectory(prefix='account-delete-', dir=build_root) as di
         subprocess.run(['g++', '-std=c++20', '-g', '-fsanitize=address,undefined',
                         '-fno-omit-frame-pointer', *flags, str(cpp), '-o', str(exe)], check=True)
         subprocess.run([str(exe)], check=True)
-print('PASS: account deletion runtime refusal at every statement, release, publication, '
-      'retry, in-game refusal and closed-session scenarios on both backends')
+print('PASS: account deletion full-name confirmation, cancellation, runtime refusal at every '
+      'statement, release, publication, retry, in-game refusal and closed-session scenarios '
+      'on both backends')
