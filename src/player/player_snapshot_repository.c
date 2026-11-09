@@ -1224,7 +1224,7 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 	}
 	auto query = execute(
 		connection,
-		"SELECT command_hash,command_type,status,result_code=0,result_payload FROM critical_operation_inbox "
+		"SELECT command_hash,command_type,status,result_code=0,result_payload,payload_version FROM critical_operation_inbox "
 		"WHERE operation_id=UNHEX('" +
 			operation + "') FOR UPDATE");
 	if (!query.ok)
@@ -1234,6 +1234,8 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 		return { false, mysql_errno(connection) ? mysql_errno(connection) : EIO };
 	MYSQL_ROW row = mysql_fetch_row(rows);
 	bool valid = true, committed = false;
+	bool collector_receipt = false;
+	collector_command_result purchased = {};
 	if (row)
 	{
 		const auto *lengths = mysql_fetch_lengths(rows);
@@ -1241,10 +1243,29 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 			!memcmp(row[0], tag.command_hash.data(), tag.command_hash.size()) &&
 			row[1] && row[2] && !strcmp(row[2], "1") && row[3] &&
 			(!strcmp(row[3], "0") || !strcmp(row[3], "1"));
+		collector_receipt = row[1] && !strcmp(row[1], "18");
 		if (valid && !strcmp(row[1], "7"))
 			// The hash binds the actor, exact claim amount and wallet revision. A new
 			// money claim writes that credit with its inbox receipt atomically.
 			valid = tag.payment > 0 && !tag.has_cargo_effect;
+		else if (valid && collector_receipt)
+		{
+			valid = row[5] && !strcmp(row[5], "2") && tag.payment < 0 &&
+				!tag.has_cargo_effect;
+			if (valid && !strcmp(row[3], "1"))
+				valid = row[4] &&
+					collector_command_decode_result(
+						reinterpret_cast<const uint8_t *>(row[4]),
+						lengths[4], &purchased) &&
+					purchased.record_present &&
+					purchased.action == collector_action::purchase &&
+					purchased.entry.beneficiary ==
+						static_cast<uint32_t>(snapshot->pid) &&
+					purchased.entry.price_value ==
+						static_cast<uint64_t>(-tag.payment) &&
+					purchased.wallet_revision == tag.wallet_revision + 1 &&
+					purchased.materialized_item_id;
+		}
 		else if (valid)
 		{
 			divine_trade_result result;
@@ -1260,7 +1281,27 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 	}
 	mysql_free_result(rows);
 	if (!valid)
-		return { false, EILSEQ };
+		return { false, static_cast<unsigned int>(collector_receipt ? EBADMSG : EILSEQ) };
+	if (collector_receipt && committed &&
+	    (snapshot->components & (PLAYER_COMPONENT_INVENTORY | PLAYER_COMPONENT_EQUIPMENT)) &&
+	    std::none_of(snapshot->items.begin(), snapshot->items.end(), [&](const auto &item)
+			 { return item.object_uid == purchased.entry.uid; }) &&
+	    std::none_of(snapshot->retained_items.rows.begin(), snapshot->retained_items.rows.end(),
+			 [&](const auto &item)
+			 { return item.source_row_id == purchased.materialized_item_id; }))
+	{
+		// A save captured before live delivery must not delete the newly purchased UID.
+		try
+		{
+			snapshot->retained_items.rows.push_back(
+				{ purchased.materialized_item_id, purchased.entry.uid });
+			snapshot->retained_items.bytes += sizeof(player_retained_item_row);
+		}
+		catch (const std::bad_alloc &)
+		{
+			return { false, ENOMEM };
+		}
+	}
 	const auto settled = player_snapshot_settle_trade(snapshot, committed);
 	return { settled == player_snapshot_codec_result::ok,
 		 static_cast<unsigned int>(

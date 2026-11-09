@@ -21,11 +21,14 @@
 #include "item/item_ownership_runtime.h"
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "player/player_save_pipeline.h"
 
 #include <algorithm>
 #include <array>
 #include <cerrno>
 #include <climits>
+#include <chrono>
+#include <openssl/sha.h>
 #include <mutex>
 #include <memory>
 #include <new>
@@ -35,6 +38,7 @@
 #include <vector>
 
 extern P_obj object_list;
+extern P_char character_list;
 
 namespace
 {
@@ -45,8 +49,8 @@ struct pending_collector
 	collector_completion_fn completion = nullptr;
 	bool completion_ready = false;
 	critical_completion completed = {};
-	// A purchase's price, taken from the wallet at submit.
-	int64_t escrow = 0;
+	// A purchase reserves its debit until the custody receipt commits.
+	int64_t payment = 0;
 	// A collected antiquity, detached at submit, and where it goes back on a refusal.
 	P_obj collected = nullptr;
 	uint64_t collected_from = 0;
@@ -69,22 +73,6 @@ std::unordered_map<std::string, pending_collector> pending;
 // process restarts before the player returns.
 std::unordered_map<std::string, completed_player_recovery> player_recoveries;
 constexpr size_t COLLECTOR_PLAYER_RECOVERY_MAX = 128;
-// A refused purchase's price stays owed until its buyer's purse accepts it.
-std::unordered_map<uint32_t, int64_t> refunds;
-
-void try_refund(P_char character)
-{
-	const auto refund = refunds.find(static_cast<uint32_t>(GET_PID(character)));
-	if (refund == refunds.end())
-		return;
-	const uint64_t revision = character->only.pc->wallet_revision;
-	if (currency_transaction_submit_wallet_value(
-		    character, refund->second, currency_reason_type::refund, 0,
-		    critical_source_site::command, critical_deadline_class::interactive, nullptr,
-		    nullptr, 0) &&
-	    character->only.pc->wallet_revision != revision)
-		refunds.erase(refund);
-}
 
 enum class outbox_publication_state : uint8_t
 {
@@ -179,6 +167,14 @@ bool publish(std::unordered_map<std::string, pending_collector>::iterator found,
 		return false;
 	}
 	const collector_command_payload &submitted_payload = *entry.payload;
+	if (entry.payment && !character)
+		for (P_char current = character_list; current; current = current->next)
+			if (IS_PC(current) &&
+			    static_cast<uint32_t>(GET_PID(current)) == entry.actor_pid)
+			{
+				character = current;
+				break;
+			}
 	collector_command_result result = {};
 	const bool decoded = collector_command_decode_result(entry.completed.result_payload.data(),
 							     entry.completed.result_size, &result);
@@ -186,6 +182,21 @@ bool publish(std::unordered_map<std::string, pending_collector>::iterator found,
 				    entry.completed.outcome ==
 					    critical_apply_outcome::already_applied;
 	const bool committed = decoded && durable_commit;
+	if (entry.payment)
+	{
+		if (durable_commit &&
+		    (!decoded || !result.record_present ||
+		     result.action != collector_action::purchase ||
+		     result.entry.beneficiary != entry.actor_pid ||
+		     result.entry.price_value != static_cast<uint64_t>(-entry.payment) ||
+		     result.wallet_revision != submitted_payload.expected_wallet_revision + 1))
+			return false;
+		if (committed && character &&
+		    !currency_transaction_publish_trade(character, entry.payment))
+			return false;
+		player_save_pipeline_release_trade(entry.actor_pid);
+		currency_transaction_release_trade(entry.actor_pid);
+	}
 	bool published = decoded;
 	unsigned int publication_error = entry.completed.error_code;
 	if (!decoded)
@@ -215,13 +226,6 @@ bool publish(std::unordered_map<std::string, pending_collector>::iterator found,
 			put_back(collected, entry.collected_from, entry.collected_room);
 	}
 	entry.collected = nullptr;
-	// A refused purchase gives its price back, when the buyer returns if they left.
-	if (!durable_commit && entry.escrow)
-	{
-		refunds[entry.actor_pid] += entry.escrow;
-		if (character)
-			try_refund(character);
-	}
 	// The repository has already durably applied the item rows.  A purchase may
 	// therefore be published without a live character: custody and catalog state
 	// must stop fencing the listing, while the player's notification is refreshed
@@ -280,16 +284,30 @@ bool submit(P_char character, const critical_operation_id &operation_id,
 	critical_command command = {};
 	if (!collector_command_build(&command, operation_id, payload, source, deadline))
 		return false;
-	// A purchase pays the price of the listing it was prepared from: it leaves the
-	// wallet now, and the buyer's save is queued before the command, so a crash between
-	// them loses the money instead of paying it twice. A refusal gives it back.
+	// Bind a purchase's reserved debit to the listing revision and its custody receipt.
 	collector::record listing = {};
 	const bool purchase = payload.action == collector_action::purchase;
 	if (purchase && (!collector_runtime_find(payload.listing, &listing) ||
 			 listing.revision != payload.expected_listing_revision ||
-			 listing.price_value > INT_MAX))
+			 !listing.price_value || listing.price_value > INT_MAX ||
+			 payload.expected_wallet_revision != character->only.pc->wallet_revision))
 		return false;
-	const int64_t escrow = purchase ? static_cast<int64_t>(listing.price_value) : 0;
+	const int64_t payment = purchase ? -static_cast<int64_t>(listing.price_value) : 0;
+	player_pending_trade_snapshot trade = {};
+	if (purchase)
+	{
+		command.accepted_at_usec =
+			std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::system_clock::now().time_since_epoch())
+				.count();
+		std::vector<uint8_t> encoded;
+		if (critical_command_encode(command, &encoded) != critical_command_codec_result::ok)
+			return false;
+		trade.operation = operation_id.bytes;
+		SHA256(encoded.data(), encoded.size(), trade.command_hash.data());
+		trade.payment = payment;
+		trade.wallet_revision = payload.expected_wallet_revision;
+	}
 	// A collected antiquity leaves the world now, so no corpse or room save captured
 	// before the collection commits can claim it back from the collector.
 	P_obj collected = nullptr;
@@ -313,7 +331,7 @@ bool submit(P_char character, const critical_operation_id &operation_id,
 								completion,
 								false,
 								{},
-								escrow,
+								payment,
 								collected,
 								collected_from,
 								collected_room });
@@ -329,15 +347,16 @@ bool submit(P_char character, const critical_operation_id &operation_id,
 		pending.erase(key);
 		return false;
 	}
-	if (escrow)
+	if (purchase)
 	{
-		const uint64_t revision = character->only.pc->wallet_revision;
-		if (!currency_transaction_submit_wallet_value(
-			    character, -escrow, currency_reason_type::collector_purchase,
-			    static_cast<int64_t>(payload.listing), source, deadline, nullptr,
-			    nullptr, 0) ||
-		    character->only.pc->wallet_revision == revision)
+		if (!currency_transaction_reserve_trade(character, payment))
 		{
+			pending.erase(key);
+			return false;
+		}
+		if (!player_save_pipeline_reserve_trade(payload.actor_pid, trade))
+		{
+			currency_transaction_release_trade(payload.actor_pid);
 			pending.erase(key);
 			return false;
 		}
@@ -350,10 +369,10 @@ bool submit(P_char character, const critical_operation_id &operation_id,
 		pending.erase(key);
 		if (collected)
 			put_back(collected, collected_from, collected_room);
-		if (escrow)
+		if (purchase)
 		{
-			refunds[payload.actor_pid] += escrow;
-			try_refund(character);
+			player_save_pipeline_release_trade(payload.actor_pid);
+			currency_transaction_release_trade(payload.actor_pid);
 		}
 		return false;
 	}
@@ -434,7 +453,6 @@ void collector_transaction_player_ready(P_char character)
 {
 	if (!character || IS_NPC(character) || GET_PID(character) <= 0)
 		return;
-	try_refund(character);
 	for (auto found = pending.begin(); found != pending.end();)
 	{
 		auto current = found++;
@@ -535,11 +553,13 @@ collector_transaction_outbox_delivery(const critical_outbox_record &record, void
 
 void collector_transaction_publish_outbox(void)
 {
-	for (auto found = refunds.begin(); found != refunds.end();)
+	for (auto found = pending.begin(); found != pending.end();)
 	{
 		auto current = found++;
-		if (P_char character = find_player_by_pid(current->first))
-			try_refund(character);
+		if (current->second.completion_ready)
+			publish(current, current->second.actor_pid ?
+						 find_player_by_pid(current->second.actor_pid) :
+						 nullptr);
 	}
 	std::vector<outbox_publication_work> work;
 	{
@@ -632,9 +652,17 @@ void collector_transaction_publish_outbox(void)
 
 void collector_transaction_reset_for_tests(void)
 {
+	for (const auto &[operation, entry] : pending)
+	{
+		static_cast<void>(operation);
+		if (entry.payment)
+		{
+			player_save_pipeline_release_trade(entry.actor_pid);
+			currency_transaction_release_trade(entry.actor_pid);
+		}
+	}
 	pending.clear();
 	player_recoveries.clear();
-	refunds.clear();
 	std::lock_guard<std::mutex> lock(outbox_mutex);
 	outbox_publications.clear();
 }

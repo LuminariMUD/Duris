@@ -3,6 +3,7 @@
 #include "economy/collector_runtime.h"
 #include "economy/currency_transaction.h"
 #include "item/item_ownership_runtime.h"
+#include "player/player_save_pipeline.h"
 #include "core/utils.h"
 
 #include <algorithm>
@@ -25,7 +26,10 @@ size_t submit_count = 0;
 critical_submit_result coordinator_result = critical_submit_result::accepted;
 // The buyer's wallet in memory, and the order of what a purchase queues.
 int64_t wallet = 0;
-bool refuse_wallet_submit = false, refuse_wallet_apply = false, refuse_credit = false;
+bool refuse_reservation = false, refuse_save_tag = false;
+bool wallet_reserved = false, save_reserved = false;
+int64_t reserved_payment = 0;
+player_pending_trade_snapshot save_tag = {};
 std::vector<std::string> queued;
 collector::record listing_record = {};
 size_t ownership_publications = 0;
@@ -74,7 +78,7 @@ collector_command_payload purchase_payload(const collector::record &entry)
 	payload.actor_pid = 42;
 	payload.racewar = 1;
 	strcpy(payload.account_name.data(), "CollectorTester");
-	payload.expected_wallet_revision = 10;
+	payload.expected_wallet_revision = pc.wallet_revision;
 	payload.expected_bank_revision = 11;
 	payload.from_owner = { item_owner_type::collector, item_collector_owner_id(entry.listing),
 			       0 };
@@ -105,7 +109,7 @@ collector_command_result purchase_result(collector::record entry)
 	result.to_owner_revision = 21;
 	result.wallet = { { 1, 2, 3, 4 } };
 	result.bank = { { 5, 6, 7, 8 } };
-	result.wallet_revision = 11;
+	result.wallet_revision = pc.wallet_revision + 1;
 	result.bank_revision = 12;
 	result.entry = entry;
 	return result;
@@ -175,6 +179,7 @@ void completed(P_char completed_character, bool committed, const collector_comma
 }
 
 P_obj object_list = nullptr;
+P_char character_list = nullptr;
 
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
@@ -189,21 +194,40 @@ P_char find_player_by_pid(int pid)
 	return player_online && pid == 42 ? &character : nullptr;
 }
 
-bool currency_transaction_submit_wallet_value(P_char buyer, int64_t value, currency_reason_type,
-					      int64_t, critical_source_site,
-					      critical_deadline_class, currency_completion_fn,
-					      const void *, size_t)
+bool currency_transaction_reserve_trade(P_char buyer, int64_t payment)
 {
 	assert(buyer == &character);
-	if (refuse_wallet_submit)
+	if (refuse_reservation || wallet_reserved || wallet < -payment)
 		return false;
-	if (value < 0 && wallet < -value)
-		return false;
-	if (refuse_wallet_apply || (value > 0 && refuse_credit))
-		return true;
-	wallet += value;
+	wallet_reserved = true;
+	reserved_payment = payment;
+	return true;
+}
+bool currency_transaction_publish_trade(P_char buyer, int64_t payment)
+{
+	assert(buyer == &character && wallet_reserved && reserved_payment == payment);
+	wallet += payment;
 	++buyer->only.pc->wallet_revision;
 	return true;
+}
+void currency_transaction_release_trade(uint32_t pid)
+{
+	assert(pid == 42);
+	wallet_reserved = false;
+}
+bool player_save_pipeline_reserve_trade(uint32_t pid, const player_pending_trade_snapshot &tag)
+{
+	assert(pid == 42);
+	if (refuse_save_tag)
+		return false;
+	save_reserved = true;
+	save_tag = tag;
+	return true;
+}
+void player_save_pipeline_release_trade(uint32_t pid)
+{
+	assert(pid == 42);
+	save_reserved = false;
 }
 
 void currency_transaction_save_first(P_char buyer)
@@ -330,32 +354,31 @@ int main()
 							completed));
 	assert(wallet == price && queued.empty());
 	listing_record = available;
-	for (bool *refusal : { &refuse_wallet_submit, &refuse_wallet_apply })
+	for (bool *refusal : { &refuse_reservation, &refuse_save_tag })
 	{
 		*refusal = true;
 		assert(!collector_transaction_submit(&character, purchase, completed));
 		assert(wallet == price && queued.empty());
 		assert(!collector_transaction_player_busy(&character));
 		assert(!collector_transaction_listing_busy(available.listing));
+		assert(!wallet_reserved && !save_reserved);
 		*refusal = false;
 	}
-	// Refused command admission retains even a refund the purse cannot yet accept.
+	// Refused command admission releases reservations without taking any money.
 	coordinator_result = critical_submit_result::unavailable;
-	refuse_credit = true;
 	assert(!collector_transaction_submit(&character, purchase, completed));
-	assert(wallet == 0 && !collector_transaction_player_busy(&character));
+	assert(wallet == price && !collector_transaction_player_busy(&character));
 	assert(!collector_transaction_listing_busy(available.listing));
+	assert(!wallet_reserved && !save_reserved);
 	coordinator_result = critical_submit_result::accepted;
-	refuse_credit = false;
-	collector_transaction_publish_outbox();
-	collector_transaction_publish_outbox();
-	assert(wallet == price);
 	queued.clear();
-	// The price leaves the wallet, and the buyer's save is queued before the command.
+	// The save tag binds the reserved debit before the ownership command is queued.
 	wallet = price + 5;
 	assert(collector_transaction_submit_identified(&character, purchase_operation, purchase,
 						       completed));
-	assert(wallet == 5 && (queued == std::vector<std::string>{ "save", "command" }));
+	assert(wallet == price + 5 && (queued == std::vector<std::string>{ "save", "command" }));
+	assert(wallet_reserved && save_reserved && save_tag.payment == -price &&
+	       save_tag.operation == purchase_operation.bytes);
 	assert(critical_operation_id_equal(submitted_command.operation_id, purchase_operation));
 	assert(collector_transaction_player_busy(&character));
 	assert(collector_transaction_listing_busy(available.listing));
@@ -366,7 +389,10 @@ int main()
 	assert(!collector_transaction_player_busy(&character) && !completion_called &&
 	       ownership_publications == 1 && runtime_publications == 1 && completion_error == 0 &&
 	       completion_action == collector_action::unknown);
+	assert(!wallet_reserved && !save_reserved && wallet == price + 5);
 	player_online = true;
+	wallet = 5; // A replacement body loads the already-debited SQL wallet.
+	pc.wallet_revision = purchased.wallet_revision;
 	collector_transaction_player_ready(&character);
 	assert(!collector_transaction_player_busy(&character) && completion_called &&
 	       completion_committed && completion_character == &character &&
@@ -376,46 +402,35 @@ int main()
 	// The committed purchase kept its price.
 	assert(wallet == 5);
 
-	// A refused purchase gives the price back.
+	// A refused purchase never consumes the reserved price.
 	completion_called = completion_committed = false;
 	collector_command_result rejected;
 	rejected.action = collector_action::purchase;
 	wallet = price;
+	purchase.expected_wallet_revision = pc.wallet_revision;
 	assert(collector_transaction_submit(&character, purchase, completed));
-	assert(wallet == 0);
+	assert(wallet == price);
 	auto rejected_completion =
 		completion(rejected, critical_apply_outcome::terminal_failure, EAGAIN);
-	refuse_credit = true;
 	collector_transaction_handle_completions(&rejected_completion, 1);
 	assert(completion_called && !completion_committed && completion_error == EAGAIN &&
-	       ownership_publications == 1 && runtime_publications == 1 && wallet == 0);
-	collector_transaction_publish_outbox();
-	assert(wallet == 0);
-	refuse_credit = false;
-	collector_transaction_publish_outbox();
-	assert(wallet == price);
+	       ownership_publications == 1 && runtime_publications == 1 && wallet == price);
+	assert(!wallet_reserved && !save_reserved);
 	collector_transaction_handle_completions(&rejected_completion, 1);
 	collector_transaction_publish_outbox();
 	assert(wallet == price);
 
-	// A buyer who left before the refusal gets the price back on return.
+	// A buyer who leaves before refusal needs no refund or in-process recovery credit.
 	completion_called = completion_committed = false;
 	assert(collector_transaction_submit(&character, purchase, completed));
-	assert(wallet == 0);
+	assert(wallet == price);
 	rejected_completion =
 		completion(rejected, critical_apply_outcome::terminal_failure, EAGAIN);
 	player_online = false;
 	collector_transaction_handle_completions(&rejected_completion, 1);
-	assert(wallet == 0 && !collector_transaction_player_busy(&character));
+	assert(wallet == price && !collector_transaction_player_busy(&character));
+	assert(!wallet_reserved && !save_reserved);
 	player_online = true;
-	refuse_wallet_submit = true;
-	collector_transaction_player_ready(&character);
-	assert(wallet == 0);
-	collector_transaction_publish_outbox();
-	assert(wallet == 0);
-	refuse_wallet_submit = false;
-	collector_transaction_publish_outbox();
-	assert(wallet == price);
 	collector_transaction_player_ready(&character);
 	assert(wallet == price);
 
@@ -574,6 +589,26 @@ int main()
 		       critical_outbox_delivery_result::delivered &&
 	       passthrough_deliveries == 1);
 
+	// A retained linkdead body receives its debit and item callback once.
+	character_list = &character;
+	player_online = false;
+	wallet = price + 7;
+	purchase.expected_wallet_revision = pc.wallet_revision;
+	purchased = purchase_result(available);
+	completion_called = false;
+	assert(collector_transaction_submit(&character, purchase, completed));
+	purchase_completion = completion(purchased);
+	collector_transaction_handle_completions(&purchase_completion, 1);
+	assert(completion_called && completion_character == &character && wallet == 7);
+	assert(!wallet_reserved && !save_reserved);
+	collector_transaction_handle_completions(&purchase_completion, 1);
+	assert(wallet == 7);
+	character_list = nullptr;
+	player_online = true;
+	wallet = price + 7;
+	purchase.expected_wallet_revision = pc.wallet_revision;
+	assert(collector_transaction_submit(&character, purchase, completed));
 	collector_transaction_reset_for_tests();
-	assert(submit_count == 10);
+	assert(!wallet_reserved && !save_reserved);
+	assert(submit_count == 12);
 }
