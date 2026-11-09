@@ -22,8 +22,10 @@ pc_only_data pc = {};
 bool player_online = true;
 critical_command submitted_command = {};
 size_t submit_count = 0;
+critical_submit_result coordinator_result = critical_submit_result::accepted;
 // The buyer's wallet in memory, and the order of what a purchase queues.
 int64_t wallet = 0;
+bool refuse_wallet_submit = false, refuse_wallet_apply = false, refuse_credit = false;
 std::vector<std::string> queued;
 collector::record listing_record = {};
 size_t ownership_publications = 0;
@@ -179,7 +181,7 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 	submitted_command = std::move(command);
 	++submit_count;
 	queued.push_back("command");
-	return critical_submit_result::accepted;
+	return coordinator_result;
 }
 
 P_char find_player_by_pid(int pid)
@@ -193,9 +195,14 @@ bool currency_transaction_submit_wallet_value(P_char buyer, int64_t value, curre
 					      const void *, size_t)
 {
 	assert(buyer == &character);
+	if (refuse_wallet_submit)
+		return false;
 	if (value < 0 && wallet < -value)
 		return false;
+	if (refuse_wallet_apply || (value > 0 && refuse_credit))
+		return true;
 	wallet += value;
+	++buyer->only.pc->wallet_revision;
 	return true;
 }
 
@@ -323,6 +330,27 @@ int main()
 							completed));
 	assert(wallet == price && queued.empty());
 	listing_record = available;
+	for (bool *refusal : { &refuse_wallet_submit, &refuse_wallet_apply })
+	{
+		*refusal = true;
+		assert(!collector_transaction_submit(&character, purchase, completed));
+		assert(wallet == price && queued.empty());
+		assert(!collector_transaction_player_busy(&character));
+		assert(!collector_transaction_listing_busy(available.listing));
+		*refusal = false;
+	}
+	// Refused command admission retains even a refund the purse cannot yet accept.
+	coordinator_result = critical_submit_result::unavailable;
+	refuse_credit = true;
+	assert(!collector_transaction_submit(&character, purchase, completed));
+	assert(wallet == 0 && !collector_transaction_player_busy(&character));
+	assert(!collector_transaction_listing_busy(available.listing));
+	coordinator_result = critical_submit_result::accepted;
+	refuse_credit = false;
+	collector_transaction_publish_outbox();
+	collector_transaction_publish_outbox();
+	assert(wallet == price);
+	queued.clear();
 	// The price leaves the wallet, and the buyer's save is queued before the command.
 	wallet = price + 5;
 	assert(collector_transaction_submit_identified(&character, purchase_operation, purchase,
@@ -357,9 +385,18 @@ int main()
 	assert(wallet == 0);
 	auto rejected_completion =
 		completion(rejected, critical_apply_outcome::terminal_failure, EAGAIN);
+	refuse_credit = true;
 	collector_transaction_handle_completions(&rejected_completion, 1);
 	assert(completion_called && !completion_committed && completion_error == EAGAIN &&
-	       ownership_publications == 1 && runtime_publications == 1 && wallet == price);
+	       ownership_publications == 1 && runtime_publications == 1 && wallet == 0);
+	collector_transaction_publish_outbox();
+	assert(wallet == 0);
+	refuse_credit = false;
+	collector_transaction_publish_outbox();
+	assert(wallet == price);
+	collector_transaction_handle_completions(&rejected_completion, 1);
+	collector_transaction_publish_outbox();
+	assert(wallet == price);
 
 	// A buyer who left before the refusal gets the price back on return.
 	completion_called = completion_committed = false;
@@ -371,7 +408,13 @@ int main()
 	collector_transaction_handle_completions(&rejected_completion, 1);
 	assert(wallet == 0 && !collector_transaction_player_busy(&character));
 	player_online = true;
+	refuse_wallet_submit = true;
 	collector_transaction_player_ready(&character);
+	assert(wallet == 0);
+	collector_transaction_publish_outbox();
+	assert(wallet == 0);
+	refuse_wallet_submit = false;
+	collector_transaction_publish_outbox();
 	assert(wallet == price);
 	collector_transaction_player_ready(&character);
 	assert(wallet == price);
@@ -532,5 +575,5 @@ int main()
 	       passthrough_deliveries == 1);
 
 	collector_transaction_reset_for_tests();
-	assert(submit_count == 9);
+	assert(submit_count == 10);
 }

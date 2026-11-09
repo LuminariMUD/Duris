@@ -291,6 +291,7 @@ int main() {
                         "-Wl,--gc-sections", str(source), "src/cmd/class.c", "src/cmd/race.c",
                         "src/core/common.c", "src/core/constant.c", "src/account/creation_availability_config.c",
                         "src/classes/specializations.c", "src/cmd/wikihelp.c", "src/cmd/help_cache.c",
+                        "src/net/output_links.c", "src/net/ansi.c", "src/net/unicode.c",
                         str(HARNESS_STUBS), "-o", str(binary)], cwd=ROOT, check=True)
         with tempfile.TemporaryDirectory(prefix="missing-help-", dir=directory) as empty:
             subprocess.run([str(binary)], cwd=empty, check=True)
