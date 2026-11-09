@@ -83,9 +83,13 @@ int ordered_command_number(const char *);
 #include "item/item_transfer_command.h"
 #include "persistence/persistence_checkpoint.h"
 #include "player/player_load_items.h"
+#include "player/player_save_pipeline.h"
+#include "sql/sql_async.h"
 
 #include <algorithm>
 #include <cassert>
+#include <cerrno>
+#include <new>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -187,6 +191,37 @@ P_room world = rooms;
 int top_of_objt = 3;
 extern const int top_of_world = 0;
 
+static bool parent_checkpoint_available = false;
+static bool parent_read_available = true;
+static bool parent_read_throws = false;
+static bool parent_checkpoint_queued = false;
+static std::function<void(bool, const sql_rows &)> parent_read;
+player_save_pipeline_result player_save_pipeline_request(P_char actor,
+    player_component_mask_t components, int, int)
+{
+    assert(actor && components == PLAYER_COMPONENT_INVENTORY);
+    parent_checkpoint_queued = parent_checkpoint_available;
+    return parent_checkpoint_available ? player_save_pipeline_result::queued :
+                                        player_save_pipeline_result::unavailable;
+}
+bool sql_read_at(persistence_query_site, std::string query,
+                 std::function<void(bool, const sql_rows &)> done)
+{
+    assert(parent_checkpoint_queued && query.find("current_item.item_uid=901") != std::string::npos);
+    if (!parent_read_available) return false;
+    if (parent_read_throws) throw std::bad_alloc();
+    parent_read = std::move(done);
+    return true;
+}
+bool sql_persistence_item_owner_fields_match(unsigned long long uid, const char *type,
+    unsigned long long owner, unsigned long long context, const char *const *row)
+{
+    assert(uid == 901 && !strcmp(type, "player") && owner == 42 && context == 0);
+    assert(!strcmp(row[0], "901") && !strcmp(row[3], "42"));
+    return item_ownership_runtime_hydrate(
+        {uid,uid,0,{item_owner_type::player,owner,0},7,3,
+         object_indexes[0].virtual_number,item_custody_state::active});
+}
 static bool command_submitted = false;
 static bool reject_submission = false;
 static bool hide_player_lookup = false;
@@ -362,6 +397,20 @@ static void held_grant_completion(P_char actor, bool committed, const item_trans
 	assert(item_ownership_runtime_lookup(result.root_item_uid, &ownership));
 	assert(ownership.owner.type == item_owner_type::player);
 	++publication_count;
+}
+
+static int parent_failure_callbacks = 0;
+static P_obj parent_retry_root = nullptr;
+static void parent_failure(P_char actor, bool committed, const item_transfer_result &,
+                           unsigned error, const uint8_t *, size_t)
+{
+    assert(actor && !committed && error == EIO);
+    ++parent_failure_callbacks;
+    if (parent_retry_root) {
+        P_obj retry = parent_retry_root;
+        parent_retry_root = nullptr;
+        assert(item_creation_grant_submit_to_player(actor,retry,actor));
+    }
 }
 
 static int carried_count(P_char actor)
@@ -1175,6 +1224,112 @@ int main()
 	       repaired_purchase.target_parent_item_uid==900 && repaired_purchase.expected_target_parent_revision==0);
 	item_movement_transaction_reset_for_tests(); item_ownership_runtime_reset();
 	character_list = nullptr; object_list = nullptr; actor.carrying = nullptr;
+
+    // A newly loaded, unsaved carried bag is checkpointed before its child
+    // operation. No child can publish while the ordered ownership read waits.
+    repaired_bag.obj_uid = 901;
+    actor.carrying = &repaired_bag; character_list = &actor;
+    grant_first.loc_p = grant_second.loc_p = LOC_NOWHERE;
+    grant_first.next = &grant_second; grant_second.next = &repaired_bag;
+    repaired_bag.next = nullptr; object_list = &grant_first;
+    P_obj fresh_roots[] = {&grant_first, &grant_second};
+    command_submitted = false;
+    assert(!item_creation_grant_submit_batch_to_player(&actor,fresh_roots,2,&actor,&repaired_bag,
+                                                      parent_failure,nullptr,0));
+    assert(!item_movement_transaction_player_busy(&actor) && !command_submitted);
+    parent_checkpoint_available = true;
+    parent_read_available = false;
+    assert(!item_creation_grant_submit_batch_to_player(&actor,fresh_roots,2,&actor,&repaired_bag,
+                                                      parent_failure,nullptr,0));
+    assert(parent_checkpoint_queued && !item_movement_transaction_player_busy(&actor));
+    assert(OBJ_NOWHERE(&grant_first) && OBJ_NOWHERE(&grant_second));
+    parent_read_available = true;
+    parent_read_throws = true;
+    assert(!item_creation_grant_submit_batch_to_player(&actor,fresh_roots,2,&actor,&repaired_bag,
+                                                      parent_failure,nullptr,0));
+    assert(!item_movement_transaction_player_busy(&actor));
+    parent_read_throws = false;
+    assert(item_creation_grant_submit_batch_to_player(&actor,fresh_roots,2,&actor,&repaired_bag,
+                                                     parent_failure,nullptr,0));
+    assert(parent_read && item_creation_grant_blocks_commands(&actor) && !command_submitted);
+    item_creation_grant_prepare_pulse();
+    assert(!command_submitted);
+    sql_row parent_row;
+    for (const auto &field : std::array<std::string,9>{"901","0","1","42","0","7",
+                              std::to_string(object_indexes[0].virtual_number),"1","3"})
+        parent_row.fields.emplace_back(field);
+    auto read_done = std::move(parent_read);
+    actor.desc = nullptr; // socket loss retains the live body
+    read_done(true, {parent_row});
+    item_creation_grant_prepare_pulse();
+    actor.desc = &grant_descriptor;
+    item_transfer_payload fresh_purchase{};
+    assert(command_submitted && item_transfer_command_decode_payload(submitted_command,&fresh_purchase));
+    assert(fresh_purchase.target_parent_item_uid == 901 &&
+           fresh_purchase.expected_target_parent_revision == 7 && fresh_purchase.item_count == 2);
+    item_movement_transaction_reset_for_tests(); item_ownership_runtime_reset();
+
+    // An unloaded actor resumes from its later load's ownership, not a stale
+    // parent read that completed while it was absent.
+    command_submitted = false;
+    assert(item_creation_grant_submit_batch_to_player(&actor,fresh_roots,2,&actor,&repaired_bag,
+                                                     parent_failure,nullptr,0));
+    read_done = std::move(parent_read);
+    character_list = nullptr;
+    read_done(true, {parent_row});
+    item_creation_grant_prepare_pulse();
+    item_ownership_runtime_entry unseen_parent{};
+    assert(!command_submitted && !item_ownership_runtime_lookup(901,&unseen_parent));
+    assert(item_ownership_runtime_hydrate({901,901,0,{item_owner_type::player,42,0},
+        9,4,object_indexes[0].virtual_number,item_custody_state::active}));
+    character_list = &actor;
+    item_movement_transaction_player_ready(&actor);
+    assert(command_submitted && item_transfer_command_decode_payload(submitted_command,&fresh_purchase));
+    assert(fresh_purchase.expected_target_parent_revision == 9);
+    item_movement_transaction_reset_for_tests(); item_ownership_runtime_reset();
+
+    // A target moved by another actor during preparation must refund/fail once,
+    // and must not publish its old ownership read into the live cache.
+    command_submitted = false;
+    extracted_count = 0;
+    assert(item_creation_grant_submit_batch_to_player(&actor,fresh_roots,2,&actor,&repaired_bag,
+                                                     parent_failure,nullptr,0));
+    read_done = std::move(parent_read);
+    repaired_bag.loc_p = LOC_ROOM;
+    actor.carrying = nullptr;
+    obj_data retry_root{};
+    retry_root.obj_uid = 903; retry_root.R_num = 0; retry_root.loc_p = LOC_NOWHERE;
+    retry_root.next = object_list; object_list = &retry_root;
+    parent_retry_root = &retry_root;
+    read_done(true, {parent_row});
+    item_creation_grant_prepare_pulse();
+    assert(parent_failure_callbacks == 1 && extracted_count == 2 && command_submitted);
+    assert(item_transfer_command_decode_payload(submitted_command,&fresh_purchase));
+    assert(fresh_purchase.selected_item_uid == 903); // callback submitted independent work
+    assert(!item_ownership_runtime_lookup(901,&unseen_parent));
+    item_movement_transaction_reset_for_tests(); item_ownership_runtime_reset();
+    repaired_bag.loc_p = LOC_CARRIED;
+    repaired_bag.loc.carrying = &actor;
+    actor.carrying = &repaired_bag;
+    parent_failure_callbacks = 0;
+
+    // A failed parent read releases the queue and notifies the business callback,
+    // including when the actor went offline before the read completed.
+    command_submitted = false;
+    extracted_count = 0;
+    assert(item_creation_grant_submit_batch_to_player(&actor,fresh_roots,2,&actor,&repaired_bag,
+                                                     parent_failure,nullptr,0));
+    read_done = std::move(parent_read);
+    character_list = nullptr;
+    read_done(false, {});
+    item_creation_grant_prepare_pulse();
+    assert(parent_failure_callbacks == 0 && extracted_count == 0);
+    character_list = &actor;
+    item_movement_transaction_player_ready(&actor);
+    assert(parent_failure_callbacks == 1 && extracted_count == 2 && !command_submitted);
+    assert(!item_movement_transaction_player_busy(&actor));
+    item_movement_transaction_reset_for_tests(); item_ownership_runtime_reset();
+    character_list = nullptr; object_list = nullptr; actor.carrying = nullptr;
 
 	printf("item movement input queue runtime: ok\n");
 	return 0;

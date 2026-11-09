@@ -73,11 +73,22 @@ for match in re.finditer(r"\b(real_object0|real_mobile0|real_room0)\(\s*(\w+)\s*
     if vnum not in world[LOOKUPS[lookup]]:
         missing.append(f"L{number} {lookup}({argument})")
 
+for match in re.finditer(r"^\s*OBJECT_BINDING\(\s*(\w+)\s*,\s*(\w+)\s*\)", source, re.M):
+    argument, proc = match.groups()
+    number = source.count("\n", 0, match.start()) + 1
+    assert argument.isdigit() or argument in defines, f"L{number} unknown object vnum {argument}"
+    vnum = int(argument) if argument.isdigit() else defines[argument]
+    assignments += 1
+    if vnum not in world["obj"]:
+        missing.append(f"L{number} OBJECT_BINDING({argument}, {proc})")
+
 assert assignments > 1000, f"only {assignments} assignments were read"
 # board_info[] in boards.c is the one owner of the board special: initialize_boards()
 # gives it to every row, and an object with it but no row logs "degenerate board!".
 assert not re.search(r"\.func\.obj\s*=\s*board\s*;", source), \
     "specs.assign.c assigns the board special; add a board_info[] row in boards.c instead"
+assert not re.search(r"OBJECT_BINDING\(\s*\w+\s*,\s*board\s*\)", source), \
+    "object binding catalog assigns board; board_info[] owns these bindings"
 assert not missing, (
     f"{len(missing)} assignment(s) in specs.assign.c name a vnum no area in areas/AREA has; "
     "they would land on index 0:\n" + "\n".join(missing))
