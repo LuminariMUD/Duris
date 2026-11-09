@@ -71,6 +71,10 @@ PH 0 0 -1
 0.0.0.0 0
 8 8 0
 """
+    if family == "avernus":
+        # Keep its native 1/25 proc. A capped NPC lands enough ordinary hits
+        # to observe that selection within the bounded combat window.
+        sentinel = sentinel.replace("20 -100 100", "56 -100 100")
     mobiles = (mini / "mini.mob").read_text()
     (mini / "mini.mob").write_text(mobiles.replace("$~", sentinel + "$~"))
     world = (mini / "mini.wld").read_text()
