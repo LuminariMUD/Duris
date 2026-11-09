@@ -50,6 +50,8 @@ Plan PR: [#876](https://github.com/LuminariMUD/Duris/pull/876), against `master`
 ### Chunk 1 — remove unused reset/recovery valuations (F15, partial)
 
 Branch: `branch/ival-reset-admission`, based on `branch/ival-system-improvements`.
+Published: commit `5578459f7`, [PR #877](https://github.com/LuminariMUD/Duris/pull/877)
+(enhancement label), stacked on #876. This chunk is ready for review.
 
 **Outcome:** item load admission takes only the object and zone chance. Remove
 the unused score argument, seven reset evaluations, the recovery evaluation, and
@@ -93,13 +95,52 @@ Linux hooks; do not commit newline-only changes. The host's default clang toolin
 selects GCC 16 headers; GCC 13 standard include paths are needed for the installed
 clang tooling to parse this checkout. This is local tool selection, not a source
 or warning-policy exception.
+The commit hooks passed with `CLANG_TIDY=/usr/bin/clang-tidy-18` and
+`CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/x86_64-linux-gnu/c++/13:/usr/include/c++/13/backward`.
 
 **Ablation:** this independent part of Stage 4 can land before evaluator changes
 because it removes a dependency that never affects load admission. Updating the
 existing interface and callers needs no new valuation/cache/index abstraction.
 
-Next: publish this chunk, then establish native characterization and
-truthful diagnostics (Stage 1), followed by the shared evaluator/context work.
+### Chunk 2 — make the calculation defects reproducible (Stage 1, partial)
+
+Branch: `branch/ival-characterization`, based on `branch/ival-reset-admission`.
+
+**Outcome:** `tests/async/test_item_value_characterization.py` runs the native
+`itemvalue()`, `get_mincircle()`, and `get_ival_from_proc()` implementations. It
+loads real spell-circle registrations through `skills.c`'s existing `_PFILE_`
+path; epic non-spell registration is omitted. Distinct inert callback identities
+allow the real native-proc price resolver to execute without invoking gameplay.
+Racial factors are fixture data, so this is not full runtime-context parity.
+
+**Non-goals:** fixing/approving the pinned legacy behavior, active-world deltas,
+new weights, persistence qualification, or a replacement Python calculator.
+Assertions marked `LEGACY Fxx` must change with their corresponding repairs.
+
+**Files:** this native test and this handoff document only.
+
+**Proof:** `python3 tests/async/test_item_value_characterization.py` passed under
+ASan/UBSan/float-cast-overflow. It covers real earth-form/tomb registrations,
+first/last class/spec boundaries, invalid/unregistered IDs, packed averaging and
+rounding, level 19/20, apply order, zero slots, fourth slot, duplicates/cancellation,
+byte extremes, first-match proc precedence, fallback, utility sentinel failure,
+packed/native double credit, a gapped glove, and unpriced B5. Ordinary cases
+produce no sanitizer errors; isolated subprocesses deliberately reproduce and
+assert the two F08 sanitizer failures. Repeated scoring preserves object/index
+inputs and consumes no RNG.
+
+`python3 tests/async/test_weapon_actions_runtime.py` also passed, executing the
+real packed/glove dispatcher and scheduler, including malformed/gapped glove
+refusal. This establishes the other side of the pinned valuation/routing mismatch;
+it does not complete F09's entire native-route inventory.
+
+**Ablation:** extend the existing extraction/sanitizer pattern with one focused
+test. Share actual registration/valuation code rather than copied formulas or
+new test infrastructure. No runtime code changes or server rebuild are needed
+for this test-only chunk.
+
+Next: truthful editor/config/report diagnostics and full-context native corpus
+reporting (remaining Stage 1), followed by the shared evaluator/context work.
 No formula-changing slice is complete without the delta qualification below.
 
 ## Main conclusions
@@ -699,9 +740,10 @@ partial deliveries and their verification are recorded in the implementation log
 
 ### Stage 1 — establish reproducible baselines and truthful diagnostics
 
-- [ ] Add focused native characterization cases for F01–F04, F08, and F09 to
+- [x] Add focused native characterization cases for F01–F04, F08, and F09 to
   existing test infrastructure; initially capture legacy behavior and clearly
-  mark the cases that subsequent fixes will change.
+  mark the cases that subsequent fixes will change. See Chunk 2; full-context
+  corpus qualification remains separate.
 - [ ] Inventory effective bound procs, applies/flags/types, and active-world
   normalization; record formula/context provenance.
 - [ ] Correct editor/config/report claims immediately; resolve the inert `[spell]`
