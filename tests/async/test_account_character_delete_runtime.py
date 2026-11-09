@@ -380,10 +380,9 @@ build_root.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='account-delete-', dir=build_root) as directory:
     cpp = Path(directory) / 'runtime.cpp'
     cpp.write_text(prelude + bodies + main)
-    for backend, flags in (('mariadb', []), ('flatfile', [])):
-        exe = Path(directory) / f'runtime-{backend}'
-        subprocess.run(['g++', '-std=c++20', '-g', '-fsanitize=address,undefined',
-                        '-fno-omit-frame-pointer', *flags, str(cpp), '-o', str(exe)], check=True)
-        subprocess.run([str(exe)], check=True)
+    exe = Path(directory) / 'runtime-mariadb'
+    subprocess.run(['g++', '-std=c++20', '-g', '-fsanitize=address,undefined',
+                    '-fno-omit-frame-pointer', str(cpp), '-o', str(exe)], check=True)
+    subprocess.run([str(exe)], check=True)
 print('PASS: account deletion runtime refusal at every statement, release, publication, '
-      'retry, in-game refusal and closed-session scenarios on both backends')
+      'retry, in-game refusal and closed-session scenarios on MariaDB')
