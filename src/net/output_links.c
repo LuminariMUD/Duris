@@ -296,18 +296,36 @@ void write_output(const char *text, txt_q *queue)
 				    rebase_output_links(text, frozen.c_str(), links));
 }
 
+static int output_queue_concat(const char *text, const txt_q *queue)
+{
+	if (!text || !queue || !queue->tail)
+		return 1;
+	const char *previous = queue->tail->text;
+	const size_t length = strlen(previous);
+	// A color token must not start in one send and finish in another.
+	if ((length && previous[length - 1] == '&') ||
+	    (length > 1 && previous[length - 2] == '&' && strchr("+-=", previous[length - 1])))
+		return 0;
+	// Reparse joined markup only when the preceding URL cannot change the next
+	// send's ampersands, or a scheme cannot be completed across this boundary.
+	if (strchr(previous, ':') &&
+	    (strchr(text, '/') || (strchr(previous, '/') && strchr(text, '&'))))
+		return 0;
+	return 1;
+}
+
 void write_linked_output(const char *text, txt_q *queue, std::span<const OutputLink> links)
 {
 	if (links.empty() || !text || !queue || strlen(text) >= MAX_STRING_LENGTH)
 	{
-		write_to_q(text, queue, 1);
+		write_to_q(text, queue, output_queue_concat(text, queue));
 		return;
 	}
 	const size_t length = strlen(text);
 	const bool valid = valid_output_links(links, length);
 	const auto *tail = queue->tail;
 	const size_t prefix = tail ? strlen(tail->text) : 0;
-	write_to_q(text, queue, 1);
+	write_to_q(text, queue, output_queue_concat(text, queue));
 	if (!valid || links.empty())
 		return;
 	const size_t shift = queue->tail == tail ? prefix : 0;

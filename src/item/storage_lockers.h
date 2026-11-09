@@ -15,6 +15,7 @@
 #include <string.h>
 #include <string>
 #include <memory>
+#include <set>
 #include <vector>
 #include "item/item_transfer_command.h"
 
@@ -91,6 +92,7 @@ class StorageLocker
 	}
 	uint64_t VisitId(void) const { return m_chLocker ? m_chLocker->runtime_id : 0; }
 	bool PrivateContentsDurable(void);
+	void ReturnNorentItems(void);
 	bool LockerToPFile(void);
 	void PFileToLocker(void);
 	void SortIValues(void);
@@ -106,6 +108,8 @@ class StorageLocker
 	{
 		m_currentChestId = id;
 		m_currentChestManager = manager;
+		if (id)
+			m_chestsOpenedThisVisit.insert(id);
 	};
 	bool CurrentChestOpenedAsManager(void) const { return m_currentChestManager; }
 	uint64_t GetChestAccessGeneration(void) const { return m_chestAccessGeneration; }
@@ -141,6 +145,8 @@ class StorageLocker
 	bool m_bIValue;
 	int m_currentChestId;
 	bool m_currentChestManager;
+	// Outlives closing the chest, which a departure does before the final save.
+	std::set<int> m_chestsOpenedThisVisit;
 	uint64_t m_chestAccessGeneration;
 	int m_lockerId;
 	int m_publicChestId;

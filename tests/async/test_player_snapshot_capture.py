@@ -300,11 +300,11 @@ int main()
     assert(ordinary.duration == 2640);
     ch.nevents = nullptr;
     ch.affected = nullptr;
-    // Rent must carry every temporary key to the writer for atomic disposal,
-    // including a key hidden inside a container the ordinary filter omits.
+    // A save keeps a NORENT item only with an ownership record, and an omitted NORENT bag
+    // leaves what it holds behind at the bag's own level.
     for (int intent : {RENT_INN, RENT_CRASH, RENT_CRASH2, RENT_QUIT, RENT_LINKDEAD, RENT_CAMPED, RENT_DEATH}) {
         // Batch repair can preserve active custody with revision zero (unknown).
-        // That still preserves durable NORENT items and the separate key rule.
+        // That still preserves durable NORENT items.
         for (int recorded_revision : {-1, 0, 1}) {
             const bool owned = recorded_revision >= 0;
             for (int place = 0; place < 4; ++place) {
@@ -339,10 +339,13 @@ int main()
                 std::vector<uint8_t> bytes;
                 assert(player_snapshot_encode(saved, &bytes) == player_snapshot_codec_result::ok);
                 assert(player_snapshot_decode(bytes.data(), bytes.size(), &decoded) == player_snapshot_codec_result::ok);
-                const bool include = intent == RENT_INN || (owned && place != 3);
-                assert(decoded.items.size() == (include ? 1u : 0u) + (place == 2 ? 2u : 0u));
-                for (const auto &row : decoded.items) if (row.object_uid == key.obj_uid) {
-                    assert(include && row.type == ITEM_KEY && row.extra_flags == ITEM_NORENT);
+                assert(decoded.items.size() == (owned ? 1u : 0u) + (place == 2 ? 2u : place == 3 ? 1u : 0u));
+                for (const auto &row : decoded.items) {
+                    if (row.object_uid == bag.obj_uid) assert(place == 2);
+                    if (row.object_uid == sibling.obj_uid)
+                        assert(row.parent_index == (place == 2 ? 0 : PLAYER_SNAPSHOT_NO_PARENT));
+                    if (row.object_uid != key.obj_uid) continue;
+                    assert(owned && row.type == ITEM_KEY && row.extra_flags == ITEM_NORENT);
                     assert(row.parent_index == (place == 2 ? 0 : PLAYER_SNAPSHOT_NO_PARENT));
                     assert(row.equipment_slot == (place == 1 ? HOLD + 1 : 0));
                 }
@@ -352,7 +355,7 @@ int main()
         }
     }
     item_ownership_runtime_reset(); ch.carrying = nullptr; ch.equipment[HOLD] = nullptr;
-    std::cout << "[PASS] 56 rent/recovery capture and codec cases retain disposal identity without mutating live items\n";
+    std::cout << "[PASS] 84 capture and codec cases keep owned NORENT items and bag contents without mutating live items\n";
     {
         obj_data bag{}, key{};
         bag.R_num = 2; bag.type = ITEM_CONTAINER; bag.extra_flags = ITEM_NORENT;
@@ -363,8 +366,7 @@ int main()
                                                                   RENT_INN, 22800, &result); };
         key.next_content = &key;
         assert(capture() == player_snapshot_capture_result::object_cycle && result.pid == 123);
-        key.next_content = nullptr; key.obj_uid = 0;
-        assert(capture() == player_snapshot_capture_result::malformed_source && result.pid == 123);
+        key.next_content = nullptr;
         std::vector<obj_data> deep(PLAYER_SNAPSHOT_MAX_DEPTH + 1);
         for (size_t i = 0; i < deep.size(); ++i) {
             deep[i].R_num = 2; deep[i].type = ITEM_CONTAINER; deep[i].extra_flags = ITEM_NORENT;
@@ -372,13 +374,20 @@ int main()
         }
         ch.carrying = deep.data();
         assert(capture() == player_snapshot_capture_result::limit_exceeded && result.pid == 123);
-        std::vector<obj_data> wide(PLAYER_SNAPSHOT_MAX_OBJECTS);
+        std::vector<obj_data> wide(PLAYER_SNAPSHOT_MAX_OBJECTS + 1);
         for (size_t i = 0; i < wide.size(); ++i) {
             wide[i].R_num = 2; wide[i].type = ITEM_FOOD;
             wide[i].next_content = i + 1 < wide.size() ? &wide[i + 1] : nullptr;
         }
         ch.carrying = &bag; bag.contains = wide.data();
         assert(capture() == player_snapshot_capture_result::limit_exceeded && result.pid == 123);
+        obj_data held{}; held.R_num = 2; held.type = ITEM_FOOD; held.obj_uid = 4040104;
+        ch.carrying = nullptr; ch.equipment[HOLD] = &bag; bag.contains = &held;
+        assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_EQUIPMENT, RENT_CRASH, 22800, &result)
+               == player_snapshot_capture_result::ok);
+        assert(result.items.size() == 1 && result.items[0].object_uid == held.obj_uid &&
+               result.items[0].parent_index == PLAYER_SNAPSHOT_NO_PARENT && result.items[0].equipment_slot == 0);
+        ch.equipment[HOLD] = nullptr;
         ch.carrying = &key; key.obj_uid = 4040101;
         std::vector<player_item_snapshot> generic;
         size_t generic_bytes = 0;

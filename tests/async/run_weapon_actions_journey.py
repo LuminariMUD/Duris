@@ -4,14 +4,13 @@
 The only forced selection is a synthetic packed weapon's normal value[7]=1.
 Account creation, NPC attacks, spell damage, warning output, pulses and flee all
 use production code. No gameplay endpoints are replaced or debug commands added.
-Run explicitly with a freshly built flatfile server and repository inspector.
+Run with a freshly built MariaDB server through with_disposable_mariadb.sh.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import signal
@@ -72,6 +71,10 @@ PH 0 0 -1
 0.0.0.0 0
 8 8 0
 """
+    if family == "avernus":
+        # Keep its native 1/25 proc. A capped NPC lands enough ordinary hits
+        # to observe that selection within the bounded combat window.
+        sentinel = sentinel.replace("20 -100 100", "56 -100 100")
     mobiles = (mini / "mini.mob").read_text()
     (mini / "mini.mob").write_text(mobiles.replace("$~", sentinel + "$~"))
     world = (mini / "mini.wld").read_text()
@@ -108,15 +111,12 @@ def drain(client: journey.MudClient, seconds: float) -> str:
     return result
 
 
-def run_case(binary: Path, inspector: Path, enabled: bool, react: bool, family: str = "packed") -> dict:
+def run_case(binary: Path, enabled: bool, react: bool, family: str = "packed") -> dict:
     case = f"{'on' if enabled else 'off'}-{'flee' if react else 'hold'}"
     print(f"weapon journey: {case}", flush=True)
-    with tempfile.TemporaryDirectory(prefix="duris-weapon-state-") as state_tmp, \
+    with journey.mariadb_authority() as (env, sql), \
          tempfile.TemporaryDirectory(prefix="duris-weapon-run-") as run_tmp:
-        state = Path(state_tmp); state.chmod(0o700)
         run_root = Path(run_tmp)
-        (state / "domains").mkdir(mode=0o700)
-        subprocess.run([str(inspector), str(state), "seed-combat"], check=True)
         configure(run_root, enabled, family)
         warning = "Avernus begins drawing a hungry light toward YOU!" if family == "avernus" else START
         hit_message = "You feel your life flowing away" if family == "avernus" else HIT
@@ -124,16 +124,11 @@ def run_case(binary: Path, inspector: Path, enabled: bool, react: bool, family: 
         (journal / "players").mkdir(parents=True, mode=0o700)
         (journal / "critical").mkdir(mode=0o700)
         plain, tls, websocket = journey.available_ports()
-        env = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ENVIRONMENT": "local",
-            "PERSISTENCE_MODE": "flatfile-primary", "FLATFILE_STATE_DIR": str(state),
-            "CRITICAL_COMMAND_JOURNAL_DIR": str(journal / "critical"),
-            "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls),
-            "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_PORT": str(websocket),
-            "REDIS": "FALSE", "CHAOS_MUD": "FALSE", "DURIS_NEVENT_TRACE_PLAYER": "1",
-        }
-        if "LD_LIBRARY_PATH" in os.environ:
-            env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+        env.update(
+            CRITICAL_COMMAND_JOURNAL_DIR=str(journal / "critical"),
+            DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket),
+            DURIS_NEVENT_TRACE_PLAYER="1",
+        )
         output_path = run_root / "server.out"
         with output_path.open("w") as output:
             command = [str(binary), "--minimal"] + ([] if family == "avernus" else ["-s"])
@@ -154,7 +149,9 @@ def run_case(binary: Path, inspector: Path, enabled: bool, react: bool, family: 
                 drain(client, .3)
                 attacked = time.monotonic()
                 client.send("kill sentinel")
-                deadline=time.monotonic()+(600 if family=='avernus' else 45)
+                # Selection still requires a naturally landed melee hit; dodge can
+                # consume many rounds even for the guaranteed packed selection.
+                deadline=time.monotonic()+600
                 while True:
                     first,output_text=client.expect_any((warning,hit_message,'is dead! R.I.P.',
                         'You stumble, but recover in time!','You stumble in your attack, and jab at',
@@ -209,7 +206,6 @@ def run_case(binary: Path, inspector: Path, enabled: bool, react: bool, family: 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", type=Path, required=True)
-    parser.add_argument("--inspector", type=Path, default=journey.INSPECTOR)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--family", choices=("packed", "avernus"), default="packed")
     parser.add_argument("--case", choices=("all","off-hold","on-hold","on-flee"), default="all")
@@ -218,6 +214,6 @@ if __name__ == "__main__":
     for enabled, react in ((False,False),(True,False),(True,True)):
         case=f"{'on' if enabled else 'off'}-{'flee' if react else 'hold'}"
         if args.case not in ('all',case): continue
-        results['cases'].append(run_case(args.binary.resolve(),args.inspector.resolve(),enabled,react,args.family))
+        results['cases'].append(run_case(args.binary.resolve(),enabled,react,args.family))
         if args.output: args.output.write_text(json.dumps(results,indent=2)+'\n')
     print(json.dumps(results, indent=2))
