@@ -1,9 +1,9 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: all 14 partial-conversion runners, telemetry performance, racial/cast and divine-refusal journeys passed. Pwipe matched restore is under qualification; later batches and aggregate gates remain.
+Status: partial conversions, telemetry performance, racial/cast, divine refusal, all pwipe modes, colorization and Discord passed. Weapon/copyover mode matrices are finishing; batches 3–6 remain.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-pwipe-mariadb-qualifier`; divine-refusal conversion is its next child branch. See the current-work section before continuing.
+Review head: `branch/issue-870-discord-game-journey`. See the current-work section before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -145,7 +145,7 @@ with existing bounded settling patterns where writes are asynchronous.
   Redis-fault paths. Preserve original sockets, plain/MCCP, TLS/WebSocket paths
   present in the runner, reconnect, failure/success, fresh/full-world and
   non-root cases. Reuse its existing private Redis fault setup.
-- [ ] `test_discord_game_journey.py`: seed the synthetic player and staff in
+- [x] `test_discord_game_journey.py`: seed the synthetic player and staff in
   MariaDB and retain petition/ptell, save and copyover assertions. Use the
   companion bridge's `scripts/testing/duris-game-sink.js` via `--node-driver`;
   verify the actual checkout/path and Node dependencies before running. The
@@ -153,7 +153,7 @@ with existing bounded settling patterns where writes are asynchronous.
 - [x] `scripts/validate_colorization_journey.py`: replace inspector setup and
   saved-state dependencies with MariaDB; retain ANSI, paging, rendering,
   permission and persistence checks and its synthetic report.
-- [ ] `run_pwipe_runtime_journey.py`: remove the obsolete flat-file rejection
+- [x] `run_pwipe_runtime_journey.py`: remove the obsolete flat-file rejection
   function, option and dependent argument validation. Preserve supported
   MariaDB/Redis/restore/reward and website modes. Verify affected argument
   combinations and run supported cases touched by the cleanup; provision
@@ -536,9 +536,13 @@ This is an estimate, not a time limit or permission to omit required proof.
   umask077, restoring the caller's umask afterwards. Earlier wrong-store-image
   diagnosis was incorrect: the guard failed before image decoding. Remove the
   extra reboot/crash-freeze workaround; keep the original clean-stop capture and
-  native checks. The full `--redis --restore bin/server/dms_new` retry is running;
-  inspect its terminal result before claiming that mode passed. First and second
-  failure evidence is retained under `bin/tests/issue-870/`.
+  native checks. The full `--redis --restore bin/server/dms_new` retry passed
+  (ordinary user, real five-minute countdown, fresh private SQL store, original
+  bank9/reward3/PID/files and authenticated world, save/reconnect/second boot,
+  post-wipe source SQL/files/Redis and immutable backup unchanged). Report revision
+  `04439c766`, binary024e32b9dd95… above; `pwipe-restore-run.log` and copied
+  `pwipe-runtime-mariadb-redis-restore.json`. First and second failure evidence is
+  retained. [PR #922](https://github.com/LuminariMUD/Duris/pull/922) is ready.
 - Website qualification uses a detached private DurisWeb worktree at
   `bin/tests/issue-870/website`, pinned to `51549c2`, with no `.env` files.
   Frozen offline pnpm install and backend tsc build passed. Node26.11.1 and
@@ -549,7 +553,8 @@ This is an estimate, not a time limit or permission to omit required proof.
   verification; seed that verified donor precondition offline. Mail, Discord,
   analytics and real payment services remain disabled. No website source change.
 - Divine refusal: `e7e83d8c3`, `branch/issue-870-divine-refusal-journey`,
-  qualified above the pwipe branch. SQL promotion replaces the embedded C++
+  [PR #923](https://github.com/LuminariMUD/Duris/pull/923), ready above #922.
+  SQL promotion replaces the embedded C++
   snapshot writer/compiler; preserve the shared drain helper's five consumers.
   `tests/async/with_disposable_mariadb.sh python3 tests/async/run_divine_refusal_journey.py bin/server/dms_new`
   passed both full A/B scenarios: disabled dispatch2/2, enabled dispatch0/2,
@@ -566,7 +571,8 @@ This is an estimate, not a time limit or permission to omit required proof.
   `024e32b9dd95cf654ed9dbcadb937785d444b20967dbd11ce73d845aed3c875e`.
   Latest native ASan/UBSan, creation-batch/reconciliation, newbie and prompt checks
   and `make -C src -j4` passed. Final aggregate gates must qualify this integration.
-- Colorization: `9939996fb`, `branch/issue-870-colorization-journey`, removes
+- Colorization: `9939996fb`, `branch/issue-870-colorization-journey`,
+  [PR #925](https://github.com/LuminariMUD/Duris/pull/925), ready after #924, removes
   inspector/state setup and uses the shared MariaDB authority. All 65 checks and
   15 frames passed (two accounts, independent recipient GMCP/ANSI colors, saved
   choices/reconnect, paging, coherent animation, motion/static, authored mural,
@@ -579,17 +585,29 @@ This is an estimate, not a time limit or permission to omit required proof.
   the player dodged every melee hit (failure log retained). All three packed cases
   now passed: legacy damage, 2.002s warning-to-hit, and .250s flee with no damage
   and a fizzle. Avernus's unforced 1/25 selection matrix remains running.
+  [PR #924](https://github.com/LuminariMUD/Duris/pull/924) is draft until all cases pass.
 - Copyover: `d3df89e40` uses one shared MariaDB setup for ordinary and Redis modes,
   removes the duplicate schema installer, and replaces corrupt-snapshot injection
   with a real rejecting player-save SQL trigger. The first plain case already
-  passed all failures and successful socket/session recovery. Default MCCP,
-  Redis faults, fresh/full-world and UID10001 modes still require terminal proof.
+  passed all failures and successful socket/session recovery; default MCCP and
+  Redis fault modes also passed. Fresh/full-world modes remain running.
+  UID10001 first failed before boot: Linux protected_regular blocks O_CREAT on
+  the ordinary user's shared /tmp port-lock file. `cfea325b8` reopens that same
+  existing lock without O_CREAT on PermissionError; confirmed root r+ succeeds.
+  Keep shared fcntl reservations. The full UID10001 retry is running; its initial
+  failure is retained. [PR #926](https://github.com/LuminariMUD/Duris/pull/926)
+  remains draft until the complete matrix passes.
 - Discord: `a98106d9e` seeds staff in MariaDB. The unchanged bridge sink is at
   `/home/aiwithapex/projects/discord-mud-chat/scripts/testing/duris-game-sink.js`,
   clean checkout `70865ecafb0aeb9b9ac71da37696e416d892ce4c`. Its dependencies load
   using Node26.11.1; the driver uses loopback config and a mocked Discord client,
-  without dotenv or real Discord access. Full runtime qualification is running.
-- Next: finish matched restore, publish the pwipe and divine-refusal chunks with
-  appropriate labels, then continue weapon actions/copyover/Discord/colorization,
+  without dotenv or real Discord access. Complete runtime qualification passed:
+  petition/ptell, concealment/exclusions, one-way ingress, original player/bridge
+  sockets across failed exec and successful copyover, save/reload, offline/disabled
+  relay, audit deduplication and ordinary shutdown. `8de873801` corrects a stale
+  fixture expectation: failed exec removes sealed recovery files. Initial failure
+  retained as `discord-game-initial-failed-exec.log`; success `discord-game-run.log`.
+  [PR #928](https://github.com/LuminariMUD/Duris/pull/928) is ready after #926.
+- Next: finish weapon/copyover matrices and update their PRs, then continue
   named sets and historical assassin comparison, four item journeys, naming/docs,
   and full regression/DB gates. No aggregate or whole-issue completion is claimed.
