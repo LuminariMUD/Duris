@@ -297,12 +297,13 @@ def run(binary, backend, inspector, evidence_dir):
                 assert on_floor(client, "small"), "shop key did not land on the floor"
                 evidence["checks"].append("a shop-bought no-rent item falls")
 
-                assert "created" in command(client, "load obj " + str(TICKET)).lower()
-                command(client, "setbit obj ticket extra NODROP 1")
-                rent(gone=TICKET, message=CRUMBLES)
-                login()
-                assert not on_floor(client, "ticket"), "no-drop item reached the floor"
-                evidence["checks"].append("a no-drop no-rent item crumbles")
+                for field, flag in (("extra", "NODROP"), ("extra2", "SOULBIND")):
+                    assert "created" in command(client, "load obj " + str(TICKET)).lower()
+                    command(client, "setbit obj ticket " + field + " " + flag + " 1")
+                    rent(gone=TICKET, message=CRUMBLES)
+                    login()
+                    assert not on_floor(client, "ticket"), flag + " item reached the floor"
+                    evidence["checks"].append("a " + flag + " no-rent item crumbles")
 
                 command(client, "goto " + str(CAMP_ROOM))
                 command(client, "setbit room here flag ROOM_MAGIC_LIGHT 1")
@@ -331,6 +332,16 @@ def run(binary, backend, inspector, evidence_dir):
                 assert on_floor(client, "ticket"), "link-dead ticket did not land on the floor"
                 evidence["checks"].append("a link-dead character's no-rent item falls on extractlink")
 
+                mortal_with_ticket()
+                before = mortal_revision()
+                command(client, "setbit char " + MORTAL + " timer 16")
+                mortal.expect("pulled into a void", timeout=100)
+                mortal.close()
+                mortal = None
+                wait_mortal_saved(before)
+                assert on_floor(client, "ticket"), "idle-voided ticket did not land on the floor"
+                evidence["checks"].append("an idle-voided character's no-rent item falls")
+
                 command(client, "goto " + str(BANK))
                 command(client, "setbit room here flag SAFE 1")
                 command(client, "setbit room here flag ROOM_MAGIC_LIGHT 1")
@@ -351,9 +362,34 @@ def run(binary, backend, inspector, evidence_dir):
                 assert "ticket" in command(client, "inventory").lower(), "chest ticket was not handed back"
                 assert stored_in_lockers(TICKET) == 0
                 evidence["checks"].append("a locker hands back a no-rent item from a chest")
-                command(client, "goto " + str(INN))
-                assert "You drop" in command(client, "drop ticket")
-                assert on_floor(client, "ticket")
+
+                enter_locker()
+                text = command(client, "eq chest create vault norent-secret")
+                assert "Private chest 'vault' created" in text, text
+                text = command(client, "open vault")
+                assert "You open the 'vault' chest" in text, text
+                text = command(client, "put ticket vault")
+                assert "Ok." in text, text
+                leave_locker()
+                assert "ticket" in command(client, "inventory").lower(), "private chest ticket was not handed back"
+                assert stored_in_lockers(TICKET) == 0
+                evidence["checks"].append("a locker hands back a no-rent item from an open private chest")
+
+                enter_locker()
+                revision = inspect()["revision"]
+                client.send("camp")
+                text = client.expect("ACCOUNT MENU", timeout=30)
+                assert CRUMBLES in text, text
+                client.close()
+                client = None
+                deadline = time.monotonic() + 60
+                while inspect()["revision"] <= revision or any(row[1] == TICKET for row in inspect()["items"]):
+                    assert time.monotonic() < deadline, "locker camp did not commit"
+                    time.sleep(.1)
+                assert stored_in_lockers(TICKET) == 0, "a no-rent item stayed in the locker"
+                login()
+                assert "ticket" not in command(client, "inventory").lower()
+                evidence["checks"].append("a no-rent item crumbles when its owner leaves from inside a locker")
 
                 active_uid = grant(KEY, "golden", "golden key", True)
                 save()
