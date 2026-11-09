@@ -696,14 +696,7 @@ Required implementation proof:
 - Prove daily reservations/retries, independent health reserve, UTC rollover,
   season rollover/exhaust-day, mismatch/corruption/clock refusal and unchanged
   bounded output/teardown. Extend focused tests only for changed behavior.
-- Run `python3 tests/async/test_telemetry_posthog.py`; use
-  `python3 tests/async/test_telemetry_runtime_integration.py --posthog` for runtime
-  changes and `python3 tests/async/test_telemetry_outage.py` for journal changes.
-  Report query changes use the existing local ClickHouse runner documented in
-  `REPORTS.md`. C/C++ edits require `./scripts/format.sh --check` and `make -C src`,
-  plus the affected flat-file path. Repeat applicable gameplay/performance journeys
-  if capture/worker lifecycle changes; retain the existing <=5% pulse/save p99
-  regression criterion. No blanket burn-in or CI wait.
+
 - During separately authorized commissioning, observe a busy interval, one UTC
   rollover, and a representative multi-day/weekend sample. Confirm query-visible
   current-season events, family coverage and matching local counters. Allow for
@@ -748,11 +741,7 @@ uncertainty, or add maintenance before a measured need exists.
   owners on the baseline above. Read-only production inspection did not alter
   files, services, quotas or gameplay. No saved PostHog entity or billing setting
   was changed, and no cloud capture campaign was run.
-- `python3 tests/async/test_telemetry_posthog.py`: PASS on both MariaDB and
-  flat-file compile variants with UBSan; 64 reducer semantic/capacity/fault cases
-  and 33 loopback HTTPS/quota/cancellation cases per variant. The actual serial
-  release mix emitted 97 rows, and all existing volume forecasts passed.
-  This verifies the current baseline locally, not production ingestion.
+
 - Scenario arithmetic was recomputed with Python using the committed fixture's
   rounding and retry rules; the sensitivity formula and 32-UTC-date bounds above
   were checked independently. No runtime implementation or full server build is

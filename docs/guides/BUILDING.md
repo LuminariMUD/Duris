@@ -69,7 +69,7 @@ appended last and exist so a wrapper (notably `scripts/build-san.sh`) can add
 instrumentation without discarding the warning profile or the feature defines.
 
 Link libraries: `mysqlclient`, `gnutls`, `ssl`, `crypto`, `cjson`, `hiredis`,
-`bsd`, `curl`, `xml2`, `z`, `crypt`, `pthread`. Both backends link `curl`
+`bsd`, `curl`, `xml2`, `z`, `crypt`, `pthread`. The server links `curl`
 (libcurl, the `libcurl4-gnutls-dev` package): it carries the SMTP path for account
 password recovery, which stays disabled at runtime unless `MAIL_ENABLED=TRUE`.
 

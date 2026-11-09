@@ -46,70 +46,6 @@ parked character follows the server's mode when played.
 Rollout: server-side, a browser tab opened before the paired client deploys
 still treats `created` as entry and shows a false in-game state until refreshed.
 
-### Local verification, 2026-11-05
-
-All checks below passed using disposable storage and synthetic accounts.
-Build/test logs are ignored under `bin/tests/creation-menu-*` in the server
-worktree; frontend/browser evidence is under `/tmp/creation-menu-*`. The listed
-Python journeys live under `tests/async/`.
-
-- Both native builds: `make -C src -j6` and
-  `make -C src PERSISTENCE_BACKEND=flatfile BIN_ROOT=../bin/creation-menu-flatfile -j6`.
-- `test_kept_character_lifecycle.py`: production completion/failure routing,
-  explicit Play, legacy-policy continuation, approval and decline, compiled for
-  both backends.
-- `test_creation_deferred_play_journey.py --backend BACKEND --server BINARY
-  --transport TRANSPORT`: all four MariaDB/flat-file × Telnet/WebSocket pairs.
-  Proves a framed menu/refreshed list with no starting affect or items, denied
-  blocked first Play without changing the saved level-0 character, a full
-  persisted 150-tick affect after a simulated week before first Play, normal
-  offline subtraction afterward, preserved PID/stats, and stable starter UIDs
-  after restart. Timestamp/block fixture mutations occur only while its
-  synthetic server is stopped.
-- `test_kept_character_journey.py --backend BACKEND --server BINARY`: basic
-  commit/reconnect/restart, `--override telnet`, `--override websocket`,
-  `--delay`, and `--reject`, on both backends. WebSocket entry leaves the old
-  independent account-menu socket usable because Keep has released its body;
-  Telnet account authentication retains its existing connection takeover.
-- `test_kept_character_approval_journey.py`: both backends, including saved
-  pending policy, mode changes, offline approval acknowledgment, decline,
-  accepted names and cold first entry.
-- `test_kept_character_matrix.py`: all four approval/accepted-name combinations
-  with and without `--chaos`, on each backend (16 cases).
-- `test_kept_starter_grant_journey.py`: ordinary Telnet and Chaos WebSocket on
-  each backend, including bound receipt replay and unchanged item UIDs after
-  restart. The deferred-play journey separately covers ordinary WebSocket and
-  the matrix covers Chaos Telnet first entry/reward nonduplication.
-- `test_kept_character_ambiguous_commit.py`: a real MariaDB COMMIT success reply
-  is lost, then reconciled without losing the character or duplicating entry.
-- `test_kept_character_competition.py` and
-  `test_kept_character_recovery_journey.py`: both backends. Recovery's explicit
-  pre-entry selection preserves its live-body refusal test after Keep now
-  returns to the menu.
-- `test_creation_prompt_journey.py::run_journeys()` using the built flat-file
-  binary: the complete scenario set. `test_character_stat_choice_journey.py`:
-  full-world Telnet Default/Advanced and WebSocket Default/Advanced/legacy,
-  preserving all ten numeric stats across save/restart/relogin. Valid Telnet
-  results were reused when rerunning the three WebSocket cases after fixing a
-  test's missing explicit re-entry.
-- `test_gith_monk_journey.py --binary BINARY`: both Gith races on both transports,
-  including fixed alignment, equipment identity and restart/relogin. Raw
-  creation helpers in the headbutt/alignment and historical browser journeys
-  were also updated to explicitly enter after Keep; those complete unrelated
-  suites were not rerun. Their Python syntax was checked, and the shared
-  WebSocket entry helper was executed by the Gith journeys.
-- `run_mysql_rested_checkpoint_journey.py --server BINARY`: grant/upgrade/refresh
-  checkpoints survive SIGKILL, full-save/rent controls, offline aging, expiration,
-  the zero boundary and short reconnect without replacement.
-- `test_creation_hometowns.py`, `test_chaos_hardcore_creation.py`,
-  `test_gmcp_prompt_regressions.py`, changed-file formatting and `git diff --check`.
-
-MariaDB invocations use `bash tests/async/with_disposable_mariadb.sh python3 ...`.
-For flat-file, BINARY is `bin/creation-menu-flatfile/server/dms_new`; for MariaDB
-it is `bin/server/dms_new`. Existing `--backend`/`--server` options were used for
-approval, matrix, starter, competition and recovery. This is local qualification;
-CI was not used as a completion gate.
-
 ### Browser proof
 
 Frontend commands passed: focused Vitest runs for
@@ -324,11 +260,11 @@ protocol-version negotiation is needed for this scoped change.
 ## Verification and acceptance
 
 Extend existing executable tests and isolated journeys rather than introducing
-a new test framework. Use disposable MariaDB and flat-file fixtures with
+a new test framework. Use disposable MariaDB fixtures with
 synthetic accounts. The implementation progress section records actual results;
 the remaining list is the acceptance scope, not a claim that every case passed.
 
-1. **Create and defer:** on both transports and both backends, finish Keep and
+1. **Create and defer:** on both transports with MariaDB, finish Keep and
    observe the menu, one selectable level-0 character, preserved PID and all
    ten base stats, and unchanged race/class/alignment/home/newbie/hardcore
    choices. Confirm no world entry, bonus affect, or delivered starter kit.
@@ -386,15 +322,13 @@ Implementation validation commands start with:
 
 ```sh
 make -C src
-make -C src PERSISTENCE_BACKEND=flatfile BIN_ROOT=../bin/creation-menu-flatfile
 python3 tests/async/test_kept_character_lifecycle.py
-bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_character_journey.py --backend mariadb --server bin/server/dms_new
-python3 tests/async/test_kept_character_journey.py --backend flatfile --server bin/creation-menu-flatfile/server/dms_new
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_character_journey.py --backend mariadb --server bin/server/dms_new
 ./scripts/format.sh --check
 git diff --check
 ```
 
-Run the affected approval, starter, matrix, and fault journeys on both backends
+Run the affected approval, starter, matrix, and fault journeys on MariaDB
 using their existing `--backend`/`--server` options, including the matrix's
 `--chaos` leg and the Keep journey's `--override telnet`, `--override websocket`,
 `--delay`, and `--reject` cases. Record the precise commands and results with

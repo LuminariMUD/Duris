@@ -363,11 +363,10 @@ matching data condition. Preserve their target guards and evidence requirements.
 | `scripts/character_materialization_readiness.py` | Audit character materialization; apply requires an exact reviewed repair manifest, hashes, backup, database confirmation, and explicit production-repair authorization when relevant |
 | `scripts/item_ownership_audit.sh`, `scripts/classify_item_topology.py` | Read-only item payload/custody diagnostics; detailed artifacts may contain player/item identifiers |
 | `scripts/classify_legacy_item_quarantine.py`, `scripts/reconcile_legacy_membership.py`, `scripts/verify_target_wins_account_merge.py` | Frozen evidence classification, repair planning, or verification for an explicit legacy import/merge |
-| `migrations/check_character_baseline_readiness.sh`, `check_flatfile_account_locker_conversion.sh` | Baseline coverage or flat-file/account-locker conversion diagnostics |
+| `migrations/check_character_baseline_readiness.sh`, `check_flatfile_account_locker_conversion.sh` | Baseline coverage or read-only imported account-locker diagnostics; the latter retains its original filename |
 | `migrations/reconcile_artifact_guild_outcomes.sh`, `reconcile_boon_reward_zone.sh`, `reconcile_auction_transactions.sh`, `reconcile_phase02_domains.sh` | Historical domain reconciliation; follow their environment and schema prerequisites rather than running them indiscriminately on the current head |
 | `scripts/import_legacy_dump.py` | Guarded replacement of an allow-listed non-production database, including backup, migration layers, and rollback; not production deployment |
 | `scripts/convert_all_pfiles.sh` | Historical endian conversion of `Players/`, with dry-run/rollback options; not needed for every binary update |
-| `scripts/migrate_players_to_accounts.sh` | Old flat-file character/account attachment with a hard-coded developer path; not the SQL migration workflow |
 | `scripts/change_password.sh` | Account administration, not schema or release migration |
 | `scripts/clear-redis.sh`, `scripts/clear-duris-redis-keys.sh` | Explicit scoped local Redis cleanup; production is refused. No routine Redis flush is required after a pull |
 | `scripts/delete_corpses.sh` | Retired; exits without cleanup |

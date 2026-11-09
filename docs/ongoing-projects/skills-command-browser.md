@@ -133,7 +133,7 @@ requirements, or active/passive behavior that the shared skill data cannot prove
 3. **Compose `skills info`.**
    Use the same definitions for reference facts and the existing help path in
    `src/cmd/wikihelp.c` / `wikihelp.h`. Keep any help presentation adjustment small
-   and compatible with both MySQL and flat-file help catalogs.
+   and compatible with the MariaDB help catalog.
 4. **Update command help and presentation.**
    Update the Skills topic in the repository's help sources
    (`help/duris_help_parsed.hlp` and `lib/information/help_index`) through the
@@ -160,7 +160,7 @@ new registration framework is unnecessary. No database schema changes are needed
 - [x] Existing epic, instrument, and song coverage is preserved; internal effects
   do not appear as public learnable skills.
 - [x] Info output combines correct live facts with the matching help topic on
-  both MySQL and flat-file builds. Cover redirects, missing help, and unavailable
+  the MariaDB build. Cover redirects, missing help, and unavailable
   help while retaining the live-data section.
 - [x] `skills levels` is staff-only, covers the class catalog, and is readable in
   a normal terminal. `skills reset` no longer takes the obsolete reset path.
@@ -208,19 +208,14 @@ command forms, specialization browsing, help reuse, documentation, or their proo
 
 ### Validation completed on 2026-11-02
 
-- `python3 tests/async/test_skills_command.py` — passed on both compile backends
+- `python3 tests/async/test_skills_command.py` — passed on the MariaDB build
   with AddressSanitizer and UndefinedBehaviorSanitizer. Exercises all class/spec
   names, exact/unique/ambiguous matching, specialization-only skills, removals,
   cap/level changes, real character/multiclass calculations, mental anguish,
   mortal/fogged-staff permission boundaries, NPC inspection, epic/instrument/song
   coverage, and retention of live facts with missing/unavailable help.
 - `make -C src -j6` — passed; MariaDB binary `bin/server/dms_new`.
-- `make -C src -j6 PERSISTENCE_BACKEND=flatfile DMS_BINARY=../bin/server/dms_flatfile`
-  — passed; independent flat-file artifacts under `bin/`.
-- `python3 tests/async/run_skills_command_journey.py --backend flatfile --server bin/server/dms_flatfile`
-  — passed through the real dispatcher on disposable authority, with created
-  mortal/staff characters, live skill/help definitions, catalog differences,
-  target inspection, permission boundaries, colors, and the output pager.
+
 - `tests/async/with_disposable_mariadb.sh python3 tests/async/run_skills_command_journey.py --backend mariadb --server bin/server/dms_new`
   — passed the same journey using a disposable loopback database and maintained
   help import. No configured game account, production database, or live server was used.
@@ -266,7 +261,7 @@ implementation work remains in this plan. Production deployment is separate.
 
 Additional local proof after the review fixes:
 
-- `python3 tests/async/test_skills_command.py` — ASan/UBSan passed on both backends;
+- `python3 tests/async/test_skills_command.py` — ASan/UBSan passed on MariaDB;
   full skill IDs, grant/add/negative/unrelated effects, removal, unlearned ratings,
   unchanged learned values, and updated `skills info` effective ratings.
 - `python3 tests/async/test_world_recovery_codec.py` — passed new full-width and
@@ -282,7 +277,7 @@ Additional local proof after the review fixes:
 - `python3 tests/async/test_telemetry_copyover_format.py` and
   `python3 tests/async/test_shopkeeper_copyover_compat.py` — passed existing handoff
   and historical-format compatibility checks.
-- Both full backend builds and both isolated mortal/staff skills journeys listed
+- The MariaDB build and isolated mortal/staff skills journey listed
   above passed after the fixes. Formatting, diff checks and pre-commit clang-tidy
   pass with the documented GCC 13 header selection.
 

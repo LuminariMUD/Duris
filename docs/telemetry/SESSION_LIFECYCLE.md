@@ -164,7 +164,7 @@ it does not cast between the enums. The enabled adapter regression executes
 and accepts the real detach/linkdead path.
 
 
-Every gameplay adapter is best-effort. The disabled, flat-file, uninitialized,
+Every gameplay adapter is best-effort. The disabled, uninitialized,
 queue-full, or stopping outcomes are ignored by the gameplay caller; existing
 socket, save, login, and extraction behavior continues. Runtime identity fields
 are runtime-only and are cleared by the enabled exit/detach adapters. They are

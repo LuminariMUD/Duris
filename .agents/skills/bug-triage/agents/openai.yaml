@@ -1,4 +1,4 @@
 interface:
   display_name: "Bug Triage"
-  short_description: "Check Duris bugs against master, issues, and open PRs"
-  default_prompt: "Use $bug-triage to review lib/reports/bugs against current master, existing issues, and open PRs, file valid untracked defects, and safely clear processed or invalid reports."
+  short_description: "Triage Duris bugs, ideas, and typos into few issues"
+  default_prompt: "Use $bug-triage to review lib/reports/bugs, lib/reports/ideas, and lib/reports/typos against current master, existing issues, and open PRs, consolidate actionable untracked work into few issues, and safely clear processed reports."

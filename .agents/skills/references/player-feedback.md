@@ -9,7 +9,8 @@ publication, and issue filing; this procedure only preserves and retires records
 ## Preserve the batch
 
 Read the calling skill's input from the intended runtime directory:
-`lib/etc/help` for help, `lib/reports/bugs` for bugs. Missing or empty files mean
+`lib/etc/help` for help; `lib/reports/bugs`, `lib/reports/ideas`, and
+`lib/reports/typos` for bug triage. Missing or empty files mean
 there is no batch for that file; other read failures are unresolved work, not
 empty input. Take a private snapshot and keep a small disposition record outside
 `bin/`, which a clean build removes. Reuse the deployment recovery directory when
@@ -25,10 +26,15 @@ The formats and writers differ:
   the first `::`; keep multiword query text.
 - Bugs: `do_bug` in `src/cmd/actoth.c` formats a timestamp followed by
   ` **<character>[<room vnum>]: <report>`. The timestamp's `ctime()` newline
-  makes this a multiline record. `InsertIntoFile` in `src/world/db.c` prepends
-  the new record by reading and rewriting the file, retaining at most
-  `MAX_STRING_LENGTH` bytes of old contents. Do not treat each line as a bug or
-  assume this file is append-only.
+  makes this a multiline record. Do not treat each line as a separate report.
+- Ideas: `do_idea` in `src/cmd/actoth.c` writes `**<character>: <report>\n`,
+  without a timestamp or room vnum.
+- Typos: `do_typo` in the same source writes
+  `**<character>[<room vnum>]: <report>\n`, without a timestamp.
+
+All three report commands use `InsertIntoFile` in `src/world/db.c`, which
+prepends the new record by reading and rewriting the file, retaining at most
+`MAX_STRING_LENGTH` bytes of old contents. None of these files is append-only.
 
 Record each original entry's disposition, evidence, relevant help title or
 issue/PR URL, and cleanup eligibility. Unclear, incomplete, or unactionable input
@@ -50,7 +56,7 @@ Honor review/draft-only scope; it does not authorize cleanup.
 
 The current writers do not cooperate with an external `flock`. Checking a hash
 and then truncating, blindly replacing the file, or rotating it while online can
-lose requests, particularly the bug writer's read/rewrite operation. Require a
+lose requests, particularly the report writers' read/rewrite operations. Require a
 verified writer-free window before changing bytes. During deployment, serialize
 cleanup with the existing restart: the old child and logger must have exited,
 and the launcher must not start a new child until the short file operation ends.
@@ -63,15 +69,17 @@ Standalone cleanup can use an already-stopped runtime only after verifying that
 its writers have exited and cannot restart during the operation. If no such
 window or already-authorized restart handoff is available, retain the live file
 and disposition record for retry and report cleanup as pending. Neither standalone
-skill introduces a separate outage for housekeeping. Deployment coordinates both
-files at its existing boundary; do not invoke deployment just to clear a file.
+skill introduces a separate outage for housekeeping. Deployment coordinates all
+applicable files at its existing boundary; do not invoke deployment just to clear
+a file.
 
 Within the window, re-read and preserve a recovery copy of the latest bytes.
-Verify that the help snapshot still aligns with the file's prefix and the bug
-snapshot with its suffix before removing recorded occurrences; newly appended
-help and newly prepended bugs belong to the next run, even if their text repeats
-an old entry. If truncation, rotation, partial records, or another change makes
-alignment ambiguous, leave that file intact and report the mismatch. Retain new
+Verify that the help snapshot still aligns with the file's prefix and each
+bug/idea/typo snapshot with its own file's suffix before removing recorded
+occurrences; newly appended help and newly prepended reports belong to the next
+run, even if their text repeats an old entry. If truncation, rotation, partial
+records, or another change makes alignment ambiguous, leave that file intact and
+report the mismatch. Retain new
 and technically blocked records byte-for-byte, in order, preserving ownership
 and mode. If none remain, truncate the file to zero bytes rather than deleting
 its path. Verify the resulting bytes against the intended remainder before

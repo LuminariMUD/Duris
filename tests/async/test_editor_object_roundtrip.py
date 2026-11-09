@@ -5,7 +5,7 @@ import os
 import subprocess
 import tempfile
 
-from _paths import ROOT
+from _paths import ROOT, extract_function
 
 
 HARNESS = r'''
@@ -22,6 +22,15 @@ HARNESS = r'''
 #include <cstdlib>
 #include <string>
 
+extern "C" FILE *__real_fopen(const char *, const char *);
+extern "C" FILE *__wrap_fopen(const char *path, const char *mode)
+{
+    FILE *file = __real_fopen(path, mode);
+    if (file && std::getenv("EDITOR_TEST_UNBUFFERED"))
+        assert(std::setvbuf(file, nullptr, _IONBF, 0) == 0);
+    return file;
+}
+
 objectType **g_objLookup = nullptr;
 variable *g_varHead = nullptr;
 bool g_oldObjConv = false, g_madeChanges = false, g_readFromSubdirs = false;
@@ -36,6 +45,29 @@ void createPrompt() {}
 const char *getMainZoneNameStrn() { return "fixture"; }
 const char *plural(int count) { return count == 1 ? "" : "s"; }
 Skill skills[MAX_AFFECT_TYPES]{};
+// The other area writers are independent of object-write admission in writeFiles.
+#define updateQuestItems() ((void)0)
+#define roomHasAllFollowers() (-1)
+#define checkShopsOnSave() true
+#define getCheckSaveVal() false
+#define checkAll() false
+#define getNoSaveonCheckErrVal() false
+#define writeZoneFile(...) ((void)0)
+#define writeWorldFile(...) ((void)0)
+#define writeMobFile(...) ((void)0)
+#define checkForMobWithQuest() false
+#define writeQuestFile(...) ((void)0)
+#define deleteFile(...) ((void)0)
+#define checkForMobWithShop() false
+#define writeShopFile(...) ((void)0)
+#define writeDefaultFiles(...) ((void)0)
+#define writeInventoryFile() ((void)0)
+#define writeSettingsFile(...) ((void)0)
+#define getStartRoomActiveVal() false
+#define addVar(...) ((void)0)
+static struct { unsigned roomNumber = 0; } workflow_room;
+#define g_currentRoom (&workflow_room)
+// SAVE_WORKFLOW
 static unsigned long long valued_bank5;
 bool item_value_has_packed_proc(const item_value_input &) { return false; }
 int evaluate_item_value(const item_value_input &input, const item_value_context &, item_value_breakdown *)
@@ -60,10 +92,19 @@ static void dispose(objectType *object)
 int main(int argc, char **argv)
 {
     assert(argc == 3);
+    if (!std::strcmp(argv[1], "--save-zone")) {
+        objectType object{};
+        objectType *lookup[2] = {nullptr, &object};
+        g_objLookup = lookup; g_numbLookupEntries = 2;
+        g_lowestObjNumber = g_highestObjNumber = g_numbObjTypes = 1;
+        g_madeChanges = true;
+        const bool saved = writeFiles();
+        assert(saved == !g_madeChanges);
+        return saved ? 0 : 1;
+    }
     if (!std::strcmp(argv[1], "--write-file")) {
         g_lowestObjNumber = 1; g_highestObjNumber = 0;
-        writeObjectFile(argv[2]);
-        return 0;
+        return writeObjectFile(argv[2]) ? 0 : 1;
     }
     const auto expected = std::strtoull(argv[2], nullptr, 10);
     FILE *input = std::tmpfile(); assert(input);
@@ -119,17 +160,19 @@ def main():
                "edesc/writeexd.cpp", "edesc/edesc.cpp", "obj/object.cpp"]
     with tempfile.TemporaryDirectory(prefix="editor-object-io-", dir=build) as tmp:
         source, binary = Path(tmp) / "test.cpp", Path(tmp) / "test"
-        source.write_text(HARNESS)
+        source.write_text(HARNESS.replace("// SAVE_WORKFLOW", extract_function(
+            "../areas/de/src/misc/misc.cpp", "bool writeFiles(void)\n{")))
         subprocess.run([
             "g++", "-std=c++20", "-g", "-O1", "-D_DE_", "-D__UNIX__", "-DGODMODE=1",
             "-ffunction-sections", "-fdata-sections", "-fsanitize=address,undefined",
             "-fno-sanitize-recover=all", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
             "-Isrc", "-I" + str(editor), str(source),
-            *(str(editor / path) for path in sources), "-Wl,--gc-sections", "-o", str(binary),
+            *(str(editor / path) for path in sources), "-Wl,--gc-sections", "-Wl,--wrap=fopen", "-o", str(binary),
         ], cwd=ROOT, check=True)
         env = {**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
                "UBSAN_OPTIONS": "halt_on_error=1"}
         valid = [("", 0), ("B5 0", 0), ("B5 +0001", 1), ("B5\n1", 1),
+                 ("B5\n\t1", 1), ("B5\n\v1", 1),
                  (" B5\t1 ", 1), ("\tB5\t1\t", 1), ("B5 4294967295", 2**32 - 1),
                  (f"B5 {2**64 - 1}", 2**64 - 1)]
         valid += [(f"B5 {1 << bit}", 1 << bit) for bit in range(64)]
@@ -137,14 +180,14 @@ def main():
             result = subprocess.run([str(binary), record, str(mask)], capture_output=True,
                                     text=True, env=env)
             assert result.returncode == 0, (record, result.stdout, result.stderr)
-        for record in ("B5 -1", "B5 no", "B5 1x", "B5 0x10", "B5 1 2", "B5 +",
+        for record in ("B5 -1", "B5\n\t-1", "B5\n\v-1", "B5 no", "B5 1x", "B5 0x10", "B5 1 2", "B5 +",
                        "B5", "B5 1\nB5 2", f"B5 {2**64}", "B5 " + "9" * 510):
             result = subprocess.run([str(binary), record, "0"], capture_output=True,
                                     text=True, env=env)
             assert result.returncode == 1, (record, result.stderr)
             assert "Error:" in result.stderr and "Aborting" in result.stderr, result.stderr
             assert "Sanitizer" not in result.stderr and "runtime error:" not in result.stderr, result.stderr
-        print("editor native B5 I/O: 72 valid round trips including all 64 bits, clone/equality and following records")
+        print(f"editor native B5 I/O: {len(valid)} valid round trips including all 64 bits, clone/equality and following records")
         print("editor native B5 I/O: malformed, duplicate, overflow and overlong masks rejected without sanitizer errors")
         # Exercise the full file writer too: the filename and its progress text
         # must not overflow the old 512-byte buffers.
@@ -159,9 +202,29 @@ def main():
         assert str(target) + ".obj" in result.stderr, result.stderr
         result = subprocess.run([str(binary), "--write-file", "x" * 600], capture_output=True,
                                 text=True, env=env)
-        assert result.returncode == 0 and "Couldn't open" in result.stderr, result.stderr
+        assert result.returncode == 1 and "Couldn't open" in result.stderr, result.stderr
         assert "Sanitizer" not in result.stderr and "runtime error:" not in result.stderr, result.stderr
         print("editor native file writer: long nested paths and oversized filenames handled without buffer overflow")
+        saved = Path(tmp) / "saved"
+        saved.mkdir()
+        result = subprocess.run([str(binary), "--save-zone", "unused"], cwd=saved,
+                                capture_output=True, text=True, env=env)
+        assert result.returncode == 0 and (saved / "fixture.obj").is_file(), result.stderr
+        for failure in ("open", "buffered", "unbuffered"):
+            failed_save = Path(tmp) / ("failed-save-" + failure)
+            failed_save.mkdir()
+            target = failed_save / "fixture.obj"
+            if failure == "open":
+                target.mkdir()
+            else:
+                target.symlink_to("/dev/full")
+            environment = {**env, **({"EDITOR_TEST_UNBUFFERED": "1"} if failure == "unbuffered" else {})}
+            result = subprocess.run([str(binary), "--save-zone", "unused"], cwd=failed_save,
+                                    capture_output=True, text=True, env=environment)
+            assert result.returncode == 1, result.stderr
+            assert ("Couldn't open" if failure == "open" else "Couldn't write") in result.stderr, result.stderr
+            assert "Sanitizer" not in result.stderr and "runtime error:" not in result.stderr, result.stderr
+        print("editor save workflow: success clears dirty state; open/write/close failures preserve it")
 
 
 if __name__ == "__main__":

@@ -71,13 +71,10 @@ copying over, or reconnecting from the same saved state cannot award a second
 renown. A repeat completion may remain in history, but it never increments the
 zone numerator again.
 
-SQL-primary deployments apply immutable migration `0026_zone_story_quest_state`
-and must pass its verifier. Flat-file-primary deployments use
-`<FLATFILE_ROOT>/domains/zone-story-quests.state`; the atomic file includes a
-catalog revision and SHA-256 payload digest. Both backends fail closed on a
-corrupt or stale state document.
+MariaDB deployments apply immutable migration `0026_zone_story_quest_state`
+and must pass its verifier. A corrupt or stale state document fails closed.
 
-Flatfile saving atomically replaces the checked state file. SQL saving queues
+Saving queues
 a whole-state upsert on the writer; queue acceptance is not a synchronous
 database commit acknowledgment. Immediate save/enqueue rejection restores the
 previous in-memory tracker state. A later SQL execution failure is logged by

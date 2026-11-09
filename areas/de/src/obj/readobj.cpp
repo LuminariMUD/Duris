@@ -355,6 +355,8 @@ objectType *readObjectFromFile(FILE *objectFile, char *nextStrn, const bool chec
 					exit(1);
 				value = strn;
 			}
+			while (std::isspace(static_cast<unsigned char>(*value)))
+				++value;
 			char *end;
 			errno = 0;
 			const auto mask = strtoull(value, &end, 10);

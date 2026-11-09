@@ -44,10 +44,10 @@ described here.
 | `src/ships/ships.h` | Public data model: `ShipData`, `ShipSlot`, `ShipCrew`, the static-table structs, flags, constants, `SHIP_*()` accessor macros, the `ShipObjHash` registry, and every cross-module prototype. |
 | `src/ships/ship_variables.c` | Static data only: ports, crews, chiefs, weapons, equipment, hull classes, per-arc properties, mount permissions, tactical-map symbols. |
 | `src/ships/ship_utils.c` | Registry (`shipObjHash`), tactical map and contact list, geometry, speed/turn maths, crew mechanics, slot helpers, messaging, jettison/salvage, `ocean_pvp_state()`. |
-| `src/ships/ship_base.c` | Lifecycle (create, name, lay out rooms, load, delete), the per-tick `ship_activity()`, docking, crashing, sinking completion, flying, summoning arrival, the save queue and both persistence backends' glue, the frag leaderboard. |
+| `src/ships/ship_base.c` | Lifecycle (create, name, lay out rooms, load, delete), the per-tick `ship_activity()`, docking, crashing, sinking completion, flying, summoning arrival, the save queue and MariaDB persistence glue, the frag leaderboard. |
 | `src/ships/ship_control.c` | Bridge commands. `ship_panel_proc()` dispatches `order`, `fire`, `lock`, `scan`, `look` and `get money`. Mostly input validation that calls into other modules. |
 | `src/ships/ship_combat.c` | Hit chance (`weaponsight()`), firing, delayed volleys, sail/hull/weapon damage, `update_ship_status()`, sinking and reward settlement, ramming, the lookout report. |
-| `src/ships/ship_cargo.c` | Cargo and contraband prices, the three market matrices, market drift, market persistence (SQL, flat file, maintenance snapshot), the immortal `world cargo` command. |
+| `src/ships/ship_cargo.c` | Cargo and contraband prices, the three market matrices, market drift, market persistence (SQL and maintenance snapshot), the immortal `world cargo` command. |
 | `src/ships/ship_shop.c` | The shipwright (`ship_shop_proc()`) and crew hall (`crew_shop_proc()`), hull purchase through the epic-transaction service, repairs, reloads, customs (`check_contraband()`), and the automatons quest. |
 | `src/ships/ship_auto.c`, `ship_auto.h` | Player autopilot (`order sail`). Also holds dormant fleet/"ship group" code. |
 | `src/ships/ship_npc.c`, `ship_npc.h` | NPC content: pirate names, 45 fit-out rows, spawn logic, crew rosters, treasure, Cyric's Revenge, the disabled zone ship. |
@@ -63,7 +63,6 @@ Integration points outside `src/ships/`:
 | `src/persistence/copyover.c` | Drains pending ship saves before copyover and aborts the copyover if any save cannot be made durable. |
 | `src/persistence/maintenance_*.c` | Drives the periodic cargo-market update (job `cargo_market`). |
 | `src/sql/sql_player.c` | SQL backend: `sql_save_ship()`, `sql_load_all_ships()`, `sql_place_ship()`, `sql_delete_ship()`. |
-| `src/flatfile/flatfile_ship_repository.c` | Flat-file backend: the `ship_catalog` record and the legacy `Ships/` importer. |
 | `src/redis/redis_ship_legacy.c` | Asynchronous invalidation of retired `ship:snapshot:*` Redis keys. |
 | `src/net/gmcp.c`, `src/core/json_utils.c` | `Ship.Contacts` and `Ship.Info` packages. |
 | `src/specs/specs.assign.c` | Attaches `ship_shop_proc`, `crew_shop_proc`, `erzul_proc` and `moonstone_fragment` to their rooms, mobs and objects. |
@@ -82,7 +81,7 @@ A ship has three unrelated identifiers. Do not mix them up:
 
 | Identity | Field | Scope | Meaning |
 |----------|-------|-------|---------|
-| Database id | `ShipData::db_id` | Durable | Row id in `ships` (SQL) or `ship_id` in the flat-file catalog. `-1` until first saved. NPC ships never get one. |
+| Database id | `ShipData::db_id` | Durable | Row id in `ships`. `-1` until first saved. NPC ships never get one. |
 | Contact designation | `SHIP_ID()` / `ShipData::id` | Visible to players | Two letters shown in contacts and combat messages, used by `lock`, `scan` and `signal`. Player ships draw from `A`–`W` as the first letter, NPC ships from `X`–`Z`. A docked ship shows `**`, and a new designation is minted on every undock. |
 | Runtime reference | `ShipData::runtime_ref` | One process | A `(slot, generation)` pair from `ship_identity.c`. Delayed work (weapon volleys) stores this instead of a `P_ship` and resolves it later, which fails safely if the ship has been deleted or the slot reused. The slot number is 1-based, so `0` means no identity. |
 
@@ -104,7 +103,7 @@ the ship whose interior a character is standing in.
   equipment.
 - Headings and bearings are compass degrees in `[0, 360)`: 0 is north, 90 east.
 - Crew skills are floats with a base of roughly hundreds to thousands (for
-  example 200 for a raw pirate crew, 3000 for automatons). Both backends store
+  example 200 for a raw pirate crew, 3000 for automatons). MariaDB stores
   them as thousandths.
 - Money is in copper, and 1000 copper is 1 platinum. Prices in the tables are
   copper.
@@ -811,11 +810,9 @@ armour/internal, the crew index, three skills and three chiefs, and all 16
 slots. Maximum armour and internals are not stored, since they come from the
 class.
 
-### Backends
+### MariaDB storage
 
-The backend is selected at compile time by `__NO_MYSQL__`.
-
-**SQL** (the production build). Six tables, created by the legacy baseline
+MariaDB is the only supported persistence backend. Six tables, created by the legacy baseline
 (`migrations/bootstrap_multithread_safe.sql`). No immutable migration has
 changed them since:
 
@@ -839,22 +836,6 @@ nothing reads the tables after boot. `sql_delete_ship()` queues the delete of
 the `ships` row (children cascade; `sql_delete_ship_statement()` builds it) and
 the invalidation of the retired Redis snapshot key. `shutdown_ships()` saves
 every ship the same way; the shutdown drains the writer after it.
-
-**Flat file** (`__NO_MYSQL__`). One checksummed catalog,
-`<state root>/domains/ship_catalog` (magic `DURSHIP\0`, version 1, atomic
-writes, owner pid cross-checked against the identity store). Every field that
-becomes an array subscript is range-checked on load and on save
-(`flat_ship_slot_is_loadable()` checks each slot's item index against the table
-its own type selects). A missing catalog is first seeded from a legacy
-`Ships/` directory (`ship_index` plus version-3 per-owner files), otherwise
-created empty. Any load failure is **fatal at boot**, because the flat file is
-the only authority, except a ship the full room pool cannot place, which stays
-in the catalog and is retried like an SQL one. The cargo market lives in `<state root>/metadata/cargo_market`
-(magic `DURCARGO`, SHA-256 trailer).
-
-`migrations/tools/migrate_ships.c` is the offline migrator from the pre-SQL
-flat-file layout (`Ships/ship_index` and its ship files; not part of the default
-build).
 
 ### When ships are written
 
@@ -984,8 +965,7 @@ All table identifiers are persisted, so every change is **append-only**.
 - **New hull class.** Append a row to `ship_type_data[]`, `ship_arc_properties[]`,
   `ship_allowed_weapons[]` and `ship_allowed_equipment[]`. Add a `SH_*` constant
   and bump `MAXSHIPCLASS`. Add a `case` to both `set_ship_layout()` and
-  `name_ship_rooms()`. Check the room pool can hold the new layout, and the
-  flat-file legacy importer's `legacy_ship_class_count`. `buy_hull()` treats the
+  `name_ship_rooms()`. Check the room pool can hold the new layout. `buy_hull()` treats the
   **last** class as NPC-only, so inserting before `SH_ZONE_SHIP` changes which
   hull is excluded. Update the hull tables in [SHIP_GAMEPLAY.md](SHIP_GAMEPLAY.md).
 - **New weapon.** Append to `weapon_data[]` with a `WPNFLAG` set, add a `W_*`
@@ -1001,8 +981,8 @@ All table identifiers are persisted, so every change is **append-only**.
   crew only appears in the list-everything room 77.
 - **New port.** `NUM_PORTS` sizes the port list, both market matrices, the
   commodity names, `cargo_location_data[]` and `cargo_location_mod[]`, and the
-  persisted slot index range for cargo. Adding one changes the flat-file cargo
-  record size and the maintenance snapshot layout, so treat it as a migration.
+  persisted slot index range for cargo. Adding one changes the maintenance
+  snapshot layout, so treat it as a migration.
 - **New NPC fit-out.** Write a `setup_npc_*()` function and add one
   `npcShipSetup[]` row. Nothing else is needed.
 
@@ -1016,7 +996,7 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 
 | Test | Covers |
 |------|--------|
-| `test_ship_save_guards.py`, `run_ship_save_guards.sh` | Every mutation path queues a save. Both backends carry every slot field. |
+| `test_ship_save_guards.py`, `run_ship_save_guards.sh` | Every mutation path queues a save. MariaDB carries every slot field. |
 | `test_ship_save_queue_dedup.py`, `run_ship_save_queue_dedup.sh` | Signature-based save coalescing. |
 | `test_ship_rename_save_guards.py`, `run_ship_rename_save_guards.sh` | Rename persistence ordering. |
 | `test_ship_owner_rename_failure.py`, `run_ship_owner_rename_failure.sh` | `rename_ship_owner()` rollback. |
@@ -1036,7 +1016,6 @@ The focused regressions live in `tests/async/`. Run them directly, for example
 | `test_ship_shop_list_contract.py` | Shipwright listing output. |
 | `test_ship_autopilot_group_safety.py` | Autopilot bounds and message audiences. |
 | `test_nevent_ship_volley_runtime.py` | Volley lifetime against ship deletion and slot reuse (ASan/UBSan). |
-| `test_flatfile_ship_repository.py` | Flat-file catalog round trip, validation and legacy import. |
 | `test_redis_ship_snapshot_invalidation.py` | Retired snapshot key invalidation. |
 | `test_ferry_ship_lifetime.py` | Ferry ship rooms (the separate ferry system). |
 

@@ -1,5 +1,23 @@
 # Immutable Migration Ledger
 
+## Why a character last left (0062)
+
+`0062_player_save_intent` adds `player_data.save_intent TINYINT UNSIGNED NOT NULL
+DEFAULT 0`. Every committed player save records its `RENT_*` reason there, and login
+reads it into `d->rtype`, so death, camp, inn and crash returns behave as designed.
+Zero means unknown and gives an ordinary login, so existing characters are unaffected
+until their next save. The guarded addition re-runs safely. Apply it before starting
+the new server; the boot contract refuses a database at an older head.
+
+`run --online-save-intent` accepts only the sealed 63-step manifest ending at
+this migration, with every earlier step applied, on MariaDB 11.8 and InnoDB.
+Existing writers use named columns and leave the new column at its default.
+The runner strengthens the sealed ALTER to `ALTER ONLINE TABLE`, requires
+INSTANT DDL, and bounds metadata and row-lock waits to one second. Production
+target, allow-list, fresh backup, advisory lock, checksums, ordered history and
+success-last verification remain required. Contention or unsupported DDL fails
+without stopping services; immutable files and ledger checksums stay unchanged.
+
 ## Online zone-story state parts (0061)
 
 `run --online-zone-story-parts` accepts only the sealed 62-step manifest ending at
@@ -269,8 +287,7 @@ correction; its latency benefit has not been measured on a representative clone.
 normalized metadata fingerprints are sealed over an inventory that includes it,
 so on the database backend the gate proves the table's engine, collation,
 columns and indexes before gameplay publishes. `kingdom_initialize()` still
-disables kingdoms for the boot when it cannot read the table, which remains
-reachable on the flat-file build, where no boot gate stands in front of it. The
+disables kingdoms for the boot when it cannot read the table. The
 *ledger* is fail-closed too, exactly as it is for every other immutable
 migration: `src/core/runtime_compatibility_contract.h` compiles
 `RUNTIME_MIGRATION_HEAD_ID` and its sequence, and
