@@ -32,6 +32,7 @@
 #include "player/player_log.h"
 #include "net/ansi.h"
 #include "net/output_channel.h"
+#include "net/output_links.h"
 #include "net/output_preference_state.h"
 #include "economy/shopkeeper_save_policy.h"
 #include "telemetry/telemetry_types.h"
@@ -1595,6 +1596,7 @@ struct txt_block
 {
 	char *text;
 	struct txt_block *next;
+	OutputLinks *links; // Optional owned output metadata; input entries leave this null.
 };
 
 struct txt_q
@@ -1768,6 +1770,7 @@ struct descriptor_data
 	::byte connected; /* mode of 'connectedness'    */
 	int wait; /* wait for how many loops    */
 	char *showstr_head; /* for paging through texts   */
+	OutputLinks *showstr_links; // Owned byte ranges into showstr_head; never wire markup.
 	char **showstr_vector; /*       -                    */
 	int showstr_count; /* number of pages to page through      */
 	int showstr_page; /* which page are we currently showing? */

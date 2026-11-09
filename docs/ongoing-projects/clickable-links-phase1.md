@@ -27,7 +27,9 @@ No database migration or help-content rewrite is expected.
 
 - Repository: `LuminariMUD/Duris`.
 - Base: `origin/master` at `91f40a01fe` when this worktree was created.
-- Branch: `branch/clickable-links-phase1`.
+- First PR branch: `branch/clickable-links-phase1`.
+- Current implementation branch: `branch/clickable-links-output`, stacked on
+  `branch/clickable-links-phase1`.
 - Worktree: `/home/aiwithapex/projects/duris-worktrees/clickable-links-phase1`.
 - Plan: `docs/ongoing-projects/clickable-links-phase1.md` in that worktree.
 - Deliver focused, reviewable commits and PRs as each chunk is verified. Stack
@@ -96,11 +98,15 @@ Represent a link as a range in visible text plus a kind and target:
 Labels remain ordinary styled text. Targets are separate from labels and are
 never reconstructed from the displayed words at click time.
 
-Use half-open Unicode code-point ranges for frozen visible-text metadata, matching
+Use half-open Unicode code-point ranges for wire presentation metadata, matching
 the existing structured chat convention. JavaScript consumers must handle these
-as code points rather than UTF-16 indices. Preserve mappings from the original
-Duris markup while styling and visible-text normalization are applied; byte
-offsets, visible offsets, and wire offsets must not be mixed.
+as code points rather than UTF-16 indices. Internally, `OutputLink` uses byte
+ranges in the owned Duris markup, matching queue concatenation and pager slicing.
+`rebase_output_links()` maps those ranges when styling or budget fallback changes
+the markup. `freeze_output_links()` produces `VisibleOutputLink` code-point
+ranges after terminal dollar normalization (including generic terminals). The
+distinct types keep byte offsets and visible offsets separate without changing
+the existing queue/pager text representation.
 
 Add optional owned link metadata to the existing output lifecycle. Existing
 string-only callers continue to work. Keep borrowed builder data synchronous;
@@ -292,6 +298,9 @@ Production deployment is a separate operation and is not part of this task.
 
 ### Chunk 1: help during paging
 
+Review: [PR #909](https://github.com/LuminariMUD/Duris/pull/909), commit
+`731d44d1d`, labels `bug`, `enhancement`, `documentation`.
+
 Implemented the prerequisite in `select_session_input()`: a full `help` command
 at the head of an active playing session's input queue passes through the normal
 playing-queue gates, releases the old page, and uses normal command dispatch.
@@ -315,6 +324,79 @@ The harness executes production admission, queue selection, dispatch and pager
 bodies with controlled world/transaction boundaries; it is not live-client proof.
 Next: prove optional owned link metadata through send/accumulation/queue/pager,
 then add transport serialization. The feature itself is not implemented yet.
+
+### Chunk 2: output-link ownership and coordinates
+
+Implemented the lifecycle prerequisite on `branch/clickable-links-output`:
+
+- `OutputContext::links` borrows producer byte ranges only until `send_to_char()`
+  returns. The delivery boundary rebases them after styling and copies them into
+  `txt_block::links` or the existing command accumulator's `command_links`.
+- Queue nodes own optional `OutputLinks*`; plain input nodes leave it null.
+  `write_linked_output()` reuses `write_to_q()` and rebases metadata when it
+  coalesces. `get_linked_output()` moves metadata out before the existing
+  `get_from_q()` releases it. Legacy dequeue and queue flushing also release it.
+- `descriptor_data::showstr_links` owns ranges in `showstr_head`. Page slices
+  clip/rebase the records and replay through normal sends with `LOG_NONE`.
+  Quit, help replacement and disconnect use `free_paging_data()` for all owned
+  pager storage. Copyover recovery still creates a zeroed descriptor; transport
+  capability retention has not been implemented yet.
+- `OutputLinkFrame` contains normalized `AnsiString` characters and distinct
+  visible code-point link ranges ready for transport serialization. No wire tags
+  are stored in queues, help prose or logs.
+- Bounds: 64 links and 8,192 total target bytes per retained metadata set;
+  command targets are currently limited to a single `help <topic>` under the
+  existing input size limit, and URLs to HTTP/HTTPS with 2,048 target bytes.
+  Invalid or excess metadata drops decoration while preserving the text.
+- Plain sends avoid link parsing/allocation. Linked styling/fallback conversions
+  use the existing `AnsiString` source-offset mapping. There is no registry,
+  second queue, new input endpoint, or per-character retained metadata.
+
+Executable integration coverage now includes producer lifetime, linked/unlinked
+coalescing and separate blocks, style and whole-command budget fallback, Unicode
+and dollar offsets, malformed targets/overlaps/limits, labels crossing pages,
+refresh/back/forward/quit, disabled paging and owned cleanup. It exercises actual
+production send/queue/pager bodies and the link module; it does not yet prove
+client clicks, snoop link rendering, protocol negotiation or wire escaping.
+
+Two defects exposed by those required paths were repaired: the pager counted
+UTF-8 bytes and could split a code point, and a prior command's global pager
+style-fallback flag could incorrectly mark later non-paged chat as `preserve`.
+The chat regression forces a real crowded pager fallback before testing normal
+say/tell/guild output. Input-queue test fixtures initialize the new optional field
+to null; the normal input APIs and gates remain unchanged.
+
+Remaining implementation: consume `get_linked_output()` in real transport output,
+render snooped metadata for each snooper, implement MXP/GMCP-browser capability
+and hotboot state, adopt help and URL producers, implement the companion DurisWeb
+client, then complete all acceptance journeys and actual-client validation.
+The framework prerequisite alone does not make any player output clickable.
+
+Verified on 2026-11-09:
+
+- `python3 tests/async/test_word_output_integration.py` and its `SANITIZE=1`
+  ASan/UBSan run passed, including the new real lifecycle and chat regressions.
+- `python3 tests/async/test_pager_contract.py` and its `SANITIZE=1` run passed.
+- `test_casting_input_queue_runtime.py`, `test_casting_input_gate_runtime.py`,
+  `test_transaction_input_queue.py`, `test_item_movement_input_queue.py`,
+  `test_input_queue_reset.py`, `test_item_movement_prompt_runtime.py` and
+  `test_spell_abort_command.py` passed under `tests/async/`.
+- `test_ansi_runtime.py`, `test_word_output_style.py`,
+  `test_telnet_output_runtime.py` and `test_websocket_runtime.py` passed under
+  `tests/async/`.
+- `./scripts/format.sh --check` and `make -C src -j8` passed.
+- `OUTPUT_BENCHMARK=1 python3 tests/async/test_word_output_integration.py` passed.
+  In this development harness, 12,800 messages to 64 recipients measured about
+  0.58 microseconds CPU/message without metadata and 1.08 with two links and
+  preserve styling; static styling plus links measured 3.04. Terminal byte counts
+  were identical between the first two cases. These are local presentation
+  measurements, not a live-server or transport performance claim.
+
+Local evidence is under `bin/tests/phase1-output-{runtime,asan,build}.log`,
+`bin/tests/phase1-output-benchmark.csv` and `bin/tests/phase1-websocket.log`;
+generated artifacts are not committed. No production or database operation was
+performed. Remaining acceptance checks listed above stay open until their
+corresponding implementation exists.
 
 ## Scope review
 

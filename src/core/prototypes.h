@@ -2064,7 +2064,7 @@ void event_patrol_move(P_char ch, P_char vict, P_obj obj, void *data);
 
 /* modify.c */
 
-void page_string_real(struct descriptor_data *d, char *str);
+void page_string_real(struct descriptor_data *d, char *str, std::span<const OutputLink> links = {});
 int replace_str(char **, char *, char *, int, int);
 void format_text(char **, int, struct descriptor_data *, int);
 void parse_action(int, char *, struct descriptor_data *);

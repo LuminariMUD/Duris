@@ -7,6 +7,7 @@
 #include "net/command_latency.h"
 #include "net/session_input.h"
 #include "net/ws_handlers.h"
+#include "net/output_style.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -45,6 +46,10 @@ void ws_send_system(P_desc, const char *status, const char *message)
 void send_to_char(const char *text, P_char, int)
 {
 	output += text;
+}
+void send_to_char(const char *text, P_char ch, int log, const OutputContext &)
+{
+	send_to_char(text, ch, log);
 }
 
 // This fixture has no pending world transactions, casting or account admission.

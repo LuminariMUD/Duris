@@ -81,7 +81,7 @@ with tempfile.TemporaryDirectory(prefix="word-output-", dir=BUILD) as directory:
         str(ROOT / "tests/async/word_output_integration_harness.cpp"),
         str(ROOT / "src/combat/combat_outcome_command.c"), str(ROOT / "src/guild/artifact_guild_command.c"), str(ROOT / "src/persistence/critical_command.c"),
         str(ROOT / "src/economy/currency_command.c"), str(ROOT / "src/net/ansi.c"), str(ROOT / "src/net/unicode.c"),
-        str(ROOT / "src/net/chat_presentation.c"),
+        str(ROOT / "src/net/chat_presentation.c"), str(ROOT / "src/net/output_links.c"),
         str(ROOT / "src/net/output_style.c"), str(ROOT / "src/core/safe_format.c"),
         str(ROOT / "src/net/output_profiles.c"), str(ROOT / "src/player/output_preferences.c"),
         str(ROOT / "src/player/output_message.c"), str(ROOT / "src/player/news.c"),

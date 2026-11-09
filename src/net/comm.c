@@ -559,6 +559,7 @@ P_char executing_ch;
 char command_output[MAX_COMMAND_OUTPUT + PAD_COMMAND_OUTPUT + 1];
 size_t output_length;
 static std::string pager_original;
+static OutputLinks command_links;
 static bool pager_style_fallback = false;
 
 #define MIN_SOCKET_BUFFER_SIZE 20480
@@ -907,6 +908,8 @@ static void finalize_styled_command(P_desc descriptor)
 		{
 			// Individually safe sends can combine into an unsafe page. Check
 			// before replay starts, while the entire original command is available.
+			command_links = rebase_output_links(command_output, pager_original.c_str(),
+							    command_links);
 			strcpy(command_output, pager_original.c_str());
 			output_length = pager_original.size();
 			pager_style_fallback = true;
@@ -926,17 +929,22 @@ void process_with_paging(P_char ch, char *comm)
 	*command_output = '\0';
 	output_length = 0;
 	pager_original.clear();
+	command_links.clear();
 	pager_style_fallback = false;
 	command_interpreter(ch, comm);
 	executing_ch = NULL;
 	if (!ch->desc)
+	{
+		command_links.clear();
 		return;
+	}
 	finalize_styled_command(ch->desc);
 	if (next_page(command_output, ch->desc))
 		// page_string_real(ch->desc, command_output, 1);
-		page_string_real(ch->desc, command_output);
+		page_string_real(ch->desc, command_output, command_links);
 	else
-		SEND_TO_Q(command_output, ch->desc);
+		write_linked_output(command_output, &ch->desc->output, command_links);
+	command_links.clear();
 }
 
 void game_up_message(int port)
@@ -3154,6 +3162,7 @@ int get_from_q(struct txt_q *queue, char *dest)
 		queue->tail = NULL;
 
 	FREE(tmp->text);
+	delete tmp->links;
 	FREE(tmp);
 
 	return (1);
@@ -3285,6 +3294,7 @@ void write_to_q(const char *txt, struct txt_q *queue, const int flag)
 		CREATE(n_new->text, char, txtlen + 1, MEM_TAG_BUFFER);
 
 		strcpy(n_new->text, txt);
+		n_new->links = nullptr;
 
 		n_new->next = NULL;
 		queue->head = queue->tail = n_new;
@@ -3307,6 +3317,7 @@ void write_to_q(const char *txt, struct txt_q *queue, const int flag)
 	CREATE(n_new->text, char, txtlen + 1, MEM_TAG_BUFFER);
 
 	strcpy(n_new->text, txt);
+	n_new->links = nullptr;
 
 	queue->tail->next = n_new;
 	queue->tail = n_new;
@@ -3802,10 +3813,7 @@ void close_socket(struct descriptor_data *d)
 	if (d->descriptor)
 		shutdown(d->descriptor, 2);
 
-	if (d->showstr_head)
-	{
-		FREE(d->showstr_head);
-	}
+	free_paging_data(d);
 #ifdef I_REALLY_WANT_TO_CRASH_THE_GAME
 	if (d->showstr_point)
 	{
@@ -5079,12 +5087,14 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 	{
 		const char *original_message = context.original_message ? context.original_message :
 									  messg;
+		const char *link_source = messg;
 		std::string rendered;
 		bool paging = executing_ch == ch && IS_SET(ch->specials.act, PLR_PAGING_ON);
 		if (paging && !output_length)
 		{
 			bWarningAdded = false;
 			pager_original.clear();
+			command_links.clear();
 			pager_style_fallback = false;
 		}
 		size_t capacity = paging ? MAX_COMMAND_OUTPUT - output_length - 1 :
@@ -5124,6 +5134,9 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 				// necessary, fall back for the whole accumulated command before paging.
 				if (strlen(messg) >= MAX_COMMAND_OUTPUT - output_length)
 				{
+					command_links = rebase_output_links(command_output,
+									    pager_original.c_str(),
+									    command_links);
 					strcpy(command_output, pager_original.c_str());
 					output_length = pager_original.size();
 					messg = original_message;
@@ -5132,6 +5145,7 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 				pager_original += original_message;
 			}
 		}
+		const OutputLinks links = rebase_output_links(link_source, messg, context.links);
 		if (executing_ch != ch || !IS_SET(ch->specials.act, PLR_PAGING_ON))
 		{
 			if (SWITCHED(ch) && !bSwitched)
@@ -5142,7 +5156,7 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 				write_to_q(buf, &ch->desc->output, 1);
 				bSwitched = FALSE;
 			}
-			write_to_q(messg, &ch->desc->output, 1);
+			write_linked_output(messg, &ch->desc->output, links);
 		}
 		else
 		{
@@ -5153,6 +5167,8 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 			{
 				if (len < (MAX_COMMAND_OUTPUT - output_length))
 				{
+					append_output_links(command_links, links, output_length,
+							    output_length + len);
 					strncat(command_output, messg,
 						MAX_COMMAND_OUTPUT - output_length);
 					output_length += len;
@@ -5171,7 +5187,7 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 
 		if (context.chat && (!paging || !bWarningAdded))
 		{
-			if (!styled_frame || pager_style_fallback)
+			if (!styled_frame || (paging && pager_style_fallback))
 				recipient_context.policy = OutputPolicy::Preserve;
 			gmcp_comm_channel_output(ch, *context.chat, recipient_context, messg);
 		}
