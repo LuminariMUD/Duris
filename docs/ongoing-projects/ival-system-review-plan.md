@@ -46,7 +46,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-material-bounds`; its initial synchronized commit was
+`origin/branch/ival-xp-conversion`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -67,7 +67,8 @@ it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-zero-modifiers`; #960 qualifies duplicate apply totals on
 `branch/ival-duplicate-applies`; #964 repairs numeric overflow/unavailable-value
 admission on `branch/ival-numeric-bounds`; #966 shares checked material quantities
-and plans crafting XP on `branch/ival-material-bounds`. Branch/base
+and plans crafting XP on `branch/ival-material-bounds`; #968 repairs downstream
+XP conversion checkpoints on `branch/ival-xp-conversion`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -1105,10 +1106,9 @@ Following the award into `src/world/limits.c` exposed another boundary to repair
 next: `gain_exp_amount<float>()` converts `XP` to `int` after a representability
 guard that applies only to Divine awards. `EXP_BOON` uses the float path; even
 an integer API value near INT_MAX can round beyond int range before the later
-level cap. The same code is present on freshly fetched `origin/master`. Add a
-focused native regression and repair this as its own change before considering
-crafting XP end-to-end qualified; do not merely tighten the caller's product and
-ignore this downstream conversion.
+level cap. The same code was present on freshly fetched `origin/master`. This
+separate repair is implemented and qualified in Chunk 16; full crafting command/
+persistence qualification remains F16.
 Do not infer all consumer behavior from score equality: qualifier projections
 hold current rules/configuration fixed; the direct changed-rule tests above
 cover quantity/XP checks. No database, migration or production operation occurred.
@@ -1116,6 +1116,9 @@ cover quantity/XP checks. No database, migration or production operation occurre
 ### Chunk 16 — bound downstream XP conversions (F08 prerequisite, implemented)
 
 Branch: `branch/ival-xp-conversion`, based on `branch/ival-material-bounds`.
+Published: commit `05d6ea746`, [PR #968](https://github.com/LuminariMUD/Duris/pull/968)
+(bug label), stacked on #966. Ready for review; both dedicated worktrees carry
+the committed implementation and handoff.
 
 **Outcome:** retain existing float/double XP calculations and ordinary truncation,
 but make their integer checkpoints representable before Nexus, feedback and final
