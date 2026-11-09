@@ -25,7 +25,8 @@
 #include <cstdint>
 #include <vector>
 
-constexpr uint16_t COLLECTOR_COMMAND_PAYLOAD_VERSION = 1;
+constexpr uint16_t COLLECTOR_COMMAND_PAYLOAD_VERSION =
+	2; // Purchase debit shares its custody commit.
 constexpr uint8_t COLLECTOR_COMMAND_RESULT_VERSION = 2;
 constexpr uint8_t COLLECTOR_COMMAND_PREVIOUS_RESULT_VERSION = 1;
 constexpr size_t COLLECTOR_COMMAND_MAX_ITEMS = ITEM_TRANSFER_MAX_ITEMS;

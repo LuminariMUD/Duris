@@ -789,6 +789,7 @@ void board_load_board(const char *, char **, char **, int *);
 void board_reset_board(char **, char **, int *);
 void board_save_board(const char *, char **, char **, int *);
 void initialize_boards(void);
+void assign_board_object_procs(void);
 
 /* chaos.c */
 
@@ -883,7 +884,8 @@ void MemReport(void);
 void boot_db(int);
 void boot_pose_messages(void);
 void boot_world(int);
-void boot_zones(int);
+// Offline metadata loading does not initialize randomized reset timers.
+void boot_zones(int, bool initialize_reset_timers = true);
 void clear_char(P_char);
 uint64_t allocate_character_runtime_id();
 P_char find_character_by_runtime_id(uint64_t);
@@ -2066,7 +2068,7 @@ void event_patrol_move(P_char ch, P_char vict, P_obj obj, void *data);
 
 /* modify.c */
 
-void page_string_real(struct descriptor_data *d, char *str);
+void page_string_real(struct descriptor_data *d, char *str, std::span<const OutputLink> links = {});
 int replace_str(char **, char *, char *, int, int);
 void format_text(char **, int, struct descriptor_data *, int);
 void parse_action(int, char *, struct descriptor_data *);
@@ -2082,6 +2084,7 @@ char *next_page(char *, struct descriptor_data *);
 int count_pages(char *, struct descriptor_data *);
 void paginate_string(char *, struct descriptor_data *);
 void page_string(struct descriptor_data *, char *, int);
+void free_paging_data(struct descriptor_data *);
 void show_string(struct descriptor_data *, const char *);
 
 /* storage_lockers.c */
@@ -2992,6 +2995,7 @@ void trapdamage(P_char ch, P_obj obj);
 
 /* properties.c */
 bool initialize_properties();
+bool initialize_property_values();
 void do_properties(P_char, char *, int);
 void do_difficulty(P_char, char *, int);
 void do_pulse(P_char, char *, int);
