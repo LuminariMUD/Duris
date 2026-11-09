@@ -355,8 +355,6 @@ def run(binary, backend, output_path):
                 stop()
                 if sql:
                     sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
-                else:
-                    journey.make_overlord(Path(environment['FLATFILE_STATE_DIR']), GOD)
                 boot()
                 god = login(GOD, GOD_ACCOUNT)
                 pupils = {case['name']: login(case['name'], case['account']) for case in CASES}
@@ -503,7 +501,7 @@ def run(binary, backend, output_path):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server', type=Path, required=True)
-    parser.add_argument('--backend', choices=('flatfile', 'mariadb'), default='flatfile')
+    parser.add_argument('--backend', choices=("mariadb",), default="mariadb")
     parser.add_argument('--output', type=Path)
     parser.add_argument('--case', action='append', choices=[case['name'] for case in CASES],
                         help='run only the named route(s) while developing a focused acceptance leg')

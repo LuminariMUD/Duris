@@ -216,8 +216,6 @@ def run(binary, backend, inspector, evidence_dir):
                 stop()
                 if sql:
                     sql("UPDATE player_data SET level=62,highest_level=62,platinum=5000 WHERE name='" + PLAYER + "'")
-                else:
-                    journey.make_overlord(Path(env["FLATFILE_STATE_DIR"]), PLAYER)
                 boot()
                 login()
                 assert "created" in command(client, "load obj " + str(BAG)).lower()
