@@ -184,8 +184,6 @@ def run(binary, backend):
                 stop(process, clients)
                 if sql:
                     sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
-                else:
-                    journey.make_overlord(Path(env["FLATFILE_STATE_DIR"]), GOD)
                 boot()
                 god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
                 evidence["entry_tick"] = current_tick()
@@ -315,7 +313,7 @@ def run(binary, backend):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", type=Path, required=True)
-    parser.add_argument("--backend", choices=("flatfile", "mariadb"), default="flatfile")
+    parser.add_argument("--backend", choices=("mariadb",), default="mariadb")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     result = run(args.server.resolve(), args.backend)

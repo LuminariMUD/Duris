@@ -35,6 +35,7 @@
 #include <new>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 extern P_room world;
 
@@ -43,6 +44,7 @@ namespace
 currency_transaction_health health = {};
 
 std::unordered_map<uint32_t, int64_t> reserved_trade_payments;
+std::unordered_set<uint32_t> atomic_trade_wallets;
 std::unordered_map<uint32_t, int64_t> reserved_world_quests;
 uint32_t reserved_chest_pid = 0;
 std::string reserved_chest_account;
@@ -138,6 +140,8 @@ bool apply(P_char character, const currency_command_payload &payload,
 	    (payload.pid == reserved_chest_pid ||
 	     std::any_of(payload.bank_delta.amount.begin(), payload.bank_delta.amount.end(),
 			 [](int64_t delta) { return delta != 0; })))
+		return false;
+	if (atomic_trade_wallets.count(payload.pid))
 		return false;
 	if (reserved_world_quests.count(payload.pid) &&
 	    std::any_of(payload.wallet_delta.amount.begin(), payload.wallet_delta.amount.end(),
@@ -360,6 +364,7 @@ currency_transaction_health currency_transaction_health_copy(void)
 void currency_transaction_reset_for_tests(void)
 {
 	reserved_trade_payments.clear();
+	atomic_trade_wallets.clear();
 	reserved_world_quests.clear();
 	reserved_chest_pid = 0;
 	reserved_chest_account.clear();
@@ -384,9 +389,36 @@ catch (const std::bad_alloc &)
 	return false;
 }
 
+bool currency_transaction_reserve_atomic_trade(P_char character, int64_t payment)
+try
+{
+	if (!currency_transaction_reserve_trade(character, payment))
+		return false;
+	const uint32_t pid = static_cast<uint32_t>(GET_PID(character));
+	try
+	{
+		if (!atomic_trade_wallets.insert(pid).second)
+		{
+			reserved_trade_payments.erase(pid);
+			return false;
+		}
+	}
+	catch (...)
+	{
+		reserved_trade_payments.erase(pid);
+		throw;
+	}
+	return true;
+}
+catch (const std::bad_alloc &)
+{
+	return false;
+}
+
 void currency_transaction_release_trade(uint32_t pid)
 {
 	reserved_trade_payments.erase(pid);
+	atomic_trade_wallets.erase(pid);
 }
 
 bool currency_transaction_publish_trade(P_char character, int64_t payment)
@@ -465,7 +497,8 @@ bool currency_transaction_wallet_busy(P_char character)
 {
 	return currency_transaction_chest_busy(character) ||
 	       (character && IS_PC(character) && GET_PID(character) > 0 &&
-		reserved_world_quests.count(static_cast<uint32_t>(GET_PID(character))));
+		(atomic_trade_wallets.count(static_cast<uint32_t>(GET_PID(character))) ||
+		 reserved_world_quests.count(static_cast<uint32_t>(GET_PID(character)))));
 }
 
 bool currency_transaction_chest_account_busy(const char *account_name)

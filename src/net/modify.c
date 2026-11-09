@@ -11,6 +11,7 @@
 #include "net/gmcp.h"
 #include "core/structs.h"
 #include "net/comm.h"
+#include "net/output_style.h"
 #include "world/db.h"
 #include "world/events.h"
 #include "cmd/interp.h"
@@ -1893,6 +1894,10 @@ char *next_page(char *str, struct descriptor_data *d)
 				col = 1;
 				line++;
 			}
+			// A page boundary is also a UTF-8 boundary. Count one column for
+			// the whole code point, never return a continuation byte as a page.
+			while ((static_cast<unsigned char>(str[1]) & 0xc0) == 0x80)
+				++str;
 		}
 	}
 }
@@ -1905,7 +1910,7 @@ void page_string(struct descriptor_data *d, char *str, int /*keep_internal*/)
 		send_to_char(str, d->character);
 }
 
-void page_string_real(struct descriptor_data *d, char *str)
+void page_string_real(struct descriptor_data *d, char *str, std::span<const OutputLink> links)
 {
 	char *s;
 	int i, pages;
@@ -1913,7 +1918,7 @@ void page_string_real(struct descriptor_data *d, char *str)
 	if (!IS_SET(d->character->specials.act, PLR_PAGING_ON) || d->connected == CON_MAIN_MENU)
 	{
 		/* added CON_MAIN_MENU to disable paging when doing 'who' from menu. -JAB */
-		SEND_TO_Q(str, d);
+		write_linked_output(str, &d->output, links);
 		return;
 	}
 
@@ -1923,6 +1928,8 @@ void page_string_real(struct descriptor_data *d, char *str)
 	d->showstr_count = pages;
 	CREATE(d->showstr_vector, char *, pages, MEM_TAG_ARRAY);
 	d->showstr_head = str_dup(str);
+	if (!links.empty() && valid_output_links(links, strlen(str)))
+		d->showstr_links = new OutputLinks(links.begin(), links.end());
 
 	if (pages)
 		s = d->showstr_vector[0] = d->showstr_head;
@@ -1936,6 +1943,8 @@ void page_string_real(struct descriptor_data *d, char *str)
 
 void free_paging_data(struct descriptor_data *d)
 {
+	delete d->showstr_links;
+	d->showstr_links = nullptr;
 	if (d->showstr_vector)
 	{
 		FREE(d->showstr_vector);
@@ -1995,7 +2004,14 @@ void show_string(struct descriptor_data *d, const char *input)
 	{
 		// Original messages were logged at accumulation time with their own
 		// privacy policy. Replay only the frozen display bytes.
-		send_to_char(d->showstr_vector[d->showstr_page], d->character, LOG_NONE);
+		const char *start = d->showstr_vector[d->showstr_page];
+		OutputLinks links = d->showstr_links ? slice_output_links(*d->showstr_links,
+									  start - d->showstr_head,
+									  strlen(d->showstr_head)) :
+						       OutputLinks{};
+		OutputContext context;
+		context.links = links;
+		send_to_char(start, d->character, LOG_NONE, context);
 		free_paging_data(d);
 	}
 	/* Or if we have more to show.... */
@@ -2009,7 +2025,13 @@ void show_string(struct descriptor_data *d, const char *input)
 			page_length = sizeof buffer - 1;
 		memcpy(buffer, page_start, page_length);
 		buffer[page_length] = '\0';
-		send_to_char(buffer, d->character, LOG_NONE);
+		const size_t begin = page_start - d->showstr_head;
+		OutputLinks links = d->showstr_links ? slice_output_links(*d->showstr_links, begin,
+									  begin + page_length) :
+						       OutputLinks{};
+		OutputContext context;
+		context.links = links;
+		send_to_char(buffer, d->character, LOG_NONE, context);
 		send_to_char("&N", d->character, LOG_NONE);
 		d->showstr_page++;
 	}
