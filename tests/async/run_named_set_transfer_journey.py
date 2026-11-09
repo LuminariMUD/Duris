@@ -98,7 +98,7 @@ def armor_points(client):
 
 try:
     prior = {row[0]: row[1] for row in game.items()}
-    if not (game.state / "players/2.snapshot").exists():
+    if game.sql("SELECT COUNT(*) FROM player_data WHERE pid=2") == "0":
         donor = game.boot("named-transfer-create")
         receiver = journey.MudClient(game.port, source_host="127.0.0.2")
         game.clients.append(receiver)
@@ -116,8 +116,8 @@ try:
         game.stop()
     # Require the expected native PID/name, never reseed a failed attempt.
     prior.update({row[0]: row[1] for row in game.items(2)})
-    journey.make_overlord(game.state, journey.CHARACTER)
-    journey.make_overlord(game.state, RECIPIENT)
+    game.make_overlord()
+    game.make_overlord(RECIPIENT)
     donor = game.boot("named-transfer-prepare")
     receiver = game.login(account=ACCOUNT, character=RECIPIENT, source_host="127.0.0.2")
     for actor in (donor, receiver):

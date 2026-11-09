@@ -42,7 +42,7 @@ try:
     for row in game.pets(PID):
         if row[4]:
             prior[str(row[3])] = str(row[4])
-    journey.make_overlord(game.state, CHARACTER)
+    game.make_overlord(CHARACTER)
     actor = game.boot("named-pet-prepare", account=ACCOUNT, character=CHARACTER)
     # Retain reward satchels created by earlier fixture preparation, freeing
     # mortal inventory slots through the ordinary container path.

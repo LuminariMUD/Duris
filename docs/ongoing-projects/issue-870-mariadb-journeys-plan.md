@@ -3,7 +3,7 @@
 Status: batches 1, 2 and 4 are qualified, including every weapon, copyover and live-item mode. Named sets/historical assassin comparison, naming/docs and aggregate gates remain.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-item-mana-journeys`. See the current-work section before continuing.
+Review head: `branch/issue-870-named-set-journeys`. See the current-work section before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -667,9 +667,45 @@ This is an estimate, not a time limit or permission to omit required proof.
   source SQL as well as filesystem evidence. Do not create independent databases
   per consumer or replace generated gear with guessed UIDs. No named-set edit yet;
   inspect the retained compatibility source/catalog before choosing its MariaDB build.
-- Current head: `branch/issue-870-item-mana-journeys`; no live test sessions remain
-  from this batch. #922, #923, #924, #925, #926, #928 and #931 are qualified; the
+- Current head: `branch/issue-870-named-set-journeys`; no live test sessions remain
+  from the preceding batch. #922, #923, #924, #925, #926, #928 and #931 are qualified; the
   earlier stack remains as listed above. All PRs carry enhancement/bug/documentation
   labels as appropriate. Do not merge or deploy without the user's instruction.
-- Next: named sets and historical assassin comparison, then naming/docs and full
-  regression/DB gates. No aggregate or whole-issue completion is claimed.
+- Named-set conversion is now implemented but unqualified. Keep the existing
+  six consumer scripts and their assertions. The helper's specific batch entry
+  owns one `mariadb_authority()` lifetime, creates the synthetic account through
+  the real protocol, and runs transfer → edit/clone → pet → shop → all16 wear
+  zones → copied-authority rollback → existing chest/report journeys. Shared
+  runtime/server paths are passed only to these concrete consumers; no backend
+  selector or generic fixture framework. Each wear result is retained separately.
+- SQL readers preserve full inventory parent indices/UID graphs, named provenance,
+  permanent HP/Constitution/bit modifiers, saved affects and pet custody/holds.
+  SQL intentionally does not restore transient item affects (see
+  `src/sql/item_instance_fields.h`); keep the native measured HP/spell assertions
+  after reload rather than decoding an obsolete snapshot. The old C++ snapshot
+  compiler/fixture is removed after confirming it has no other callers.
+- Rollback keeps one copied SQL schema through both binary changes. Dump the
+  stopped source, hash SQL/accounts/journals before/after, import into another
+  disposable schema and rebind only the generated database identifier in views.
+  Assert that no copied view references the original schema. Preserve every
+  copied UID/revision/parent/slot and all original gameplay/report assertions.
+  The batch retains a private synthetic SQL dump before its authority is removed.
+- The compatibility checkpoint is current native code with only its catalog array
+  replaced by the115-row array from `bff1043fd`, matching the existing rollback
+  rehearsal's purpose and previous plan to keep integrated safety fixes. It is
+  **not** represented as a full historical server. Generated source:
+  `bin/tests/named-set-rollback-source/named_sets.c`; binary:
+  `bin/tests/named-set-rollback-source/dms-115-catalog`; metadata `build.json`.
+  The maintained Makefile compiled that one replacement object with normal flags
+  and relinked current objects while excluding `item/named_sets.o`; ordinary
+  binary remained024e32b9dd95… . Variant source SHA-256:
+  `2fb1c22f2e20f125df0bd8bb03509e4ecccbc0394a7d4247bca3b02ea0a2f988`;
+  variant binary SHA-256:
+  `1576a431f07c49a21f18c79aa85fe0146e98ca83c8b269be4a850d7f3e8b62b8`.
+  Build log: `bin/tests/issue-870/named-set-compat-build.log`.
+- Next qualification command:
+  `python3 tests/async/named_set_gameplay.py bin/tests/named-set-rollback-source/dms-115-catalog`.
+  It self-enters the disposable wrapper when needed. Inspect its terminal result
+  and every case before marking batch3 complete; preserve failures and repair
+  actual defects without dropping cases. Historical assassin comparison,
+  naming/docs and full regression/DB gates still follow. No whole-issue claim.

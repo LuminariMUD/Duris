@@ -7,6 +7,7 @@ Artifacts remain under bin/tests; no checkout .env or existing player is used.
 """
 
 import json
+import os
 from pathlib import Path
 import signal
 import subprocess
@@ -29,7 +30,7 @@ ORIGIN = "DURIS_NAMED_SET_ORIGIN_V1"
 def run():
     runtime = Path(tempfile.mkdtemp(prefix="named-set-mariadb-", dir=ROOT / "bin/tests"))
     print("Artifacts: " + str(runtime), flush=True)
-    world = ROOT / "bin/tests/named-set-roster-world/areas"
+    world = Path(os.environ.get("NAMED_SET_RUNTIME", ROOT / "bin/tests/named-set-roster-world")) / "areas"
     assert (world / "world.zon").is_file(), "prepare the isolated named-set world first"
     (runtime / "areas").symlink_to(world, target_is_directory=True)
     (runtime / "docs").symlink_to(ROOT / "docs", target_is_directory=True)
