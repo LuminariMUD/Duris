@@ -1,6 +1,6 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: implementation in progress; baseline reconciled, launch/shop repairs under test.
+Status: implementation in progress; launch/shop conversions qualified; news/onboarding/death under test.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
 Branch: `branch/issue-870-mariadb-journeys`.
@@ -92,12 +92,12 @@ Each batch should produce a reviewable commit with its focused runtime proof.
   existing disposable wrapper; never source or copy a game `.env` for tests.
   Build this checkout's server and generate any required private world fixture
   under `bin/`; do not borrow mutable runtime state from another checkout.
-- [ ] Repair `run_pwipe_launch_gate_journey.py`: remove snapshot discovery,
+- [x] Repair `run_pwipe_launch_gate_journey.py`: remove snapshot discovery,
   preserve admission/denial and unchanged-account/player-state assertions with
   SQL checks, and run launch/copyover paths.
-- [ ] Repair `run_shop_bootstrap_journey.py` if #880 has not already done so;
+- [x] Repair `run_shop_bootstrap_journey.py` if #880 has not already done so;
   retain stock identities, contents and revision comparisons across cold boots.
-- [ ] Finish `run_news_prompt_journey.py` and
+- [x] Finish `run_news_prompt_journey.py` and
   `run_issue213_onboarding_journey.py`: use SQL for saved news/onboarding state
   and retain the reconnect and command/protocol assertions.
 - [ ] Finish `run_death_level_projection_journey.py` and
@@ -332,6 +332,48 @@ This is an estimate, not a time limit or permission to omit required proof.
   built tools, create `world/lib/misc`, then run `./m_slow` from the private areas.
   The initial generator run needed that missing lookup-output directory; after
   creating it, `./make_lookup` completed. Log: `bin/tests/issue-870/world-build.log`.
-- Next: finish launch-gate and shop-bootstrap SQL assertions, run both real
-  journeys, publish their focused PR above the baseline PR, then continue the
-  remaining partial conversions. Nothing else is qualified yet.
+- `make world` also passed in this dedicated checkout for runners whose existing
+  fixture helpers use `ROOT/areas`; its generated outputs remain ignored. Log:
+  `bin/tests/issue-870/world-checkout-build.log`.
+
+### Launch gate and shop bootstrap
+
+- Implementation: `014f99194` and `bd20661cf`; no server code changed. Baseline-only document
+  follow-up `8fce01495` is included by merge `cc7af38e9`.
+- Binary SHA-256: `fe10882bac125606e69a8acaba57b32071bfdccdc3e4100a4b4b7742fc7c096c`.
+- Passed: `tests/async/with_disposable_mariadb.sh python3 tests/async/run_pwipe_launch_gate_journey.py --server bin/server/dms_new --backend mariadb`.
+  Evidence: `bin/tests/issue-870/launch-gate-run.log`, `mariadb.json`, transport
+  captures and runtime logs in that same directory. The report records code
+  commit `014f99194`. Real copyover/restart, Telnet/TLS/WS denial and approval,
+  unchanged denied account/player/item state, and real UTC opening all passed.
+- Passed: `tests/async/with_disposable_mariadb.sh python3 tests/async/run_shop_bootstrap_journey.py --server bin/server/dms_new --areas bin/tests/issue-870/world/areas --output bin/tests/issue-870/shop-bootstrap.json`.
+  Evidence: that JSON plus `.log` and `shop-bootstrap-run.log`. Both full-world
+  boots passed: 552 original shops and 294 retained items in the final run
+  (earlier random resets produced 553/295), unchanged payloads/custody and
+  non-regressing owner revisions. A later replay exposed a random world reset
+  creating an additional keeper; the comparison now follows all original shop
+  IDs and permits newly spawned shops, recording both retained and total counts.
+  Final runtime qualification passed after `bd20661cf`; the report records
+  `8d74a4afb`, whose shop code is identical to that commit. Failure evidence is retained as
+  `bin/tests/issue-870/new-keeper-failure-shop-bootstrap*`.
+  SQL rewrites replace row IDs and advance
+  revisions legitimately; NPCs may cast buffs during a game pulse, so their
+  live character affects are not treated as immutable stock. Item affects and
+  extra descriptions remain compared in full.
+- Also passed directly: `python3 tests/async/test_persistence_mode.py` and
+  `python3 tests/async/test_server_build_artifacts.py`; their logs are in the
+  evidence directory. Python syntax and `git diff --check` passed.
+- Ablation: reused the existing MariaDB authority and kept SQL checks local to
+  each journey; removed snapshot discovery and backend-only fallbacks. No new
+  inspector, schema, framework or server option was added.
+
+### Current work / next action
+
+- Launch/shop PR: [#888](https://github.com/LuminariMUD/Duris/pull/888), based on #887.
+- News, onboarding and death-projection code is committed as `c2fdd28eb` on
+  `branch/issue-870-login-journeys` (not yet pushed/PR). It removes
+  unreachable inspector branches. News now seeds its initial synthetic edition
+  in SQL rather than an ignored file. Full existing scenarios are running under
+  disposable MariaDB; do not mark them complete before checking their reports.
+- Remaining batches above are still required. Aggregate regression/DB gates and
+  the other standalone conversions have not been run for this work yet.
