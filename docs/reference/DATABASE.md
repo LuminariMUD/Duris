@@ -363,15 +363,17 @@ references is kept for the foreign keys
 An `ITEM_NORENT` item never leaves the game with its owner. Before a `RENT_INN`,
 `RENT_CAMPED` or `RENT_LINKDEAD` terminal save, `persistence_save_character_terminal`
 takes every no-rent item off the character: worn, carried or inside a container.
-Each one lands in the room with a message; one that can't be dropped crumbles. A
+Each one lands in the room with a message; one that can't be dropped, or whose owner
+is in a locker room, crumbles. A
 no-rent container's other contents move to the nearest surviving container or to the
 inventory first.
 
 Other saves still follow the ownership record. A no-rent item with no active record
 is left out of a crash save, checkpoint or copyover, and anything it holds is saved
 at its own level; one with an active record is kept, so a stray flag can't delete a
-real item. Lockers hand no-rent items back when they save, so a locker can't give
-one an ownership record.
+real item. Lockers hand no-rent items back when they save, and before the visitor's own save,
+so a locker can't give one an ownership record and a crash can't lose it between the
+two saves.
 
 `item_ownership_ledger` keeps the transfers that still commit as critical commands
 (creation grants, operator repair and destruction, auctions and the collector). A claim

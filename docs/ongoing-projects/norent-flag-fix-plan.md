@@ -1,6 +1,6 @@
 # No-rent flag fixes
 
-Status: built and tested. All four stacked pull requests are open for review.
+Status: complete. All four pull requests are merged to `master`.
 Date: 2026-11-09.
 Source inspected: `master` at `fa173cbad`, then merged up to `ddbcaa90a`.
 
@@ -16,10 +16,10 @@ then merge each branch into the next one up the table.
 
 | PR | Sections | Branch | State |
 |---|---|---|---|
-| [#933](https://github.com/LuminariMUD/Duris/pull/933) | 1, 2, 3 and their tests | `branch/norent-flag-fix` | In review |
-| [#937](https://github.com/LuminariMUD/Duris/pull/937) | 4 (lockers) | `branch/norent-flag-fix-lockers` | In review |
-| [#939](https://github.com/LuminariMUD/Duris/pull/939) | 5 (seven items, auction refusal) | `branch/norent-flag-fix-items` | In review |
-| [#940](https://github.com/LuminariMUD/Duris/pull/940) | 6 (help and docs) | `branch/norent-flag-fix-help` | In review |
+| [#933](https://github.com/LuminariMUD/Duris/pull/933) | 1, 2, 3 and their tests | `branch/norent-flag-fix` | Merged |
+| [#937](https://github.com/LuminariMUD/Duris/pull/937) | 4 (lockers) | `branch/norent-flag-fix-lockers` | Merged |
+| [#939](https://github.com/LuminariMUD/Duris/pull/939) | 5 (seven items, auction refusal) | `branch/norent-flag-fix-items` | Merged |
+| [#940](https://github.com/LuminariMUD/Duris/pull/940) | 6 (help and docs) | `branch/norent-flag-fix-help` | Merged |
 
 Notes from building so far:
 
@@ -31,9 +31,13 @@ Notes from building so far:
 - The journey caught a real gap in section 4: leaving or closing a private chest
   ended the access the hand-back relied on, so a no-rent item stayed in it. The
   locker now remembers which private chests the visitor opened that visit.
-- The locker-room crumble rule in section 1 was dropped as unreachable. `camp` and
-  `quit` are refused inside a locker, there is no inn there, and idle void and
-  `extractlink` move the character out first.
+- Staff can `camp` at once from a locker-flagged room, so a no-rent item crumbles there
+  instead of falling where the locker would store it. Mortals can't: `camp` and `quit`
+  are refused inside a locker, and idle void and `extractlink` move the character out
+  first.
+- Review of #937 found the hand-back ran after the visitor's own save, so a crash
+  between the two saves lost a no-rent bag and what it held. Every player save now
+  hands items back first.
 
 Rechecked after merging master at `ddbcaa90a`:
 
