@@ -154,11 +154,11 @@ static void applies()
     object.affected[0] = {APPLY_HIT, 10};
     assert(itemvalue(&object) == 29);
     object.affected[3] = {APPLY_HITROLL, 0};
-    assert(itemvalue(&object) == 35); // LEGACY F04: zero should be neutral.
+    assert(itemvalue(&object) == 29);
     object.affected[3] = {APPLY_SPELL_PULSE, 0};
-    assert(itemvalue(&object) == 58); // LEGACY F04.
+    assert(itemvalue(&object) == 29);
     object.affected[3] = {APPLY_STR_MAX, 0};
-    assert(itemvalue(&object) == 33); // LEGACY F04.
+    assert(itemvalue(&object) == 29);
 
     object = item();
     object.affected[3] = {APPLY_STR, 6};
@@ -240,6 +240,35 @@ static void apply_permutations()
     std::printf("apply permutations: %d mixed AC/max-stat/hit/damage/pulse/racial cases, identical breakdowns and unchanged slots\n", checked);
 }
 
+static void zero_insertion()
+{
+    int checked = 0;
+    for (int type : {ITEM_WORN, ITEM_ARMOR, ITEM_WEAPON})
+    for (int slot = 0; slot < MAX_OBJ_AFFECT; ++slot)
+    for (int location = 0; location <= UCHAR_MAX; ++location) {
+        auto object = item();
+        object.type = type;
+        object.value[0] = type == ITEM_WEAPON ? WEAPON_LONGSWORD : 10;
+        object.value[1] = 2; object.value[2] = 6;
+        if (type == ITEM_WEAPON) {
+            object.wear_flags |= ITEM_WIELD;
+            object.extra_flags |= ITEM_TWOHANDS;
+        } else object.wear_flags |= ITEM_WEAR_EYES;
+        object.affected[(slot + 1) % MAX_OBJ_AFFECT] = {APPLY_HIT, 10};
+        item_value_breakdown before, after;
+        itemvalue(&object, &before);
+        object.affected[slot].location = location;
+        object.affected[slot].modifier = 0;
+        const auto unchanged = object;
+        itemvalue(&object, &after);
+        assert(before.score == after.score && before.base == after.base &&
+               before.multiplier == after.multiplier && before.unrounded == after.unrounded);
+        assert(!std::memcmp(&object, &unchanged, sizeof(object)));
+        ++checked;
+    }
+    std::printf("zero insertion: %d stored-location/slot/type cases retain identical values, breakdowns and inputs\n", checked);
+}
+
 static void proc_policy()
 {
     assert(get_ival_from_proc(treasure_chest) == 200);
@@ -297,7 +326,7 @@ int main(int argc, char **argv)
         return 0;
     }
     assert(itemvalue(nullptr) == 0);
-    circles(); packed_rounding(); applies(); apply_permutations(); proc_policy(); resolved_racial_context();
+    circles(); packed_rounding(); applies(); apply_permutations(); zero_insertion(); proc_policy(); resolved_racial_context();
     auto object = packed(32);
     const auto original = object;
     const auto index = indexes[0];
@@ -325,6 +354,7 @@ int main()
     assert(detail.base == 29 && detail.multiplier == 1 && detail.unrounded == 29);
     assert(!detail.floored && !detail.utility_override && detail.score == 29);
     context.native_proc_credit = 7;
+    input.affected[0] = {APPLY_STR_RACE, 1};
     context.racial_credits[0] = 50;
     assert(evaluate_item_value(input, context, &detail) == 86);
     assert(detail.unrounded == detail.base * detail.multiplier && detail.base == 86);

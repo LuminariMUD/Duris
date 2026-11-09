@@ -109,7 +109,7 @@ COMMON = r'''
     obj = {}; obj.type = ITEM_WORN; obj.wear_flags = ITEM_TAKE;
     obj.affected[0].location = APPLY_HIT; obj.affected[0].modifier = 10;
     obj.affected[3].location = APPLY_HITROLL; obj.affected[3].modifier = 0;
-    assert(itemvalue(&obj) == 35); // Shared legacy arithmetic, pending F04 repair.
+    assert(itemvalue(&obj) == 29); // Zero hitroll is neutral in both shared consumers.
 '''
 
 (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)

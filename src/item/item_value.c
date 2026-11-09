@@ -318,6 +318,8 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 	{
 		apply_factors[i] = 1;
 		mod = obj->affected[i].modifier;
+		if (mod == 0)
+			continue;
 		// dam/hitroll are normal values
 		if ((obj->affected[i].location == APPLY_DAMROLL) ||
 		    (obj->affected[i].location == APPLY_HITROLL))
