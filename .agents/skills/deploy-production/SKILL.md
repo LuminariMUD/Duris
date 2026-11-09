@@ -119,6 +119,8 @@ Consult subsystem documentation only for the operations that actually apply.
   news. Verify stored news bytes; boot will refresh its cache.
 - Invoke [$bug-triage](../bug-triage/SKILL.md) after the pull, independently
   of help/news, with the runtime target, pulled revision, and recovery directory.
+  Process `lib/reports/bugs`, `lib/reports/ideas`, and `lib/reports/typos` together
+  under its issue-consolidation rules.
   Require completed dispositions and verified issue filing before announcing
   the restart. It checks current master, existing issues, and open PRs; retain
   its cleanup record for step 4. Triage is a required deliverable.
@@ -338,7 +340,8 @@ the old binary with the new migration history.
 After the game is healthy, commit and push all of this deployment's verified
 changes directly to `origin/master`: `lib/information/news`,
 `lib/information/help_index`, any other maintained help source actually changed,
-and the processed cleanup of `lib/etc/help` and `lib/reports/bugs`. News requires
+and the processed cleanup of `lib/etc/help`, `lib/reports/bugs`,
+`lib/reports/ideas`, and `lib/reports/typos`. News requires
 database equality and in-game readback; help requires the publication/lookup
 checks in step 2; feedback requires verified cleanup at the restart boundary.
 Do not leave help or report changes for a separate handoff. This step still applies
@@ -353,7 +356,7 @@ Use an isolated Git index when needed; do not use `git add -A` or an unrestricte
 commit. If shared-file changes cannot be separated safely, report the specific
 conflict rather than including unrelated work.
 
-The two runtime feedback files are currently ignored. Do not silently omit their
+The runtime feedback files are currently ignored. Do not silently omit their
 cleanup or broadly unignore runtime directories. For each feedback file whose
 captured batch was fully retired and cleanup verified, record an empty baseline
 using an explicit path-scoped index entry even if the path was ignored/untracked.
