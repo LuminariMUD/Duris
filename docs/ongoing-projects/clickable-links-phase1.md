@@ -403,6 +403,9 @@ corresponding implementation exists.
 
 ### Chunk 3: MXP transport, snooping and retained state
 
+Review: [PR #917](https://github.com/LuminariMUD/Duris/pull/917), implementation
+commit `f9863457e`, stacked on #913; labels `enhancement`, `documentation`.
+
 Implemented the native transport on `branch/clickable-links-mxp`:
 
 - `net/mxp.*` owns the small negotiation state and native renderer. The greeting
@@ -446,7 +449,7 @@ Verified on 2026-11-09:
   12–22; `test_telemetry_copyover_format.py` and `test_copyover_custody.py` passed.
 - `test_item_movement_prompt_runtime.py`, `test_pager_contract.py`,
   `test_telnet_fragmentation_contract.py` and `test_ttype_runtime.py` passed.
-- `make -C src -j8` passed. Formatting and commit hooks remain required at commit.
+- `make -C src -j8`, `./scripts/format.sh --check` and commit-time tidy passed.
 - The extended output benchmark passed: native rendering of the same message
   measured approximately 0.93 microseconds CPU/message without links and 2.22
   with two preserve-styled links (12,800 messages / 64 recipients). Static
