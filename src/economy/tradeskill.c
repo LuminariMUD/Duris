@@ -47,6 +47,10 @@
 #include "world/vnum.obj.h"
 #include "economy/crafting.h"
 #include "economy/currency_transaction.h"
+#include "core/files.h"
+#include "net/gmcp.h"
+#include "persistence/persistence_checkpoint.h"
+#include "player/player_save_pipeline.h"
 #include "world/weather.h"
 #include "core/safe_format.h"
 #include "abilities/abilities.h"
@@ -940,7 +944,9 @@ int smith(P_char ch, P_char pl, int cmd, char *arg)
 			obj_to_char(needed_ore[j], pl);
 		return TRUE;
 	}
-	if (GET_MONEY(pl) < forge_prices[i - 1])
+	if (GET_COPPER(pl) + 10LL * GET_SILVER(pl) + 100LL * GET_GOLD(pl) +
+		    1000LL * GET_PLATINUM(pl) <
+	    forge_prices[i - 1])
 	{
 		forge_describe(choice, pl);
 		while (j-- > 0)
@@ -971,12 +977,39 @@ int smith(P_char ch, P_char pl, int cmd, char *arg)
 		send_to_char("The forged item could not be delivered.\r\n", pl);
 		return TRUE;
 	}
+	const int wallet_before[] = { GET_COPPER(pl), GET_SILVER(pl), GET_GOLD(pl),
+				      GET_PLATINUM(pl) };
+	const uint64_t wallet_revision_before = pl->only.pc->wallet_revision;
 	if (SUB_MONEY(pl, forge_prices[i - 1], 0) != 0)
 	{
 		extract_obj(tobj, FALSE);
 		while (j-- > 0)
 			obj_to_char(needed_ore[j], pl);
 		send_to_char("The forge payment could not be completed.\r\n", pl);
+		return TRUE;
+	}
+
+	// Capture the debit, detached inputs and replacement together. Do not destroy
+	// the inputs until that complete after-image has entered the writer.
+	const int room = pl->in_room == NOWHERE ? NOWHERE : world[pl->in_room].number;
+	const auto checkpoint =
+		player_save_pipeline_request(pl, PLAYER_CHECKPOINT_COMPONENT_ALL, RENT_CRASH, room);
+	if (checkpoint != player_save_pipeline_result::queued &&
+	    checkpoint != player_save_pipeline_result::coalesced)
+	{
+		GET_COPPER(pl) = wallet_before[0];
+		GET_SILVER(pl) = wallet_before[1];
+		GET_GOLD(pl) = wallet_before[2];
+		GET_PLATINUM(pl) = wallet_before[3];
+		pl->only.pc->wallet_revision = wallet_revision_before;
+		extract_obj(tobj, FALSE);
+		while (j-- > 0)
+			obj_to_char(needed_ore[j], pl);
+		mark_player_dirty_components(GET_PID(pl), PLAYER_COMPONENT_STATUS |
+								  PLAYER_COMPONENT_EQUIPMENT |
+								  PLAYER_COMPONENT_INVENTORY);
+		gmcp_char_vitals(pl);
+		send_to_char("The forge checkpoint could not be started; nothing changed.\r\n", pl);
 		return TRUE;
 	}
 
@@ -1002,9 +1035,6 @@ int smith(P_char ch, P_char pl, int cmd, char *arg)
 	    "'&+WThere you go!&n', $n gives $N $p.",
 	    FALSE, ch, tobj, pl, TO_NOTVICT);
 
-	// One player checkpoint owns the debit, removed ore and replacement together.
-	// A separate creation grant could commit the output before its inputs were saved.
-	currency_transaction_save_first(pl);
 	return TRUE;
 }
 
@@ -1853,17 +1883,9 @@ void do_salvation(P_char ch, char * /*arg*/, int /*cmd*/)
 // Returns the lowest material vnum (lowest quality) for material with the same type as obj->material.
 // I.e. for a material type FEATHER -> returns 400000 (vnum for a small feather).
 //   Material range for FEATHER is 400000 (lowest quality) - 400004 (highest quality).
-int get_matstart(P_obj obj)
+int material_start_vnum(int objmat)
 {
 	int matstart;
-	::byte objmat;
-
-	if (!obj)
-	{
-		return 0;
-	}
-
-	objmat = obj->material;
 
 	switch (objmat)
 	{
@@ -2018,6 +2040,11 @@ int get_matstart(P_obj obj)
 		break;
 	}
 	return matstart;
+}
+
+int get_matstart(P_obj obj)
+{
+	return obj ? material_start_vnum(obj->material) : 0;
 }
 
 void do_refine(P_char ch, char *arg, int /*cmd*/)

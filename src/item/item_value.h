@@ -4,6 +4,8 @@
 #include "core/config.h"
 #include "core/defines.h"
 
+inline constexpr const char *ITEM_VALUE_FORMULA_REVISION = "ival-legacy-v1";
+
 // Numeric inputs only: no object identity, links, callbacks, or mutable state.
 struct item_value_apply
 {
@@ -40,6 +42,22 @@ struct item_value_breakdown
 	int score = 0;
 };
 
+// The power-field part of convertObj(), shared with read-only template views.
+// Both obj_data and item_value_input expose these fields; no lifecycle is involved.
+template <typename Object> void normalize_item_value_fields(Object &object)
+{
+	if (object.extra_flags & ITEM_IGNORE)
+		return;
+	object.bitvector &= ~(AFF_SLEEP | AFF_FEAR | AFF_CHARM);
+	if (object.type == ITEM_WEAPON)
+	{
+		if (object.value[1] < 1)
+			object.value[1] = 1;
+		if (object.value[2] < 1)
+			object.value[2] = 1;
+	}
+}
+
 bool item_value_has_packed_proc(const item_value_input &input);
 int evaluate_item_value(const item_value_input &input, const item_value_context &context,
 			item_value_breakdown *breakdown = nullptr);
@@ -47,5 +65,7 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 // Runtime adapter; the existing one-argument itemvalue() API remains compatible.
 struct obj_data;
 int itemvalue(obj_data *obj, item_value_breakdown *breakdown);
+struct object_template;
+int itemvalue(const object_template &prototype, item_value_breakdown *breakdown = nullptr);
 
 #endif

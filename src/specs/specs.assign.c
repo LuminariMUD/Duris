@@ -33,6 +33,7 @@
 #include "world/vnum.mob.h"
 #include "world/vnum.obj.h"
 #include "world/zone_story_quest_runtime.h"
+#include "specs/object_bindings.h"
 
 extern const int top_of_world;
 extern P_index mob_index;
@@ -1053,234 +1054,563 @@ void assign_mobiles(void)
    assign special procedures to objects
  */
 
+namespace
+{
+// One source for boot assignments and read-only valuation context. Keep table
+// order: later assignments win. Chained legacy assignments are right-to-left.
+#define OBJECT_BINDING(vnum, proc) \
+	{                          \
+		vnum, proc, #proc  \
+	}
+const object_proc_binding object_boot_bindings[] = {
+	OBJECT_BINDING(500055, tharnrifts_portal),
+	OBJECT_BINDING(55007, no_kill_priest_obj),
+	OBJECT_BINDING(1372, jet_black_maul),
+	OBJECT_BINDING(12028, moonstone_fragment),
+	OBJECT_BINDING(96073, faith),
+	OBJECT_BINDING(96012, mistweave),
+	OBJECT_BINDING(96027, leather_vest),
+	OBJECT_BINDING(96042, deva_cloak),
+	OBJECT_BINDING(96059, icicle_cloak),
+	OBJECT_BINDING(8406, ogrebane),
+	OBJECT_BINDING(96066, giantbane),
+	OBJECT_BINDING(20000, mindbreaker),
+	OBJECT_BINDING(1270, treasure_chest),
+	OBJECT_BINDING(453, cards_object),
+	OBJECT_BINDING(34226, dwarfslayer),
+	OBJECT_BINDING(354, artifact_monolith),
+	OBJECT_BINDING(83457, miners_helmet),
+	OBJECT_BINDING(29328, burbul_map_obj),
+	OBJECT_BINDING(29329, chyron_search_obj),
+	OBJECT_BINDING(VOBJ_WUTVR_MAP_PROC, burbul_map_obj),
+	OBJECT_BINDING(VOBJ_WUTVR_SEARCH_PROC, chyron_search_obj),
+	OBJECT_BINDING(132581, storage_locker_obj_hook),
+	OBJECT_BINDING(3097, storage_locker_obj_hook),
+	OBJECT_BINDING(4, blood_stains),
+	OBJECT_BINDING(50, ice_shattered_bits),
+	OBJECT_BINDING(VNUM_TRACKS, tracks),
+	OBJECT_BINDING(99, frost_beacon),
+	OBJECT_BINDING(110, ice_block),
+	OBJECT_BINDING(3833, glades_dagger),
+	OBJECT_BINDING(44499, lucky_weapon),
+	OBJECT_BINDING(15907, mace_dragondeath),
+	OBJECT_BINDING(17021, khildarak_warhammer),
+	OBJECT_BINDING(80830, ogre_warlords_sword),
+	OBJECT_BINDING(7365, flaming_axe_of_azer),
+	OBJECT_BINDING(25711, mrinlor_whip),
+	OBJECT_BINDING(135218, sphinx_prefect_crown),
+	OBJECT_BINDING(38772, platemail_of_defense),
+	OBJECT_BINDING(414, platemail_of_defense),
+	OBJECT_BINDING(22063, master_set),
+	OBJECT_BINDING(22237, master_set),
+	OBJECT_BINDING(22621, master_set),
+	OBJECT_BINDING(45530, master_set),
+	OBJECT_BINDING(45531, master_set),
+	OBJECT_BINDING(82545, master_set),
+	OBJECT_BINDING(75857, master_set),
+	OBJECT_BINDING(67207, staff_of_air_conjuration),
+	OBJECT_BINDING(919, ioun_sustenance),
+	OBJECT_BINDING(922, deflect_ioun),
+	OBJECT_BINDING(923, ioun_testicle),
+	OBJECT_BINDING(924, ioun_testicle),
+	OBJECT_BINDING(925, ioun_testicle),
+	OBJECT_BINDING(926, ioun_testicle),
+	OBJECT_BINDING(920, ioun_warp),
+	OBJECT_BINDING(1210, tendrils),
+	OBJECT_BINDING(26665, elvenkind_cloak),
+	OBJECT_BINDING(VOBJ_UNDEAD_FERRY, charon_ship),
+	OBJECT_BINDING(23808, artifact_stone),
+	OBJECT_BINDING(911, artifact_stone),
+	OBJECT_BINDING(25719, artifact_stone),
+	OBJECT_BINDING(26653, artifact_stone),
+	OBJECT_BINDING(16268, artifact_stone),
+	OBJECT_BINDING(16263, artifact_stone),
+	OBJECT_BINDING(67280, artifact_stone),
+	OBJECT_BINDING(67244, artifact_stone),
+	OBJECT_BINDING(17, artifact_stone),
+	OBJECT_BINDING(23806, earthquake_gauntlet),
+	OBJECT_BINDING(910, artifact_biofeedback),
+	OBJECT_BINDING(67215, artifact_biofeedback),
+	OBJECT_BINDING(23807, blind_boots),
+	OBJECT_BINDING(400237, thanksgiving_wings),
+	OBJECT_BINDING(55320, artifact_stone),
+	OBJECT_BINDING(419, moonstone),
+	OBJECT_BINDING(433, moonstone),
+	OBJECT_BINDING(17, artifact_hide),
+	OBJECT_BINDING(23809, artifact_hide),
+	OBJECT_BINDING(19916, artifact_hide),
+	OBJECT_BINDING(12410, artifact_hide),
+	OBJECT_BINDING(139138, artifact_hide),
+	OBJECT_BINDING(97118, artifact_hide),
+	OBJECT_BINDING(44170, artifact_hide),
+	OBJECT_BINDING(70963, pathfinder),
+	OBJECT_BINDING(41204, artifact_invisible),
+	OBJECT_BINDING(71231, artifact_invisible),
+	OBJECT_BINDING(32428, artifact_invisible),
+	OBJECT_BINDING(32861, artifact_invisible),
+	OBJECT_BINDING(23203, artifact_invisible),
+	OBJECT_BINDING(23202, artifact_invisible),
+	OBJECT_BINDING(16904, artifact_invisible),
+	OBJECT_BINDING(7371, nexus),
+	OBJECT_BINDING(26621, sanguine),
+	OBJECT_BINDING(26662, neg_orb),
+	OBJECT_BINDING(1230, totem_of_mastery),
+	OBJECT_BINDING(48, god_bp),
+	OBJECT_BINDING(49, out_of_god_bp),
+	OBJECT_BINDING(38763, ring_of_regeneration),
+	OBJECT_BINDING(31549, glowing_necklace),
+	OBJECT_BINDING(32008, staff_shadow_summoning),
+	OBJECT_BINDING(67245, rod_of_magic),
+	OBJECT_BINDING(76032, proc_whirlwinds),
+	OBJECT_BINDING(1220, lyrical_instrument_of_time),
+	OBJECT_BINDING(32001, sinister_tactics_staff),
+	OBJECT_BINDING(32831, pesky_imp_chest),
+	OBJECT_BINDING(32832, pesky_imp_chest),
+	OBJECT_BINDING(32833, pesky_imp_chest),
+	OBJECT_BINDING(32822, holy_weapon),
+	OBJECT_BINDING(32836, mox_totem),
+	OBJECT_BINDING(32816, flayed_mind_mask),
+	OBJECT_BINDING(67281, stalker_cloak),
+	OBJECT_BINDING(32837, finslayer_air),
+	OBJECT_BINDING(32862, aboleth_pendant),
+	OBJECT_BINDING(32864, artifact_stone),
+	OBJECT_BINDING(32850, tower_summoning),
+	OBJECT_BINDING(32852, shabo_trap_north_two),
+	OBJECT_BINDING(32851, shabo_trap_south),
+	OBJECT_BINDING(32848, shabo_trap_south_two),
+	OBJECT_BINDING(32834, shabo_trap_down),
+	OBJECT_BINDING(32849, shabo_trap_up),
+	OBJECT_BINDING(32826, shabo_trap_up_two),
+	OBJECT_BINDING(46, lightning_armor),
+	OBJECT_BINDING(47, imprison_armor),
+	OBJECT_BINDING(45, slot_machine),
+	OBJECT_BINDING(1191, fun_dagger),
+	OBJECT_BINDING(2203, unspec_altar),
+	OBJECT_BINDING(12016, unspec_altar),
+	OBJECT_BINDING(1190, rax_red_dagger),
+	OBJECT_BINDING(2204, cutting_dagger),
+	OBJECT_BINDING(142248, circlet_of_light),
+	OBJECT_BINDING(142253, ljs_sword),
+	OBJECT_BINDING(142255, wuss_sword),
+	OBJECT_BINDING(142257, head_guard_sword),
+	OBJECT_BINDING(142258, priest_rudder),
+	OBJECT_BINDING(142264, alch_bag),
+	OBJECT_BINDING(142267, alch_rod),
+	OBJECT_BINDING(142270, ljs_armor),
+	OBJECT_BINDING(142271, dragon_skull_helm),
+	OBJECT_BINDING(99447, nightcrawler_dagger),
+	OBJECT_BINDING(66419, righteous_blade),
+	OBJECT_BINDING(666, xmas_cap),
+	OBJECT_BINDING(400, khaziddea_blade),
+	OBJECT_BINDING(22070, revenant_helm),
+	OBJECT_BINDING(25723, dragonlord_plate),
+	OBJECT_BINDING(25745, sunblade),
+	OBJECT_BINDING(25710, bloodfeast),
+	OBJECT_BINDING(142249, dragonslayer),
+	OBJECT_BINDING(34545, mankiller),
+	OBJECT_BINDING(44179, madman_mangler),
+	OBJECT_BINDING(44172, madman_shield),
+	OBJECT_BINDING(44188, mentality_mace),
+	OBJECT_BINDING(25, artifact_biofeedback),
+	OBJECT_BINDING(67203, vapor),
+	OBJECT_BINDING(45528, serpent_of_miracles),
+	OBJECT_BINDING(45514, transparent_blade),
+	OBJECT_BINDING(45525, Einjar),
+	OBJECT_BINDING(35, tripboots),
+	OBJECT_BINDING(38, blindbadge),
+	OBJECT_BINDING(36, fumblegaunts),
+	OBJECT_BINDING(37, confusionsword),
+	OBJECT_BINDING(41, guild_badge),
+	OBJECT_BINDING(VOBJ_RANDOM_THRUSTED, thrusted_eq_proc),
+	OBJECT_BINDING(VOBJ_RANDOM_ARMOR, set_proc),
+	OBJECT_BINDING(1251, encrusted_eq_proc),
+	OBJECT_BINDING(251, parchment_forge),
+	OBJECT_BINDING(400210, learn_recipe),
+	OBJECT_BINDING(58, relic_proc),
+	OBJECT_BINDING(59, relic_proc),
+	OBJECT_BINDING(68, relic_proc),
+	OBJECT_BINDING(69, cold_hammer),
+	OBJECT_BINDING(34559, brainripper),
+	OBJECT_BINDING(22962, hammer_titans),
+	OBJECT_BINDING(38725, stormbringer),
+	OBJECT_BINDING(67243, living_necroplasm),
+	OBJECT_BINDING(67200, vigor_mask),
+	OBJECT_BINDING(67239, church_door),
+	OBJECT_BINDING(67260, splinter),
+	OBJECT_BINDING(67206, demo_scimitar),
+	OBJECT_BINDING(67272, dranum_mask),
+	OBJECT_BINDING(67220, golem_chunk),
+	OBJECT_BINDING(21, good_evil_sword),
+	OBJECT_BINDING(22, good_evil_sword),
+	OBJECT_BINDING(1234, banana),
+	OBJECT_BINDING(358, epic_stone),
+	OBJECT_BINDING(359, epic_stone),
+	OBJECT_BINDING(360, epic_stone),
+	OBJECT_BINDING(60, stat_pool_str),
+	OBJECT_BINDING(61, stat_pool_dex),
+	OBJECT_BINDING(62, stat_pool_agi),
+	OBJECT_BINDING(63, stat_pool_con),
+	OBJECT_BINDING(64, stat_pool_pow),
+	OBJECT_BINDING(65, stat_pool_int),
+	OBJECT_BINDING(66, stat_pool_wis),
+	OBJECT_BINDING(67, stat_pool_cha),
+	OBJECT_BINDING(930, stat_pool_luc),
+	OBJECT_BINDING(72, spell_pool),
+	OBJECT_BINDING(26666, transp_tow_misty_gloves),
+	OBJECT_BINDING(11065, magic_mouth),
+	OBJECT_BINDING(11064, magic_mouth),
+	OBJECT_BINDING(11063, magic_mouth),
+	OBJECT_BINDING(11062, magic_mouth),
+	OBJECT_BINDING(11061, magic_mouth),
+	OBJECT_BINDING(11060, magic_mouth),
+	OBJECT_BINDING(11059, magic_mouth),
+	OBJECT_BINDING(11058, magic_mouth),
+	OBJECT_BINDING(11057, magic_mouth),
+	OBJECT_BINDING(11056, magic_mouth),
+	OBJECT_BINDING(11055, magic_mouth),
+	OBJECT_BINDING(11054, magic_mouth),
+	OBJECT_BINDING(11053, magic_mouth),
+	OBJECT_BINDING(11052, magic_mouth),
+	OBJECT_BINDING(11051, magic_mouth),
+	OBJECT_BINDING(11002, magic_mouth),
+	OBJECT_BINDING(56, dragoon_blade),
+	OBJECT_BINDING(93, dragoon_lance),
+	OBJECT_BINDING(171, dragoon_totem),
+	OBJECT_BINDING(465, gc_portal),
+	OBJECT_BINDING(466, ec_portal),
+	OBJECT_BINDING(467, ud_portal),
+	OBJECT_BINDING(468, uc_nexus_portal),
+	OBJECT_BINDING(750, druid_spring),
+	OBJECT_BINDING(749, blighter_pond),
+	OBJECT_BINDING(1218, flying_citadel),
+	OBJECT_BINDING(1222, gfstone),
+	OBJECT_BINDING(192, disarm_pick_gloves),
+	OBJECT_BINDING(67279, roulette_pistol),
+	OBJECT_BINDING(67282, orb_of_deception),
+	OBJECT_BINDING(427, super_cannon),
+	OBJECT_BINDING(428, zombies_game),
+	OBJECT_BINDING(435, proc_soldon_hat),
+	OBJECT_BINDING(499, proc_lohrr),
+	OBJECT_BINDING(469, divine_font),
+	OBJECT_BINDING(77706, trap_razor_hooks),
+	OBJECT_BINDING(77721, trap_tower1_para),
+	OBJECT_BINDING(77731, trap_tower2_sleep),
+	OBJECT_BINDING(77738, illesarus),
+	OBJECT_BINDING(77734, artifact_stone),
+	OBJECT_BINDING(77752, hoa_plat),
+	OBJECT_BINDING(77749, artifact_stone),
+	OBJECT_BINDING(130006, vecna_deathportal),
+	OBJECT_BINDING(130003, vecna_deathaltar),
+	OBJECT_BINDING(130040, vecna_stonemist),
+	OBJECT_BINDING(130041, vecna_ghosthands),
+	OBJECT_BINDING(130041, vecna_torturerroom),
+	OBJECT_BINDING(130000, vecna_gorge),
+	OBJECT_BINDING(130013, vecna_pestilence),
+	OBJECT_BINDING(130009, vecna_minifist),
+	OBJECT_BINDING(130007, vecna_dispel),
+	OBJECT_BINDING(130008, vecna_boneaxe),
+	OBJECT_BINDING(130027, vecna_staffoaken),
+	OBJECT_BINDING(130028, vecna_krindor_main),
+	OBJECT_BINDING(130018, vecna_death_mask),
+	OBJECT_BINDING(130038, mob_vecna_procs),
+	OBJECT_BINDING(130200, obj_tp_no_high_levels),
+	OBJECT_BINDING(67900, arenaobj_proc),
+	OBJECT_BINDING(23056, lifereaver),
+	OBJECT_BINDING(366, flame_blade),
+	OBJECT_BINDING(31514, SeaKingdom_Tsunami),
+	OBJECT_BINDING(36744, shimmering_longsword),
+	OBJECT_BINDING(36760, rod_of_zarbon),
+	OBJECT_BINDING(16262, trans_tower_shadow_globe),
+	OBJECT_BINDING(80747, burn_touch_obj),
+	OBJECT_BINDING(80556, drowcrusher),
+	OBJECT_BINDING(80579, squelcher),
+	OBJECT_BINDING(80569, dragonarmor),
+	OBJECT_BINDING(41304, kearonor_hide),
+	OBJECT_BINDING(41349, hewards_mystical_organ),
+	OBJECT_BINDING(42235, amethyst_orb),
+	OBJECT_BINDING(41350, wand_of_wonder),
+	OBJECT_BINDING(41918, blade_of_paladins),
+	OBJECT_BINDING(41913, fade_drusus),
+	OBJECT_BINDING(41915, lightning_sword),
+	OBJECT_BINDING(41912, elfdawn_sword),
+	OBJECT_BINDING(41917, flame_of_north_sword),
+	OBJECT_BINDING(41914, magebane_falchion),
+	OBJECT_BINDING(41916, woundhealer_scimitar),
+	OBJECT_BINDING(41911, martelo_mstar),
+	OBJECT_BINDING(41907, mir_fire),
+	OBJECT_BINDING(18, githpc_special_weap),
+	OBJECT_BINDING(19, githpc_special_weap),
+	OBJECT_BINDING(418, githpc_special_weap),
+	OBJECT_BINDING(19507, random_tomb),
+	OBJECT_BINDING(19511, random_glass),
+	OBJECT_BINDING(19515, random_slab),
+	OBJECT_BINDING(70, refreshing_fountain),
+	OBJECT_BINDING(71, magical_fountain),
+	OBJECT_BINDING(751, portal_door),
+	OBJECT_BINDING(291, magic_pool),
+	OBJECT_BINDING(770, portal_wormhole),
+	OBJECT_BINDING(780, portal_etherportal),
+	OBJECT_BINDING(782, portal_door),
+	OBJECT_BINDING(55, trustee_artifact),
+	OBJECT_BINDING(1227, orcus_wand),
+	OBJECT_BINDING(30, varon),
+	OBJECT_BINDING(752, portal_door),
+	OBJECT_BINDING(781, portal_door),
+	OBJECT_BINDING(14, banana),
+	OBJECT_BINDING(15, banana),
+	OBJECT_BINDING(1278, changelog),
+	OBJECT_BINDING(1300, obj_imprison),
+	OBJECT_BINDING(VOBJ_WALLS, wall_generic),
+	OBJECT_BINDING(54, huntsman_ward),
+	OBJECT_BINDING(73, huntsman_ward),
+	OBJECT_BINDING(77, huntsman_ward),
+	OBJECT_BINDING(400229, huntsman_ward),
+	OBJECT_BINDING(1421, item_switch),
+	OBJECT_BINDING(1425, item_switch),
+	OBJECT_BINDING(1427, item_switch),
+	OBJECT_BINDING(4505, hammer),
+	OBJECT_BINDING(4403, magic_pool),
+	OBJECT_BINDING(4404, magic_pool),
+	OBJECT_BINDING(17, barb),
+	OBJECT_BINDING(132570, die_roller),
+	OBJECT_BINDING(132609, die_roller),
+	OBJECT_BINDING(132610, die_roller),
+	OBJECT_BINDING(425, holy_weapon),
+	OBJECT_BINDING(6826, dragonkind),
+	OBJECT_BINDING(6818, resurrect_totem),
+	OBJECT_BINDING(11008, guildwindow),
+	OBJECT_BINDING(11013, guildhome),
+	OBJECT_BINDING(12000, crystal_spike),
+	OBJECT_BINDING(12027, automaton_lever),
+	OBJECT_BINDING(96402, illithid_teleport_veil),
+	OBJECT_BINDING(13519, forest_corpse),
+	OBJECT_BINDING(13518, forest_corpse),
+	OBJECT_BINDING(13517, forest_corpse),
+	OBJECT_BINDING(13516, forest_corpse),
+	OBJECT_BINDING(13515, forest_corpse),
+	OBJECT_BINDING(13513, forest_corpse),
+	OBJECT_BINDING(13511, forest_corpse),
+	OBJECT_BINDING(13508, forest_corpse),
+	OBJECT_BINDING(13505, forest_corpse),
+	OBJECT_BINDING(15116, torment),
+	OBJECT_BINDING(19710, magic_pool),
+	OBJECT_BINDING(19711, magic_pool),
+	OBJECT_BINDING(19715, magic_pool),
+	OBJECT_BINDING(19730, avernus),
+	OBJECT_BINDING(19860, magic_pool),
+	OBJECT_BINDING(19861, magic_pool),
+	OBJECT_BINDING(19862, magic_pool),
+	OBJECT_BINDING(19863, magic_pool),
+	OBJECT_BINDING(19864, magic_pool),
+	OBJECT_BINDING(19900, githyanki),
+	OBJECT_BINDING(12460, magic_pool),
+	OBJECT_BINDING(12470, teleporting_pool),
+	OBJECT_BINDING(12472, teleporting_pool),
+	OBJECT_BINDING(12474, teleporting_pool),
+	OBJECT_BINDING(12476, teleporting_pool),
+	OBJECT_BINDING(45536, teleporting_pool),
+	OBJECT_BINDING(30402, teleporting_map_pool),
+	OBJECT_BINDING(30403, teleporting_pool),
+	OBJECT_BINDING(30404, teleporting_pool),
+	OBJECT_BINDING(30405, teleporting_pool),
+	OBJECT_BINDING(30406, teleporting_pool),
+	OBJECT_BINDING(30407, teleporting_pool),
+	OBJECT_BINDING(30408, teleporting_pool),
+	OBJECT_BINDING(30409, teleporting_pool),
+	OBJECT_BINDING(30410, teleporting_pool),
+	OBJECT_BINDING(30411, teleporting_pool),
+	OBJECT_BINDING(30412, teleporting_pool),
+	OBJECT_BINDING(30413, teleporting_pool),
+	OBJECT_BINDING(30414, teleporting_pool),
+	OBJECT_BINDING(36884, kvasir_dagger),
+	OBJECT_BINDING(87612, doombringer),
+	OBJECT_BINDING(430, flamberge),
+	OBJECT_BINDING(139037, ring_elemental_control),
+	OBJECT_BINDING(139004, holy_mace),
+	OBJECT_BINDING(139002, staff_of_blue_flames),
+	OBJECT_BINDING(30, staff_of_power),
+	OBJECT_BINDING(40409, reliance_pegasus),
+	OBJECT_BINDING(25404, magic_pool),
+	OBJECT_BINDING(24404, magic_pool),
+	OBJECT_BINDING(24406, lightning),
+	OBJECT_BINDING(131616, dagger_of_wind),
+	OBJECT_BINDING(23204, magic_pool),
+	OBJECT_BINDING(23206, orb_of_the_sea),
+	OBJECT_BINDING(23804, magic_pool),
+	OBJECT_BINDING(23805, zion_mace_of_earth),
+	OBJECT_BINDING(41203, unholy_avenger_bloodlust),
+	OBJECT_BINDING(51005, holy_weapon),
+	OBJECT_BINDING(51006, tiamat_stinger),
+	OBJECT_BINDING(51401, dispator),
+	OBJECT_BINDING(26014, nightbringer),
+	OBJECT_BINDING(26413, item_switch),
+	OBJECT_BINDING(26414, item_switch),
+	OBJECT_BINDING(26415, item_switch),
+	OBJECT_BINDING(26416, item_switch),
+	OBJECT_BINDING(92090, undead_trident),
+	OBJECT_BINDING(92080, generic_drow_eq),
+	OBJECT_BINDING(92081, generic_drow_eq),
+	OBJECT_BINDING(92082, generic_drow_eq),
+	OBJECT_BINDING(92086, generic_drow_eq),
+	OBJECT_BINDING(92065, iron_flindbar),
+	OBJECT_BINDING(92020, generic_parry_proc),
+	OBJECT_BINDING(82500, generic_parry_proc),
+	OBJECT_BINDING(83605, generic_parry_proc),
+	OBJECT_BINDING(18000, generic_riposte_proc),
+	OBJECT_BINDING(92121, flame_of_north),
+	OBJECT_BINDING(88825, menden_figurine),
+	OBJECT_BINDING(88830, llyms_altar),
+	OBJECT_BINDING(88821, magic_pool),
+	OBJECT_BINDING(88827, magic_pool),
+	OBJECT_BINDING(90004, fw_ruby_monocle),
+	OBJECT_BINDING(90010, item_switch),
+	OBJECT_BINDING(38649, sevenoaks_longsword),
+	OBJECT_BINDING(67262, mace_of_sea),
+	OBJECT_BINDING(67237, serpent_blade),
+	OBJECT_BINDING(67242, lich_spine),
+	OBJECT_BINDING(67276, sword_whirlwinds),
+	OBJECT_BINDING(22803, stream_of_life),
+	OBJECT_BINDING(22800, newbie_sign1),
+	OBJECT_BINDING(22801, newbie_sign2),
+	OBJECT_BINDING(VOBJ_CHAOS_STREAM, stream_of_life),
+	OBJECT_BINDING(91200, newbie_sign1),
+	OBJECT_BINDING(91201, newbie_sign2),
+	OBJECT_BINDING(174, vareena_statue),
+	OBJECT_BINDING(352, doom_blade_Proc),
+	OBJECT_BINDING(426, doom_blade_Proc),
+	OBJECT_BINDING(55008, storage_locker_obj_hook),
+	OBJECT_BINDING(55210, dagger_ra),
+	OBJECT_BINDING(55205, illithid_axe),
+	OBJECT_BINDING(55211, deathseeker_mace),
+	OBJECT_BINDING(55301, demon_slayer),
+	OBJECT_BINDING(55277, snowogre_warhammer),
+	OBJECT_BINDING(55306, volo_longsword),
+	OBJECT_BINDING(55304, blur_shortsword),
+	OBJECT_BINDING(55322, buckler_saints),
+	OBJECT_BINDING(55309, helmet_vampires),
+	OBJECT_BINDING(55315, storm_legplates),
+	OBJECT_BINDING(55280, gauntlets_legend),
+	OBJECT_BINDING(55377, gladius_backstabber),
+	OBJECT_BINDING(55362, attribute_scroll),
+	OBJECT_BINDING(97923, elemental_wand),
+	OBJECT_BINDING(55361, earring_powers),
+	OBJECT_BINDING(83698, earring_powers),
+	OBJECT_BINDING(55363, lorekeeper_scroll),
+	OBJECT_BINDING(55520, wh_corpse_decay),
+	OBJECT_BINDING(55519, wh_corpse_decay),
+	OBJECT_BINDING(55518, wh_corpse_decay),
+	OBJECT_BINDING(55517, wh_corpse_decay),
+	OBJECT_BINDING(55516, wh_corpse_decay),
+	OBJECT_BINDING(55515, wh_corpse_decay),
+	OBJECT_BINDING(55514, wh_corpse_decay),
+	OBJECT_BINDING(55513, wh_corpse_decay),
+	OBJECT_BINDING(55512, wh_corpse_decay),
+	OBJECT_BINDING(55511, wh_corpse_decay),
+	OBJECT_BINDING(55510, wh_corpse_decay),
+	OBJECT_BINDING(55509, wh_corpse_decay),
+	OBJECT_BINDING(55508, wh_corpse_decay),
+	OBJECT_BINDING(55507, wh_corpse_decay),
+	OBJECT_BINDING(55506, wh_corpse_decay),
+	OBJECT_BINDING(55505, wh_corpse_decay),
+	OBJECT_BINDING(55504, wh_corpse_decay),
+	OBJECT_BINDING(55503, wh_corpse_decay),
+	OBJECT_BINDING(55502, wh_corpse_decay),
+	OBJECT_BINDING(55501, wh_corpse_decay),
+	OBJECT_BINDING(55500, wh_corpse_decay),
+	OBJECT_BINDING(53661, damnation_staff),
+	OBJECT_BINDING(53662, nuke_damnation),
+	OBJECT_BINDING(53663, nuke_damnation),
+	OBJECT_BINDING(97932, collar_frost),
+	OBJECT_BINDING(97931, collar_flames),
+	OBJECT_BINDING(VOBJ_WH_DRAGONHEART_TIAMAT, dragon_heart_decay),
+	OBJECT_BINDING(VOBJ_WH_DRAGONHEART_BAHAMUT, dragon_heart_decay),
+	OBJECT_BINDING(VOBJ_WH_DRAGONHEART_DRAGONNIA, dragon_heart_decay),
+	OBJECT_BINDING(55420, lancer_gift),
+	OBJECT_BINDING(55077, splinter),
+	OBJECT_BINDING(19638, zion_shield_absorb_proc),
+	OBJECT_BINDING(38761, generic_shield_block_proc),
+	OBJECT_BINDING(88327, zion_fnf),
+	OBJECT_BINDING(16242, zion_light_dark),
+	OBJECT_BINDING(58825, barovia_undead_necklace),
+	OBJECT_BINDING(58424, artifact_shadow_shield),
+	OBJECT_BINDING(58413, ravenloft_bell),
+	OBJECT_BINDING(58400, shimmer_shortsword),
+	OBJECT_BINDING(43584, toe_chamber_switch),
+	OBJECT_BINDING(87712, hellfire_axe),
+	OBJECT_BINDING(87724, illithid_whip),
+	OBJECT_BINDING(87701, skull_leggings),
+	OBJECT_BINDING(87737, flesh_golem_repop),
+	OBJECT_BINDING(87950, deliverer_hammer),
+	OBJECT_BINDING(93007, blue_sword_armor),
+};
+
+const object_proc_binding room_boot_bindings[] = {
+	OBJECT_BINDING(5805, sword_named_magik),
+	OBJECT_BINDING(29236, newbie_portal),
+	OBJECT_BINDING(91436, newbie_portal),
+	OBJECT_BINDING(32486, bel_sword),
+	OBJECT_BINDING(99432, zarthos_vampire_slayer),
+	OBJECT_BINDING(36894, critical_attack_proc),
+	OBJECT_BINDING(44165, unmulti_altar),
+	OBJECT_BINDING(87546, mask_of_wildmagic),
+	OBJECT_BINDING(87601, flow_amulet),
+	OBJECT_BINDING(87611, juiblex_grid_mob_generator),
+	OBJECT_BINDING(67274, zion_netheril),
+	OBJECT_BINDING(32615, eth2_tree_obj),
+	OBJECT_BINDING(32614, eth2_tree_obj),
+	OBJECT_BINDING(32619, eth2_godsfury),
+	OBJECT_BINDING(32621, eth2_aramus_crown),
+	OBJECT_BINDING(424, lucrot_mindstone),
+	OBJECT_BINDING(120051, wh_corpse_decay),
+	OBJECT_BINDING(55433, magic_deck),
+	OBJECT_BINDING(1203, gellz_test_obj_procs),
+	OBJECT_BINDING(55434, blackjack_table),
+};
+#undef OBJECT_BINDING
+} // namespace
+
+std::span<const object_proc_binding> object_proc_bindings(object_proc_binding_stage stage)
+{
+	if (stage == object_proc_binding_stage::objects)
+		return object_boot_bindings;
+	return room_boot_bindings;
+}
+
+void assign_object_proc_bindings(object_proc_binding_stage stage)
+{
+	// Empty offline catalogs have no index. Preserve the legacy lookup/fallback
+	// policy when an index is present; changing missing-vnum policy is separate.
+	if (!obj_index)
+		return;
+	for (const auto &binding : object_proc_bindings(stage))
+		obj_index[real_object0(binding.vnum)].func.obj = binding.proc;
+}
+
 void assign_objects(void)
 {
-	obj_index[real_object0(500055)].func.obj = tharnrifts_portal;
-	obj_index[real_object0(55007)].func.obj = no_kill_priest_obj;
-	obj_index[real_object0(1372)].func.obj = jet_black_maul;
-	obj_index[real_object0(12028)].func.obj = moonstone_fragment;
-	obj_index[real_object0(96073)].func.obj = faith;
-	obj_index[real_object0(96012)].func.obj = mistweave;
-	obj_index[real_object0(96027)].func.obj = leather_vest;
-	obj_index[real_object0(96042)].func.obj = deva_cloak;
-	obj_index[real_object0(96059)].func.obj = icicle_cloak;
-	obj_index[real_object0(8406)].func.obj = ogrebane;
-	obj_index[real_object0(96066)].func.obj = giantbane;
-	obj_index[real_object0(20000)].func.obj = mindbreaker;
-	obj_index[real_object0(1270)].func.obj = treasure_chest;
-	obj_index[real_object0(453)].func.obj = cards_object;
-	obj_index[real_object0(34226)].func.obj = dwarfslayer;
-
-	obj_index[real_object0(354)].func.obj = artifact_monolith;
-
-	obj_index[real_object0(83457)].func.obj = miners_helmet;
-
-	/* outposts */
-	// obj_index[real_object0(97800)].func.obj = outpost_rubble;
-
-	/* ailvio */
-	obj_index[real_object0(29328)].func.obj = burbul_map_obj;
-	obj_index[real_object0(29329)].func.obj = chyron_search_obj;
-	obj_index[real_object0(VOBJ_WUTVR_MAP_PROC)].func.obj = burbul_map_obj;
-	obj_index[real_object0(VOBJ_WUTVR_SEARCH_PROC)].func.obj = chyron_search_obj;
-
-	/* banks - add proc for storage lockers */
-	obj_index[real_object0(132581)].func.obj = storage_locker_obj_hook;
-	obj_index[real_object0(3097)].func.obj = storage_locker_obj_hook;
-
-	/* Mossi Mods:  General Items  */
-	obj_index[real_object0(4)].func.obj = blood_stains;
-	obj_index[real_object0(50)].func.obj = ice_shattered_bits;
-	obj_index[real_object0(VNUM_TRACKS)].func.obj = tracks;
-	obj_index[real_object0(99)].func.obj = frost_beacon;
-	obj_index[real_object0(110)].func.obj = ice_block;
-
-	/* somewhere */
-
-	obj_index[real_object0(3833)].func.obj = glades_dagger;
-	obj_index[real_object0(44499)].func.obj = lucky_weapon;
-	obj_index[real_object0(15907)].func.obj = mace_dragondeath;
-	obj_index[real_object0(17021)].func.obj = khildarak_warhammer;
-	obj_index[real_object0(80830)].func.obj = ogre_warlords_sword;
-	obj_index[real_object0(7365)].func.obj = flaming_axe_of_azer;
-
-	/* bahamut */
-	obj_index[real_object0(25711)].func.obj = mrinlor_whip;
-
-	/* new Tiamat */
-	obj_index[real_object0(135218)].func.obj = sphinx_prefect_crown;
-
-	//  obj_index[real_object0(22032)].func.obj = warmace_puredark;
-
-	/* Forgot what zone it is from  */
-
-	obj_index[real_object0(38772)].func.obj = platemail_of_defense;
-	obj_index[real_object0(414)].func.obj = platemail_of_defense;
-
-	obj_index[real_object0(22063)].func.obj = master_set;
-	obj_index[real_object0(22237)].func.obj = master_set;
-	obj_index[real_object0(22621)].func.obj = master_set;
-	obj_index[real_object0(45530)].func.obj = master_set;
-	obj_index[real_object0(45531)].func.obj = master_set;
-	obj_index[real_object0(82545)].func.obj = master_set;
-	obj_index[real_object0(75857)].func.obj = master_set;
-
-	/* artifact funcs */
-
-	obj_index[real_object0(67207)].func.obj = staff_of_air_conjuration;
-	// gellz added air staff above
-	obj_index[real_object0(919)].func.obj = ioun_sustenance;
-	obj_index[real_object0(922)].func.obj = deflect_ioun;
-	obj_index[real_object0(923)].func.obj = ioun_testicle;
-	obj_index[real_object0(924)].func.obj = ioun_testicle;
-	obj_index[real_object0(925)].func.obj = ioun_testicle;
-	obj_index[real_object0(926)].func.obj = ioun_testicle;
-	obj_index[real_object0(920)].func.obj = ioun_warp;
-
-	obj_index[real_object0(1210)].func.obj = tendrils;
-	obj_index[real_object0(26665)].func.obj = elvenkind_cloak;
-
-	/* Undead zone */
-	obj_index[real_object0(VOBJ_UNDEAD_FERRY)].func.obj = charon_ship;
-
-	/* Olympus */
-
-	obj_index[real_object0(67280)].func.obj = obj_index[real_object0(16263)].func.obj =
-		obj_index[real_object0(16268)].func.obj = obj_index[real_object0(26653)].func.obj =
-			obj_index[real_object0(25719)].func.obj =
-				obj_index[real_object0(911)].func.obj =
-					obj_index[real_object0(23808)].func.obj = artifact_stone;
-	obj_index[real_object0(67244)].func.obj = artifact_stone;
-	obj_index[real_object0(17)].func.obj = artifact_stone;
-	obj_index[real_object0(23806)].func.obj = earthquake_gauntlet;
-
-	obj_index[real_object0(910)].func.obj = artifact_biofeedback;
-	obj_index[real_object0(67215)].func.obj = artifact_biofeedback;
-	obj_index[real_object0(23807)].func.obj = blind_boots;
-
-	obj_index[real_object0(400237)].func.obj = thanksgiving_wings;
-	obj_index[real_object0(55320)].func.obj = artifact_stone;
-
-	obj_index[real_object0(419)].func.obj = moonstone;
-	obj_index[real_object0(433)].func.obj = moonstone;
-
-	obj_index[real_object0(139138)].func.obj = obj_index[real_object0(12410)].func.obj =
-		obj_index[real_object0(19916)].func.obj = obj_index[real_object0(23809)].func.obj =
-			obj_index[real_object0(17)].func.obj = artifact_hide;
-	obj_index[real_object0(97118)].func.obj = artifact_hide;
-	obj_index[real_object0(44170)].func.obj = artifact_hide;
-
-	// old guildhalls (deprecated)
-	//  obj_index[real_object0(115)].func.obj = guild_chest;
-	// obj_index[real_object0(96443)].func.obj = illithid_sack;
-
-	obj_index[real_object0(70963)].func.obj = pathfinder;
-	obj_index[real_object0(16904)].func.obj = obj_index[real_object0(23202)].func.obj =
-		obj_index[real_object0(23203)].func.obj = obj_index[real_object0(32861)].func.obj =
-			obj_index[real_object0(32428)].func.obj =
-				obj_index[real_object0(71231)].func.obj =
-					obj_index[real_object0(41204)].func.obj =
-						artifact_invisible;
-	/* Prison */
-	obj_index[real_object0(7371)].func.obj = nexus;
-
-	/* Negative Plane */
-	obj_index[real_object0(26621)].func.obj = sanguine;
-	obj_index[real_object0(26662)].func.obj = neg_orb;
-
-	/* RaxCode (tm) */
-
-	/* Necro Pet Specs */
+	assign_object_proc_bindings(object_proc_binding_stage::objects);
 	mob_index[real_mobile0(33)].func.mob = necro_specpet_bone;
 	mob_index[real_mobile0(34)].func.mob = necro_specpet_flesh;
 	mob_index[real_mobile0(35)].func.mob = necro_specpet_flesh;
-
-	/* Conj Pet Specs */
 	mob_index[real_mobile0(1121)].func.mob = conj_specpet_golem;
 	mob_index[real_mobile0(1122)].func.mob = conj_specpet_xorn;
 	mob_index[real_mobile0(1131)].func.mob = conj_specpet_slyph;
 	mob_index[real_mobile0(1132)].func.mob = conj_specpet_djinni;
 	mob_index[real_mobile0(1141)].func.mob = conj_specpet_undine;
 	mob_index[real_mobile0(1142)].func.mob = conj_specpet_triton;
-	// mob_index[real_mobile0(1111)].func.mob = conj_specpet_salamander;
 	mob_index[real_mobile0(1112)].func.mob = conj_specpet_serpent;
-
-	/* misc */
-	obj_index[real_object0(1230)].func.obj = totem_of_mastery;
-	//  obj_index[real_object0(41208)].func.obj = mithril_dagger;
-	obj_index[real_object0(48)].func.obj = god_bp;
-	obj_index[real_object0(49)].func.obj = out_of_god_bp;
-	obj_index[real_object0(38763)].func.obj = ring_of_regeneration;
-	obj_index[real_object0(31549)].func.obj = glowing_necklace;
-	obj_index[real_object0(32008)].func.obj = staff_shadow_summoning;
-	obj_index[real_object0(67245)].func.obj = rod_of_magic;
-	obj_index[real_object0(76032)].func.obj = proc_whirlwinds;
-	obj_index[real_object0(1220)].func.obj = lyrical_instrument_of_time;
-
-	/* avernus procs */
-	obj_index[real_object0(32001)].func.obj = sinister_tactics_staff;
-
-	/* shabo procs */
-	obj_index[real_object0(32831)].func.obj = pesky_imp_chest;
-	obj_index[real_object0(32832)].func.obj = pesky_imp_chest;
-	obj_index[real_object0(32833)].func.obj = pesky_imp_chest;
-	obj_index[real_object0(32822)].func.obj = holy_weapon;
-	obj_index[real_object0(32836)].func.obj = mox_totem;
-	obj_index[real_object0(32816)].func.obj = flayed_mind_mask;
-	obj_index[real_object0(67281)].func.obj = stalker_cloak;
-	obj_index[real_object0(32837)].func.obj = finslayer_air;
-	obj_index[real_object0(32862)].func.obj = aboleth_pendant;
-	obj_index[real_object0(32864)].func.obj = artifact_stone;
-
 	mob_index[real_mobile0(32840)].func.mob = shabo_butler;
 	mob_index[real_mobile0(32843)].func.mob = shabo_petre;
 	mob_index[real_mobile0(32842)].func.mob = shabo_palle;
 	mob_index[real_mobile0(32803)].func.mob = shabo_derro_savant;
-
-	obj_index[real_object0(32850)].func.obj = tower_summoning;
-	obj_index[real_object0(32852)].func.obj = shabo_trap_north_two;
-	obj_index[real_object0(32851)].func.obj = shabo_trap_south;
-	obj_index[real_object0(32848)].func.obj = shabo_trap_south_two;
-	obj_index[real_object0(32834)].func.obj = shabo_trap_down;
-	obj_index[real_object0(32849)].func.obj = shabo_trap_up;
-	obj_index[real_object0(32826)].func.obj = shabo_trap_up_two;
-
 	mob_index[real_mobile0(1000)].func.mob = annoying_mob;
 	mob_index[real_mobile0(320)].func.mob = cow_talk;
-	obj_index[real_object0(46)].func.obj = lightning_armor;
-	obj_index[real_object0(47)].func.obj = imprison_armor;
-
-	// re-enabled old procs
-	obj_index[real_object0(45)].func.obj = slot_machine;
 	mob_index[real_mobile0(11)].func.mob = raoul;
 	mob_index[real_mobile0(12)].func.mob = christine;
 	mob_index[real_mobile0(13)].func.mob = cookie_monster;
-
-	/* objs */
-	obj_index[real_object0(1191)].func.obj = fun_dagger;
-
-	obj_index[real_object0(2203)].func.obj = unspec_altar;
-	obj_index[real_object0(12016)].func.obj = unspec_altar;
-	obj_index[real_object0(1190)].func.obj = rax_red_dagger;
-	obj_index[real_object0(2204)].func.obj = cutting_dagger;
-	obj_index[real_object0(142248)].func.obj = circlet_of_light;
-	obj_index[real_object0(142253)].func.obj = ljs_sword;
-	obj_index[real_object0(142255)].func.obj = wuss_sword;
-	obj_index[real_object0(142257)].func.obj = head_guard_sword;
-	obj_index[real_object0(142258)].func.obj = priest_rudder;
-	obj_index[real_object0(142264)].func.obj = alch_bag;
-	obj_index[real_object0(142267)].func.obj = alch_rod;
-	obj_index[real_object0(142270)].func.obj = ljs_armor;
-	obj_index[real_object0(142271)].func.obj = dragon_skull_helm;
-	obj_index[real_object0(99447)].func.obj = nightcrawler_dagger;
-	obj_index[real_object0(66419)].func.obj = righteous_blade;
-
-	/* Black Pearl mobs */
 	mob_index[real_mobile0(142235)].func.mob = long_john_silver_shout;
 	mob_index[real_mobile0(142242)].func.mob = undead_parrot;
 	mob_index[real_mobile0(142246)].func.mob = undead_dragon_east;
-
-	/* general jabbering */
 	mob_index[real_mobile0(142252)].func.mob = pirate_cabinboy_talk;
 	mob_index[real_mobile0(142254)].func.mob = pirate_female_talk;
 	mob_index[real_mobile0(142202)].func.mob = pirate_talk;
@@ -1291,8 +1621,6 @@ void assign_objects(void)
 	mob_index[real_mobile0(142249)].func.mob = pirate_talk;
 	mob_index[real_mobile0(142251)].func.mob = pirate_talk;
 	mob_index[real_mobile0(142261)].func.mob = pirate_talk;
-
-	/* tower of high sorcery */
 	mob_index[real_mobile0(9342)].func.mob = bulette;
 	mob_index[real_mobile0(9344)].func.mob = bulette;
 	mob_index[real_mobile0(9345)].func.mob = bulette;
@@ -1301,624 +1629,12 @@ void assign_objects(void)
 	mob_index[real_mobile0(9348)].func.mob = bulette;
 	mob_index[real_mobile0(9349)].func.mob = bulette;
 	mob_index[real_mobile0(9350)].func.mob = bulette;
-
-	/* End RaxCode */
-
-	obj_index[real_object0(666)].func.obj = xmas_cap;
-	obj_index[real_object0(400)].func.obj = khaziddea_blade;
-
-	obj_index[real_object0(22070)].func.obj = revenant_helm;
-	/* Bahamut */
-	obj_index[real_object0(25723)].func.obj = dragonlord_plate;
-	obj_index[real_object0(25745)].func.obj = sunblade;
-	obj_index[real_object0(25710)].func.obj = bloodfeast;
-
-	/*Newbie quest */
-	obj_index[real_object0(142249)].func.obj = dragonslayer;
-	obj_index[real_object0(34545)].func.obj = mankiller;
-
-	/* MadMan */
-	obj_index[real_object0(44179)].func.obj = madman_mangler;
-	obj_index[real_object0(44172)].func.obj = madman_shield;
-	obj_index[real_object0(44188)].func.obj = mentality_mace;
-
-	obj_index[real_object0(25)].func.obj = artifact_biofeedback;
-	obj_index[real_object0(67203)].func.obj = vapor;
-
-	/* 56 Zone - Kvark */
-	obj_index[real_object0(45528)].func.obj = serpent_of_miracles;
-	obj_index[real_object0(45514)].func.obj = transparent_blade;
-	obj_index[real_object0(45525)].func.obj = Einjar;
-
-	/* Special items for thanks giving. */
-
-	obj_index[real_object0(35)].func.obj = tripboots;
-	obj_index[real_object0(38)].func.obj = blindbadge;
-	obj_index[real_object0(36)].func.obj = fumblegaunts;
-	obj_index[real_object0(37)].func.obj = confusionsword;
-
-	obj_index[real_object0(41)].func.obj = guild_badge;
-
-	/* random eq proc  */
-	obj_index[real_object0(VOBJ_RANDOM_THRUSTED)].func.obj = thrusted_eq_proc;
-	obj_index[real_object0(VOBJ_RANDOM_ARMOR)].func.obj = set_proc;
-	obj_index[real_object0(1251)].func.obj = encrusted_eq_proc;
-	obj_index[real_object0(251)].func.obj = parchment_forge;
-	obj_index[real_object0(400210)].func.obj = learn_recipe;
-
-	obj_index[real_object0(58)].func.obj = relic_proc;
-	obj_index[real_object0(59)].func.obj = relic_proc;
-	obj_index[real_object0(68)].func.obj = relic_proc;
-
-	obj_index[real_object0(69)].func.obj = cold_hammer;
-
-	/* 4 horsemen */
-
-	obj_index[real_object0(34559)].func.obj = brainripper;
-
-	/* Nyneth */
-	obj_index[real_object0(22962)].func.obj = hammer_titans;
-	obj_index[real_object0(38725)].func.obj = stormbringer;
-
-	/* Tokens */
-	obj_index[real_object0(67243)].func.obj = living_necroplasm;
-	obj_index[real_object0(67200)].func.obj = vigor_mask;
-	obj_index[real_object0(67239)].func.obj = church_door;
-	obj_index[real_object0(67260)].func.obj = splinter;
-	obj_index[real_object0(67206)].func.obj = demo_scimitar;
-	obj_index[real_object0(67272)].func.obj = dranum_mask;
-	obj_index[real_object0(67220)].func.obj = golem_chunk;
-	obj_index[real_object0(21)].func.obj = good_evil_sword;
-	obj_index[real_object0(22)].func.obj = good_evil_sword;
-
-	obj_index[real_object0(1234)].func.obj = banana;
-	obj_index[real_object0(358)].func.obj = epic_stone;
-	obj_index[real_object0(359)].func.obj = epic_stone;
-	obj_index[real_object0(360)].func.obj = epic_stone;
-
-	/* stat pools */
-
-	obj_index[real_object0(60)].func.obj = stat_pool_str;
-	obj_index[real_object0(61)].func.obj = stat_pool_dex;
-	obj_index[real_object0(62)].func.obj = stat_pool_agi;
-	obj_index[real_object0(63)].func.obj = stat_pool_con;
-	obj_index[real_object0(64)].func.obj = stat_pool_pow;
-	obj_index[real_object0(65)].func.obj = stat_pool_int;
-	obj_index[real_object0(66)].func.obj = stat_pool_wis;
-	obj_index[real_object0(67)].func.obj = stat_pool_cha;
-	obj_index[real_object0(930)].func.obj = stat_pool_luc;
-
-	/* random spell pool */
-	obj_index[real_object0(72)].func.obj = spell_pool;
-
-	obj_index[real_object0(26666)].func.obj = transp_tow_misty_gloves;
-
-	/* player castles */
-
-	obj_index[real_object0(11002)].func.obj = obj_index[real_object0(11051)].func.obj =
-		obj_index[real_object0(11052)]
-			.func.obj = obj_index[real_object0(11053)]
-					    .func.obj = obj_index[real_object0(11054)].func.obj =
-			obj_index[real_object0(11055)]
-				.func.obj = obj_index[real_object0(11056)]
-						    .func
-						    .obj = obj_index[real_object0(11057)].func.obj =
-				obj_index[real_object0(11058)]
-					.func.obj = obj_index[real_object0(11059)].func.obj =
-					obj_index[real_object0(11060)]
-						.func.obj = obj_index[real_object0(11061)].func.obj =
-						obj_index[real_object0(11062)]
-							.func.obj = obj_index[real_object0(11063)]
-									    .func.obj =
-							obj_index[real_object0(11064)].func.obj =
-								obj_index[real_object0(11065)]
-									.func.obj = magic_mouth;
-
-	/* heavens */
-	obj_index[real_object0(56)].func.obj = dragoon_blade;
-	obj_index[real_object0(93)].func.obj = dragoon_lance;
-	obj_index[real_object0(171)].func.obj = dragoon_totem;
-	obj_index[real_object0(465)].func.obj = gc_portal;
-	obj_index[real_object0(466)].func.obj = ec_portal;
-	obj_index[real_object0(467)].func.obj = ud_portal;
-	obj_index[real_object0(468)].func.obj = uc_nexus_portal;
-	obj_index[real_object0(750)].func.obj = druid_spring;
-	obj_index[real_object0(749)].func.obj = blighter_pond;
-	//  obj_index[real_object0(366)].func.obj = druid_sabre;
-	obj_index[real_object0(1218)].func.obj = flying_citadel;
-	obj_index[real_object0(1222)].func.obj = gfstone;
-
-	obj_index[real_object0(192)].func.obj = disarm_pick_gloves;
-
-	obj_index[real_object0(67279)].func.obj = roulette_pistol;
-	obj_index[real_object0(67282)].func.obj = orb_of_deception;
-	obj_index[real_object0(427)].func.obj = super_cannon;
-	obj_index[real_object0(428)].func.obj = zombies_game;
-
-	obj_index[real_object0(435)].func.obj = proc_soldon_hat;
-	obj_index[real_object0(499)].func.obj = proc_lohrr;
-	obj_index[real_object0(469)].func.obj = divine_font;
-
-	/* Hall of the Ancients */
-	obj_index[real_object0(77706)].func.obj = trap_razor_hooks;
-	obj_index[real_object0(77721)].func.obj = trap_tower1_para;
-	obj_index[real_object0(77731)].func.obj = trap_tower2_sleep;
-	obj_index[real_object0(77738)].func.obj = illesarus;
-	obj_index[real_object0(77734)].func.obj = artifact_stone;
-	obj_index[real_object0(77752)].func.obj = hoa_plat;
-	obj_index[real_object0(77749)].func.obj = artifact_stone;
-
-	/* Vecna */
-	obj_index[real_object0(130006)].func.obj = vecna_deathportal;
-	obj_index[real_object0(130003)].func.obj = vecna_deathaltar;
-	obj_index[real_object0(130040)].func.obj = vecna_stonemist;
-	obj_index[real_object0(130041)].func.obj = vecna_ghosthands;
-	obj_index[real_object0(130041)].func.obj = vecna_torturerroom;
-	obj_index[real_object0(130000)].func.obj = vecna_gorge;
-	obj_index[real_object0(130013)].func.obj = vecna_pestilence;
-	obj_index[real_object0(130009)].func.obj = vecna_minifist;
-	obj_index[real_object0(130007)].func.obj = vecna_dispel;
-	obj_index[real_object0(130008)].func.obj = vecna_boneaxe;
-	obj_index[real_object0(130027)].func.obj = vecna_staffoaken;
-	obj_index[real_object0(130028)].func.obj = vecna_krindor_main;
-	obj_index[real_object0(130018)].func.obj = vecna_death_mask;
-	obj_index[real_object0(130038)].func.obj = mob_vecna_procs;
-
-	// nexus_uc
-	obj_index[real_object0(130200)].func.obj = obj_tp_no_high_levels;
-
-	/* Duris Tournament */
-	obj_index[real_object0(67900)].func.obj = arenaobj_proc;
-
-	/*specs.object.c */
-	obj_index[real_object0(23056)].func.obj = lifereaver;
-	obj_index[real_object0(366)].func.obj = flame_blade;
-	/* sea kingdom */
-
-	obj_index[real_object0(31514)].func.obj = SeaKingdom_Tsunami;
-
-	/* arachdrathos */
-
-	obj_index[real_object0(36744)].func.obj = shimmering_longsword;
-	obj_index[real_object0(36760)].func.obj = rod_of_zarbon;
-
-	/* dlsc - in for testing currently */
-
-	/* transparent tower */
-	obj_index[real_object0(16262)].func.obj = trans_tower_shadow_globe;
-	// obj_index[real_object0(16242)].func.obj = trans_tower_sword;
-	/*  obj_index[real_object0(80563)].func.obj = yuan_ti_stone;*/
-
-	/* claw cavern */
-	obj_index[real_object0(80747)].func.obj = burn_touch_obj;
-
-	/* Yuan-Ti Zone */
-	obj_index[real_object0(80556)].func.obj = drowcrusher;
-	obj_index[real_object0(80579)].func.obj = squelcher;
-	obj_index[real_object0(80569)].func.obj = dragonarmor;
-
-	/* highway */
-	// obj_index[real_object0(70924)].func.obj = lobos_jacket;
-	obj_index[real_object0(41304)].func.obj = kearonor_hide;
-	obj_index[real_object0(41349)].func.obj = hewards_mystical_organ;
-	obj_index[real_object0(42235)].func.obj = amethyst_orb;
-	obj_index[real_object0(41350)].func.obj = wand_of_wonder;
-	obj_index[real_object0(41918)].func.obj = blade_of_paladins;
-	obj_index[real_object0(41913)].func.obj = fade_drusus;
-	obj_index[real_object0(41915)].func.obj = lightning_sword;
-	obj_index[real_object0(41912)].func.obj = elfdawn_sword;
-	obj_index[real_object0(41917)].func.obj = flame_of_north_sword;
-	obj_index[real_object0(41914)].func.obj = magebane_falchion;
-	obj_index[real_object0(41916)].func.obj = woundhealer_scimitar;
-	obj_index[real_object0(41911)].func.obj = martelo_mstar;
-	obj_index[real_object0(41907)].func.obj = mir_fire;
-
-	/* Lower God Rooms */
-	obj_index[real_object0(18)].func.obj = githpc_special_weap;
-	obj_index[real_object0(19)].func.obj = githpc_special_weap;
-	obj_index[real_object0(418)].func.obj = githpc_special_weap;
-
-	/* random zone stuff here please ! */
-	obj_index[real_object0(19507)].func.obj = random_tomb;
-	obj_index[real_object0(19511)].func.obj = random_glass;
-	obj_index[real_object0(19515)].func.obj = random_slab;
-
-	/*            Fountains               */
-	obj_index[real_object0(70)].func.obj = refreshing_fountain;
-	obj_index[real_object0(71)].func.obj = magical_fountain;
-
-	/* Middle God Rooms */
-	obj_index[real_object0(751)].func.obj = portal_door;
-	obj_index[real_object0(291)].func.obj = magic_pool;
-	obj_index[real_object0(770)].func.obj = portal_wormhole;
-	obj_index[real_object0(780)].func.obj = portal_etherportal;
-	obj_index[real_object0(782)].func.obj = portal_door;
-	obj_index[real_object0(55)].func.obj = trustee_artifact;
-
-	/* Main God Rooms */
-	obj_index[real_object0(1227)].func.obj = orcus_wand;
-	obj_index[real_object0(30)].func.obj = varon;
-	obj_index[real_object0(752)].func.obj = portal_door;
-	obj_index[real_object0(781)].func.obj = portal_door;
-	//  obj_index[real_object0(363)].func.obj = thought_beacon;
-	obj_index[real_object0(14)].func.obj = banana;
-	obj_index[real_object0(15)].func.obj = banana;
-	obj_index[real_object0(1278)].func.obj = changelog;
-	obj_index[real_object0(1300)].func.obj = obj_imprison;
-
-	/* Wall procedures */
-	obj_index[real_object0(VOBJ_WALLS)].func.obj = wall_generic; /* Wall of stone */
-
-	/* Traps */
-	obj_index[real_object0(54)].func.obj = huntsman_ward;
-	obj_index[real_object0(73)].func.obj = huntsman_ward;
-	obj_index[real_object0(77)].func.obj = huntsman_ward;
-	obj_index[real_object0(400229)].func.obj = huntsman_ward;
-
-	/* Kobold Settlement */
-	obj_index[real_object0(1421)].func.obj = item_switch;
-	obj_index[real_object0(1425)].func.obj = item_switch;
-	obj_index[real_object0(1427)].func.obj = item_switch;
-
-	/* The Underworld */
-	obj_index[real_object0(4505)].func.obj = hammer;
-	obj_index[real_object0(4403)].func.obj = magic_pool;
-	obj_index[real_object0(4404)].func.obj = magic_pool;
-	obj_index[real_object0(17)].func.obj = barb;
-
-	/* Alterian Wilderness */
-
-	/* Western Realms */
-	//  obj_index[real_object0(5731)].func.obj = ship;
-	//  obj_index[real_object0(5732)].func.obj = control_panel;
-
-	/* Tharnadia */
-	obj_index[real_object0(132570)].func.obj = die_roller;
-	obj_index[real_object0(132609)].func.obj = die_roller;
-	obj_index[real_object0(132610)].func.obj = die_roller;
-
-	/* Sylvandawn */
-	obj_index[real_object0(425)].func.obj = holy_weapon;
-	/* These objects don't exist??
-	  obj_index[real_object0(8110)].func.obj = labelas;
-	  obj_index[real_object0(8112)].func.obj = elfgate;
-	  obj_index[real_object0(8113)].func.obj = elfgate;
-	*/
-	/* Dragonnia */
-
-	obj_index[real_object0(6826)].func.obj = dragonkind;
-	obj_index[real_object0(6818)].func.obj = resurrect_totem;
-
-	/* Players Guild */
-	obj_index[real_object0(11008)].func.obj = guildwindow;
-	obj_index[real_object0(11013)].func.obj = guildhome;
-	/*
-	      obj_index[real_object0(34300)].func.obj =
-	      obj_index[real_object0(35953)].func.obj =
-	      obj_index[real_object0(35350)].func.obj =
-	      obj_index[real_object0(35952)].func.obj =
-	      obj_index[real_object0(35950)].func.obj =
-	      obj_index[real_object0(35951)].func.obj =
-	      obj_index[real_object0(35900)].func.obj =
-	      obj_index[real_object0(35050)].func.obj =
-	      obj_index[real_object0(35253)].func.obj =
-	      obj_index[real_object0(34200)].func.obj =
-	      obj_index[real_object0(34404)].func.obj =
-	      obj_index[real_object0(35970)].func.obj = board;
-	*/
-
-	obj_index[real_object0(12000)].func.obj = crystal_spike;
-	/*  obj_index[real_object0(12025)].func.obj = skeleton_key; */
-	obj_index[real_object0(12027)].func.obj = automaton_lever;
-	obj_index[real_object0(96402)].func.obj = illithid_teleport_veil;
-
-	/* Twin Towers - Forest */
-	obj_index[real_object0(13505)].func.obj = obj_index[real_object0(13508)].func.obj =
-		obj_index[real_object0(13511)].func.obj = obj_index[real_object0(13513)].func.obj =
-			obj_index[real_object0(13515)].func.obj =
-				obj_index[real_object0(13516)].func.obj =
-					obj_index[real_object0(13517)].func.obj =
-						obj_index[real_object0(13518)].func.obj =
-							obj_index[real_object0(13519)].func.obj =
-								forest_corpse;
-
-	/*
-	   New Cavecity
-	 */
-	obj_index[real_object0(15116)].func.obj = torment;
-
-	/*
-	   Astral Plane - Tiamat
-	 */
-	obj_index[real_object0(19710)].func.obj = magic_pool;
-	obj_index[real_object0(19711)].func.obj = magic_pool;
-	obj_index[real_object0(19715)].func.obj = magic_pool;
-	obj_index[real_object0(19730)].func.obj = avernus;
-
-	/*
-	   Astral Plane - Main Grid
-	 */
-	obj_index[real_object0(19860)].func.obj = magic_pool;
-	obj_index[real_object0(19861)].func.obj = magic_pool;
-	obj_index[real_object0(19862)].func.obj = magic_pool;
-	obj_index[real_object0(19863)].func.obj = magic_pool;
-	obj_index[real_object0(19864)].func.obj = magic_pool;
-	obj_index[real_object0(19900)].func.obj = githyanki;
 	mob_index[real_mobile0(19750)].func.mob = guild_guard;
 	mob_index[real_mobile0(19704)].func.mob = demogorgon;
 	mob_index[real_mobile0(19920)].func.mob = demogorgon_shout;
-	/*
-	   Ethereal Plane - Main Grid
-	 */
-
-	obj_index[real_object0(12460)].func.obj = magic_pool;
-	obj_index[real_object0(12470)].func.obj = teleporting_pool;
-	obj_index[real_object0(12472)].func.obj = teleporting_pool;
-	obj_index[real_object0(12474)].func.obj = teleporting_pool;
-	obj_index[real_object0(12476)].func.obj = teleporting_pool;
-	obj_index[real_object0(45536)].func.obj = teleporting_pool;
-
-	/* illusionist dream plane */
-
-	obj_index[real_object0(30402)].func.obj = teleporting_map_pool;
-	obj_index[real_object0(30403)].func.obj = teleporting_pool;
-	obj_index[real_object0(30404)].func.obj = teleporting_pool;
-	obj_index[real_object0(30405)].func.obj = teleporting_pool;
-	obj_index[real_object0(30406)].func.obj = teleporting_pool;
-	obj_index[real_object0(30407)].func.obj = teleporting_pool;
-	obj_index[real_object0(30408)].func.obj = teleporting_pool;
-	obj_index[real_object0(30409)].func.obj = teleporting_pool;
-	obj_index[real_object0(30410)].func.obj = teleporting_pool;
-	obj_index[real_object0(30411)].func.obj = teleporting_pool;
-	obj_index[real_object0(30412)].func.obj = teleporting_pool;
-	obj_index[real_object0(30413)].func.obj = teleporting_pool;
-	obj_index[real_object0(30414)].func.obj = teleporting_pool;
-
-	/*
-	   The Domain of Lost Souls
-	 */
-	obj_index[real_object0(36884)].func.obj = kvasir_dagger;
-
-	/*
-	   Plane of Fire One
-	 */
-	obj_index[real_object0(87612)].func.obj = doombringer;
-	// obj_index[real_object0(25030)].func.obj = flamberge;
-	obj_index[real_object0(430)].func.obj = flamberge;
-	obj_index[real_object0(139037)].func.obj = ring_elemental_control;
-
-	/*
-	   Plane of Fire Two
-	 */
-	obj_index[real_object0(139004)].func.obj = holy_mace;
-	obj_index[real_object0(139002)].func.obj = staff_of_blue_flames;
-	obj_index[real_object0(30)].func.obj = staff_of_power;
-	obj_index[real_object0(40409)].func.obj = reliance_pegasus;
-
-	/*
-	   Plane of Fire Three
-	 */
-	obj_index[real_object0(25404)].func.obj = magic_pool;
-
-	/*
-	   Plane of Air
-	 */
-	obj_index[real_object0(24404)].func.obj = magic_pool;
-	obj_index[real_object0(24406)].func.obj = lightning;
-	/*
-	  Plane of Air Two
-	*/
-	obj_index[real_object0(131616)].func.obj = dagger_of_wind;
-
-	/*
-	   Plane of Water
-	 */
-	obj_index[real_object0(23204)].func.obj = magic_pool;
-	obj_index[real_object0(23206)].func.obj = orb_of_the_sea;
-
-	/*
-	   Plane of Earth
-	 */
-	obj_index[real_object0(23804)].func.obj = magic_pool;
-	obj_index[real_object0(23805)].func.obj = zion_mace_of_earth;
-
-	/*
-	   Etherial Plane
-	 */
-	obj_index[real_object0(41203)].func.obj = unholy_avenger_bloodlust;
-
-	/*
-	   Plane of Hell One
-	 */
-	obj_index[real_object0(51005)].func.obj = holy_weapon;
-	obj_index[real_object0(51006)].func.obj = tiamat_stinger;
-
-	/*
-	   Plane of Hell Two
-	 */
-	obj_index[real_object0(51401)].func.obj = dispator;
-
-	/*
-	   Swamp Part Two
-	 */
-	obj_index[real_object0(26014)].func.obj = nightbringer;
-
-	/*
-	   Teka 2
-	 */
-	/*  obj_index[real_object0(75561)].func.obj = flaming_mace_ruzdo;*/
-
-	/*
-	   Moonshae Island I
-	 */
-	//  obj_index[real_object0(26233)].func.obj = cymric_hugh;
-
-	/*
-	   Temple Zone
-	 */
-	//  obj_index[real_object0(18302)].func.obj = illyns_sword;
-
-	/*
-	   Myrloch Vale
-	 */
-	obj_index[real_object0(26413)].func.obj = item_switch;
-	obj_index[real_object0(26414)].func.obj = item_switch;
-	obj_index[real_object0(26415)].func.obj = item_switch;
-	obj_index[real_object0(26416)].func.obj = item_switch;
-
-	/*
-	   undermountain
-	 */
-
-	obj_index[real_object0(92090)].func.obj = undead_trident;
-	obj_index[real_object0(92080)].func.obj = generic_drow_eq;
-	obj_index[real_object0(92081)].func.obj = generic_drow_eq;
-	obj_index[real_object0(92082)].func.obj = generic_drow_eq;
-	obj_index[real_object0(92086)].func.obj = generic_drow_eq;
-	obj_index[real_object0(92065)].func.obj = iron_flindbar;
-	obj_index[real_object0(92020)].func.obj = generic_parry_proc;
-	obj_index[real_object0(82500)].func.obj = generic_parry_proc;
-	obj_index[real_object0(83605)].func.obj = generic_parry_proc;
-	obj_index[real_object0(18000)].func.obj = generic_riposte_proc;
-	obj_index[real_object0(92121)].func.obj = flame_of_north;
-
-	/*
-	   Menden-on-the-Deep
-	 */
-	obj_index[real_object0(88825)].func.obj = menden_figurine;
-	obj_index[real_object0(88830)].func.obj = llyms_altar;
-	obj_index[real_object0(88821)].func.obj = magic_pool;
-	obj_index[real_object0(88827)].func.obj = magic_pool;
-	/*
-	   The Fog-Enshrouded Woods
-	 */
-	obj_index[real_object0(90004)].func.obj = fw_ruby_monocle;
-	obj_index[real_object0(90010)].func.obj = item_switch;
-
-	/*
-	   Sevenoaks Stuf
-	 */
-	obj_index[real_object0(38649)].func.obj = sevenoaks_longsword;
-	//  obj_index[real_object0(38647)].func.obj = sevenoaks_mace;
-
-	obj_index[real_object0(67262)].func.obj = mace_of_sea;
-	//  obj_index[real_object0(67258)].func.obj = icicle_saber;
-	obj_index[real_object0(67237)].func.obj = serpent_blade;
-	obj_index[real_object0(67242)].func.obj = lich_spine;
-	obj_index[real_object0(67276)].func.obj = sword_whirlwinds;
-
-	/*
-	   newbiezone
-	 */
-	obj_index[real_object0(22803)].func.obj = stream_of_life;
-	obj_index[real_object0(22800)].func.obj = newbie_sign1;
-	obj_index[real_object0(22801)].func.obj = newbie_sign2;
-	obj_index[real_object0(VOBJ_CHAOS_STREAM)].func.obj = stream_of_life;
-	obj_index[real_object0(91200)].func.obj = newbie_sign1;
-	obj_index[real_object0(91201)].func.obj = newbie_sign2;
-
-	// god toys
-	obj_index[real_object0(174)].func.obj = vareena_statue;
-	obj_index[real_object0(352)].func.obj = doom_blade_Proc;
-	obj_index[real_object0(426)].func.obj = doom_blade_Proc;
-
-	/* Winterhaven */
-
-	obj_index[real_object0(55008)].func.obj = storage_locker_obj_hook;
-	obj_index[real_object0(55210)].func.obj = dagger_ra;
-	obj_index[real_object0(55205)].func.obj = illithid_axe;
-	obj_index[real_object0(55211)].func.obj = deathseeker_mace;
-	obj_index[real_object0(55301)].func.obj = demon_slayer;
-	obj_index[real_object0(55277)].func.obj = snowogre_warhammer;
-	obj_index[real_object0(55306)].func.obj = volo_longsword;
-	obj_index[real_object0(55304)].func.obj = blur_shortsword;
-	obj_index[real_object0(55322)].func.obj = buckler_saints;
-	obj_index[real_object0(55309)].func.obj = helmet_vampires;
-	obj_index[real_object0(55315)].func.obj = storm_legplates;
-	obj_index[real_object0(55280)].func.obj = gauntlets_legend;
-	obj_index[real_object0(55377)].func.obj = gladius_backstabber;
-	//  obj_index[real_object0(55311)].func.obj = boots_abyss;
-	//  obj_index[real_object0(55307)].func.obj = platemail_fame;
-	//  obj_index[real_object0(55338)].func.obj = poseidon_trident;
-	//  obj_index[real_object0(55341)].func.obj = sword_random;
-	obj_index[real_object0(55362)].func.obj = attribute_scroll;
-	obj_index[real_object0(97923)].func.obj = elemental_wand;
-	obj_index[real_object0(55361)].func.obj = earring_powers;
-	obj_index[real_object0(83698)].func.obj = earring_powers;
-	obj_index[real_object0(55363)].func.obj = lorekeeper_scroll;
-	obj_index[real_object0(55500)]
-		.func.obj = obj_index[real_object0(55501)]
-				    .func.obj = obj_index[real_object0(55502)]
-							.func.obj = obj_index[real_object0(55503)]
-									    .func.obj =
-		obj_index[real_object0(55504)]
-			.func.obj = obj_index[real_object0(55505)]
-					    .func.obj = obj_index[real_object0(55506)]
-								.func
-								.obj = obj_index[real_object0(55507)]
-									       .func.obj =
-			obj_index[real_object0(55508)]
-				.func.obj = obj_index[real_object0(55509)]
-						    .func
-						    .obj = obj_index[real_object0(55510)].func.obj =
-				obj_index[real_object0(55511)]
-					.func.obj = obj_index[real_object0(55512)]
-							    .func.obj =
-					obj_index[real_object0(55513)]
-						.func.obj = obj_index[real_object0(55514)].func.obj =
-						obj_index[real_object0(55515)]
-							.func.obj = obj_index[real_object0(55516)]
-									    .func.obj =
-							obj_index[real_object0(55517)]
-								.func.obj = obj_index[real_object0(
-											      55518)]
-										    .func.obj =
-								obj_index[real_object0(55519)]
-									.func.obj =
-									obj_index[real_object0(
-											  55520)]
-										.func.obj =
-										wh_corpse_decay;
-	obj_index[real_object0(53661)].func.obj = damnation_staff;
-	obj_index[real_object0(53662)].func.obj = nuke_damnation;
-	obj_index[real_object0(53663)].func.obj = nuke_damnation;
-	obj_index[real_object0(97932)].func.obj = collar_frost;
-	obj_index[real_object0(97931)].func.obj = collar_flames;
-	obj_index[real_object0(VOBJ_WH_DRAGONHEART_TIAMAT)].func.obj = dragon_heart_decay;
-	obj_index[real_object0(VOBJ_WH_DRAGONHEART_BAHAMUT)].func.obj = dragon_heart_decay;
-	obj_index[real_object0(VOBJ_WH_DRAGONHEART_DRAGONNIA)].func.obj = dragon_heart_decay;
-	obj_index[real_object0(55420)].func.obj = lancer_gift;
-	obj_index[real_object0(55077)].func.obj = splinter;
-
-	/* Same problem as with the func.mob, no dice! */
-
-	/* Harpy */
-	// obj_index[real_object0(31100)].func.obj = harpy_gate;
-
-	/* Zion Procs */
-	obj_index[real_object0(19638)].func.obj = zion_shield_absorb_proc;
-	obj_index[real_object0(38761)].func.obj = generic_shield_block_proc;
-	obj_index[real_object0(88327)].func.obj = zion_fnf;
-	obj_index[real_object0(16242)].func.obj = zion_light_dark;
-
-	/* Barovia Procs */
-	obj_index[real_object0(58825)].func.obj = barovia_undead_necklace;
-	obj_index[real_object0(58424)].func.obj = artifact_shadow_shield;
-
-	/* Ravenloft Procs */
-	obj_index[real_object0(58413)].func.obj = ravenloft_bell;
 	mob_index[real_mobile0(58387)].func.mob = ravenloft_vistani_shout;
-	// mob_index[real_mobile0(58383)].func.mob = strahd_charm;
-	obj_index[real_object0(58400)].func.obj = shimmer_shortsword;
-
-	/* Basin Wastes Procs */
 	mob_index[real_mobile0(34014)].func.mob = block_dir;
-
-	/* Temple of Earth Procs */
 	mob_index[real_mobile0(43576)].func.mob = eligoth_rift_spawn;
-	obj_index[real_object0(43584)].func.obj = toe_chamber_switch;
-
-	/* Snogres Procs */
 	mob_index[real_mobile0(87704)].func.mob = block_dir;
 	mob_index[real_mobile0(87741)].func.mob = block_dir;
 	mob_index[real_mobile0(87743)].func.mob = block_dir;
@@ -1927,34 +1643,11 @@ void assign_objects(void)
 	mob_index[real_mobile0(87734)].func.mob = snogres_flesh_golem;
 	mob_index[real_mobile0(87700)].func.mob = berserker_toss;
 	mob_index[real_mobile0(87724)].func.mob = remo_burn;
-	obj_index[real_object0(87712)].func.obj = hellfire_axe;
-	obj_index[real_object0(87724)].func.obj = illithid_whip;
-	obj_index[real_object0(87701)].func.obj = skull_leggings;
-	obj_index[real_object0(87737)].func.obj = flesh_golem_repop;
-
-	/* Morgs Proc */
-	// mob_index[real_mobile0(87880)].func.mob = morgs_protect;
-
-	/* Keleks Proc */
-	obj_index[real_object0(87950)].func.obj = deliverer_hammer;
-
-	/* New Caer Tannad */
 	mob_index[real_mobile0(78476)].func.mob = caertannad_summon;
-
-	/* Ruins of Tharn */
 	mob_index[real_mobile0(5503)].func.mob = undead_howl;
-
-	/* Dungeon */
-	obj_index[real_object0(93007)].func.obj = blue_sword_armor;
-
-	/* Shadow Forest */
 	mob_index[real_mobile0(6307)].func.mob = mist_protect;
-
-	/* Quietus Quay */
 	mob_index[real_mobile0(1709)].func.mob = world_quest;
 	world[real_room0(1719)].funct = ship_shop_proc;
-
-	/* Charcoal Palace */
 	mob_index[real_mobile0(88316)].func.mob = kossuth;
 	mob_index[real_mobile0(88319)].func.mob = fruaack_shout;
 	mob_index[real_mobile0(88301)].func.mob = charcoal_guard;
@@ -1978,44 +1671,28 @@ void assign_objects(void)
 void assign_rooms(void)
 {
 	int x;
-
+	assign_object_proc_bindings(object_proc_binding_stage::rooms);
 	for (x = 32907; x <= 32909; x++)
 	{
 		world[real_room0(x)].funct = shaboath_alternation_tower;
 	}
-
 	for (x = 32910; x <= 32911; x++)
 	{
 		world[real_room0(x)].funct = shaboath_necromancy_tower;
 	}
-
 	for (x = 32901; x <= 32902; x++)
 	{
 		world[real_room0(x)].funct = shaboath_enchantment_tower;
 	}
-
 	world[real_room0(1134)].funct = cage_room1;
 	world[real_room0(42)].funct = cage_room2;
 	world[real_room0(1201)].funct = player_council_room;
-
-	// testing for multiclass
 	world[real_room0(17)].funct = multiclass_proc;
-	// world[real_room0(6801)].funct = multiclass_proc;
 	world[real_room0(52904)].funct = multiclass_proc;
-
-	// Dwarf and duergar berserkers
-	// Gilaxi's Hidden Chamber in Torgs
-	// world[real_room0(29181)].funct = berserker_proc_room;
-
-	/* squid arena */
 	for (x = 11200; x <= 11217; x++)
 	{
 		world[real_room0(x)].funct = squid_arena;
 	}
-
-	// world[real_room0(VROOM_TIAMAT_HOME)].funct = TiamatThrone;
-
-	/* inns */
 	world[real_room0(18729)].funct = inn;
 	world[real_room0(35264)].funct = inn;
 	world[real_room0(37715)].funct = inn;
@@ -2038,70 +1715,35 @@ void assign_rooms(void)
 	world[real_room0(10857)].funct = inn;
 	world[real_room0(1736)].funct = inn;
 	world[real_room0(139078)].funct = inn;
-
-	/* Aracdrathos */
 	world[real_room0(36564)].funct = inn;
 	world[real_room0(36567)].funct = pet_shops;
-
 	world[real_room0(74916)].funct = stat_shops;
 	world[real_room0(28281)].funct = stat_shops;
-
-	/* minizones */
 	world[real_room0(5783)].funct = pet_shops;
-	obj_index[real_object0(5805)].func.obj = sword_named_magik;
-	/*
-	  mob_index[real_mobile0(5808)].func.mob = plant_attacks_poison;
-	  mob_index[real_mobile0(5809)].func.mob = plant_attacks_paralysis;
-	*/
 	world[real_room0(37716)].funct = inn;
 	world[real_room0(14362)].funct = inn;
-
 	world[real_room0(45006)].funct = inn;
 	world[real_room0(45036)].funct = pet_shops;
 	world[real_room0(29280)].funct = pet_shops;
 	world[real_room0(29282)].funct = pet_shops;
-	obj_index[real_object0(29236)].func.obj = newbie_portal;
 	world[real_room0(91480)].funct = pet_shops;
 	world[real_room0(91482)].funct = pet_shops;
-	obj_index[real_object0(91436)].func.obj = newbie_portal;
-	/* centaur fort */
 	world[real_room0(5300)].funct = inn;
 	mob_index[real_mobile0(5347)].func.mob = world_quest;
-
-	/* Dragonnia */
 	world[real_room0(6841)].funct = room_of_sanctum;
-
-	/* Vecna */
 	world[real_room0(130079)].funct = vecna_bubble_room;
-
-	/* Ugta */
 	world[real_room0(39313)].funct = inn;
-
-	/* Shady */
 	world[real_room0(97757)].funct = pet_shops;
 	world[real_room0(76241)].funct = pet_shops;
-
 	world[real_room0(97663)].funct = inn;
-
-	/* thri town */
 	world[real_room0(67710)].funct = inn;
-
-	/* Khildarak */
-	/*world[real_room0(17075)].funct = duergar_guild;
-	world[real_room0(17223)].funct = duergar_guild;
-	world[real_room0(17554)].funct = duergar_guild;
-	world[real_room0(17720)].funct = duergar_guild;
-	world[real_room0(17724)].funct = duergar_guild;*/
 	world[real_room0(17302)].funct = pet_shops;
 	world[real_room0(17591)].funct = pet_shops;
 	world[real_room0(17087)].funct = inn;
-
-	/* tharn */
 	world[real_room0(132575)].funct = inn;
 	world[real_room0(132614)].funct = pet_shops;
 	world[real_room0(132868)].funct = pet_shops;
 	world[real_room0(132743)].funct = pet_shops;
-	// world[real_room0(6683)].funct = ship_shop_proc;
 	world[real_room0(83786)].funct = ship_shop_proc;
 	world[real_room0(88846)].funct = ship_shop_proc;
 	world[real_room0(43198)].funct = ship_shop_proc;
@@ -2112,57 +1754,35 @@ void assign_rooms(void)
 	world[real_room0(584171)].funct = ship_shop_proc;
 	world[real_room0(55410)].funct = ship_shop_proc;
 	world[real_room0(133051)].funct = ship_shop_proc;
-
-	world[real_room0(77)].funct = crew_shop_proc; // whole-list room
-	world[real_room0(1734)].funct = crew_shop_proc; // Quietus
-	world[real_room0(9704)].funct = crew_shop_proc; // Sarmiz
-	world[real_room0(43220)].funct = crew_shop_proc; // WH Harbor
-	world[real_room0(43221)].funct = crew_shop_proc; // Thur'Gurdax
-	world[real_room0(43222)].funct = crew_shop_proc; // Fenaline
-	world[real_room0(28197)].funct = crew_shop_proc; // Vesprin
-	world[real_room0(22481)].funct = crew_shop_proc; // Stormport
-	world[real_room0(66735)].funct = crew_shop_proc; // Torrhan
-	world[real_room0(82641)].funct = crew_shop_proc; // Myrabolus
-	world[real_room0(54240)].funct = crew_shop_proc; // tent at Fiord
-	world[real_room0(38107)].funct = crew_shop_proc; // Boyard
-	world[real_room0(49051)].funct = crew_shop_proc; // Venan'Trut (market inn)
-	world[real_room0(81021)].funct = crew_shop_proc; // Ceothia
-	world[real_room0(76859)].funct = crew_shop_proc; // Jade shipguild
-	world[real_room0(133075)].funct = crew_shop_proc; // Tharnadia
-	world[real_room0(55418)].funct = crew_shop_proc; // Winterhaven
-	// world[real_room0()].funct = crew_shop_proc;  // TODO: Stronghold
-	world[real_room0(22648)].funct = crew_shop_proc; // Stronghold -temporary room
-
-	// Fiord on west side of GC.
+	world[real_room0(77)].funct = crew_shop_proc;
+	world[real_room0(1734)].funct = crew_shop_proc;
+	world[real_room0(9704)].funct = crew_shop_proc;
+	world[real_room0(43220)].funct = crew_shop_proc;
+	world[real_room0(43221)].funct = crew_shop_proc;
+	world[real_room0(43222)].funct = crew_shop_proc;
+	world[real_room0(28197)].funct = crew_shop_proc;
+	world[real_room0(22481)].funct = crew_shop_proc;
+	world[real_room0(66735)].funct = crew_shop_proc;
+	world[real_room0(82641)].funct = crew_shop_proc;
+	world[real_room0(54240)].funct = crew_shop_proc;
+	world[real_room0(38107)].funct = crew_shop_proc;
+	world[real_room0(49051)].funct = crew_shop_proc;
+	world[real_room0(81021)].funct = crew_shop_proc;
+	world[real_room0(76859)].funct = crew_shop_proc;
+	world[real_room0(133075)].funct = crew_shop_proc;
+	world[real_room0(55418)].funct = crew_shop_proc;
+	world[real_room0(22648)].funct = crew_shop_proc;
 	world[real_room0(559633)].funct = ship_shop_proc;
-
-	/* Myrabolis */
 	world[real_room0(82669)].funct = ship_shop_proc;
-
-	/* Venan */
 	world[real_room0(49090)].funct = ship_shop_proc;
-
-	/* Bloodstone */
 	world[real_room0(74271)].funct = inn;
-
-	/* Minotaur hometown NAX */
 	world[real_room0(37716)].funct = inn;
-
-	/* Charing */
 	world[real_room0(45132)].funct = dump;
 	world[real_room0(45150)].funct = pet_shops;
-
-	/* Sarmiz'Duul */
 	world[real_room0(9738)].funct = inn;
 	world[real_room0(9967)].funct = ship_shop_proc;
-
-	/* Torrhan */
 	world[real_room0(66689)].funct = ship_shop_proc;
-
-	/* Jade? */
 	world[real_room0(76659)].funct = ship_shop_proc;
-
-	/* Players Guild */
 	world[real_room0(30504)].funct = inn;
 	world[real_room0(29701)].funct = inn;
 	world[real_room0(29305)].funct = inn;
@@ -2173,22 +1793,9 @@ void assign_rooms(void)
 	world[real_room0(91505)].funct = inn;
 	world[real_room0(91402)].funct = inn;
 	world[real_room0(29403)].funct = inn;
-
-	/* clav's tundra zone */
-
 	world[real_room0(13714)].funct = inn;
-
-	/*
-	   Morning Star
-	 */
-	/*
-	   Ghore
-	 */
 	world[real_room0(11923)].funct = dump;
 	world[real_room0(11901)].funct = inn;
-	/*
-	   misc
-	 */
 	world[real_room0(36334)].funct = inn;
 	world[real_room0(6535)].funct = inn;
 	world[real_room0(1444)].funct = inn;
@@ -2196,15 +1803,7 @@ void assign_rooms(void)
 	world[real_room0(15264)].funct = inn;
 	world[real_room0(95569)].funct = inn;
 	world[real_room0(96537)].funct = inn;
-
-	/*
-	   Lava Tubes One
-	 */
 	world[real_room0(12158)].funct = automaton_trapdoor;
-
-	/*
-	   Twin Towers - Forest
-	 */
 	world[real_room0(13553)].funct = world[real_room0(13555)].funct =
 		world[real_room0(13556)].funct = world[real_room0(13557)].funct =
 			world[real_room0(13558)].funct = world[real_room0(13564)].funct =
@@ -2214,32 +1813,15 @@ void assign_rooms(void)
 							world[real_room0(13570)].funct =
 								world[real_room0(13571)].funct =
 									gardener_block;
-
-	/* Halfling HT - Woodseer */
 	world[real_room0(16558)].funct = inn;
 	world[real_room0(16886)].funct = pet_shops;
-
-	/*
-	   Dwarven Mines
-	 */
-	//  world[real_room0(45118)].funct = GlyphOfWarding;  // not anymore, now it's charing
-
-	/*
-	   Ashrumite
-	 */
 	world[real_room0(66054)].funct = inn;
 	world[real_room0(66080)].funct = dump;
 	world[real_room0(66116)].funct = pet_shops;
-
-	/* Fog Enshrouded Woods */
 	world[real_room0(90107)].funct = fw_warning_room;
 	world[real_room0(90112)].funct = fw_warning_room;
 	world[real_room0(90114)].funct = fw_warning_room;
-
-	/* goblin hometown */
 	world[real_room0(70175)].funct = inn;
-
-	/* ADD THIS FOR HEAVEN */
 	world[real_room0(NEUTRAL_HEAVEN_ROOM)].funct = mortal_heaven;
 	world[real_room0(EVIL_HEAVEN_ROOM)].funct = mortal_heaven;
 	world[real_room0(GOOD_HEAVEN_ROOM)].funct = mortal_heaven;
@@ -2251,41 +1833,15 @@ void assign_rooms(void)
 	mob_index[real_mobile0(57)].func.mob = epic_familiar;
 	mob_index[real_mobile0(58)].func.mob = epic_familiar;
 	mob_index[real_mobile0(59)].func.mob = epic_familiar;
-
-	/* Tradeskills */
 	mob_index[real_mobile0(132674)].func.mob = learn_tradeskill;
 	mob_index[real_mobile0(17264)].func.mob = learn_tradeskill;
 	mob_index[real_mobile0(400000)].func.mob = epic_store;
 	mob_index[real_mobile0(400001)].func.mob = pvp_store;
 	mob_index[real_mobile0(132675)].func.mob = assoc_founder;
 	mob_index[real_mobile0(17265)].func.mob = assoc_founder;
-
-	/* Bronze Citadel */
-	obj_index[real_object0(32486)].func.obj = bel_sword;
-
-	/* Varathorns keep */
-	obj_index[real_object0(99432)].func.obj = zarthos_vampire_slayer;
-
-	/* Domain proc */
-	obj_index[real_object0(36894)].func.obj = critical_attack_proc;
-
-	/* Lost Temple of Tikitzopl */
-	obj_index[real_object0(44165)].func.obj = unmulti_altar;
-
-	/* Trakkia */
 	world[real_room0(57068)].funct = pet_shops;
-
-	/* Juiblex */
 	mob_index[real_mobile0(87542)].func.mob = slime_lake;
 	mob_index[real_mobile0(87543)].func.mob = juiblex_one;
-
-	obj_index[real_object0(87546)].func.obj = mask_of_wildmagic;
-	// obj_index[real_object0(87600)].func.obj = ebb_vambraces;
-	obj_index[real_object0(87601)].func.obj = flow_amulet;
-	obj_index[real_object0(87611)].func.obj = juiblex_grid_mob_generator;
-	obj_index[real_object0(67274)].func.obj = zion_netheril;
-
-	/* Fortress of Dreams */
 	mob_index[real_mobile0(32604)].func.mob = block_dir;
 	mob_index[real_mobile0(32613)].func.mob = block_dir;
 	mob_index[real_mobile0(32624)].func.mob = eth2_forest_animal;
@@ -2296,30 +1852,10 @@ void assign_rooms(void)
 	mob_index[real_mobile0(32628)].func.mob = block_dir;
 	mob_index[real_mobile0(32629)].func.mob = block_dir;
 	mob_index[real_mobile0(32637)].func.mob = eth2_aramus;
-
-	obj_index[real_object0(32615)].func.obj = eth2_tree_obj;
-	obj_index[real_object0(32614)].func.obj = eth2_tree_obj;
-	obj_index[real_object0(32619)].func.obj = eth2_godsfury;
-	obj_index[real_object0(32621)].func.obj = eth2_aramus_crown;
-
-	// Lucrot procs
-	obj_index[real_object0(424)].func.obj = lucrot_mindstone;
-
-	// Alatorin
 	mob_index[real_mobile0(83414)].func.mob = rentacleric;
-	obj_index[real_object0(120051)].func.obj = wh_corpse_decay;
 	mob_index[real_mobile0(120051)].func.mob = wh_corpse_to_object;
 	mob_index[real_mobile0(VMOB_ALATORIN_STEELGRIP)].func.mob = smelter;
-
-	// Gellz Special Procs added 2015 (gellz)
-	obj_index[real_object0(55433)].func.obj = magic_deck;
-	obj_index[real_object0(1203)].func.obj = gellz_test_obj_procs;
-
-	// NPC Ship Crews
 	assign_ship_crew_funcs();
-
-	// Cardgames
-	obj_index[real_object0(55434)].func.obj = blackjack_table;
 }
 
 /*
