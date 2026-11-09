@@ -229,7 +229,9 @@ def run(binary, driver):
             process.send_signal(signal.SIGUSR1)
             for client in clients:
                 client.expect("Copyover FAILED!", timeout=90)
-            assert process.poll() is None and copyover.exists()
+            assert process.poll() is None
+            # Exec rollback removes its sealed recovery state before resuming.
+            assert not copyover.exists() and not copyover.with_suffix(".dat.recovering").exists()
             assert "copyover: execl failed:" in journey.runtime_logs(runtime)
             for client, (_, name) in zip(clients, ACCOUNTS):
                 command(client, "look", "The Regression Arena")
