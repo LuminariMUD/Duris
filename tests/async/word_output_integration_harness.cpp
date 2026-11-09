@@ -656,6 +656,8 @@ static size_t visible_terminal_bytes(const std::string &markup)
 	return bytes;
 }
 
+#include "output_links_checks.inc"
+
 int main()
 {
 #ifdef COLORIZATION_BENCHMARK
@@ -663,6 +665,7 @@ int main()
 	return 0;
 #endif
 	privacy_delivery_matrix();
+	output_links_matrix();
 	privacy_toggle_matrix();
 	toggle_matrix();
 	chat_presentation_matrix();
