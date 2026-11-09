@@ -899,9 +899,13 @@ Build indexes completely or fail/report partial construction rather than silentl
 skipping allocation failures.
 
 Keep indexes boot-scoped for now. Config explicitly requires restart; do not add
-hot reload or a general invalidation framework without a real caller. If a future
-change modifies valuation context at runtime, rebuild all dependent indexes and
-quest profiles together before publishing it.
+hot reload or a general invalidation framework without a real caller. Existing
+proc-library attachment already mutates the prototype callback during object
+construction and through the staff add command (`specs.library.c`); this is not
+only a possible future change. Resolve its incumbent/instance valuation semantics
+under F09/F11, then prove that boot indexes and quest profiles use the same stable
+context. Any supported later context change must update all dependent consumers
+together before publishing it.
 
 **Acceptance:** duplicate applies, equal-score ties, collisions, empty ranges,
 allocation failure, and candidate-load failures; same chosen result for existing
