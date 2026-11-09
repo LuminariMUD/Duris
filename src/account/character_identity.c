@@ -14,9 +14,12 @@
 
 #include "core/prototypes.h"
 
+#include <unordered_map>
+
 extern P_char character_list;
 
 static uint64_t next_runtime_id = 0;
+static std::unordered_map<uint64_t, P_char> live_characters;
 
 uint64_t allocate_character_runtime_id()
 {
@@ -29,12 +32,20 @@ uint64_t allocate_character_runtime_id()
 
 P_char find_character_by_runtime_id(uint64_t runtime_id)
 {
-	P_char character;
+	const auto found = live_characters.find(runtime_id);
 
-	if (!runtime_id)
-		return NULL;
-	for (character = character_list; character; character = character->next)
-		if (character->runtime_id == runtime_id)
-			return character;
-	return NULL;
+	return found == live_characters.end() ? NULL : found->second;
+}
+
+void character_list_add(P_char character)
+{
+	if (character->runtime_id)
+		live_characters[character->runtime_id] = character;
+	character->next = character_list;
+	character_list = character;
+}
+
+void forget_live_character(P_char character)
+{
+	live_characters.erase(character->runtime_id);
 }

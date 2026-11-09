@@ -2675,15 +2675,6 @@ void die(P_char ch, P_char killer)
 		enhance_on_eligible_npc_death(ch, killer);
 	}
 
-	/* This is where we were saving the newbies from being killed by high lvls.
-	 if( (IS_PC(ch)) && !IS_HARDCORE(ch) && ((GET_LEVEL(killer) - GET_LEVEL(ch)) > 15)
-	   && (IS_PC(killer) || (IS_NPC(killer) && IS_PC_PET(killer))) && (equipped_value(ch) < 250) )
-	  {
-	    newbie_reincarnate(ch);
-	    return;
-	  }
-	 */
-
 	// For innate resurrection which I've never heard of.
 	if (check_reincarnate(ch))
 		return;
