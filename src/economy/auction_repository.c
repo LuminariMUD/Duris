@@ -89,6 +89,53 @@ std::string operation_hex(const critical_operation_id &operation_id)
 	return result;
 }
 
+bool lock_wallet(MYSQL *connection, const auction_command_payload &payload, currency_vector *wallet,
+		 unsigned int *result_code)
+{
+	if (!execute(
+		    connection,
+		    "SELECT copper,silver,gold,platinum,wallet_revision FROM player_data WHERE pid=" +
+			    std::to_string(payload.actor_pid) + " AND account_name='" +
+			    escape(connection, payload.account_name.data(),
+				   strlen(payload.account_name.data())) +
+			    "' AND racewar=" + std::to_string(payload.racewar) + " FOR UPDATE"))
+		return false;
+	MYSQL_RES *query = mysql_store_result(connection);
+	MYSQL_ROW row = query ? mysql_fetch_row(query) : nullptr;
+	uint64_t values[5] = {};
+	bool valid = row != nullptr;
+	for (size_t index = 0; valid && index < 5; ++index)
+		valid = parse_u64(row[index], &values[index]) &&
+			(index == 4 || values[index] <= INT_MAX);
+	if (query)
+		mysql_free_result(query);
+	if (!valid || values[4] != payload.expected_wallet_revision || values[4] == UINT64_MAX)
+	{
+		*result_code = ESTALE;
+		return true;
+	}
+	for (size_t index = 0; index < 4; ++index)
+		wallet->amount[index] = static_cast<int64_t>(values[index]);
+	return true;
+}
+
+bool write_wallet(MYSQL *connection, const auction_command_payload &payload,
+		  const currency_vector &wallet, auction_command_result *result)
+{
+	if (!execute(connection,
+		     "UPDATE player_data SET copper=" + std::to_string(wallet.amount[0]) +
+			     ",silver=" + std::to_string(wallet.amount[1]) +
+			     ",gold=" + std::to_string(wallet.amount[2]) +
+			     ",platinum=" + std::to_string(wallet.amount[3]) +
+			     ",wallet_revision=wallet_revision+1 WHERE pid=" +
+			     std::to_string(payload.actor_pid)) ||
+	    mysql_affected_rows(connection) != 1)
+		return false;
+	result->wallet = wallet;
+	result->wallet_revision = payload.expected_wallet_revision + 1;
+	return true;
+}
+
 bool lock_auction(MYSQL *connection, uint32_t auction_id, auction_state *state,
 		  unsigned int *result_code)
 {
@@ -406,8 +453,31 @@ bool auction_repository_execute(MYSQL *connection, const critical_command &comma
 	result->action = payload.action;
 	*result_code = 0;
 	*mutation_applied = false;
-	// Listing/bid escrow is live: completion returns what wallet_value_delta does not
-	// keep. Prepared money claims credit the SQL purse with pickup consumption below.
+	const bool paid_receipt =
+		command.payload_version >= 2 &&
+		(payload.action == auction_action::list || payload.action == auction_action::bid);
+	currency_vector before_payment = {};
+	if (paid_receipt)
+	{
+		const int64_t reserved = payload.action == auction_action::list ?
+						 payload.listing_fee :
+						 payload.value;
+		if (reserved < 0 || reserved > INT_MAX)
+		{
+			*result_code = EINVAL;
+			return true;
+		}
+		if (!lock_wallet(connection, payload, &before_payment, result_code))
+			return false;
+		if (*result_code)
+			return true;
+		currency_vector after;
+		if (!currency_wallet_after_value(before_payment, -reserved, &after))
+		{
+			*result_code = ENOSPC;
+			return true;
+		}
+	}
 	if (payload.action == auction_action::list)
 	{
 		if (payload.listing_fee < 0 || payload.start_price < 0 ||
@@ -604,50 +674,18 @@ bool auction_repository_execute(MYSQL *connection, const critical_command &comma
 		{
 			// New claims credit the purse with the pickup receipt in this transaction.
 			// A lost reply or departed actor reloads the credited wallet, not an empty claim.
-			if (!execute(
-				    connection,
-				    "SELECT copper,silver,gold,platinum,wallet_revision FROM player_data WHERE pid=" +
-					    std::to_string(payload.actor_pid) +
-					    " AND account_name='" +
-					    escape(connection, payload.account_name.data(),
-						   strlen(payload.account_name.data())) +
-					    "' AND racewar=" + std::to_string(payload.racewar) +
-					    " FOR UPDATE"))
-				return false;
-			query = mysql_store_result(connection);
-			row = query ? mysql_fetch_row(query) : nullptr;
-			uint64_t values[5] = {};
-			bool valid = row != nullptr;
-			for (size_t index = 0; valid && index < 5; ++index)
-				valid = parse_u64(row[index], &values[index]) &&
-					(index == 4 || values[index] <= INT_MAX);
-			if (query)
-				mysql_free_result(query);
-			if (!valid || values[4] != payload.expected_wallet_revision)
-			{
-				*result_code = ESTALE;
-				return true;
-			}
 			currency_vector before = {}, after = {};
-			for (size_t index = 0; index < 4; ++index)
-				before.amount[index] = static_cast<int64_t>(values[index]);
+			if (!lock_wallet(connection, payload, &before, result_code))
+				return false;
+			if (*result_code)
+				return true;
 			if (!currency_wallet_after_value(before, claimed, &after))
 			{
 				*result_code = ENOSPC;
 				return true;
 			}
-			if (!execute(connection,
-				     "UPDATE player_data SET copper=" +
-					     std::to_string(after.amount[0]) +
-					     ",silver=" + std::to_string(after.amount[1]) +
-					     ",gold=" + std::to_string(after.amount[2]) +
-					     ",platinum=" + std::to_string(after.amount[3]) +
-					     ",wallet_revision=wallet_revision+1 WHERE pid=" +
-					     std::to_string(payload.actor_pid)) ||
-			    mysql_affected_rows(connection) != 1)
+			if (!write_wallet(connection, payload, after, result))
 				return false;
-			result->wallet = after;
-			result->wallet_revision = values[4] + 1;
 		}
 		if (!execute(connection, "UPDATE auction_money_pickups SET money=money-" +
 						 std::to_string(claimed) +
@@ -725,6 +763,18 @@ bool auction_repository_execute(MYSQL *connection, const critical_command &comma
 	{
 		*result_code = EINVAL;
 		return true;
+	}
+	if (paid_receipt)
+	{
+		currency_vector after;
+		if (!currency_wallet_after_value(before_payment, result->wallet_value_delta,
+						 &after))
+		{
+			errno = ENOSPC;
+			return false;
+		}
+		if (!write_wallet(connection, payload, after, result))
+			return false;
 	}
 	if (!write_auction_ledger(connection, command, payload, *result))
 		return false;

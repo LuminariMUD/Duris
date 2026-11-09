@@ -636,6 +636,7 @@ bool auction_fill_actor(P_char ch, auction_command_payload *payload)
 			       GET_NAME(ch)))
 		return false;
 	payload->actor_pid = static_cast<uint32_t>(GET_PID(ch));
+	payload->expected_wallet_revision = ch->only.pc->wallet_revision;
 	payload->racewar = static_cast<uint8_t>(GET_RACEWAR(ch));
 	payload->closing_fee_basis_points = static_cast<uint32_t>(
 		std::max(0.0f, std::min(1.0f, AUCTION_CLOSING_PCT_FEE)) * 10000.0f);
@@ -654,7 +655,7 @@ void auction_list_completed(P_char ch, bool committed, const auction_command_res
 			     ch);
 		return;
 	}
-	// The auction took the listed items out of the inventory at submit.
+	// The committed receipt removed the listed items from the live inventory.
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS |
 							  PLAYER_COMPONENT_EQUIPMENT |
 							  PLAYER_COMPONENT_INVENTORY);
@@ -1314,7 +1315,7 @@ bool auction_bid(P_char ch, char *args)
 	payload.value = bid;
 	if (!auction_fill_actor(ch, &payload))
 		return false;
-	// The bid leaves the wallet until the auction settles it.
+	// Reserve the maximum bid; the receipt debits the actual accepted amount.
 	if (GET_MONEY(ch) < bid)
 	{
 		send_to_char_f(ch, "&+WYou don't have enough money!\r\nYou need: &n%s\r\n",

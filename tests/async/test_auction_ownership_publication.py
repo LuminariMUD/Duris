@@ -43,9 +43,9 @@ bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_t
     size_t) { return true; }
 bool obj_to_char(P_obj, P_char) { return true; }
 P_char character_list = nullptr;
-bool currency_transaction_publish_trade(P_char, int64_t) { std::abort(); }
-void currency_transaction_release_trade(uint32_t) { std::abort(); }
-void player_save_pipeline_release_trade(uint32_t) { std::abort(); }
+bool currency_transaction_publish_trade(P_char, int64_t) { return true; }
+void currency_transaction_release_trade(uint32_t) {}
+void player_save_pipeline_release_trade(uint32_t) {}
 void extract_obj(P_obj, int = 0) {}
 P_obj find_live_object(P_obj expected, uint64_t) { return expected; }
 ''' + declarations + publication + r'''
@@ -67,6 +67,7 @@ static void acknowledge(auction_action action, uint32_t actor, uint64_t player_r
     entry.payload.item_count = 1;
     auction_command_result result = {};
     result.action = action;
+    result.wallet_revision=1;
     result.auction_id = 7;
     result.player_owner_revision = player_revision;
     result.auction_owner_revision = auction_revision;

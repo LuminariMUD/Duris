@@ -20,6 +20,7 @@
 #include "guild/artifact_admission.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/collector_transaction.h"
+#include "economy/auction_transaction.h"
 #include "persistence/persistence_checkpoint.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_codec.h"
@@ -1824,6 +1825,8 @@ bool item_movement_transaction_player_busy(P_char actor)
 {
 	if (!actor || IS_NPC(actor) || GET_PID(actor) <= 0)
 		return false;
+	if (auction_transaction_player_busy(actor))
+		return true;
 	const uint32_t pid = static_cast<uint32_t>(GET_PID(actor));
 	if (creation_grants.find(pid) != creation_grants.end())
 		return true;

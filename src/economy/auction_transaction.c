@@ -45,9 +45,7 @@ struct pending_auction
 	auction_completion_fn completion;
 	bool completion_ready;
 	critical_completion completed;
-	// What the submit took from the wallet: a listing's fee or a bid.
-	int64_t escrow;
-	// A listing's items, taken out of the seller's inventory at submit.
+	// A listing keeps these live sources until its custody receipt commits.
 	std::vector<P_obj> held;
 };
 
@@ -80,9 +78,11 @@ std::string operation_key(const critical_operation_id &operation_id)
 bool publish(std::unordered_map<std::string, pending_auction>::iterator found, P_char character)
 {
 	pending_auction &entry = found->second;
-	const bool money_claim = entry.payload.action == auction_action::claim_money &&
-				 entry.payload.value > 0;
-	if (money_claim && !character)
+	const bool receipt =
+		entry.payload.action == auction_action::list ||
+		entry.payload.action == auction_action::bid ||
+		(entry.payload.action == auction_action::claim_money && entry.payload.value > 0);
+	if (receipt && !character)
 		for (P_char current = character_list; current; current = current->next)
 			if (IS_PC(current) &&
 			    static_cast<uint32_t>(GET_PID(current)) == entry.actor_pid)
@@ -97,44 +97,32 @@ bool publish(std::unordered_map<std::string, pending_auction>::iterator found, P
 				    entry.completed.outcome ==
 					    critical_apply_outcome::already_applied;
 	const bool committed = decoded && durable_commit;
-	// The auction keeps what it charged of the fee or bid the submit took and gives the
-	// rest back, all of it when refused; a money claim brings its money.
-	const int64_t credit = entry.escrow + (committed ? result.wallet_value_delta : 0);
-	if (money_claim)
+	const int64_t delta = committed ? result.wallet_value_delta : 0;
+	if (receipt)
 	{
+		const int64_t requested =
+			entry.payload.action == auction_action::list ? -entry.payload.listing_fee :
+			entry.payload.action == auction_action::bid  ? -entry.payload.value :
+								       entry.payload.value;
 		if (durable_commit &&
-		    (!decoded || result.action != auction_action::claim_money ||
-		     result.wallet_value_delta != entry.payload.value ||
+		    (!decoded || result.action != entry.payload.action ||
+		     (entry.payload.action == auction_action::bid ?
+			      (delta < requested || delta > 0) :
+			      delta != requested) ||
 		     result.wallet_revision != entry.payload.expected_wallet_revision + 1))
 			return false;
-		if (committed && character &&
-		    !currency_transaction_publish_trade(character, entry.payload.value))
+		if (committed && character && !currency_transaction_publish_trade(character, delta))
 			return false;
 		player_save_pipeline_release_trade(entry.actor_pid);
 		currency_transaction_release_trade(entry.actor_pid);
 	}
-	else if (character && credit > 0)
-	{
-		const uint64_t revision = character->only.pc->wallet_revision;
-		if (!currency_transaction_submit_wallet_value(
-			    character, credit,
-			    committed && result.action == auction_action::claim_money ?
-				    currency_reason_type::auction_pickup :
-				    currency_reason_type::refund,
-			    entry.payload.auction_id, critical_source_site::command,
-			    critical_deadline_class::interactive, nullptr, nullptr, 0) ||
-		    character->only.pc->wallet_revision == revision)
-			return false; // Retain the receipt and held items until its credit applies.
-	}
-	// A held item may have been extracted while the listing was in flight.
+	// A listed source may have been extracted while the receipt was in flight.
 	for (size_t index = 0; index < entry.held.size(); ++index)
 		if (P_obj object = find_live_object(entry.held[index],
 						    entry.payload.items[index].item_uid))
 		{
 			if (committed)
 				extract_obj(object);
-			else if (character)
-				obj_to_char(object, character);
 		}
 	if (committed && result.item_count)
 	{
@@ -202,7 +190,8 @@ bool submit(P_char character, const auction_command_payload &payload,
 	    auction_completion_fn completion, critical_source_site source,
 	    critical_deadline_class deadline)
 {
-	if (character && currency_transaction_wallet_busy(character))
+	if ((payload.action == auction_action::claim_money && payload.value <= 0) ||
+	    (character && currency_transaction_wallet_busy(character)))
 		return false;
 	if (pending.size() >= AUCTION_PENDING_MAX ||
 	    (payload.actor_pid && (!character || IS_NPC(character) ||
@@ -213,9 +202,14 @@ bool submit(P_char character, const auction_command_payload &payload,
 	if (!critical_operation_id_generate(&operation_id) ||
 	    !auction_command_build(&command, operation_id, payload, source, deadline))
 		return false;
-	const bool money_claim = payload.action == auction_action::claim_money && payload.value > 0;
+	const bool receipt = payload.action == auction_action::list ||
+			     payload.action == auction_action::bid ||
+			     (payload.action == auction_action::claim_money && payload.value > 0);
+	const int64_t payment = payload.action == auction_action::list ? -payload.listing_fee :
+				payload.action == auction_action::bid  ? -payload.value :
+									 payload.value;
 	player_pending_trade_snapshot claim = {};
-	if (money_claim)
+	if (receipt)
 	{
 		if (payload.expected_wallet_revision != character->only.pc->wallet_revision)
 			return false;
@@ -228,19 +222,12 @@ bool submit(P_char character, const auction_command_payload &payload,
 			return false;
 		claim.operation = operation_id.bytes;
 		SHA256(encoded.data(), encoded.size(), claim.command_hash.data());
-		claim.payment = payload.value;
+		claim.payment = payment;
 		claim.wallet_revision = payload.expected_wallet_revision;
 	}
-	// A listing's fee and a bid leave the wallet now, and the player's save is queued
-	// before the command, so a crash between them loses the money instead of paying it
-	// twice. The completion gives back what the auction did not keep.
-	const int64_t escrow = !payload.actor_pid		      ? 0 :
-			       payload.action == auction_action::list ? payload.listing_fee :
-			       payload.action == auction_action::bid  ? payload.value :
-									0;
-	// A listing's items leave the seller's inventory now too, so no save captured before
-	// the listing commits can claim them back from the auction. The completion extracts
-	// them, or gives them back when the listing is refused.
+	// Keep listed objects in inventory until the receipt is durable. The existing
+	// pending-item command gate prevents their use, and tagged snapshots omit them
+	// only when that same receipt confirms the auction owns them.
 	std::vector<P_obj> held;
 	if (payload.actor_pid && payload.action == auction_action::list)
 		for (size_t index = 0; index < payload.item_count; ++index)
@@ -255,7 +242,6 @@ bool submit(P_char character, const auction_command_payload &payload,
 				  .completion = completion,
 				  .completion_ready = false,
 				  .completed = {},
-				  .escrow = std::max<int64_t>(escrow, 0),
 				  .held = held };
 	const std::string key = operation_key(operation_id);
 	try
@@ -266,9 +252,9 @@ bool submit(P_char character, const auction_command_payload &payload,
 	{
 		return false;
 	}
-	if (money_claim)
+	if (receipt)
 	{
-		if (!currency_transaction_reserve_trade(character, payload.value))
+		if (!currency_transaction_reserve_trade(character, payment))
 		{
 			pending.erase(key);
 			return false;
@@ -280,24 +266,9 @@ bool submit(P_char character, const auction_command_payload &payload,
 			return false;
 		}
 	}
-	if (escrow > 0)
-	{
-		const uint64_t revision = character->only.pc->wallet_revision;
-		if (!currency_transaction_submit_wallet_value(
-			    character, -escrow,
-			    payload.action == auction_action::list ?
-				    currency_reason_type::auction_listing :
-				    currency_reason_type::auction_bid,
-			    payload.auction_id, source, deadline, nullptr, nullptr, 0) ||
-		    character->only.pc->wallet_revision == revision)
-		{
-			pending.erase(key);
-			return false;
-		}
-	}
-	for (P_obj object : held)
-		obj_from_char(object);
-	if (escrow > 0 || !held.empty() || money_claim)
+	// Save the unchanged source and purse first, including recent live earnings.
+	// A refused checkpoint cannot authorize a debit against a stale SQL revision.
+	if (receipt)
 		currency_transaction_save_first(character);
 	const critical_submit_result submitted =
 		critical_command_coordinator_submit(std::move(command));
@@ -307,7 +278,7 @@ bool submit(P_char character, const auction_command_payload &payload,
 		found->second.completion = nullptr; // Refused admission has no business completion.
 		found->second.completed.outcome = critical_apply_outcome::terminal_failure;
 		found->second.completion_ready = true;
-		// Keep the refund and item if the purse cannot take them yet.
+		// Refused admission releases reservations without moving money or items.
 		publish(found, character);
 		return false;
 	}
@@ -344,8 +315,10 @@ void auction_transaction_handle_completions(const critical_completion *completio
 					   find_player_by_pid(found->second.actor_pid) :
 					   nullptr;
 		if (!found->second.actor_pid || character ||
-		    (found->second.payload.action == auction_action::claim_money &&
-		     found->second.payload.value > 0))
+		    (found->second.payload.action == auction_action::list ||
+		     found->second.payload.action == auction_action::bid ||
+		     (found->second.payload.action == auction_action::claim_money &&
+		      found->second.payload.value > 0)))
 			publish(found, character);
 	}
 }
@@ -433,8 +406,10 @@ void auction_transaction_publish_outbox(void)
 		{
 			P_char character = find_player_by_pid(current->second.actor_pid);
 			if (character ||
-			    (current->second.payload.action == auction_action::claim_money &&
-			     current->second.payload.value > 0))
+			    (current->second.payload.action == auction_action::list ||
+			     current->second.payload.action == auction_action::bid ||
+			     (current->second.payload.action == auction_action::claim_money &&
+			      current->second.payload.value > 0)))
 				publish(current, character);
 		}
 	}
@@ -464,7 +439,10 @@ void auction_transaction_reset_for_tests(void)
 	for (const auto &[operation, entry] : pending)
 	{
 		static_cast<void>(operation);
-		if (entry.payload.action == auction_action::claim_money && entry.payload.value > 0)
+		if (entry.payload.action == auction_action::list ||
+		    entry.payload.action == auction_action::bid ||
+		    (entry.payload.action == auction_action::claim_money &&
+		     entry.payload.value > 0))
 		{
 			player_save_pipeline_release_trade(entry.actor_pid);
 			currency_transaction_release_trade(entry.actor_pid);

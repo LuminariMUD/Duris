@@ -76,6 +76,9 @@ DISPATCH_PLAYING = extract(
 PRELUDE = r'''
 #include "core/utils.h"
 #include "economy/currency_transaction.h"
+#include "economy/auction_transaction.h"
+static P_char pending_auction_actor;
+bool auction_transaction_player_busy(P_char actor) { return actor && actor==pending_auction_actor; }
 int ordered_command_number(const char *);
 #include "economy/divine_boon_activity.h"
 #include "item/item_movement_transaction.h"
@@ -529,6 +532,21 @@ int main()
 		std::copy(encoded.begin(), encoded.end(), completion.result_payload.begin());
 		return completion;
 	};
+	// A listing keeps its source carried until commit. The existing item gate
+	// must defer forge/use/drop commands while still admitting safe queries.
+	struct txt_q auction_queue={}; char auction_input[MAX_INPUT_LENGTH];
+	pending_auction_actor=&actor;
+	assert(item_movement_transaction_player_busy(&actor));
+	push(&auction_queue,"refine ore"); push(&auction_queue,"score");
+	assert(get_playing_cmd_from_q(&actor,&auction_queue,auction_input));
+	expect_text(auction_input,"score","safe query during auction");
+	assert(!get_playing_cmd_from_q(&actor,&auction_queue,auction_input));
+	expect_text(auction_queue.head->text,"refine ore","auction source mutation remains queued");
+	pending_auction_actor=nullptr;
+	assert(!item_movement_transaction_player_busy(&actor));
+	assert(get_playing_cmd_from_q(&actor,&auction_queue,auction_input));
+	expect_text(auction_input,"refine ore","source mutation resumes after auction");
+	assert(!auction_queue.head);
 	// A grant whose object a coordinator command or a collector transaction still fences
 	// waits in its queue, holding the player, until the fence clears.
 	fenced_item_uid = second_roast.obj_uid;
