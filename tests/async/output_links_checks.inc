@@ -247,7 +247,7 @@ static void output_links_matrix()
 	bounded.resize(OUTPUT_LINK_MAX_COUNT);
 	assert(valid_output_links(bounded, bounded.size()));
 	for (auto &entry : bounded)
-		entry.target = "help " + std::string(200, 'x');
+		entry.target = "help " + std::string(400, 'x');
 	assert(!valid_output_links(bounded, bounded.size()));
 
 	// An over-budget append keeps the accepted metadata and all visible text.

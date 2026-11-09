@@ -19,8 +19,9 @@ struct OutputLink
 	std::string target;
 };
 using OutputLinks = std::vector<OutputLink>;
-inline constexpr size_t OUTPUT_LINK_MAX_COUNT = 64;
-inline constexpr size_t OUTPUT_LINK_MAX_TARGET_BYTES = 8192;
+// A help search returns at most 101 titles (each at most 256 bytes).
+inline constexpr size_t OUTPUT_LINK_MAX_COUNT = 128;
+inline constexpr size_t OUTPUT_LINK_MAX_TARGET_BYTES = 32768;
 
 struct VisibleOutputLink
 {
