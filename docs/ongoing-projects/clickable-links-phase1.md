@@ -37,8 +37,8 @@ No database migration or help-content rewrite is expected.
 - Companion `DurisWeb` branch: `branch/clickable-links-phase1`, worktree
   `/home/aiwithapex/projects/durisweb-worktrees/clickable-links-phase1`, based on
   `origin/master` at `a21e175`. Its instructions and relevant frontend contracts
-  are read; frozen-lockfile frontend dependencies are installed. No client code
-  is implemented yet. Keep commits in their owning repositories and link PRs.
+  are read; implementation is pushed in companion PR #161 (see Chunk 7).
+  Keep commits in their owning repositories and link PRs.
 - Mudlet should use native MXP for the new scrolling-output links; changing the
   `durisclient` package is not an expected dependency.
 
@@ -650,6 +650,50 @@ absent. Prepare website release news locally under the website skill; this PR-on
 task does not publish the not-yet-deployed feature or refresh unrelated Mudlet
 package history. The goal remains active until the entire Phase 1 acceptance
 scope is proven.
+
+### Chunk 7: browser receipt, rendering and history
+
+Review: [DurisWeb PR #161](https://github.com/LuminariMUD/DurisWeb/pull/161),
+commit `fdf9f31`, based on web `master` at `a21e175`. Labels: `enhancement`,
+`documentation`. It depends on the server stack ending at #942. Both peers
+retain ordinary readable fallback with the older peer.
+
+The browser advertises `Duris.Links 1` on each connection. A shared bounded
+snapshot decoder validates targets, colors and code-point ranges; text metadata
+must match its terminal envelope before line clipping. Existing trigger input
+and gag behavior remain in place. Live output and both split-history panes use
+one Vue text-node renderer; help buttons call the existing command sender.
+HTTP/HTTPS anchors open separately and stop propagation to sender/game hotkeys.
+The same renderer covers full-line chat and optional body snapshots across
+existing chat channels. Store/history insertion retains both optional snapshots,
+and saved history revalidates without a storage-version migration. Console,
+authored-body and chat colors use their existing palette mappings. No URL regex,
+new settings, endpoints, stream subscriptions or link-ID registry were added.
+
+Verified: 50 focused tests, frontend format/lint/type checks, build and palette
+guard pass. The actual synthetic server output fixture covers text, adopted
+full-line say and legacy nchat body presentation. Playwright drove the real
+`/play` UI and normal WebSocket handler: receipt sends no game command; help
+click and Enter each send exactly one `help weather`; three text/chat URL
+surfaces retain the exact query ampersand target and a URL opens without a game
+command. Desktop 1440×1000, tablet 820×1180 and phone 390×844 passed with no page
+errors or framework overlay. Existing Vue Router `next()` deprecation remains.
+Screenshots are `/tmp/clickable-links-{desktop,tablet,phone}.png`; temporary
+browser script is `/tmp/clickable-links-browser.py`. Required check logs are
+`bin/tests/phase1-web-client-{unit,format,lint,types,build}.log` here. Browser
+plugin was absent; the already installed Playwright/Chromium was used.
+
+The website contract is updated in `docs/CHAT-COLORIZATION.md`. The website
+news skill supplied a local unpublished draft in
+`docs/ongoing-projects/clickable-links-changelog-draft.json`; release date/version,
+entry reconciliation and publication wait for an authorized verified deployment.
+No website backend, live news, Mudlet package history or production state changed.
+
+Remaining: booted server help/pager and negotiated browser journeys, native MXP
+client clicks and original-socket hotboot qualification. Browser fixture QA is
+not a claim that those live server/native journeys have passed. The local
+`mudlet` wrapper points to an absent AppImage; locate or provision an isolated
+client without changing user profiles. The goal remains active.
 
 ## Scope review
 
