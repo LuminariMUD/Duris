@@ -3,7 +3,7 @@
 Status: conversions, naming and standalone journey qualification are complete. First full regression:903/907 passed; four findings are being repaired. Database gate and whole-issue completion remain pending.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-save-fixture-callers`. See the latest qualification notes before continuing.
+Review head: `branch/issue-870-artifact-inventory-catalog`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -748,8 +748,12 @@ These are preserved per-chunk results, not claims that a later binary ran them.
   master #902 moved the same native499 bindings into their shared catalog.
   An unfixed candidate confirms171 templates but0 callbacks, versus the tracked
   80 bindings/69 callbacks. Do not regenerate that loss into documentation.
-  Update the existing consumer to compiler-selected catalog entries and require
-  unchanged inventory plus correct later-stage overrides, as a separate fix.
+  The existing consumer now reads the compiler-selected object/room catalogs in
+  stage order, preserving later overrides and rejecting missing/unreadable tables.
+  `test_artifact_source_inventory.py` passed the byte-identical tracked171-row
+  inventory with80 bindings/69 callbacks and explicit override checks; the native
+ 499-entry catalog ASan/UBSan test passed too. No JSON loss was regenerated.
+  Evidence `test_{artifact_source_inventory,object_binding_catalog}-inventory-catalog-fixed.log`/`.exit`.
 - Telemetry passed reducer and first HTTPS matrix, then its second-build pin
   case measured448292us against the existing250000us pulse limit under the
   compilation pool. Its isolated run exited0 for both build variants, all64
@@ -760,4 +764,6 @@ These are preserved per-chunk results, not claims that a later binary ran them.
 - #938, #948 and #955 are now ready with the exact integrated runtime results
   and explicit linked follow-ups. #958 remains draft until both aggregate gates
   and the final audit pass. Current repair branch:
-  `branch/issue-870-save-fixture-callers` after #958.
+  #961 is ready for the save-fixture callers after #958. Current branch
+  `branch/issue-870-artifact-inventory-catalog` contains the separately qualified
+  inventory consumer after #961; timing scheduling remains before aggregate retry.
