@@ -527,6 +527,9 @@ still incomplete. No production operation has occurred.
 
 ### Chunk 5: shared URL recognition and frozen destinations
 
+Review: [PR #934](https://github.com/LuminariMUD/Duris/pull/934), implementation
+commit `6b4afe897`, stacked on #921; labels `enhancement`, `documentation`.
+
 Implemented on `branch/clickable-links-urls`:
 
 - `output_links_with_urls()` uses shared lexical rules in `net/url_text.h` to
@@ -580,7 +583,8 @@ passed: native URI rendering with two preserve-styled links measured about 3.13
 microseconds CPU/message, versus 1.01 for its explicit plain baseline (12,800
 messages / 64 recipients). Static styling plus native links measured 5.90.
 Ordinary output with no URI retains its allocation counts. These are local
-fixture measurements, not live capacity. Commit hooks remain required at commit.
+fixture measurements, not live capacity. Commit-time formatting and tidy passed;
+the branch is pushed for review.
 
 Remaining: negotiate the browser presentation capability, attach the same
 semantic links to existing text/chat envelopes, implement and verify DurisWeb,
