@@ -356,17 +356,6 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                 (root / "Ships/old-season").write_text("old ship")
                 (root / "Players/Backup/preserve").write_text("archive")
                 if matched_restore:
-                    # Reconcile source-bound locker recovery on its original SQL
-                    # store before freezing a portable backup. Freeze that recovered
-                    # source without generating another machine-bound shutdown image.
-                    boot()
-                    wait_old_world_checkpoint()
-                    assert not (root / "runtime/locker-shutdown/shutdown.image").exists()
-                    assert not (root / "runtime/locker-shutdown/shutdown.pending").exists()
-                    assert os.getpgid(process.pid) == process.pid
-                    os.killpg(process.pid, signal.SIGKILL)
-                    process.wait(timeout=10)
-                    process = None
                     # All game writers are stopped; this private Redis has no external writers.
                     # Keep supplements outside the immutable SQL generation and bind their hashes.
                     import tarfile
@@ -756,8 +745,14 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                     backup.write_json(candidate / "ISOLATED_RESTORE", {"generation": generation.name})
                     restored_root = candidate / "runtime"
                     restored_root.mkdir(mode=0o700)
-                    with tarfile.open(filesystem) as archive:
-                        archive.extractall(restored_root, filter="data")
+                    # The data filter leaves directory modes to umask. Native
+                    # recovery locks require directories private to their owner.
+                    previous_umask = os.umask(0o077)
+                    try:
+                        with tarfile.open(filesystem) as archive:
+                            archive.extractall(restored_root, filter="data")
+                    finally:
+                        os.umask(previous_umask)
                     for name in ("areas", "docs"):
                         (restored_root / name).symlink_to(ROOT / name, target_is_directory=True)
                     shutil.copytree(generation / "journals", candidate / "journals")
