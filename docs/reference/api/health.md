@@ -12,9 +12,8 @@ A ready server returns HTTP 200 with:
 {"status":"healthy","persistence":"ready"}
 ```
 
-The check reports readiness for the selected persistence authority. MariaDB mode reads
-in-memory database-pool state without a blocking database query; `flatfile-primary` is
-ready after its private authority has passed startup validation. The response does not
+The check reports readiness for the required MariaDB persistence authority. It
+reads in-memory database-pool state without a blocking database query. The response does not
 reveal the selected mode, configuration, target, credential, player, or account value.
 Responses are non-cacheable and the connection closes after the response.
 

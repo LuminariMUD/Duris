@@ -2582,6 +2582,8 @@ int jettison_crates(P_ship ship, int crates, int index, int type)
  */
 int jettison_cargo(P_char ch, P_ship ship, int left)
 {
+	if (left <= 0)
+		return TRUE;
 	if (divine_trade_runtime_busy(ship))
 	{
 		send_to_char("Your crew is settling cargo. Please try again shortly.\r\n", ch);
@@ -2648,6 +2650,8 @@ int jettison_cargo(P_char ch, P_ship ship, int left)
  */
 int jettison_contraband(P_char ch, P_ship ship, int left)
 {
+	if (left <= 0)
+		return TRUE;
 	if (divine_trade_runtime_busy(ship))
 	{
 		send_to_char("Your crew is settling cargo. Please try again shortly.\r\n", ch);

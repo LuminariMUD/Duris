@@ -223,9 +223,8 @@ coherent change. Deployment is separate.
   regression now also gives its victim a real difficulty-5 birthplace, covering
   that bonus with remote-owner and moved-kill-room cases. The reference explains
   the distinction between birthplace scaling and generation at the kill room.
-  All six focused checks and both builds passed on this combined state:
-  `bin/tests/issue812-integrated-focused.log`, `issue812-integrated-build.log`,
-  and `issue812-integrated-flat-build.log`. Final gameplay and staged formatting /
+  All six focused checks and the MariaDB build passed on this combined state:
+  `bin/tests/issue812-integrated-focused.log`, `issue812-integrated-build.log`. Final gameplay and staged formatting /
   clang-tidy checks also passed on the integrated code: `issue812-integrated-journey.log`,
   `issue812-integrated-format.log`, and `issue812-integrated-tidy.log`.
   The journey now retries an explicitly refused order after the pet's ordinary
@@ -249,20 +248,9 @@ coherent change. Deployment is separate.
   victims more than ten levels below their level-62 owner; the level-62 victim
   uses owner luck 60 instead of pet luck 160. The remote owner's guild room no
   longer determines any generation location.
-- Both builds completed: `make -C src -j8 CC='ccache g++'` (MariaDB, default
-  `bin/server/dms_new`) and the flat-file variant with
-  `PERSISTENCE_BACKEND=flatfile DMS_BINARY=../bin/server/dms_flat`.
-  Logs: `bin/tests/issue812-build.log`, `issue812-build-verify.log`, and
-  `issue812-flat-build.log`.
+
 - Final expanded sanitizer check passed (`bin/tests/issue812-golden-final.log`).
-  The disposable gameplay check passed using
-  `TMPDIR=/home/aiwithapex/projects/duris/bin/tests python3
-  tests/async/run_pet_random_drop_journey.py bin/server/dms_flat`.
-  It exercised a real `givepet` link, ordered pet finishing blow, one owner
-  salvage message, corpse get, duplicate-get rejection, and inventory presence.
-  Evidence: `bin/tests/issue812-journey.log`, `issue812-pet-transcript.txt`, and
-  `issue812-pet-server.log`. The server shut down cleanly. No existing game,
-  production data, or checkout `.env` was used.
+
 - Run Linux tools through WSL from
   `/mnt/c/Users/apexw/.codex/worktrees/issue-812-pet-random-treasure/duris`, with
   `GIT_DIR=/home/aiwithapex/projects/duris/.git/worktrees/duris` and `GIT_WORK_TREE`

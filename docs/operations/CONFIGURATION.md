@@ -65,15 +65,14 @@ this source performs no database access, and reads only the reviewed property
 catalog at bootstrap. `TELEMETRY_ENABLED` must be an accepted true value
 (`TRUE`, `1`, `YES`, or `ON`) before any telemetry worker starts. Unset, false,
 malformed, or out-of-range values fail closed to the default-disabled snapshot.
-Both MariaDB and client-free (`__NO_MYSQL__`) gameplay builds use the PostHog
-worker. The legacy `sql` telemetry backend is rejected. Production export stays
+The MariaDB gameplay server uses the PostHog worker. The legacy `sql` telemetry backend is rejected. Production export stays
 disabled until separately authorized; initialize the protected quota journal
 using [OUTAGE_STORAGE.md](../telemetry/OUTAGE_STORAGE.md) before opting in.
 
 | Variable | Default when opted in | Accepted values / range | Meaning |
 | --- | --- | --- | --- |
 | `TELEMETRY_ENABLED` | disabled | `TRUE`/`1`/`YES`/`ON`; false equivalents disable | Explicitly opt into the PostHog telemetry worker. |
-| `TELEMETRY_BACKEND` | `posthog` | `posthog`, `flatfile_disabled`, `disabled`, `off` | PostHog delivery or the deliberate disabled backend. |
+| `TELEMETRY_BACKEND` | `posthog` | `posthog`, `flatfile_disabled`, `disabled`, `off` | PostHog delivery or the deliberate disabled backend; `flatfile_disabled` is a telemetry enum name, not a gameplay persistence mode. |
 | `TELEMETRY_PROPERTY_CATALOG_FILE` | required for enabled telemetry | owner-readable reviewed catalog path | Full effective-property digest to stable property-version mapping; missing or invalid input disables telemetry only. |
 | `POSTHOG_HOST` | required | `https://us.i.posthog.com` (optional trailing slash) | Fixed regional capture host. |
 | `POSTHOG_API_KEY` | required | project capture token beginning `phc_` | Never use a personal API key. |
@@ -154,7 +153,9 @@ can continue using the same runtime.
 `PERSISTENCE_MODE` defaults to `mariadb-primary`, the only accepted value: MariaDB is
 the only persistence backend. Any other value stops the launcher and the server with a
 clear error. `FLATFILE_STATE_DIR` and `FLATFILE_BACKUP_DIR` are no longer read and can
-be removed from `.env`.
+be removed from `.env`. This applies to local, minimal-world, test and production
+servers. Database connection failure never falls back to files. Local journals,
+receipts and recovery images still supplement MariaDB and must be backed up.
 
 | Variable | Requirement | Meaning |
 | --- | --- | --- |

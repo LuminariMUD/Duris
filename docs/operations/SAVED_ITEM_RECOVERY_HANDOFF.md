@@ -1,6 +1,6 @@
 # Saved ground item recovery handoff
 
-This protocol applies to the MariaDB-primary saved ground item path. The flatfile-primary room catalog has its own transaction and replay rules. The restored object is live game state; saved_items is the complete durable payload until a replacement generation and a saved_item_recovery_handoff receipt commit. Redis world and floor generations are independent snapshots and do not acknowledge SQL source retirement.
+This protocol applies to the MariaDB-primary saved ground item path. The restored object is live game state; saved_items is the complete durable payload until a replacement generation and a saved_item_recovery_handoff receipt commit. Redis world and floor generations are independent snapshots and do not acknowledge SQL source retirement.
 
 ## Authority and sequence
 

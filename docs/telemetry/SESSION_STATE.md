@@ -143,7 +143,7 @@ totals. The unclosed gap documents that retirement boundary.
 ## Focused verification and integration checklist
 
 Run `python3 tests/async/test_telemetry_session_state.py` from the repository root.
-It compiles and executes the real module in SQL and `__NO_MYSQL__` modes without
+It compiles and executes the real module without
 SQL/game libraries. Its sink is finite, its clock is controlled, and C++ allocation
 attempts abort the harness. Compiled artifacts are temporary under `bin/tests`.
 The harness covers reconnect totals, copyover continuity, drops, duplicate calls,
