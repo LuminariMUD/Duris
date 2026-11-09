@@ -360,7 +360,8 @@ indented next-line negative masks and propagation of object-save errors so the
 editor keeps dirty state after open/write/close failure. Those reviewed changes
 are retained after merging master into this worktree. The expanded native object
 test passed 74 valid round trips, all invalid-mask cases, and successful/failed
-save-zone workflows after integration.
+save-zone workflows after integration. The binding-catalog test, full server
+build, and both maintained editor builds also passed after that integration.
 
 **Ablation:** one stored field and one optional record in the existing parser and
 writer suffice. Reuse the native I/O helpers; no parallel parser, converter,
