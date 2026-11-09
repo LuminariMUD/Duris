@@ -178,9 +178,10 @@ before database/listener startup; no live environment or player data was used.
 existing caller. No error framework, output transaction, or new report mode is
 needed. The path change removes truncation rather than adding another limit.
 
-### Chunk 4 — isolate shared arithmetic from runtime context (F11, in progress)
+### Chunk 4 — isolate shared arithmetic from runtime context (F11, partial)
 
 Branch: `branch/ival-shared-evaluator`, based on `branch/ival-report-errors`.
+Implemented in commit `efd8d50ea`; ready for review after publication below.
 
 **Outcome:** move the existing numeric calculation into `src/item/item_value.c`
 with plain input/context data in `item_value.h`; move circle/proc/racial resolution
@@ -207,13 +208,15 @@ structural parity evidence, not the effective-world delta report required for
 formula changes. Controlled circle/native/racial context was shared by both
 implementations.
 
-The existing enhancement, monk tools, and authored monk pilot checks passed with
+The existing enhancement, monk tools, authored monk pilot, and characterization
+checks passed with
 the production numeric module and adapter linked as separate translation units.
 The characterization harness now also compiles the numeric module alone in both
 server and `_DE_` editor modes, without engine globals/stubs; it exercises explicit
-context, floor/utility policy, and scalar breakdown consistency. Native
-characterization, final build, formatting, and commit checks must finish before
-publishing this chunk.
+context, floor/utility policy, and scalar breakdown consistency. Native racial
+adapter checks cover resolved factors and invalid modifiers. The known F08
+overflow subprocesses still fail as expected; this extraction does not repair
+them. `make -C src -j4`, formatting, and clang-tidy commit checks passed.
 
 **Ablation:** one numeric implementation and a thin engine adapter serve the
 traced runtime/editor/report consumers. Keep current proc pricing and circle
@@ -221,7 +224,7 @@ policy intact; a new rule engine, calculator language, or persistent cache adds
 nothing needed by this extraction.
 
 Next: continue remaining Stage 1 work and the shared evaluator/context work.
-All four published PRs are open for review; none has been merged or deployed.
+The published PR stack remains open for review; none has been merged or deployed.
 No formula-changing slice is complete without the delta qualification below.
 
 Concrete context work to resume: `boot_material_rarity_objects()` in
@@ -852,9 +855,9 @@ partial deliveries and their verification are recorded in the implementation log
 
 ### Stage 2 — extract the calculation with behavior preserved
 
-- [ ] Create the item-owned evaluator and thin runtime adapter (F11).
-  Numeric extraction and scalar breakdown are in progress in Chunk 4; legacy
-  metadata ownership and detailed diagnostics remain pending.
+- [x] Create the item-owned evaluator and thin runtime adapter (F11).
+  Chunk 4 supplies the numeric module/adapter and scalar breakdown. Legacy
+  metadata ownership and detailed diagnostics remain in the following items.
 - [ ] Preserve legacy first-match proc values while replacing duplicate chains
   with explicit metadata; keep repricing and override semantics in later changes.
 - [ ] Add the breakdown and read-only template path; migrate inspection users
