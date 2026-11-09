@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Real flatfile copyover failure/success on the original Telnet/MCCP socket.
+"""Real MariaDB copyover failure/success on the original Telnet/MCCP socket.
 
-Run with a flatfile server path. Pass --full-world for the generated world.
-Pass --redis-failures with a MariaDB server build for private DB/Redis faults.
+Run with a MariaDB server path. Pass --full-world for the generated world.
+Pass --redis-failures for private DB/Redis faults.
 """
 import os
 from pathlib import Path
@@ -15,7 +15,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import uuid
 import zlib
 import test_flatfile_combat_journey as journey
 from test_gmcp_control_journey import negotiate, wait_telnet, telnet_packets
@@ -167,10 +166,10 @@ def add_full_world_arena(runtime):
 
 
 def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_failures=False):
-    with tempfile.TemporaryDirectory(prefix='duris-copyover-journey-') as temporary:
+    with journey.mariadb_authority() as (env, sql), \
+            tempfile.TemporaryDirectory(prefix='duris-copyover-journey-') as temporary:
         root = Path(temporary)
-        state, runtime = root / 'state', root / 'runtime'
-        state.mkdir(mode=0o700); (state / 'domains').mkdir(mode=0o700)
+        runtime = root / 'runtime'
         runtime.mkdir(); (runtime / 'logs/log').mkdir(parents=True)
         journey.make_fixture(runtime); journey.generate_certificate(runtime)
         if full_world:
@@ -190,14 +189,9 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                            check=True, stdout=output)
         path = root / 'copyover-state/copyover.dat'
         port, tls, websocket = journey.available_ports()
-        env = dict(PATH=os.environ.get('PATH', '/usr/bin:/bin'), ENVIRONMENT='local',
-                   PERSISTENCE_MODE='flatfile-primary', FLATFILE_STATE_DIR=str(state),
-                   CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / 'journals/critical'),
-                   COPYOVER_STATE_FILE=str(path), LISTEN_ADDRESS='127.0.0.1',
-                   DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_LISTEN_ADDRESS='127.0.0.1',
-                   DURIS_WEBSOCKET_PORT=str(websocket), DURIS_WEBSOCKET='TRUE', REDIS='FALSE', CHAOS_MUD='FALSE')
-        if not redis_failures:
-            subprocess.run([str(journey.INSPECTOR), str(state), 'seed-combat'], check=True)
+        env.update(CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / 'journals/critical'),
+                   COPYOVER_STATE_FILE=str(path), DURIS_TLS_PORT=str(tls),
+                   DURIS_WEBSOCKET_PORT=str(websocket), DURIS_WEBSOCKET='TRUE')
         process = output = client = redis_server = None
         fixture_user = None
 
@@ -225,13 +219,6 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                 assert process.poll() is None and time.monotonic() < deadline, 'boot failed'
                 time.sleep(0.1)
 
-        database = 'copyover_journey_' + uuid.uuid4().hex[:12]
-        def sql(statement, selected=True):
-            args = ['mysql', '--protocol=tcp', '-h', env['DB_HOST'], '-P', env['DB_PORT'],
-                    '-u', env['DB_USER'], '-N', '-B']
-            return subprocess.check_output(args + ([database] if selected else []),
-                                           input=statement, text=True, env=env).strip()
-
         def redis(*args):
             return subprocess.check_output(
                 ['redis-cli', '-h', '127.0.0.1', '-p', str(redis_port), '--raw', *args],
@@ -239,19 +226,6 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
 
         try:
             if redis_failures:
-                assert os.environ['TEST_DB_HOST'] == '127.0.0.1'
-                env.pop('FLATFILE_STATE_DIR')
-                env.update(PERSISTENCE_MODE='mariadb-primary', DB_HOST='127.0.0.1',
-                           DB_PORT=os.environ['TEST_DB_PORT'], DB_USER=os.environ['TEST_DB_USER'],
-                           DB_PASSWD=os.environ['TEST_DB_PASSWORD'], DB_NAME=database,
-                           MYSQL_PWD=os.environ['TEST_DB_PASSWORD'],
-                           DB_ALLOWED_TARGETS='127.0.0.1/' + database)
-                sql('CREATE DATABASE ' + database + ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci',
-                    selected=False)
-                sql((journey.ROOT / 'migrations/bootstrap_multithread_safe.sql').read_text())
-                for args in (('adopt', '--kind', 'fresh_bootstrap'), ('run',)):
-                    subprocess.run([sys.executable, 'scripts/migration_runner.py', *args],
-                                   cwd=journey.ROOT, env=env, check=True, capture_output=True, text=True)
                 redis_port = journey.available_ports()[0]
                 assert redis_port not in (port, tls, websocket)
                 redis_server = subprocess.Popen(
@@ -274,11 +248,8 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
             client.send('save'); client.expect(f'Saving {journey.CHARACTER}.')
             client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)
             stop()
-            if redis_failures:
-                sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" +
-                    journey.CHARACTER + "'")
-            else:
-                journey.make_overlord(state, journey.CHARACTER)
+            sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" +
+                journey.CHARACTER + "'")
             if nonroot:
                 assert os.geteuid() == 0, '--nonroot fixture must start as root to drop to UID 10001'
                 root.chmod(0o755)
@@ -367,11 +338,8 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
             # A terminal writer failure must preserve the live character and publish nothing.
             command(client, 'load obj 15')
             assert 'banana' in command(client, 'inventory').lower()
-            snapshot, = (state / 'players').glob('*.snapshot')
-            original_snapshot = snapshot.with_name('fixture-previous-snapshot')
-            snapshot.rename(original_snapshot)
-            snapshot.write_bytes(b'injected invalid player record')
-            if nonroot: os.chown(snapshot, 10001, 10001)
+            sql("CREATE TRIGGER reject_copyover_save BEFORE UPDATE ON player_data "
+                "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic copyover save failure'")
             try:
                 client.send('copyover' if fresh else 'shutdown hotboot')
                 client.expect('Copyover FAILED - server remains live.', timeout=30)
@@ -380,7 +348,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                 file_log = (runtime / 'logs/log/file').read_text(errors='replace')
                 assert 'domain=player_save action=write_failed' in file_log
             finally:
-                original_snapshot.replace(snapshot)
+                sql('DROP TRIGGER reject_copyover_save')
             client.send('save'); client.expect(f'Saving {journey.CHARACTER}.')
 
             active_inode = active.stat().st_ino
@@ -582,11 +550,10 @@ os.execv({str(valid)!r}, {args!r})
 
 if __name__ == '__main__':
     binary = Path(sys.argv[1]).resolve()
+    if not os.environ.get('TEST_DB_HOST'):
+        wrapper = journey.ROOT / 'tests/async/with_disposable_mariadb.sh'
+        os.execv(wrapper, [str(wrapper), sys.executable, str(Path(__file__).resolve()), *sys.argv[1:]])
     if '--redis-failures' in sys.argv:
-        if not os.environ.get('TEST_DB_HOST'):
-            wrapper = journey.ROOT / 'tests/async/with_disposable_mariadb.sh'
-            os.execv(wrapper, [str(wrapper), sys.executable, str(Path(__file__).resolve()),
-                               str(binary), '--redis-failures'])
         run(binary, False, redis_failures=True)
     else:
         for compressed in (False, True):
