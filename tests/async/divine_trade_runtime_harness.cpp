@@ -22,6 +22,7 @@ bool divine_boon_cargo_eligible(const divine_boon_slot &)
 #include "ships/ship_npc_ai.h"
 
 #include <cassert>
+#include <charconv>
 #include <cerrno>
 #include <cstdlib>
 #include <string>
@@ -413,8 +414,12 @@ affected_type *affect_to_char(P_char ch, affected_type *af)
 	ch->affected = copy;
 	return copy;
 }
-int jettison_crates(P_ship, int, int, int)
+static int jettison_calls = 0, jettisoned_crates = 0;
+int jettison_crates(P_ship, int crates, int, int)
 {
+	assert(crates > 0);
+	++jettison_calls;
+	jettisoned_crates += crates;
 	return TRUE;
 }
 void queue_ship_save(P_ship ship, const char *)
@@ -532,6 +537,81 @@ static void split_reservation_case()
 
 int main()
 {
+	// Both command overloads and integer workers must reject invalid counts,
+	// including ships that bypass trade accounting (unsaved players and NPCs).
+	struct player captain(44);
+	for (int kind = 0; kind < 3; ++kind)
+		for (int type : { SLOT_CARGO, SLOT_CONTRABAND })
+		{
+			ShipData fixture{};
+			fixture.db_id = kind == 1 ? 0 : 100;
+			fixture.race = kind == 2 ? NPCSHIP : GOODIESHIP;
+			fixture.slot[0].type = type;
+			fixture.slot[0].index = 2;
+			fixture.slot[0].val0 = 3;
+			fixture.slot[0].val1 = 300;
+			int (*worker)(P_char, P_ship, int) = jettison_cargo;
+			int (*command)(P_char, P_ship, char *) = jettison_cargo;
+			if (type == SLOT_CONTRABAND)
+			{
+				worker = jettison_contraband;
+				command = jettison_contraband;
+			}
+			jettison_calls = jettisoned_crates = 0;
+			for (int count : { INT_MIN, -1000, -1, 0 })
+				for (P_char actor : { &captain.ch, static_cast<P_char>(nullptr) })
+				{
+					assert(worker(actor, &fixture, count) == TRUE);
+					assert(fixture.slot[0].type == type &&
+					       fixture.slot[0].index == 2 &&
+					       fixture.slot[0].val0 == 3 &&
+					       fixture.slot[0].val1 == 300 &&
+					       !fixture.save_pending && jettison_calls == 0);
+				}
+			const std::string overflow =
+				std::to_string(static_cast<int64_t>(INT_MAX) + 1);
+			for (const char *input :
+			     { "-1000", "-1", "0", "-", "+", "garbage", "2x", "1 2", " 2", "2 ",
+			       overflow.c_str(), "999999999999999999999999999999999999" })
+			{
+				char argument[80];
+				strcpy(argument, input);
+				trade_messages.clear();
+				assert(command(&captain.ch, &fixture, argument) == TRUE);
+				assert(!trade_messages.empty() && fixture.slot[0].type == type &&
+				       fixture.slot[0].index == 2 && fixture.slot[0].val0 == 3 &&
+				       fixture.slot[0].val1 == 300 && !fixture.save_pending &&
+				       jettison_calls == 0);
+			}
+			char partial[] = "2";
+			assert(command(&captain.ch, &fixture, partial) == TRUE);
+			assert(fixture.slot[0].val0 == 1 && fixture.save_pending &&
+			       jettisoned_crates == 2);
+			fixture.save_pending = false;
+			assert(worker(nullptr, &fixture, 1) == TRUE);
+			assert(fixture.slot[0].type == SLOT_EMPTY && fixture.save_pending &&
+			       jettisoned_crates == 3);
+			// Omission, INT_MAX and counts exceeding stock all empty the hold.
+			const std::string maximum = std::to_string(INT_MAX);
+			for (const char *input : { "", maximum.c_str(), "1000" })
+			{
+				for (int slot : { 0, 1 })
+				{
+					fixture.slot[slot].type = type;
+					fixture.slot[slot].index = 2;
+					fixture.slot[slot].val0 = 3;
+					fixture.slot[slot].val1 = 300;
+				}
+				fixture.save_pending = false;
+				jettisoned_crates = 0;
+				char argument[32];
+				strcpy(argument, input);
+				assert(command(&captain.ch, &fixture, argument) == TRUE);
+				assert(fixture.slot[0].type == SLOT_EMPTY &&
+				       fixture.slot[1].type == SLOT_EMPTY && fixture.save_pending &&
+				       jettisoned_crates == 6);
+			}
+		}
 	split_reservation_case();
 	struct player alice(44);
 	character_list = &alice.ch;

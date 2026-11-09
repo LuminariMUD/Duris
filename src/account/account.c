@@ -2806,30 +2806,31 @@ bool save_account_character_departure(P_char ch)
 	const long departed_at = time(nullptr);
 	if (!good && !evil)
 		return true;
+	// Stamp memory first: a refused queue must not skip the side-switch cooldown.
+	if (account)
+	{
+		if (good)
+			account->acct_good = departed_at;
+		else if (evil)
+			account->acct_evil = departed_at;
+		for (P_desc d = descriptor_list; d; d = d->next)
+			if (d->account && d->account != account && d->account->acct_name &&
+			    account->acct_name &&
+			    !strcasecmp(d->account->acct_name, account->acct_name))
+			{
+				if (good)
+					d->account->acct_good = departed_at;
+				else
+					d->account->acct_evil = departed_at;
+			}
+	}
 	// A departure must survive a pending recovery and descriptor destruction.
 	// Queue only its timestamp, never a snapshot carrying the old password.
-	if (!sql_queue(
-		    "UPDATE accounts SET %s=GREATEST(COALESCE(%s,FROM_UNIXTIME(0)),FROM_UNIXTIME(%ld)) "
-		    "WHERE account_name=(SELECT account_name FROM player_data WHERE pid=%d AND active=1)",
-		    good ? "last_good_char" : "last_evil_char",
-		    good ? "last_good_char" : "last_evil_char", departed_at, GET_PID(ch)))
-		return false;
-	if (!account)
-		return true;
-	if (good)
-		account->acct_good = departed_at;
-	else if (evil)
-		account->acct_evil = departed_at;
-	for (P_desc d = descriptor_list; d; d = d->next)
-		if (d->account && d->account != account && d->account->acct_name &&
-		    account->acct_name && !strcasecmp(d->account->acct_name, account->acct_name))
-		{
-			if (good)
-				d->account->acct_good = departed_at;
-			else
-				d->account->acct_evil = departed_at;
-		}
-	return true;
+	return sql_queue(
+		"UPDATE accounts SET %s=GREATEST(COALESCE(%s,FROM_UNIXTIME(0)),FROM_UNIXTIME(%ld)) "
+		"WHERE account_name=(SELECT account_name FROM player_data WHERE pid=%d AND active=1)",
+		good ? "last_good_char" : "last_evil_char",
+		good ? "last_good_char" : "last_evil_char", departed_at, GET_PID(ch));
 }
 
 /* A session waiting for the writer holds its input (comm.c) until the reply, which finds

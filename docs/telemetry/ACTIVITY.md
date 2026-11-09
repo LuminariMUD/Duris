@@ -121,7 +121,7 @@ sessions still require consumption.
 ## Verification
 
 `tests/async/test_telemetry_activity_state.py` compiles and runs the deterministic
-state harness in both SQL and `__NO_MYSQL__` modes. It also generates a C++ B
+state harness. It also generates a C++ B
 golden harness from the existing `normal_interval.json` and
 `detach_reconnect.json` facts; that harness compares actual interval records,
 contexts, dimensions, timestamps, and cumulative identities rather than only

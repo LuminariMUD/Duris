@@ -246,19 +246,14 @@ do not call it repaired or silently drop it from the handoff.
 ## Validation and delivery after resumption
 
 Run the smallest applicable checks as each change lands, with ASan/UBSan for
-native population, property-validation, and persistence fixtures. Commands include:
+native population, property-validation, and persistence fixtures:
 
 ```sh
+make -C src
 python3 tests/async/test_issue263_property_reload.py
 python3 tests/async/test_training_dummy_contract.py
-python3 -m pytest -q tests/async/test_training_dummy_contract.py
-python3 tests/async/test_training_dummy_dispatch.py
 python3 tests/async/test_generated_npc_state.py
-python3 tests/run_regression_tests.py --match training_dummy --jobs 1
-make -C src PERSISTENCE_BACKEND=mariadb
-make -C src PERSISTENCE_BACKEND=flatfile
-./scripts/format.sh --check
-git diff --check
+python3 tests/async/test_world_recovery_pipeline.py
 ```
 
 Also run the extended full-world, file-copyover, and Redis journeys described
@@ -298,7 +293,7 @@ immediate dependency. Keep this handoff current on the newest branch.
   existing transactional loader, setter, saver, and baseline handling do
   the rest. The issue-263 harness now runs the actual spawner with a generator
   double and both property backends, so a separate config harness is redundant.
-  Passed: both development builds (MariaDB and flat file), the expanded
+  Passed: the MariaDB development build, the expanded
   issue-263 test with ASan/UBSan and float-cast checking, and formatting
   and whitespace checks.
 - **Population and test invocation** ([PR #658](https://github.com/LuminariMUD/Duris/pull/658),
@@ -308,16 +303,11 @@ immediate dependency. Keep this handoff current on the newest branch.
   real spawner and properties setup. The mixed-population assertion failed
   against the configuration-only spawner and passed after the fix, including
   69/71 marked targets, an owned roamer, `NOWHERE`, themed and fallback NPCs,
-  zero, last-slot insertion, and retry after failed generation. Both backend
+  zero, last-slot insertion, and retry after failed generation. MariaDB
   builds passed. The dummy contract passed 15 checks via direct Python and
   pytest, and an isolated failing assertion was detected by both. The normal
   regression runner found and passed the dummy and property checks.
-- **Fixed shopkeeper copyover** ([PR #659](https://github.com/LuminariMUD/Duris/pull/659),
-  commit `36729c53f`) — full-world file copyover exposed an existing
-  reconciliation defect. Shop 481 retained its stock and binding at room
-  105301, then flat-file startup rejected it because its configured room is
-  105302. The fix reuses home placement and preserves the keeper and stock.
-  Both builds and the world singleton and flat-file shop bootstrap tests passed.
+
 - **Redis roamer items** ([PR #660](https://github.com/LuminariMUD/Duris/pull/660),
   commits `2ce38f5b3` and `c1490d9d5`) — the first fresh Redis capture
   restored the roamer's identity but lost its worn and carried items because
@@ -325,11 +315,11 @@ immediate dependency. Keep this handoff current on the newest branch.
   trees, item UIDs, and ownership checks for ordinary 1255s. Later floor
   deltas and durable owners take priority over stale roamer trees. Existing
   generations remain readable. The final follow-up also covers a roamer in
-  the Void, a valid room with vnum zero. Both builds and the sanitizer
+  the Void, a valid room with vnum zero. The MariaDB build and the sanitizer
   pipeline and artifact projection tests passed.
 - **Recovery and legacy handoff** — branch
   `branch/issue-655-roaming-npc-recovery` targets the Redis PR. The full
-  journeys observed 71 distinct bootstrap rooms on each backend using the
+  journeys observed 71 distinct bootstrap rooms on MariaDB using the
   shipped creation rules. Natural scheduling created one normal equipped
   roamer with generated zone prose in an eligible map room. Two live file
   copyovers, a Redis crash restore, and a Redis clean restart preserved the
@@ -339,7 +329,7 @@ immediate dependency. Keep this handoff current on the newest branch.
   Raising the cap to one allowed one replacement. A file copyover retried
   successfully after the existing artifact writer guard allowed its backlog
   to drain. Full-world Redis evidence was recorded at `2ce38f5b3`, with the
-  later Void case qualified using the native pipeline and both builds.
+  later Void case qualified using the native pipeline and the MariaDB build.
 - **Operator follow-up** — the generated-state harness confirmed that
   explicitly supplied pre-exclusion payloads can retain base HP 1,000,000
   and `ACT_SENTINEL` after losing the marker. The runbook gives a

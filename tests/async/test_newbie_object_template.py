@@ -40,6 +40,7 @@ static index_data indexes[9]{};
 P_index obj_index = indexes;
 int top_of_objt = 8;
 P_obj object_list = nullptr;
+void remember_live_object(P_obj) {}
 mm_ds *dead_obj_pool = nullptr;
 static unsigned pool_allocations, uid_allocations, proc_calls, conversion_calls;
 static unsigned periodic_calls, event_calls, duplicate_strings;
