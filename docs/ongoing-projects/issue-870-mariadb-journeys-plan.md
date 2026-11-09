@@ -37,7 +37,9 @@ implementation work for this branch:
 incorporates it without rewriting the published stack. Documentation conflicts
 retain the pending #870 journey descriptions and historical item report while
 accepting current MariaDB-only guidance. The baseline reconciliation is a
-separate prerequisite PR so conversion PRs show only their own changes.
+separate prerequisite [PR #887](https://github.com/LuminariMUD/Duris/pull/887)
+so conversion PRs show only their own changes. The historical item evidence JSON
+is retained with its report; it does not qualify the current backend.
 
 The [issue's verification comment](https://github.com/LuminariMUD/Duris/issues/870#issuecomment-6737821455)
 reports 899 regression passes but an interrupted DB run with a nexus failure,
