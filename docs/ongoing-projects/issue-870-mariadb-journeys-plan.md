@@ -227,13 +227,13 @@ the existing crash/reconnect cases. No new mana table or persistence layer.
   `server_build_artifacts.py` and `test_server_build_artifacts.py` where referenced.
   Preserve cache correctness and fast/real-clock behavior. No alias layer is needed
   for repository-owned callers; historical archived sources keep their own API.
-- [ ] Replace retired inspector CLI instructions with tested MariaDB commands in
+- [x] Replace retired inspector CLI instructions with tested MariaDB commands in
   `docs/testing/ITEM_ABILITY_ROLLOUT.md`, `docs/reference/WEAPON_ACTIONS.md`,
   `docs/guides/COLORIZATION_RELEASE.md` and affected active references in
   `docs/testing/REGRESSIONS.md`, `docs/guides/TESTING.md` and
   `docs/network/DISCORD_BRIDGE.md`. Incorporate the newer master documentation
   instead of undoing it. Leave historical execution records intact.
-- [ ] Search the changed scripts and active callers for obsolete backend choices,
+- [x] Search the changed scripts and active callers for obsolete backend choices,
   inspector execution, `FLATFILE_STATE_DIR` and old imports. Classify legitimate
   negative-mode tests and historical references rather than requiring zero hits.
 
@@ -788,7 +788,8 @@ This is an estimate, not a time limit or permission to omit required proof.
   information-reader and shopkeeper-capture checks passed. Logs:
   `bin/tests/issue-870/naming-*.log`. Boot preflight's actual command includes
   `with_disposable_mariadb.sh` and `--server bin/server/dms_new`.
-  Active code/script/workflow scans contain no retired test/build identifiers.
+  Active imports/build calls are updated. The pinned comparison explicitly names
+  its immutable archive's old creation helper; that historical path is intentional.
   Keep historical reports/records and legitimate file/journal/negative-mode names.
   Active item/weapon/colorization and Discord runbooks give the qualified commands.
 - Named-set retry advanced beyond its original outfit check; the next missing
@@ -803,3 +804,49 @@ This is an estimate, not a time limit or permission to omit required proof.
   archive verification and relevant constant checks passed; original MariaDB
   seeded binary built in134.602s. Log `assassin-prepare-run.log`; inspect terminal
   result and all three manifest entries before runtime qualification.
+
+
+### Latest continuation checkpoint
+
+- Current worktree/head: `branch/issue-870-mariadb-test-names`; all changes are
+  committed and pushed. [#949](https://github.com/LuminariMUD/Duris/pull/949)
+  is ready (enhancement), after draft [#948](https://github.com/LuminariMUD/Duris/pull/948)
+  and draft [#938](https://github.com/LuminariMUD/Duris/pull/938). The earlier
+  qualified PR stack remains ready; no merge/deployment/release is requested.
+- Named-set completed labels include transfer, edit/clone, pet, shop, wear1325,
+  wear740 and wear827. Wear13 reached its HP/spell thresholds, then its retained
+  ordinary potion timer exceeded180s: it is a three-normal-tick cooldown and cold
+  boots reset the tick phase. `8069eabfa` keeps all cooldown state and waits for
+  native expiry up to600s. It passed wear13 on retry; remaining zones follow.
+  Current command adds `--resume bin/tests/named-set-mariadb-sequence-ununney2`;
+  log `named-set-sequence-potion-run.log`. Tool session23072 is still active at
+  this checkpoint; poll before restarting. Initial bounded-wait failure is under
+  `named-set-potion-window-failure/`.
+- All three pinned seeded MariaDB binaries built and were verified. Hashes:
+  original `5a2c9dbacf2eb71ab0ff360e2724f5cb9e3d6078286ff15c67953b673f470521`;
+  cleansed `dd66f5d524c2b5babdd52673b3da6ec22da103c537b3803bbe4a5f48b4cb680e`;
+  revised `5cf1d7842edfb4af2f1cc77e9c00ab2b48acd0b1ab9148edf35e1b1bbd7ca080`.
+  Each uses seed187 and250000us ordinary pulses. Native source/archive hashes,
+  patch/seed hashes, schema roots and protocol-helper hashes are in
+  `bin/tests/assassin-comparative/binaries.json`.
+- Two pinned protocol assumptions were repaired without changing persistence:
+  BASE's Keep enters its MOTD directly, so use its byte-checked creation helper;
+  its save emits queued then complete, so await **Save complete**, never admission.
+  Current reconnect protocol was compared to BASE and is identical. Current
+  transport and all actor seeding/inspection remain MariaDB. Source constants
+  match, including class/skill/memorization flags. Seed helper class4096/spec1 is
+  the Assassin; `SPEC_ASSASSIN=1` was checked in current headers.
+- Repreparation reused all three verified binaries (zero compile time), preserving
+  cache correctness. The current matrix has completed the original variant's12
+  openings and is advancing; command `python3 tests/async/run_assassin_balance_journey.py`
+  then `--variant revised --scenarios-only`. Controller session61334 is active;
+  log `assassin-matrix-run.log`, then `assassin-scenarios-run.log`. Prior creation
+  and save-ack failures are retained. Do not mark comparison complete until both
+  invocations terminate0 with the entire12/12/36 matrix and all revised scenarios.
+- Remaining completion work: finish every named-set case (all16 zones, copied
+  rollback, existing chest/report), finish the comparison, update their draft PRs
+  to ready, then run the required full regression and disposable DB gates and fix
+  actual findings as focused changes. Keep heavy compilation away from the timing
+  comparison. No aggregate or whole-issue completion is claimed yet.
+- User requested focus/ETA during work; #870 remains the mission. The estimate at
+  that point was3–5 additional hours, with final-suite defects the main uncertainty.
