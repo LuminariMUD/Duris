@@ -53,6 +53,7 @@ struct synchronous_item { uint64_t uid; P_obj object; bool scrap;
     std::array<int32_t, CURRENCY_DENOMINATION_COUNT> coin_amount = {};
     bool coin_amount_valid = false; };
 struct bulk_get_state {
+    uint64_t container_uid = 0;
     std::vector<std::string> rejections;
     bool failed = false;
     bool count_limit_reported = false;
@@ -83,6 +84,9 @@ bool isname(const char *filter, const char *name) { return !strcmp(filter, name)
 bool item_command_object_is_takeable(P_char, P_obj obj) { return obj->takeable; }
 bool account_bound_reward_owner(P_char, P_obj) { return true; }
 bool checkgetput(P_char, P_obj) { return false; }
+P_obj find_live_object(P_obj obj, uint64_t uid) {
+    return obj && obj->obj_uid == uid ? obj : nullptr;
+}
 void writeCorpse(P_obj) {}
 void reject_bulk_get_object(bulk_get_state &state, P_obj, const char *) { state.failed = true; }
 '''

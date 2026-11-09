@@ -9,7 +9,7 @@ from _paths import ROOT, SRC, HARNESS_STUBS, extract_function
 actobj = (SRC / 'actobj.c').read_text()
 production = '\n'.join([
     extract_function('handler.c', 'bool obj_to_char('),
-    extract_function('handler.c', 'P_obj find_live_object('),
+    extract_function('handler.c', 'P_obj find_live_object(').replace('live_objects', 'live'),
     extract_function('handler.c', 'void Decay('),
     extract_function('actobj.c', 'int wearing_invis('),
     actobj[actobj.index('#define REMOVE_SUCCESS'):actobj.index('int remove_item(')],

@@ -102,6 +102,7 @@ int main()
 	assert(any_contains(threshold_output, "operation=unknown"));
 	assert(!any_contains(threshold_output, "ultra_secret"));
 	assert(!any_contains(threshold_output, "password"));
+	assert(!any_contains(threshold_output, " args="));
 	for (const std::string &line : threshold_output.lines)
 		assert(line.find('\n') == std::string::npos);
 	for (const std::string &line : threshold_output.lines)
@@ -149,6 +150,31 @@ int main()
 		assert(any_contains(aggregate_output, expected.c_str()));
 	}
 	assert(!any_contains(aggregate_output, "account-password"));
+
+	command_latency_tracker slow_get = {};
+	command_latency_event get_event = {};
+	command_latency_event_prepare(&get_event, COMMAND_LATENCY_PLAYING, 0, 7, "Iko", "get");
+	command_latency_event_set_get_arguments(&get_event, "  g all.sword\ncorpse");
+	command_latency_note_bulk_items(28);
+	get_event.bulk_items = command_latency_take_bulk_items();
+	assert(command_latency_take_bulk_items() == 0);
+	command_latency_record(&slow_get, &get_event, 248000);
+	captured_lines get_output;
+	command_latency_report(&slow_get, 248000, "boot-g", 9, 1, capture, &get_output);
+	assert(any_contains(get_output, "operation=get duration_us=248000 args=all?sword?corpse bulk_items=28"));
+	command_latency_event bare_get = {};
+	command_latency_event_prepare(&bare_get, COMMAND_LATENCY_PLAYING, 0, 7, "Iko", "get");
+	command_latency_event_set_get_arguments(&bare_get, "get");
+	assert(!strcmp(bare_get.arguments, "-"));
+
+	command_latency_report_state throttled_get = {};
+	command_latency_report_throttled(&throttled_get, &slow_get, 248000, "boot-g", 10, 1, capture, &get_output);
+	captured_lines throttled_output;
+	command_latency_report_throttled(&throttled_get, &slow_get, 248000, "boot-g", 11, 2, capture, &throttled_output);
+	assert(throttled_output.lines.empty());
+	command_latency_tracker no_slow_get = {};
+	command_latency_report_throttled(&throttled_get, &no_slow_get, 1, "boot-g", 14, 3, capture, &throttled_output);
+	assert(any_contains(throttled_output, "suppressed_worst_args=all?sword?corpse suppressed_worst_bulk_items=28"));
 
 	command_latency_tracker delayed_ssl = {};
 	command_latency_event ssl = {};
@@ -312,6 +338,8 @@ assert contains(dispatch, "COMMAND_LATENCY_PAGER")
 assert contains(dispatch, "COMMAND_LATENCY_EDITOR")
 assert contains(dispatch, "COMMAND_LATENCY_PLAYING")
 assert contains(dispatch, "COMMAND_LATENCY_NANNY")
+assert contains(dispatch, '!strcmp(event.operation, "get") || !strcmp(event.operation, "take")')
+assert dispatch.count("command_latency_event_set_get_arguments") == 1
 assert not contains(dispatch, "descriptor_latency.finish();")
 session_start = index(comm, "static void run_session_input_phase")
 session_end = index(comm, "static void run_output_phase", session_start)
