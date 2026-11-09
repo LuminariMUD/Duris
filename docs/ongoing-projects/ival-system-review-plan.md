@@ -46,7 +46,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-crafting-config-bounds`; its initial synchronized commit was
+`origin/branch/ival-recipe-selection`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -70,7 +70,8 @@ admission on `branch/ival-numeric-bounds`; #966 shares checked material quantiti
 and plans crafting XP on `branch/ival-material-bounds`; #968 repairs downstream
 XP conversion checkpoints on `branch/ival-xp-conversion`; #969 honors disabled
 crafting XP on `branch/ival-zero-crafting-xp`; #971 validates crafting config and
-its arithmetic on `branch/ival-crafting-config-bounds`. Branch/base
+its arithmetic on `branch/ival-crafting-config-bounds`; #972 validates recipe
+selection on `branch/ival-recipe-selection`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -1264,6 +1265,9 @@ database, migration or production operation occurred.
 ### Chunk 19 — validate recipe selections before indexing (F08, implemented)
 
 Branch: `branch/ival-recipe-selection`, based on `branch/ival-crafting-config-bounds`.
+Published: commit `c9cd02475`, [PR #972](https://github.com/LuminariMUD/Duris/pull/972)
+(bug label), stacked on #971. Ready for review; dedicated local/remote worktrees
+carry the committed implementation and handoff.
 
 **Outcome:** parse complete bounded recipe numbers and require positive choices
 before any list indexing. Share the existing vnum-first/list-number selection
@@ -1296,6 +1300,9 @@ migration or production operation occurred.
 
 **Continuation:** convert enhancement configuration using the shared scalar
 parsers and finish remaining F08/property/input bounds. During F16, explicitly
+check deterministic defaults before opening its file: the current enhancement
+loader resets only some fields, and only after a successful open. Preserve its
+fail-closed opt-in gates and do not add a hot-reload mode. During F16, explicitly
 qualify the current provider paths: Craft normalizes/imports through
 `crafting_get_player_recipes`, while Forge currently reads SQL directly; do not
 assume identical book filtering/import behavior from the existing contract test.
