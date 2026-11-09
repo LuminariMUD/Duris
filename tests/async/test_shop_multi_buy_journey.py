@@ -333,22 +333,21 @@ def run(binary, backend, report):
                 command(god, "setbit char " + PLAYER + " pcact MORTALIZED off")
                 before_quit = inspect()
                 trinket_uid = next(row["uid"] for row in before_quit["player_items"] if row["vnum"] == TRINKET)
-                # Hold the real SQL writer before its sale transaction commits.
-                # Quit must unload the actor and reach the menu before release,
-                # so the completion cannot credit an online body by accident.
+                # Sales apply in memory; their snapshots catch up on the writer.
+                # Hold the actual player/shop/log tables through quit, then prove
+                # the offline save and buyback settle exactly once after release.
                 held = subprocess.Popen(
                     ["mysql", "--protocol=tcp", "--skip-ssl", "-h", env["DB_HOST"],
                      "-P", env["DB_PORT"], "-u", env["DB_USER"], "-N", "-B",
                      "--unbuffered", env["DB_NAME"]], stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE, text=True, env=env, bufsize=1)
                 try:
-                    held.stdin.write("LOCK TABLES critical_operation_inbox WRITE; SELECT 'held';\n")
+                    held.stdin.write("LOCK TABLES player_items WRITE, shopkeeper_items WRITE, log_entries WRITE; SELECT 'held';\n")
                     held.stdin.flush()
                     assert held.stdout.readline().strip() == "held"
                     player.send("sell trinket\nquit")
-                    player.expect("Your sale is being processed.", timeout=5)
+                    player.expect("The shopkeeper gives you", timeout=5)
                     player.expect("ACCOUNT MENU", timeout=30)
-                    assert inspect()["wallet"] == before_quit["wallet"], "locked sale committed before actor unload"
                 finally:
                     held.communicate("UNLOCK TABLES;\n", timeout=15)
                     assert held.returncode == 0
@@ -368,7 +367,7 @@ def run(binary, backend, report):
                 assert "finite stock trinket" in action(player, "buy trinket", "You now have a finite stock trinket.")
                 save(player, PLAYER)
                 assert next(row["uid"] for row in inspect()["player_items"] if row["vnum"] == TRINKET) == trinket_uid
-                evidence["checks"].append("sale and quit behind a stalled writer: payment once, no returned sold UID, stable buyback after restart")
+                evidence["checks"].append("memory sale and quit behind a stalled SQL writer: payment once, no returned sold UID, stable buyback after restart")
                 evidence["passed"] = True
                 stop()
                 print("[PASS]", backend, "real shop batches and cold restart", flush=True)
