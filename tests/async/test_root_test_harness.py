@@ -240,7 +240,7 @@ with tempfile.TemporaryDirectory(prefix="duris-runner-") as scratch:
     assert result.status == "PASS", result.output
 
     # The requested worker limit also applies to journeys that compile helpers.
-    for name in ("test_flatfile_combat_journey.py", "test_pet_restart_journey.py"):
+    for name in ("test_worker_limit_journey.py", "test_second_limit_journey.py"):
         (tests_dir / name).write_text(
             "import fcntl, pathlib, time\n"
             "with pathlib.Path(__file__).with_name('journey.lock').open('w') as lock:\n"
