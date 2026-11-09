@@ -1,6 +1,6 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: all standalone conversions and the full907-file regression/native/build gate passed. The first database run found a pet-reader race; its focused repair passed. Full database completion/retry and final review remain pending.
+Status: standalone conversions and the full907-file regression/native/build gate passed. First DB run153/154; its sole pet-reader failure is repaired and qualified. Full154-leg DB retry is running; final readiness remains pending.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
 Review head: `branch/issue-870-pet-expiry-qualification`. See the latest qualification notes before continuing.
@@ -253,7 +253,7 @@ from a clean worktree with explicitly provisioned test prerequisites.
 - [x] Include runtime proof for #880's already edited standalone journeys
   `run_shop_bootstrap_journey.py`, `run_issue37_zone_journey.py` and
   `run_misty_vale_journey.py` if no valid evidence is available for their final code.
-- [ ] Review the final diff with ablation: every edit must support a listed
+- [x] Review the final diff with ablation: every edit must support a listed
   conversion, its actual consumer, or required proof. Keep unrelated defects
   separate and preserve unrelated worktree changes.
 - [ ] Push the implementation and prepare a PR that names this plan, #870 and
@@ -849,3 +849,25 @@ These are preserved per-chunk results, not claims that a later binary ran them.
   cold restoration and expiry/neutral reload. Its log records the same6dfb5020…
   binary. First DB run has reached its final serial recovery/latency checks with
   151 passing legs and only the already-repaired pet-reader failure so far.
+
+### Database first run preserved; full retry active
+
+- First database controller88225 is terminal:153/154 passed, only pet_restart
+  failed,2913s, make exit2. All final serial checks passed, including all artifact/
+  guild crash/recovery cases and the8-mortal/god game-loop budget. Complete
+  stdout/status are in `final-test-db-first-run.log`/`.exit`; all154 logs are in
+  `final-db-first-run/`. Archive completeness was checked before bin/tests/db reuse.
+- Ready/labeled bug [#965](https://github.com/LuminariMUD/Duris/pull/965) contains
+  the old/new reader transactional reproduction and full pet journey proof.
+  Source commit0ed24f840; later commits update the tracker.
+- **Active full DB retry56758** runs unchanged `make test-db` with all154 legs
+  after the pet fix. Output/status: `final-test-db-retry1.log`/`.exit`; completed
+  logs will be archived as `final-db-retry1/`. Prior88225, both focused pet runs
+  and the transaction probe are terminal. Poll56758; do not duplicate this run.
+- Final diff/ablation audit against baseline002ad622e:180 changed paths,
+  128 strictly mechanical test/helper renames and52 scoped conversion, consumer,
+  fixture, documentation or reproduced-defect changes. Two obsolete C++ snapshot
+  writers are deleted; only the five documented native save files differ. Every
+  retained addition has a traced caller or concrete failing proof. No extra
+  backend, generic fixture/resource framework or protected-file diff remains.
+  Only the full DB retry and final PR/evidence publication remain.
