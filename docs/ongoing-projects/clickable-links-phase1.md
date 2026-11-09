@@ -327,6 +327,9 @@ then add transport serialization. The feature itself is not implemented yet.
 
 ### Chunk 2: output-link ownership and coordinates
 
+Review: [PR #913](https://github.com/LuminariMUD/Duris/pull/913), implementation
+commit `420a0c21f`, stacked on #909; labels `enhancement`, `bug`, `documentation`.
+
 Implemented the lifecycle prerequisite on `branch/clickable-links-output`:
 
 - `OutputContext::links` borrows producer byte ranges only until `send_to_char()`
