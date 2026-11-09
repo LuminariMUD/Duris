@@ -28,16 +28,17 @@ No database migration or help-content rewrite is expected.
 - Repository: `LuminariMUD/Duris`.
 - Base: `origin/master` at `91f40a01fe` when this worktree was created.
 - First PR branch: `branch/clickable-links-phase1`.
-- Current implementation branch: `branch/clickable-links-urls`, stacked on
-  `branch/clickable-links-help` (then MXP, output and the first PR branch).
+- Current implementation branch: `branch/clickable-links-web-protocol`, stacked
+  on `branch/clickable-links-urls` (then help, MXP, output and the first PR branch).
 - Worktree: `/home/aiwithapex/projects/duris-worktrees/clickable-links-phase1`.
 - Plan: `docs/ongoing-projects/clickable-links-phase1.md` in that worktree.
 - Deliver focused, reviewable commits and PRs as each chunk is verified. Stack
   dependent changes and keep this document current for handoff.
-- Implementation will also need a companion branch/worktree in `durisweb` for
-  its player renderer and transport decoder. Create that during implementation,
-  after reading that repository's instructions. Keep commits in their owning
-  repositories and link the server and client changes.
+- Companion `DurisWeb` branch: `branch/clickable-links-phase1`, worktree
+  `/home/aiwithapex/projects/durisweb-worktrees/clickable-links-phase1`, based on
+  `origin/master` at `a21e175`. Its instructions and relevant frontend contracts
+  are read; frozen-lockfile frontend dependencies are installed. No client code
+  is implemented yet. Keep commits in their owning repositories and link PRs.
 - Mudlet should use native MXP for the new scrolling-output links; changing the
   `durisclient` package is not an expected dependency.
 
@@ -591,6 +592,60 @@ semantic links to existing text/chat envelopes, implement and verify DurisWeb,
 then perform native-client and original-socket hotboot journeys. No live-client
 click, production operation or deployment has been performed. The goal remains
 in progress even though help and URL producers now reach native MXP delivery.
+
+### Chunk 6: negotiated browser text and chat presentation
+
+Implemented on `branch/clickable-links-web-protocol`:
+
+- Exact `Duris.Links 1` support through the existing Core.Supports parser and
+  feature report. It needs no Subscribe stream. Removal, GMCP disable and the
+  player's opt-out stop optional presentation. Existing support storage already
+  retains the bit on supported native hotboot; no record-layout change is needed.
+- One shared JSON formatter replaces the duplicated chat run/dollar serializer
+  and supplies ordinary WebSocket text. Existing `type/category/data` remain;
+  the same envelope carries optional `presentation` with literal text, colors
+  and half-open code-point `{start,end,kind,target}` links. A flush produces one
+  ordered text batch, preserving original block folding and leading newlines.
+- Already queued WS wire bytes drain before raw text/prompt state is consumed.
+  This reuses the existing queue/buffer and adds no second retry queue or matching
+  IDs. Optional over-budget/invalid/allocation-failed presentation falls back to
+  ordinary text. Packet size remains inside the existing WS output budget.
+- All existing chat channels can carry optional `bodyPresentation`, built from
+  the recipient-approved body, for their normal sender/body layout. Adopted
+  full-line profile snapshots retain their fields and gain links when negotiated.
+  No language/visibility transform or profile resolution is repeated. Existing
+  unnegotiated payloads retain their shape and one-copy delivery.
+- The complete capability report fits when all existing streams are supported
+  and active. Shared legacy chat-root construction keeps required-field failures
+  atomic; new snapshots are also atomic. The wire contract and structured-chat
+  guide are updated.
+
+Verified: normal and ASan/UBSan output integration, including one-envelope order,
+Unicode offsets, literal text, capabilities/opt-out, full versus body chat, raw
+queue retention under pressure and 150 allocation-failure points. The actual
+GMCP parser/wire fixture passed under sanitizers with version negotiation,
+Add/Remove/Set, no subscription, all chat entry points, all-stream reporting and
+disable behavior. Deferred-prompt serialization and `make -C src -j8` passed.
+The local benchmark covers new-capability chat (about 20–21 microseconds CPU per
+message for both full/body snapshots, 12,800 messages to 64 recipients); this is
+not a live capacity claim. Formatting and commit hooks remain required at commit.
+
+Evidence: `bin/tests/phase1-web-protocol-{output,asan,gmcp,prompts,build}.log`,
+`bin/tests/phase1-web-protocol-benchmark.csv`. The output harness exports real
+synthetic producer payloads to `bin/tests/clickable-links-wire.json` when run with
+`OUTPUT_PRESENTATION_FIXTURE=bin/tests/clickable-links-wire.json`; use these for
+the paired browser qualification, not private player data.
+
+Next: implement the client decoder, line slicing through triggers, store/history
+retention and a shared safe renderer in the companion worktree. Preserve console
+versus chat palette contracts and the existing sender/body fallback; use the
+existing command sender for help and user-activated HTTP/HTTPS anchors. Validate
+rendered browser clicks/keyboard/history and then native-client/hotboot journeys.
+The frontend testing skill will use Playwright because the Browser plugin is
+absent. Prepare website release news locally under the website skill; this PR-only
+task does not publish the not-yet-deployed feature or refresh unrelated Mudlet
+package history. The goal remains active until the entire Phase 1 acceptance
+scope is proven.
 
 ## Scope review
 
