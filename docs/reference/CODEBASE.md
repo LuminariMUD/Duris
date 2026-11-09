@@ -19,7 +19,7 @@ Related: [ARCHITECTURE.md](ARCHITECTURE.md), [DATABASE.md](DATABASE.md).
 | `cmd/` | Command registration plus player, object, social, and staff handlers. |
 | `core/` | Shared structures, constants, prototypes, utilities, configuration, and legacy pfile support. |
 | `economy/`, `item/` | Shops, auctions, balances, crafting, equipment, lockers, and durable item movement. |
-| `flatfile/`, `no_mysql/` | Complete flat-file persistence backend and client-free build stubs. |
+| `flatfile/` | Shared file-envelope, help-catalog and shopkeeper-capture utilities; no server persistence backend. |
 | `guild/`, `kingdom/` | Guild/social ownership and the current map-territory kingdom feature. |
 | `mob/`, `specs/` | Mobile behavior, studio procs, and area/special procedures. |
 | `net/` | Telnet, TLS, WebSocket, GMCP, MCCP, prompts, and descriptor I/O. |
@@ -119,7 +119,7 @@ ordinary reward eligibility and sharing remain unchanged.
 
 [The common engine](../../src/combat/frag_cap.c) owns these transitions and a
 97-byte checksummed v2 snapshot. [Storage](../../src/combat/frag_cap_repository.c)
-commits scores with the parent combat receipt on both backends. The existing
+commits scores with the parent combat receipt on MariaDB. The existing
 maintenance job settles the same authority and catches up empty rounds as ties.
 SQL projects the lower shared cap plus both side caps. Runtime publication is
 asynchronous; faction readers serve both normal XP and epic-stone checks.
@@ -145,8 +145,7 @@ purchases must not accumulate more stock; unlimited production keeps its own pat
 The clean-cold-boot receipt distinguishes a normal reboot from crash recovery,
 copyover and per-shop restoration. Those recovery paths do not refill reboot-only
 stock. An absent marker, including the first boot after upgrading, is unknown and
-does not authorize a refill. The flat-file backend commits stock and custody
-through its existing authority transaction. SQL shop saves claim graphs through the ordinary claim
+does not authorize a refill. SQL shop saves claim graphs through the ordinary claim
 writer and filter superseded rows against custody during restore; finite resale
 checkout moves the existing UID instead of submitting another creation. The
 outgoing shop capture precedes the buyer capture, retaining the normal checkpoint
@@ -163,8 +162,7 @@ separate from the NPC combat brain in `src/ships/ship_npc_ai.c`. `src/ships/ship
 provides process-local generation-checked references, `src/ships/ship_variables.c` owns
 the append-only static identifier tables, and `src/ships/ship_utils.c` contains shared
 map/contact helpers. The external API is `src/ships/ships.h`. Ships persist to the
-`ships`, `ship_armor`, `ship_crew` and `ship_slots` tables (or the flat-file
-`ship_catalog`). [SHIPS.md](SHIPS.md) is the full engineering reference, and
+`ships`, `ship_armor`, `ship_crew` and `ship_slots` tables. [SHIPS.md](SHIPS.md) is the full engineering reference, and
 [SHIP_GAMEPLAY.md](SHIP_GAMEPLAY.md) covers commands, catalogues and the cargo economy.
 
 ## Kingdom subsystem and retired siege identifiers
@@ -383,7 +381,7 @@ regeneration in `hit_regen()`, `mana_regen()` and `move_regen()`; loot in
 `check_random_drop()` and `create_random_eq_new()` ([random equipment](RANDOM_EQUIPMENT.md));
 zone lifespan in `reset_zone()`; epic points (not PvP) in `prepare_epic_award()`; artefact
 feeding in
-`artifact_feed_seconds()`; bartender quests in the bartender fee, both backends'
+`artifact_feed_seconds()`; bartender quests in the bartender fee,
 `sql_world_quest_can_do_another()` (never fewer than one a day) and the kill count in
 `createQuest()`.
 

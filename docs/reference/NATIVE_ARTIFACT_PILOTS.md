@@ -222,8 +222,8 @@ world/storage boundaries exercise legacy/new routing, exact last payment,
 insufficient/cold storage, reserve floors, legal targets, terrain, abort,
 leave-and-return, removal, configuration changes, linked forms, save-time versus
 real unequip, theurgist forms, class/body slots and extraction during effects.
-These focused tests do not substitute for the disposable-server rollout evidence in
-the [verification record](../testing/ITEM_ABILITY_ROLLOUT.md).
+These focused tests do not replace disposable-server qualification. Follow the
+[rollout runbook](../operations/ITEM_ABILITY_ROLLOUT.md) before enablement.
 
 `test_sword_actions_runtime.py` compiles the actual old sword helpers, callback,
 weapon dispatcher and new state machine. It exercises all fifteen combat choices

@@ -4,6 +4,12 @@ The project uses focused regression tests in `tests/async/`, plus
 schema/migration checks at `tests/` root. The root `Makefile` provides a single
 gate while retaining fast commands for focused work.
 
+MariaDB is the only server persistence backend. Some maintained test filenames
+and shared helper names still contain `flatfile`; those names do not enable a
+file-based server. Server journeys require an isolated MariaDB schema. Use the
+disposable wrapper and the test's current `--server`/`--backend mariadb` options,
+or run its entry in `make test-db`. Never use `PERSISTENCE_BACKEND=flatfile`.
+
 ## Layout
 
 ```
@@ -125,7 +131,7 @@ tests/async/test_mysql_playtime_journey.py --server bin/server/dms_new`. The
 journey creates and removes its own schema and
 invokes `test_playtime_mysql_repository.py` with that schema's environment. Both
 scripts are excluded from argument-free discovery; the database-independent
-playtime capture, checkpoint, legacy SQL, and flat-file tests remain in `make test-all`.
+playtime capture, checkpoint and legacy SQL tests remain in `make test-all`.
 
 The game loop budget journey (`test_mysql_game_loop_budget_journey.py`, in
 `make test-db`) boots the full world on MariaDB, has scripted players camp and rent
@@ -177,8 +183,8 @@ or narrow the backend matrix merely to make a temporary-table fixture pass.
 ### Shared journey server artifacts
 
 The Python runner defaults `DURIS_REGRESSION_BUILD_CACHE` to
-`bin/regression-artifacts`. Account recovery, flat-file boot preflight, Chaos
-kit, combat and full-world boot acquire one compatible flat-file server from
+`bin/regression-artifacts`. Account recovery, boot preflight, Chaos
+kit, combat and full-world boot acquire one compatible MariaDB server from
 `tests/async/server_build_artifacts.py`. Each journey retains its own temporary
 authority, journals, logs, listeners and process cleanup. Executables are shared
 read-only; runtime state is never stored in the artifact directory. The
@@ -186,17 +192,16 @@ item-prompt ASan/UBSan harness remains a separate build with its existing flags
 and the server build's 600-second ceiling. That one server build uses every
 core, and the journeys start together when it is done.
 
-The shared flat-file server runs a 125 ms game pulse instead of 250 ms
+The shared MariaDB journey server runs a 125 ms game pulse instead of 250 ms
 (`FAST_PULSE_USEC`, passed to Make as `TEST_PULSE_USEC`). Game logic counts pulses,
 so a journey plays the same game twice as fast. A journey that times the game
 against the wall clock (it sleeps into a pulse window, tests a timeout in seconds,
 or restores a wall-clock deadline that the game turns into pulses at four a second)
 asks for `build_flatfile_server(..., real_clock=True)`, a separate artifact
-with the real pulse. `bin/server/dms_new`, which runs the MariaDB legs of the same
-journeys in `make test-db`, and every production build keep 250 ms.
+with the real pulse. `bin/server/dms_new` and every production build keep 250 ms.
 
 The artifact key covers all files under `src/` (including untracked files),
-test headers, the helper contract, the flat-file backend, and the inherited build
+test headers, the helper contract, the MariaDB backend, and the inherited build
 environment, including profile, feature flags and Make overrides. It also hashes
 the effective compiler, Make, assembler, linker, compiler internals, installed
 headers and libraries. Standard GNU compiler search directories and explicit
@@ -208,7 +213,7 @@ wrappers that do not support GNU compiler discovery. Runtime-only full-world
 diagnostics and shell working-directory variables do not invalidate a build.
 
 On every acquisition, the helper verifies executable and build-log SHA-256
-hashes and rechecks the client-free compilation assertions. Missing or malformed
+hashes and rechecks the MariaDB client compilation and link assertions. Missing or malformed
 metadata, altered binaries/logs and changed inputs trigger a fresh build. Inputs
 are checked again after compilation; a build spanning an input change is rejected.
 A per-key lock prevents duplicate concurrent builds, and atomic manifests publish
@@ -285,11 +290,11 @@ additional checks when the change touches what they check:
 
 | Check | When |
 | --- | --- |
-| The backup-recovery container job (root-only `test_persistence_backup_integration.py`) | backup, restore, `scripts/backup_*`, or the flat-file launcher |
+| The backup-recovery container job (root-only `test_persistence_backup_integration.py`) | backup, restore, `scripts/backup_*`, or the launcher |
 | CodeQL and Trivy (`security.yml`) | dependencies, `packaging/`, `Dockerfile`, network or authentication code, and before a production deploy |
 | `npm ci --prefix site && npm test --prefix site` | `docs/` or `site/` |
 
-Do not replay the `flatfile-build`, `quality` or `build.yml` workflow jobs step
+Do not replay the `quality` or `build.yml` workflow jobs step
 by step. Their tests are the ones `make test-all` just ran on the same host.
 
 When a change fixes a defect and adds or changes its regression test, run
@@ -322,7 +327,7 @@ the suite runs. Nothing else runs it, and its percentage is never a target: it s
 no test reaches. It works in a detached worktree of the commit (`HEAD` by default) under
 `bin/analysis/coverage-<sha>/`, so the checkout and any running gate are untouched, with
 `scripts/coverage/g++` first on `PATH`. That wrapper gives every compile, the server's, the
-journeys' flat-file builds and the harnesses', `--coverage` and its own directory of notes
+journeys' MariaDB builds and the harnesses', `--coverage` and its own directory of notes
 and counts under `bin/coverage/<sha>/data/`, so a harness built in a temporary directory
 leaves its counts behind. It runs `make -k test-all`, and `make test-db` too with `--db`
 (`COVERAGE_ARGS=--db make coverage`), then writes `bin/coverage/<sha>/index.html`,
@@ -380,7 +385,7 @@ crash stays fixed.
 ## Full-world save diagnostics
 
 `test_flatfile_full_world_boot.py` supports opt-in synthetic failure/recovery
-experiments without using the configured database:
+experiments on disposable MariaDB without using the configured database:
 
 | Variable | Effect |
 | --- | --- |
@@ -444,7 +449,7 @@ measurements, or complete fault/reconciliation matrix the 200-player gate requir
 
 Password reset by email has a core harness (injected mail sender and
 clock, no network), a wire-level SMTP harness against a fake relay on `127.0.0.1`, a
-source-contract pin set, and a telnet journey that boots the client-free server with a
+source-contract pin set, and a telnet journey that boots the MariaDB server with a
 fake relay. None of them needs a real relay or a database; the compiled harnesses need
 `g++` plus the libcurl and OpenSSL development headers from the dependency metapackage:
 

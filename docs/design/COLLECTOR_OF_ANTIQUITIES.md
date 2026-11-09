@@ -2,10 +2,10 @@
 
 Specification: [discussion #336](https://github.com/LuminariMUD/Duris/discussions/336).
 
-**Status: implemented on both backends, behind `collector.enabled` (off by default).**
+**Status: implemented on MariaDB, behind `collector.enabled` (off by default).**
 Player deaths are enrolled with captured policy, live collector commands and the due
 worker submit through the critical command coordinator, and protected collector NPCs
-reconcile in registered auction rooms. SQL and flat-file authorities both preserve exact
+reconcile in registered auction rooms. The MariaDB authority preserves exact
 item payloads, custody, currency, replay, restart, and publication boundaries. Live
 journeys cover intake only ([Before enabling](#before-enabling)).
 
@@ -43,10 +43,7 @@ cursor, strictly ordered records, fixed-width little-endian fields, and packed
 death operation IDs. Encoding and decoding validate the defined
 state/timing/pause/reason invariants, reject unknown versions and noncanonical
 input without partially publishing output, and cap catalogs at 262,144 records.
-This establishes the shared persistence boundary used by both the SQL and
-flat-file authorities. The flat-file repository stores the same canonical
-metadata, item snapshots, death enrollment, operation receipts, and result
-images inside its crash-recoverable authority transaction.
+This establishes the persistence boundary for MariaDB transactions.
 
 These functions mutate a proposed record only. **A successful policy decision is
 not proof of a committed item transfer or wallet debit.** Operation-ID replay,
@@ -69,7 +66,7 @@ for due-queue publication and remain well below the coordinator's result limit.
 `collector_transaction.{h,c}` submits this command through the critical-command
 coordinator, retains interactive completions across disconnect/reconnect, and
 publishes committed custody, currency, and catalog results idempotently. The
-collector service, maintenance worker, and flat-file repository all build and
+collector service and maintenance worker build and
 consume these payloads through the same boundary.
 
 The ownership contract now reserves append-only owner type 10 for collector
@@ -158,9 +155,9 @@ database: its real MariaDB journey covers empty and populated restart bootstrap,
 held-custody validation, corruption rejection with strong output guarantees,
 exact blob reads, source-tree shell detachment, wallet debit, player restoration,
 terminal custody, operation replay, and all seven lifecycle actions. Complete
-MariaDB and flat-file builds remain required after every integration change;
-the flat-file collector journey exercises the corresponding authority and
-recovery paths directly.
+MariaDB builds remain required after every integration change; both intake
+journeys use disposable MariaDB schemas despite one retaining its original
+`test_flatfile_*` filename.
 
 Run `python3 tests/async/test_item_transfer_codec.py` for the collector
 ownership/fence codec boundary. Run

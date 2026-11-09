@@ -116,7 +116,7 @@ Focused tests are automatically discovered by the normal regression runner:
   admission/placement for every race ID, both classes, three alignments and both
   Chaos profiles under ASan/UBSan; checks family, quantity and wear slots.
 - `test_starter_arrow_journey.py`: fresh Ranger/Rogue grants and actual
-  fire/event/gather commands through Telnet on a disposable minimal flat-file
+  fire/event/gather commands through Telnet on a disposable minimal MariaDB
   server, with saved UID, condition, quiver count and weight checks, plus
   save/restart/relogin. Includes both Chaos profiles and normal Human kits. The fixture
   explicitly enables historical races/classes; it is not a live roster claim.

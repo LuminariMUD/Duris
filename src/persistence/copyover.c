@@ -2197,8 +2197,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 				SET_POS(ch, POS_STANDING + STAT_NORMAL);
 
 				// add to character_list first
-				ch->next = character_list;
-				character_list = ch;
+				character_list_add(ch);
 
 				save_room = copyover_player_room(desc_entry, header.version,
 								 copyover_restores_world(), ch);

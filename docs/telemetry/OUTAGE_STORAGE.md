@@ -215,7 +215,7 @@ retry charging, rollback refusal, native initialization/recovery/season commands
 every rollover publication fault, historical scope retention and next-day
 allowance, and repeated failed fresh registrations retaining one full archive.
 
-The runtime journey runs SQL-header and client-free variants with bounded
+The runtime journey runs standalone header variants with bounded
 synthetic repository faults. It verifies registration before SQL initialization
 and admission, clean drain/restart, transient SQL recovery, unresolved commit
 shutdown, a disk-full registration (refused, no staging file left), a disk-full
