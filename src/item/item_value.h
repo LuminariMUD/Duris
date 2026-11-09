@@ -4,7 +4,7 @@
 #include "core/config.h"
 #include "core/defines.h"
 
-inline constexpr const char *ITEM_VALUE_FORMULA_REVISION = "ival-legacy-v1";
+inline constexpr const char *ITEM_VALUE_FORMULA_REVISION = "ival-v2-class-spec-extents";
 
 // Numeric inputs only: no object identity, links, callbacks, or mutable state.
 struct item_value_apply

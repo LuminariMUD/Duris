@@ -26,7 +26,7 @@ PLAYER, ACCOUNT = "Keywarden", "Keyacct"
 MORTAL, MORTAL_ACCOUNT = "Campwarden", "Campacct"
 INN, KEY, BAG, SIBLING, TICKET = 40454, 40401, 48, 15, 47003
 SHOP, SHOP_KEY = 5848, 5783
-CAMP_ROOM = 1457
+CAMP_ROOM, BANK, BLOOD_STAIN = 1457, 16590, 4
 LOCKER_ROOM = 65201
 NORENT = 8388608
 FALLS, CRUMBLES = "is no-rent and falls to the floor", "is no-rent and crumbles to dust"
@@ -177,6 +177,34 @@ def run(binary, backend, evidence_dir):
                     ("Copyover complete!", "Copyover FAILED", "Copyover cancelled"), timeout=180)
                 assert result == "Copyover complete!", output_text + journey.runtime_logs(runtime)
 
+            def enter_locker():
+                deadline = time.monotonic() + 90
+                while True:
+                    client.send("enter locker")
+                    match, text = client.expect_any(("this cost you", "Please try later", "Slow your roll",
+                                                     "could not be opened"), timeout=30)
+                    if match == "this cost you":
+                        command(client, "score")
+                        return
+                    assert time.monotonic() < deadline, "locker never opened: " + text
+                    command(client, "score")
+                    time.sleep(1)
+
+            def leave_locker():
+                deadline = time.monotonic() + 90
+                while True:
+                    if "being secured" not in command(client, "open door"):
+                        client.send("north")
+                        outcome, _ = client.expect_any(("applying magic locks", "still being secured"), timeout=30)
+                        if outcome == "applying magic locks":
+                            command(client, "score")
+                            return
+                    assert time.monotonic() < deadline, "locker never closed"
+                    time.sleep(1)
+
+            def stored_in_lockers(vnum):
+                return int(sql("SELECT COUNT(*) FROM locker_items WHERE vnum=" + str(vnum)))
+
             def mortal_revision():
                 return int(sql("SELECT save_revision FROM player_data WHERE name='" + MORTAL + "'"))
 
@@ -314,7 +342,66 @@ def run(binary, backend, evidence_dir):
                 mortal.close()
                 mortal = None
                 evidence["checks"].append("an idle-voided character's no-rent item falls")
+
+                command(client, "goto " + str(BANK))
+                command(client, "setbit room here flag SAFE 1")
+                command(client, "setbit room here flag ROOM_MAGIC_LIGHT 1")
+                command(client, "load obj 3097")
+                assert "created" in command(client, "load obj " + str(TICKET)).lower()
+                enter_locker()
+                assert "created" in command(client, "load obj " + str(BLOOD_STAIN)).lower()
+                assert "You drop" in command(client, "drop ticket")
+                leave_locker()
+                assert "ticket" in command(client, "inventory").lower(), "floor ticket was not handed back"
+                assert stored_in_lockers(TICKET) == 0 and stored_in_lockers(BLOOD_STAIN) == 0
+                evidence["checks"].append("a locker hands back a no-rent item from its floor")
+                enter_locker()
+                command(client, "eq sort none")
+                text = command(client, "put ticket chest")
+                assert "Ok." in text or "You put" in text, text
+                leave_locker()
+                assert "ticket" in command(client, "inventory").lower(), "chest ticket was not handed back"
+                assert stored_in_lockers(TICKET) == 0
+                evidence["checks"].append("a locker hands back a no-rent item from a chest")
+
+                enter_locker()
+                for line, reply in (("eq chest create vault norent-secret", "Private chest 'vault' created"),
+                                    ("open vault", "You open the 'vault' chest"),
+                                    ("put ticket vault", "Ok.")):
+                    client.send(line)
+                    client.expect(reply, timeout=60)
+                command(client, "score")
+                leave_locker()
+                assert "ticket" in command(client, "inventory").lower(), "private chest ticket was not handed back"
+                assert stored_in_lockers(TICKET) == 0
+                evidence["checks"].append("a locker hands back a no-rent item from an open private chest")
+
+                enter_locker()
+                assert "Leave first" in command(client, "camp"), "camp must stay refused inside a locker"
+                leave_locker()
+                evidence["checks"].append("nobody can camp out from inside a locker")
                 command(client, "goto " + str(INN))
+                assert "You drop" in command(client, "drop ticket")
+                assert on_floor(client, "ticket")
+
+                command(client, "goto " + str(BANK))
+                # The bag must be back in the visitor's hands before their save, not after
+                # it: a crash between the two saves would lose the bag and what it holds.
+                enter_locker()
+                command(client, "setbit obj backpack extra NORENT 1")
+                assert "You drop" in command(client, "drop backpack")
+                revision = save()["revision"]
+                deadline = time.monotonic() + 60
+                while inspect()["revision"] <= revision:
+                    assert time.monotonic() < deadline, "the save inside the locker did not commit"
+                    time.sleep(.1)
+                stop(crash=True)
+                boot()
+                login()
+                assert any(row[1] == SIBLING for row in inspect()["items"]), "a crash lost what a no-rent bag in a locker held"
+                command(client, "setbit obj backpack extra NORENT 0")
+                assert preserved(save()) == baseline
+                evidence["checks"].append("what a no-rent bag on a locker floor holds survives a crash after a save")
 
                 active_uid = grant(KEY, "golden", "golden key", True)
                 save()

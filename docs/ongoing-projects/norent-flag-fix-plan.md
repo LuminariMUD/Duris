@@ -12,10 +12,10 @@ done.
 
 | PR | Sections | Branch | State |
 |---|---|---|---|
-| 1 | 1, 2, 3 and their tests | `branch/norent-flag-fix` | Built and tested |
-| 2 | 4 (lockers) | `branch/norent-flag-fix-lockers` | Not started |
-| 3 | 5 (seven items, auction refusal) | `branch/norent-flag-fix-items` | Not started |
-| 4 | 6 (help and docs) | `branch/norent-flag-fix-help` | Not started |
+| [#933](https://github.com/LuminariMUD/Duris/pull/933) | 1, 2, 3 and their tests | `branch/norent-flag-fix` | In review |
+| Next | 4 (lockers) | `branch/norent-flag-fix-lockers` | Built and tested |
+| Next | 5 (seven items, auction refusal) | `branch/norent-flag-fix-items` | Not started |
+| Next | 6 (help and docs) | `branch/norent-flag-fix-help` | Not started |
 
 Notes from building so far:
 
@@ -24,6 +24,9 @@ Notes from building so far:
   camp and `extractlink` cases use a second, mortal character in room 1457.
 - No artifact prototype is no-rent, and the coin pile isn't, so section 1 has no
   coin or artifact handling.
+- Section 4 tests a public chest made with `eq sort none`. Private chests use the
+  existing `locker_container_access_allowed` check, which a leave invalidates first,
+  so a private chest is only cleared while the visitor has it open.
 
 ## Outcome and scope
 
