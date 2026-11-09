@@ -88,17 +88,15 @@ static int get_mincircle_before(int spell) { return get_mincircle(spell); }
 #endif
 #if NUMERIC_BASELINE
 static unsigned long before_evaluations, after_evaluations;
-int evaluate_item_value_before(const item_value_input &, const item_value_context &, item_value_breakdown *);
-extern "C" int __real__Z19evaluate_item_valueRK16item_value_inputRK18item_value_contextP20item_value_breakdown(
-    const item_value_input &, const item_value_context &, item_value_breakdown *);
-extern "C" int __wrap__Z19evaluate_item_valueRK16item_value_inputRK18item_value_contextP20item_value_breakdown(
-    const item_value_input &input, const item_value_context &context, item_value_breakdown *detail) {
+int itemvalue_before(P_obj);
+extern "C" int __real__Z9itemvalueP8obj_data(P_obj);
+extern "C" int __wrap__Z9itemvalueP8obj_data(P_obj object) {
     if (before_context) {
         ++before_evaluations;
-        return evaluate_item_value_before(input, context, detail);
+        return itemvalue_before(object);
     }
     ++after_evaluations;
-    return __real__Z19evaluate_item_valueRK16item_value_inputRK18item_value_contextP20item_value_breakdown(input, context, detail);
+    return __real__Z9itemvalueP8obj_data(object);
 }
 #endif
 static FILE *deltas;
@@ -228,7 +226,9 @@ static void value_delta(const char *cohort, int id, P_obj object) {
                  count, dense, callbacks, object->value[6], object->value[7], apply_kinds.size(), apply_stages);
     for (const auto &apply : object->affected)
         std::fprintf(deltas, ",%d,%d", apply.location, apply.modifier);
-    std::fprintf(deltas, ",%d\n", qualification_bag_candidate(object));
+    std::fprintf(deltas, ",%d,%d,%d\n", qualification_bag_candidate(object),
+                 object->type == ITEM_WEAPON ? object->value[1] : 0,
+                 object->type == ITEM_WEAPON ? object->value[2] : 0);
 }
 
 static void generated_deltas() {
@@ -305,6 +305,46 @@ static object_template base(int vnum = 9000000)
     return object;
 }
 
+static void unavailable_salvage()
+{
+    auto prototype = *find_object_template(9000000);
+    prototype.type = ITEM_WEAPON;
+    prototype.wear_flags = ITEM_TAKE | ITEM_WIELD;
+    prototype.extra_flags = prototype.extra2_flags = 0;
+    prototype.material = MAT_CLOTH;
+    prototype.value[0] = WEAPON_LONGSWORD;
+    prototype.value[1] = prototype.value[2] = 50000;
+    P_obj item = instantiate_object_template(prototype);
+    assert(item && itemvalue(item) == 0 && is_salvageable(item));
+    assert(get_matstart(item) > 0);
+    crafting_plan plan{};
+    assert(!crafting_build_plan(item, &plan));
+    char_data player{};
+    pc_only_data pc{};
+    player.only.pc = &pc;
+    player.player.name = const_cast<char *>("ValuationFixture");
+    player.player.level = 56;
+    player.specials.position = POS_STANDING | STAT_NORMAL;
+    pc.skills[SKILL_SALVAGE].learned = 100;
+    player.carrying = item;
+    item->loc_p = LOC_CARRIED;
+    item->loc.carrying = &player;
+    assert(GET_CHAR_SKILL(&player, SKILL_SALVAGE) >= 1);
+    assert(get_obj_in_list_vis(&player, "fixture", item) == item);
+    const auto original = *item;
+    const auto random = rolls;
+    const auto ids = identities;
+    char command[] = "fixture";
+    do_salvage(&player, command, 0);
+    assert(player.carrying == item && !std::memcmp(item, &original, sizeof(*item)));
+    assert(rolls == random && identities == ids);
+    player.carrying = nullptr;
+    item->loc_p = LOC_NOWHERE;
+    item->loc.carrying = nullptr;
+    extract_obj(item);
+    std::puts("native salvage command: unavailable score preserves item before rolls/grants");
+}
+
 static void parity(object_template &prototype, const char *label)
 {
     std::fprintf(stderr, "checking real engine template parity %s vnum=%d\n", label,
@@ -373,7 +413,7 @@ int main(int argc, char **)
                    "replacement_cost_copper_before,replacement_cost_copper_after,nominal_superior_cost_copper_before,nominal_superior_cost_copper_after,"
                    "native_proc_credit,quest_source_eligible,template_vnum,quest_zone,quest_floor_lost,quest_floor_gained,"
                    "packed_slot_count,packed_dense,packed_callback_mask,proc_level,proc_denominator,apply_kind_count,apply_stage_mask,"
-                   "apply0,modifier0,apply1,modifier1,apply2,modifier2,apply3,modifier3,faerie_candidate\n", deltas);
+                   "apply0,modifier0,apply1,modifier1,apply2,modifier2,apply3,modifier3,faerie_candidate,weapon_dice_count,weapon_dice_sides\n", deltas);
         FILE *settings = std::fopen("consumer-settings.json", "w"); assert(settings);
         std::fprintf(settings, "{\"max_mortal_level\":%d,\"craft_level_gate\":%d,\"craft_xp_per_ival\":%d,\"enhance_level_gate\":%d,"
                      "\"enhance_donor_delta\":%d,\"enhance_insignia_bonus\":%d,\"enhance_cap\":%d,\"enhance_radius\":%d,"
@@ -452,6 +492,8 @@ int main(int argc, char **)
     for (const char *name : {"actroom1", "actworn1", "hummer1", "sayresponse1", "transporter1"})
         assert(!valid_object_proclib(name, std::string(MAX_STRING_LENGTH, 'x').c_str()));
     object.R_num = -1; assert(itemvalue(object) == 0);
+    assert(!object_list && ne_event_counter == 0);
+    unavailable_salvage();
     assert(!object_list && ne_event_counter == 0);
     std::puts("real engine: template evaluation creates no identities/objects/events, consumes no RNG, and leaves inputs/bindings unchanged");
 }
@@ -589,7 +631,7 @@ def main():
             start = enhance.index("\tconst int64_t cost = enhance_stat_platinum_base +")
             end = enhance.index(";", start) + 1
             code = code.replace("// SUPERIOR_PRICE", enhance[start:end])
-            for file in (["src/item/item_value.c"] if args.circle_baseline else []) + ["src/item/item_value_runtime.c"]:
+            for file in (["src/item/item_value.c", "src/item/item_value_runtime.c"] if args.circle_baseline else []):
                 old = subprocess.check_output(["git", "show", f"{revision}:{file}"],
                                               cwd=ROOT, text=True)
                 assert old == (ROOT / file).read_text(), "comparison requires unchanged context and, for circle mode, numeric adapters"
@@ -603,9 +645,16 @@ def main():
                 baseline_flags += ["-DCIRCLE_BASELINE=1", "-Wl,--wrap=_Z13get_mincirclei"]
             else:
                 assert function == extract_function("tradeskill.c", "int get_mincircle(int spell)\n{"), "numeric comparison requires unchanged circle context"
+                signature = "int get_ival_from_proc(obj_proc_type proc)\n{"
+                assert extract_function(old, signature) == extract_function("tradeskill.c", signature), "comparison requires unchanged native proc prices"
                 old_header = subprocess.check_output(["git", "show", f"{revision}:src/item/item_value.h"], cwd=ROOT, text=True)
-                layout = lambda text: [line for line in text.splitlines() if "ITEM_VALUE_FORMULA_REVISION" not in line]
+                layout = lambda text: [line for line in text.split("struct item_value_breakdown", 1)[0].splitlines()
+                                       if "ITEM_VALUE_FORMULA_REVISION" not in line]
                 assert layout(old_header) == layout((ROOT / "src/item/item_value.h").read_text()), "numeric baseline requires identical input/context ABI"
+                old_header_path = path / "item_value_before.h"
+                old_header_path.write_text(old_header)
+                signature = "template <typename Object> void normalize_item_value_fields("
+                assert extract_function(old_header_path, signature) == extract_function(ROOT / "src/item/item_value.h", signature), "comparison requires unchanged constructor normalization"
                 old_numeric = path / "item_value_before.c"
                 old_numeric.write_text(subprocess.check_output(["git", "show", f"{revision}:src/item/item_value.c"], cwd=ROOT, text=True))
                 signature = "bool item_value_has_packed_proc("
@@ -615,7 +664,14 @@ def main():
                                 "-Ditem_value_has_packed_proc=item_value_has_packed_proc_before", "-c", str(old_numeric),
                                 "-o", str(old_object)], cwd=ROOT, check=True)
                 objects.append(str(old_object))
-                baseline_flags += ["-DNUMERIC_BASELINE=1", "-Wl,--wrap=_Z19evaluate_item_valueRK16item_value_inputRK18item_value_contextP20item_value_breakdown"]
+                old_runtime = path / "item_value_runtime_before.c"
+                old_runtime.write_text(subprocess.check_output(["git", "show", f"{revision}:src/item/item_value_runtime.c"], cwd=ROOT, text=True))
+                old_runtime_object = path / "item_value_runtime_before.o"
+                subprocess.run(["g++", "-std=c++20", "-g", "-Isrc", "-Ditemvalue=itemvalue_before",
+                                "-Devaluate_item_value=evaluate_item_value_before", "-c", str(old_runtime),
+                                "-o", str(old_runtime_object)], cwd=ROOT, check=True)
+                objects.append(str(old_runtime_object))
+                baseline_flags += ["-DNUMERIC_BASELINE=1", "-Wl,--wrap=_Z9itemvalueP8obj_data"]
         source.write_text(code)
         comm = next(item for item in objects if item.endswith("/net/comm.o"))
         renamed = path / "comm.o"
@@ -684,7 +740,7 @@ def main():
                             ("kingdom_config", world / "lib/kingdom.cfg"),
                             ("item_abilities", world / "lib/item_abilities.json")):
             assert provenance[label + "_sha256"] == hashlib.sha256(file.read_bytes()).hexdigest()
-        assert provenance["formula_revision"] == "ival-v6-apply-totals"
+        assert provenance["formula_revision"] == "ival-v7-numeric-bounds"
         assert provenance["context"] == "configured-healthy-boot"
         assert provenance["mini_mode"] == "0" and provenance["no_specials"] == "0"
         if args.delta_output:
@@ -715,7 +771,7 @@ def main():
                         "tradeskill.c", "int get_mincircle(int spell)\n{").encode()).hexdigest(),
                 },
                 "formula_revision": provenance["formula_revision"],
-                "comparison": "circle context" if args.circle_baseline else "numeric evaluator",
+                "comparison": "circle context" if args.circle_baseline else "numeric evaluator and runtime adapter",
                 "consumer_settings": settings,
                 "consumer_config_sha256": {name: hashlib.sha256((world / "lib" / name).read_bytes()).hexdigest()
                                            for name in ("crafting.cfg", "enhance.cfg", "random_equipment.cfg")},
@@ -725,6 +781,15 @@ def main():
                 "changed": {kind: sum(row["cohort"] == kind for row in changed)
                             for kind in ("template", "generated")},
                 "generated_seeds": "seed=1..16; source_level=1,20,40,60,62; every native slot; finder_level=56/luck=160",
+                "observed_ranges": {kind: {
+                    "score": [min(int(r["after"]) for r in rows if r["cohort"] == kind),
+                              max(int(r["after"]) for r in rows if r["cohort"] == kind)],
+                    "unavailable_scores": sum(int(r["after"]) < 1 for r in rows if r["cohort"] == kind),
+                    "max_weapon_dice_count": max(int(r["weapon_dice_count"]) for r in rows if r["cohort"] == kind),
+                    "max_weapon_dice_sides": max(int(r["weapon_dice_sides"]) for r in rows if r["cohort"] == kind),
+                    "apply_modifier": [min(int(r[f"modifier{i}"]) for r in rows if r["cohort"] == kind for i in range(4)),
+                                       max(int(r[f"modifier{i}"]) for r in rows if r["cohort"] == kind for i in range(4))],
+                } for kind in ("template", "generated")},
                 "score_derived_consumer_effects": {
                     "status": "none in measured cohorts" if not changed else "direct effects recorded in consumer-effects.json",
                     "families": ["salvage quality/breakage", "craft/forge level/recipe/material/XP",
@@ -735,6 +800,10 @@ def main():
                 },
             }
             if args.numeric_baseline:
+                summary["runtime_adapter_sha256"] = {
+                    "before": hashlib.sha256(old_runtime.read_bytes()).hexdigest(),
+                    "after": hashlib.sha256((ROOT / "src/item/item_value_runtime.c").read_bytes()).hexdigest(),
+                }
                 summary["evaluator_functions_sha256"] = {
                     "before": hashlib.sha256(extract_function(old_numeric, "int evaluate_item_value(").encode()).hexdigest(),
                     "after": hashlib.sha256(extract_function("item_value.c", "int evaluate_item_value(").encode()).hexdigest(),

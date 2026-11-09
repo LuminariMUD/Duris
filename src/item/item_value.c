@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <climits>
 #include <tuple>
 
 bool item_value_has_packed_proc(const item_value_input &input)
@@ -19,6 +20,17 @@ bool item_value_has_packed_proc(const item_value_input &input)
 int evaluate_item_value(const item_value_input &input, const item_value_context &context,
 			item_value_breakdown *breakdown)
 {
+	// Context participates in canonical ordering; reject NaNs before comparison.
+	for (double credit : context.racial_credits)
+		if (!std::isfinite(credit))
+		{
+			if (breakdown)
+			{
+				*breakdown = {};
+				breakdown->invalid = true;
+			}
+			return 0;
+		}
 	const auto *obj = &input;
 	double workingvalue = 0;
 	double multiplier = 1;
@@ -260,7 +272,8 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 	if (item_value_has_packed_proc(input))
 	{
 		int spells[3];
-		int spellcirclesum, numspells;
+		double spellcirclesum;
+		int numspells;
 
 		// val5 : 3 spells + all or one.
 		spells[0] = obj->value[5] % 1000;
@@ -473,10 +486,12 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 
 	if (obj->type == ITEM_WEAPON)
 	{
+		const double dice_count = obj->value[1];
+		const double maximum_damage = dice_count * obj->value[2];
 		// Maximum dice damage is the historical valuation term.
-		workingvalue += (obj->value[1] * obj->value[2]);
+		workingvalue += maximum_damage;
 		// 1d1 = .5%, 5d5 = 12.5%, 10d10 = 50%.
-		multiplier += obj->value[1] * obj->value[2] * .005;
+		multiplier += maximum_damage * .005;
 		// Backstabbing weapons get a big ival for big dice.
 		if (IS_BACKSTABBER(obj))
 		{
@@ -485,8 +500,8 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 			// For number of dice: 1:1, 2:1.15, 3:1.4, 4:1.75, 5:2.2, 6:2.75, 7:3.4, 8:4.15, 9:5, 10:5.95
 			// For number of die sides: 1:0, 2:1, 3:5, 4:12, 5:25, 6:43, 7: 68, 8:102, 9:145, 10: 200
 			// So, 1d8 / 3d7 stabber is !forge and !enhance (115 ival when combined with above).
-			workingvalue += ((obj->value[1] * obj->value[1] + 19.) / 20.) *
-					(mod * mod * mod) / 5.;
+			workingvalue +=
+				((dice_count * dice_count + 19.) / 20.) * (mod * mod * mod) / 5.;
 		}
 	}
 	if (obj->type == ITEM_ARMOR)
@@ -514,13 +529,15 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 		(!(obj->wear_flags & ITEM_TAKE) && obj->type == ITEM_TELEPORT) ||
 		obj->type == ITEM_KEY || obj->type == ITEM_SWITCH || obj->type == ITEM_VEHICLE ||
 		obj->type == ITEM_SHIP || obj->type == ITEM_STORAGE;
-	int score = 1;
+	const bool invalid = !std::isfinite(workingvalue) || !std::isfinite(multiplier) ||
+			     !std::isfinite(unrounded) ||
+			     (!utility_override && unrounded > INT_MAX);
+	int score = 0;
 	// Quantize once after every base credit and multiplier, truncating toward zero.
-	if (!utility_override)
-		score = floored ? 1 : unrounded;
+	if (!invalid)
+		score = utility_override || floored ? 1 : static_cast<int>(unrounded);
 	if (breakdown)
-		*breakdown = {
-			workingvalue, multiplier, unrounded, floored, utility_override, score
-		};
+		*breakdown = { workingvalue,	 multiplier, unrounded, floored,
+			       utility_override, score,	     invalid };
 	return score;
 }

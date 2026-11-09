@@ -2789,7 +2789,8 @@ void do_open(P_char ch, char *argument, int /*cmd*/)
 							 IS_SET(robj->extra_flags, ITEM_NOSHOW) ||
 							 IS_SET(robj->extra_flags,
 								ITEM_TRANSIENT) ||
-							 isname("_noquest_", robj->name))
+							 isname("_noquest_", robj->name) ||
+							 itemvalue(robj) < 1)
 						{
 							validobj = FALSE;
 							extract_obj(robj, FALSE);

@@ -31,10 +31,11 @@ Automatic approval review blocked their deletion, including exact-file cleanup,
 so these ignored local evidence files remain. No detailed rejection reason was
 provided beyond “blocked by policy.”
 
-Evidence consists of direct source tracing, execution of unchanged native
+The initial review evidence consists of direct source tracing, execution of unchanged native
 valuation functions, sanitizer boundary probes, an authored-object inventory,
 and ten existing focused checks. It is **not** a live-server or full-world
-qualification. Evidence and its limits are recorded below. Source links and line
+qualification. Subsequent native corpus and implementation qualification is
+recorded in the log below. Source links and line
 anchors refer to the reviewed baseline.
 
 ## Implementation log and handoff
@@ -956,12 +957,89 @@ F05/F09 coverage/proc policy, F10 config truthfulness, remaining F11–F15 consu
 work and real MariaDB journeys in F16 remain required. Use focused branches/PRs;
 do not treat these formula slices as project completion or deploy them here.
 
+### Chunk 14 — reject unavailable numeric valuations (F08, partial, implemented)
+
+Branch: `branch/ival-numeric-bounds`, based on `branch/ival-duplicate-applies`.
+
+**Outcome:** widen weapon and circle arithmetic before operations, guard finite
+context and output before integer conversion, and return the existing unavailable
+value 0 with an explicit invalid breakdown flag for invalid/unrepresentable
+calculations. Guard runtime object indexes before lookup. Reject unavailable
+scores before economic consumption/grants or reward/index admission; preserve
+ordinary rounding and utility policy. Widen raw material decomposition before
+scaling so its `score + 4` offset cannot overflow.
+
+**Non-goals:** new weights or practical content caps, proc policy, config parsing,
+general quantity/XP checks, consumer architecture, or deployment. Remaining F08
+input/config/admission boundaries and F14 checked shared material math follow.
+
+**Files:** shared evaluator/runtime/revision, economic admission sites, native
+characterization and command fixtures, corpus evidence and this plan.
+
+**Proof:** replace the two expected sanitizer failures with safe unavailable
+results; exercise integer limits, nonfinite context, boundary rounding, unresolved
+indexes, and refusal before currency/material/item mutation. Qualify the complete
+native corpus and retain its actual score/input maxima without selecting new
+content limits.
+
+**Validation passed:** the former `50000d50000` and `1000d1000` sanitizer failures,
+plus `INT_MAX` dice, now return unavailable with `invalid=true`. ASan/UBSan with
+`float-cast-overflow` covers longsword/backstab terms, integer-limit circle sums,
+nonfinite/extreme context, valid `INT_MAX` and adjacent rounding, invalid object
+indexes and a missing index. All 38,400 additive-total, 10,080 permutation and
+3,072 zero-insertion cases still pass in isolated server/editor builds.
+
+Native enhancement tests reject unavailable sources/donors in replacement,
+essence and superior paths before loads, RNG, charges, material use or item
+mutation. The full-engine salvage command fixture establishes actual skill,
+visibility and salvageability, then preserves the item before any roll/grant;
+the native crafting plan also rejects that unavailable item. The production
+crafting-plan regression executes scores 1/5/6 and `INT_MAX`/`INT_MAX-1` under
+sanitizers, checking exact raw material quantities.
+
+Full server and both maintained editor builds passed. Report I/O, monk tools and
+pilot dispatcher, enhancement pool, quest reward, crafting config/module and
+craft/enhance regression checks passed. The actual CLI passes complete/minimal/
+no-specials provenance and missing-context failure checks.
+
+**Measured effects:** the complete 19,334-template and 8,720-generated-sample
+comparison against `76b96c71eb` has **zero score changes and zero unavailable
+scores**, hence no measured economic threshold/material/XP/fee/quest-weight
+changes. The qualifier now compiles the exact parent runtime adapter as well as
+numeric evaluator and verifies both dispatch paths; input/context layout,
+constructor normalization, proc admission, circle context and native proc prices
+remain guarded. Evidence is in [`ival-evidence/f08-numeric/`](ival-evidence/f08-numeric/).
+
+Observed native score ranges: templates 1..10,171,659; generated samples 4..770.
+Template weapon dice-count and side-count maxima are each 200; generated maxima
+are 8 and 12. Stored apply ranges are −125..125 and −8..64 respectively. These
+are measured cohort bounds, not new content limits or claims about player items.
+
+Reproduce after building:
+
+```text
+python3 tests/async/test_item_value_template_runtime.py --numeric-baseline 76b96c71eb --delta-output docs/ongoing-projects/ival-evidence/f08-numeric
+```
+
+**Ablation:** reuse the existing unavailable return contract. No new score cache,
+formula language, configuration surface or saturation threshold is required.
+
+**Continuation:** F08 remains open for strict finite/ranged config parsing,
+authoring/admission validation and consumer level/gain/radius/XP/quantity checks.
+Reuse the existing superior-plan checks and share raw material arithmetic in
+F14. Also validate racial stat-property conversion before the `sh_int` casts in
+`src/world/db.c` (the `stats.*` loading block); the current context fields are
+16-bit, so their subsequent `2 * factor` expressions fit `int`, but malformed
+property input must be rejected before conversion. Real MariaDB journeys remain
+F16; this chunk performs no database, migration or production operation.
+
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization
    entries and F02's premature packed-proc rounding are repaired. F03 now composes
    stored apply permutations canonically. Zero modifiers are neutral and equivalent
-   duplicate applies now share a value. Numeric bounds remain F08.
+   duplicate applies now share a value. The numeric evaluator rejects unavailable
+   arithmetic safely; remaining input/config/consumer bounds are F08.
 2. **Keep tools truthful.** The editor now uses shared arithmetic with explicit
    context estimates, and the offline material report has normalized context and
    native corpus qualification. Enhancement configuration/enforcement still needs

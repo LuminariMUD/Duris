@@ -39,6 +39,7 @@ int get_mincircle(int spell);
 int get_ival_from_proc(obj_proc_type proc);
 static index_data indexes[1]{};
 P_index obj_index = indexes;
+int top_of_objt = 0;
 extern const stat_data stat_factor[LAST_RACE + 1] = {{}, {80,100,120,130,150,90,110,170,105,100}};
 
 // A valuation must not draw from the game RNG or invoke a native callback.
@@ -328,10 +329,23 @@ int main(int argc, char **argv)
         object.type = ITEM_WEAPON;
         object.value[0] = WEAPON_LONGSWORD;
         object.value[1] = object.value[2] = std::atoi(argv[1]);
-        std::printf("boundary score: %d\n", itemvalue(&object));
+        item_value_breakdown detail;
+        assert(itemvalue(&object, &detail) == 0 && detail.invalid);
+        std::puts("boundary score unavailable without undefined arithmetic");
         return 0;
     }
     assert(itemvalue(nullptr) == 0);
+    auto unresolved = item();
+    item_value_breakdown unavailable;
+    unresolved.R_num = -1;
+    assert(itemvalue(&unresolved, &unavailable) == 0 && unavailable.invalid);
+    unresolved.R_num = top_of_objt + 1;
+    assert(itemvalue(&unresolved, &unavailable) == 0 && unavailable.invalid);
+    const auto saved_index = obj_index;
+    unresolved.R_num = 0;
+    obj_index = nullptr;
+    assert(itemvalue(&unresolved, &unavailable) == 0 && unavailable.invalid);
+    obj_index = saved_index;
     circles(); packed_rounding(); applies(); apply_permutations(); zero_insertion(); proc_policy(); resolved_racial_context();
     auto object = packed(32);
     const auto original = object;
@@ -345,10 +359,70 @@ int main(int argc, char **argv)
 
 PURE = r'''
 #include "item/item_value.h"
+#include "item/objmisc.h"
 #include <cassert>
 #include <cstring>
 #include <algorithm>
 #include <cstdio>
+#include <climits>
+#include <cmath>
+#include <limits>
+
+static void numeric_bounds()
+{
+    item_value_input input;
+    item_value_context context;
+    item_value_breakdown detail;
+    input.type = ITEM_WEAPON; input.value[0] = WEAPON_LONGSWORD;
+    for (int dice : {1000, 50000, INT_MAX}) {
+        input.value[1] = input.value[2] = dice;
+        assert(evaluate_item_value(input, context, &detail) == 0 && detail.invalid);
+        input.value[0] = WEAPON_DAGGER;
+        assert(evaluate_item_value(input, context, &detail) == 0 && detail.invalid);
+        input.value[0] = WEAPON_LONGSWORD;
+    }
+    for (int count : {INT_MIN, INT_MAX})
+    for (int sides : {INT_MIN, INT_MAX}) {
+        input.value[1] = count; input.value[2] = sides;
+        const int score = evaluate_item_value(input, context, &detail);
+        assert((score == 0) == detail.invalid);
+    }
+    input = {};
+    context.native_proc_credit = INT_MAX;
+    assert(evaluate_item_value(input, context, &detail) == INT_MAX && !detail.invalid);
+    input.affected[0] = {APPLY_HIT, 1};
+    assert(evaluate_item_value(input, context, &detail) == 0 && detail.invalid);
+    input.affected[0] = {APPLY_STR_RACE, 1};
+    context.native_proc_credit = INT_MAX - 1;
+    context.racial_credits[0] = .75;
+    assert(evaluate_item_value(input, context, &detail) == INT_MAX - 1 && !detail.invalid);
+    context.racial_credits[0] = 1;
+    assert(evaluate_item_value(input, context, &detail) == INT_MAX && !detail.invalid);
+    context.racial_credits[0] = 1.25;
+    assert(evaluate_item_value(input, context, &detail) == 0 && detail.invalid);
+
+    for (double credit : {std::numeric_limits<double>::quiet_NaN(),
+                           std::numeric_limits<double>::infinity(),
+                           -std::numeric_limits<double>::infinity()}) {
+        context.racial_credits[3] = credit; // Even unused context participates in sorting.
+        assert(evaluate_item_value(input, context, &detail) == 0 && detail.invalid);
+    }
+    context = {}; input = {};
+    input.affected[0] = {APPLY_STR_RACE, 1};
+    input.affected[1] = {APPLY_DEX_RACE, 1};
+    context.racial_credits[0] = context.racial_credits[1] = std::numeric_limits<double>::max();
+    assert(evaluate_item_value(input, context, &detail) == 0 && detail.invalid);
+    context.racial_credits[0] = context.racial_credits[1] = -std::numeric_limits<double>::max();
+    assert(evaluate_item_value(input, context, &detail) == 0 && detail.invalid && detail.floored);
+
+    input = {}; context = {};
+    input.wear_flags = ITEM_WIELD;
+    input.value[5] = 32032032; input.value[6] = 20; input.value[7] = INT_MAX;
+    for (auto &circle : context.spell_circles) circle = INT_MAX;
+    const int score = evaluate_item_value(input, context, &detail);
+    assert(!detail.invalid && score >= 179 && score <= 180 && std::abs(detail.unrounded - 180) < 1e-10);
+    std::puts("numeric bounds: finite context, widened dice/circles and checked output conversion");
+}
 
 static void apply_totals()
 {
@@ -420,6 +494,7 @@ static void apply_totals()
 
 int main()
 {
+    numeric_bounds();
     apply_totals();
     item_value_input input;
     item_value_context context;
@@ -501,13 +576,10 @@ def main():
             ], cwd=ROOT, check=True)
             subprocess.run([str(pure_binary)], check=True, env=env)
         print("shared numeric module: isolated server/editor builds, explicit context and breakdown passed")
-        # LEGACY F08: expected sanitizer failures are pinned explicitly. Replace
-        # these expectations with safe-result/admission checks with the repair.
-        for value, diagnostic in (("50000", "signed integer overflow"),
-                                  ("1000", "outside the range of representable values of type 'int'")):
+        for value in ("50000", "1000", str(2**31 - 1)):
             result = subprocess.run([str(binary), value], capture_output=True, text=True, env=env)
-            assert result.returncode != 0 and diagnostic in result.stderr, result.stderr
-            print(f"LEGACY F08 {value}d{value}: reproduced {diagnostic}", flush=True)
+            assert result.returncode == 0 and "boundary score unavailable" in result.stdout, result.stderr
+            print(f"F08 {value}d{value}: unavailable without sanitizer errors", flush=True)
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ RUNTIME = r'''
 #include <cmath>
 static index_data index_data_fixture[1]{};
 P_index obj_index = index_data_fixture;
+int top_of_objt = 0;
 extern const stat_data stat_factor[LAST_RACE + 1]{};
 int get_mincircle(int spell) { return spell == 32 ? 1 : 0; }
 int get_ival_from_proc(obj_proc_type) { assert(false); return 0; }

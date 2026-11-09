@@ -205,6 +205,12 @@ void do_salvage(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
+	itemval = itemvalue(item);
+	if (itemval < 1)
+	{
+		send_to_char("The item's value is unavailable; salvage was not attempted.\r\n", ch);
+		return;
+	}
 	itemvnum = OBJ_VNUM(item);
 
 	// Handle salvage materials
@@ -271,8 +277,6 @@ void do_salvage(P_char ch, char *argument, int /*cmd*/)
 	    TO_ROOM);
 	act("You begin breaking down your $p into its &+yraw &+Ymaterials&n...", FALSE, ch, item, 0,
 	    TO_CHAR);
-
-	itemval = itemvalue(item);
 
 	if ((itemval <= 5) && (number(1, 1000) > GET_C_LUK(ch)))
 	{

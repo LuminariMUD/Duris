@@ -3,6 +3,8 @@
 from _paths import SRC
 from pathlib import Path
 from contract_text import contains
+import subprocess
+import tempfile
 
 root = Path(__file__).resolve().parents[2]
 source = (SRC / "crafting.c").read_text()
@@ -31,3 +33,40 @@ assert contains(header, "int crafting_scientific_tools_vnum(void);")
 assert contains(header, "int crafting_level_gate_multiplier(void);")
 assert contains(comm, "boot_crafting_system();")
 print("crafting config contract passed")
+
+# A valid int score can still overflow score+4 before material decomposition.
+# Execute the production plan, controlling only its score/material endpoints.
+HARNESS = r'''
+#include "economy/crafting.c"
+#include <cassert>
+#include <climits>
+static int score;
+int itemvalue(P_obj) { return score; }
+int get_matstart(P_obj) { return 400015; }
+int main() {
+    obj_data object{};
+    struct test_case { int value, high, low; };
+    for (const test_case test : {test_case{1, 1, 0}, {5, 1, 4}, {6, 2, 0},
+                                 {INT_MAX - 1, 429496730, 0}, {INT_MAX, 429496730, 1}}) {
+        score = test.value;
+        crafting_plan plan{};
+        assert(crafting_build_plan(&object, &plan));
+        assert(plan.item_value == score && plan.high_material_count == test.high &&
+               plan.low_material_count == test.low);
+        assert(plan.low_material_vnum == 400015 && plan.high_material_vnum == 400019);
+    }
+    score = 0;
+    crafting_plan plan{};
+    assert(!crafting_build_plan(&object, &plan));
+}
+'''
+(root / "bin/tests").mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="craft-plan-bounds-", dir=root / "bin/tests") as tmp:
+    cpp, binary = Path(tmp) / "test.cpp", Path(tmp) / "test"
+    cpp.write_text(HARNESS)
+    subprocess.run(["g++", "-std=c++20", "-g", "-O1", "-Isrc", "-I/usr/include/mysql", "-ffunction-sections",
+                    "-fdata-sections", "-Wl,--gc-sections", "-fsanitize=address,undefined,float-cast-overflow",
+                    "-fno-sanitize-recover=all", "-fno-pie", "-no-pie", str(cpp), "-o", str(binary)],
+                   cwd=root, check=True)
+    subprocess.run([str(binary)], check=True)
+print("native crafting plan: unavailable and INT_MAX score boundaries passed")
