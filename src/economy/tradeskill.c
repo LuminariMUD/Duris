@@ -46,6 +46,7 @@
 #include "sql/sql_player.h"
 #include "world/vnum.obj.h"
 #include "economy/crafting.h"
+#include "economy/currency_transaction.h"
 #include "world/weather.h"
 #include "core/safe_format.h"
 #include "abilities/abilities.h"
@@ -886,9 +887,12 @@ int smith(P_char ch, P_char pl, int cmd, char *arg)
 	}
 
 	choice = atoi(arg);
+	int menu_items = 0;
+	while (menu_items < SMITH_MAX_ITEMS && sdata->items[menu_items] != -1)
+		++menu_items;
 
 	// Can't 'forge 0' or 'forge -1'.  Also, can't 'forge <num>' where <num> goes off the list.
-	if (choice < 1 || choice > i)
+	if (choice < 1 || choice > menu_items)
 		return FALSE;
 
 	// Convert from list item to forge_item_list entry.
@@ -902,7 +906,7 @@ int smith(P_char ch, P_char pl, int cmd, char *arg)
 	// Look through inventory for each needed ore.
 	for (i = 0, j = 0; i < 5 && forge_item_list[choice].ore_needed[i]; i++)
 	{
-		for (tobj = ch->carrying; tobj; tobj = tobj->next_content)
+		for (tobj = pl->carrying; tobj; tobj = tobj->next_content)
 		{
 			// If we found a needed ore.
 			if (forge_item_list[choice].ore_needed[i] == OBJ_VNUM(tobj))
@@ -959,10 +963,25 @@ int smith(P_char ch, P_char pl, int cmd, char *arg)
 		return TRUE;
 	}
 
-	// Take their money.
+	// Like enhancement, prepare delivery before charging or consuming either input.
+	if (!obj_to_char(tobj, pl))
+	{
+		while (j-- > 0)
+			obj_to_char(needed_ore[j], pl);
+		send_to_char("The forged item could not be delivered.\r\n", pl);
+		return TRUE;
+	}
+	if (SUB_MONEY(pl, forge_prices[i - 1], 0) != 0)
+	{
+		extract_obj(tobj, FALSE);
+		while (j-- > 0)
+			obj_to_char(needed_ore[j], pl);
+		send_to_char("The forge payment could not be completed.\r\n", pl);
+		return TRUE;
+	}
+
 	snprintf(buffer, sizeof buffer, "You hand $N %s.", coin_stringv(forge_prices[i - 1]));
 	act(buffer, FALSE, pl, 0, ch, TO_CHAR);
-	SUB_MONEY(pl, forge_prices[i - 1], 0);
 
 	// And their ore.
 	while (j-- > 0)
@@ -983,8 +1002,9 @@ int smith(P_char ch, P_char pl, int cmd, char *arg)
 	    "'&+WThere you go!&n', $n gives $N $p.",
 	    FALSE, ch, tobj, pl, TO_NOTVICT);
 
-	if (!grant_tradeskill_item(pl, tobj))
-		return TRUE;
+	// One player checkpoint owns the debit, removed ore and replacement together.
+	// A separate creation grant could commit the output before its inputs were saved.
+	currency_transaction_save_first(pl);
 	return TRUE;
 }
 
