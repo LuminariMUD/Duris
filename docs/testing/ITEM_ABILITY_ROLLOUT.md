@@ -1,5 +1,8 @@
 # Item ability delivery verification — 2026-09-13
 
+Historical evidence from the retired backend; it does not qualify the current
+MariaDB journeys. Current reproduction instructions will be updated under #870.
+
 [#297](https://github.com/LuminariMUD/Duris/issues/297) qualifies the initial roster in the [rollout runbook](../operations/ITEM_ABILITY_ROLLOUT.md). Tests used disposable Linux processes, synthetic accounts, localhost ports and separate flatfile-primary state/journal directories. No production accounts, database, world state or deployment were used. The [machine-readable evidence](item-ability-rollout-evidence.json) contains aggregate results and binary hashes, with item UIDs and settlement timestamps removed.
 
 ## Real-server encounters
