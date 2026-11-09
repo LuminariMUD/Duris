@@ -81,10 +81,6 @@ the guard correctly rejects that execution context. The root-managed production
 service template preserves the expected root mapping. Custom user services must
 qualify the backup under their actual service restrictions before cutover.
 
-Flatfile capture holds the identity, critical-authority, account and
-artifact-mana locks, taken in that order, while it copies the complete durable
-file tree with its pending-transaction evidence.
-
 The `combat-intents` tree is copied **before** the authority capture. Its empty,
 owner-only `.service-lock` is supported even while the game holds the lock. Each
 nonzero, lowercase 32-digit operation ID names either a pending `.intent` or a
@@ -132,7 +128,7 @@ connects to a game session or promotes a candidate.
 
 The no-argument command is the pre-cycle backup. `cycle_mud.sh` runs it before a boot only
 with `PREBOOT_BACKUP=1`, and then refuses the boot when it fails; it is off by default, for
-a server whose backup timer takes the backups. A not-yet-created flatfile authority on its first boot reports authority_not_initialized and allows initial provisioning; scheduled jobs treat that state as an error, and no verified generation is claimed. The schedule command
+a server whose backup timer takes the backups. The schedule command
 uses a separate persisted deadline, so pre-cycle runs do not defer independent
 snapshot. It is safe to invoke once per minute. All capture, rotation, restore,
 and status operations use an exclusive job lock with a bounded wait; a remaining
@@ -244,10 +240,9 @@ A disconnected mount must fail; never replace it with an ordinary local folder.
 ## Isolated restore and qualification
 
 Install Python 3.11+, MariaDB 10.11 server/client tools, OpenSSL, iproute2, and
-util-linux. Build the native verifier and the matching server binaries:
+util-linux. Build the native verifier and the matching server binary:
 
     make -C src
-    make -C src PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/server/dms_restore_flatfile"
     python3 scripts/build_restore_qualifier.py
 
 The restore root must be a dedicated mounted filesystem, on a different device
@@ -282,7 +277,7 @@ Do not manufacture an empty ledger to pass.
 
 Omit generation to select the newest verified generation. Paths and existing
 databases cannot be supplied as restore targets: every candidate is newly
-created below the dedicated restore mount. The legacy flatfile wrapper now
+created below the dedicated restore mount. `scripts/restore_flatfile_backup.sh` now
 accepts a generation ID and current erasure evidence; its old arbitrary
 raw-copy target interface is intentionally closed.
 
@@ -295,9 +290,7 @@ MariaDB restore initializes a new private datadir with networking disabled,
 imports through a schema-only account with no global/FILE privileges, validates
 the runtime schema, recomputes the complete migration history, and reconciles
 account/character, wallet, bank, and epic evidence. Runtime boot uses only the
-new socket. Flatfile restore verifies copied bytes before mutation, runs native
-authority replay, and validates existing account, snapshot, and world catalog bytes.
-Full player/domain loads reject lossy topology repair. Before boot, every copied
+new socket. Before boot, every copied
 locker receipt is decoded with the production codec; anything else in the receipt
 directory, or a receipt that fails, blocks qualification. Combat `.intent` and
 `.recorded` files pass the same native bounded reader, SHA-256 check, command and
@@ -353,7 +346,6 @@ recovery as a gameplay feature.
     python3 tests/async/test_persistence_backup.py
     python3 tests/async/test_combat_intent_backup.py
     python3 tests/async/test_backup_pfiles.py
-    python3 tests/async/test_flatfile_backup_manifest.py
     python3 tests/async/test_flatfile_launcher.py
     DURIS_RUN_BACKUP_INTEGRATION=1 python3 tests/async/test_persistence_backup_integration.py
 

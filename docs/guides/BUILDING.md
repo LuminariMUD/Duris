@@ -14,33 +14,19 @@ make -C src BUILD_PROFILE=production    # production server build
 cp bin/server/dms_new bin/server/dms    # manually promote for a direct run
 ```
 
-The server build has an explicit compile-time persistence dependency boundary:
+MariaDB is the only server persistence backend, so the build always links the
+MySQL-compatible client:
 
 ```bash
-make -C src PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=development
-make -C src PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production
-make -C src PERSISTENCE_BACKEND=flatfile BUILD_PROFILE=development
+make -C src BUILD_PROFILE=development
+make -C src BUILD_PROFILE=production
 ```
 
-`mariadb` is the default and includes and links the MySQL-compatible client. The
-`flatfile` selection defines `__NO_MYSQL__` and does not add the MySQL include path or
-client library. Backend/profile-specific objects are kept under
-`bin/objects/server/<backend>/<profile>/`; the maintained `bin/server/dms_new` path is
-relinked when either selection changes, so the commands can be run sequentially without
-cleaning or reusing incompatible objects. `development` is the default, compiles at
-`-Og` and defines `TEST_MUD`; `production` compiles at `-O2` and omits all
-development-only behavior. The production launcher
-checks the build stamp before promoting or running a binary. Each binary accepts only
-its matching primary runtime mode. The legacy
-`mariadb-primary-flatfile-fallback` token remains recognized but fails closed because
-mixed per-operation authority transfer is not supported.
-
-Mixed legacy modules still mention MySQL types while their durable operations are being
-moved behind backend repositories. Flat builds resolve those declarations through
-`src/no_mysql/`, a client-free compatibility surface whose connection, query, statement,
-and thread initialization calls always fail. It neither connects nor persists data and
-must not be treated as a backend; flat-file primary routes durable operations through
-the corresponding file repositories instead of this compatibility surface.
+`PERSISTENCE_BACKEND` defaults to `mariadb`, the only accepted value; any other value
+stops the build. Objects are kept under `bin/objects/server/mariadb/<profile>/`.
+`development` is the default, compiles at `-Og` and defines `TEST_MUD`; `production`
+compiles at `-O2` and omits all development-only behavior. The production launcher
+checks the build stamp before promoting or running a binary.
 
 The root `Makefile` is the maintained full-project entry point. `make clean`
 removes compiled server, editor, and area-tool artifacts but preserves generated
@@ -73,7 +59,6 @@ From the default build line:
 | `-std=c++20` | All `.c` files are compiled as C++20 with g++. |
 | `-Og` / `-O2` | `BUILD_PROFILE=development` stays debuggable at `-Og`; `BUILD_PROFILE=production` is optimised at `-O2`. |
 | `-DTEST_MUD` | Added only by `BUILD_PROFILE=development`; enables development-only commands and behavior. |
-| `-D__NO_MYSQL__` | Selected by `PERSISTENCE_BACKEND=flatfile`; removes the client compile/link dependency. |
 
 Redis is optional at runtime, but Hiredis and OpenSSL remain build dependencies because
 one server binary supports both the enabled and disabled runtime configurations.
@@ -206,23 +191,20 @@ when generation fails, rather than start on the previous `areas/world.*`.
 
 ## Finding unreachable code
 
-The linker can list the functions no build reaches. Build both servers with one section
-per function, in object directories of their own so the normal build is not disturbed:
+The linker can list the functions the server never reaches. Build it with one section
+per function, in an object directory of its own so the normal build is not disturbed:
 
 ```sh
 make -C src -j16 OBJDIR=$PWD/bin/analysis/objects SERVER_BIN_DIR=$PWD/bin/analysis \
     DMS_BINARY=$PWD/bin/analysis/dms_new EXTRA_CFLAGS="-ffunction-sections -fdata-sections"
-make -C src -j16 PERSISTENCE_BACKEND=flatfile OBJDIR=$PWD/bin/analysis/flat-objects \
-    SERVER_BIN_DIR=$PWD/bin/analysis/flat DMS_BINARY=$PWD/bin/analysis/flat/dms_new \
-    EXTRA_CFLAGS="-ffunction-sections -fdata-sections"
 ```
 
-Then rerun each build's final link line from `src/` without `-rdynamic` and with
+Then rerun the final link line from `src/` without `-rdynamic` and with
 `-Wl,--gc-sections -Wl,--print-gc-sections`. Each `removing unused section
-'.text.<symbol>'` line names a function that build never reaches. Demangle with `c++filt`,
-and read `st_mysql` as `MYSQL` (the flat-file build stubs it).
+'.text.<symbol>'` line names a function the build never reaches. Demangle with
+`c++filt`.
 
-A function is dead when every build that compiles it drops it. The list is a lead, not
+A function is dead when the build drops it. The list is a lead, not
 proof, so read the source first: a function reached only through a dead branch shows as
 live, and an inlined one shows as dead. The linker also cannot see a dead branch inside a
 live function.

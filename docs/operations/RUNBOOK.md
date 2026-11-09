@@ -26,14 +26,11 @@ production port 7777; the default remains 4000.
 `cycle_mud.sh`:
 
 - Anchors itself to the repository root; loads `.env` if present.
-- Requires `ENVIRONMENT` in every mode. Database-backed modes also require `DB_HOST`,
-  `DB_USER`, `DB_PASSWD`, `DB_NAME`, and `DB_ALLOWED_TARGETS`; `flatfile-primary`
-  instead requires an absolute `FLATFILE_STATE_DIR`. It has no source-code credential
-  fallback.
-- Runs schema verification and MySQL shutdown logging only for a database-backed
-  mode. Automatic migration application additionally requires `ENVIRONMENT=local`;
-  production verifies the schema and does not migrate at boot. A `flatfile-primary`
-  launch does not invoke those database tools, even when Redis is enabled.
+- Requires `ENVIRONMENT`, `DB_HOST`, `DB_USER`, `DB_PASSWD`, `DB_NAME`, and
+  `DB_ALLOWED_TARGETS`. It has no source-code credential fallback.
+- Runs schema verification and MySQL shutdown logging. Automatic migration application
+  additionally requires `ENVIRONMENT=local`; production verifies the schema and does not
+  migrate at boot.
 - Raises core dump limits (`ulimit -c unlimited`).
 - Rebuilds area tools and regenerates `areas/world.*` when the `make_*`
   helpers are missing.
@@ -264,13 +261,6 @@ finished and filesystem cleanup remains. The launcher keeps status `resetting`
 through cleanup, then atomically activates that exact epoch and records the final
 completion time. Only then does it print `Wiped!`.
 
-`shutdown pwipe` is unsupported in `flatfile-primary` and refuses immediately,
-before scheduling a countdown or cancelling an existing reboot. The real client-free
-server journey proves unchanged player snapshot/legacy files and continued save,
-logout, reconnect and another boot. A MariaDB client binary refuses flatfile-primary
-at startup; hybrid fallback mode is also rejected by existing configuration. This
-is rejection qualification, not a successful flat-file wipe.
-
 Account rewards follow `lib/account_rewards.cfg`: preserving grants does not
 preserve old inventory or summon-to-body links. Eligible new characters on the
 surviving account use `divineclaim list` and `divineclaim summon <number>`; each
@@ -464,8 +454,7 @@ filename and proves fresh identification works without altering retained bytes.
 
 Normal MariaDB account admission calls `sql_load_account` / `sql_save_account`;
 player admission selects the SQL load repository in `player_load_pipeline.c`.
-The client-free build selects its explicit flat-file provider and
-`FLATFILE_STATE_DIR/identities/accounts`; mixed fallback mode is refused. Legacy
+Legacy
 `lib/players`, `lib/accounts`, fallback and quarantine entries remain policy/
 historical inventory labels, not automatic current SQL fallback inputs. Explicit
 pfile inspection/import commands use `SAVE_DIR` (`Players`) or artifact import
@@ -474,10 +463,7 @@ paths; do not use old-season import sources to repopulate a fresh season.
 Keep `Accounts/email.db` when optional email verification is enabled, site bans in
 `lib/misc/ban_sites`, and invitation/accepted/declined-name policy under `Players`.
 These account/admission controls survive; byte-exact synthetic canaries cover the
-actual paths during cleanup. In a client-free installation the whole
-`FLATFILE_STATE_DIR` namespace remains authoritative and untouched: pwipe refuses
-before countdown/mutation. This does not claim flat-file wipe support. Specific
-protected flat-file domain/journal entries remain independently inventoried.
+actual paths during cleanup.
 
 MUD mail is character-name scoped, independent of current SQL PID/account identity.
 Normal boot reads `Accounts/mail`, or `Players/mail` when the preferred path is
@@ -736,7 +722,7 @@ credentials:
 ./scripts/cycle_mud.sh --check-config
 
 # Inspect names only. Do not print or copy secret values.
-sed -n 's/^\(ENVIRONMENT\|PERSISTENCE_MODE\|FLATFILE_STATE_DIR\|DB_HOST\|DB_PORT\|DB_NAME\|DB_ALLOWED_TARGETS\)=.*/\1=<set>/p' .env
+sed -n 's/^\(ENVIRONMENT\|PERSISTENCE_MODE\|DB_HOST\|DB_PORT\|DB_NAME\|DB_ALLOWED_TARGETS\)=.*/\1=<set>/p' .env
 
 # Source-only contract checks; these do not connect to a configured database.
 python3 tests/async/test_runtime_connection_trust.py
@@ -823,13 +809,6 @@ player data.
 | `logs/log/cmd.debug` | The last 500 player commands, written when the server exits or crashes; a say, tell or other conversation command keeps only its command word |
 | `logs/log/wizlog` | Immortal commands |
 | `logs/duris-console.log` | stdout/stderr of the supervised process |
-
-In `flatfile-primary`, events sent through the database-backed audit logger remain
-available in the ordinary files above: staff events use `logs/player-log/wizcmds`,
-experience events use `logs/log/exp`, and player, quest, connection, and session events
-use `logs/player-log/player`. Each entry retains its kind, player ID and name, IP, zone,
-room, and message. Control characters are flattened so one event cannot forge another
-log line.
 
 Account password recovery by email writes to two of those files. At boot `logs/log/status`
 carries the disposition: `Account recovery enabled (smtp port=<port> tls=<0|1>).` when
@@ -1182,14 +1161,12 @@ already expired old deadline produces one zero-score tied result at activation,
 then a new full round; it does not create a chain of historical contests.
 
 SQL pwipe initializes 31/31 and zero scores from the persisted reset start, with
-deadline plus 72 hours. Same-epoch retries retain that cutoff. Flat-file pwipe
-remains unsupported: a new season needs a selected fresh authority root and an
-explicit fresh floor of 31, preserving the old root.
+deadline plus 72 hours. Same-epoch retries retain that cutoff.
 
 Apply `0057_shared_frag_cap` before activation. After activation, rollback must
-retain the new snapshot/read path or use a forward fix. Old flat-file binaries
-ignore race state; old SQL maintenance updates only projections. Neither safely
-runs an activated race. Never clear scores or reduce caps as a rollback shortcut.
+retain the new snapshot/read path or use a forward fix. Old SQL maintenance updates
+only projections and cannot safely run an activated race. Never clear scores or
+reduce caps as a rollback shortcut.
 Production migration/reset/deployment requires owner authorization. Implementation
 and scoped qualification are recorded in [#508](https://github.com/LuminariMUD/Duris/issues/508).
 
@@ -1252,7 +1229,7 @@ These are investigated and understood; they are not signs of a failed boot.
 | Script | Purpose |
 |--------|---------|
 | `scripts/backup_pfiles.sh` | Publish verified full generations under the approved policy; also gates each cycle iteration. |
-| `scripts/restore_flatfile_backup.sh` | Qualify a flat-file generation in a fresh isolated candidate with current erasure evidence. |
+| `scripts/restore_flatfile_backup.sh` | Qualify a backup generation in a fresh isolated candidate with current erasure evidence. |
 | `scripts/delete_corpses.sh` | Retired safety stub; exits nonzero without reading or changing MySQL or Redis. |
 | `scripts/clear-redis.sh` | With the game stopped, use the scoped maintenance ACL identity to delete only the configured `REDIS_NAMESPACE`, legacy `mud:*`, and retired `ship:snapshot:*` keys from an explicitly confirmed, local, allow-listed Redis target; unrelated keys are preserved. |
 | `scripts/import_help_to_prod.sh` | Import help sources to MySQL; use `--dry-run` first and treat `--clean` as destructive. |
