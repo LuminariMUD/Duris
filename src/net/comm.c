@@ -722,8 +722,7 @@ int main(int argc, char **argv)
 	if (material_rarity_report_mode)
 	{
 		boot_material_rarity_objects(mini_mode);
-		write_material_rarity_report(material_rarity_report_dir);
-		return 0;
+		return write_material_rarity_report(material_rarity_report_dir) ? 0 : 1;
 	}
 	logit(LOG_STATUS, "Running game on port %d.", port);
 
