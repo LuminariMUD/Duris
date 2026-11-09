@@ -17,6 +17,8 @@
 #include "item/item_claim_repository.h"
 
 #include "item/item_transfer_command.h"
+#include "item/item_transfer_repository.h"
+#include "player/player_snapshot_codec.h"
 
 #include <algorithm>
 #include <array>
@@ -133,6 +135,32 @@ bool write_wallet(MYSQL *connection, const auction_command_payload &payload,
 		return false;
 	result->wallet = wallet;
 	result->wallet_revision = payload.expected_wallet_revision + 1;
+	return true;
+}
+
+bool prepare_item_projection(const auction_command_payload &payload,
+			     item_transfer_payload *projection)
+{
+	std::vector<player_item_snapshot> items;
+	if (player_item_snapshot_list_decode(payload.item_blob.data(), payload.item_blob_size,
+					     &items) != player_snapshot_codec_result::ok ||
+	    items.size() != payload.item_count)
+		return false;
+	projection->to_owner = { item_owner_type::player, payload.actor_pid, 0 };
+	projection->item_count = payload.item_count;
+	projection->item_blob_size = payload.item_blob_size;
+	std::copy_n(payload.item_blob.begin(), payload.item_blob_size,
+		    projection->item_blob.begin());
+	for (size_t index = 0; index < items.size(); ++index)
+	{
+		const auto &item = items[index];
+		if (item.object_uid != payload.items[index].item_uid ||
+		    item.vnum != payload.items[index].vnum ||
+		    item.parent_index != PLAYER_SNAPSHOT_NO_PARENT || item.equipment_slot != 0)
+			return false;
+		projection->items[index] = { item.object_uid, item.object_uid,		 0, 0,
+					     item.vnum,	      item_custody_state::active };
+	}
 	return true;
 }
 
@@ -364,6 +392,11 @@ bool insert_listing(MYSQL *connection, const critical_command &command,
 					reinterpret_cast<const char *>(payload.object_blob.data()),
 					payload.object_blob_size);
 	const std::string op = operation_hex(command.operation_id);
+	const std::string custody_blob =
+		payload.item_blob_size ?
+			escape(connection, reinterpret_cast<const char *>(payload.item_blob.data()),
+			       payload.item_blob_size) :
+			blob;
 	std::string sql =
 		"INSERT INTO auctions(seller_pid,seller_name,start_time,end_time,status,cur_price,"
 		"buy_price,obj_short,obj_vnum,obj_blob_str,id_keywords,obj_info_text,quantity,"
@@ -386,7 +419,7 @@ bool insert_listing(MYSQL *connection, const critical_command &command,
 		      std::to_string(*auction_id) + "," + std::to_string(index) + "," +
 		      std::to_string(item.item_uid) + "," +
 		      std::to_string(item.expected_item_revision + 1) + "," +
-		      std::to_string(item.vnum) + ",'" + blob + "')";
+		      std::to_string(item.vnum) + ",'" + custody_blob + "')";
 		if (!execute(connection, sql))
 			return false;
 	}
@@ -453,15 +486,26 @@ bool auction_repository_execute(MYSQL *connection, const critical_command &comma
 	result->action = payload.action;
 	*result_code = 0;
 	*mutation_applied = false;
+	item_transfer_payload projection = {};
+	if (command.payload_version >= 3 &&
+	    (payload.action == auction_action::list ||
+	     payload.action == auction_action::claim_item) &&
+	    !prepare_item_projection(payload, &projection))
+	{
+		*result_code = EBADMSG;
+		return true;
+	}
 	const bool paid_receipt =
 		command.payload_version >= 2 &&
-		(payload.action == auction_action::list || payload.action == auction_action::bid);
+		(payload.action == auction_action::list || payload.action == auction_action::bid ||
+		 (command.payload_version >= 3 && payload.action == auction_action::claim_item));
 	currency_vector before_payment = {};
 	if (paid_receipt)
 	{
 		const int64_t reserved = payload.action == auction_action::list ?
 						 payload.listing_fee :
-						 payload.value;
+					 payload.action == auction_action::bid ? payload.value :
+										 0;
 		if (reserved < 0 || reserved > INT_MAX)
 		{
 			*result_code = EINVAL;
@@ -700,11 +744,34 @@ bool auction_repository_execute(MYSQL *connection, const critical_command &comma
 	}
 	else if (payload.action == auction_action::claim_item)
 	{
+		if (command.payload_version >= 3)
+		{
+			std::vector<player_item_snapshot> source;
+			if (player_item_snapshot_list_decode(payload.object_blob.data(),
+							     payload.object_blob_size, &source) ==
+				    player_snapshot_codec_result::ok &&
+			    (payload.object_blob_size != payload.item_blob_size ||
+			     memcmp(payload.object_blob.data(), payload.item_blob.data(),
+				    payload.item_blob_size)))
+			{
+				*result_code = EBADMSG;
+				return true;
+			}
+		}
 		auction_state auction = {};
 		if (!lock_auction(connection, payload.auction_id, &auction, result_code))
 			return false;
 		if (*result_code)
 			return true;
+		const std::string source_match =
+			command.payload_version >= 3 ?
+				" AND obj_blob='" +
+					escape(connection,
+					       reinterpret_cast<const char *>(
+						       payload.object_blob.data()),
+					       payload.object_blob_size) +
+					"'" :
+				"";
 		for (size_t index = 0; index < payload.item_count; ++index)
 		{
 			if (!execute(
@@ -713,7 +780,7 @@ bool auction_repository_execute(MYSQL *connection, const critical_command &comma
 					    std::to_string(auction.id) + " AND item_uid=" +
 					    std::to_string(payload.items[index].item_uid) +
 					    " AND claim_pid=" + std::to_string(payload.actor_pid) +
-					    " AND claimed_at IS NULL FOR UPDATE"))
+					    source_match + " AND claimed_at IS NULL FOR UPDATE"))
 				return false;
 			MYSQL_RES *query = mysql_store_result(connection);
 			MYSQL_ROW row = query ? mysql_fetch_row(query) : nullptr;
@@ -734,6 +801,23 @@ bool auction_repository_execute(MYSQL *connection, const critical_command &comma
 			return false;
 		if (*result_code)
 			return true;
+		if (command.payload_version >= 3)
+		{
+			std::vector<uint64_t> item_ids;
+			if (!item_transfer_repository_materialize_player_items(
+				    connection, projection, &item_ids))
+				return false;
+			for (size_t index = 0; index < item_ids.size(); ++index)
+			{
+				if (!item_ids[index] || item_ids[index] > INT_MAX)
+				{
+					errno = ERANGE;
+					return false;
+				}
+				result->materialized_item_ids[index] =
+					static_cast<uint32_t>(item_ids[index]);
+			}
+		}
 		const std::string op = operation_hex(command.operation_id);
 		for (size_t index = 0; index < payload.item_count; ++index)
 			if (!execute(connection,

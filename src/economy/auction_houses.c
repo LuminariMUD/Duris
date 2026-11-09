@@ -14,6 +14,10 @@
 #include "economy/currency_transaction.h"
 #include "item/item_ownership_runtime.h"
 #include "persistence/persistence_checkpoint.h"
+#include "player/player_snapshot_capture.h"
+#include "player/player_snapshot_codec.h"
+#include "player/player_load_items.h"
+#include "world/object_template.h"
 #include <algorithm>
 #include <cerrno>
 #include <climits>
@@ -31,6 +35,7 @@
 using namespace std;
 
 extern P_room world;
+extern P_obj object_list;
 
 namespace
 {
@@ -708,53 +713,108 @@ void auction_money_claim_completed(P_char ch, bool committed, const auction_comm
 			       coin_stringv(static_cast<int>(result.wallet_value_delta)));
 }
 
-void auction_item_claim_completed(P_char ch, bool committed, const auction_command_result &result,
-				  unsigned int, const auction_command_payload &payload)
+bool auction_encode_items(auction_command_payload *payload,
+			  const std::vector<player_item_snapshot> &items)
 {
-	if (!ch)
-		return;
-	if (!committed)
+	std::vector<uint8_t> encoded;
+	if (player_item_snapshot_list_encode(items, &encoded) != player_snapshot_codec_result::ok ||
+	    encoded.size() >= payload->item_blob.size())
+		return false;
+	payload->item_blob_size = encoded.size();
+	std::copy(encoded.begin(), encoded.end(), payload->item_blob.begin());
+	return true;
+}
+
+} // namespace
+
+bool auction_publish_item_claim(P_char ch, const auction_command_result &result,
+				const auction_command_payload &payload)
+{
+	if (!ch || result.action != auction_action::claim_item ||
+	    result.item_count != payload.item_count || !result.player_owner_revision)
+		return false;
+	std::vector<player_item_snapshot> items;
+	if (player_item_snapshot_list_decode(payload.item_blob.data(), payload.item_blob_size,
+					     &items) != player_snapshot_codec_result::ok ||
+	    items.size() != result.item_count)
+		return false;
+	for (size_t index = 0; index < items.size(); ++index)
+		if (!result.materialized_item_ids[index] ||
+		    result.materialized_item_ids[index] > INT_MAX ||
+		    result.item_uids[index] != items[index].object_uid ||
+		    result.item_uids[index] != payload.items[index].item_uid ||
+		    items[index].vnum != payload.items[index].vnum ||
+		    items[index].parent_index != PLAYER_SNAPSHOT_NO_PARENT ||
+		    items[index].equipment_slot != 0)
+			return false;
+	const item_owner_identity owner = { item_owner_type::player, payload.actor_pid, 0 };
+	for (size_t index = 0; index < items.size(); ++index)
 	{
-		send_to_char("Your auction items remain available for pickup.\r\n", ch);
-		return;
-	}
-	for (size_t index = 0; index < result.item_count; ++index)
-	{
-		P_obj object = read_one_object(const_cast<char *>(
-			reinterpret_cast<const char *>(payload.object_blob.data())));
-		if (!object)
-		{
-			persistence_alert(AVATAR, "auction", "player", "unknown", "claim_publish",
-					  "deserialize_failed", "auction_id=%u item_uid=%llu",
-					  result.auction_id,
-					  static_cast<unsigned long long>(result.item_uids[index]));
+		const auto &item = items[index];
+		const uint32_t row_id = result.materialized_item_ids[index];
+		bool already_delivered = false, conflicting_body = false;
+		for (P_obj existing = object_list; existing; existing = existing->next)
+			if (existing->obj_uid == item.object_uid)
+			{
+				already_delivered = OBJ_CARRIED_BY(existing, ch) ||
+						    OBJ_WORN_BY(existing, ch);
+				conflicting_body = !already_delivered;
+				break;
+			}
+		if (already_delivered)
 			continue;
-		}
-		object->obj_uid = result.item_uids[index];
-		// A prototype may have become an artifact since this item was listed.
-		// Auction decoding does not admit artifacts; retain the durable claim
-		// for staff recovery instead of publishing an untracked duplicate.
-		if (IS_ARTIFACT(object))
-		{
-			persistence_alert(AVATAR, "auction", "player", "unknown", "claim_publish",
-					  "artifact_withheld", "auction_id=%u item_uid=%llu",
-					  result.auction_id,
-					  static_cast<unsigned long long>(object->obj_uid));
-			extract_obj(object);
-			send_to_char(
-				"Your auction item requires immortal assistance to recover.\r\n",
-				ch);
+		if (ch->only.pc->retained_items &&
+		    std::any_of(ch->only.pc->retained_items->rows.begin(),
+				ch->only.pc->retained_items->rows.end(),
+				[&](const auto &row) { return row.source_row_id == row_id; }))
 			continue;
+		const auto *prototype = find_object_template(item.vnum);
+		bool delivered = false;
+		if (!conflicting_body && prototype && !(prototype->extra_flags & ITEM_ARTIFACT) &&
+		    !(item.extra_flags & ITEM_ARTIFACT))
+		{
+			const std::vector<player_load_item_identity> identities = {
+				{ row_id, 0, 1, PLAYER_LOAD_ITEM_OVERRIDE_ALL, item.object_uid,
+				  item.object_uid, 0, owner, result.item_revisions[index],
+				  result.player_owner_revision, item_custody_state::active }
+			};
+			player_load_item_materialize_metrics metrics = {};
+			delivered = player_load_item_graph_materialize_for_owner(
+				ch, { item }, identities, owner, result.player_owner_revision,
+				false, true, &metrics);
 		}
-		if (obj_to_char(object, ch))
+		if (delivered)
+		{
 			send_to_char_f(ch, "&+WYou pick up &n%s&+W.&n\r\n",
-				       object->short_description);
+				       item.short_description.c_str());
+			continue;
+		}
+		// The committed SQL row stays a saved source when its live body cannot
+		// be admitted. Ordinary checkpoints already preserve these selectors.
+		try
+		{
+			if (!ch->only.pc->retained_items)
+				ch->only.pc->retained_items = new player_item_retention;
+			ch->only.pc->retained_items->rows.push_back({ row_id, item.object_uid });
+			ch->only.pc->retained_items->bytes += sizeof(player_retained_item_row);
+		}
+		catch (const std::bad_alloc &)
+		{
+			return false;
+		}
+		send_to_char(
+			"Your auction item remains in saved storage and needs staff review.\r\n",
+			ch);
+		persistence_alert(AVATAR, "auction", "player", "unknown", "claim_publish",
+				  "source_retained", "auction_id=%u item_uid=%llu",
+				  result.auction_id,
+				  static_cast<unsigned long long>(item.object_uid));
 	}
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS |
 							  PLAYER_COMPONENT_EQUIPMENT |
 							  PLAYER_COMPONENT_INVENTORY);
+	return true;
 }
-} // namespace
 
 // Broadcasts a committed auction event and tells the players it concerns, from the
 // auction's row.
@@ -922,6 +982,7 @@ bool auction_offer(P_char ch, char *args)
 		return true;
 	}
 	payload.end_time = static_cast<uint64_t>(time(nullptr) + days * 86400);
+	std::vector<player_item_snapshot> listed_items;
 	P_obj current = object;
 	for (int index = 0; index < quantity; ++index)
 	{
@@ -937,11 +998,28 @@ bool auction_offer(P_char ch, char *args)
 			send_to_char("&+WYou can't sell that item.\r\n", ch);
 			return true;
 		}
+		if (IS_ARTIFACT(current) ||
+		    IS_SET(current->extra_flags, ITEM_NODROP | ITEM_NORENT) ||
+		    current->condition < 90 || current->contains)
+		{
+			send_to_char("&+WYou can't sell that item.\r\n", ch);
+			return true;
+		}
+		std::vector<player_item_snapshot> captured;
+		size_t estimated_bytes = 0;
+		if (player_item_snapshot_tree_capture(current, &captured, &estimated_bytes) !=
+			    player_snapshot_capture_result::ok ||
+		    captured.size() != 1)
+			return false;
+		captured[0].equipment_slot = 0;
+		listed_items.push_back(std::move(captured[0]));
 		payload.items[index] = { current->obj_uid, 0,
 					 static_cast<int32_t>(OBJ_VNUM(current)) };
 		current = current->next_content;
 	}
 	payload.item_count = quantity;
+	if (!auction_encode_items(&payload, listed_items))
+		return false;
 	char serialized[AUCTION_BLOB_MAX_BYTES] = {};
 	const int serialized_size = write_one_object(object, serialized);
 	if (serialized_size <= 0 || serialized_size >= static_cast<int>(payload.object_blob.size()))
@@ -1390,7 +1468,68 @@ static void auction_pickup_claim(P_char ch, const sql_rows &rows)
 		send_to_char("&+WYou have no items or money to pickup!&n\r\n", ch);
 		return;
 	}
-	if (!auction_transaction_submit(ch, payload, auction_item_claim_completed))
+	std::vector<player_item_snapshot> claimed_items;
+	if (player_item_snapshot_list_decode(payload.object_blob.data(), payload.object_blob_size,
+					     &claimed_items) != player_snapshot_codec_result::ok)
+	{
+		// Persisted listings from before canonical snapshots retain their legacy
+		// object bytes. Decode them on the game thread before claiming anything.
+		claimed_items.clear();
+		for (size_t index = 0; index < payload.item_count; ++index)
+		{
+			P_obj object = read_one_object(
+				reinterpret_cast<char *>(payload.object_blob.data()));
+			if (!object)
+			{
+				auction_error(ch);
+				return;
+			}
+			object->obj_uid = payload.items[index].item_uid;
+			std::vector<player_item_snapshot> captured;
+			size_t estimated_bytes = 0;
+			const bool valid = !IS_ARTIFACT(object) && !object->contains &&
+					   player_item_snapshot_tree_capture(object, &captured,
+									     &estimated_bytes) ==
+						   player_snapshot_capture_result::ok &&
+					   captured.size() == 1;
+			extract_obj(object);
+			if (!valid)
+			{
+				send_to_char(
+					"Your auction item remains staged and needs staff review.\r\n",
+					ch);
+				return;
+			}
+			captured[0].equipment_slot = 0;
+			claimed_items.push_back(std::move(captured[0]));
+		}
+	}
+	if (claimed_items.size() != payload.item_count)
+	{
+		auction_error(ch);
+		return;
+	}
+	for (size_t index = 0; index < claimed_items.size(); ++index)
+	{
+		const auto &item = claimed_items[index];
+		const auto *prototype = find_object_template(item.vnum);
+		if (item.object_uid != payload.items[index].item_uid ||
+		    item.vnum != payload.items[index].vnum ||
+		    item.parent_index != PLAYER_SNAPSHOT_NO_PARENT || item.equipment_slot != 0 ||
+		    (item.extra_flags & ITEM_ARTIFACT) || !prototype ||
+		    (prototype->extra_flags & ITEM_ARTIFACT))
+		{
+			send_to_char("Your auction item remains staged and needs staff review.\r\n",
+				     ch);
+			return;
+		}
+	}
+	if (!auction_encode_items(&payload, claimed_items))
+	{
+		auction_error(ch);
+		return;
+	}
+	if (!auction_transaction_submit(ch, payload, nullptr))
 		send_to_char("The auction house is busy; your items remain staged.\r\n", ch);
 	else
 		send_to_char("Your auction item pickup is being committed.\r\n", ch);

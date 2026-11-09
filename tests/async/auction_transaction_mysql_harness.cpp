@@ -76,8 +76,45 @@ critical_command command_for(const auction_command_payload &payload,
 {
 	critical_operation_id operation_id = {};
 	assert(critical_operation_id_generate(&operation_id));
+	auto prepared = payload;
+	if (payload.action == auction_action::list || payload.action == auction_action::claim_item)
+	{
+		std::vector<player_item_snapshot> items;
+		if (payload.action == auction_action::claim_item)
+		{
+			execute("SELECT obj_blob FROM auction_item_custody WHERE item_uid=" +
+				std::to_string(payload.items[0].item_uid));
+			MYSQL_RES *stored = mysql_store_result(connection);
+			MYSQL_ROW row = stored ? mysql_fetch_row(stored) : nullptr;
+			assert(row && row[0]);
+			const auto *lengths = mysql_fetch_lengths(stored);
+			prepared.object_blob_size = lengths[0];
+			memcpy(prepared.object_blob.data(), row[0], lengths[0]);
+			mysql_free_result(stored);
+			assert(player_item_snapshot_list_decode(
+				       prepared.object_blob.data(), prepared.object_blob_size,
+				       &items) == player_snapshot_codec_result::ok);
+		}
+		else
+			for (size_t index = 0; index < payload.item_count; ++index)
+			{
+				player_item_snapshot item = {};
+				item.object_uid = payload.items[index].item_uid;
+				item.vnum = payload.items[index].vnum;
+				item.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+				item.type = ITEM_WEAPON;
+				item.condition = 100;
+				items.push_back(item);
+			}
+		std::vector<uint8_t> encoded;
+		assert(player_item_snapshot_list_encode(items, &encoded) ==
+		       player_snapshot_codec_result::ok);
+		prepared.item_blob_size = encoded.size();
+		std::copy(encoded.begin(), encoded.end(), prepared.item_blob.begin());
+	}
 	critical_command command = {};
-	assert(auction_command_build(&command, operation_id, payload, critical_source_site::command,
+	assert(auction_command_build(&command, operation_id, prepared,
+				     critical_source_site::command,
 				     critical_deadline_class::interactive));
 	command.accepted_at_usec = 1;
 	assert(critical_command_valid(command));
@@ -372,7 +409,52 @@ int main()
 	item_claim.items[0] = { item_uid, 1, 77 };
 	memcpy(item_claim.object_blob.data(), "object-blob", 12);
 	item_claim.object_blob_size = 12;
-	result = apply(command_for(item_claim, &operations));
+	const auto item_command = command_for(item_claim, &operations);
+	execute("CREATE TRIGGER reject_auction_item BEFORE INSERT ON player_items FOR EACH ROW BEGIN IF NEW.pid=" +
+		std::to_string(buyer) +
+		" THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='auction item refusal'; END IF; END");
+	assert(critical_command_repository_apply(connection, item_command).error_code == 1644);
+	assert(scalar("SELECT owner_type FROM item_current_owner WHERE item_uid=" +
+		      std::to_string(item_uid)) == 6);
+	assert(scalar("SELECT COUNT(*) FROM auction_item_custody WHERE item_uid=" +
+		      std::to_string(item_uid) + " AND claimed_at IS NULL") == 1);
+	assert(scalar("SELECT COUNT(*) FROM player_items WHERE obj_uid=" +
+		      std::to_string(item_uid)) == 0);
+	execute("DROP TRIGGER reject_auction_item");
+	result = apply(item_command);
+	assert(result.materialized_item_ids[0] ==
+	       scalar("SELECT id FROM player_items WHERE pid=" + std::to_string(buyer) +
+		      " AND obj_uid=" + std::to_string(item_uid)));
+	assert(result.wallet_revision == 2);
+	assert(critical_command_repository_apply(connection, item_command).outcome ==
+	       critical_apply_outcome::already_applied);
+	auto claim_capture = listed_capture;
+	claim_capture.pid = static_cast<int>(buyer);
+	claim_capture.items.clear();
+	claim_capture.status_integers.back() = { player_status_field::platinum, 5, 0, false };
+	claim_capture.wallet_revision = 1;
+	claim_capture.pending_trade.operation = item_command.operation_id.bytes;
+	claim_capture.pending_trade.payment = 0;
+	claim_capture.pending_trade.wallet_revision = 1;
+	std::vector<uint8_t> encoded_item_command;
+	assert(critical_command_encode(item_command, &encoded_item_command) ==
+	       critical_command_codec_result::ok);
+	SHA256(encoded_item_command.data(), encoded_item_command.size(),
+	       claim_capture.pending_trade.command_hash.data());
+	for (int repeat = 0; repeat < 2; ++repeat)
+	{
+		assert(player_snapshot_repository_apply(connection, claim_capture).outcome ==
+		       player_save_apply_outcome::applied);
+		assert(scalar("SELECT COUNT(*) FROM player_items WHERE pid=" +
+			      std::to_string(buyer) + " AND obj_uid=" + std::to_string(item_uid)) ==
+		       1);
+		assert(scalar("SELECT platinum FROM player_data WHERE pid=" +
+			      std::to_string(buyer)) == 5);
+		assert(scalar("SELECT wallet_revision FROM player_data WHERE pid=" +
+			      std::to_string(buyer)) == 2);
+	}
+	puts("item claim: target/source rollback, retry/replay and missing-UID snapshot retention pass");
+
 	assert(result.event_type == auction_event_type::item_claimed &&
 	       result.item_revisions[0] == 2);
 	assert(scalar("SELECT owner_id FROM item_current_owner WHERE item_uid=" +
@@ -414,7 +496,7 @@ int main()
 	auction_command_payload expired_claim = {};
 	expired_claim.action = auction_action::claim_item;
 	expired_claim.auction_id = expired_auction_id;
-	fill_actor(&expired_claim, seller, seller_account, "AuctionSeller", 3);
+	fill_actor(&expired_claim, seller, seller_account, "AuctionSeller", 2);
 	expired_claim.item_count = 1;
 	expired_claim.items[0] = { expired_uid, 1, 78 };
 	memcpy(expired_claim.object_blob.data(), "expired-blob", 13);
@@ -441,10 +523,14 @@ int main()
 	removable.object_blob_size = 13;
 	memcpy(removable.object_short.data(), "a removed blade", 15);
 	auto legacy_listing = command_for(removable, &operations);
+	auction_command_payload legacy_payload = {};
+	assert(auction_command_decode_payload(legacy_listing, &legacy_payload));
+	legacy_listing.payload.resize(legacy_listing.payload.size() - 4 -
+				      legacy_payload.item_blob_size);
 	legacy_listing.payload_version = 1;
 	result = apply(legacy_listing);
 	assert(scalar("SELECT wallet_revision FROM player_data WHERE pid=" +
-		      std::to_string(seller)) == 2);
+		      std::to_string(seller)) == 3);
 	const uint32_t removed_auction_id = result.auction_id;
 	auction_command_payload removed_bid = {};
 	removed_bid.action = auction_action::bid;

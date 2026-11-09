@@ -57,6 +57,13 @@ static uint32_t reserved_chest_pid;
 static std::unordered_map<uint32_t, int64_t> reserved_trade_payments;
 static std::string reserved_chest_account;
 static int reserved_chest_racewar;
+static bool refuse_item_publication;
+static int published_claims;
+bool auction_publish_item_claim(P_char,const auction_command_result &,const auction_command_payload &) {
+    if(refuse_item_publication) return false;
+    ++published_claims; return true;
+}
+void send_to_char(const char *,P_char) {}
 P_char character_list = nullptr;
 static bool refuse_trade_reservation, refuse_snapshot_reservation, claim_tagged;
 static player_pending_trade_snapshot claim_tag;
@@ -114,7 +121,7 @@ static auction_command_payload request(auction_action action)
     payload.expected_wallet_revision = online_actor ? online_actor->only.pc->wallet_revision : 0;
     payload.auction_id = action == auction_action::list ? 0 : 7;
     snprintf(payload.account_name.data(), payload.account_name.size(), "escrow_account");
-    if (action == auction_action::list)
+    if (action == auction_action::list || action == auction_action::claim_item)
     {
         payload.item_count = 1;
         payload.items[0] = {200, 0, 391};
@@ -252,6 +259,59 @@ int main()
     assert(claim_tagged && claim_tag.payment==0);
     complete(&ch,true,0);
     assert(wallet==8010 && pc.wallet_revision==revision+1 && item_place=="gone");
+
+    auto item_claim=request(auction_action::claim_item);
+    coordinator_result=critical_submit_result::unavailable;
+    assert(!submit(&ch,item_claim,nullptr,critical_source_site::command,critical_deadline_class::interactive));
+    assert(pending.empty() && !claim_tagged && reserved_trade_payments.empty() && published_claims==0);
+    coordinator_result=critical_submit_result::accepted;
+    for(bool *refusal : {&refuse_trade_reservation,&refuse_snapshot_reservation}) {
+        *refusal=true;
+        assert(!submit(&ch,item_claim,nullptr,critical_source_site::command,critical_deadline_class::interactive));
+        assert(pending.empty() && !claim_tagged && reserved_trade_payments.empty());
+        *refusal=false;
+    }
+    assert(submit(&ch,item_claim,nullptr,critical_source_site::command,critical_deadline_class::interactive));
+    assert(claim_tagged && claim_tag.payment==0);
+    refuse_item_publication=true;
+    complete(&ch,true,0,true);
+    assert(wallet==8010 && published_claims==0 && claim_tagged);
+    refuse_item_publication=false;
+    auction_transaction_publish_outbox(); auction_transaction_player_ready(&ch);
+    assert(wallet==8010 && published_claims==1 && !claim_tagged && reserved_trade_payments.empty());
+    item_claim.expected_wallet_revision=pc.wallet_revision;
+    assert(submit(&ch,item_claim,nullptr,critical_source_site::command,critical_deadline_class::interactive));
+    complete(nullptr,true,0); // No live publication: an unloaded actor loads its durable target.
+    assert(published_claims==1 && !claim_tagged && reserved_trade_payments.empty());
+
+    // Frames from versions one and two remain readable after adding snapshots.
+    auto codec_payload=request(auction_action::list); codec_payload.item_blob_size=3;
+    codec_payload.item_blob[0]=1; codec_payload.item_blob[1]=2; codec_payload.item_blob[2]=3;
+    critical_operation_id codec_id{}; codec_id.bytes[0]=1; critical_command codec_command{};
+    assert(auction_command_build(&codec_command,codec_id,codec_payload,critical_source_site::command,critical_deadline_class::interactive));
+    auction_command_payload decoded_payload{};
+    assert(auction_command_decode_payload(codec_command,&decoded_payload) && decoded_payload.item_blob_size==3);
+    auto legacy=codec_command; legacy.payload.resize(legacy.payload.size()-7);
+    for(int version : {1,2}) {
+        legacy.payload_version=version;
+        assert(auction_command_decode_payload(legacy,&decoded_payload) && decoded_payload.item_blob_size==0);
+    }
+    legacy.payload_version=3; assert(!auction_command_decode_payload(legacy,&decoded_payload));
+    codec_command.payload_version=4; assert(!auction_command_decode_payload(codec_command,&decoded_payload));
+    auction_command_result maximum{}; maximum.action=auction_action::claim_item;
+    maximum.item_count=AUCTION_COMMAND_MAX_ITEMS;
+    for(size_t index=0;index<maximum.item_count;++index) {
+        maximum.item_uids[index]=100+index; maximum.item_revisions[index]=2;
+        maximum.materialized_item_ids[index]=901+index;
+    }
+    std::array<uint8_t,AUCTION_RESULT_PAYLOAD_BYTES> frame{};
+    assert(auction_command_encode_result(maximum,&frame));
+    auction_command_result decoded_result{};
+    assert(auction_command_decode_result(frame.data(),frame.size(),&decoded_result));
+    assert(decoded_result.materialized_item_ids==maximum.materialized_item_ids);
+    assert(auction_command_decode_result(frame.data(),320,&decoded_result));
+    assert(decoded_result.item_uids==maximum.item_uids && decoded_result.materialized_item_ids.back()==0);
+    assert(!auction_command_decode_result(frame.data(),frame.size()-1,&decoded_result));
 
     // Existing chest exclusion and reservation cleanup remain in force.
     claim=request(auction_action::claim_money); claim.value=50;
