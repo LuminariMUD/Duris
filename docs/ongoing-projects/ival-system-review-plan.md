@@ -1299,8 +1299,8 @@ unchanged. Full command/MariaDB qualification remains F16. No database,
 migration or production operation occurred.
 
 **Continuation:** convert enhancement configuration using the shared scalar
-parsers and finish remaining F08/property/input bounds. During F16, explicitly
-check deterministic defaults before opening its file: the current enhancement
+parsers and finish remaining F08/property/input bounds. Check deterministic
+defaults before opening its file: the current enhancement
 loader resets only some fields, and only after a successful open. Preserve its
 fail-closed opt-in gates and do not add a hot-reload mode. During F16, explicitly
 qualify the current provider paths: Craft normalizes/imports through
