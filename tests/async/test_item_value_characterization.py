@@ -292,6 +292,7 @@ def main():
         source.write_text(HARNESS.replace("// CALLBACKS", identities).replace("// PRODUCTION", production))
         subprocess.run([
             "g++", "-std=c++20", "-g", "-O1", "-D_PFILE_", "-Isrc",
+            "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
             "-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all",
             "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
             str(source), rel("skills.c"), str(HARNESS_STUBS), "src/item/item_value.c",

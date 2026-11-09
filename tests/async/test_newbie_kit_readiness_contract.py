@@ -8,14 +8,10 @@ from contract_text import contains
 
 ROOT = Path(__file__).resolve().parents[2]
 movement = (SRC / "item_movement_transaction.c").read_text()
-header = (SRC / "item_movement_transaction.h").read_text()
 nanny = (SRC / "nanny.c").read_text()
 comm = (SRC / "comm.c").read_text()
 
-queue = movement.split("struct creation_grant_queue", 1)[1].split("};", 1)[0]
-assert contains(queue, "bool blocks_actor_commands = false")
-assert "item_creation_grant_mark_blocking" in header
-assert "item_creation_grant_blocks_commands" in header
+# Queue gating/ready publication execute in the lifecycle, input and prompt harnesses.
 
 newbie_kit = nanny.split("void load_obj_to_newbies(P_char ch)", 1)[1]
 newbie_kit = newbie_kit.split("/* check for a legal player name", 1)[0]
