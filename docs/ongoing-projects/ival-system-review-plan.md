@@ -46,7 +46,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-numeric-bounds`; its initial synchronized commit was
+`origin/branch/ival-material-bounds`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -66,7 +66,8 @@ it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-apply-composition`; #959 makes zero modifiers neutral on
 `branch/ival-zero-modifiers`; #960 qualifies duplicate apply totals on
 `branch/ival-duplicate-applies`; #964 repairs numeric overflow/unavailable-value
-admission on `branch/ival-numeric-bounds`. Branch/base
+admission on `branch/ival-numeric-bounds`; #966 shares checked material quantities
+and plans crafting XP on `branch/ival-material-bounds`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -1040,6 +1041,9 @@ F16; this chunk performs no database, migration or production operation.
 ### Chunk 15 — share checked material quantities and plan XP (F08/F14, implemented)
 
 Branch: `branch/ival-material-bounds`, based on `branch/ival-numeric-bounds`.
+Published: commit `b62bc76b5`, [PR #966](https://github.com/LuminariMUD/Duris/pull/966)
+(bug label), stacked on #964. Ready for review; both dedicated worktrees carry
+the committed implementation/evidence and updated handoff.
 
 **Outcome:** one pure checked raw/scaled material calculation serves crafting,
 superior enhancement and the static report. Reject nonfinite/nonpositive scales
