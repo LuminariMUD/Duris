@@ -384,6 +384,25 @@ def run(binary, backend, evidence_dir):
                 assert "You drop" in command(client, "drop ticket")
                 assert on_floor(client, "ticket")
 
+                command(client, "goto " + str(BANK))
+                # The bag must be back in the visitor's hands before their save, not after
+                # it: a crash between the two saves would lose the bag and what it holds.
+                enter_locker()
+                command(client, "setbit obj backpack extra NORENT 1")
+                assert "You drop" in command(client, "drop backpack")
+                revision = save()["revision"]
+                deadline = time.monotonic() + 60
+                while inspect()["revision"] <= revision:
+                    assert time.monotonic() < deadline, "the save inside the locker did not commit"
+                    time.sleep(.1)
+                stop(crash=True)
+                boot()
+                login()
+                assert any(row[1] == SIBLING for row in inspect()["items"]), "a crash lost what a no-rent bag in a locker held"
+                command(client, "setbit obj backpack extra NORENT 0")
+                assert preserved(save()) == baseline
+                evidence["checks"].append("what a no-rent bag on a locker floor holds survives a crash after a save")
+
                 active_uid = grant(KEY, "golden", "golden key", True)
                 save()
                 stop(crash=True)

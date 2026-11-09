@@ -501,6 +501,8 @@ static int locker_handle_save_hook(P_char ch, int troom)
 	ch->specials.was_in_room = (exit_room != NOWHERE) ? world[exit_room].number :
 							    world[troom].number;
 
+	locker_return_norent_items(ch);
+
 	// Return artifacts to the player's inventory BEFORE the player save so
 	// they are included in the saved record.  This was originally in the
 	// post-save hook (-81), which meant a crash between saves could lose
@@ -4042,6 +4044,14 @@ void StorageLocker::ReturnNorentItems(void)
 		else
 			locker_return_norent_contents(m_chUser, object);
 	}
+}
+
+// A visitor's own save runs this first, so that save holds what was handed back.
+void locker_return_norent_items(P_char ch)
+{
+	StorageLocker *pLocker = locker_current(ch);
+	if (pLocker && pLocker->LockerUserMatches(ch))
+		pLocker->ReturnNorentItems();
 }
 
 bool StorageLocker::LockerToPFile(void)
