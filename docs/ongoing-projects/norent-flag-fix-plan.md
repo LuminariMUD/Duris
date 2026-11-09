@@ -1,8 +1,29 @@
 # No-rent flag fixes
 
-Status: planned, not started. No GitHub issue filed yet.
+Status: in progress, shipping as stacked pull requests (no separate issue).
 Date: 2026-11-09.
-Source inspected: `master` at `fa173cbad`.
+Source inspected: `master` at `fa173cbad`, then merged up to `c60ae726a`.
+
+## Progress
+
+Each row is one pull request, stacked on the one above it. To continue in a new
+session, check out the last branch that exists and pick up the first row not marked
+done.
+
+| PR | Sections | Branch | State |
+|---|---|---|---|
+| 1 | 1, 2, 3 and their tests | `branch/norent-flag-fix` | Built and tested |
+| 2 | 4 (lockers) | `branch/norent-flag-fix-lockers` | Not started |
+| 3 | 5 (seven items, auction refusal) | `branch/norent-flag-fix-items` | Not started |
+| 4 | 6 (help and docs) | `branch/norent-flag-fix-help` | Not started |
+
+Notes from building so far:
+
+- `test_norent_key_rent_journey.py` covers the shop case with the obsidian key
+  (5783, sold in room 5848), because the eyeglasses lose the flag in section 5. Its
+  camp and `extractlink` cases use a second, mortal character in room 1457.
+- No artifact prototype is no-rent, and the coin pile isn't, so section 1 has no
+  coin or artifact handling.
 
 ## Outcome and scope
 
