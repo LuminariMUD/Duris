@@ -90,12 +90,9 @@ def command(client, text, expected):
 
 
 def run(binary, driver):
-    with tempfile.TemporaryDirectory(prefix="discord-game-", dir=ROOT / "bin/tests") as temporary:
+    with journey.mariadb_authority() as (environment, sql), \
+            tempfile.TemporaryDirectory(prefix="discord-game-", dir=ROOT / "bin/tests") as temporary:
         runtime = Path(temporary)
-        state = runtime / "state"
-        state.mkdir(mode=0o700)
-        (state / "domains").mkdir(mode=0o700)
-        subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
         journey.make_fixture(runtime)
         zone = runtime / "areas_mini/mini.zon"
         zone.write_text(re.sub(r"^[MG] .*\n", "", zone.read_text(), flags=re.M))
@@ -107,17 +104,12 @@ def run(binary, driver):
         plain, tls, websocket = journey.available_ports()
         feed_port, _, _ = journey.available_ports()
         copyover = runtime / "copyover.dat"
-        environment = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ENVIRONMENT": "local",
-            "PERSISTENCE_MODE": "flatfile-primary", "FLATFILE_STATE_DIR": str(state),
-            "CRITICAL_COMMAND_JOURNAL_DIR": str(runtime / "journals/critical"),
-            "COPYOVER_STATE_FILE": str(copyover), "LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_TLS_PORT": str(tls), "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_WEBSOCKET_PORT": str(websocket), "REDIS": "FALSE", "CHAOS_MUD": "FALSE",
-            "DURIS_DISCORD_ENABLED": "TRUE", "DURIS_DISCORD_PORT": str(feed_port),
-        }
-        if "LD_LIBRARY_PATH" in os.environ:
-            environment["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+        environment.update(
+            CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
+            COPYOVER_STATE_FILE=str(copyover), DURIS_TLS_PORT=str(tls),
+            DURIS_WEBSOCKET_PORT=str(websocket), DURIS_DISCORD_ENABLED="TRUE",
+            DURIS_DISCORD_PORT=str(feed_port),
+        )
         output_path = runtime / "server.out"
         process = output = sink = None
         clients, expected = [], []
@@ -195,7 +187,7 @@ def run(binary, driver):
             save_quit()
             shutdown()
             sink.until(lambda value: not value["connected"])
-            journey.make_overlord(state, STAFF)
+            sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + STAFF + "'")
             boot()
             sink.until(lambda value: value["connected"] and value["connections"] >= 2)
             login()
@@ -316,7 +308,7 @@ def run(binary, driver):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--node-driver", required=True, type=Path)
-    parser.add_argument("--server", type=Path, help="previously built flat-file server; otherwise build current source")
+    parser.add_argument("--server", type=Path, help="previously built MariaDB server; otherwise build current source")
     args = parser.parse_args()
     driver = args.node_driver.resolve()
     if not driver.is_file():
