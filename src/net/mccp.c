@@ -29,6 +29,7 @@
 #include "core/json_utils.h"
 #include "net/telnet.h"
 #include "net/ttype.h"
+#include "net/mxp.h"
 #include "net/unicode.h"
 #include "net/websocket.h"
 
@@ -116,6 +117,9 @@ int parse_telnet_options(P_desc player, char *buf, int buflen)
 		case TELOPT_GMCP:
 			gmcp_handle_negotiation(player, DO);
 			return 3;
+		case TELOPT_MXP:
+			mxp_handle_negotiation(player, DO);
+			return 3;
 		case TELOPT_MSSP:
 			mssp_send(player);
 			return 3;
@@ -132,6 +136,9 @@ int parse_telnet_options(P_desc player, char *buf, int buflen)
 		case TELOPT_GMCP:
 			gmcp_handle_negotiation(player, DONT);
 			return 3;
+		case TELOPT_MXP:
+			mxp_handle_negotiation(player, DONT);
+			return 3;
 		case TELOPT_SGA:
 			player->sga_disabled = 0;
 			return 3;
@@ -142,12 +149,16 @@ int parse_telnet_options(P_desc player, char *buf, int buflen)
 			return 0;
 		if (*(p + 2) == TELOPT_TTYPE)
 			ttype_handle_negotiation(player, WILL);
+		else if (*(p + 2) == TELOPT_MXP)
+			mxp_handle_negotiation(player, WILL);
 		return 3;
 	case WONT:
 		if (buflen < 3)
 			return 0;
 		if (*(p + 2) == TELOPT_TTYPE)
 			ttype_handle_negotiation(player, WONT);
+		else if (*(p + 2) == TELOPT_MXP)
+			mxp_handle_negotiation(player, WONT);
 		return 3;
 	case SB: /* subnegotiation */
 	{

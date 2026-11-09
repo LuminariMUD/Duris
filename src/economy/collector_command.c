@@ -453,7 +453,8 @@ bool collector_command_decode_payload(const critical_command &command,
 				      collector_command_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::collector ||
-	    command.payload_version != COLLECTOR_COMMAND_PAYLOAD_VERSION)
+	    (command.payload_version != 1 &&
+	     command.payload_version != COLLECTOR_COMMAND_PAYLOAD_VERSION))
 		return false;
 	*payload = {};
 	const uint8_t *cursor = command.payload.data();

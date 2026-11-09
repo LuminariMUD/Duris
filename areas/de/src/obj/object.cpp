@@ -849,6 +849,7 @@ int itemvalue(objectType *obj)
 	for (int i = 0; i < NUMB_OBJ_APPLIES; ++i)
 		input.affected[i] = { static_cast<int>(obj->objApply[i].applyWhere),
 				      obj->objApply[i].applyModifier };
+	normalize_item_value_fields(input);
 	// The editor has no native callback/racial tables and incomplete circle data.
 	// The view and hunt output explicitly identify this score as an estimate.
 	item_value_context context;

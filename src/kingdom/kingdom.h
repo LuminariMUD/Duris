@@ -59,6 +59,9 @@ void kingdom_guild_save_completed(int assoc_id, const std::shared_ptr<sql_write_
 /* Load config and persisted realms, and build the in-memory index. Safe to
  * call when the feature is disabled: it reads the config, logs, and returns. */
 void kingdom_initialize(void);
+// Read config and bind object callbacks only, assuming a healthy configured boot.
+// Offline valuation uses this without loading realms, objects, or scheduled work.
+void kingdom_initialize_object_bindings(void);
 
 /* Release everything. Idempotent. */
 void kingdom_shutdown(void);
