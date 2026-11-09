@@ -97,3 +97,32 @@ There is no benefit to being a certain age.
 Some spells, such as 'vitality', can be extended by a cheap potion at their original power.
 Need gear?  Check the 'auction' to see if there's something on sale.
 You can use area spells to reveal invisible enemies.  Beware, they will not be amused.
+Tired of these hints? Type "toggle hint" to turn them off.
+New to Duris? Type "rules" and read them carefully. Not knowing a rule does not excuse breaking it.
+Ready to log off? Mortals cannot simply quit, so "rent" at an inn or "camp" in a safe spot to leave with your gear.
+Stay logged off for at least 9 real hours to return with a rested experience bonus. After 20 hours you will be well-rested, which is even better.
+Carrying lots of coins? Visit a bank and use "deposit", "withdraw" and "balance". Coins on you can be stolen, or lost when you die.
+After you die, your gear stays in your corpse. Hurry back and type "get all corpse" before it decays, about two hours later.
+Deaths below level 30 cost no experience. From level 30 on, dying can cost you experience and even a level.
+Several targets with the same name? Use a number, such as "kill 2.goblin" or "get 2.sword". Typing "get all.sword" takes every match.
+Use "gsay" to talk to your whole group, even when you are in different rooms.
+Looking for a group? Type "who lfg" to see who else is looking.
+Missed a tell? Type "recall" to read your recent private messages.
+Found a problem or have a suggestion? Use "bug", "typo" or "idea" followed by a description to tell the staff.
+Need a God's attention for something serious? Use "petition" followed by a clear description of the problem.
+Most spellcasters must prepare spells before casting them. Type "rest", then "memorize <spell>" or "pray <spell>", depending on your class.
+Changed your mind in the middle of a spell? Type "abort" to stop casting.
+Sharing the loot? Type "split <amount> <coin type>" to divide coins evenly among your group.
+Have a pet? Use "order <pet> <command>", or "order followers <command>" to command them all.
+Looking for work? Find a bartender and type "ask <bartender> quest", then type "quest" to review your task.
+Epic points are a separate reward currency. Check your balance with "score" and read "help epic" to learn what they can do.
+The Gods of Duris grant automatic bonuses for limited times. Type "boon" to see which ones are active.
+Tired of walking? Flight carriers link many stops. Type "list" at a carrier to learn its stop, and "flights" to see the stops you know.
+A tradeskill teacher can train you in mining, forging or crafting, but you can only know one of them at a time.
+Humans and orcs can add a second class at level 50. Type "multiclass" to see your choices, but the decision is permanent.
+Looking for allies? Type "society" for guild commands and read "help guild" to learn more. Guild members talk on the "gcc" channel.
+Running out of room? Lockers in the hometowns can hold your spare equipment. Read "help locker" to learn how to use them.
+Level cap holding you back? PvP frags decide how far each side can climb. Type "fraglist" for the standings and read "help level cap".
+Type "achievements zones" to see your progress through zone quests, and "leaderboard quests" to see how you rank.
+Using Mudlet? Find the Duris interface at https://duris.sbs/mudlet-gui .
+Join other players on Discord at https://discord.gg/hrcnREz5X .

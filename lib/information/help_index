@@ -27666,11 +27666,11 @@ Use 'society' for the guild command menu and 'help society' for syntax.
 'help society examples' gives worked examples. Available actions depend
 on your membership, guild rank and the action's requirements.
 
-Use 'gsay <message>' to speak to your guild. At a bank with locker access,
+Use 'gcc <message>' to speak to your guild. At a bank with locker access,
 'enter locker guild' enters the shared guild locker. Guildhall building
 uses 'construct'; read 'help construct' before spending guild funds.
 Read 'help guild' for guild organization and 'help rules' for play policy.
-See also: SOCIETY, GUILD, GSAY, CONSTRUCT, LOCKERS
+See also: SOCIETY, GUILD, GCC, CONSTRUCT, LOCKERS
 ===========================================================================
 
 #
