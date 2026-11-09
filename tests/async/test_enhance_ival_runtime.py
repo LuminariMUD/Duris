@@ -55,7 +55,11 @@ void audit_item_removal(const char *cause, const item_removal_location &,
 }
 
 extern const struct stat_data stat_factor[LAST_RACE + 1] = {};
-int get_mincircle(int) { std::abort(); }
+int get_mincircle(int spell) {
+    if (!spell) return 0;
+    assert(spell == 32 || spell == 33);
+    return spell == 32 ? 1 : 2;
+}
 int get_ival_from_proc(obj_proc_type) { std::abort(); }
 int number(int low, int high) { return lucky ? low : high; }
 void logit(const char *, const char *, ...) {}
@@ -439,8 +443,9 @@ static void test_essence()
     clear_attempt();
 }
 
-static void test_superior()
+static void test_superior(bool packed_case = false)
 {
+    pouch_usage = 0;
     char_data ch{};
     ch.player.level = 60;
     ch.in_room = NOWHERE;
@@ -502,8 +507,28 @@ static void test_superior()
     clear_attempt();
 
     base.affected[1] = {APPLY_STR, 2};
+    if (packed_case) {
+        base.type = ITEM_WEAPON;
+        base.wear_flags |= ITEM_WIELD;
+        base.value[0] = WEAPON_LONGSWORD;
+        base.value[1] = 2;
+        base.value[2] = 2;
+        base.value[5] = 1000033032;
+        base.value[6] = 60;
+        base.value[7] = 30;
+    }
     item = base;
     const int original_value = itemvalue(&item);
+    if (packed_case) assert(original_value == 21); // 18 before F02; all charges use this corrected value.
+    if (packed_case) {
+        ch.player.level = 6; // Old value 18 passed this limit; corrected 21 does not.
+        do_enhance(&ch, command, 0);
+        assert(output.find("at your level") != std::string::npos);
+        assert(charges == 0 && GET_MONEY(&ch) == 20000 && materials == initial_materials);
+        assert(item.affected[0].modifier == 2 && item.affected[1].modifier == 2);
+        clear_attempt();
+        ch.player.level = 60;
+    }
     const int per_ival = enhance_stat_platinum_per_ival;
     enhance_stat_platinum_per_ival = INT_MAX;
     do_enhance(&ch, command, 0);
@@ -600,6 +625,7 @@ int main()
     test_replacement();
     test_essence();
     test_superior();
+    test_superior(true);
 }
 """
 

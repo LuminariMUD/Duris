@@ -442,13 +442,24 @@ static void packed_parity() {
             {1,57,SPELL_TYPE_SPELL,s.target->runtime_id,0}}));
         assert(rolls.size() == 1 && choices.empty());
     }
-    for (int choice = 0; choice < 3; ++choice) {
-        weapon_scene s("weapons"); s.packed(true);
+    for (bool enabled : {false, true}) for (int count : {2, 3})
+    for (int choice = 0; choice < count; ++choice) {
+        weapon_scene s("weapons", enabled); s.packed(true);
+        if (count == 2) s.source->value[5] = 1000002001;
         choices = {0, choice}; assert(weapon_proc(s.source, s.actor, s.target));
         s.source->value[5] = 3; s.source->value[6] = 999;
-        assert(effects.empty()); advance();
+        if (enabled) { assert(effects.empty()); advance(); }
         assert(effects.size() == 1 && effects[0].id == choice + 1 && effects[0].power == 57);
         assert(effects[0].target == (choice == 1 ? s.actor : s.target)->runtime_id);
+        assert((rolls == std::vector<std::pair<int,int>>{{0,24},{0,count-1}}));
+    }
+    for (bool enabled : {false, true}) for (int choice = 0; choice < 3; ++choice) {
+        weapon_scene s("weapons", enabled); s.packed(true);
+        skills[1].spell_pointer = nullptr;
+        choices = {0, choice}; assert(weapon_proc(s.source, s.actor, s.target));
+        if (enabled) advance();
+        assert(effects.size() == (choice ? 1u : 0u));
+        if (choice) assert(effects[0].id == choice + 1 && effects[0].power == 57);
         assert((rolls == std::vector<std::pair<int,int>>{{0,24},{0,2}}));
     }
     {

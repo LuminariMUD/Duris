@@ -1,4 +1,4 @@
-// Shared numeric item valuation. Coefficients and legacy rounding are preserved.
+// Shared numeric item valuation. Quantization follows all credits and multipliers.
 #include "item/item_value.h"
 #include "item/objmisc.h"
 #include <cmath>
@@ -283,8 +283,8 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 				    ((spells[2]) ? 1 : 0);
 			// If there are none?!, set to 1 anyway.
 			numspells = numspells ? numspells : 1;
-			// Compute average circle.
-			workingvalue += (int)(mod * (spellcirclesum / numspells));
+			// Keep the mean and scaled contribution fractional until final quantization.
+			workingvalue += mod * spellcirclesum / numspells;
 		}
 		else
 		{
@@ -462,6 +462,7 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 		obj->type == ITEM_KEY || obj->type == ITEM_SWITCH || obj->type == ITEM_VEHICLE ||
 		obj->type == ITEM_SHIP || obj->type == ITEM_STORAGE;
 	int score = 1;
+	// Quantize once after every base credit and multiplier, truncating toward zero.
 	if (!utility_override)
 		score = floored ? 1 : unrounded;
 	if (breakdown)

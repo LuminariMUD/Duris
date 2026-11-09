@@ -30,7 +30,6 @@
 /* Forward declarations for hash functions used in enhance() and do_enhance() */
 static int enhance_hash(int key);
 static int enhance_stat_hash(int key);
-static bool is_enhance_pool_candidate(P_obj obj);
 static struct enhance_essence_zone_rule *enhance_find_essence_zone_rule(int zone_number);
 extern double enhance_stat_cap_multiplier;
 extern int enhance_stat_platinum_base;
@@ -1994,7 +1993,7 @@ static bool is_enhance_pool_banned(P_obj item)
 }
 
 /* Use the same eligibility rules at index build time and when loading a result. */
-static bool is_enhance_pool_candidate(P_obj obj)
+bool is_enhance_pool_candidate(P_obj obj)
 {
 	if (!IS_SET(obj->wear_flags, ITEM_TAKE) ||
 	    IS_SET(obj->extra_flags,
