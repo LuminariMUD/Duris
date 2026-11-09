@@ -50,7 +50,7 @@ for filename, signatures in [
     ("weather.c", ["void send_to_weather_sector("]),
     ("fight.c", ["void dam_message(", "static combat_outcome_participant *combat_outcome_add_participant("]),
     ("specs.object.c", ["P_char melee_proc_target(", "int totem_of_mastery(", "int circlet_of_light("]),
-    ("prompt.c", ["void make_prompt("]),
+    ("prompt.c", ["char *make_bar(", "void UpdateScreen(", "void InitScreen(", "void make_prompt("]),
     ("player_load_materialize.c", ["bool apply_string("]),
     ("json_utils.c", ["char *json_build_comm_channel("]),
     ("gmcp.c", ["void gmcp_broadcast_channel("])

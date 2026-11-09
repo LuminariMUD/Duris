@@ -43,8 +43,10 @@ returning to locked mode. Labels and ordinary text stay in locked mode. Targets
 escape `&`, `<`, `>`, quotes and apostrophes. Newlines and page boundaries close
 the current link; the next portion opens the same target independently.
 
-Raw input cannot switch MXP modes: non-SGR escape controls are displayed as `^[`,
-other C0/C1 controls as `?`, with newline/tab and existing ANSI SGR retained.
+Raw input cannot switch MXP modes: escape controls outside the SGR and existing
+cursor/screen CSI allowlist (`m`, `C`, `D`, `H`, `J`, `K`, `r`, `s`, `u`) display
+as `^[`; other C0/C1 controls display as `?`, with newline/tab retained. In
+particular, authored `ESC [ ... z` mode changes remain blocked.
 Literal angle brackets and ampersands in labels remain literal text. Labels and
 targets never become raw executable code or HTML. Clicking a command remains a
 client action that submits normal game input through the existing interpreter.

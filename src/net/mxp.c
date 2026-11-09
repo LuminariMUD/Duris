@@ -88,14 +88,14 @@ std::string attribute(const std::string &value)
 	return result;
 }
 
-// Preserve raw ANSI SGR used by existing output, but never let authored ESC[z
+// Preserve SGR and existing cursor/screen controls, but never let authored ESC[z
 // sequences leave locked MXP mode. The link freezer declines raw-ESC metadata.
 AnsiString literal_controls(const AnsiString &text)
 {
 	AnsiString result;
 	for (size_t i = 0; i < text.size(); ++i)
 	{
-		bool sgr = false;
+		bool safe_csi = false;
 		if (text.ch(i) == '\x1b' && text.ch(i + 1) == '[')
 		{
 			size_t end = i + 2;
@@ -103,9 +103,21 @@ AnsiString literal_controls(const AnsiString &text)
 			       ((text.ch(end) >= '0' && text.ch(end) <= '9') ||
 				text.ch(end) == ';'))
 				++end;
-			sgr = text.ch(end) == 'm';
+			switch (text.ch(end))
+			{
+			case 'm': // SGR
+			case 'C': // Cursor right/left and absolute position
+			case 'D':
+			case 'H':
+			case 'J': // Clear screen/line
+			case 'K':
+			case 'r': // Scroll region
+			case 's': // Save/restore cursor
+			case 'u':
+				safe_csi = true;
+			}
 		}
-		if (text.ch(i) == '\x1b' && !sgr)
+		if (text.ch(i) == '\x1b' && !safe_csi)
 		{
 			result.push_back('^' | text.attr(i));
 			result.push_back('[' | text.attr(i));

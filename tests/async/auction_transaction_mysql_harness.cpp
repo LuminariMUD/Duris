@@ -1,5 +1,8 @@
 #include "economy/auction_command.h"
 #include "persistence/critical_command_repository.h"
+#include "player/player_snapshot_repository.h"
+#include "player/player_snapshot_codec.h"
+#include <openssl/sha.h>
 
 #include <mysql.h>
 
@@ -352,6 +355,88 @@ int main()
 	assert(result.event_type == auction_event_type::removed && result.winner_pid == bidder);
 	assert(scalar("SELECT money FROM auction_money_pickups WHERE pid=" +
 		      std::to_string(bidder)) == bidder_pickup + 2500);
+
+	// A new money claim commits its exact credit and pickup consumption together.
+	execute("INSERT INTO auction_money_pickups(pid,money) VALUES(" + std::to_string(buyer) +
+		",100) ON DUPLICATE KEY UPDATE money=100");
+	auction_command_payload durable_claim = {};
+	durable_claim.action = auction_action::claim_money;
+	durable_claim.value = 25;
+	fill_actor(&durable_claim, buyer, buyer_account, "AuctionBuyer", 0);
+	const auto durable_command = command_for(durable_claim, &operations);
+	execute("CREATE TRIGGER reject_claim_consume BEFORE UPDATE ON auction_money_pickups FOR EACH ROW "
+		"BEGIN IF NEW.pid=" +
+		std::to_string(buyer) +
+		" THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='claim pickup refusal'; END IF; END");
+	const auto refused_claim = critical_command_repository_apply(connection, durable_command);
+	assert(refused_claim.outcome != critical_apply_outcome::applied &&
+	       refused_claim.outcome != critical_apply_outcome::already_applied &&
+	       refused_claim.error_code == 1644);
+	assert(scalar("SELECT money FROM auction_money_pickups WHERE pid=" +
+		      std::to_string(buyer)) == 100);
+	assert(scalar("SELECT copper+10*silver+100*gold+1000*platinum FROM player_data WHERE pid=" +
+		      std::to_string(buyer)) == 10000);
+	assert(scalar("SELECT wallet_revision FROM player_data WHERE pid=" +
+		      std::to_string(buyer)) == 0);
+	execute("DROP TRIGGER reject_claim_consume");
+	result = apply(durable_command);
+	assert(result.wallet_value_delta == 25 && result.wallet_revision == 1);
+	assert(scalar("SELECT money FROM auction_money_pickups WHERE pid=" +
+		      std::to_string(buyer)) == 75);
+	assert(scalar("SELECT copper+10*silver+100*gold+1000*platinum FROM player_data WHERE pid=" +
+		      std::to_string(buyer)) == 10025);
+	const auto claim_replay = critical_command_repository_apply(connection, durable_command);
+	assert(claim_replay.outcome == critical_apply_outcome::already_applied);
+	mysql_close(connection);
+	connection = connect_database();
+	assert(scalar("SELECT money FROM auction_money_pickups WHERE pid=" +
+		      std::to_string(buyer)) == 75);
+	assert(scalar("SELECT copper+10*silver+100*gold+1000*platinum FROM player_data WHERE pid=" +
+		      std::to_string(buyer)) == 10025);
+
+	// A logout capture made before publication resolves the same receipt before writing.
+	player_snapshot captured = {};
+	captured.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+	captured.pid = static_cast<int>(buyer);
+	captured.revision = 1;
+	captured.components = PLAYER_COMPONENT_STATUS;
+	captured.encoded_size_bound = 8192;
+	captured.status_integers = { { player_status_field::copper, 0, 0, false },
+				     { player_status_field::silver, 0, 0, false },
+				     { player_status_field::gold, 0, 0, false },
+				     { player_status_field::platinum, 10, 0, false } };
+	captured.pending_trade.operation = durable_command.operation_id.bytes;
+	captured.pending_trade.payment = 25;
+	std::vector<uint8_t> encoded_claim;
+	assert(critical_command_encode(durable_command, &encoded_claim) ==
+	       critical_command_codec_result::ok);
+	SHA256(encoded_claim.data(), encoded_claim.size(),
+	       captured.pending_trade.command_hash.data());
+	assert(player_snapshot_repository_apply(connection, captured).outcome ==
+	       player_save_apply_outcome::applied);
+	assert(player_snapshot_repository_apply(connection, captured).outcome ==
+	       player_save_apply_outcome::applied);
+	assert(scalar("SELECT copper+10*silver+100*gold+1000*platinum FROM player_data WHERE pid=" +
+		      std::to_string(buyer)) == 10025);
+	captured.revision = 2;
+	captured.pending_trade.command_hash[0] ^= 1;
+	assert(player_snapshot_repository_apply(connection, captured).outcome ==
+	       player_save_apply_outcome::applied);
+	assert(scalar("SELECT copper+10*silver+100*gold+1000*platinum FROM player_data WHERE pid=" +
+		      std::to_string(buyer)) == 10025);
+
+	// Stale and full purses leave the durable pickup untouched.
+	apply(command_for(durable_claim, &operations), critical_apply_outcome::terminal_failure,
+	      ESTALE);
+	execute("UPDATE player_data SET copper=2147483647,silver=0,gold=0,platinum=0 WHERE pid=" +
+		std::to_string(buyer));
+	durable_claim.value = 1;
+	durable_claim.expected_wallet_revision = 1;
+	apply(command_for(durable_claim, &operations), critical_apply_outcome::terminal_failure,
+	      ENOSPC);
+	assert(scalar("SELECT money FROM auction_money_pickups WHERE pid=" +
+		      std::to_string(buyer)) == 75);
+	puts("atomic money claim: credit/pickup rollback, replay, reconnect, pending save and wallet refusal pass");
 
 	execute("DELETE FROM auction_bid_history WHERE auction_id IN (" +
 		std::to_string(auction_id) + "," + std::to_string(removed_auction_id) + ")");
