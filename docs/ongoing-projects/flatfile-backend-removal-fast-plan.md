@@ -1,6 +1,6 @@
 # Flat-file backend removal: fast approach
 
-Status: implemented in a PR stack (#859 to #866), ready for review, not merged or deployed. Two tests stay deferred pending owner decisions. See "Implementation log" at the end.
+Status: implemented in a PR stack (#859 to #869), ready for review, not merged or deployed. No tests remain deferred. See "Implementation log" at the end.
 Date: 2026-11-09.
 Source baseline: `06743dec0`. A recount at `4c2708c96` found no change to
 persistence paths or to the counts below.
@@ -394,9 +394,8 @@ of the flat-file-specific setup.
 ## Implementation log
 
 Worktree: `duris-worktrees/flatfile-backend-removal-plan`. The work ships as
-stacked PRs, each branch built on the previous one; the deferred inventory lives
-in the runner's named list. To continue, check out the top branch of the stack
-and pick up at the first step not marked done.
+stacked PRs, each branch built on the previous one. To continue, check out the
+top branch of the stack and pick up at the first step not marked done.
 
 | Step | Branch | State |
 | --- | --- | --- |
@@ -407,6 +406,7 @@ and pick up at the first step not marked done.
 | Deferred test conversion | `branch/flatfile-removal-test-conversion` | done (#864) |
 | Remove unused shop trade path | `branch/flatfile-removal-shop-trade` | done (#865) |
 | Last journeys, inspector removal, final proof | `branch/flatfile-removal-last-tests` | done (#866) |
+| Staff locker fix, last two deferred tests | `branch/flatfile-removal-deferred-fixes` | done (#869) |
 
 Merge in that order, retargeting each child PR before merging its base. The
 `do-not-delete/flatfile-backup-nov-2026` branch is a locked copy of master from
@@ -430,18 +430,18 @@ must stay green after each one.
 
 | Last batch | 2 | Three journeys move to `make test-db`; the inspector test and 15 flat-only `run_*` scripts are deleted |
 
-The two still deferred, each needing an owner decision:
+| Deferred fixes (#869) | 0 | The list and its runner output are removed |
 
-- `flatfile_locker_journey`: blocked by a production bug for trusted characters.
-  `account.c:2490` and `:2783` set the account racewar through
-  `account_admission_racewar()`, which returns `ACCT_IMMORTAL` (0), and
-  `sql_player.c:1057` saves it. `locker_enter_character` in `storage_lockers.c` then
-  builds `account.<name>.0.locker`, while default entry uses `GET_RACEWAR` and gets
-  `.1.`, so entry by your own character name is refused.
-- `pet_restart_journey`: 7 of 8 stages pass. After `quit` it expects one held pet row;
-  MariaDB keeps a second row as `custody_pending`, which looks deliberate
-  (`player_snapshot_repository.c`, around line 970). Decide whether the test should
-  accept that row.
+How the last two were resolved:
+
+- `flatfile_locker_journey` found a production bug for trusted characters. Their account
+  racewar is stored as `ACCT_IMMORTAL` (0), so `locker_enter_character` built
+  `account.<name>.0.locker` while default entry used `.1.`, and entry by your own
+  character name was refused. The lookup now uses `player_data.racewar` when the
+  account racewar is 0.
+- `pet_restart_journey`: after `quit`, MariaDB deliberately keeps a row as
+  `custody_pending` while a pet's items still have custody
+  (`player_snapshot_repository.c`, `apply_pets`). The test now accepts that row.
 
 Login assertions after death, and two `You break camp...` logins, now expect the
 normal `Welcome to Duris` text, because `rtype` is always 0 on MariaDB.
@@ -510,19 +510,21 @@ journey was stale: the `save` command prints `Saving <name>.`. It now expects
 
 ### Final proof (full stack)
 
-At `3285034f1`, top of the stack before the journey fix above.
+At the top of the stack (#869).
 
 | Check | Result |
 | --- | --- |
-| `python3 tests/run_regression_tests.py` | 897 passed, 0 failed, 2 named exclusions |
-| `tests/run_db_tests.sh` | 147 of 152 passed; the 5 failures were the `world_restart_*` journeys above |
-| The 5 `world_restart_*` journeys rerun with the fix, same server binary | all 5 passed |
+| `python3 tests/run_regression_tests.py`, on `3cbc9f377` | 897 passed, 0 failed, none excluded |
+| `tests/run_db_tests.sh`, on the commit before it | 153 of 154 passed; `world_capture` failed once on a single 904 ms tick and passed alone with no slow ticks |
+
+The only change between those two commits is one assertion in
+`test_locker_named_entry_runtime.py`, which pinned the old lookup query.
 
 Run the database suite from a short checkout path. In a path as long as this
 worktree's, Redis unix socket paths exceed 107 characters and Redis exits.
 
-Remaining work is the two names left in `FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`, each
-waiting on the owner decision described above.
+Remaining: review and merge the stack. One owner decision is open: whether to restore
+the old login-after-death handling that MariaDB never saved (`save_intent`, above).
 
 ### Step 4 evidence
 

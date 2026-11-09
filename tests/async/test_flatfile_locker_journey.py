@@ -50,13 +50,23 @@ def boot(binary, run_root, environment, port):
         process = subprocess.Popen(
             [str(binary), "--minimal", "-d", str(run_root), str(port)], cwd=run_root,
             env=environment, text=True, stdout=output, stderr=subprocess.STDOUT)
-    deadline = time.monotonic() + 120
-    while "Entering game loop." not in output_path.read_text(errors="replace")[start:]:
-        journey.require(process.poll() is None and time.monotonic() < deadline,
-                        "server did not boot:\n" +
-                        output_path.read_text(errors="replace")[-8000:])
-        time.sleep(0.1)
-    return process
+    try:
+        deadline = time.monotonic() + 120
+        while b"Entering game loop." not in output_path.read_bytes()[start:]:
+            journey.require(process.poll() is None and time.monotonic() < deadline,
+                            "server did not boot:\n" +
+                            output_path.read_text(errors="replace")[-8000:])
+            time.sleep(0.1)
+        return process
+    except BaseException:
+        if process.poll() is None:
+            process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=10)
+        raise
 
 
 def stop(process):
@@ -85,9 +95,20 @@ def reenter_locker(client, items, owner):
                     "the locker came back wrong:\n" + entered)
 
 
+def walk_out(client):
+    """Leave the locker once anything just moved has been saved."""
+    deadline = time.monotonic() + 60
+    while True:
+        client.send("north")
+        matched, _ = client.expect_any(("applying magic locks", "still being secured"), timeout=30)
+        if matched == "applying magic locks":
+            return
+        journey.require(time.monotonic() < deadline, "the locker contents were never saved")
+        time.sleep(1)
+
+
 def leave(client):
-    client.send("north")
-    client.expect("applying magic locks", timeout=30)
+    walk_out(client)
     client.send("save")
     client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
     client.send("quit")
@@ -142,11 +163,9 @@ def run(binary: pathlib.Path) -> None:
             enter_locker(client, 0, "GuIlD.1.LoCkEr")
             client.send("drop mace")
             client.expect("You drop", timeout=10)
-            client.send("north")
-            client.expect("applying magic locks", timeout=30)
+            walk_out(client)
             reenter_locker(client, 1, "guild.1")
-            client.send("north")
-            client.expect("applying magic locks", timeout=30)
+            walk_out(client)
             reenter_locker(client, 1, "guild")
             leave(client)
             stop(process)

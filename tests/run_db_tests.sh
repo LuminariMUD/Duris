@@ -51,6 +51,8 @@ shop_multi_buy $DB python3 tests/async/test_shop_multi_buy_journey.py --backend 
 norent_key_rent $DB python3 tests/async/test_norent_key_rent_journey.py --backend mariadb --server SERVER_BINARY
 websocket_session_guard $DB python3 tests/async/test_websocket_session_guard_journey.py --backend mariadb --server SERVER_BINARY
 storage_chest_crash $DB python3 tests/async/test_storage_chest_crash_journey.py --backend mariadb --server SERVER_BINARY
+locker_restart $DB python3 tests/async/test_flatfile_locker_journey.py --server SERVER_BINARY
+pet_restart $DB python3 tests/async/test_pet_restart_journey.py --server SERVER_BINARY
 shaman_totems $DB python3 tests/async/test_shaman_totems.py --server SERVER_BINARY
 hardcore_third_death $DB python3 tests/async/test_flatfile_hardcore_death_journey.py --server SERVER_BINARY
 ranged_kill_xp $DB python3 tests/async/test_ranged_kill_xp_journey.py --server SERVER_BINARY

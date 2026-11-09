@@ -155,14 +155,6 @@ MANUAL_ONLY_TEST_NAMES = frozenset(
         "test_flatfile_newbie_regrant_journey.py",
         "test_flatfile_auction_coin_put_journey.py",
         "test_flatfile_full_world_boot.py",
-    }
-)
-
-# Tests the flat-file backend removal broke and has not converted yet. Each conversion
-# removes its entry; the removal is not finished until this is empty. See
-# docs/ongoing-projects/flatfile-backend-removal-fast-plan.md.
-FLATFILE_REMOVAL_DEFERRED_TEST_NAMES = frozenset(
-    {
         "test_flatfile_locker_journey.py",
         "test_pet_restart_journey.py",
     }
@@ -192,7 +184,7 @@ class TestResult:
 def discover_tests(match: str | None) -> list[Path]:
     tests = sorted(
         path for path in TEST_DIRECTORY.glob("test_*.py")
-        if path.name not in MANUAL_ONLY_TEST_NAMES | FLATFILE_REMOVAL_DEFERRED_TEST_NAMES
+        if path.name not in MANUAL_ONLY_TEST_NAMES
     )
     if match:
         tests = [path for path in tests if match in path.name]
@@ -381,8 +373,6 @@ def main() -> int:
     results: list[TestResult] = []
     completed_count = 0
     print(f"Running {len(tests)} Python regression tests with {jobs} worker(s), longest first")
-    print(f"Excluded {len(FLATFILE_REMOVAL_DEFERRED_TEST_NAMES)} test(s) deferred by the "
-          "flat-file backend removal")
 
     def report(result: TestResult) -> None:
         nonlocal completed_count

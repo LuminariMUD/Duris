@@ -168,14 +168,15 @@ assert runner.MANUAL_ONLY_TEST_NAMES == {
     "test_flatfile_newbie_regrant_journey.py",
     "test_flatfile_auction_coin_put_journey.py",
     "test_flatfile_full_world_boot.py",
+    "test_flatfile_locker_journey.py",
+    "test_pet_restart_journey.py",
 }
 discovered = {path.name for path in runner.discover_tests(None)}
 assert not (runner.MANUAL_ONLY_TEST_NAMES & discovered)
-assert not (runner.FLATFILE_REMOVAL_DEFERRED_TEST_NAMES & discovered)
 assert {
     "test_player_playtime_capture.py", "test_playtime_checkpoint.py",
     "test_discord_bridge_runtime.py", "test_discord_petition_export.py",
-} <= discovered | runner.FLATFILE_REMOVAL_DEFERRED_TEST_NAMES
+} <= discovered
 sample_tests = [
     Path("test_fast.py"),
     Path("test_assassin_combat_journey.py"),

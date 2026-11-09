@@ -295,8 +295,10 @@ def run(binary):
             client.send("quit")
             client.expect("ACCOUNT MENU", timeout=30)
             remaining = rows()
-            assert len(remaining) == 1 and remaining[0][0] == "1", remaining
-            assert remaining[0][3] == seeded[2][3], "quit discarded held equipment"
+            # A pet whose items still have custody keeps its row as custody-pending.
+            held = [row for row in remaining if row[0] != "6"]
+            assert len(held) == 1 and held[0][0] == "1", remaining
+            assert held[0][3] == seeded[2][3], "quit discarded held equipment"
             stop()
             boot()
             client = journey.reconnect_character(port)
