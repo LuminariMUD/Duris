@@ -901,3 +901,7 @@ These are preserved per-chunk results, not claims that a later binary ran them.
   preserve its complete logs, then rerun the entire DB gate after this correction.
   The907-file gate remains valid: its inputs/native code are unchanged and this
   DB-only run_ journey is not discovered there. Final readiness is still pending.
+- This correction is pushed at caa1a4ba7 in ready/labeled bug
+  [#970](https://github.com/LuminariMUD/Duris/pull/970). No focused run remains
+  active; only the full aggregate56758 is live. Its known world_recovery failure
+  still requires a later complete DB rerun with this committed correction.
