@@ -209,8 +209,8 @@ static void check_vitality_quaff(bool held, bool mixed, int slot, bool vitalized
     vitality.duration = 1;
     if (vitalized) ch.affected = &vitality;
     const bool refused = vitalized && slot != 0;
-    // Refusal must precede the combat spill roll as well as ordinary consumption.
-    if (refused) ch.specials.fighting = &ch;
+    // Mixed cases also cover refusal before the combat spill roll.
+    if (refused && mixed) ch.specials.fighting = &ch;
     bottle.type = ITEM_POTION;
     bottle.name = const_cast<char *>("potion");
     bottle.value[0] = power;
