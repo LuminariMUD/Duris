@@ -2,7 +2,7 @@
 
 Status: planned, not started. No GitHub issue filed yet.
 Date: 2026-11-09.
-Source inspected: local checkout at `08587b61c`.
+Source inspected: `master` at `fa173cbad`.
 
 ## Outcome and scope
 
@@ -59,9 +59,12 @@ picked up.
    with a message. This replaces the earlier warn-and-repeat idea.
 2. Keys fall too. Destroying keys at the inn goes away.
 3. No cleanup of no-rent items players already have.
-4. Remove the flag from the three non-key items sold for money (section 5).
-   Everything else keeps it, including soulbound gear, summoned books and totems,
-   and conjured weapons, which can all be re-summoned or recast.
+4. Remove the flag from the three non-key items sold for money, and from Ensis
+   Unguis, Lancea Cineralae, Simulacrum Anguis and wind blade, which are meant to
+   last (section 5). Everything else keeps it, including soulbound gear and summoned
+   books and totems, which can be re-summoned.
+5. Flame blade and holy blade stay no-rent, and their help changes to say so
+   (section 6). Doom blade is included because holy blade runs the same spell code.
 
 ## Changes
 
@@ -93,9 +96,9 @@ Rules, for worn items, carried items and items inside bags, staff included:
 - The item lands with `obj_to_room`, and logs with `redis_log_floor_drop` as the
   `drop` command does. Tell the character and the room, for example
   "`$p` is no-rent and falls to the floor."
-- These crumble with a message instead: `ITEM_NODROP` (39 prototypes) and
-  `ITEM2_SOULBIND`, because they can't be dropped, and anything when the character
-  is in a locker room or `NOWHERE`.
+- These crumble with a message instead: `ITEM_NODROP` (36 prototypes once section
+  5 is done) and `ITEM2_SOULBIND`, because they can't be dropped, and anything when
+  the character is in a locker room or `NOWHERE`.
 - Transient items need no special case. `obj_to_room` already dissolves them.
 
 `purge_drop_item` ([actwiz.c:5306](../../src/cmd/actwiz.c#L5306)) is the closest
@@ -145,9 +148,12 @@ sees the top level of the room. Leave
 [locker_async.c:498](../../src/persistence/locker_async.c#L498) as it is, so a
 no-rent item in a private chest the visitor can't open stays stored.
 
-### 5. Three shop items lose the flag
+### 5. Seven items lose the flag
 
-Change the extra-flags field (7th number), then run `make world`:
+Change the extra-flags field (7th number) of each prototype below, then run
+`make world`.
+
+Three shop items:
 
 | Item | Line | Now | New |
 |---|---|---|---|
@@ -159,10 +165,45 @@ Their shop prices will roughly double, because `convertObj` halves the computed
 cost of no-rent items ([objconv.c:312](../../src/item/objconv.c#L312)). Copies
 already bought keep their saved flag and fall at the next rent.
 
+Three conjured weapons, to match the help published in
+[#912](https://github.com/LuminariMUD/Duris/pull/912). The flag is in the prototype
+and is also added when the spell runs, so both must go:
+
+| Weapon | Prototype line (8470984 becomes 82376) | Code line to delete |
+|---|---|---|
+| Ensis Unguis (56) | [heavens.obj:821](../../areas/obj/heavens.obj#L821) | [magic.c:29561](../../src/magic/magic.c#L29561) |
+| Lancea Cineralae (93) | [heavens.obj:1212](../../areas/obj/heavens.obj#L1212) | [magic.c:29614](../../src/magic/magic.c#L29614) |
+| Simulacrum Anguis (171) | [heavens.obj:2096](../../areas/obj/heavens.obj#L2096) | [magic.c:29667](../../src/magic/magic.c#L29667) |
+
+They stay out of auctions, the collector, enhancement and quest rewards, because
+they remain no-drop and no-sell and can't be picked up.
+
+Wind blade (98), to match its "Permanent" help. Only the spell sets the flag, so
+delete [ethermancer.c:803](../../src/classes/ethermancer.c#L803) and leave the
+prototype alone. Unlike the three above it isn't no-drop, so losing the flag would
+let it be auctioned. Add `ITEM_TRANSIENT` to the auction refusal
+([auction_houses.c:872](../../src/economy/auction_houses.c#L872)). Shops, the
+collector, enhancement and quest rewards already refuse transient items, and this
+also stops other transient items being listed.
+
+Copies of all four already conjured keep their saved flag, so under decision 3 they
+are lost once at the next rent. Any copy conjured after this ships lasts.
+
 ### 6. Help and docs
 
-- In `help/duris_help_parsed.hlp`, correct the Locker sentence and add one sentence
-  to Rent and Camp saying no-rent items fall to the floor when you leave.
+- Locker, Rent and Camp help exists in both `lib/information/help_index` (LOCKER
+  STORAGE sentence at line 10264, RENT at 13740, CAMP at 2168) and
+  `help/duris_help_parsed.hlp` (Locker sentence at line 15787, Rent, Camp), and both
+  are imported. In both files, correct the Locker sentence and add one sentence to
+  Rent and Camp saying no-rent items fall to the floor when you leave.
+- Say that these three weapons don't outlast the session. They are no-rent and
+  transient, so they are gone once you rent, camp or lose your link:
+
+  | Spell | Change | Where |
+  |---|---|---|
+  | Flame blade | Duration "Forever" becomes "Until you leave the game" | `help_index:6371`, `duris_help_parsed.hlp:10162` |
+  | Holy blade | "remains until lost or destroyed" becomes "remains until lost, destroyed or you leave the game" | `help_index:24821` |
+  | Doom blade | Duration "Forever" or "Permanent" becomes "Until you leave the game" | `help_index:4657`, `duris_help_parsed.hlp:7483` |
 - Rewrite the key disposal section of
   [DATABASE.md](../reference/DATABASE.md) (lines 363-379), and update the no-rent
   paragraph in [LEGACY_STARTER_KITS.md](../reference/LEGACY_STARTER_KITS.md).
@@ -184,6 +225,8 @@ cases:
 - Worn item, and item inside a normal bag, fall.
 - Saved item inside a no-rent bag survives, and the bag falls.
 - No-drop item crumbles.
+- Each of the four conjured weapons in section 5 survives rent.
+- The auction house refuses a transient item.
 - Locker hands back a no-rent item, from the floor and from a chest.
 - Mortal `camp`, with `camp.timer` lowered in the run root's properties.
 - `extractlink <name>` on a link-dead character.
@@ -199,20 +242,22 @@ Also update:
 
 These must still pass: `test_terminal_save_safety.py`,
 `test_terminal_extract_item_retention.py`, `test_copyover_custody.py`,
-`test_locker_async_pipeline.py`, `test_mysql_locker_grant_journey.py` and
-`test_storage_chest_crash_journey.py`.
+`test_locker_async_pipeline.py`, `test_mysql_locker_grant_journey.py`,
+`test_storage_chest_crash_journey.py`, `test_issue_550_conjuration_runtime.py` and
+`test_wind_blade_creation_runtime.py`.
 
 ## Accepted behavior and limits
 
 - Floor items last until someone takes them or the server restarts, so a player
   can relog and pick one up. They can already do this by dropping it by hand.
-- Soulbound gear, summoned books and totems, and conjured weapons will now vanish
-  at rent. From the code they survive today, though only the shop route was run
-  live.
+- Soulbound gear and summoned books and totems will now vanish at rent. From the
+  code they survive today, though only the shop route was run live.
+- Flame blade, holy blade and doom blade already vanish at rent, by test for flame
+  blade and by code for the other two. Only their help changes.
 - 139 quest rewards are no-rent and keep the flag: 83 keys, mostly tokens and notes
   otherwise. The 15 that can be worn or wielded are 10 sword fragments, a signet
   ring, two broaches, an onyx orb and a kearonor hide.
-- Unchanged: auction, collector, enhancement and quest reward filters, corpses,
-  saved rooms, and `convertObj` flagging keys.
+- Unchanged: the no-rent checks in auctions, the collector, enhancement and quest
+  rewards, plus corpses, saved rooms, and `convertObj` flagging keys.
 - Production data was not checked. The counts above come from the built world
   files and the local database.
