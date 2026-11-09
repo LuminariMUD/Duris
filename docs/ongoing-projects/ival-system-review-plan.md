@@ -105,6 +105,8 @@ existing interface and callers needs no new valuation/cache/index abstraction.
 ### Chunk 2 — make the calculation defects reproducible (Stage 1, partial)
 
 Branch: `branch/ival-characterization`, based on `branch/ival-reset-admission`.
+Published: commit `30861debb`, [PR #878](https://github.com/LuminariMUD/Duris/pull/878)
+(enhancement label), stacked on #877. This chunk is ready for review.
 
 **Outcome:** `tests/async/test_item_value_characterization.py` runs the native
 `itemvalue()`, `get_mincircle()`, and `get_ival_from_proc()` implementations. It
@@ -139,7 +141,43 @@ test. Share actual registration/valuation code rather than copied formulas or
 new test infrastructure. No runtime code changes or server rebuild are needed
 for this test-only chunk.
 
-Next: truthful editor/config/report diagnostics and full-context native corpus
+### Chunk 3 — propagate material-report output failures (F07, partial)
+
+Branch: `branch/ival-report-errors`, based on `branch/ival-characterization`.
+
+**Outcome:** the writer returns failure when directory/file creation, writes, or
+stream closure fails, and the report command exits nonzero. All four streams are
+closed even on write failure, and success is reported only after successful
+closure. Partial files are explicitly identified as unusable. Output paths use
+`std::string`, removing fixed 512-byte path truncation found during this repair.
+
+**Non-goals:** context initialization, valuation changes, recipe/denominator
+changes, atomic publication, or production reporting. F07 remains open for
+native-proc, circle, and racial context plus server/offline parity. A successful
+I/O status does not yet establish that the report's scores match a normal boot.
+
+**Files:** `src/item/material_rarity.{h,c}`, the report branch in `src/net/comm.c`,
+and the extended `tests/async/test_material_rarity_report_contract.py`.
+
+**Proof:** the extended test passed under ASan/UBSan. It compiles the production
+writer and actual report-command branch with an empty catalog and exercises new
+and existing output directories, missing parents, a nondirectory target, all four
+file-open failures, buffered and unbuffered `/dev/full` write/close failures for
+each stream, and paths longer than 512 bytes. Failed commands return 1; successful
+commands return 0 and produce the expected files/denominator description. This
+test isolates output handling; valuation endpoints must not be called.
+
+`make -C src -j4` passed. The actual `bin/server/dms_new` report CLI was also run
+against an isolated temporary empty object catalog: normal output returned 0,
+missing-parent output returned 1, and `/dev/full` output returned 1. It exited
+before database/listener startup; no live environment or player data was used.
+
+**Ablation:** extend the existing report test and return a boolean through the
+existing caller. No error framework, output transaction, or new report mode is
+needed. The path change removes truncation rather than adding another limit.
+
+Next: publish Chunk 3 after its formatting/commit checks. Then truthful
+editor/config/report diagnostics and full-context native corpus
 reporting (remaining Stage 1), followed by the shared evaluator/context work.
 No formula-changing slice is complete without the delta qualification below.
 
@@ -464,6 +502,9 @@ proc cases must not be stubbed out. Report errors must return a nonzero process
 status: currently the writer is `void` and early output failures still reach
 `return 0` in `main`.
 
+Implementation status: output-failure propagation is repaired in Chunk 3 above;
+context initialization and valuation parity remain pending.
+
 ### F08 — P1: bound arithmetic and validate at actual input boundaries
 
 **Reproduced with synthetic inputs; no normal-player exploit established.**
@@ -750,6 +791,7 @@ partial deliveries and their verification are recorded in the implementation log
   contract and currency labels without inventing unsupported behavior.
 - [ ] Establish native full-context corpus reporting; fix offline report errors
   and initialization before treating its numbers as authoritative.
+  Output errors are repaired in Chunk 3; initialization/parity remains pending.
 
 ### Stage 2 — extract the calculation with behavior preserved
 
