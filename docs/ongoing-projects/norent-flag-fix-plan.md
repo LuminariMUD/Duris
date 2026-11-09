@@ -14,7 +14,7 @@ merge them in order, top row first. Line numbers below are from before this work
 | [#933](https://github.com/LuminariMUD/Duris/pull/933) | 1, 2, 3 and their tests | `branch/norent-flag-fix` | In review |
 | [#937](https://github.com/LuminariMUD/Duris/pull/937) | 4 (lockers) | `branch/norent-flag-fix-lockers` | In review |
 | [#939](https://github.com/LuminariMUD/Duris/pull/939) | 5 (seven items, auction refusal) | `branch/norent-flag-fix-items` | In review |
-| The last PR | 6 (help and docs) | `branch/norent-flag-fix-help` | In review |
+| [#940](https://github.com/LuminariMUD/Duris/pull/940) | 6 (help and docs) | `branch/norent-flag-fix-help` | In review |
 
 Notes from building so far:
 
