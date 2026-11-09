@@ -25,19 +25,18 @@
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
 // FH.H - forward declarations for durisEdit, the all-purpose handy-dandy
 //        Duris area editor
 
 #ifndef _FH_H_
 
 #ifdef _WIN32
-#  pragma warning(disable:4996)  // getcwd, unlink, others are 'deprecated' (as if)
+#pragma warning(disable : 4996) // getcwd, unlink, others are 'deprecated' (as if)
 
-   typedef unsigned short WORD;  // if MS changes this to something else, feel free to fix it
+typedef unsigned short WORD; // if MS changes this to something else, feel free to fix it
 #endif
 
-#include <stdio.h>  // FILE
+#include <stdio.h> // FILE
 
 #include "graphcon.h"
 
@@ -64,42 +63,43 @@ bool aliasExists(const alias *aliasHead, const char *aliasName);
 alias *getAlias(alias *aliasHead, const char *aliasName);
 void unaliasCmd(const char *args, alias **aliasHead);
 char addAlias(alias **aliasHead, const char *aliasStrn, const char *strn);
-void addAliasArgs(const char *origargs, const bool addLFs, const bool updateChanges, alias **aliasHead,
-                  const bool display);
+void addAliasArgs(const char *origargs, const bool addLFs, const bool updateChanges,
+		  alias **aliasHead, const bool display);
 void aliasCmd(const char *args, const bool addLFs, alias **aliasHead);
-size_t expandAliasArgs(char *endStrn, const char *commandStrn, const char *args, const size_t intMaxLen);
+size_t expandAliasArgs(char *endStrn, const char *commandStrn, const char *args,
+		       const size_t intMaxLen);
 
 // check.cpp
 
-bool outCheckError(const char *error, FILE *file, size_t& numbLines);
-uint checkFlags(FILE *file, const uint flagVal, const flagDef *flagArr, const char *flagName, 
-                const char *entityName, const uint entityNumb, size_t& numbLines, bool *userQuit);
-uint checkAllFlags(FILE *file, size_t& numbLines, bool *userQuit);
-uint checkZone(FILE *file, size_t& numbLines, bool *userQuit);
-uint checkRooms(FILE *file, size_t& numbLines, bool *userQuit);
-uint checkLoneRooms(FILE *file, size_t& numbLines, bool *userQuit);
+bool outCheckError(const char *error, FILE *file, size_t &numbLines);
+uint checkFlags(FILE *file, const uint flagVal, const flagDef *flagArr, const char *flagName,
+		const char *entityName, const uint entityNumb, size_t &numbLines, bool *userQuit);
+uint checkAllFlags(FILE *file, size_t &numbLines, bool *userQuit);
+uint checkZone(FILE *file, size_t &numbLines, bool *userQuit);
+uint checkRooms(FILE *file, size_t &numbLines, bool *userQuit);
+uint checkLoneRooms(FILE *file, size_t &numbLines, bool *userQuit);
 bool checkExitKeyLoaded(const roomExit *exitNode);
-uint checkMissingKeys(FILE *file, size_t& numbLines, bool *userQuit);
-uint checkLoaded(FILE *file, size_t& numbLines, bool *userQuit);
+uint checkMissingKeys(FILE *file, size_t &numbLines, bool *userQuit);
+uint checkLoaded(FILE *file, size_t &numbLines, bool *userQuit);
 bool checkExit(const roomExit *exitNode);
-uint checkExits(FILE *file, size_t& numbLines, bool *userQuit);
+uint checkExits(FILE *file, size_t &numbLines, bool *userQuit);
 bool checkExitDesc(const roomExit *exitNode);
-uint checkExitDescs(FILE *file, size_t& numbLines, bool *userQuit);
-uint checkObjects(FILE *file, size_t& numbLines, bool *userQuit);
-uint checkObjectValueRange(const objectType *obj, const uchar valNumb, const int lowRange, 
-                           const int highRange, const int exclude, FILE *file, size_t& numbLines, 
-                           bool *userQuit);
-uint checkObjValValidLevel(const objectType *obj, const char valNumb, FILE *file, size_t& numbLines, 
-                           bool *userQuit);
-uint checkObjValValidSpellType(const objectType *obj, const char valNumb, FILE *file, size_t& numbLines, 
-                               bool *userQuit);
-uint checkObjectValues(FILE *file, size_t& numbLines, bool *userQuit);
-uint checkObjMaterial(FILE *file, size_t& numbLines, bool *userQuit);
-uint checkMobs(FILE *file, size_t& numbLines, bool *userQuit);
-uint checkObjectDescs(FILE *file, size_t& numbLines, bool *userQuit);
-uint checkMobDescs(FILE *file, size_t& numbLines, bool *userQuit);
+uint checkExitDescs(FILE *file, size_t &numbLines, bool *userQuit);
+uint checkObjects(FILE *file, size_t &numbLines, bool *userQuit);
+uint checkObjectValueRange(const objectType *obj, const uchar valNumb, const int lowRange,
+			   const int highRange, const int exclude, FILE *file, size_t &numbLines,
+			   bool *userQuit);
+uint checkObjValValidLevel(const objectType *obj, const char valNumb, FILE *file, size_t &numbLines,
+			   bool *userQuit);
+uint checkObjValValidSpellType(const objectType *obj, const char valNumb, FILE *file,
+			       size_t &numbLines, bool *userQuit);
+uint checkObjectValues(FILE *file, size_t &numbLines, bool *userQuit);
+uint checkObjMaterial(FILE *file, size_t &numbLines, bool *userQuit);
+uint checkMobs(FILE *file, size_t &numbLines, bool *userQuit);
+uint checkObjectDescs(FILE *file, size_t &numbLines, bool *userQuit);
+uint checkMobDescs(FILE *file, size_t &numbLines, bool *userQuit);
 char checkEdesc(const extraDesc *descNode);
-uint checkAllEdescs(FILE *file, size_t& numbLines, bool *userQuit);
+uint checkAllEdescs(FILE *file, size_t &numbLines, bool *userQuit);
 bool checkAll(void);
 
 // clone.cpp
@@ -112,8 +112,8 @@ void cloneMobType(const uint vnum, const uint toclone);
 // command.cpp
 
 bool checkCommands(const char *strn, const command *cmd, const char *notfoundStrn,
-                   bool (*execCommand)(const usint commands, const char *args),
-                   bool *cmdFound, usint *matchingCmd);
+		   bool (*execCommand)(const usint commands, const char *args), bool *cmdFound,
+		   usint *matchingCmd);
 
 // config.cpp
 
@@ -132,7 +132,8 @@ void createEntity(const char *args);
 
 // crtdesc.cpp
 
-extraDesc *createExtraDesc(extraDesc **extraDescHead, const char *keywordStrn, const bool copyDefault);
+extraDesc *createExtraDesc(extraDesc **extraDescHead, const char *keywordStrn,
+			   const bool copyDefault);
 
 // crtedit.cpp
 
@@ -172,8 +173,8 @@ objectType *createObjectTypeUser(const char *args);
 
 // crtrexit.cpp
 
-char *commonDisplayExit(const char *chstr, const char *exitName, const uint flag, const bool negateFlag,
-                        const bool comma, char *strn);
+char *commonDisplayExit(const char *chstr, const char *exitName, const uint flag,
+			const bool negateFlag, const bool comma, char *strn);
 char *buildCommonDisplayExitsStrn(char *strn, const uint exitTaken, const bool negateFlag);
 int createRoomExitPrompt(room *room, const uint exitTaken, const bool incLoaded);
 int createRoomExit(const int exitdir);
@@ -238,7 +239,7 @@ void deleteObjHere(objectHere *objHere, const bool decLoaded);
 void deleteObjHereinList(objectHere **objHead, objectHere *objHere, const bool decLoaded);
 void removeObjHerefromList(objectHere **objHead, objectHere *objHere, const bool decLoaded);
 void deleteAllObjHereofTypeInList(objectHere **objHereHead, const objectType *objType,
-                                  const bool decLoaded);
+				  const bool decLoaded);
 void deleteAllObjHeresofType(const objectType *objType, const bool decLoaded);
 
 // delobjhu.cpp
@@ -272,15 +273,15 @@ void deleteShopUserPrompt(void);
 
 // dispflag.cpp
 
-void displayFlagMenu(const uint val, const flagDef *flagArr, const char entityType, const char *entityName,
-                     const uint entityNumb, const char *flagName, sint *colXpos, uint *colTopFlag, 
-                     uint *numbCols, const bool asBitVect);
-void updateSingleFlag(const uint flagVal, const uchar flagNumb, const uint numbFlags, const uint numbCols,
-                      const sint *colXpos, const uint *colTopFlag, const sint headerOffset, 
-                      const bool asBitVect, const flagDef *flagArr);
+void displayFlagMenu(const uint val, const flagDef *flagArr, const char entityType,
+		     const char *entityName, const uint entityNumb, const char *flagName,
+		     sint *colXpos, uint *colTopFlag, uint *numbCols, const bool asBitVect);
+void updateSingleFlag(const uint flagVal, const uchar flagNumb, const uint numbFlags,
+		      const uint numbCols, const sint *colXpos, const uint *colTopFlag,
+		      const sint headerOffset, const bool asBitVect, const flagDef *flagArr);
 void updateFlags(const uint flagVal, const uint numbFlags, const uint numbCols, const sint *colXpos,
-                 const uint *colTopFlag, const sint headerOffset, const uchar displayNonset, 
-                 const bool asBitVect, const flagDef *flagArr);
+		 const uint *colTopFlag, const sint headerOffset, const uchar displayNonset,
+		 const bool asBitVect, const flagDef *flagArr);
 
 // display.cpp
 
@@ -291,26 +292,27 @@ void displayStringNodes(const stringNode *rootNode);
 bool displayStringNodesPause(const stringNode *rootNode, size_t &numbLines);
 void displayPrompt(void);
 char *remColorCodes(char *strn);
-void createMenuHeader(char *strn, const char entityType, const char *entityName, const uint entityNumb, 
-                      const char *entitySubName, bool asBitVect);
-void createShortMenuHeader(char *strn, const char entityType, const uint entityNumb, 
-                           const char *entitySubName, bool asBitVect);
+void createMenuHeader(char *strn, const char entityType, const char *entityName,
+		      const uint entityNumb, const char *entitySubName, bool asBitVect);
+void createShortMenuHeader(char *strn, const char entityType, const uint entityNumb,
+			   const char *entitySubName, bool asBitVect);
 void createMenuHeaderBasic(char *strn, const char *preName, const char *entityName);
 size_t preDisplayLongMenuHeader(char *newEntityName, const char *entityName, const size_t maxLen);
 void displayMenuHeaderBasic(const char *preName, const char *entityName);
-void displayMenuHeader(const char entityType, const char *entityName, const uint entityNumb, 
-                       const char *entitySubName, bool asBitVect);
+void displayMenuHeader(const char entityType, const char *entityName, const uint entityNumb,
+		       const char *entitySubName, bool asBitVect);
 void displaySimpleMenuHeader(const char *editWhat);
 void displayAnyKeyPrompt(const char *prompt);
 void displayAnyKeyPromptNoClr(const char *prompt);
-promptType displayYesNoPrompt(const char *prompt, const promptType defaultChoice, const bool blnClearLine);
+promptType displayYesNoPrompt(const char *prompt, const promptType defaultChoice,
+			      const bool blnClearLine);
 
 // dispmisc.cpp
 
 void displayList(const int startVal, const int endVal, const char *searchStrn,
-                 const char *(*getStringVal)(const int val), 
-                 const char *(*getIdentifierVal)(const int val),
-                 const char *ignoreStrn, const char *whatList);
+		 const char *(*getStringVal)(const int val),
+		 const char *(*getIdentifierVal)(const int val), const char *ignoreStrn,
+		 const char *whatList);
 void displayMaterialList(const char *searchStrn);
 void displaySpellList(const char *searchStrn);
 void displaySkillList(const char *searchStrn);
@@ -333,12 +335,11 @@ void displayObjectTypeList(const char *strn);
 void displayObjectTypeList(const char *strn, const bool scanTitle);
 void displayObjectHereList(void);
 bool displayEntireObjectHereList(const objectHere *objHead, const char *postStrn, size_t &lines,
-                                 bool *foundMatch);
-bool displayEntireObjectHereList(const objectHere *objHead, const char *postStrn,
-                                 size_t &lines, const char *keyStrn,
-                                 const uint roomNumber, bool *foundMatch);
+				 bool *foundMatch);
 bool displayEntireObjectHereList(const objectHere *objHead, const char *postStrn, size_t &lines,
-                                 const uint objNumber, const uint roomNumber, bool *foundMatch);
+				 const char *keyStrn, const uint roomNumber, bool *foundMatch);
+bool displayEntireObjectHereList(const objectHere *objHead, const char *postStrn, size_t &lines,
+				 const uint objNumber, const uint roomNumber, bool *foundMatch);
 void displayObjApplyTypeList(const char *searchStrn);
 void displayObjectInfo(const char *args);
 
@@ -360,9 +361,10 @@ void displayZoneInfo(void);
 
 // drop.cpp
 
-bool dropEntityObj(objectHere *objH, objectHere **objHdest, const bool deleteOriginal, size_t &numbLines);
-bool dropEntityMob(mobHere *mobH, mobHere **mobHdest, const bool deleteOriginal, size_t& numbLines);
-bool dropEntityEdesc(extraDesc *desc, const bool deleteOriginal, size_t& numbLines);
+bool dropEntityObj(objectHere *objH, objectHere **objHdest, const bool deleteOriginal,
+		   size_t &numbLines);
+bool dropEntityMob(mobHere *mobH, mobHere **mobHdest, const bool deleteOriginal, size_t &numbLines);
+bool dropEntityEdesc(extraDesc *desc, const bool deleteOriginal, size_t &numbLines);
 void dropEntityCmd(const char *args, const bool deleteOriginal);
 
 // edesc.cpp
@@ -383,12 +385,12 @@ void displayExtraDescNodes(const extraDesc *extraDescNode);
 // editable.cpp
 
 void addEditabletoList(editableListNode **edListHead, editableListNode *edToAdd);
-editableListNode *createEditableListNode(const stringNode *keywordList, void *entityPtr, const char entityType);
+editableListNode *createEditableListNode(const stringNode *keywordList, void *entityPtr,
+					 const char entityType);
 editableListNode *createEditableListNode(const editableListNode *srcNode);
 editableListNode *createEditableList(room *roomPtr);
-char checkEditableList(const char *strn, editableListNode *editNode,
-                       char *whatMatched, editableListNode **matchingNode,
-                       char currentEntity);
+char checkEditableList(const char *strn, editableListNode *editNode, char *whatMatched,
+		       editableListNode **matchingNode, char currentEntity);
 editableListNode *copyEditableList(const editableListNode *srcNode);
 void deleteEditable(editableListNode *edit);
 void deleteEditableList(editableListNode *node);
@@ -421,16 +423,13 @@ void editEntity(const char *args);
 // editexit.cpp
 
 void getExitStateMenuStrn(char *strn, const char ch, const char *descStrn, const bool active);
-void displayEditExitStateMenu(const room *room, const roomExit *exitNode,
-                              const char *exitName);
-bool interpEditExitStateMenu(const usint ch, const room *room, roomExit *exitNode, const char *exitName);
+void displayEditExitStateMenu(const room *room, const roomExit *exitNode, const char *exitName);
+bool interpEditExitStateMenu(const usint ch, const room *room, roomExit *exitNode,
+			     const char *exitName);
 void editExitState(const room *room, roomExit *exitNode, const char *exitName);
-void displayEditExitMenu(const room *room, const char *exitName,
-                         const roomExit *exitNode);
-bool interpEditExitMenu(const usint ch, const room *room, roomExit *exitNode,
-                        const char *exitName);
-void editExit(room *room, roomExit **exitNode, const char *exitName,
-              const bool updateMadeChanges);
+void displayEditExitMenu(const room *room, const char *exitName, const roomExit *exitNode);
+bool interpEditExitMenu(const usint ch, const room *room, roomExit *exitNode, const char *exitName);
+void editExit(room *room, roomExit **exitNode, const char *exitName, const bool updateMadeChanges);
 void preEditExit(const char *args);
 
 void editSector();
@@ -439,28 +438,29 @@ void editSector();
 
 bool canEditFlag(const flagDef &flagInf, uint flagState, const bool asBitV);
 bool isFlagValid(const flagDef &flagInf, uint flagState, const bool asBitV);
-bool checkCommonFlagKeys(const usint ch, const flagDef *flagArr, uint *flagValue, const int numbFlags,
-                         const sint *colXpos, const int *colTopFlag, const int numbCols, 
-                         const sint headerOffset, const sint row, const bool asBitVect);
-bool checkCommonFlagKeys(const usint ch, const flagDef *flagArr, int *flagValue, const int numbFlags,
-                         const sint *colXpos, const int *colTopFlag, const int numbCols, 
-                         const sint headerOffset, const sint row, const bool asBitVect);
-bool interpEditFlags(usint ch, const flagDef *flagArr, uint *flagVal, const int numbFlags, 
-                     const sint *colXpos, const int *colTopFlag, const int numbCols, uint *templates, 
-                     const bool asBitVect);
-bool interpEditFlags(usint ch, const flagDef *flagArr, int *sflagVal, const int numbFlags, 
-                     const sint *colXpos, const int *colTopFlag, const int numbCols, uint *templates, 
-                     const bool asBitVect);
-bool editFlags(const flagDef *flagArr, uint *flagVal, const char entityType, const char *entityName, 
-               const uint entityNumb, const char *flagName, uint *templates, uint numbCols, 
-               const bool asBitVect);
-bool editFlags(const flagDef *flagArr, int *sflagVal, const char entityType, const char *entityName, 
-               const uint entityNumb, const char *flagName, uint *templates, uint numbCols, 
-               const bool asBitVect);
+bool checkCommonFlagKeys(const usint ch, const flagDef *flagArr, uint *flagValue,
+			 const int numbFlags, const sint *colXpos, const int *colTopFlag,
+			 const int numbCols, const sint headerOffset, const sint row,
+			 const bool asBitVect);
+bool checkCommonFlagKeys(const usint ch, const flagDef *flagArr, int *flagValue,
+			 const int numbFlags, const sint *colXpos, const int *colTopFlag,
+			 const int numbCols, const sint headerOffset, const sint row,
+			 const bool asBitVect);
+bool interpEditFlags(usint ch, const flagDef *flagArr, uint *flagVal, const int numbFlags,
+		     const sint *colXpos, const int *colTopFlag, const int numbCols,
+		     uint *templates, const bool asBitVect);
+bool interpEditFlags(usint ch, const flagDef *flagArr, int *sflagVal, const int numbFlags,
+		     const sint *colXpos, const int *colTopFlag, const int numbCols,
+		     uint *templates, const bool asBitVect);
+bool editFlags(const flagDef *flagArr, uint *flagVal, const char entityType, const char *entityName,
+	       const uint entityNumb, const char *flagName, uint *templates, uint numbCols,
+	       const bool asBitVect);
+bool editFlags(const flagDef *flagArr, int *sflagVal, const char entityType, const char *entityName,
+	       const uint entityNumb, const char *flagName, uint *templates, uint numbCols,
+	       const bool asBitVect);
 void updateSpecList(const mobType *mob);
-bool editSpecs(uint *flagVal, const char entityType, const char *entityName, 
-               const uint entityNumb, const char *flagName, uint *templates, uint numbCols,
-               const bool asBitVect);
+bool editSpecs(uint *flagVal, const char entityType, const char *entityName, const uint entityNumb,
+	       const char *flagName, uint *templates, uint numbCols, const bool asBitVect);
 
 // editichk.cpp
 
@@ -527,9 +527,9 @@ void editObjCheck(void);
 // editoexd.cpp
 
 void displayEditObjExtraDescMenu(const objectType *obj, const extraDesc *extraDescHead,
-                                 uint *numbExtraDescs);
+				 uint *numbExtraDescs);
 bool interpEditObjExtraDescMenu(const usint ch, objectType *obj, extraDesc **extraDescHead,
-                                uint *numbExtraDescs, bool *addedKeyword);
+				uint *numbExtraDescs, bool *addedKeyword);
 bool editObjExtraDesc(objectType *obj, bool *addedIdentKeyword);
 
 // editoms2.cpp
@@ -561,7 +561,8 @@ char jumpQuest(uint *numb);
 // editqsti.cpp
 
 void displayEditQuestItemMenu(const questItem *item, const mobType *mob, const char giveRecv);
-bool interpEditQuestItemMenu(const usint ch, questItem *item, const mobType *mob, const char giveRecv);
+bool interpEditQuestItemMenu(const usint ch, questItem *item, const mobType *mob,
+			     const char giveRecv);
 void editQuestItem(questItem *item, const mobType *mob, const char giveRecv);
 
 // editqstm.cpp
@@ -589,9 +590,10 @@ void editRoomCheck(void);
 
 // editrexd.cpp
 
-void displayEditRoomExtraDescMenu(const room *room, const extraDesc *extraDescHead, uint *numbExtraDescs);
-bool interpEditRoomExtraDescMenu(const usint ch, room *room, extraDesc **extraDescHead, 
-                                 uint *numbExtraDescs);
+void displayEditRoomExtraDescMenu(const room *room, const extraDesc *extraDescHead,
+				  uint *numbExtraDescs);
+bool interpEditRoomExtraDescMenu(const usint ch, room *room, extraDesc **extraDescHead,
+				 uint *numbExtraDescs);
 void editRoomExtraDesc(room *room);
 
 // editrext.cpp
@@ -668,24 +670,25 @@ void editShopPrompt(void);
 char *editStrnVal(char *strn, const size_t intMaxLen, const char *prompt);
 char *editDieStrnVal(char *strn, const size_t intMaxLen, const char *prompt);
 char *editStrnValHelp(char *strn, const size_t intMaxLen, const char *prompt, bool *wantedHelp);
-char *editStrnValHelpSearch(char *strn, const size_t intMaxLen, const char *prompt, bool *wantedHelp,
-                            bool *wantedSearch);
-void editStrnValSearchableList(char *strn, const size_t intMaxLen, const char *editingStrn, 
-                               void (*displayListFuncPtr)(const char *));
+char *editStrnValHelpSearch(char *strn, const size_t intMaxLen, const char *prompt,
+			    bool *wantedHelp, bool *wantedSearch);
+void editStrnValSearchableList(char *strn, const size_t intMaxLen, const char *editingStrn,
+			       void (*displayListFuncPtr)(const char *));
 stringNode *editKeywords(const size_t intMaxLen, stringNode **keywordListHeadPtr);
 uint editUIntVal(uint *val, const bool allowZero, const char *prompt);
 uint editUIntValHelp(uint *val, const bool allowZero, const char *prompt, bool *wantedHelp);
 uint editUIntValHelpSearch(uint *val, const bool allowZero, const char *prompt, bool *wantedHelp,
-                           bool *wantedSearch);
-void editUIntValSearchableList(uint *val, const bool allowZero, const char *editingStrn, 
-                               void (*displayListFuncPtr)(const char *));
+			   bool *wantedSearch);
+void editUIntValSearchableList(uint *val, const bool allowZero, const char *editingStrn,
+			       void (*displayListFuncPtr)(const char *));
 int editIntVal(int *val, const bool allowZero, const char *prompt);
 int editIntValHelp(int *val, const bool allowZero, const char *prompt, bool *wantedHelp);
 int editIntValHelpSearch(int *val, const bool allowZero, const char *prompt, bool *wantedHelp,
-                         bool *wantedSearch);
-void editIntValSearchableList(int *val, const bool allowZero, const char *editingStrn, 
-                              void (*displayListFuncPtr)(const char *));
-double editFloatVal(double *val, const bool allowZero, const char *prompt, const uint intNumbMantissaDigits);
+			 bool *wantedSearch);
+void editIntValSearchableList(int *val, const bool allowZero, const char *editingStrn,
+			      void (*displayListFuncPtr)(const char *));
+double editFloatVal(double *val, const bool allowZero, const char *prompt,
+		    const uint intNumbMantissaDigits);
 
 // editzmsc.cpp
 
@@ -729,8 +732,8 @@ roomExit *getExitNode(const uint roomNumb, const char exitDir);
 roomExit *getExitNode(const room *room, const char exitDir);
 void checkExit(roomExit *exitNode, const char *exitName, const int roomNumb);
 void checkAllExits(void);
-char *getDescExitStrnforZonefile(const room *roomPtr, const roomExit *exitRec,
-                                 char *endStrn, const char *exitName);
+char *getDescExitStrnforZonefile(const room *roomPtr, const roomExit *exitRec, char *endStrn,
+				 const char *exitName);
 char getNumbExits(const room *room);
 bool isExitOut(const roomExit *ex);
 bool roomExitOutsideZone(const roomExit *ex);
@@ -743,7 +746,7 @@ const char *getFlagNameFromList(const flagDef *flagList, const int intVal);
 uint fixFlags(uint *flagVal, const flagDef *flagArr);
 void fixAllFlags(void);
 bool checkForFlagExistence(const bool checkRooms, const bool checkObjs, const bool checkMobs,
-                           const char *flagName);
+			   const char *flagName);
 int getFlagLocRoom(const char *flagName, uint *whichSet, const flagDef **flagListPtr);
 int getFlagLocObj(const char *flagName, uint *whichSet, const flagDef **flagListPtr);
 int getFlagLocMob(const char *flagName, uint *whichSet, const flagDef **flagListPtr);
@@ -755,15 +758,14 @@ void massSet(const char *args);
 
 // getstrn.cpp
 
-void dispGetStrnField(char *strn, const size_t startPos, const size_t maxLen,
-                      const bool wideString, const uint maxDisplayable,
-                      const sint x, const sint y, const char *fillerChStrn);
-char *getStrn(char *strn, const size_t maxLen, const char bgcol,
-              const char fgcol, const uchar fillerCh, const char *oldStrn,
-              const bool addToCommandHist, const bool prompt);
-char *getStrn(char *strn, const size_t maxLen, const char bgcol,
-              const char fgcol, const uchar fillerCh, const bool addToCommandHist, 
-              const bool prompt);
+void dispGetStrnField(char *strn, const size_t startPos, const size_t maxLen, const bool wideString,
+		      const uint maxDisplayable, const sint x, const sint y,
+		      const char *fillerChStrn);
+char *getStrn(char *strn, const size_t maxLen, const char bgcol, const char fgcol,
+	      const uchar fillerCh, const char *oldStrn, const bool addToCommandHist,
+	      const bool prompt);
+char *getStrn(char *strn, const size_t maxLen, const char bgcol, const char fgcol,
+	      const uchar fillerCh, const bool addToCommandHist, const bool prompt);
 
 // history.cpp
 
@@ -775,7 +777,8 @@ void startInit(void);
 
 // interp.cpp
 
-char *expandUserInputString(char *inputStrn, char *outputStrn1, char *outputStrn2, const size_t intMaxLen);
+char *expandUserInputString(char *inputStrn, char *outputStrn1, char *outputStrn2,
+			    const size_t intMaxLen);
 bool interpCommands(const char *inputStrn, const bool dispPrompt);
 
 // inv.cpp
@@ -783,8 +786,10 @@ bool interpCommands(const char *inputStrn, const bool dispPrompt);
 void showInventory(void);
 void readInventoryFile(void);
 void writeInventoryFile(void);
-void writeInventoryFileObjInside(FILE *invFile, const objectHere *objH, const uint intContainerID, uint *intID);
-void writeInventoryFileMobEquipment(FILE *invFile, const mobHere *mobH, const uint intMobID, uint *intID);
+void writeInventoryFileObjInside(FILE *invFile, const objectHere *objH, const uint intContainerID,
+				 uint *intID);
+void writeInventoryFileMobEquipment(FILE *invFile, const mobHere *mobH, const uint intMobID,
+				    uint *intID);
 
 // keywords.cpp
 
@@ -821,15 +826,15 @@ void setLimitOverrideMob(const char *args, const bool updateChanges, const bool 
 
 // look.cpp
 
-char *getObjShortNameDisplayStrn(char *strn, const objectHere *objHere, const uint intIndent, 
-                                 const bool blnKeywords);
+char *getObjShortNameDisplayStrn(char *strn, const objectHere *objHere, const uint intIndent,
+				 const bool blnKeywords);
 bool displayIndividualObj(const objectHere *objHere, const uint intIndent, size_t &numbLines);
 bool displayContainerContents(const objectHere *objInside, const uint intIndent, size_t &numbLines);
 void lookObj(const objectHere *objHere, size_t &numbLines);
 void lookMob(const mobHere *mob, size_t &numbLines);
 bool displayMobEqPos(const mobHere *mob, const char pos, const char *posStrn, const uint intIndent,
-                     size_t &numbLines);
-bool displayMobEquip(const mobHere *mob, const uint intIndent, size_t& numbLines);
+		     size_t &numbLines);
+bool displayMobEquip(const mobHere *mob, const uint intIndent, size_t &numbLines);
 bool displayMobMisc(const mobHere *mob, size_t &numbLines);
 void lookEntity(const char *args);
 void lookExit(const roomExit *exitNode);
@@ -850,21 +855,21 @@ void displayMap(void);
 // master.cpp
 
 const char *getEntityTypeStrn(const uchar entityType);
-masterKeywordListNode *createMasterListNode(const stringNode *keywords, const void *entityPtr, 
-                                            const stringNode *desc, const char entityType);
+masterKeywordListNode *createMasterListNode(const stringNode *keywords, const void *entityPtr,
+					    const stringNode *desc, const char entityType);
 bool addMasterNodeToList(masterKeywordListNode *head, masterKeywordListNode *nodeAdd);
 masterKeywordListNode *createMasterKeywordList(room *roomPtr);
-const stringNode *checkCurrentMasterKeywordList(const char *strn, char *whatMatched, 
-                                                masterKeywordListNode **matchingNode);
+const stringNode *checkCurrentMasterKeywordList(const char *strn, char *whatMatched,
+						masterKeywordListNode **matchingNode);
 void deleteMasterKeywordNode(masterKeywordListNode *node);
 void deleteMasterKeywordList(masterKeywordListNode *node);
 
 // menu.cpp
 
-long getMenuDataTypeStrn(char *valstrn, const menuChoiceDataType dataType, const size_t offset, 
-                        const void *entityPtr, const size_t intMaxLen);
-void getMenuListTypeStrn(char *verbosevalstrn, const menuChoiceListType listType, const int val, 
-                         const void *entityPtr, const size_t intMaxLen);
+long getMenuDataTypeStrn(char *valstrn, const menuChoiceDataType dataType, const size_t offset,
+			 const void *entityPtr, const size_t intMaxLen);
+void getMenuListTypeStrn(char *verbosevalstrn, const menuChoiceListType listType, const int val,
+			 const void *entityPtr, const size_t intMaxLen);
 char checkMenuKey(const usint ch, const bool flagMenu);
 void displayMenuNoFooter(const menu *menuDisp, const void *entityPtr);
 void displayMenu(const menu *menuDisp, const void *entityPtr);
@@ -876,13 +881,17 @@ bool editMenuValue(const menuChoice *choice, void *entityPtr);
 void editMenuValueList(const menuChoice *choice, void *entityPtr);
 void editMenuValueListVerbose(const menuChoice *choice, void *entityPtr);
 void editObjValueField(objectType *obj, const uchar valueField);
-void editShopMessage(char *message, const uint intMaxLen, const char *prompt, const bool blnOneOrTwoS,
-                     const bool blnTwoS);
-void editShopMessageProduced(const shop *shopPtr, char *message, const uint intMaxLen, const char *prompt);
-void editShopMessageTraded(const shop *shopPtr, char *message, const uint intMaxLen, const char *prompt);
+void editShopMessage(char *message, const uint intMaxLen, const char *prompt,
+		     const bool blnOneOrTwoS, const bool blnTwoS);
+void editShopMessageProduced(const shop *shopPtr, char *message, const uint intMaxLen,
+			     const char *prompt);
+void editShopMessageTraded(const shop *shopPtr, char *message, const uint intMaxLen,
+			   const char *prompt);
 void editShopMultiplier(const menuChoice *choice, shop *shopPtr, const char *prompt);
-void editShopOpen(const menuChoice *choice, shop *shopPtr, const char *prompt, menuChoiceDataType dataType);
-void editShopClose(const menuChoice *choice, shop *shopPtr, const char *prompt, menuChoiceDataType dataType);
+void editShopOpen(const menuChoice *choice, shop *shopPtr, const char *prompt,
+		  menuChoiceDataType dataType);
+void editShopClose(const menuChoice *choice, shop *shopPtr, const char *prompt,
+		   menuChoiceDataType dataType);
 void editLowLifespan(const menuChoice *choice, zone *zonePtr, const char *prompt);
 void editHighLifespan(const menuChoice *choice, zone *zonePtr, const char *prompt);
 void editQuestItemGivenToMob(const menuChoice *choice, questItem *qstItem);
@@ -988,7 +997,8 @@ void deleteMobHereList(mobHere *srcMobHere, const bool decLoaded);
 void deleteMobHere(mobHere *mobHere, const bool decLoaded);
 bool checkForMobHeresofType(const mobType *mobType);
 void addMobHeretoList(mobHere **mobListHead, mobHere *mobToAdd, const bool incLoaded);
-void deleteAllMobHereofTypeInList(mobHere **mobHereHead, const mobType *mobType, const bool decLoaded);
+void deleteAllMobHereofTypeInList(mobHere **mobHereHead, const mobType *mobType,
+				  const bool decLoaded);
 void deleteAllMobHeresofType(const mobType *mobType, const bool decLoaded);
 void deleteMobHereinList(mobHere **mobHead, mobHere *mob, const bool decLoaded);
 void removeMobHerefromList(mobHere **mobHead, mobHere *mob, const bool decLoaded);
@@ -1075,8 +1085,8 @@ void addObjLoad(const objectHere *objHere);
 void removeObjLoad(const objectHere *objHere);
 void loadAllinObjHereList(const objectHere *objHead);
 objectHere *checkAllObjInsideForVnum(objectHere *objHere, const uint vnum);
-objectHere *findObjHere(const uint objNumber, uint *roomNumb, const bool checkOnlyCurrentRoom, 
-                        const bool checkOnlyVisible);
+objectHere *findObjHere(const uint objNumber, uint *roomNumb, const bool checkOnlyCurrentRoom,
+			const bool checkOnlyVisible);
 objectHere *copyObjHere(const objectHere *srcObjHere);
 objectHere *copyObjHereList(const objectHere *srcObjHere, const bool incLoaded);
 bool checkEntireObjHereListForType(const objectHere *objHereHead, const objectType *objType);
@@ -1114,8 +1124,8 @@ const char *getMissileTypeStrn(const uint missileType);
 char *getTotemSphereStrn(const uint sphere, char *strn);
 char *getObjTrapFlagsStrn(const uint flag, char *strn);
 const char *getObjTrapDamStrn(const int type);
-const char *getObjValueStrn(const uint objType, const uint valueField, const int objValue, char *strn,
-                            const bool showCurrentValInfo);
+const char *getObjValueStrn(const uint objType, const uint valueField, const int objValue,
+			    char *strn, const bool showCurrentValInfo);
 bool checkForValueList(const uint objType, const uint valueField);
 bool checkForVerboseAvail(const uint objType, const uint valueField);
 bool checkForSearchAvail(const uint objType, const uint valueField);
@@ -1123,8 +1133,8 @@ void searchObjValue(const uint objType, const uint valueField);
 void displayObjValueHelp(const uint objType, const uint valueField, const bool verbose);
 bool fieldRefsObjNumb(const uint objType, const uint valueField);
 bool fieldRefsRoomNumb(const uint objType, const uint valueField);
-void specialObjValEditRedundant(objectType *obj, const uchar valueField, const flagDef *flagArr, 
-                                const char *bitvName, const bool asBitV);
+void specialObjValEditRedundant(objectType *obj, const uchar valueField, const flagDef *flagArr,
+				const char *bitvName, const bool asBitV);
 bool specialObjValEdit(objectType *obj, const uchar valueField, const bool editing);
 
 // purge.cpp
@@ -1137,8 +1147,8 @@ void purgeInv(void);
 
 // put.cpp
 
-bool putEntityObj(objectHere *objH, objectHere **objHdest, const bool deleteOriginal, const bool given, 
-                  const char *inStrn, size_t& numbLines);
+bool putEntityObj(objectHere *objH, objectHere **objHdest, const bool deleteOriginal,
+		  const bool given, const char *inStrn, size_t &numbLines);
 void putEntityCmd(const char *args, const bool origDeleteOriginal);
 
 // qsttypes.cpp
@@ -1193,34 +1203,36 @@ char *getQuestItemStrn(const questItem *item, const char itemList, char *strn);
 uint getNumbQuestMobs(void);
 bool checkForMobWithQuest(void);
 void displayQuestList(const char *args);
-void tellRedund(const bool toAll, const char *whatMessage, const char *whatContain, const stringNode *desc);
+void tellRedund(const bool toAll, const char *whatMessage, const char *whatContain,
+		const stringNode *desc);
 void tell(const char *args);
 questQuest *getQuestTellCmd(const mobType *mob, const uint numbq, const char *strn);
 
-
 // readexd.cpp
 
-extraDesc *readExtraDescFromFile(FILE *edescFile, const uint parentEntityType, const uint entityNumb, 
-                                 const uint extraDescType, extraDesc **extraDescHeadPtr);
+extraDesc *readExtraDescFromFile(FILE *edescFile, const uint parentEntityType,
+				 const uint entityNumb, const uint extraDescType,
+				 extraDesc **extraDescHeadPtr);
 
 // readfile.cpp
 
 bool readAreaFileLine(FILE *file, char *strn, const size_t intMaxLen, const uint intEntityType,
-                      const uint intEntityNumb, const uint intEntityType2, 
-                      const uint intEntityNumb2, const char *strnReading, 
-                      const size_t intNumbArgs, const size_t *intNumbArgsArr, 
-                      const bool blnEndTilde, const bool blnRemLeadingSpaces);
-bool readAreaFileLineAllowEOF(FILE *file, char *strn, const size_t intMaxLen, const uint intEntityType,
-                      const uint intEntityNumb, const uint intEntityType2, 
-                      const uint intEntityNumb2, const char *strnReading, 
-                      const size_t intNumbArgs, const size_t *intNumbArgsArr, 
-                      const bool blnEndTilde, const bool blnRemLeadingSpaces, bool *hitEOF);
-bool readAreaFileLineTildeLine(
-                      FILE *file, char *strn, const size_t intMaxLen, const uint intEntityType,
-                      const uint intEntityNumb, const uint intEntityType2, 
-                      const uint intEntityNumb2, const char *strnReading, 
-                      const size_t intNumbArgs, const size_t *intNumbArgsArr, 
-                      const bool blnEndTilde, const bool blnRemLeadingSpaces);
+		      const uint intEntityNumb, const uint intEntityType2,
+		      const uint intEntityNumb2, const char *strnReading, const size_t intNumbArgs,
+		      const size_t *intNumbArgsArr, const bool blnEndTilde,
+		      const bool blnRemLeadingSpaces);
+bool readAreaFileLineAllowEOF(FILE *file, char *strn, const size_t intMaxLen,
+			      const uint intEntityType, const uint intEntityNumb,
+			      const uint intEntityType2, const uint intEntityNumb2,
+			      const char *strnReading, const size_t intNumbArgs,
+			      const size_t *intNumbArgsArr, const bool blnEndTilde,
+			      const bool blnRemLeadingSpaces, bool *hitEOF);
+bool readAreaFileLineTildeLine(FILE *file, char *strn, const size_t intMaxLen,
+			       const uint intEntityType, const uint intEntityNumb,
+			       const uint intEntityType2, const uint intEntityNumb2,
+			       const char *strnReading, const size_t intNumbArgs,
+			       const size_t *intNumbArgsArr, const bool blnEndTilde,
+			       const bool blnRemLeadingSpaces);
 
 // readmob.cpp
 
@@ -1231,15 +1243,15 @@ bool readMobFile(const char *filename);
 
 // readobj.cpp
 
-objectType *readObjectFromFile(FILE *objectFile, char *nextStrn, const bool checkDupes, 
-                               const bool incNumbObjs);
+objectType *readObjectFromFile(FILE *objectFile, char *nextStrn, const bool checkDupes,
+			       const bool incNumbObjs);
 char readObjectFile(const char *filename);
 
 // readqst.cpp
 
 questMessage *readQuestFileMessage(FILE *questFile, const uint questNumb);
-questQuest *readQuestFileQuest(FILE *questFile, bool *endofMobQuest,
-                               char *hitWhat, const uint questNumb);
+questQuest *readQuestFileQuest(FILE *questFile, bool *endofMobQuest, char *hitWhat,
+			       const uint questNumb);
 quest *readQuestFromFile(FILE *questFile, uint *questNumb);
 bool readQuestFile(const char *filename);
 
@@ -1254,7 +1266,8 @@ bool readShopFile(const char *filename);
 
 // readwld.cpp
 
-roomExit *readRoomExitFromFile(FILE *worldFile, room *roomPtr, const char *exitStrn, const bool incNumbExits);
+roomExit *readRoomExitFromFile(FILE *worldFile, room *roomPtr, const char *exitStrn,
+			       const bool incNumbExits);
 room *readRoomFromFile(FILE *worldFile, const bool checkDupes, const bool incNumbRooms);
 bool readWorldFile(const char *filename);
 
@@ -1263,26 +1276,26 @@ bool readWorldFile(const char *filename);
 void addLastObjLoaded(lastObjHereLoaded **lastHead, const uint objNumb, objectHere *objPtr);
 objectHere *getLastObjLoaded(lastObjHereLoaded *lastHead, const uint objNumb);
 void deleteLastObjLoadedList(lastObjHereLoaded *lastHead);
-void addLimitSpec(limitSpecified **specHead, const char entType, const uint entNumb, const uint limit);
+void addLimitSpec(limitSpecified **specHead, const char entType, const uint entNumb,
+		  const uint limit);
 void deleteLimitSpecList(limitSpecified *limitHead);
 void setOverrideFromLimSpec(limitSpecified *specHead);
 void removeComments(char *strn);
 void loadObj(const char *strn, lastObjHereLoaded **lastObjLoadedHead,
-             limitSpecified **limitSpecHead, const uint linesRead);
+	     limitSpecified **limitSpecHead, const uint linesRead);
 void loadMob(const char *strn, mobHere **lastMob, mobHere **lastMobEquippable,
-             limitSpecified **limitSpecHead, const uint linesRead);
+	     limitSpecified **limitSpecHead, const uint linesRead);
 void setDoorState(const char *, const uint);
-void putObjObj(const char *strn, lastObjHereLoaded **lastObjLoaded,
-               limitSpecified **limitSpecHead, bool *pauseonCont,
-               const uint linesRead);
+void putObjObj(const char *strn, lastObjHereLoaded **lastObjLoaded, limitSpecified **limitSpecHead,
+	       bool *pauseonCont, const uint linesRead);
 void equipMobObj(const char *strn, mobHere *lastMobRead, lastObjHereLoaded **lastObjLoaded,
-                 limitSpecified **limitSpecHead, const uint linesRead);
+		 limitSpecified **limitSpecHead, const uint linesRead);
 void giveMobObj(const char *strn, mobHere *lastMobRead, lastObjHereLoaded **lastObjLoaded,
-                limitSpecified **limitSpecHead, const uint linesRead);
-void mountMob(const char *strn, mobHere **lastMobRead, limitSpecified **limitSpecHead, 
-              const uint linesRead);
+		limitSpecified **limitSpecHead, const uint linesRead);
+void mountMob(const char *strn, mobHere **lastMobRead, limitSpecified **limitSpecHead,
+	      const uint linesRead);
 void followMob(const char *strn, mobHere *lastMobRead, mobHere **lastMobEquippable,
-               limitSpecified **limitSpecHead, const uint linesRead);
+	       limitSpecified **limitSpecHead, const uint linesRead);
 bool readZoneFile(const char *filename);
 
 // room.cpp
@@ -1313,11 +1326,12 @@ room *getNextRoom(const uint roomNumb);
 room *getNextRoom(const room *roomPtr);
 void checkMapTrueness(void);
 bool checkMapTruenessRedund(const room *roomPtr, const uint exitNumb, const int dest, size_t &lines,
-                            bool *gotOne);
+			    bool *gotOne);
 
 // roomtype.cpp
 
-char *getRoomSectorStrn(const uint sectorType, const bool addSpaces, const bool addBrackets, char *strn);
+char *getRoomSectorStrn(const uint sectorType, const bool addSpaces, const bool addBrackets,
+			char *strn);
 
 // roomu.cpp
 
@@ -1382,7 +1396,8 @@ char *remTrailingSpaces(char *strn);
 char *remSpacesBetweenArgs(char *strn);
 char *nolf(char *strn);
 size_t numbArgs(const char *strn);
-char *getArg(const char *strn, const size_t argNumb, char *arg, const size_t intMaxLen, size_t *intCopied);
+char *getArg(const char *strn, const size_t argNumb, char *arg, const size_t intMaxLen,
+	     size_t *intCopied);
 char *getArg(const char *strn, const size_t argNumb, char *arg, const size_t intMaxLen);
 char *upstrn(char *strn);
 char *upfirstarg(char *strn);
@@ -1405,7 +1420,7 @@ size_t numbLinefeeds(const char *strn);
 size_t truestrlen(const char *strn);
 void CAP(char *strn);
 void DECAP(char *strn);
-bool bleeding_ansi( const char *strn);
+bool bleeding_ansi(const char *strn);
 
 // strnnode.cpp
 
@@ -1422,20 +1437,22 @@ stringNode *editStringNodes(stringNode *strnNode, const bool remStartLines);
 
 // take.cpp
 
-void takeEntityFromEntity(const char *objStrn, const bool deleteOriginal, const char *containerStrn);
+void takeEntityFromEntity(const char *objStrn, const bool deleteOriginal,
+			  const char *containerStrn);
 void takeEntityCmd(const char *args, const bool deleteOriginal);
 bool takeEntityRoomEdesc(extraDesc *desc, const bool deleteOriginal);
 bool takeEntityObjEdesc(objectType *obj, extraDesc *desc, const bool deleteOriginal);
-bool takeEntityObj(objectHere *objH, objectHere **objHsrc, const bool deleteOriginal, const char *fromStrn,
-                   size_t &numbLines);
+bool takeEntityObj(objectHere *objH, objectHere **objHsrc, const bool deleteOriginal,
+		   const char *fromStrn, size_t &numbLines);
 bool takeEntityMob(mobHere *mobH, const bool deleteOriginal, size_t &numbLines);
-bool takeAllObj(objectHere **objHereHead, const bool deleteOriginal, const char *fromStrn, size_t &numbLines);
+bool takeAllObj(objectHere **objHereHead, const bool deleteOriginal, const char *fromStrn,
+		size_t &numbLines);
 bool takeAllMob(mobHere **mobHereHead, const bool deleteOriginal, size_t &numbLines);
 
 // template.cpp
 
 bool displayTemplateRedundant(const uint templateNumb, const char *flagname, const uint templateVal,
-                              size_t& numblines, bool *foundTemplate);
+			      size_t &numblines, bool *foundTemplate);
 void setTemplateArgs(const char *args, const bool updateChanges, const bool displayStuff);
 
 // unequip.cpp
@@ -1464,22 +1481,22 @@ void clrscr(const uchar fg, const uchar bg);
 
 // var.cpp
 
-bool displayVarSettings(const variable *var, const char *preStrn, size_t& numbLines);
+bool displayVarSettings(const variable *var, const char *preStrn, size_t &numbLines);
 void unvarCmd(const char *args, variable **varHead);
 char addVar(variable **varHead, const char *origVarStrn, const char *instrn);
 void setVarArgs(variable **varHead, const char *args, const bool addLFs, const bool updateChanges,
-                const bool display);
+		const bool display);
 void varCmd(const char *args, const bool addLFs, variable **varHead);
 const variable *getVar(const variable *varHead, const char *varName);
 int getVarNumb(const variable *varHead, const char *varName, const int defVal);
 uint getVarNumbUnsigned(const variable *varHead, const char *varName, const uint defVal);
 const char *getVarStrn(const variable *varHead, const char *varName, const char *defVal);
-const char *getVarStrn(const variable *varHead, const char *varName, char *strn, const char *defVal, 
-                       const size_t maxLen);
+const char *getVarStrn(const variable *varHead, const char *varName, char *strn, const char *defVal,
+		       const size_t maxLen);
 size_t getVarStrnLen(const variable *varHead, const char *varName);
 bool getVarBoolVal(const variable *varHead, const char *varName, const bool defVal);
 void setVarBoolVal(variable **varHead, const char *varName, const bool boolVal,
-                   const bool updateChanges);
+		   const bool updateChanges);
 bool varExists(const variable *varHead, const char *varName);
 bool strIsBoolVal(const char *strn);
 bool isVarBoolean(const variable *varHead, const char *varName);
@@ -1596,7 +1613,8 @@ void writeQuestFile(const char *filename);
 // writeset.cpp
 
 void writeSettingsFile(const char *filename, const bool writeLimits);
-void writeTemplateRedundant(FILE *setFile, const char *tempName, const uint tempNumb, const uint tempVal);
+void writeTemplateRedundant(FILE *setFile, const char *tempName, const uint tempNumb,
+			    const uint tempVal);
 
 // writeshp.cpp
 
@@ -1613,17 +1631,18 @@ void writeWorldFile(char *filename);
 
 void addExitWrittentoList(exitWritten **exitHead, exitWritten *exittoAdd);
 void deleteExitWrittenList(exitWritten *exitHead);
-exitWritten *checkExitWrittenListforExit(exitWritten *exitHead, const int roomNumb, const char exitNumb);
+exitWritten *checkExitWrittenListforExit(exitWritten *exitHead, const int roomNumb,
+					 const char exitNumb);
 roomExit *checkForPairedExit(const roomExit *exitNode, const int srcRoomNumb, char *exitDir);
 bool writeAllExitsPairedRedundant(FILE *zoneFile, const room *room, exitWritten **exitWHead,
-                                  roomExit *exitNode, const char *exitName, const char exitChar,
-                                  const char origDir);
+				  roomExit *exitNode, const char *exitName, const char exitChar,
+				  const char origDir);
 void writeAllExitsPaired(FILE *zoneFile);
 void writeAllObjInsideSpecific(FILE *zoneFile, const objectHere *insidePtr,
-                               const uint containerNumb, const uint extraSpaces,
-                               const bool writeConts);
-void writeAllObjInside(FILE *zoneFile, const objectHere *insidePtr,
-                       const uint containerNumb, const uint extraSpaces);
+			       const uint containerNumb, const uint extraSpaces,
+			       const bool writeConts);
+void writeAllObjInside(FILE *zoneFile, const objectHere *insidePtr, const uint containerNumb,
+		       const uint extraSpaces);
 void writeLoadObjectCmd(const room *room, const objectHere *objHere, FILE *zoneFile);
 void writeLoadMobCommand(const room *room, const mobHere *mobHNode, FILE *zoneFile);
 void writeEquipMobCommand(const objectHere *mobEquip, FILE *zoneFile, const uint origeqpos);
