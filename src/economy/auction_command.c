@@ -80,6 +80,10 @@ bool valid_payload(const auction_command_payload &payload)
 	    payload.item_count > AUCTION_COMMAND_MAX_ITEMS ||
 	    payload.object_blob_size >= payload.object_blob.size())
 		return false;
+	if (payload.action == auction_action::claim_money &&
+	    (payload.value < 0 || payload.value > INT32_MAX ||
+	     (payload.value > 0 && payload.expected_wallet_revision == UINT64_MAX)))
+		return false;
 	if ((payload.action == auction_action::list ||
 	     payload.action == auction_action::claim_item) &&
 	    !payload.item_count)

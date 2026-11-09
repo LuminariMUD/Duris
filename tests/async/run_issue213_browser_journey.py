@@ -64,8 +64,6 @@ def full_world(args):
                 stop()
                 if sql:
                     sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
-                else:
-                    journey.make_overlord(Path(environment['FLATFILE_STATE_DIR']), GOD)
                 boot()
                 yield {'runtime': str(runtime), 'plain': plain, 'tls': tls, 'websocket': websocket}, sql
             finally:
@@ -286,7 +284,7 @@ def exercise(server, sql, args, evidence):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server', type=Path, required=True)
-    parser.add_argument('--backend', choices=('flatfile', 'mariadb'), default='flatfile')
+    parser.add_argument('--backend', choices=("mariadb",), default="mariadb")
     parser.add_argument('--frontend-url', required=True)
     parser.add_argument('--frontend-source', type=Path)
     parser.add_argument('--browser-executable', type=Path)

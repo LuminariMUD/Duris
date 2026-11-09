@@ -9,6 +9,7 @@
 #include "account/account.h"
 #include "item/storage_lockers.h"
 #include "item/starter_kit_intent.h"
+#include "item/item_transfer_command.h"
 #include "player/player_revision_state.h"
 #include "economy/boon_reward_transaction.h"
 #include "guild/artifact_admission.h"
@@ -16,10 +17,12 @@
 #include "guild/artifact_guild_state.h"
 #include "persistence/persistence_log.h"
 #include "player/player_save_worker.h"
+#include "player/player_save_pipeline.h"
 #include "player/player_load_items.h"
 #include "economy/divine_boon_activity.h"
 #include "economy/divine_boon_delivery.h"
 #include "sql/sql_async.h"
+#include "sql/item_owner_rows.h"
 #include "economy/divine_trade_runtime.h"
 #include "economy/currency_transaction.h"
 
@@ -62,6 +65,34 @@ HARNESS_STUB starter_kit_state starter_kit_intent_read(uint32_t, critical_comman
 	return starter_kit_state::invalid;
 }
 HARNESS_STUB bool player_revision_snapshot_copy(int, player_revision_snapshot *)
+{
+	return false;
+}
+// A fixture without the save pipeline cannot prepare a new destination container.
+HARNESS_STUB player_save_pipeline_result player_save_pipeline_request(P_char,
+								      player_component_mask_t, int,
+								      int)
+{
+	return player_save_pipeline_result::unavailable;
+}
+HARNESS_STUB bool player_save_pipeline_reserve_trade(uint32_t,
+						     const player_pending_trade_snapshot &)
+{
+	return false;
+}
+HARNESS_STUB void player_save_pipeline_release_trade(uint32_t) {}
+HARNESS_STUB bool currency_transaction_reserve_atomic_trade(P_char, int64_t)
+{
+	return false;
+}
+HARNESS_STUB bool item_transfer_command_decode_result(const uint8_t *, size_t,
+						      item_transfer_result *)
+{
+	return false;
+}
+HARNESS_STUB bool sql_persistence_item_owner_fields_match(unsigned long long, const char *,
+							  unsigned long long, unsigned long long,
+							  const char *const *)
 {
 	return false;
 }

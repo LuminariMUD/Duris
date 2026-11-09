@@ -46,7 +46,6 @@ bodies = '\n'.join([
     '#ifndef __NO_MYSQL__\n' + function(guild, 'std::vector<std::string> Guild::statements_without_member(') + '\n#endif',
     function(guild, 'void Guild::forget_deleted_member('),
     function(account, 'void remove_char_from_list('),
-    '#ifdef __NO_MYSQL__\n' + function(account, 'class account_deletion_drain_guard') + ';\n#endif',
     deletion,
     function(account, 'uint64_t wait_for_writer(P_desc d)'),
     function(account, 'P_desc writer_replied(uint64_t id)'),
@@ -323,17 +322,6 @@ int main() {
         assert(d.output.find("successfully")==std::string::npos && d.writer_wait_id);
         dispose(a);
     }
-#else
-    // Both actual flat deletion entry points must refuse while the artifact fence is held.
-    artifact_drain_ready=false;
-    { account_deletion_drain_guard guard; assert(!guard.drain()); }
-    reset(a,d); input(&d,"1"); input(&d,"Fixture"); released(d); kept(a);
-    assert(!backend_calls && artifact_drain_calls >= 2);
-    artifact_drain_ready=true;
-    { account_deletion_drain_guard guard; assert(guard.drain()); }
-    input(&d,"1"); input(&d,"Fixture"); released(d); deleted(a); dispose(a);
-    reset(a,d); fail_stage=1; input(&d,"1"); input(&d,"Fixture"); released(d); kept(a);
-    fail_stage=0; input(&d,"1"); input(&d,"Fixture"); released(d); deleted(a); dispose(a);
 #endif
     // A character in the game (linkdead too) or being loaded to enter it would go on
     // playing, unsaved: the confirmation is refused before anything is queued.

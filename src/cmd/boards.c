@@ -128,6 +128,16 @@ int find_board(P_obj obj)
 	return -1;
 }
 
+void assign_board_object_procs(void)
+{
+	for (int i = 0; i < NUM_OF_BOARDS; ++i)
+	{
+		BOARD_RNUM(i) = real_object(BOARD_VNUM(i));
+		if (BOARD_RNUM(i) >= 0 && !obj_index[BOARD_RNUM(i)].func.obj)
+			obj_index[BOARD_RNUM(i)].func.obj = board;
+	}
+}
+
 void initialize_boards(void)
 {
 	int i, j, fatal_error = 0;
@@ -139,9 +149,10 @@ void initialize_boards(void)
 		msg_storage_taken[i] = 0;
 	}
 
+	assign_board_object_procs();
 	for (i = 0; i < NUM_OF_BOARDS; i++)
 	{
-		if ((BOARD_RNUM(i) = real_object(BOARD_VNUM(i))) == -1)
+		if (BOARD_RNUM(i) == -1)
 		{
 			snprintf(buf, 256, " Fatal board error: board vnum %d does not exist!",
 				 BOARD_VNUM(i));
@@ -155,8 +166,6 @@ void initialize_boards(void)
 			msg_index[i][j].slot_num = -1;
 		}
 		Board_load_board(i);
-		if (!obj_index[real_object0(BOARD_VNUM(i))].func.obj)
-			obj_index[real_object0(BOARD_VNUM(i))].func.obj = board;
 	}
 
 	if (fatal_error)
