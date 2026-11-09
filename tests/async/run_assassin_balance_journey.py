@@ -541,7 +541,10 @@ PH 0 0 -1
                     create_character(client, account=account, character=character,
                                              email=character.lower() + "@example.invalid")
                     client.send("save")
-                    client.expect("Saving " + character + ".")
+                    # BASE reports queued and then complete; wait for the
+                    # durable completion, never merely for queue admission.
+                    prefix = "Saving " if name == "revised" else "Save complete for "
+                    client.expect(prefix + character + ".", timeout=30)
                 stop()
                 seed_actors(sql, fresh_affects=True)
                 # Audit's victim is a Cleric with four remove-poison and two
