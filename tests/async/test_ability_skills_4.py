@@ -160,7 +160,7 @@ HANDLER_CALLS = {
     ("economy/crafting.c", "ALL"): ["iVal > crafting_value_limit(ch) ||"],
     ("economy/mining.c", "mine"): ["data.counter = mine_rounds(obj->value[2], GET_CHAR_SKILL(ch, SKILL_MINE));"],
     ("economy/mining.c", "event_mine_check"): ["mine_exp(GET_CHAR_SKILL(ch, SKILL_MINE))", "GET_VITALITY(ch) < 10", "!mine_ride_roll(live_rolls, GET_CHAR_SKILL(ch, SKILL_MINE))", "!mine_rock_roll(live_rolls, GET_CHAR_SKILL(ch, SKILL_MINE))", "tradeskill_vitality_cost(live_rolls, GET_CHAR_SKILL(ch, SKILL_MINE))"],
-    ("item/salvage.c", "do_salvage"): ["GET_CHAR_SKILL(ch, SKILL_SALVAGE) < number(1, 105)", "!salvage_pieces_roll(live_rolls)", "playerroll = salvage_recipe_score(ch);"],
+    ("item/salvage.c", "do_salvage"): ["GET_CHAR_SKILL(ch, SKILL_SALVAGE) < number(1, 105)", "!salvage_pieces_roll(live_rolls)", "playerroll = salvage_recipe_score(ch, scitools > 0 ? crafting_scientific_tools_recipe_player_multiplier() : 1);"],
     ("net/listen.c", "listen_say"): ["range = listen_range(iskl);", "improved_listen_far_threshold(iskl) < number(0, 100)", "listen_hear_threshold(tch) > (number(25, 45))", "GET_CHAR_SKILL(tch, SKILL_LISTEN) > number(15, 35)"],
     ("net/listen.c", "listen_gsay"): ["range = listen_range(iskl);", "improved_listen_far_threshold(iskl) < number(0, 100)", "listen_hear_threshold(tch) > (number(25, 45))", "GET_CHAR_SKILL(tch, SKILL_LISTEN) > number(20, 40)"],
     ("net/listen.c", "listen_emote"): ["irange = improved_listen_emote_range();", "(improved_listen_far_threshold(iskl)) < number(0, 100)", "improved_listen_emote_threshold(iskl) > (number(15, 55))", "number(70, 90) > improved_listen_small_threshold(iskl)"],

@@ -1206,6 +1206,57 @@ or production operation occurred.
 level/gain/radius/salvage/property bounds from F08. Keep the full project scope
 and F05/F09/F10/F11–F16 work open as recorded above.
 
+### Chunk 18 — validate crafting config and its arithmetic (F08, implemented)
+
+Branch: `branch/ival-crafting-config-bounds`, based on `branch/ival-zero-crafting-xp`.
+
+**Outcome:** accept complete finite/ranged numeric values for crafting settings,
+retain prior/default values with diagnostics on invalid recognized entries, and
+reject truncated overlong lines. Widen level and Salvage recipe-score products;
+bound probability thresholds without changing representable ordinary rounding.
+
+**Non-goals:** enhancement config conversion (next slice), new gameplay weights,
+new practical content limits, config hot reload, persistence or deployment.
+
+**Files:** two scalar config parsers in a small core header reused from the
+existing random-equipment integer parser, crafting/Salvage consumers, their native
+tests/config documentation and this handoff.
+
+**Proof:** actual loader tests for shipped/default config, malformed/trailing/
+overflow/nonfinite values, zero/positive boundaries, overlong lines, repeated
+loads/keys, large level products and probability/recipe thresholds. Preserve
+existing random-equipment parser behavior and run server/focused checks.
+
+**Ablation:** share scalar parsing because real modules need the same whole-value
+contract; keep key dispatch and domain ranges local. No config framework or new
+operational mode is needed.
+
+**Validation:** the new native loader regression fails against the parent
+loader and passes with this change. It executes the shipped file, all 18 numeric
+settings with distinct valid values, invalid/trailing/overflow/nonfinite inputs,
+strict booleans, zero-XP/chance settings, duplicate keys, invalid content vnums,
+overlong lines, no-final-newline input and repeated loads. Invalid entries retain
+the prior accepted/default value with diagnostics. Maximum level/multiplier
+products are checked in widened arithmetic.
+
+Native Salvage tests verify a scientific-tool recipe multiplier at INT_MAX,
+ordinary Luck/probability roll parity, tiny positive scales and finite extreme
+scales without float-to-int overflow. The thresholds saturate only where every
+possible roll already succeeds, retaining normal truncation and RNG calls.
+Existing random-equipment native/config tests pass with the shared integer
+parser; its float/line parsing behavior is unchanged. Enhancement runtime,
+crafting/module/economic checks and the native ability-facts/shared-roll suite
+pass, as does the server build. No Ival formula or storage input changes occur;
+full command/MariaDB journeys remain F16.
+
+**Continuation:** fix the separately discovered recipe selection boundary next:
+Craft's list fallback checks an upper bound without requiring a positive index;
+both recipe commands also parse selection text with `atoi`. Use complete bounded
+integer selection before indexing, preserving stable vnum precedence and valid
+list-number behavior. Keep this separate from the loader change. Then convert
+enhancement config and finish remaining F08/property/admission bounds. No
+database, migration or production operation occurred.
+
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization
