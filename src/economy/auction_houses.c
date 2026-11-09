@@ -870,7 +870,9 @@ bool auction_offer(P_char ch, char *args)
 		return true;
 	}
 	if (IS_ARTIFACT(object) || IS_SET(object->extra_flags, ITEM_NODROP) ||
-	    IS_SET(object->extra_flags, ITEM_NORENT) || object->condition < 90 || object->contains)
+	    IS_SET(object->extra_flags, ITEM_NORENT) ||
+	    IS_SET(object->extra_flags, ITEM_TRANSIENT) || object->condition < 90 ||
+	    object->contains)
 	{
 		send_to_char("&+WYou can't sell that item.\r\n", ch);
 		return true;
