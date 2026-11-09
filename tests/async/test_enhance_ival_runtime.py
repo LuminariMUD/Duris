@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from _paths import HARNESS_STUBS, ROOT, source
+from _paths import HARNESS_STUBS, ROOT, source, extract_function
 
 
 HARNESS = r"""
@@ -613,7 +613,8 @@ def main():
         cpp = Path(tmp) / "enhance.cpp"
         binary = Path(tmp) / "enhance"
         cpp.write_text(
-            HARNESS + "\nint get_matstart(P_obj obj)\n" + get_matstart
+            HARNESS + "\n" + extract_function("tradeskill.c", "int material_start_vnum(int objmat)")
+            + "\nint get_matstart(P_obj obj)\n" + get_matstart
         )
         subprocess.run(
             [

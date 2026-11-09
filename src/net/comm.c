@@ -723,7 +723,8 @@ int main(int argc, char **argv)
 				 "SQL pwipe recovery cannot combine with another boot mode");
 	if (material_rarity_report_mode)
 	{
-		boot_material_rarity_objects(mini_mode);
+		if (!boot_material_rarity_objects(mini_mode))
+			return 1;
 		return write_material_rarity_report(material_rarity_report_dir) ? 0 : 1;
 	}
 	logit(LOG_STATUS, "Running game on port %d.", port);

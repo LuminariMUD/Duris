@@ -56,6 +56,11 @@
 #include "world/object_template.h"
 #include "world/zone_story_quest_runtime.h"
 #include "account/newbie_kit_plan.h"
+#include "specs/object_bindings.h"
+#include "economy/nexus_stones.h"
+#include "economy/mining.h"
+#include "kingdom/kingdom.h"
+#include "combat/ctf.h"
 
 /*
  * external variables
@@ -188,6 +193,7 @@ void dump_email_reg_db(void);
 int email_in_use(char *, char *);
 
 void release_obj_mem(P_obj obj);
+void update_stat_data();
 void release_acct_mem(P_obj obj);
 
 void apply_zone_modifier(P_char ch);
@@ -409,8 +415,11 @@ void loadGodProcs()
 }
 */
 
-void boot_material_rarity_objects(int mini_mode)
+bool boot_material_rarity_objects(int mini_mode)
 {
+	// Studio metadata publication shares the normal boot's thread guard, but
+	// needs neither a running scheduler nor its event pool.
+	nevent_bind_game_thread();
 	if (!mini_mode)
 	{
 		if (!(obj_f = fopen(OBJ_FILE, "r")))
@@ -424,10 +433,50 @@ void boot_material_rarity_objects(int mini_mode)
 	}
 
 	obj_index = generate_indices(obj_f, &top_of_objt);
-	dead_obj_pool = mm_create("OBJS", sizeof(struct obj_data), offsetof(struct obj_data, next),
-				  mm_find_best_chunk(sizeof(struct obj_data), (top_of_objt / 3),
-						     (top_of_objt >> 1)));
-	ne_init_event_pool();
+	if (top_of_objt < 0)
+		return true;
+	if (!initialize_property_values())
+	{
+		fprintf(stderr,
+			"material rarity report: valuation properties could not be loaded\n");
+		return false;
+	}
+	update_stat_data();
+	assign_spell_pointers();
+	if (mini_mode != 1)
+	{
+		// Object scripts validate referenced mobile and room VNUMs while parsing.
+		// Load their native metadata, without resets, entities, or runtime boot.
+		mob_f = fopen(mini_mode ? "areas_mini/mini.mob" : MOB_FILE, "r");
+		if (!mob_f)
+		{
+			fprintf(stderr, "material rarity report: cannot open mobile metadata: %s\n",
+				strerror(errno));
+			return false;
+		}
+		mob_index = generate_indices(mob_f, &top_of_mobt);
+		boot_zones(mini_mode, false);
+		boot_world(mini_mode);
+		renum_world();
+	}
+	if (!mini_mode)
+		assign_board_object_procs();
+	if (!no_specials)
+	{
+		assign_object_proc_bindings(object_proc_binding_stage::objects);
+		assign_object_proc_bindings(object_proc_binding_stage::rooms);
+	}
+	studioproc_boot_object_bindings();
+	if (!mini_mode)
+	{
+		kingdom_initialize_object_bindings();
+		assign_nexus_object_procs();
+		assign_mining_object_procs();
+#if defined(CTF_MUD) && (CTF_MUD == 1)
+		assign_ctf_object_procs();
+#endif
+	}
+	return true;
 }
 
 /** Load world data and persistent authorities before entering the game loop. */
@@ -1667,7 +1716,7 @@ void update_zone_difficulties()
 	 ch == 'R' || ch == 'F' || ch == 'A' || ch == 'B' || ch == 'C' || ch == 'Y' || ch == 'S')
 
 /* load the zone table and command tables */
-void boot_zones(int mini_mode)
+void boot_zones(int mini_mode, bool initialize_reset_timers)
 {
 	FILE *fl;
 	int num_zones, num_commands, zon = 0, cmd_no = 0, tmp, i, t_idx;
@@ -1784,8 +1833,10 @@ void boot_zones(int mini_mode)
 
 		/* gotta preset this here */
 
-		zone_table[zon].fullreset_lifespan = number(zone_table[zon].fullreset_lifespan_min,
-							    zone_table[zon].fullreset_lifespan_max);
+		zone_table[zon].fullreset_lifespan =
+			initialize_reset_timers ? number(zone_table[zon].fullreset_lifespan_min,
+							 zone_table[zon].fullreset_lifespan_max) :
+						  zone_table[zon].fullreset_lifespan_min;
 
 		if (zone_table[zon].flags & ZONE_TOWN)
 			for (i = 0; town_name_list[i][0] != '\n'; i++)
