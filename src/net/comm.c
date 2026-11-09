@@ -4748,7 +4748,7 @@ int process_output(P_desc t)
 	    (IS_PC(t->character) || IS_MORPH(t->character)) &&
 	    !IS_SET(GET_PLYR(t->character)->specials.act, PLR_COMPACT))
 	{
-		write_to_q("\r\n", &t->output, 1);
+		write_output("\r\n", &t->output);
 	}
 
 	if (text && !defer_prompt && STATE(t) == CON_PLAYING && IS_PC(realChar) &&
@@ -5028,9 +5028,9 @@ static void process_line(P_desc t, char *in)
 
 	while (snoop_by_ptr)
 	{
-		write_to_q("&+y%&n ", &snoop_by_ptr->snoop_by->desc->output, 1);
-		write_to_q(out, &snoop_by_ptr->snoop_by->desc->output, 1);
-		write_to_q("\r\n", &snoop_by_ptr->snoop_by->desc->output, 1);
+		write_output("&+y%&n ", &snoop_by_ptr->snoop_by->desc->output);
+		write_output(out, &snoop_by_ptr->snoop_by->desc->output);
+		write_output("\r\n", &snoop_by_ptr->snoop_by->desc->output);
 
 		snoop_by_ptr = snoop_by_ptr->next;
 	}
@@ -5045,14 +5045,25 @@ static void process_line(P_desc t, char *in)
 static char send_to_char_f_buf[MAX_STRING_LENGTH];
 bool send_paged_text(P_char ch, const std::string &text, int log)
 {
+	const size_t before = output_length;
+	const size_t separator = before && !text.empty() ? 1 : 0;
 	if (!ch || !ch->desc || executing_ch != ch || !IS_SET(ch->specials.act, PLR_PAGING_ON) ||
 	    strlen(command_output) != output_length ||
-	    text.size() >= MAX_COMMAND_OUTPUT - output_length)
+	    text.size() >= MAX_COMMAND_OUTPUT - before - separator)
 		return false;
-	const size_t before = output_length;
-	// Preserve authored text so the capacity check describes the bytes accepted.
-	send_to_char(text.c_str(), ch, log, OutputContext{});
-	return output_length == before + text.size();
+	std::string frozen;
+	auto links = output_links_with_urls(text.c_str(), {}, &frozen);
+	const char *message = frozen.empty() ? text.c_str() : frozen.c_str();
+	const size_t bytes = strlen(message);
+	if (bytes >= MAX_COMMAND_OUTPUT - before - separator)
+		return false;
+	if (!frozen.empty())
+		links = rebase_output_links(text.c_str(), message, links);
+	OutputContext context;
+	context.links = links;
+	context.links_prepared = true;
+	send_to_char(message, ch, log, context);
+	return output_length == before + bytes + separator;
 }
 
 void send_to_char_f(P_char ch, const char *fmt, ...)
@@ -5113,7 +5124,10 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 			command_links.clear();
 			pager_style_fallback = false;
 		}
-		size_t capacity = paging ? MAX_COMMAND_OUTPUT - output_length - 1 :
+		const size_t separator = paging && output_length ? 1 : 0;
+		size_t capacity = paging && MAX_COMMAND_OUTPUT - output_length > separator ?
+					  MAX_COMMAND_OUTPUT - output_length - separator - 1 :
+				  paging ? 0 :
 					   MAX_STRING_LENGTH - 1;
 		OutputContext recipient_context = context;
 		if (context.resolve_recipient_preferences)
@@ -5138,12 +5152,37 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 		}
 		else if (context.original_message)
 			messg = original_message;
-		if (paging && !bWarningAdded &&
-		    (!pager_original.empty() || messg != original_message))
+		OutputLinks links = rebase_output_links(link_source, messg, context.links);
+		std::string frozen_url_text, original_url_text;
+		const char *pager_message = original_message;
+		if (!context.links_prepared)
+		{
+			links = output_links_with_urls(messg, links, &frozen_url_text);
+			if (!frozen_url_text.empty() &&
+			    (paging || frozen_url_text.size() < MAX_STRING_LENGTH))
+			{
+				links = rebase_output_links(messg, frozen_url_text.c_str(), links);
+				if (paging && original_message == messg)
+					pager_message = frozen_url_text.c_str();
+				else if (paging && canonical_output_markup(original_message,
+									   original_url_text))
+					pager_message = original_url_text.c_str();
+				messg = frozen_url_text.c_str();
+			}
+		}
+		if (paging && !bWarningAdded && output_length && *messg &&
+		    output_length < MAX_COMMAND_OUTPUT - 1)
+		{
+			command_output[output_length++] = OUTPUT_SEND_BOUNDARY;
+			command_output[output_length] = '\0';
+			if (!pager_original.empty())
+				pager_original.push_back(OUTPUT_SEND_BOUNDARY);
+		}
+		if (paging && !bWarningAdded && (!pager_original.empty() || messg != pager_message))
 		{
 			if (pager_original.empty())
 				pager_original.assign(command_output, output_length);
-			size_t original_length = strlen(original_message);
+			size_t original_length = strlen(pager_message);
 			if (original_length < MAX_COMMAND_OUTPUT - pager_original.size())
 			{
 				// Earlier decoration must not displace later visible output. If
@@ -5155,13 +5194,13 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 									    command_links);
 					strcpy(command_output, pager_original.c_str());
 					output_length = pager_original.size();
-					messg = original_message;
+					links = rebase_output_links(messg, pager_message, links);
+					messg = pager_message;
 					pager_style_fallback = true;
 				}
-				pager_original += original_message;
+				pager_original += pager_message;
 			}
 		}
-		const OutputLinks links = rebase_output_links(link_source, messg, context.links);
 		if (executing_ch != ch || !IS_SET(ch->specials.act, PLR_PAGING_ON))
 		{
 			if (SWITCHED(ch) && !bSwitched)
@@ -5169,7 +5208,7 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 				char buf[30];
 				snprintf(buf, 30, "&+M@&+W%s&n: ", J_NAME(ch));
 				bSwitched = TRUE;
-				write_to_q(buf, &ch->desc->output, 1);
+				write_output(buf, &ch->desc->output);
 				bSwitched = FALSE;
 			}
 			write_linked_output(messg, &ch->desc->output, links);
@@ -5237,7 +5276,7 @@ void send_to_all(const char *messg)
 	if (messg)
 		for (i = descriptor_list; i; i = i->next)
 			if (!i->connected)
-				write_to_q(messg, &i->output, 2);
+				write_output(messg, &i->output);
 }
 
 void send_to_outdoor(const char *messg)
@@ -5249,7 +5288,7 @@ void send_to_outdoor(const char *messg)
 			if (!i->connected && OUTSIDE(i->character))
 				if (IS_TRUSTED(i->character) ||
 				    !IS_ROOM(i->character->in_room, ROOM_SILENT))
-					write_to_q(messg, &i->output, 2);
+					write_output(messg, &i->output);
 }
 
 void send_to_nearby_rooms([[maybe_unused]] int from_room, [[maybe_unused]] const char *messg)
@@ -5264,7 +5303,7 @@ void send_to_nearby_rooms([[maybe_unused]] int from_room, [[maybe_unused]] const
       if (!i->connected && OUTSIDE(i->character))
         if (!IS_ROOM(i->character->in_room, ROOM_SILENT) &&
             (how_close(from_room, i->character->in_room, 10) >= 0))
-          write_to_q(messg, &i->output, 2);
+          write_output(messg, &i->output);
 #endif
 }
 
@@ -5292,7 +5331,7 @@ void send_to_except(const char *messg, P_char ch)
 			if (ch->desc != i && !i->connected)
 				if (IS_TRUSTED(i->character) ||
 				    !IS_ROOM(i->character->in_room, ROOM_SILENT))
-					write_to_q(messg, &i->output, 2);
+					write_output(messg, &i->output);
 }
 
 static char send_to_room_f_buf[MAX_STRING_LENGTH];
@@ -5321,7 +5360,7 @@ void send_to_room(const char *messg, int room)
 			if (i->desc)
 				if (IS_TRUSTED(i) || !IS_ROOM(i->in_room, ROOM_SILENT) ||
 				    i->specials.z_cord == 0)
-					write_to_q(messg, &i->desc->output, 2);
+					write_output(messg, &i->desc->output);
 }
 
 void send_to_room_except(const char *messg, int room, P_char ch)
@@ -5342,9 +5381,9 @@ void send_to_room_except(const char *messg, int room, P_char ch)
 				if (GET_LEVEL(i) >= GET_LEVEL(ch))
 				{
 					snprintf(Gbuf4, MAX_STRING_LENGTH, "R[%s]", GET_NAME(ch));
-					write_to_q(Gbuf4, &i->desc->output, 1);
+					write_output(Gbuf4, &i->desc->output);
 				}
-				write_to_q(messg, &i->desc->output, 2);
+				write_output(messg, &i->desc->output);
 			}
 }
 
@@ -5362,7 +5401,7 @@ void send_to_room_except_two(const char *messg, int room, P_char ch1, P_char ch2
 		for (i = world[room].people; i; i = i->next_in_room)
 			if ((i != ch1) && (i != ch2) && i->desc)
 				if (IS_TRUSTED(i) || !IS_ROOM(i->in_room, ROOM_SILENT))
-					write_to_q(messg, &i->desc->output, 2);
+					write_output(messg, &i->desc->output);
 }
 
 void act_convert(char *buf, const char *str, P_char ch, P_char to, P_obj obj, void *vict_obj,

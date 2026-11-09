@@ -64,6 +64,38 @@ prefixes and carriage-return removal. Each snooper renders those records using
 its own capabilities. Logs retain original text, and pager replay does not log
 the message or resolve its targets again.
 
+## URL text recognition
+
+The shared server recognizer accepts explicit, case-insensitive HTTP/HTTPS
+schemes and a nonempty authority. It scans visible Unicode text, so Duris color
+changes within a scheme, host or path do not change the target. It does not infer
+bare domains or other schemes, nor create a URL inside an explicit help link.
+
+Whitespace, controls, quotes, angle brackets, backticks and backslashes end a
+candidate. Trailing `. , ; : !` and unmatched trailing closing parentheses,
+brackets and braces are excluded; balanced delimiters and trailing `?` / `#`
+are retained. No URL is inferred by joining separate sends or a real newline.
+
+Parameter spellings such as `&name=two`, `&n=x` and query flags such as
+`&no-cache` take precedence over similarly spelled Duris colors while parsing
+URL text. Existing color codes remain valid elsewhere and within URLs. A bare
+parameter spelled exactly like a color reset remains ambiguous in Duris markup;
+the existing literal-ampersand form `&&nn` displays `&n` in that case. Canonical
+serialization applies that escaping before slices lose their original scheme.
+
+New sends enter through `write_output()` or the normal player send boundary;
+they infer targets before coalescing/paging. `write_linked_output()` and prepared
+output contexts retain already frozen spans, including empty rejected metadata.
+Thus a page/chunk keeps the original complete destination, and an oversized
+rejected URL cannot reappear as a shorter fragment link. Large help chunks map
+from the full page's character offsets. News acceptance counts the canonical
+bytes actually admitted to the existing command accumulator.
+
+Non-ASCII URL target bytes are percent-encoded UTF-8 in MXP attributes, keeping
+destinations intact through CP437 terminal conversion. Display labels keep their
+normal terminal character conversion. Help commands retain normal client input
+encoding and command dispatch.
+
 ## Verification boundaries
 
 `test_word_output_integration.py` executes the production send, styling, queue,

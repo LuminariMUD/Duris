@@ -294,5 +294,13 @@ int main()
 		telnet_free_output(&d);
 	}
 	copyover_mccp(banner);
+	descriptor_data legacy{};
+	legacy.cp437 = 1;
+	reset(false, {});
+	const OutputLinks unicode_url{ { 0, 2, OutputLinkKind::Url, "https://example.test/é" } };
+	const auto unicode_wire = mxp_render_output("é", unicode_url, false, TL_BLINK);
+	assert(write_to_descriptor(&legacy, unicode_wire.c_str()) == 0);
+	assert(delivered.find("https://example.test/%C3%A9") != std::string::npos &&
+	       delivered.find('\x82') != std::string::npos);
 	puts("Telnet/TLS short-write, backpressure, failure, cleanup and MCCP tests passed");
 }

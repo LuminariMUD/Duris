@@ -7320,8 +7320,16 @@ void do_help(P_char ch, char *argument, int /*cmd*/)
 	char *attribs;
 	// Catalog reads do not impose a character wait or a browsing cooldown.
 	OutputLinks links;
-	const string text = wiki_help(string(argument), &links);
+	string text = wiki_help(string(argument), &links);
+	string frozen_urls;
+	links = output_links_with_urls(text.c_str(), links, &frozen_urls);
+	if (!frozen_urls.empty())
+	{
+		links = rebase_output_links(text.c_str(), frozen_urls.c_str(), links);
+		text = std::move(frozen_urls);
+	}
 	OutputContext context;
+	context.links_prepared = true;
 	// Leave room for the worst ANSI/UTF-8 expansion of each visible character.
 	constexpr size_t chunk_limit = MAX_STRING_LENGTH / 32;
 	if (text.size() <= chunk_limit)
@@ -7356,12 +7364,29 @@ void do_help(P_char ch, char *argument, int /*cmd*/)
 			part.assign(visible.begin() + begin, visible.begin() + end);
 			char markup[MAX_STRING_LENGTH];
 			part.ansi(markup);
-			const string source =
-				text.substr(offsets[begin], offsets[end] - offsets[begin]);
-			const auto clipped =
-				slice_output_links(links, offsets[begin], offsets[end]);
-			const auto rebased = rebase_output_links(source.c_str(), markup, clipped);
-			context.links = rebased;
+			std::vector<size_t> part_offsets;
+			AnsiString serialized;
+			serialized.set(markup, &part_offsets);
+			part_offsets.push_back(strlen(markup));
+			OutputLinks chunk_links;
+			for (const auto &link : links)
+			{
+				const size_t first = std::max(
+					begin, static_cast<size_t>(std::lower_bound(offsets.begin(),
+										    offsets.end(),
+										    link.begin) -
+								   offsets.begin()));
+				const size_t last = std::min(
+					end, static_cast<size_t>(std::lower_bound(offsets.begin(),
+										  offsets.end(),
+										  link.end) -
+								 offsets.begin()));
+				if (first < last)
+					chunk_links.push_back({ part_offsets[first - begin],
+								part_offsets[last - begin],
+								link.kind, link.target });
+			}
+			context.links = chunk_links;
 			send_to_char(markup, ch, context);
 			begin = end;
 		}

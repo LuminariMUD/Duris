@@ -690,6 +690,7 @@ static size_t visible_terminal_bytes(const std::string &markup)
 
 #include "output_links_checks.inc"
 #include "help_output_checks.inc"
+#include "url_output_checks.inc"
 
 int main()
 {
@@ -701,6 +702,7 @@ int main()
 	output_links_matrix();
 	mxp_delivery_matrix();
 	help_output_matrix();
+	url_output_matrix();
 	privacy_toggle_matrix();
 	toggle_matrix();
 	chat_presentation_matrix();
@@ -1037,7 +1039,11 @@ int main()
 		original += chunk;
 	}
 	assert(original.size() < MAX_COMMAND_OUTPUT);
-	assert(std::string(command_output) == original && output_length == original.size());
+	const AnsiString visible_accumulated(command_output);
+	assert(visible_accumulated.size() == original.size() &&
+	       output_length == strlen(command_output));
+	for (size_t i = 0; i < original.size(); ++i)
+		assert(visible_accumulated.ch(i) == original[i]);
 	// Once original content reaches the legacy warning, later sends must leave it.
 	std::string excess(MAX_COMMAND_OUTPUT, 'x');
 	send_to_char(excess.c_str(), &actor, LOG_NONE, style);

@@ -134,6 +134,7 @@ struct OutputContext
 	OutputRole role = OutputRole::None;
 	const OutputChatMessage *chat = nullptr;
 	std::span<const OutputLink> links{}; // Borrowed byte ranges into this send's markup.
+	bool links_prepared = false; // Pager/chunk replay retains complete original URL targets.
 };
 
 inline OutputContext recipient_output_context(OutputChannel channel,

@@ -37,6 +37,11 @@ struct OutputLinkFrame
 };
 
 bool valid_output_links(std::span<const OutputLink> links, size_t bytes);
+// Ranges describe the input. Optional frozen markup escapes literal ampersands
+// so slices no longer depend on seeing the original scheme.
+OutputLinks output_links_with_urls(const char *markup, std::span<const OutputLink> explicit_links,
+				   std::string *frozen = nullptr);
+bool canonical_output_markup(const char *markup, std::string &frozen);
 void append_output_links(OutputLinks &output, std::span<const OutputLink> links, size_t offset,
 			 size_t bytes);
 OutputLinks slice_output_links(std::span<const OutputLink> links, size_t begin, size_t end);
@@ -46,6 +51,9 @@ OutputLinkFrame freeze_output_links(const char *markup, std::span<const OutputLi
 				    bool plain_terminal = false);
 
 struct txt_q;
+// New raw output is scanned once before concatenation. Frozen sends/pager
+// replay use write_linked_output instead, retaining complete original targets.
+void write_output(const char *text, txt_q *queue);
 // Existing queue functions retain their plain-text API. These output-only
 // boundaries copy borrowed metadata on enqueue and move it out before dequeue.
 void write_linked_output(const char *text, txt_q *queue, std::span<const OutputLink> links);

@@ -60,10 +60,20 @@ void mxp_handle_negotiation(P_desc descriptor, unsigned char command)
 
 namespace
 {
-std::string attribute(const std::string &value)
+std::string attribute(const std::string &value, bool url)
 {
 	std::string result;
-	for (char c : value)
+	for (unsigned char c : value)
+	{
+		// URI targets must survive a legacy terminal's CP437 conversion.
+		if (url && c >= 128)
+		{
+			constexpr char hex[] = "0123456789ABCDEF";
+			result += '%';
+			result += hex[c >> 4];
+			result += hex[c & 15];
+			continue;
+		}
 		switch (c)
 		{
 		case '&':
@@ -85,6 +95,7 @@ std::string attribute(const std::string &value)
 			result += c;
 			break;
 		}
+	}
 	return result;
 }
 
@@ -156,8 +167,9 @@ std::string mxp_render_output(const char *markup, std::span<const OutputLink> li
 	{
 		emit(position, link.begin);
 		const std::string tag = link.kind == OutputLinkKind::Command ? "SEND" : "A";
-		const std::string open =
-			"\x1b[1z<" + tag + " HREF=\"" + attribute(link.target) + "\">\x1b[7z";
+		const std::string open = "\x1b[1z<" + tag + " HREF=\"" +
+					 attribute(link.target, link.kind == OutputLinkKind::Url) +
+					 "\">\x1b[7z";
 		const std::string close = "\x1b[1z</" + tag + ">\x1b[7z";
 		position = link.begin;
 		while (position < link.end)
