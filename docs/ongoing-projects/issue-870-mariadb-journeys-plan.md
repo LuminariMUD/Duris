@@ -1,6 +1,6 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: implementation in progress; launch/shop conversions qualified; news/onboarding/death under test.
+Status: implementation in progress; launch/shop, news, death and corpse journeys qualified; onboarding, cache and flight checks running.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
 Branch: `branch/issue-870-mariadb-journeys`.
@@ -102,7 +102,7 @@ Each batch should produce a reviewable commit with its focused runtime proof.
 - [ ] Finish `run_news_prompt_journey.py` and
   `run_issue213_onboarding_journey.py`: use SQL for saved news/onboarding state
   and retain the reconnect and command/protocol assertions.
-- [ ] Finish `run_death_level_projection_journey.py` and
+- [x] Finish `run_death_level_projection_journey.py` and
   `run_corpse_haul_count_cap_journey.py`: retain saved level, account projection,
   item count and wallet checks; remove unreachable inspector fallbacks.
 - [ ] Finish `run_cleric_rebalance_journey.py` and
@@ -111,7 +111,7 @@ Each batch should produce a reviewable commit with its focused runtime proof.
 - [ ] Finish `run_telemetry_player_journey.py`: remove unused state configuration,
   retaining the local receiver and its gameplay/copyover/performance assertions.
   Use its local test mode; do not send synthetic events to live analytics.
-- [ ] Finish `test_corpse_trap_restart_journey.py`: use SQL item/trap state and
+- [x] Finish `test_corpse_trap_restart_journey.py`: use SQL item/trap state and
   preserve death, nested contents and restart behavior.
 - [ ] Finish `test_information_cache_journey.py`: remove file publication and
   select MariaDB by default; retain cache refresh and concurrent reader checks.
@@ -369,13 +369,55 @@ This is an estimate, not a time limit or permission to omit required proof.
   each journey; removed snapshot discovery and backend-only fallbacks. No new
   inspector, schema, framework or server option was added.
 
+### News, onboarding and death projection
+
+- Code: `c2fdd28eb`, `branch/issue-870-login-journeys`,
+  [PR #890](https://github.com/LuminariMUD/Duris/pull/890), draft pending the
+  full onboarding result. Base: #888. News now publishes its first synthetic
+  edition to SQL instead of an ignored file; inspector fallbacks are gone.
+- Passed: `tests/async/with_disposable_mariadb.sh python3 tests/async/run_news_prompt_journey.py --backend mariadb --server bin/server/dms_new`.
+  Includes acknowledgement isolation, invalid/valid/periodic reload, reconnect,
+  copyover, restart and distinct saved domain balances. Evidence:
+  `bin/tests/issue-870/news-prompt-run.log` and `news-journey-mariadb.{json,log}`.
+- Passed all 11 cases: `tests/async/with_disposable_mariadb.sh python3 tests/async/run_death_level_projection_journey.py --backend mariadb --binary bin/server/dms_new --output bin/tests/issue-870/death-projection`.
+  Telnet/WS protected and actual-delevel deaths, menu projection, cold restart
+  and long-session side cooldown all passed. Evidence: `death-projection/`
+  and `death-projection-run.log` below the task evidence directory.
+- These two tests ran the edits later committed unchanged as `c2fdd28eb`;
+  the death report's Git revision is the parent `014f99194` plus those edits.
+  Binary hash is the shared `fe10882b...` recorded above.
+
+### Corpse haul and lethal trap restart
+
+- Code: `1f6adddb0`, `branch/issue-870-corpse-journeys`,
+  [PR #891](https://github.com/LuminariMUD/Duris/pull/891), ready for review,
+  based on #890. Reused `mariadb_authority()` instead of duplicated database
+  setup and removed 145 net lines. SQL wallet, custody, trap and restart
+  assertions remain. The retired backend is rejected; the trap runner's
+  no-argument build now selects MariaDB.
+- Both passed against code commit `1f6adddb0` and the same ordinary 250 ms
+  binary (no C/C++ edits):
+  `tests/async/with_disposable_mariadb.sh python3 tests/async/run_corpse_haul_count_cap_journey.py bin/server/dms_new mariadb`;
+  `tests/async/with_disposable_mariadb.sh python3 tests/async/test_corpse_trap_restart_journey.py bin/server/dms_new mariadb`.
+- Evidence: `bin/tests/issue-870/corpse-haul-run.log` and
+  `corpse-trap-run.log`. NPC/player cap notices, partial haul, coin/wallet
+  state, saved custody and reconnect passed. The lethal trap also passed
+  cancellation, bystander effect, server survival, nested contents/custody
+  and spent state across cold restart. Syntax, diff check and hooks passed.
+
 ### Current work / next action
 
-- Launch/shop PR: [#888](https://github.com/LuminariMUD/Duris/pull/888), based on #887.
-- News, onboarding and death-projection code is committed as `c2fdd28eb` on
-  `branch/issue-870-login-journeys` (not yet pushed/PR). It removes
-  unreachable inspector branches. News now seeds its initial synthetic edition
-  in SQL rather than an ignored file. Full existing scenarios are running under
-  disposable MariaDB; do not mark them complete before checking their reports.
+- Full onboarding is running without `--case` narrowing:
+  `tests/async/with_disposable_mariadb.sh python3 tests/async/run_issue213_onboarding_journey.py --server bin/server/dms_new --output bin/tests/issue-870/onboarding.json`.
+  Check `onboarding-run.log` and the final `completed` field before marking
+  #890 ready. It has passed the initial seven guide routes and is continuing
+  the real quest/shop/threshold matrices; it is not yet qualified.
+- Cache/flight conversion code is committed as `b53854e6b` on
+  `branch/issue-870-cache-flight-journeys`, not yet pushed/PR. It replaces the
+  file/default paths with the existing MariaDB fixture and shared build helper.
+  Both are running as `tests/async/with_disposable_mariadb.sh python3 tests/async/test_<information_cache|flight_network>_journey.py --server bin/server/dms_new`.
+  Logs: `information-cache-run.log` and `flight-network-run.log` in the task
+  evidence directory. Flight's default run starts its isolated interruption
+  child; check both processes/results before claiming the route matrix passed.
 - Remaining batches above are still required. Aggregate regression/DB gates and
   the other standalone conversions have not been run for this work yet.
