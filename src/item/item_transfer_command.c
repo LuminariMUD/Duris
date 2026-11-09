@@ -172,6 +172,11 @@ bool target_topology_for(const item_transfer_payload &payload, uint64_t item_uid
 
 bool validate_payload(const item_transfer_payload &payload)
 {
+	if (payload.paid_creation &&
+	    (payload.reason != item_transfer_reason::creation || !payload.multi_root ||
+	     payload.to_owner.type != item_owner_type::player || payload.reason_id >= 0 ||
+	     payload.reason_id < -static_cast<int64_t>(INT32_MAX)))
+		return false;
 	if (!item_owner_identity_valid(payload.from_owner) ||
 	    !item_owner_identity_valid(payload.to_owner) || !valid_reason(payload.reason) ||
 	    !payload.item_count || payload.item_count > ITEM_TRANSFER_MAX_ITEMS ||
@@ -458,8 +463,11 @@ bool item_transfer_command_encode_payload(const item_transfer_payload &payload,
 {
 	if (!encoded || !validate_payload(payload))
 		return false;
+	const size_t header_bytes = payload.paid_creation ?
+					    ITEM_TRANSFER_PAID_CREATION_HEADER_BYTES :
+					    ITEM_TRANSFER_HEADER_BYTES;
 	const size_t item_section_size =
-		ITEM_TRANSFER_HEADER_BYTES + payload.item_count * ITEM_TRANSFER_ENTRY_BYTES;
+		header_bytes + payload.item_count * ITEM_TRANSFER_ENTRY_BYTES;
 	const size_t payload_size = item_section_size + sizeof(uint32_t) + payload.item_blob_size;
 	if (payload_size > CRITICAL_COMMAND_MAX_PAYLOAD_BYTES)
 		return false;
@@ -483,11 +491,13 @@ bool item_transfer_command_encode_payload(const item_transfer_payload &payload,
 	put_u64(encoded->data() + TARGET_PARENT_OFFSET, payload.target_parent_item_uid);
 	put_u64(encoded->data() + TARGET_PARENT_REVISION_OFFSET,
 		payload.expected_target_parent_revision);
+	if (payload.paid_creation)
+		put_u64(encoded->data() + ITEM_TRANSFER_HEADER_BYTES, payload.paid_wallet_revision);
 	for (size_t index = 0; index < payload.item_count; ++index)
 	{
 		const item_transfer_entry &entry = payload.items[index];
-		uint8_t *output = encoded->data() + ITEM_TRANSFER_HEADER_BYTES +
-				  index * ITEM_TRANSFER_ENTRY_BYTES;
+		uint8_t *output =
+			encoded->data() + header_bytes + index * ITEM_TRANSFER_ENTRY_BYTES;
 		put_u64(output, entry.item_uid);
 		put_u64(output + 8, entry.root_item_uid);
 		put_u64(output + 16, entry.parent_item_uid);
@@ -505,9 +515,13 @@ bool item_transfer_command_decode_payload(const critical_command &command,
 					  item_transfer_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::item_transfer ||
-	    command.payload_version != ITEM_TRANSFER_PAYLOAD_VERSION ||
+	    (command.payload_version != ITEM_TRANSFER_PAYLOAD_VERSION &&
+	     command.payload_version != ITEM_TRANSFER_PAID_CREATION_VERSION) ||
 	    command.payload.size() <
-		    ITEM_TRANSFER_HEADER_BYTES + ITEM_TRANSFER_ENTRY_BYTES + sizeof(uint32_t))
+		    (command.payload_version == ITEM_TRANSFER_PAID_CREATION_VERSION ?
+			     ITEM_TRANSFER_PAID_CREATION_HEADER_BYTES :
+			     ITEM_TRANSFER_HEADER_BYTES) +
+			    ITEM_TRANSFER_ENTRY_BYTES + sizeof(uint32_t))
 		return false;
 	*payload = {};
 	payload->from_owner = decode_owner(command.payload.data() + FROM_OFFSET);
@@ -517,6 +531,13 @@ bool item_transfer_command_decode_payload(const critical_command &command,
 	payload->item_count = get_u16(command.payload.data() + COUNT_OFFSET);
 	payload->reason_id =
 		static_cast<int64_t>(get_u64(command.payload.data() + REASON_ID_OFFSET));
+	payload->paid_creation = command.payload_version == ITEM_TRANSFER_PAID_CREATION_VERSION;
+	const size_t header_bytes = payload->paid_creation ?
+					    ITEM_TRANSFER_PAID_CREATION_HEADER_BYTES :
+					    ITEM_TRANSFER_HEADER_BYTES;
+	if (payload->paid_creation)
+		payload->paid_wallet_revision =
+			get_u64(command.payload.data() + ITEM_TRANSFER_HEADER_BYTES);
 	payload->expected_from_revision = get_u64(command.payload.data() + FROM_REVISION_OFFSET);
 	payload->expected_to_revision = get_u64(command.payload.data() + TO_REVISION_OFFSET);
 	payload->selected_item_uid = get_u64(command.payload.data() + SELECTED_ITEM_OFFSET);
@@ -528,13 +549,13 @@ bool item_transfer_command_decode_payload(const critical_command &command,
 	if (!payload->item_count || payload->item_count > ITEM_TRANSFER_MAX_ITEMS)
 		return false;
 	const size_t item_section_size =
-		ITEM_TRANSFER_HEADER_BYTES + payload->item_count * ITEM_TRANSFER_ENTRY_BYTES;
+		header_bytes + payload->item_count * ITEM_TRANSFER_ENTRY_BYTES;
 	if (command.payload.size() < item_section_size + sizeof(uint32_t))
 		return false;
 	for (size_t index = 0; index < payload->item_count; ++index)
 	{
-		const uint8_t *input = command.payload.data() + ITEM_TRANSFER_HEADER_BYTES +
-				       index * ITEM_TRANSFER_ENTRY_BYTES;
+		const uint8_t *input =
+			command.payload.data() + header_bytes + index * ITEM_TRANSFER_ENTRY_BYTES;
 		payload->items[index] = { get_u64(input),
 					  get_u64(input + 8),
 					  get_u64(input + 16),
@@ -613,7 +634,9 @@ bool item_transfer_command_build(critical_command *command, critical_operation_i
 	*command = { .schema_version = CRITICAL_COMMAND_SCHEMA_VERSION,
 		     .operation_id = operation_id,
 		     .type = critical_command_type::item_transfer,
-		     .payload_version = ITEM_TRANSFER_PAYLOAD_VERSION,
+		     .payload_version = payload.paid_creation ?
+						ITEM_TRANSFER_PAID_CREATION_VERSION :
+						ITEM_TRANSFER_PAYLOAD_VERSION,
 		     .source_site = source_site,
 		     .deadline_class = deadline_class,
 		     .accepted_at_usec = 0,

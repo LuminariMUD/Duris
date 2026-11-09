@@ -356,7 +356,7 @@ The booted `tests/async/test_gmcp_control_journey.py` journey covers real Telnet
 and WebSocket dispatch, character entry/return/reconnect, preference changes,
 staff clock mutation and invalid WebSocket module input on disposable state.
 The original-socket copyover journey verifies context/generation continuity
-with and without MCCP, and the native copyover matrix covers versions 12-21.
+with and without MCCP, and the native copyover matrix covers versions 12-22.
 [#498](https://github.com/LuminariMUD/Duris/issues/498)
 retains the client handoff and delivery scope. These focused checks do not establish
 general player capacity or negligible overhead.

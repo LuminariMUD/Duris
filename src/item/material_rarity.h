@@ -20,7 +20,8 @@
  * counts one contribution for every distinct material ingredient needed by a
  * qualifying template; declared recipe quantities remain available in the
  * per-template CSV for later supply/demand modelling. Returns false on output
- * creation, write, or close failure; partial files must not be used as a report.
+ * creation, write, close, template, or context-fingerprint failure; partial files
+ * must not be used as a report.
  */
 bool write_material_rarity_report(const char *output_dir);
 

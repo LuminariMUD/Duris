@@ -12,12 +12,58 @@ ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
 #include "item/item_ownership_runtime.h"
 #include "economy/collector_command.h"
+#include "sql/item_owner_rows.h"
+#include "persistence/dupe_log.h"
+#include <cstdlib>
+#include <cstring>
 
 #include <cassert>
 
+static int rejected_rows;
+void dupe_log_item(const char *event, uint64_t, int32_t,
+                   const item_owner_identity &, const item_owner_identity &)
+{
+    assert(!strcmp(event, "load_skipped"));
+    ++rejected_rows;
+}
+/* SQL_ROW_HELPERS */
 
 int main()
 {
+    {
+        item_ownership_runtime_reset();
+        const char *row[] = {"901", "0", "1", "42", "0", "7", "100", "1", "3"};
+        assert(sql_persistence_item_owner_fields_match(901, "player", 42, 0, row));
+        item_ownership_runtime_entry loaded{};
+        assert(item_ownership_runtime_lookup(901, &loaded));
+        assert(loaded.root_item_uid == 901 && loaded.parent_item_uid == 0 &&
+               loaded.owner.type == item_owner_type::player && loaded.owner.id == 42 &&
+               loaded.owner.context_id == 0 && loaded.item_revision == 7 &&
+               loaded.vnum == 100 && loaded.state == item_custody_state::active &&
+               loaded.owner_revision == 3);
+        assert(!sql_persistence_item_owner_fields_match(901, "player", 43, 0, row));
+        assert(!sql_persistence_item_owner_fields_match(901, "player", 42, 1, row));
+        assert(rejected_rows == 2);
+        assert(!sql_persistence_item_owner_fields_match(901, "unknown", 42, 0, row));
+        // A later cache revision survives an older ordered read's publication.
+        row[5] = "8"; row[8] = "4";
+        assert(sql_persistence_item_owner_fields_match(901, "player", 42, 0, row));
+        row[5] = "7"; row[8] = "3";
+        assert(sql_persistence_item_owner_fields_match(901, "player", 42, 0, row));
+        assert(item_ownership_runtime_lookup(901, &loaded) &&
+               loaded.item_revision == 8 && loaded.owner_revision == 4);
+        // Loader acceptance of retired/unversioned/absent rows must not hydrate
+        // an active movement authority entry.
+        item_ownership_runtime_reset();
+        row[7] = "2";
+        assert(sql_persistence_item_owner_fields_match(901, "player", 42, 0, row));
+        assert(!item_ownership_runtime_lookup(901, &loaded));
+        row[7] = "1"; row[8] = nullptr;
+        assert(sql_persistence_item_owner_fields_match(901, "player", 42, 0, row));
+        assert(!item_ownership_runtime_lookup(901, &loaded));
+        assert(sql_persistence_item_owner_fields_match(901, "player", 42, 0, nullptr));
+        assert(!item_ownership_runtime_lookup(901, &loaded));
+    }
 	item_ownership_runtime_reset();
 	const item_transfer_result extended = { 100, 1, 11, 1, 6, 7, true };
 	std::array<uint8_t, ITEM_TRANSFER_RESULT_BYTES> encoded = {};
@@ -376,10 +422,15 @@ int main()
 '''
 
 
-with tempfile.TemporaryDirectory(prefix="duris-item-ownership-runtime-") as temp_dir:
+(ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="duris-item-ownership-runtime-", dir=ROOT / "bin/tests") as temp_dir:
 	source = Path(temp_dir) / "item_ownership_runtime_test.cpp"
 	binary = Path(temp_dir) / "item_ownership_runtime_test"
-	source.write_text(HARNESS)
+	helpers = "\n".join(extract_function("sql.c", signature) for signature in (
+        "static item_owner_type sql_persistence_owner_type(",
+        "static bool sql_persistence_owner_row_matches(",
+        "bool sql_persistence_item_owner_fields_match("))
+	source.write_text(HARNESS.replace("/* SQL_ROW_HELPERS */", helpers))
 	subprocess.run(
 		[
 			"g++",
