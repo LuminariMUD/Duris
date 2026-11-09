@@ -1,6 +1,6 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: conversions, naming and standalone journey qualification are complete. First full regression:903/907 passed; four findings are being repaired. Database gate and whole-issue completion remain pending.
+Status: conversions, naming and standalone journey qualification are complete. All four first-regression findings have focused passing fixes; the full regression retry is running. Database gate and whole-issue completion remain pending.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
 Review head: `branch/issue-870-telemetry-test-scheduling`. See the latest qualification notes before continuing.
@@ -677,7 +677,8 @@ These are preserved per-chunk results, not claims that a later binary ran them.
   Merge conflict retained reviewed shop paid-crash coverage and current names.
   Prerequisites #880/#887/#890–#893/#895–#897/#903 are merged by independent review;
   #918 now targets master. Pending dependent PRs continue #918 → #922 → #923 →
-  #924 → #925 → #926 → #928 → #931 → #938 → #948 → #949 → #954 → #955 → #957 → #958.
+  #924 → #925 → #926 → #928 → #931 → #938 → #948 → #949 → #954 → #955 → #957 → #958
+  → #961 → #962 → #963.
 - Integrated native build and deep claim DB matrix exited0. Ordinary SHA-256:
   `6dfb502003ca659f83dff27acd9cf51c5ac1b263d2b4a408e8339ecd0c1494f0`;
   compatibility SHA-256:
@@ -720,8 +721,8 @@ These are preserved per-chunk results, not claims that a later binary ran them.
   The four concrete repairs and focused results follow below; no full-suite
   success is claimed yet.
 - #938/#948/#955 descriptions now record their qualified runtime results and
-  linked follow-ups; all three are ready. #958 remains draft. Next: finish the
-  four aggregate repairs, repeat full test-all and test-db to terminal success,
+  linked follow-ups; all three are ready. #958 remains draft. The four findings
+  are now repaired in ready #961/#962/#963. Repeat full test-all and test-db to terminal success,
   then finish scope/names/evidence/diff review and mark the final review work ready.
   Preserve failed results before retries. No CI wait/full burn-in.
 - The mission remains all #870 work with autonomous issue repair and tested,
@@ -780,3 +781,13 @@ These are preserved per-chunk results, not claims that a later binary ran them.
 - All four first-aggregate findings now have focused passing proof. Full aggregate
   success still requires rerunning test-all and test-db; earlier903/907 remains
   the recorded failed aggregate and the DB gate has not yet run.
+
+- **Active retry controller88225** on pushed scheduling code bf2bbc41c:
+  `make test-all -j4 TEST_JOBS=8`, then `make test-db` only if regression succeeds.
+  Logs `final-test-all-retry1.log`/`.exit`, then `final-test-db.log`/`.exit`.
+  It copies the first DB run to `final-db-first-run/` at terminal completion.
+  Previous controller55425 and every named/Assassin/paid-crash controller are
+  terminal. Check88225 before starting any duplicate full run. All four focused
+  repairs are committed, pushed and labeled bug (#961/#962/#963).
+- Current ETA update:1–2 more hours for remaining full gates and actual findings;
+  this is an estimate, not permission to omit required validation or final review.
