@@ -46,7 +46,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-recipe-selection`; its initial synchronized commit was
+`origin/branch/ival-enhance-config-bounds`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -71,7 +71,8 @@ and plans crafting XP on `branch/ival-material-bounds`; #968 repairs downstream
 XP conversion checkpoints on `branch/ival-xp-conversion`; #969 honors disabled
 crafting XP on `branch/ival-zero-crafting-xp`; #971 validates crafting config and
 its arithmetic on `branch/ival-crafting-config-bounds`; #972 validates recipe
-selection on `branch/ival-recipe-selection`. Branch/base
+selection on `branch/ival-recipe-selection`; #974 validates enhancement config
+and its numeric consumers on `branch/ival-enhance-config-bounds`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -1310,6 +1311,9 @@ assume identical book filtering/import behavior from the existing contract test.
 ### Chunk 20 — validate enhancement config and widen consumers (F08, implemented)
 
 Branch: `branch/ival-enhance-config-bounds`, based on `branch/ival-recipe-selection`.
+Published: commit `2c03f17b4`, [PR #974](https://github.com/LuminariMUD/Duris/pull/974)
+(bug label), stacked on #972. Ready for review; dedicated local/remote worktrees
+carry the committed implementation, evidence and handoff.
 
 **Outcome:** complete finite/ranged numeric parsing, deterministic compiled
 defaults before opening the file, guarded sparse rules/exclusions/masks and
@@ -1350,7 +1354,7 @@ unsupported; auditing its required representation policy remains F10.
 Fatal ASan/UBSan/float-cast-overflow checks cover wide donor/level/gain/attempt
 arithmetic, candidate-score checks before hashing, a one-entry INT_MAX index
 endpoint, finite extreme stat-cap scales and elite essence multiplication, with
-the normal success/refusal/pouch cases retained. Config arithmetic failures
+the normal success/refusal/pouch cases retained. The widened-limit refusal probes
 preserve source/donor/wallet and avoid invalid loads. Existing enhancement,
 essence, pool and crafting contracts pass; server build passes. No Ival formula,
 storage input, database, migration or production operation changes occur.
@@ -1358,7 +1362,10 @@ storage input, database, migration or production operation changes occur.
 **Continuation:** finish property/authoring/admission bounds, F10's supported-spell
 audit and exact displayed-versus-debited currency amounts, and F13's bounded
 index/search work. Copper-value comments are corrected while legacy key names
-remain compatible; current player display precision still needs F10. Qualify
+remain compatible; current player display precision still needs F10.
+`get_spell_from_obj` is defined in `src/magic/affects.c`; audit actual
+`SPELL_SHADOW_SHIELD` object-affect producers/consumers before deciding whether
+the unsupported spell row must be enforced or removed. Qualify
 material-family validity at enhancement targets and skipped-NPC-item fallback
 during the remaining consumer/F16 journeys; do not infer that a positive
 template score proves a valid material family. Full MariaDB journeys remain F16.
