@@ -28,17 +28,24 @@ harness = r'''
 #include "economy/auction_transaction.h"
 #include "economy/currency_transaction.h"
 #include "item/item_ownership_runtime.h"
+#include "player/player_save_pipeline.h"
+#include "core/utils.h"
 #include <algorithm>
 #include <cassert>
 #include <cerrno>
 #include <cstdio>
 #include <string>
 #include <unordered_map>
+[[noreturn]] int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 
 bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_type, int64_t,
     critical_source_site, critical_deadline_class, currency_completion_fn, const void *,
     size_t) { return true; }
 bool obj_to_char(P_obj, P_char) { return true; }
+P_char character_list = nullptr;
+bool currency_transaction_publish_trade(P_char, int64_t) { std::abort(); }
+void currency_transaction_release_trade(uint32_t) { std::abort(); }
+void player_save_pipeline_release_trade(uint32_t) { std::abort(); }
 void extract_obj(P_obj, int = 0) {}
 P_obj find_live_object(P_obj expected, uint64_t) { return expected; }
 ''' + declarations + publication + r'''
@@ -103,7 +110,8 @@ int main() {
 }
 '''
 
-with tempfile.TemporaryDirectory(prefix="auction-publication-") as temporary:
+(ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="auction-publication-", dir=ROOT / "bin/tests") as temporary:
     cpp = Path(temporary) / "publication.cpp"
     binary = Path(temporary) / "publication"
     cpp.write_text(harness)

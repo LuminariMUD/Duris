@@ -3203,8 +3203,8 @@ static P_obj instantiate_object_template_impl(const object_template &prototype, 
 	}
 	if (obj->type == ITEM_SWITCH && !obj_index[nr].func.obj)
 		obj_index[nr].func.obj = item_switch;
-	obj->nevents = NULL;
-	obj->nevents_tail = NULL;
+	// memset initialized the owner lists before any proclib could schedule work.
+	// Keep those links so extraction can cancel every event attached above.
 
 	if (obj_index[nr].func.obj)
 	{

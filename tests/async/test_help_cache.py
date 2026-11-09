@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]
 source = (ROOT / 'src/cmd/wikihelp.c').read_text()
@@ -17,8 +18,11 @@ def function(signature, start=0):
         end += 1
     return source[begin:end]
 
-lookup = function('string wiki_help(string str)')
-render = function('string wiki_help_single(string str)')
+markup = '\n'.join(function(signature) for signature in (
+    'string str_replace(', 'static void append_help_link(',
+    'static string dewikify(', 'string dewikify(string str)'))
+lookup = function('string wiki_help(string str)') + '\n' + function('string wiki_help(string str,')
+render = function('string wiki_help_single(string str)') + '\n' + function('string wiki_help_single(string str,')
 race_description = function('string wiki_help_prose(') + '\n' + function('string wiki_race_description(')
 assert 'qry(' not in lookup + render and 'mysql_' not in lookup + render
 actinf = (ROOT / 'src/cmd/actinf.c').read_text()
@@ -33,8 +37,7 @@ prefix = r'''
 #include <cstdlib>
 #include <iostream>
 using namespace std;
-constexpr int WIKIHELP_RESULTS_LIMIT=100, MAX_INPUT_LENGTH=1024;
-constexpr int WIKI_CLASS=1, WIKI_RACE=2, WIKI_SPEC=3;
+#include "cmd/wikihelp.h"
 const char *LOG_HELP="help";
 void logit(const char *, const char *, ...) {}
 int ansi_strlen(const char *s) { return strlen(s); }
@@ -45,8 +48,6 @@ const help_catalog *help_cache_get() { return ready ? &pages : nullptr; }
 bool help_title_equal(const string &a,const string &b) { return strcasecmp(a.c_str(),b.c_str())==0; }
 bool help_title_matches(const string &a,const string &b) {
  return search(a.begin(),a.end(),b.begin(),b.end(),[](unsigned char x,unsigned char y){return tolower(x)==tolower(y);}) != a.end(); }
-string wiki_help_single(string);
-string dewikify(string s) { return s; }
 string trim(const string &s,const char *chars) {
  auto begin=s.find_first_not_of(chars); return begin==string::npos ? "" : s.substr(begin,s.find_last_not_of(chars)-begin+1); }
 int dynamic_version=1;
@@ -121,8 +122,11 @@ int main() {
     for name, files in [('refresh', [ROOT / 'tests/async/refresh_cache_harness.cpp']),
                         ('help', [temp / 'help.cpp'])]:
         if name == 'help':
-            files[0].write_text(prefix + lookup + '\n' + render + '\n' + race_description + main)
+            files[0].write_text(prefix + markup + '\n' + lookup + '\n' + render + '\n' + race_description + main)
         binary = temp / name
+        dependencies = (['src/net/output_links.c', 'src/net/ansi.c', 'src/net/unicode.c', str(HARNESS_STUBS)]
+                        if name == 'help' else [])
         subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-pthread',
-                        '-Isrc', *map(str,files), '-o',str(binary)],cwd=ROOT,check=True)
+                        '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections',
+                        '-Isrc', *map(str,files), *dependencies, '-o',str(binary)],cwd=ROOT,check=True)
         subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=30)
