@@ -144,6 +144,8 @@ for this test-only chunk.
 ### Chunk 3 — propagate material-report output failures (F07, partial)
 
 Branch: `branch/ival-report-errors`, based on `branch/ival-characterization`.
+Published: commit `581972d18`, [PR #879](https://github.com/LuminariMUD/Duris/pull/879)
+(bug label), stacked on #878. Formatting and clang-tidy commit checks passed.
 
 **Outcome:** the writer returns failure when directory/file creation, writes, or
 stream closure fails, and the report command exits nonzero. All four streams are
@@ -176,10 +178,22 @@ before database/listener startup; no live environment or player data was used.
 existing caller. No error framework, output transaction, or new report mode is
 needed. The path change removes truncation rather than adding another limit.
 
-Next: publish Chunk 3 after its formatting/commit checks. Then truthful
-editor/config/report diagnostics and full-context native corpus
-reporting (remaining Stage 1), followed by the shared evaluator/context work.
+Next: continue remaining Stage 1 work and the shared evaluator/context work.
+All four published PRs are open for review; none has been merged or deployed.
 No formula-changing slice is complete without the delta qualification below.
+
+Concrete context work to resume: `boot_material_rarity_objects()` in
+`src/world/db.c` only indexes objects and initializes pools. The ordinary circle
+setup is `assign_spell_pointers()` in `src/net/sparser.c` (calls
+`initialize_skills()`), and racial factors come from `update_stat_data()` in
+`src/world/db.c` after properties load. Native bindings live in
+`assign_objects()` in `src/specs/specs.assign.c`; **do not call that whole
+function in offline mode**: it also writes mobile bindings and calls
+`assign_ship_crew_funcs()`. Reuse/expose the actual object-binding data without
+those runtime effects, and reconcile parsed `object_template` fields with
+`convertObj()` before using a read-only view. This is the next missing evidence
+needed for full-context corpus deltas and F07/F11/F12, not a reason to substitute
+the current incomplete report or synthetic cases for world qualification.
 
 ## Main conclusions
 
