@@ -228,6 +228,8 @@ nothing needed by this extraction.
 ### Chunk 5 — use shared arithmetic in the editor (F06, partial)
 
 Branch: `branch/ival-editor-values`, based on `branch/ival-editor-formatting`.
+Published: `28ca386e6`, [PR #886](https://github.com/LuminariMUD/Duris/pull/886)
+(bug label), stacked on #885. Ready for review; formatting commit checks passed.
 
 Formatting prerequisite: `64b11e3b7`,
 [PR #885](https://github.com/LuminariMUD/Duris/pull/885) (enhancement label),
@@ -278,7 +280,10 @@ reader's unrecognized-extra-data branch rejects `B5`; preserve ordinary records
 and apply/description/trap ordering when adding support, and copy bank 5 into the
 new valuation input without introducing an unreviewed weight.
 
-Next: continue remaining Stage 1 work and the shared evaluator/context work.
+Next: repair editor bank-5 read/write preservation with a native round trip,
+then continue the native binding/context catalog and full-context reporting.
+The shared arithmetic now supplies the server and editor; do not reintroduce a
+copied formula while completing diagnostics and template normalization.
 The published PR stack remains open for review; none has been merged or deployed.
 No formula-changing slice is complete without the delta qualification below.
 
