@@ -9,10 +9,8 @@
 #include "persistence/critical_command_coordinator.h"
 #include "player/player_save_worker.h"
 
-#ifndef __NO_MYSQL__
 #include "sql/sql.h"
 #include "sql/sql_pool.h"
-#endif
 
 #include <atomic>
 #include <cerrno>
@@ -52,9 +50,6 @@ try
 						   operation->expected_revision, operation->next);
 	else
 	{
-#ifdef __NO_MYSQL__
-		result = store_result::invalid;
-#else
 		MYSQL *connection = sql_pool_acquire();
 		if (!connection)
 			result = store_result::io_error;
@@ -73,7 +68,6 @@ try
 			else
 				sql_pool_release(connection);
 		}
-#endif
 	}
 	const bool applied = result == store_result::ok || result == store_result::already_applied;
 	const unsigned error = applied				? 0 :
@@ -155,11 +149,7 @@ bool divine_boon_runtime_boot(int64_t now)
 	}
 	else
 	{
-#ifdef __NO_MYSQL__
-		return false;
-#else
 		result = divine_boon_sql_load(DB, &loaded);
-#endif
 	}
 	if (result == store_result::not_found)
 	{

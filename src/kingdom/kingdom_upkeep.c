@@ -418,7 +418,6 @@ bool kingdom_persist_payment(Guild *guild, kingdom_realm &realm)
 		return false;
 	}
 
-#ifndef __NO_MYSQL__
 	realm.payment_pending = true;
 	if (!guild->save())
 	{
@@ -426,17 +425,6 @@ bool kingdom_persist_payment(Guild *guild, kingdom_realm &realm)
 		return false;
 	}
 	return true;
-#else
-	if (!guild->save_with_kingdom(realm))
-	{
-		hold_payment(realm, "recoverable guild/realm commit failed");
-		return false;
-	}
-
-	realm.dirty = false;
-	realm.payment_pending = false;
-	return true;
-#endif
 }
 
 /* Pending state belongs to the realm, so erasing it also erases its retry.
@@ -456,16 +444,9 @@ void kingdom_upkeep_retry_pending(void)
 			      realm.realm_id, assoc_id);
 			continue;
 		}
-#ifndef __NO_MYSQL__
 		// Poll first, and never enqueue another copy while the current one waits.
 		if (!guild->save_pending(true) && realm.payment_pending)
 			(void)kingdom_persist_payment(guild, realm);
-#else
-		if (kingdom_persist_payment(guild, realm))
-			logit(LOG_KINGDOM,
-			      "pending payment for realm %d (association %d) is now durable",
-			      realm.realm_id, assoc_id);
-#endif
 	}
 }
 

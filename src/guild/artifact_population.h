@@ -59,9 +59,4 @@ bool artifacts_stage_population(const std::vector<artifact_payload_projection> &
 				const std::vector<artifact_population_template> &prototypes,
 				bool complete);
 
-#ifdef __NO_MYSQL__
-// Persist staged flat-file identities as one boot-time catalog update.
-void artifacts_save_boot_population();
-#endif
-
 #endif

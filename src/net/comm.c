@@ -268,14 +268,6 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 		     result.outcome == maintenance_outcome::permanent_failure))
 			cargo_maintenance_complete(result.work_id,
 						   result.outcome == maintenance_outcome::complete);
-#ifdef __NO_MYSQL__
-		if (result.job_id == maintenance_job_id::auction_due_scan &&
-		    result.outcome == maintenance_outcome::complete)
-			auction_houses_activity();
-		if (result.job_id == maintenance_job_id::boon_scan &&
-		    result.outcome == maintenance_outcome::complete)
-			boon_maintenance();
-#endif
 		if (result.job_id == maintenance_job_id::auction_due_scan &&
 		    (result.outcome == maintenance_outcome::complete ||
 		     result.outcome == maintenance_outcome::more))
@@ -324,13 +316,11 @@ static void critical_gameplay_publish_outbox(void)
 	artifact_guild_transaction_publish_outbox();
 }
 
-#ifndef __NO_MYSQL__
 static void critical_gameplay_drain_outbox(void)
 {
 	sql_async_pulse();
 	critical_gameplay_publish_outbox();
 }
-#endif
 
 void pwipe_resume_writers(void)
 {
@@ -356,9 +346,7 @@ bool pwipe_quiesce_writers(void)
 		     critical_command_coordinator_drain(3000) && critical_outbox_drain(3000) &&
 		     persistence_flush_all_character_saves() && locker_async_drain(3000) &&
 		     artifact_save_drain(3000) && player_save_pipeline_drain(3000);
-#ifndef __NO_MYSQL__
 	ready = ready && sql_ship_write_pulse();
-#endif
 	// Read-completion callbacks can enqueue a dependent write or read. Finish
 	// that accepted chain before closing the shared writer's admission gate.
 	const uint64_t deadline = persistence_observability_now_usec() + 3000000;
@@ -406,7 +394,6 @@ static void critical_gameplay_handle_completions(const critical_completion *comp
 	zone_touch_transaction_handle_completions(completions, count);
 }
 
-#ifndef __NO_MYSQL__
 static critical_outbox_delivery_result
 critical_gameplay_outbox_delivery(const critical_outbox_record &record, void *context)
 {
@@ -436,7 +423,6 @@ critical_gameplay_outbox_delivery(const critical_outbox_record &record, void *co
 		return collector_transaction_outbox_delivery(record, context);
 	return auction_transaction_outbox_delivery(record, context);
 }
-#endif
 
 /** Request an immediate game-thread shutdown transition through the existing persistence gates. */
 void request_shutdown(int shutdown_type, const char *issuer, const char *reason)
@@ -1238,9 +1224,7 @@ int run_the_game(int port, int sslport)
 		      "Account recovery unavailable; password reset by email disabled.");
 
 	information_cache_refresh();
-#ifndef __NO_MYSQL__
 	help_cache_refresh();
-#endif
 	game_booted = TRUE;
 
 	locker_async_init();
@@ -1254,17 +1238,9 @@ int run_the_game(int port, int sslport)
 	if (!divine_boon_runtime_boot(static_cast<int64_t>(time(nullptr))))
 		logit(LOG_STATUS, "Divine Boon state unavailable; world bonuses disabled.");
 	critical_apply_fn critical_apply = critical_command_repository_apply_from_pool;
-#ifdef __NO_MYSQL__
-	critical_apply = flatfile_critical_command_repository_apply_selected;
-#else
 	const bool critical_outbox_ready = critical_outbox_init(
 		critical_gameplay_outbox_delivery, NULL, critical_gameplay_drain_outbox);
-#endif
-	if (
-#ifndef __NO_MYSQL__
-		!critical_outbox_ready ||
-#endif
-		!critical_command_coordinator_init(critical_apply, NULL))
+	if (!critical_outbox_ready || !critical_command_coordinator_init(critical_apply, NULL))
 	{
 		critical_command_coordinator_shutdown();
 		critical_outbox_shutdown();
@@ -2524,19 +2500,15 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 	record_job("sql_async_pulse");
 	divine_trade_runtime_retire_pulse();
 	record_job("divine_trade_runtime_retire_pulse");
-#ifndef __NO_MYSQL__
 	sql_ship_write_pulse();
 	record_job("sql_ship_write_pulse");
-#endif
 	artifact_guild_transaction_pulse();
 	record_job("artifact_guild_transaction_pulse");
-#ifndef __NO_MYSQL__
 	if (!(pulse % WAIT_SEC))
 	{
 		arti_cache_retry();
 		record_job("arti_cache_retry");
 	}
-#endif
 	if (!(pulse % (WAIT_SEC * 60)))
 	{
 		sql_mud_info_refresh();

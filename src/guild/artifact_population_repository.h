@@ -115,7 +115,6 @@ struct copyover_boot_snapshot;
 unsigned int artifact_population_read_copyover(const copyover_boot_snapshot &snapshot,
 					       artifact_recovery_population *population);
 
-#ifndef __NO_MYSQL__
 #include <mysql/mysql.h>
 
 constexpr size_t ARTIFACT_POPULATION_SQL_PAGE_SIZE = 256;
@@ -148,6 +147,5 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 unsigned int artifact_population_read_sql_payloads(
 	MYSQL *connection, std::vector<artifact_payload_projection> *items,
 	const std::vector<artifact_payload_projection> *additional = nullptr);
-#endif
 
 #endif

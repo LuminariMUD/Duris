@@ -53,16 +53,11 @@ endif
 CFLAGS += $(EXTRA_CFLAGS)
 LDFLAGS += $(EXTRA_LDFLAGS)
 
-ifeq ($(PERSISTENCE_BACKEND),mariadb)
+ifneq ($(PERSISTENCE_BACKEND),mariadb)
+$(error PERSISTENCE_BACKEND must be mariadb; the flat-file server backend has been removed)
+endif
 MYSQL_INCLUDES = -I/usr/include/mysql
 MYSQL_LIBS = -lmysqlclient
-else ifeq ($(PERSISTENCE_BACKEND),flatfile)
-CFLAGS += -D__NO_MYSQL__
-MYSQL_INCLUDES = -I./no_mysql
-MYSQL_LIBS =
-else
-$(error PERSISTENCE_BACKEND must be mariadb or flatfile)
-endif
 
 #CFLAGS += -DCTF_MUD=1
 

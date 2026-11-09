@@ -3,7 +3,6 @@
 #include "core/utility.h"
 #include "core/utils.h"
 
-#ifndef __NO_MYSQL__
 #include "sql/sql_async.h"
 
 #include <algorithm>
@@ -26,16 +25,11 @@ bool positive_number(const std::string &text, uint32_t *value)
 	return parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() && *value > 0;
 }
 } // namespace
-#endif
 
 void do_last(P_char ch, char *argument, int /*cmd*/)
 {
 	if (!ch || !IS_TRUSTED(ch))
 		return;
-#ifdef __NO_MYSQL__
-	(void)argument;
-	send_to_char("Login history requires MariaDB support.\r\n", ch);
-#else
 	std::istringstream input(argument ? argument : "");
 	std::string token, name, period;
 	bool unique = false, has_page = false;
@@ -171,5 +165,4 @@ void do_last(P_char ch, char *argument, int /*cmd*/)
 				    send_to_char("End of login history.\r\n", live);
 		    }))
 		send_to_char("Login history is unavailable right now.\r\n", ch);
-#endif
 }

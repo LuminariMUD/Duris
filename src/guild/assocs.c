@@ -26,14 +26,6 @@
 #include "sql/sql_async.h"
 #include "core/safe_format.h"
 
-#ifdef __NO_MYSQL__
-#include "world/buildings.h"
-#include "flatfile/flatfile_association_repository.h"
-#include "flatfile/flatfile_identity_repository.h"
-#include "world/outposts.h"
-#include "persistence/persistence_mode.h"
-#endif
-
 // External variables & functions
 extern P_index mob_index;
 extern P_char character_list;
@@ -42,12 +34,6 @@ extern char guild_default_titles[ASC_NUM_RANKS][ASC_MAX_STR_RANK];
 int assoc_founder(P_char mob, P_char pl, int cmd, char *arg);
 string trim(string const &str, char const *sep_chars);
 extern const racewar_struct racewar_color[MAX_RACEWAR + 2];
-#ifdef __NO_MYSQL__
-extern std::vector<Building *> buildings;
-bool kingdom_db_save_payment_pair(const std::string &root,
-				  const flatfile_association_record &association,
-				  const kingdom_realm &realm, std::string *error);
-#endif
 
 // Internal variables
 P_Guild guild_list = NULL;
@@ -90,63 +76,9 @@ void forget_deleted_guild_member(const char *character_name)
 	if (!character_name || !character_name[0])
 		return;
 
-#ifndef __NO_MYSQL__
 	// As the deletion did: the member leaves its guild, which is saved again.
 	for (P_Guild guild = guild_list; guild; guild = guild->next_guild)
 		guild->forget_deleted_member(character_name, 0);
-#else
-	std::vector<flatfile_association_record> records;
-	std::string error;
-	const char *root = persistence_mode_flatfile_root();
-	const bool have_durable_state = root && flatfile_association_list(root, &records, &error) ==
-							flatfile_association_result::ok;
-
-	for (P_Guild guild = guild_list; guild; guild = guild->next_guild)
-	{
-		P_member *link = &guild->members;
-		while (*link)
-		{
-			if (strcasecmp((*link)->name, character_name))
-			{
-				link = &(*link)->next;
-				continue;
-			}
-			P_member removed = *link;
-			*link = removed->next;
-			removed->next = NULL;
-			delete removed;
-			if (guild->member_count)
-				--guild->member_count;
-			break;
-		}
-
-		if (!strcasecmp(guild->frags.topfragger, character_name))
-		{
-			guild->frags.topfragger[0] = '\0';
-			guild->frags.top_frags = 0;
-		}
-
-		if (!have_durable_state)
-			continue;
-		auto durable = std::lower_bound(records.begin(), records.end(), guild->id_number,
-						[](const auto &record, unsigned int id)
-						{ return record.association_id < id; });
-		if (durable == records.end() || durable->association_id != guild->id_number ||
-		    durable->frags < LONG_MIN || durable->frags > LONG_MAX ||
-		    durable->top_frags < 0 || durable->top_frags > LONG_MAX)
-			continue;
-		guild->frags.frags = durable->frags;
-		guild->frags.top_frags = durable->top_frags;
-		if (durable->top_fragger.empty())
-			guild->frags.topfragger[0] = '\0';
-	}
-
-	if (!have_durable_state)
-		persistence_alert(AVATAR, "associations", "redacted", "none", "none",
-				  "delete_runtime_reconcile",
-				  "could not load durable guild state after account deletion: %s",
-				  error.c_str());
-#endif
 }
 
 bool Guild::is_allied_with(P_Guild ally)
@@ -189,9 +121,6 @@ P_Guild get_guild_from_id(int id_num)
 
 void sql_update_assoc_table()
 {
-#ifdef __NO_MYSQL__
-	return;
-#else
 	int i, j;
 	P_Guild guild;
 	string name;
@@ -237,7 +166,6 @@ void sql_update_assoc_table()
 		if (j > 20)
 			break;
 	}
-#endif
 }
 
 bool Guild::sub_money(int p, int g, int s, int c)
@@ -644,11 +572,9 @@ bool found_asc(P_char god, P_char leader, const char *bits, char *asc_name)
 	pNewGuild->set_next(guild_list);
 	guild_list = pNewGuild;
 
-#ifndef __NO_MYSQL__
 	sql_queue(
 		"INSERT INTO associations (id, name, active) VALUES (%d, '%s', 1) ON DUPLICATE KEY UPDATE name = VALUES(name), active = VALUES(active)",
 		i, escape_str(asc_name).c_str());
-#endif
 
 	send_to_char("Ok, new association is set up.\n", god);
 	return TRUE;
@@ -708,285 +634,23 @@ Guild::Guild()
 
 void Guild::initialize()
 {
-#ifdef __NO_MYSQL__
-	const char *root = persistence_mode_flatfile_root();
-	if (!root)
-		fatal_boot_error("associations", "flat-file state root is unavailable");
-	std::string error;
-	std::vector<flatfile_association_record> records;
-	const auto listed = flatfile_association_list(root, &records, &error);
-	if (listed == flatfile_association_result::not_found)
-	{
-		int missing = 0;
-		for (int id = 1; id < MAX_ASC && missing < 20; ++id)
-			missing = load_guild(id) ? 0 : missing + 1;
-		if (!guild_list)
-		{
-			const auto established = flatfile_association_establish(root, {}, &error);
-			if (established != flatfile_association_result::ok &&
-			    established != flatfile_association_result::already_exists)
-				fatal_boot_error(
-					"associations",
-					"could not establish empty flat guild authority: %s",
-					error.c_str());
-			return;
-		}
-		size_t legacy_count = 0;
-		for (P_Guild guild = guild_list; guild; guild = guild->next())
-		{
-			++legacy_count;
-			guild->save();
-		}
-		records.clear();
-		error.clear();
-		if (flatfile_association_list(root, &records, &error) !=
-			    flatfile_association_result::ok ||
-		    records.size() != legacy_count)
-			fatal_boot_error("associations",
-					 "could not import historical guild files: %s",
-					 error.c_str());
-		return;
-	}
-	if (listed != flatfile_association_result::ok)
-		fatal_boot_error("associations", "could not load flat guild authority: %s",
-				 error.c_str());
-
-	for (const auto &record : records)
-	{
-		if (!record.association_id || record.association_id >= MAX_ASC ||
-		    record.racewar > MAX_RACEWAR || record.prestige > ULONG_MAX ||
-		    record.construction > ULONG_MAX || record.frags < LONG_MIN ||
-		    record.frags > LONG_MAX || record.top_frags < 0 || record.top_frags > LONG_MAX)
-			fatal_boot_error("associations", "flat guild %u has invalid runtime values",
-					 record.association_id);
-		P_Guild guild = new Guild();
-		guild->id_number = record.association_id;
-		strlcpy(guild->name, record.name.c_str(), sizeof(guild->name));
-		guild->racewar = record.racewar;
-		guild->bits = record.bits;
-		guild->prestige = record.prestige;
-		guild->construction = record.construction;
-		guild->delivery_ids = record.delivery_ids;
-		guild->delivery_identity =
-			std::any_of(record.delivery_identity.bytes.begin(),
-				    record.delivery_identity.bytes.end(),
-				    [](uint8_t byte) { return byte != 0; }) ?
-				record.delivery_identity :
-				artifact_guild_legacy_identity(record.association_id);
-		guild->platinum = record.platinum;
-		guild->gold = record.gold;
-		guild->silver = record.silver;
-		guild->copper = record.copper;
-		guild->frags.frags = record.frags;
-		guild->frags.top_frags = record.top_frags;
-		for (size_t rank = 0; rank < record.ranks.size(); ++rank)
-			strlcpy(guild->titles[rank], record.ranks[rank].c_str(),
-				sizeof(guild->titles[rank]));
-
-		P_member tail = NULL;
-		for (const auto &stored_member : record.members)
-		{
-			flatfile_identity_record identity;
-			error.clear();
-			if (flatfile_identity_lookup_pid(root, stored_member.pid, &identity,
-							 &error) != flatfile_identity_result::ok ||
-			    !identity.active ||
-			    strcasecmp(identity.name.c_str(), stored_member.name.c_str()))
-				fatal_boot_error(
-					"associations",
-					"flat guild %u member %u has no matching active identity: %s",
-					record.association_id, stored_member.pid, error.c_str());
-			P_member member = new guild_member();
-			strlcpy(member->name, identity.name.c_str(), sizeof(member->name));
-			member->bits = stored_member.bits;
-			member->debt = stored_member.debt;
-			member->online_status = GSTAT_OFFLINE;
-			member->next = NULL;
-			if (tail)
-				tail->next = member;
-			else
-				guild->members = member;
-			tail = member;
-			++guild->member_count;
-		}
-
-		guild->frags.topfragger[0] = '\0';
-		if (!record.top_fragger.empty())
-		{
-			flatfile_identity_record identity;
-			error.clear();
-			if (flatfile_identity_lookup_name(root, record.top_fragger, &identity,
-							  &error) != flatfile_identity_result::ok)
-				fatal_boot_error("associations",
-						 "flat guild %u top fragger has no identity: %s",
-						 record.association_id, error.c_str());
-			strlcpy(guild->frags.topfragger, identity.name.c_str(),
-				sizeof(guild->frags.topfragger));
-		}
-		guild->next_guild = guild_list;
-		guild_list = guild;
-	}
-#else
 	sql_load_all_guilds();
-#endif
 }
-
-#ifdef __NO_MYSQL__
-/* Materialize this live guild as the flat association record both save paths
- * publish. Keeping one builder is important: the paid-kingdom transaction must
- * not omit a field that an ordinary Guild::save() would preserve. */
-bool Guild::build_flatfile_record(const std::string &root, flatfile_association_record *record,
-				  std::string *error)
-{
-	if (root.empty() || !record || !error)
-		return false;
-	update_online_members();
-	std::vector<flatfile_association_record> records;
-	const auto listed = flatfile_association_list(root, &records, error);
-	if (listed != flatfile_association_result::ok &&
-	    listed != flatfile_association_result::not_found)
-	{
-		persistence_alert(AVATAR, "associations", name, "none", "none", "save",
-				  "flat guild read failed: %s", error->c_str());
-		return false;
-	}
-	const flatfile_association_record *existing = NULL;
-	if (listed == flatfile_association_result::ok)
-	{
-		auto found = std::lower_bound(records.begin(), records.end(), id_number,
-					      [](const auto &entry, uint32_t id)
-					      { return entry.association_id < id; });
-		if (found != records.end() && found->association_id == id_number)
-			existing = &*found;
-	}
-
-	*record = {};
-	record->association_id = id_number;
-	record->name = name;
-	record->racewar = racewar;
-	record->bits = bits;
-	record->prestige = prestige;
-	record->construction = construction;
-	record->delivery_ids = delivery_ids;
-	record->delivery_identity = delivery_identity;
-	record->platinum = platinum;
-	record->gold = gold;
-	record->silver = silver;
-	record->copper = copper;
-	record->frags = frags.frags;
-	record->top_frags = frags.top_frags;
-	record->top_fragger = frags.topfragger;
-	for (size_t rank = 0; rank < record->ranks.size(); ++rank)
-		record->ranks[rank] = titles[rank];
-
-	for (P_member current = members; current; current = current->next)
-	{
-		const int pid = sql_get_player_pid(current->name);
-		if (pid <= 0)
-		{
-			persistence_alert(AVATAR, "associations", name, "none", "none", "save",
-					  "flat guild member identity is unavailable: %s",
-					  current->name);
-			return false;
-		}
-		flatfile_association_member_record member = {};
-		member.pid = pid;
-		member.name = current->name;
-		member.bits = current->bits;
-		member.debt = current->debt;
-		member.online_status = current->online_status;
-		if (existing)
-		{
-			auto stored = std::lower_bound(existing->members.begin(),
-						       existing->members.end(), member.pid,
-						       [](const auto &entry, uint32_t candidate)
-						       { return entry.pid < candidate; });
-			if (stored != existing->members.end() && stored->pid == member.pid)
-				member.contributed_frags = stored->contributed_frags;
-		}
-		for (P_char live = character_list; live; live = live->next)
-			if (IS_PC(live) && GET_PID(live) == pid && GET_ASSOC(live) == this)
-			{
-				member.contributed_frags = GET_FRAGS(live);
-				break;
-			}
-		record->members.push_back(std::move(member));
-	}
-	return true;
-}
-
-/* Commit a paid kingdom mutation with this guild through the shared authority
- * journal. Defined here so the private guild fields still travel through the
- * same record builder as every ordinary save. */
-bool Guild::save_with_kingdom(const kingdom_realm &realm)
-{
-	const char *configured_root = persistence_mode_flatfile_root();
-	if (!configured_root)
-	{
-		persistence_alert(AVATAR, "associations", name, "none", "none", "save",
-				  "flat guild save has no state root");
-		return false;
-	}
-
-	const std::string root = configured_root;
-	std::string error;
-	flatfile_association_record record;
-	if (!build_flatfile_record(root, &record, &error))
-		return false;
-	if (!kingdom_db_save_payment_pair(root, record, realm, &error))
-	{
-		persistence_alert(AVATAR, "associations", name, "none", "none", "save",
-				  "flat paid kingdom save failed: %s", error.c_str());
-		return false;
-	}
-	return true;
-}
-#endif
 
 // Flat-file saves remain synchronous. MariaDB captures current state on the
 // ordered writer; only its own receipt can clear the dirty indication.
 bool Guild::save()
 {
-#ifdef __NO_MYSQL__
-	save_dirty = true;
-	const char *configured_root = persistence_mode_flatfile_root();
-	if (!configured_root)
-	{
-		persistence_alert(AVATAR, "associations", name, "none", "none", "save",
-				  "flat guild save has no state root");
-		return false;
-	}
-
-	const std::string root = configured_root;
-	std::string error;
-	flatfile_association_record record;
-	if (!build_flatfile_record(root, &record, &error))
-		return false;
-
-	error.clear();
-	const auto saved = flatfile_association_save(root, record, &error);
-	if (saved != flatfile_association_result::ok &&
-	    saved != flatfile_association_result::unchanged)
-	{
-		persistence_alert(AVATAR, "associations", name, "none", "none", "save",
-				  "flat guild save failed: %s", error.c_str());
-		return false;
-	}
-	save_dirty = false;
-	return true;
-#else
 	if (!sql_save_guild(this))
 	{
 		debug("Guild::save: sql_save_guild failed for guild %u", id_number);
 		return false;
 	}
 	return true;
-#endif
 }
 
 bool Guild::save_pending([[maybe_unused]] bool retry)
 {
-#ifndef __NO_MYSQL__
 	if (save_receipt && save_receipt->finished.load(std::memory_order_acquire))
 	{
 		if (save_receipt->ok)
@@ -1007,10 +671,6 @@ bool Guild::save_pending([[maybe_unused]] bool retry)
 	}
 	if (retry && save_dirty && !save_receipt)
 		save();
-#else
-	if (retry && save_dirty)
-		save();
-#endif
 	return save_dirty;
 }
 
@@ -1210,50 +870,6 @@ Guild::~Guild()
 
 	sever_alliance(this);
 
-#ifdef __NO_MYSQL__
-	std::string error;
-	bool guildhalls_erased = true;
-	for (auto hall = Guildhall::guildhalls.begin(); hall != Guildhall::guildhalls.end();)
-	{
-		Guildhall *owned = *hall;
-		if (!owned || owned->get_assoc() != this)
-		{
-			++hall;
-			continue;
-		}
-		const bool deinitialized = owned->deinit();
-		const bool destroyed = owned->destroy();
-		if (!deinitialized || !destroyed)
-			guildhalls_erased = false;
-		delete owned;
-		hall = Guildhall::guildhalls.erase(hall);
-	}
-	bool outposts_reset = true;
-	for (auto *building : buildings)
-		if (building && building->get_guild() == this)
-		{
-			if (!reset_one_outpost(building))
-				outposts_reset = false;
-			building->set_guild(NULL);
-		}
-	const bool dependents_erased = guildhalls_erased && outposts_reset;
-	if (!dependents_erased)
-		error = "one or more guildhalls or outposts could not be erased";
-	const char *root = persistence_mode_flatfile_root();
-	const auto erased = root && dependents_erased ?
-				    flatfile_association_erase(root, id_number, &error) :
-				    flatfile_association_result::invalid;
-	if (erased != flatfile_association_result::ok &&
-	    erased != flatfile_association_result::unchanged &&
-	    erased != flatfile_association_result::not_found)
-		persistence_alert(
-			AVATAR, "associations", name, "none", "none", "delete",
-			dependents_erased ?
-				"flat guild delete failed: %s" :
-				"flat guild delete retained authority because dependent cleanup failed: %s",
-			error.c_str());
-#endif
-
 	snprintf(filename, MAX_STRING_LENGTH, "%sasc.%u", ASC_DIR, id_number);
 	unlink(filename);
 
@@ -1434,7 +1050,6 @@ void Guild::update_member(P_char ch)
 	}
 }
 
-#ifndef __NO_MYSQL__
 std::vector<std::string> Guild::statements_without_member(P_char ch)
 {
 	P_member *link = &members;
@@ -1466,7 +1081,6 @@ std::vector<std::string> Guild::statements_without_member(P_char ch)
 	*link = member;
 	return statements;
 }
-#endif
 
 void Guild::forget_deleted_member(const char *name, long member_frags)
 {
@@ -1487,11 +1101,9 @@ void Guild::forget_deleted_member(const char *name, long member_frags)
 		frags.top_frags = 0;
 	}
 	frags.frags -= member_frags;
-#ifndef __NO_MYSQL__
 	// A save of the guild queued while the deletion ran still holds the member; this one
 	// lands after it.
 	save();
-#endif
 }
 
 void Guild::kick(P_char ch)
@@ -2929,33 +2541,9 @@ void Guild::challenge(P_char member, P_char victim)
 void Guild::write_transaction_to_ledger(const char *name, const char *trans_type,
 					const char *coin_str)
 {
-#ifdef __NO_MYSQL__
-	char message[256];
-	const int written =
-		snprintf(message, sizeof(message), "&+y%s %s %s&+y.&n", name, trans_type, coin_str);
-	if (written < 0 || static_cast<size_t>(written) >= sizeof(message))
-	{
-		persistence_alert(AVATAR, "association_ledger", this->name, "none", "none",
-				  "append", "guild ledger entry exceeds storage limit");
-		return;
-	}
-	const char *root = persistence_mode_flatfile_root();
-	if (!root)
-	{
-		persistence_alert(AVATAR, "association_ledger", this->name, "none", "none",
-				  "append", "flat guild ledger has no state root");
-		return;
-	}
-	std::string error;
-	if (flatfile_association_ledger_append(root, id_number, !strcasecmp(name, "System"),
-					       message, &error) != flatfile_association_result::ok)
-		persistence_alert(AVATAR, "association_ledger", this->name, "none", "none",
-				  "append", "flat guild ledger append failed: %s", error.c_str());
-#else
 	sql_queue(
 		"INSERT INTO guild_transactions (date, soc_id, transaction_info) VALUES (unix_timestamp(), %d, '&+y%s %s %s&+y.&n')",
 		id_number, name, trans_type, coin_str);
-#endif
 }
 
 // The coins are valid (positive numbers) via checks in do_society().
@@ -3218,30 +2806,6 @@ void Guild::ledger(P_char member, char *args)
 		return;
 	}
 
-#ifdef __NO_MYSQL__
-	send_to_char("&+YGuild Ledger:\r\n------------------------------\r\n", member);
-	std::string error;
-	std::vector<std::string> messages;
-	const char *root = persistence_mode_flatfile_root();
-	const auto listed = root ? flatfile_association_ledger_list(root, id_number, system_entries,
-								    &messages, &error) :
-				   flatfile_association_result::invalid;
-	if (listed == flatfile_association_result::not_found ||
-	    (listed == flatfile_association_result::ok && messages.empty()))
-	{
-		send_to_char("&+yNo transactions on record.\r\n", member);
-		return;
-	}
-	if (listed != flatfile_association_result::ok)
-	{
-		send_to_char("The guild ledger could not be read right now.\r\n", member);
-		persistence_alert(AVATAR, "association_ledger", name, "none", "none", "list",
-				  "flat guild ledger read failed: %s", error.c_str());
-		return;
-	}
-	for (const auto &message : messages)
-		send_to_char_f(member, "%s\r\n", message.c_str());
-#else
 	// The ledger is read on the writer, behind the entries queued before it.
 	sql_read_for(
 		member,
@@ -3258,7 +2822,6 @@ void Guild::ledger(P_char member, char *args)
 			for (const sql_row &row : rows)
 				send_to_char_f(ch, "%s\r\n", row[0] ? row[0] : "");
 		});
-#endif
 }
 
 // While this theoretically works, it has not been tested since

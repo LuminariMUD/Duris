@@ -20,9 +20,7 @@
 #include "persistence/persistence_observability.h"
 #include "sql/sql_pool.h"
 
-#ifndef __NO_MYSQL__
 #include <mysql/mysql.h>
-#endif
 
 #include <algorithm>
 #include <atomic>
@@ -79,7 +77,6 @@ struct pool_connection_guard
 	}
 };
 
-#ifndef __NO_MYSQL__
 player_load_result execute_repository(const player_load_request &request, void *)
 {
 	player_load_result result = {};
@@ -103,15 +100,10 @@ player_load_result execute_repository(const player_load_request &request, void *
 	}
 	return result;
 }
-#endif
 
 player_load_execute_fn selected_execute_callback()
 {
-#ifdef __NO_MYSQL__
-	return flatfile_player_load_repository_execute_selected;
-#else
 	return execute_repository;
-#endif
 }
 
 void refresh_health_locked()
@@ -178,7 +170,6 @@ void record_delivery_locked(uint64_t request_id)
 
 void worker_main()
 {
-#ifndef __NO_MYSQL__
 	if (sql_worker_thread_init() != 0)
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
@@ -187,7 +178,6 @@ void worker_main()
 		completion_available.notify_all();
 		return;
 	}
-#endif
 	for (;;)
 	{
 		queued_load job = {};
@@ -280,9 +270,7 @@ void worker_main()
 			completion_available.notify_all();
 		}
 	}
-#ifndef __NO_MYSQL__
 	mysql_thread_end();
-#endif
 }
 } // namespace
 
@@ -476,14 +464,12 @@ bool player_load_pipeline_execute_sync(player_load_request request, player_load_
 	if (!execute)
 		return false;
 
-#ifndef __NO_MYSQL__
 	if (sql_worker_thread_init() != 0)
 		return false;
 	struct mysql_thread_guard
 	{
 		~mysql_thread_guard() { mysql_thread_end(); }
 	} thread_guard;
-#endif
 
 	const uint64_t read_sequence = persistence_writer_read_sequence();
 	try

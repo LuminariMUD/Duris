@@ -8,7 +8,6 @@
 #include <string>
 #include <string_view>
 
-#ifndef __NO_MYSQL__
 namespace
 {
 bool execute(MYSQL *connection, const std::string &sql)
@@ -362,23 +361,3 @@ bool divine_trade_sql_books(MYSQL *connection, uint64_t boon_id,
 		errno = EILSEQ;
 	return valid;
 }
-#endif
-
-#ifdef __NO_MYSQL__
-bool divine_trade_sql_generation(MYSQL *, uint64_t *, bool)
-{
-	errno = ENOTSUP;
-	return false;
-}
-bool divine_trade_sql_execute(MYSQL *, const critical_command &, divine_trade_result *,
-			      unsigned int *, bool *)
-{
-	errno = ENOTSUP;
-	return false;
-}
-bool divine_trade_sql_books(MYSQL *, uint64_t, std::vector<divine_trade_book> *)
-{
-	errno = ENOTSUP;
-	return false;
-}
-#endif

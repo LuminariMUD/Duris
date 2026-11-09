@@ -1304,72 +1304,6 @@ bool publish_initial_character_baseline(P_char ch)
 {
 	if (!ch || IS_NPC(ch) || !ch->desc || !ch->desc->account)
 		return false;
-#ifdef __NO_MYSQL__
-	flatfile_player_domain_record domains;
-	std::string domain_error;
-	const char *account = get_account_name_safe(ch);
-	if (!account || !*account || !strcmp(account, "Unknown"))
-	{
-		statuslog(
-			56,
-			"&+RALERT&n: new-player bank revision sync failed: missing account context");
-		return 0;
-	}
-	const auto domain_result =
-		flatfile_player_domain_load(persistence_mode_flatfile_root(), GET_PID(ch), account,
-					    GET_RACEWAR(ch), &domains, &domain_error);
-	if (domain_result != flatfile_player_domain_result::ok || !domains.domains.bank_revision ||
-	    std::any_of(domains.domains.bank.begin(), domains.domains.bank.end(),
-			[](uint64_t amount) { return amount > INT_MAX; }) ||
-	    std::any_of(domains.domains.wallet.begin(), domains.domains.wallet.end(),
-			[](uint64_t amount) { return amount > INT_MAX; }))
-	{
-		statuslog(56,
-			  "&+RALERT&n: new-player bank revision sync failed (domain result %d): %s",
-			  static_cast<int>(domain_result),
-			  domain_result == flatfile_player_domain_result::ok ?
-				  "invalid bank revision or currency balance overflow" :
-			  domain_error.empty() ? "authority load failed" :
-						 domain_error.c_str());
-		persistence_alert(AVATAR, "player", "redacted", "none", "none",
-				  "bank_revision_sync_failed", NULL);
-		return 0;
-	}
-	const item_owner_identity owner = { item_owner_type::player,
-					    static_cast<uint64_t>(GET_PID(ch)), 0 };
-	uint64_t owner_revision = 0;
-	std::vector<flatfile_item_ownership_record> owned_items;
-	std::string ownership_error;
-	const auto ownership = flatfile_item_repository_load_owner(persistence_mode_flatfile_root(),
-								   owner, &owner_revision,
-								   &owned_items, &ownership_error);
-	if (ownership != flatfile_item_repository_result::ok || !owner_revision ||
-	    !item_ownership_runtime_hydrate_owner(owner, owner_revision))
-	{
-		statuslog(56, "&+RALERT&n: new-player item ownership revision sync failed");
-		persistence_alert(AVATAR, "player", "redacted", "none", "none",
-				  "ownership_revision_sync_failed", NULL);
-		return 0;
-	}
-	// Creation can precede CON_PLAYING, so hydrate this character explicitly.
-	// Publish only after every required authority read/validation succeeded.
-	const AccountBankBalances balances = { static_cast<int>(domains.domains.bank[0]),
-					       static_cast<int>(domains.domains.bank[1]),
-					       static_cast<int>(domains.domains.bank[2]),
-					       static_cast<int>(domains.domains.bank[3]) };
-	GET_BALANCE_COPPER(ch) = balances.copper;
-	GET_BALANCE_SILVER(ch) = balances.silver;
-	GET_BALANCE_GOLD(ch) = balances.gold;
-	GET_BALANCE_PLATINUM(ch) = balances.platinum;
-	ch->only.pc->bank_revision = domains.domains.bank_revision;
-	GET_COPPER(ch) = domains.domains.wallet[0];
-	GET_SILVER(ch) = domains.domains.wallet[1];
-	GET_GOLD(ch) = domains.domains.wallet[2];
-	GET_PLATINUM(ch) = domains.domains.wallet[3];
-	ch->only.pc->wallet_revision = domains.domains.wallet_revision;
-	publish_account_bank_balances_revision(account, GET_RACEWAR(ch), &balances,
-					       domains.domains.bank_revision);
-#endif
 	if (!find_char_in_list(ch->desc->account->acct_character_list, GET_NAME(ch)))
 		add_char_to_account(ch->desc);
 	const auto *membership =
@@ -1408,14 +1342,9 @@ int writeCharacter(P_char ch, int type, int room)
 	    (world[ch->in_room].funct))
 		room = (*world[ch->in_room].funct)(ch->in_room, ch, (-80), NULL);
 
-#ifdef __NO_MYSQL__
-	const bool terminal_type = !player_save_pipeline_is_nonterminal_type(type);
-	const bool queued_save = !terminal_type;
-#else
 	// On MariaDB a terminal save is queued like any other; the caller disposes of the
 	// character (persistence_save_character_terminal() does the same).
 	const bool queued_save = true;
-#endif
 	if (!is_locker_char && GET_PID(ch) > 0 &&
 	    !IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE) && queued_save)
 	{
@@ -1426,70 +1355,6 @@ int writeCharacter(P_char ch, int type, int room)
 		return queued == player_save_pipeline_result::queued ||
 		       queued == player_save_pipeline_result::coalesced;
 	}
-
-#ifdef __NO_MYSQL__
-	if (!is_locker_char &&
-	    (terminal_type || IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE)))
-	{
-		P_obj obj, obj2;
-		int i;
-		const bool establishing_baseline =
-			IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);
-		room = calculate_save_room(ch, type, room);
-		if (ch->desc)
-			ch->desc->rtype = type;
-		// A new player's first save must land before its domains are read back;
-		// any other terminal save is queued and the caller extracts at once.
-		if (establishing_baseline)
-		{
-			if (player_save_pipeline_terminal(ch, type, room, 5000) !=
-			    player_save_terminal_result::database_acknowledged)
-				return 0;
-		}
-		else
-		{
-			const player_save_pipeline_result queued = player_save_pipeline_request(
-				ch, PLAYER_CHECKPOINT_COMPONENT_ALL, type, room);
-			if (queued != player_save_pipeline_result::queued &&
-			    queued != player_save_pipeline_result::coalesced)
-				return 0;
-		}
-		if (establishing_baseline && !publish_initial_character_baseline(ch))
-			return 0;
-		if (!sync_account_character_projection(ch, room, TRUE))
-		{
-			statuslog(56,
-				  "&+RALERT&n: flat-file account character projection save failed");
-			persistence_alert(AVATAR, "account", "redacted", "none", "none",
-					  "write_failed", "character projection save failed");
-		}
-		clear_player_dirty_container_flags(ch);
-		REMOVE_BIT(ch->runtime_flags, CHAR_RFLAG_DIRTY_EQUIPMENT);
-		REMOVE_BIT(ch->runtime_flags, CHAR_RFLAG_DIRTY_INVENTORY);
-		REMOVE_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);
-		if (terminal_type)
-		{
-			for (i = 0; i < MAX_WEAR; ++i)
-				save_equip[i] = ch->equipment[i] ? unequip_char(ch, i, TRUE) : NULL;
-			all_affects(ch, FALSE);
-			updateShortAffects(ch);
-			for (i = 0; i < MAX_WEAR; ++i)
-				if (save_equip[i])
-				{
-					extract_obj(save_equip[i]);
-					save_equip[i] = NULL;
-				}
-			for (obj = ch->carrying; obj; obj = obj2)
-			{
-				obj2 = obj->next_content;
-				extract_obj(obj);
-			}
-			all_affects(ch, TRUE);
-		}
-		locker_post_save_hook(ch);
-		return 1;
-	}
-#endif
 
 	logit(LOG_DEBUG, "writeCharacter: nothing saves %s (locker or no pid)", GET_NAME(ch));
 	return 0;
@@ -1554,27 +1419,6 @@ delete_character_identity(const deleted_character &deleted, bool delete_locker,
 			  std::function<void(character_delete_result)> done,
 			  std::optional<kept_character_recovery_record> recovery = std::nullopt)
 {
-#ifdef __NO_MYSQL__
-	if (!delete_locker || !artifact_save_drain(3000))
-	{
-		done(character_delete_result::refused);
-		return;
-	}
-	std::string error;
-	const auto result = flatfile_character_delete(persistence_mode_flatfile_root(), deleted.pid,
-						      deleted.name, &error,
-						      recovery ? recovery->catalog_revision : 0,
-						      recovery ? recovery->revision : 0);
-	if (result != flatfile_character_delete_result::ok &&
-	    result != flatfile_character_delete_result::already_deleted)
-	{
-		logit(LOG_DEBUG, "delete_character(): flat deletion failed for pid %d: %s",
-		      deleted.pid, error.empty() ? "unspecified authority failure" : error.c_str());
-		done(character_delete_result::refused);
-		return;
-	}
-	done(forget_deleted_character(deleted));
-#else
 	// One writer job, so one transaction: a failure anywhere leaves the character's
 	// rows, mapping and memory as they were, and loadable for a retry.
 	std::vector<std::string> statements = {
@@ -1631,7 +1475,6 @@ delete_character_identity(const deleted_character &deleted, bool delete_locker,
 		    },
 		    recovery.has_value()))
 		done(character_delete_result::refused);
-#endif
 }
 void delete_character(P_char ch, bool delete_locker,
 		      std::function<void(character_delete_result)> done)
@@ -1648,7 +1491,6 @@ void delete_character(P_char ch, bool delete_locker,
 							 0,
 					 GET_FRAGS(ch) };
 	sql_work guild_work;
-#ifndef __NO_MYSQL__
 	if (GET_ASSOC(ch))
 	{
 		auto guild_statements = GET_ASSOC(ch)->statements_without_member(ch);
@@ -1664,7 +1506,6 @@ void delete_character(P_char ch, bool delete_locker,
 			}
 		}
 	}
-#endif
 	delete_character_identity(deleted, delete_locker, std::move(guild_work), std::move(done));
 }
 
@@ -3757,12 +3598,10 @@ void restoreCorpses(void)
 							 error.c_str());
 		return;
 	}
-#ifndef __NO_MYSQL__
 	if (!sql_load_all_corpses())
 		fatal_boot_error(
 			"corpse",
 			"MySQL corpse restore failed; authoritative items were not changed");
-#endif
 }
 
 /** Pet only functions below. Calls some from above. **/
@@ -4128,9 +3967,7 @@ void restoreSavedItems(void)
 		/* restoreCorpses() has already staged and published the shared room catalog. */
 		return;
 	}
-#ifndef __NO_MYSQL__
 	sql_restore_saved_items();
-#endif
 }
 
 void PurgeSavedItemFile(P_obj item)
@@ -4212,12 +4049,10 @@ void restore_shopkeepers(void)
 							 error.c_str());
 		return;
 	}
-#ifndef __NO_MYSQL__
 	if (!sql_restore_shopkeepers(shopkeeper_boot_restock()))
 		fatal_boot_error(
 			"shopkeeper",
 			"SQL shopkeeper restore incomplete; refusing to publish partial stock");
-#endif
 }
 
 bool save_dirty_shopkeepers(bool force)
@@ -4226,12 +4061,7 @@ bool save_dirty_shopkeepers(bool force)
 	// Legacy SQL dirty flags are not an outstanding SQL save in that mode.
 	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 		return true;
-#ifndef __NO_MYSQL__
 	return sql_save_dirty_shopkeepers(force);
-#else
-	(void)force;
-	return true;
-#endif
 }
 
 // old guildhalls (deprecated) - Torgal 1/2010

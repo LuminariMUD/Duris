@@ -24,23 +24,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#ifdef __NO_MYSQL__
-#include "flatfile/flatfile_ip_activity_repository.h"
-
-#include <string>
-#include <time.h>
-#endif
-
 static enum persistence_mode active_mode = PERSISTENCE_MODE_MARIADB_PRIMARY;
 static const char *active_flatfile_root;
-
-#ifdef __NO_MYSQL__
-static const char *const flatfile_directories[] = {
-	"metadata",	    "identities", "identities/accounts",
-	"identities/names", "players",	  "operations",
-	"operations/wal",   "domains",	  "manifests",
-};
-#endif
 
 static bool fail(char *error, size_t error_size, const char *format, ...)
 {
@@ -54,70 +39,6 @@ static bool fail(char *error, size_t error_size, const char *format, ...)
 	}
 	return false;
 }
-
-#ifdef __NO_MYSQL__
-static bool validate_private_directory(const char *path, char *error, size_t error_size)
-{
-	struct stat info;
-
-	if (lstat(path, &info) < 0)
-		return fail(error, error_size, "cannot inspect flat-file directory %s: %s", path,
-			    strerror(errno));
-	if (!S_ISDIR(info.st_mode))
-		return fail(error, error_size, "flat-file path is not a directory: %s", path);
-	if (info.st_uid != geteuid())
-		return fail(error, error_size,
-			    "flat-file directory is not owned by server user: %s", path);
-	if (info.st_mode & 0077)
-		return fail(error, error_size,
-			    "flat-file directory permissions must be 0700 or stricter: %s", path);
-	return true;
-}
-
-static bool ensure_private_directory(const char *path, char *error, size_t error_size)
-{
-	if (mkdir(path, 0700) < 0 && errno != EEXIST)
-		return fail(error, error_size, "cannot create flat-file directory %s: %s", path,
-			    strerror(errno));
-	return validate_private_directory(path, error, error_size);
-}
-
-static bool provision_flatfile_directories(const char *root, char *error, size_t error_size)
-{
-	char path[4096];
-
-	if (!root || !*root)
-		return fail(error, error_size,
-			    "FLATFILE_STATE_DIR is required for persistence mode %s",
-			    persistence_mode_name());
-	if (root[0] != '/')
-		return fail(error, error_size, "FLATFILE_STATE_DIR must be an absolute path");
-	if (!ensure_private_directory(root, error, error_size))
-		return false;
-
-	for (const char *directory : flatfile_directories)
-	{
-		int written = snprintf(path, sizeof(path), "%s/%s", root, directory);
-		if (written < 0 || (size_t)written >= sizeof(path))
-			return fail(error, error_size, "flat-file state path exceeds %zu bytes",
-				    sizeof(path) - 1);
-		if (!ensure_private_directory(path, error, error_size))
-			return false;
-	}
-	// Make the new evidence directory entry durable before any accounting journal
-	// can refer to it. Bucket initialization remains a separate lifecycle action.
-	const int directory_fd = open(root, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-	if (directory_fd < 0)
-		return fail(error, error_size, "cannot open flat-file root for directory sync");
-	const int synced = fsync(directory_fd);
-	const int sync_error = errno;
-	close(directory_fd);
-	if (synced)
-		return fail(error, error_size, "cannot sync flat-file directories: %s",
-			    strerror(sync_error));
-	return true;
-}
-#endif
 
 bool persistence_mode_configure(char *error, size_t error_size)
 {
@@ -138,12 +59,7 @@ bool persistence_mode_configure(char *error, size_t error_size)
 
 	if (active_mode == PERSISTENCE_MODE_MARIADB_PRIMARY)
 	{
-#ifdef __NO_MYSQL__
-		return fail(error, error_size,
-			    "persistence mode mariadb-primary requires a MariaDB client build");
-#else
 		return true;
-#endif
 	}
 
 	if (active_mode == PERSISTENCE_MODE_MARIADB_PRIMARY_FLATFILE_FALLBACK)
@@ -151,22 +67,8 @@ bool persistence_mode_configure(char *error, size_t error_size)
 			    "persistence mode mariadb-primary-flatfile-fallback is not supported; "
 			    "select mariadb-primary or flatfile-primary explicitly");
 
-#ifndef __NO_MYSQL__
 	return fail(error, error_size,
 		    "persistence mode flatfile-primary requires a client-free flatfile build");
-#else
-
-	active_flatfile_root = getenv("FLATFILE_STATE_DIR");
-	if (!provision_flatfile_directories(active_flatfile_root, error, error_size))
-		return false;
-
-	std::string activity_error;
-	if (flatfile_ip_activity_reset_active(active_flatfile_root, (int64_t)time(NULL),
-					      &activity_error) != flatfile_ip_activity_result::ok)
-		return fail(error, error_size, "cannot reset flat-file IP activity: %s",
-			    activity_error.c_str());
-	return true;
-#endif
 }
 
 enum persistence_mode persistence_mode_get(void)

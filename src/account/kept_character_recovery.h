@@ -31,12 +31,10 @@ bool kept_character_recovery_pending(int pid);
 bool kept_character_recovery_owner_pending(const char *account);
 bool kept_character_recovery_releasable(const kept_character_recovery_record &record);
 
-#ifndef __NO_MYSQL__
 #include <mysql/mysql.h>
 unsigned int kept_character_recovery_read(MYSQL *connection, int pid, const std::string &name,
 					  kept_character_recovery_record *record, bool lock);
 unsigned int kept_character_recovery_release_guard(MYSQL *connection,
 						   const kept_character_recovery_record &expected);
-#endif
 
 #endif

@@ -29,10 +29,7 @@ bool sql_rollback(void);
 // check if we're currently in a transaction
 bool sql_in_transaction(void);
 
-#ifndef __NO_MYSQL__
 #include <mysql.h>
-
-#endif
 
 // ============================================================================
 // player save functions

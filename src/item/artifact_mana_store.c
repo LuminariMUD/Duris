@@ -15,10 +15,8 @@
 #include "item/artifact_mana_store.h"
 
 #include "flatfile/flatfile_store.h"
-#ifndef __NO_MYSQL__
 #include "sql/sql_pool.h"
 #include "sql/sql_thread_init.h"
-#endif
 
 #include <array>
 #include <charconv>
@@ -84,7 +82,6 @@ artifact_mana_read read_flat(const std::string &root, uint64_t uid, artifact_man
 								  artifact_mana_read::error;
 }
 
-#ifndef __NO_MYSQL__
 struct mysql_thread_scope
 {
 	const bool ready = sql_worker_thread_init() == 0;
@@ -162,7 +159,6 @@ bool write_sql(MYSQL *connection, uint64_t expected, const artifact_mana_record 
 	return read_sql(connection, record.uid, stored) == artifact_mana_read::found &&
 	       stored == record;
 }
-#endif
 } // namespace
 
 artifact_mana_read artifact_mana_store_read(bool sql, const std::string &root, uint64_t uid,
@@ -172,7 +168,6 @@ artifact_mana_read artifact_mana_store_read(bool sql, const std::string &root, u
 		return artifact_mana_read::error;
 	if (!sql)
 		return read_flat(root, uid, record);
-#ifndef __NO_MYSQL__
 	mysql_thread_scope thread;
 	if (!thread.ready)
 		return artifact_mana_read::error;
@@ -182,9 +177,6 @@ artifact_mana_read artifact_mana_store_read(bool sql, const std::string &root, u
 	const auto result = read_sql(connection, uid, record);
 	sql_pool_release(connection);
 	return result;
-#else
-	return artifact_mana_read::error;
-#endif
 }
 
 bool artifact_mana_store_write(bool sql, const std::string &root, uint64_t expected,
@@ -212,7 +204,6 @@ bool artifact_mana_store_write(bool sql, const std::string &root, uint64_t expec
 		flatfile_lock_release(lock);
 		return written;
 	}
-#ifndef __NO_MYSQL__
 	mysql_thread_scope thread;
 	if (!thread.ready)
 		return false;
@@ -222,7 +213,4 @@ bool artifact_mana_store_write(bool sql, const std::string &root, uint64_t expec
 	const bool result = write_sql(connection, expected, record);
 	sql_pool_release(connection);
 	return result;
-#else
-	return false;
-#endif
 }

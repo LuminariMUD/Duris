@@ -267,14 +267,12 @@ bool locker_recovery_boot(void)
 		const char *root = persistence_mode_flatfile_root();
 		if (!root)
 		{
-#ifndef __NO_MYSQL__
 			backend_identity = std::string("mariadb:") + sql_persistence_db_name();
 			for (const char *key : { "DB_HOST", "DB_PORT", "DB_SOCKET" })
 			{
 				const char *value = getenv(key);
 				backend_identity += std::string(":") + (value ? value : "");
 			}
-#endif
 		}
 		directory = root ? std::string(root) + "/locker-shutdown" :
 				   "runtime/locker-shutdown";

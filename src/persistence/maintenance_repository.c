@@ -23,9 +23,6 @@
 #include "core/defines.h"
 #include "persistence/persistence_observability.h"
 #include "sql/sql_pool.h"
-#ifdef __NO_MYSQL__
-#include "ships/ships.h"
-#endif
 
 #include <mysql/mysql.h>
 #include <mysql/mysqld_error.h>
@@ -1108,24 +1105,6 @@ maintenance_result maintenance_repository_execute(const maintenance_request &req
 		return execute_web_status(request);
 	if (request.job_id == maintenance_job_id::address_retention)
 		expire_log_files();
-#ifdef __NO_MYSQL__
-	// Flat-file expires its auctions and boons on the game thread when these are due
-	// (maintenance_handle_completions()).
-	if (request.job_id == maintenance_job_id::auction_due_scan ||
-	    request.job_id == maintenance_job_id::boon_scan)
-		return failure(request, maintenance_outcome::complete, 0);
-	// Flat-file keeps no address tables, only the log files.
-	if (request.job_id == maintenance_job_id::address_retention)
-		return failure(request, maintenance_outcome::complete, 0);
-	if (request.job_id == maintenance_job_id::cargo_market)
-	{
-		if (!flatfile_cargo_maintenance_apply(request.values.data(), request.value_count))
-			return failure(request, maintenance_outcome::retryable_failure, EIO);
-		maintenance_result result = failure(request, maintenance_outcome::complete, 0);
-		result.rows = NUM_PORTS * NUM_PORTS;
-		return result;
-	}
-#endif
 	if (request.job_id == maintenance_job_id::level_cap &&
 	    persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 	{

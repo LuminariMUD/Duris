@@ -60,11 +60,8 @@
  *
  * Persistence
  * -----------
- * The market is saved through read_cargo() / write_cargo(), which have two
- * backends selected by __NO_MYSQL__: SQL tables, or a checksummed flat-file
- * record encoded by flatfile_cargo_repository.c. Its authority journal also
- * accepts the market after-image in a compound Divine trade.
- * There is a third path -- cargo_maintenance_snapshot() /
+ * The market is saved through read_cargo() / write_cargo() to SQL tables.
+ * There is a second path -- cargo_maintenance_snapshot() /
  * cargo_maintenance_complete() -- used when the periodic update is driven by
  * the maintenance subsystem rather than by the game loop; it hands the work
  * across as a flat array of int64 and is idempotent on retry.
@@ -93,23 +90,6 @@
 #include "sql/sql_async.h"
 #include "sql/sql_player.h"
 #include "world/timers.h"
-#ifdef __NO_MYSQL__
-#include "flatfile/flatfile_cargo_repository.h"
-static_assert(NUM_PORTS == FLATFILE_CARGO_PORTS);
-#include "persistence/persistence_mode.h"
-
-#include <algorithm>
-#include <array>
-#include <bit>
-#include <cstdint>
-#include <limits>
-#include <new>
-#include <openssl/crypto.h>
-#include <openssl/sha.h>
-#include <string>
-#include <vector>
-#include <set>
-#endif
 
 float ship_cargo_market_mod[NUM_PORTS][NUM_PORTS];
 float ship_cargo_market_mod_delayed[NUM_PORTS][NUM_PORTS];
@@ -133,59 +113,6 @@ static float bound_market_mod(bool contraband, float modifier)
 		contraband ? "ship.contraband.maxPriceMod" : "ship.cargo.maxPriceMod", 1000.0);
 	return BOUNDEDF(low, modifier, high);
 }
-
-#ifdef __NO_MYSQL__
-namespace
-{
-std::string flat_cargo_root()
-{
-	const char *root = persistence_mode_flatfile_root();
-	return root ? root : "";
-}
-
-/*
- * Snapshot the live market matrices into a flat_cargo_record ready to be
- * saved.  Note that only the live cargo modifiers are captured -- the delayed
- * copy is derived on load, not persisted.
- */
-flat_cargo_record capture_flat_cargo()
-{
-	flat_cargo_record record;
-	record.trade_generation = trade_generation;
-	for (int port = 0; port < NUM_PORTS; ++port)
-		for (int type = 0; type < NUM_PORTS; ++type)
-		{
-			const size_t index = port * NUM_PORTS + type;
-			record.cargo[index] = ship_cargo_market_mod[port][type];
-			record.contraband[index] = ship_contra_market_mod[port][type];
-		}
-	return record;
-}
-
-/*
- * Install a loaded record over the live market.
- *
- * The delayed matrix is seeded from the same values rather than left at its
- * previous contents, so a freshly loaded market is internally consistent
- * until the next update_delayed_cargo_prices() tick.
- */
-void replace_live_cargo(const flat_cargo_record &record)
-{
-	trade_generation = record.trade_generation;
-	for (int port = 0; port < NUM_PORTS; ++port)
-		for (int type = 0; type < NUM_PORTS; ++type)
-		{
-			const size_t index = port * NUM_PORTS + type;
-			ship_cargo_market_mod[port][type] =
-				bound_market_mod(false, record.cargo[index]);
-			ship_cargo_market_mod_delayed[port][type] =
-				ship_cargo_market_mod[port][type];
-			ship_contra_market_mod[port][type] =
-				bound_market_mod(true, record.contraband[index]);
-		}
-}
-} // namespace
-#endif
 
 // This matrix shows the base cost in platinum for each port's cargo/contraband,
 // as well as the minimum number of ship frags required to be able to buy that
@@ -263,9 +190,7 @@ void reset_cargo()
  * Boot the cargo market: neutralise it, then load the persisted modifiers
  * over the top and prime the maintenance timers.
  *
- * A failed load is fatal under the flat-file backend, where the market file
- * is the sole authority; under MySQL it is logged and the neutral market is
- * kept.
+ * A failed load is logged and the neutral market is kept.
  */
 void initialize_ship_cargo()
 {
@@ -273,17 +198,12 @@ void initialize_ship_cargo()
 
 	if (!read_cargo())
 	{
-#ifdef __NO_MYSQL__
-		fatal_boot_error("ship_cargo", "flat cargo market authority could not be loaded");
-#else
 		logit(LOG_SHIP, "Error reading market values from database!");
-#endif
 	}
 	cargo_maintenance_last_update = get_timer("update_cargo");
 	cargo_maintenance_last_delayed_update = get_timer("update_delayed_cargo_prices");
 }
 
-#ifndef __NO_MYSQL__
 #define CARGO_MODS_QUERY "select type, port_id, cargo_type, modifier from ship_cargo_market_mods"
 
 /* Apply one stored market modifier row. */
@@ -315,7 +235,6 @@ static void apply_cargo_mod(const char *type, const char *port, const char *carg
 		ship_contra_market_mod[port_id][cargo_type] = bound_market_mod(true, modifier);
 	}
 }
-#endif
 
 /*
  * Load every market modifier from persistent storage into the live matrices.
@@ -330,25 +249,6 @@ static void apply_cargo_mod(const char *type, const char *port, const char *carg
  */
 int read_cargo()
 {
-#ifdef __NO_MYSQL__
-	std::string error;
-	flat_cargo_record record;
-	auto result = flatfile_cargo_load(flat_cargo_root(), &record, &error);
-	if (result == flat_cargo_result::not_found)
-	{
-		record = capture_flat_cargo();
-		result = flatfile_cargo_save(flat_cargo_root(), record, &error);
-	}
-	if (result != flat_cargo_result::ok)
-	{
-		logit(LOG_SHIP, "Error reading flat cargo market values: %s",
-		      error.empty() ? "authority failure" : error.c_str());
-		return FALSE;
-	}
-	if (record.revision)
-		replace_live_cargo(record);
-	return TRUE;
-#else
 	uint64_t generation = 0;
 	if (!divine_trade_sql_generation(DB, &generation, false))
 	{
@@ -372,30 +272,16 @@ int read_cargo()
 	mysql_free_result(res);
 	trade_generation = generation;
 	return TRUE;
-
-#endif
 }
 
 /*
  * Persist the current market: both modifier matrices, plus a denormalised
  * price table for out-of-game reporting.
  *
- * Under MySQL one writer job replaces both tables, in one transaction.  Under
- * the flat-file backend it is a single atomic record write.
- *
- * Returns FALSE when the flat-file write fails.
+ * One writer job replaces both tables, in one transaction.
  */
 int write_cargo()
 {
-#ifdef __NO_MYSQL__
-	std::string error;
-	const auto saved = flatfile_cargo_save(flat_cargo_root(), capture_flat_cargo(), &error);
-	if (saved == flat_cargo_result::ok || saved == flat_cargo_result::stale)
-		return TRUE;
-	logit(LOG_SHIP, "Error writing flat cargo market values: %s",
-	      error.empty() ? "authority failure" : error.c_str());
-	return FALSE;
-#else
 	std::string cargo_prices =
 		"insert into ship_cargo_prices (type, port_id, cargo_type, price) values ";
 	std::string contraband_prices = cargo_prices;
@@ -443,7 +329,6 @@ int write_cargo()
 					return mysql_errno(connection);
 			return 0U;
 		});
-#endif
 }
 
 /*
@@ -671,65 +556,6 @@ void cargo_activity()
 	update_cargo();
 	update_delayed_cargo_prices();
 }
-
-#ifdef __NO_MYSQL__
-/*
- * Apply a market-maintenance batch produced by cargo_maintenance_snapshot()
- * under the flat-file backend.
- *
- * `values` is the flat int64 encoding that crossed the maintenance boundary:
- * [0] timestamp, [1] whether the market update is due, [2] whether the
- * delayed update is due, then four values per (port, type) pair.  Modifiers
- * travel as fixed-point millionths and are converted back to float here.
- *
- * Every field is re-validated on the way in -- this is a trust boundary, not
- * an internal call -- and the whole batch is rejected on the first bad value.
- * Returns false without touching anything in that case.
- */
-bool flatfile_cargo_maintenance_apply(const int64_t *values, size_t count)
-{
-	constexpr size_t legacy_expected = 3 + NUM_PORTS * NUM_PORTS * 4;
-	constexpr size_t expected = legacy_expected + 1;
-	if (!values || (count != expected && count != legacy_expected) || values[0] <= 0 ||
-	    values[0] > INT_MAX || (values[1] != 0 && values[1] != 1) ||
-	    (values[2] != 0 && values[2] != 1) || (!values[1] && !values[2]))
-		return false;
-	flat_cargo_record record;
-	if (count == expected)
-		record.trade_generation = static_cast<uint64_t>(values[legacy_expected]);
-	for (int port = 0; port < NUM_PORTS; ++port)
-		for (int type = 0; type < NUM_PORTS; ++type)
-		{
-			const size_t source = 3 + (port * NUM_PORTS + type) * 4;
-			const size_t destination = port * NUM_PORTS + type;
-			if (values[source] < 0 || values[source] > INT_MAX ||
-			    values[source + 1] < 0 || values[source + 1] > INT_MAX ||
-			    values[source + 2] < 0 || values[source + 2] > 1000000000LL ||
-			    values[source + 3] < 0 || values[source + 3] > 1000000000LL)
-				return false;
-			record.cargo[destination] = values[source + 2] / 1000000.0f;
-			record.contraband[destination] = values[source + 3] / 1000000.0f;
-		}
-	if (values[1])
-	{
-		std::string error;
-		const auto saved = flatfile_cargo_save(flat_cargo_root(), record, &error);
-		// As in SQL, retire restored old work without replacing market or timers.
-		if (saved == flat_cargo_result::stale)
-			return true;
-		if (saved != flat_cargo_result::ok)
-		{
-			logit(LOG_SHIP, "Error writing scheduled flat cargo market values: %s",
-			      error.empty() ? "authority failure" : error.c_str());
-			return false;
-		}
-		set_timer("update_cargo", static_cast<int>(values[0]));
-	}
-	if (values[2])
-		set_timer("update_delayed_cargo_prices", static_cast<int>(values[0]));
-	return true;
-}
-#endif
 
 /*
  * Capture the work for one market-maintenance pass into a flat value array
@@ -1393,10 +1219,6 @@ void do_world_cargo(P_char ch, char *arg)
 	else if (is_abbrev(arg, "reload"))
 	{
 		send_to_char("Reloading cargo mods from persistent storage...\r\n", ch);
-#ifdef __NO_MYSQL__
-		if (!read_cargo())
-			send_to_char("FAILED!\r\n", ch);
-#else
 		const uint64_t generation = trade_generation;
 		sql_read_for(ch, CARGO_MODS_QUERY,
 			     [generation](P_char actor, const sql_rows &rows)
@@ -1411,7 +1233,6 @@ void do_world_cargo(P_char ch, char *arg)
 				     for (const sql_row &row : rows)
 					     apply_cargo_mod(row[0], row[1], row[2], row[3]);
 			     });
-#endif
 	}
 	else if (is_abbrev(arg, "reset"))
 	{

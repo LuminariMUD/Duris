@@ -1780,11 +1780,6 @@ int epic_zone_data::displayed_alignment() const
 //   if(!ch || IS_NPC(ch))
 //     return;
 //
-// #ifdef __NO_MYSQL__
-//   send_to_char("This feature is disabled.\r\n", ch);
-//   return;
-// #endif
-//
 //   char buff[MAX_STRING_LENGTH];
 //	char done_str[] = " ";
 //
@@ -1952,11 +1947,6 @@ void do_epic_zones(P_char ch, char * /*arg*/, int /*cmd*/)
 	if (!ch || IS_NPC(ch))
 		return;
 
-#ifdef __NO_MYSQL__
-	send_to_char("This feature is disabled.\r\n", ch);
-	return;
-#endif
-
 	// try cache first
 	char *cached = redis_get_epic_zones();
 	if (cached)
@@ -1978,9 +1968,6 @@ void do_epic_zones(P_char ch, char * /*arg*/, int /*cmd*/)
 
 char *generate_epic_zones_output(void)
 {
-#ifdef __NO_MYSQL__
-	return NULL;
-#else
 	char *output = (char *)malloc(MAX_STRING_LENGTH * 2);
 	if (!output)
 		return NULL;
@@ -2021,7 +2008,6 @@ char *generate_epic_zones_output(void)
 	strcat(output, "\n* = already completed this boot.\n");
 
 	return output;
-#endif
 }
 
 void do_epic_share(P_char ch, char * /*arg*/, int /*cmd*/)
