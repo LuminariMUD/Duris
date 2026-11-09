@@ -299,13 +299,8 @@ def test_epic_boon_publication() -> None:
                         '-ffunction-sections', '-fdata-sections', '-fsanitize=address,undefined',
                         '-g', '-no-pie', '-Isrc', '-I/usr/include/mysql', str(cpp),
                         'src/world/epic_transaction.c', 'src/world/epic_command.c', 'src/world/zone_touch_command.c',
-                        'src/economy/boon_reward_transaction.c', 'src/economy/boon_reward_command.c',
-                        'src/economy/boon_shop_transaction.c',
-                        'src/economy/boon_shop_command.c', 'src/economy/currency_command.c',
-                        'src/combat/combat_outcome_command.c', 'src/guild/artifact_guild_command.c',
-                        'src/flatfile/flatfile_boon_repository.c',
-                        'src/flatfile/flatfile_player_domain_repository.c', 'src/combat/frag_cap.c', 'src/combat/frag_cap_repository.c', 'src/combat/frag_cap_config.c',
-                        'src/flatfile/flatfile_authority_transaction.c', 'src/flatfile/flatfile_store.c',
+                        'src/economy/boon_reward_transaction.c', 'src/economy/boon_reward_command.c', 'src/economy/currency_command.c',
+                        'src/combat/combat_outcome_command.c', 'src/guild/artifact_guild_command.c', 'src/combat/frag_cap.c', 'src/combat/frag_cap_repository.c', 'src/combat/frag_cap_config.c', 'src/flatfile/flatfile_store.c',
                         'src/persistence/critical_command.c', str(HARNESS_STUBS),
                         '-Wl,--gc-sections', '-Wl,--wrap=getrandom', '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True)
         subprocess.run([str(binary), str(Path(directory) / 'state')], check=True, timeout=30)

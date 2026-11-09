@@ -7,8 +7,6 @@ from _paths import HARNESS_STUBS, rel
 
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
-#include "flatfile/flatfile_player_repository.h"
-#include "flatfile/flatfile_identity_repository.h"
 #include "player/player_playtime.h"
 #include <cassert>
 #include <iostream>
@@ -88,8 +86,8 @@ with tempfile.TemporaryDirectory(prefix="duris-playtime-flatfile-") as temporary
     root = Path(temporary)
     source, binary = root / "playtime.cpp", root / "playtime"
     source.write_text(HARNESS)
-    subprocess.run(["g++", str(HARNESS_STUBS), "-std=c++20", "-D__NO_MYSQL__", "-ffunction-sections", "-fdata-sections",
-                    "-Isrc", "-Isrc/no_mysql", str(source), *[rel(name) for name in SOURCES],
+    subprocess.run(["g++", str(HARNESS_STUBS), "-std=c++20", "-ffunction-sections", "-fdata-sections",
+                    "-Isrc", '-I/usr/include/mysql', str(source), *[rel(name) for name in SOURCES],
                     "-Wl,--gc-sections", "-lcrypto", "-pthread", "-o", str(binary)], cwd=ROOT, check=True)
     for name in ("state", "state/players", "state/identities", "state/identities/names", "state/domains"):
         (root / name).mkdir(mode=0o700)

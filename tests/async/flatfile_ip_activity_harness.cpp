@@ -1,4 +1,3 @@
-#include "flatfile/flatfile_ip_activity_repository.h"
 #include "sql/sql.h"
 
 #include <cstdlib>
@@ -22,11 +21,6 @@ void require(bool condition, const std::string &message)
 	}
 }
 } // namespace
-
-const char *persistence_mode_flatfile_root()
-{
-	return state_root.c_str();
-}
 
 int main(int argc, char **argv)
 {

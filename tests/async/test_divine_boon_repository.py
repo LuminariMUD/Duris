@@ -15,11 +15,9 @@ with tempfile.TemporaryDirectory(prefix="divine-boon-store-", dir=output_root) a
         [
             "g++", "-std=c++20", "-g", "-Og", "-Wall", "-Wextra", "-Wpedantic",
             "-Werror", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-            "-fno-pie", "-no-pie", "-D__NO_MYSQL__",
-            "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST", "-Isrc", "-Isrc/no_mysql",
+            "-fno-pie", "-no-pie", "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST", "-Isrc", '-I/usr/include/mysql',
             "tests/async/divine_boon_repository_harness.cpp",
-            "src/economy/divine_boon.c", "src/economy/divine_boon_repository.c",
-            "src/flatfile/flatfile_authority_transaction.c", "src/flatfile/flatfile_store.c",
+            "src/economy/divine_boon.c", "src/economy/divine_boon_repository.c", "src/flatfile/flatfile_store.c",
             "-lcrypto", "-pthread", "-o", binary,
         ],
         cwd=ROOT, check=True,

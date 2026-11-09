@@ -95,7 +95,7 @@ def compile_editor(build):
     cpp, binary = build / "snapshot-fixture.cpp", build / "snapshot-fixture"
     cpp.write_text(source)
     subprocess.run(["g++", "-std=c++20", "-Isrc", str(cpp),
-                    "src/player/player_snapshot_codec.c", "src/flatfile/flatfile_player_snapshot_file.c",
+                    "src/player/player_snapshot_codec.c",
                     "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(binary)], cwd=ROOT, check=True)
     return binary
 

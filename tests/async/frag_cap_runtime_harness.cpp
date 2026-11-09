@@ -43,14 +43,6 @@ void refresh()
 }
 }
 
-enum persistence_mode persistence_mode_get(void)
-{
-	return PERSISTENCE_MODE_FLATFILE_PRIMARY;
-}
-const char *persistence_mode_flatfile_root(void)
-{
-	return test_root.c_str();
-}
 void logit(const char *, const char *, ...) {}
 void send_to_all(const char *text)
 {

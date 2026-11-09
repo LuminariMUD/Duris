@@ -14,9 +14,6 @@ prelude = r'''
 #include "core/utils.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
-#include "flatfile/flatfile_corpse_ownership.h"
-#include "flatfile/flatfile_identity_repository.h"
-#include "flatfile/flatfile_locker_repository.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdarg>
@@ -31,7 +28,6 @@ using locker_entered = std::function<void(P_char, P_char, int)>;
 static std::string feedback, target, query;
 static std::string state_root, visitor_account = "GuestAccount";
 MYSQL *DB = reinterpret_cast<MYSQL *>(1);
-const char *persistence_mode_flatfile_root() { return state_root.c_str(); }
 const char *get_account_name_safe(P_char) { return visitor_account.c_str(); }
 int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 flatfile_corpse_ownership_result flatfile_world_load_item_ownership(

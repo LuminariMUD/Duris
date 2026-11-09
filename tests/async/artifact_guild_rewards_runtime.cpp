@@ -66,10 +66,6 @@ double difficulty_multiplier(difficulty_dial)
 {
 	return difficulty;
 }
-bool persistence_mode_requires_mysql()
-{
-	return mysql_mode;
-}
 bool artifact_feed_state(int vnum, int64_t *timer, int32_t *owner, int64_t *bind)
 {
 	auto found = rows.find(vnum);

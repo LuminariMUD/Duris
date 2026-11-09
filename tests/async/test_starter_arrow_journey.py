@@ -65,7 +65,6 @@ def synchronization_control():
 def build_inspector(root):
     source, binary = root / "inspect.cpp", root / "inspect"
     source.write_text(r'''
-#include "flatfile/flatfile_player_snapshot_file.h"
 #include <cassert>
 #include <cstdio>
 int main(int argc, char **argv) {
@@ -83,7 +82,6 @@ int main(int argc, char **argv) {
 }
 ''')
     subprocess.run(["g++", "-std=c++20", "-Isrc", str(source),
-                    "src/flatfile/flatfile_player_snapshot_file.c",
                     "src/flatfile/flatfile_store.c", "src/player/player_snapshot_codec.c",
                     "-lcrypto", "-o", str(binary)], cwd=ROOT, check=True)
     return binary

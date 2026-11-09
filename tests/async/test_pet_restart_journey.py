@@ -48,7 +48,7 @@ def run(binary):
         fixture = root / "pet-fixture"
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Isrc",
                         "tests/async/pet_restart_fixture.cpp", "src/player/pet_restore_state.c",
-                        "src/player/player_snapshot_codec.c", "src/flatfile/flatfile_player_snapshot_file.c",
+                        "src/player/player_snapshot_codec.c",
                         "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(fixture)],
                        cwd=ROOT, check=True, timeout=90)
 

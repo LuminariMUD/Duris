@@ -262,7 +262,7 @@ def main():
                           .replace("int main() {", "\n".join(functions) + "\nint main() {"))
         for backend in ("mariadb", "flatfile"):
             binary = directory / backend
-            flags = ["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else []
+            flags = ['-I/usr/include/mysql'] if backend == "flatfile" else []
             subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                             "-ffunction-sections", "-fdata-sections",
                             "-Wl,--gc-sections", "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined",
@@ -288,7 +288,7 @@ int main() {
 }
 ''')
         binary = directory / "help-unavailable"
-        subprocess.run(["g++", "-std=c++20", "-D__NO_MYSQL__", "-Isrc/no_mysql", "-Isrc",
+        subprocess.run(["g++", "-std=c++20", '-I/usr/include/mysql', "-Isrc",
                         "-I/usr/include/libxml2", "-ffunction-sections", "-fdata-sections",
                         "-Wl,--gc-sections", str(source), "src/cmd/class.c", "src/cmd/race.c",
                         "src/core/common.c", "src/core/constant.c", "src/account/creation_availability_config.c",

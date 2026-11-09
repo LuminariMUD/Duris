@@ -284,8 +284,7 @@ def run(binary, mode='file', full_world=None):
                                cwd=journey.ROOT, check=True, timeout=180)
             subprocess.run([str(journey.INSPECTOR), str(state), 'seed-combat'], check=True)
         cpp=root/'staff.cpp'; cpp.write_text(FIXTURE); fixture=root/'staff'
-        subprocess.run(['g++','-std=c++20','-Isrc',str(cpp),'src/player/player_snapshot_codec.c',
-            'src/flatfile/flatfile_player_snapshot_file.c','src/flatfile/flatfile_store.c','-lcrypto','-o',str(fixture)],cwd=journey.ROOT,check=True)
+        subprocess.run(['g++','-std=c++20','-Isrc',str(cpp),'src/player/player_snapshot_codec.c','src/flatfile/flatfile_store.c','-lcrypto','-o',str(fixture)],cwd=journey.ROOT,check=True)
         process=output=client=redis=None
         expected_room = None if full_world else 'The Regression Arena'
         def stop():

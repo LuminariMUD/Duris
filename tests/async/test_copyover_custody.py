@@ -620,7 +620,7 @@ with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-", dir=output) a
     source = temp / "fixture.cpp"
     source.write_text(support + HARNESS)
     common = ["g++", "-std=c++20", "-g", "-fsanitize=address,undefined",
-              "-fno-omit-frame-pointer", "-fno-sanitize-recover=undefined", "-ffunction-sections", "-fdata-sections", "-Isrc", "-D__NO_MYSQL__"]
+              "-fno-omit-frame-pointer", "-fno-sanitize-recover=undefined", "-ffunction-sections", "-fdata-sections", "-Isrc", ]
     subprocess.run(common + ["-Dexecl=fixture_execl", "-c", "src/persistence/copyover.c",
                             "-o", str(temp / "copyover.o")], cwd=ROOT, check=True)
     subprocess.run(common + [str(source), str(temp / "copyover.o"),

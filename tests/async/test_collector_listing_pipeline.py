@@ -15,7 +15,6 @@ def test_flatfile_adapter(directory: Path) -> None:
     source = directory / "flatfile-adapter.cpp"
     binary = directory / "flatfile-adapter"
     source.write_text(r'''#include "economy/collector_catalog_source.h"
-#include "flatfile/flatfile_collector_repository.h"
 #include <cassert>
 #include <cerrno>
 #include <string>
@@ -25,7 +24,6 @@ static unsigned reads = 0;
 static bool supplied_found = true;
 static std::string supplied_error;
 static auto supplied_result = flatfile_collector_repository_result::ok;
-const char *persistence_mode_flatfile_root() { return configured_root; }
 flatfile_collector_repository_result flatfile_collector_repository_read_bootstrap(
     const std::string &, collector_bootstrap_snapshot *, std::string *)
 {
@@ -75,7 +73,7 @@ int main()
 ''')
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
-        "-D__NO_MYSQL__", "-I", str(ROOT / "src"), "-I", str(ROOT / "src/no_mysql"),
+        "-I", str(ROOT / "src"), "-I", str(ROOT / "src/no_mysql"),
         str(ROOT / "src/economy/collector_catalog_source.c"), str(source), "-o", str(binary),
     ], check=True)
     subprocess.run([str(binary)], check=True, timeout=10)

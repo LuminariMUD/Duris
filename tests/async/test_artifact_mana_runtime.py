@@ -226,7 +226,7 @@ with tempfile.TemporaryDirectory(prefix="duris-artifact-mana-") as directory:
     subprocess.run([
         os.environ.get("CXX", "g++"), "-std=c++20", "-Wall", "-Wextra", "-Werror",
         "-g", "-O1", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-no-pie",
-        "-D__NO_MYSQL__", "-I", str(ROOT / "src"), str(harness),
+        "-I", str(ROOT / "src"), str(harness),
         *[str(ROOT / "src/item" / f"artifact_mana_{part}.c") for part in ("model", "runtime", "store")],
         str(ROOT / "src/flatfile/flatfile_store.c"), "-lcrypto", "-pthread", "-o", str(binary),
     ], check=True)

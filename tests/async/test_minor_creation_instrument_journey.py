@@ -21,7 +21,6 @@ INSTRUMENTS = (("lyre", 1241), ("horn", 1242), ("drum", 1243),
 REPORT = ROOT / "bin/qualification/issue453/gameplay-report.json"
 
 FIXTURE = r'''
-#include "flatfile/flatfile_player_snapshot_file.h"
 #include "flatfile/flatfile_store.h"
 #include "core/structs.h"
 #include "magic/spells.h"
@@ -131,7 +130,6 @@ def run(binary):
         cpp.write_text(FIXTURE)
         subprocess.run(["g++", "-std=c++20", "-Isrc", str(cpp),
                         "src/player/player_snapshot_codec.c",
-                        "src/flatfile/flatfile_player_snapshot_file.c",
                         "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(fixture)],
                        cwd=ROOT, check=True)
         (runtime / "journals/critical").mkdir(parents=True, mode=0o700)

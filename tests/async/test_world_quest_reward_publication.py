@@ -156,7 +156,6 @@ int main() {
 '''
 
 flat_prelude = r'''
-#include "flatfile/flatfile_item_repository.h"
 #include "persistence/persistence_mode.h"
 #include "player/player_snapshot_capture.h"
 #include "net/unicode.h"
@@ -166,7 +165,6 @@ int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 static player_pending_world_quest captured;
 static bool reject_second = false;
 static size_t capture_bytes = 100, capture_nodes = 2;
-const char *persistence_mode_flatfile_root() { return "unused"; }
 flatfile_item_repository_result flatfile_item_repository_load_owner(
     const std::string &, const item_owner_identity &owner, uint64_t *revision,
     std::vector<flatfile_item_ownership_record> *records, std::string *) {
@@ -256,7 +254,7 @@ with tempfile.TemporaryDirectory(prefix="quest-reward-publish-", dir=ROOT / "bin
     cpp.write_text(prelude + flat_prelude + production +
                    extract_function("sql/sql.c", "bool sql_world_quest_finish_async(") + flat_driver)
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g",
-                    "-D__NO_MYSQL__", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-                    "-fno-pie", "-no-pie", "-Isrc", "-Isrc/no_mysql", "-I/usr/include/libxml2",
+                    "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
+                    "-fno-pie", "-no-pie", "-Isrc", '-I/usr/include/mysql', "-I/usr/include/libxml2",
                     str(cpp), "-o", str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True)

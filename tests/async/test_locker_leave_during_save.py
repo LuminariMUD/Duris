@@ -11,7 +11,6 @@ from _paths import HARNESS_STUBS
 ROOT = Path(__file__).resolve().parents[2]
 
 HARNESS = r'''
-#include "flatfile/flatfile_player_repository.h"
 #include "persistence/locker_async.h"
 #include "persistence/persistence_mode.h"
 #include "player/player_save_worker.h"
@@ -66,10 +65,6 @@ player_snapshot_capture_result player_item_snapshot_list_capture(
     return player_snapshot_capture_result::ok;
 }
 // MariaDB: the flat-file writer is never called.
-const char *persistence_mode_flatfile_root(void)
-{
-    return nullptr;
-}
 player_save_apply_result flatfile_locker_snapshot_apply(const std::string &,
                                                         const flatfile_locker_save &, std::string *)
 {

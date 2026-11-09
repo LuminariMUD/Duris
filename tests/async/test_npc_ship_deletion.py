@@ -185,7 +185,6 @@ void send_to_char_f(P_char, const char *format, ...) {
 std::string strip_ansi(const char *text) { return text; }
 bool sql_delete_ship(const char *,uint32_t) { ++persistence_calls; return persistence_ok; }
 flatfile_ship_result flatfile_ship_list(const std::string &,std::vector<flatfile_ship_record> *rows,std::string *) {rows->clear();return deletion_recovered ? flatfile_ship_result::ok : flatfile_ship_result::io_error;}
-const char *persistence_mode_flatfile_root() { return "/unused-test-authority"; }
 flatfile_ship_result flatfile_ship_remove(const std::string &, uint32_t, const std::string &, std::string *,const std::vector<flatfile_authority_operation> *) {
     ++persistence_calls;
     if (ambiguous_delete) return flatfile_ship_result::io_error;
@@ -839,7 +838,7 @@ with tempfile.TemporaryDirectory(prefix="npc-ship-deletion-", dir=build_root) as
     failures = []
     (path / "test.cpp").write_text(HARNESS, encoding="utf-8")
     for backend in ("mysql", "flatfile"):
-        defines = ["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else ["-I/usr/include/mysql"]
+        defines = ['-I/usr/include/mysql'] if backend == "flatfile" else ["-I/usr/include/mysql"]
         binary = path / backend
         subprocess.run(
             ["g++", "-std=c++20", "-g", "-Og", "-Isrc", "-I/usr/include/libxml2", *defines,

@@ -308,7 +308,7 @@ def main():
         source.write_text(HARNESS.replace("int main() {", "\n".join(functions) + "\nint main() {"))
         for backend in ("mariadb", "flatfile"):
             binary = directory / backend
-            flags = ["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else []
+            flags = ['-I/usr/include/mysql'] if backend == "flatfile" else []
             subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                             "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
                             "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-Isrc",
@@ -335,7 +335,7 @@ int main() {
             'std::string wiki_help_single(std::string name) { help_name = name; return help_result; }', '')
         source.write_text(prelude + "\n".join(functions[:-1]) + driver)
         binary = directory / "help-unavailable"
-        subprocess.run(["g++", "-std=c++20", "-D__NO_MYSQL__", "-Isrc/no_mysql", "-Isrc",
+        subprocess.run(["g++", "-std=c++20", '-I/usr/include/mysql', "-Isrc",
                         "-I/usr/include/libxml2", "-ffunction-sections", "-fdata-sections",
                         "-Wl,--gc-sections", str(source), "src/cmd/spells.c", "src/core/common.c",
                         "src/cmd/wikihelp.c", "src/flatfile/flatfile_help_catalog.c",

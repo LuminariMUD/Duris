@@ -53,9 +53,6 @@ extern const int top_of_world = 1;
 static bool manager;
 static bool flat_backend;
 MYSQL *DB = reinterpret_cast<MYSQL *>(1);
-persistence_mode persistence_mode_get() {
-    return flat_backend ? PERSISTENCE_MODE_FLATFILE_PRIMARY : PERSISTENCE_MODE_MARIADB_PRIMARY;
-}
 static uint64_t next_uid = 1;
 static password_completion completion;
 static std::function<void(P_char, const sql_rows &)> log_completion;

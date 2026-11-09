@@ -40,8 +40,6 @@ P_obj object_list = nullptr;
 index_data indexes[2] = {};
 P_index obj_index = indexes;
 bool nevent_is_game_thread() { return game_thread; }
-bool persistence_mode_requires_mysql() { return false; }
-const char *persistence_mode_flatfile_root() { return root.c_str(); }
 float get_property(const char *key, double fallback) {
     if (!std::strcmp(key, "itemActions.enabled")) return master;
     if (!std::strcmp(key, "itemActions.mana.enabled")) return mana_enabled;
@@ -133,8 +131,7 @@ with tempfile.TemporaryDirectory(prefix="duris-mana-game-") as directory:
     binary = work / "test"
     subprocess.run([
         os.environ.get("CXX", "g++"), "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g", "-O1",
-        "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-no-pie", "-D__NO_MYSQL__",
-        "-I", str(ROOT / "src"), "-I", str(ROOT / "src/no_mysql"), str(work / "test.cpp"),
+        "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-no-pie", "-I", str(ROOT / "src"), "-I", str(ROOT / "src/no_mysql"), str(work / "test.cpp"),
         *[str(ROOT / "src/item" / f"artifact_mana_{part}.c") for part in ("model", "runtime", "store")],
         str(ROOT / "src/flatfile/flatfile_store.c"), "-lcrypto", "-pthread", str(HARNESS_STUBS), "-o", str(binary),
     ], check=True)

@@ -23,7 +23,6 @@ ROOT = Path(__file__).resolve().parents[2]
 REPORT = ROOT / 'bin/qualification/issue215/gameplay-report.json'
 
 FIXTURE = r'''
-#include "flatfile/flatfile_player_snapshot_file.h"
 #include "flatfile/flatfile_store.h"
 #include "player/player_snapshot_codec.h"
 #include "core/structs.h"
@@ -226,7 +225,7 @@ PH 0 0 -1
         cpp, fixture = root / 'fixture.cpp', root / 'fixture'
         cpp.write_text(FIXTURE)
         subprocess.run(['g++', '-std=c++20', '-Isrc', str(cpp),
-                        'src/player/player_snapshot_codec.c', 'src/flatfile/flatfile_player_snapshot_file.c',
+                        'src/player/player_snapshot_codec.c',
                         'src/flatfile/flatfile_store.c', 'src/player/pet_restore_state.c',
                         '-lcrypto', '-o', str(fixture)], cwd=ROOT, check=True)
         port, tls, websocket = journey.available_ports()

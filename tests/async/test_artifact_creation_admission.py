@@ -81,7 +81,6 @@ bool redis_invalidate_artifact_cache() {
  if(fail_invalidation) { fail_invalidation=false; throw std::bad_alloc(); }
  return true;
 }
-const char *persistence_mode_flatfile_root() { return "fixture"; }
 static auto snapshot_result = flatfile_artifact_result::ok;
 flatfile_artifact_result flatfile_artifact_snapshot_apply(const std::string &,
  const std::vector<flatfile_artifact_record> &records,std::string *) {
@@ -2065,8 +2064,7 @@ void corpse_bind_cases() {
 """)
 with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as directory:
  cpp=Path(directory)/"creation.cpp"; binary=Path(directory)/"creation"; cpp.write_text(source)
- subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-D__NO_MYSQL__",
-  "-Isrc","-Isrc/no_mysql","-ffunction-sections","-fdata-sections","-fsanitize=address,undefined",
+ subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-Isrc",'-I/usr/include/mysql',"-ffunction-sections","-fdata-sections","-fsanitize=address,undefined",
   "-fno-sanitize-recover=all","-fno-omit-frame-pointer",str(cpp),"src/guild/artifact_population.c",
   "src/item/named_set_origin.c","src/item/random_equipment_tables.c","src/item/item_transfer_command.c","src/item/item_ownership_runtime.c","src/guild/artifact_guild_state.c",
   "src/guild/artifact_guild_command.c","src/persistence/critical_command.c","src/core/safe_format.c","src/player/player_load_topology.c","src/combat/trap_legacy.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",

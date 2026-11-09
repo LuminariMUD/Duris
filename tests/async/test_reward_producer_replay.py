@@ -19,7 +19,6 @@ HARNESS = r'''
 #include "world/epic.h"
 #include "guild/artifact_guild_transaction.h"
 #include "economy/currency_transaction.h"
-#include "flatfile/flatfile_boon_repository.h"
 #include "persistence/persistence_mode.h"
 #include "persistence/persistence_checkpoint.h"
 #include "player/player_save_worker.h"
@@ -75,18 +74,6 @@ P_char find_player_by_pid(int pid)
 	for (size_t i = 0; i < 2; ++i)
 		if (pcs[i].pid == pid && online[i])
 			return &actors[i];
-	return nullptr;
-}
-persistence_mode persistence_mode_get()
-{
-	return PERSISTENCE_MODE_MARIADB_PRIMARY;
-}
-bool persistence_mode_requires_mysql()
-{
-	return true;
-}
-const char *persistence_mode_flatfile_root()
-{
 	return nullptr;
 }
 flatfile_boon_result flatfile_boon_acknowledge_reward(const std::string &,

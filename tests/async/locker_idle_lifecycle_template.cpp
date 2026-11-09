@@ -7,7 +7,6 @@
 #include "player/player_save_pipeline.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_repository.h"
-#include "flatfile/flatfile_player_repository.h"
 #include "telemetry/telemetry_runtime.h"
 #include "net/comm.h"
 #include "world/epic.h"
@@ -78,10 +77,6 @@ player_item_snapshot_list_capture(P_char holder, bool, bool, bool,
 	}
 	*bytes = items->size() * sizeof(player_item_snapshot);
 	return player_snapshot_capture_result::ok;
-}
-const char *persistence_mode_flatfile_root()
-{
-	return nullptr;
 }
 player_save_apply_result flatfile_locker_snapshot_apply(const std::string &,
 							const flatfile_locker_save &, std::string *)

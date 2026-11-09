@@ -69,7 +69,6 @@ with tempfile.TemporaryDirectory(prefix="duris-account-reward-owner-") as tempor
         [
             "g++",
             "-std=c++20",
-            "-D__NO_MYSQL__",
             "-ffunction-sections",
             "-fdata-sections",
             "-Isrc",

@@ -4,9 +4,6 @@
 // logs/log/item_claims, an auction's included; an item the catalog says was
 // destroyed is left out with its contents and logged to logs/log/dupes; nothing
 // refuses the save.
-#include "flatfile/flatfile_identity_repository.h"
-#include "flatfile/flatfile_item_repository.h"
-#include "flatfile/flatfile_player_repository.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_codec.h"
 #include "world/world_recovery_pipeline.h"

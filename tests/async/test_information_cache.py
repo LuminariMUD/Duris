@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'bin') as temp:
     for name, sources, flags in [
         ('refresh', ['tests/async/refresh_cache_harness.cpp'], []),
         ('information', ['tests/async/information_cache_harness.cpp','src/cmd/information_cache.c',
-                         'src/flatfile/flatfile_help_catalog.c'], ['-D__NO_MYSQL__']),
+                         'src/flatfile/flatfile_help_catalog.c'], []),
         ('handlers',[str(handler)], [])]:
         binary = temp / name
         subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-pthread','-Isrc',

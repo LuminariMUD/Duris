@@ -163,7 +163,6 @@ class NamedSetGame:
                 "-Isrc",
                 "tests/async/named_set_journey_fixture.cpp",
                 "src/player/player_snapshot_codec.c",
-                "src/flatfile/flatfile_player_snapshot_file.c",
                 "src/flatfile/flatfile_store.c",
                 "-lcrypto",
                 "-o",

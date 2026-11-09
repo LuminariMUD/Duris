@@ -29,10 +29,6 @@ bool persistence_log_submit(const char *record)
 }
 P_char character_list = NULL;
 P_obj object_list = NULL;
-persistence_mode persistence_mode_get()
-{
-	return PERSISTENCE_MODE_MARIADB_PRIMARY;
-}
 static uint64_t uid = 1;
 static int event_ids_before_failure = -1;
 static bool refuse_scrap_prototype = false;

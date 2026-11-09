@@ -1,4 +1,3 @@
-#include "flatfile/flatfile_player_snapshot_file.h"
 #include "flatfile/flatfile_store.h"
 #include <openssl/sha.h>
 #include "net/output_preference_state.h"

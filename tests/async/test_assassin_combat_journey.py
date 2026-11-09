@@ -70,7 +70,7 @@ A small journey dart rests here.~
 def run(binary, build):
     fixture_binary = build / "assassin-fixture"
     subprocess.run(["g++", "-std=c++20", "-Isrc", "tests/async/assassin_journey_fixture.cpp",
-                    "src/player/player_snapshot_codec.c", "src/flatfile/flatfile_player_snapshot_file.c",
+                    "src/player/player_snapshot_codec.c",
                     "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(fixture_binary)],
                    cwd=ROOT, check=True)
     subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",

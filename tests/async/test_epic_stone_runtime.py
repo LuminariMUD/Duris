@@ -68,7 +68,6 @@ void artifact_guild_delivery_complete(const std::vector<critical_command> &comma
 void divine_boon_delivery_completed(const divine_epic_delivery &delivery)
 { assert(divine_epic_delivery_valid(delivery)); prepared_deliveries.push_back(delivery); }
 
-bool persistence_mode_requires_mysql() { return mysql_available; }
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 { submitted = command; return admission; }
 P_char find_player_by_pid(int pid)
@@ -288,7 +287,6 @@ static int64_t spend_delta = 0;
 static epic_level_context spend_context = {};
 static std::string messages;
 static bool sql_authoritative_stone_level = false;
-bool persistence_mode_requires_mysql() { return sql_authoritative_stone_level; }
 int sql_level_cap(int) { return 56; }
 int get_property(const char *name, int fallback)
 {

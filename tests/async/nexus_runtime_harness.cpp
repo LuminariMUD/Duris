@@ -8,7 +8,6 @@ bool divine_trade_runtime_sale(char_data *, ShipData *, int, int, divine_trade_g
 #include "core/utils.h"
 #include "economy/nexus_stones.h"
 #include "economy/boon.h"
-#include "flatfile/flatfile_nexus_repository.h"
 #include "magic/spells.h"
 #include "ships/ship_npc.h"
 #include "world/epic_transaction.h"
@@ -116,10 +115,6 @@ extern "C" time_t time(time_t *out) noexcept
 	return fixture_time;
 }
 
-const char *persistence_mode_flatfile_root()
-{
-	return state_root.c_str();
-}
 static float cargo_bonus = .110f;
 float get_property(const char *name, double fallback)
 {

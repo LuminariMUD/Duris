@@ -33,8 +33,6 @@ PRELUDE = r'''
 #include "core/utils.h"
 #include "account/account.h"
 #include "sql/sql_player.h"
-#include "flatfile/flatfile_player_domain_repository.h"
-#include "flatfile/flatfile_item_repository.h"
 #include "item/item_ownership_runtime.h"
 #include <algorithm>
 #include <cassert>
@@ -54,7 +52,6 @@ void add_char_to_account(P_desc) { assert(false); }
 static std::string root;
 static std::string last_status;
 static bool item_read_ok = true, item_hydrate_ok = true;
-const char *persistence_mode_flatfile_root() { return root.c_str(); }
 const char *get_account_name_safe(P_char ch) { return ch->desc->account->acct_name; }
 void gmcp_char_vitals(P_char) {}
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
@@ -201,11 +198,7 @@ with tempfile.TemporaryDirectory(prefix="duris-bank-hydration-") as temporary:
     source.write_text("\n".join((PRELUDE, publication, hydrate, MAIN)))
     binary = temporary / "harness"
     subprocess.run([
-        "g++", "tests/async/harness_stubs.cpp", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-D__NO_MYSQL__",
-        "-Isrc", "-Isrc/no_mysql", str(source),
-        "src/flatfile/flatfile_player_domain_repository.c", "src/combat/frag_cap.c", "src/combat/frag_cap_repository.c", "src/combat/frag_cap_config.c",
-        "src/flatfile/flatfile_player_snapshot_file.c", "src/player/player_snapshot_codec.c",
-        "src/flatfile/flatfile_authority_transaction.c", "src/flatfile/flatfile_store.c",
+        "g++", "tests/async/harness_stubs.cpp", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Isrc", '-I/usr/include/mysql', str(source), "src/combat/frag_cap.c", "src/combat/frag_cap_repository.c", "src/combat/frag_cap_config.c", "src/player/player_snapshot_codec.c", "src/flatfile/flatfile_store.c",
         "src/world/epic_command.c", "src/world/zone_touch_command.c", "src/economy/currency_command.c",
         "src/combat/combat_outcome_command.c", "src/guild/artifact_guild_command.c", "src/persistence/critical_command.c",
         "-lcrypto", "-pthread", "-o", str(binary),

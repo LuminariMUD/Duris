@@ -175,7 +175,7 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-outbox-", dir=ROOT / "bi
     subprocess.run(
         [
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
-            "-pthread", "-D__NO_MYSQL__", "-Isrc/no_mysql", "-Isrc",
+            "-pthread", '-I/usr/include/mysql', "-Isrc",
             str(source), rel("critical_outbox.c"), rel("item_transfer_command.c"),
             rel("player_snapshot_codec.c"), rel("critical_command.c"), "-lcrypto",
             str(HARNESS_STUBS), "-o", str(binary),

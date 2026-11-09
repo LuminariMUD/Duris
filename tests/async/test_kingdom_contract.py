@@ -2616,7 +2616,7 @@ def test_flatfile_room_type_bound_is_the_guildhall_count() -> None:
         "the flat-file room-type bound equals GH_ROOM_NUM_TYPES",
         f"bound={bound.group(1) if bound else None} types={types.group(1) if types else None}",
     )
-    repository = strip_comments(read("src/flatfile/flatfile_association_repository.c"))
+    repository = strip_comments(read())
     check(
         "room.type >= FLATFILE_GUILDHALL_ROOM_TYPE_COUNT" in repository
         and re.search(r"room\.type\s*>\s*\d", repository) is None,

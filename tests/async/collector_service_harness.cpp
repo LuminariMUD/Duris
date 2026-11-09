@@ -170,11 +170,6 @@ bool collector_catalog_cache_ready()
 	return cache_ready;
 }
 
-persistence_mode persistence_mode_get()
-{
-	return PERSISTENCE_MODE_MARIADB_PRIMARY;
-}
-
 bool collector_presence_room_active(int room_rnum)
 {
 	return collector_present && room_rnum == 0 &&

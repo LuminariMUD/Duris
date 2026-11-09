@@ -28,7 +28,6 @@ static index_data crate_index[1];
 P_room world = ocean;
 P_index obj_index = crate_index;
 ShipObjHash shipObjHash;
-const char *persistence_mode_flatfile_root() { return state_root.c_str(); }
 bool flatfile_player_identity_pid(const char *, int32_t *pid, std::string *) {
     *pid = 42; return true;
 }
@@ -146,10 +145,9 @@ with tempfile.TemporaryDirectory(prefix="ship-salvage-", dir=ROOT / "bin/tests")
     (path / "test.cpp").write_text(HARNESS.replace("// REAL_FUNCTIONS", functions))
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g",
-        "-D__NO_MYSQL__", "-Isrc/no_mysql", "-Isrc", "-I/usr/include/libxml2",
+        '-I/usr/include/mysql', "-Isrc", "-I/usr/include/libxml2",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-        str(path / "test.cpp"), "src/flatfile/flatfile_ship_repository.c",
-        "src/flatfile/flatfile_authority_transaction.c", "src/flatfile/flatfile_store.c",
+        str(path / "test.cpp"), "src/flatfile/flatfile_store.c",
         "-lcrypto", "-pthread", "-o", str(path / "test"),
     ], cwd=ROOT, check=True)
     subprocess.run([str(path / "test"), str(path / "state")], cwd=ROOT, check=True)

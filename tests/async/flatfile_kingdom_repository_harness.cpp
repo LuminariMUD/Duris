@@ -1,6 +1,4 @@
 #include "kingdom/kingdom_internal.h"
-#include "flatfile/flatfile_association_repository.h"
-#include "flatfile/flatfile_authority_transaction.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -23,10 +21,6 @@ static std::string persistence_root;
 
 /* The flat-file root kingdom_db.c asks persistence_mode.c for on every call;
  * empty means "persistence never configured". */
-const char *persistence_mode_flatfile_root()
-{
-	return persistence_root.c_str();
-}
 
 /* Swallow the module's log lines. */
 

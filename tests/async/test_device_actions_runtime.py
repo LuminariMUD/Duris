@@ -353,7 +353,7 @@ int main() {
 with tempfile.TemporaryDirectory(prefix="duris-device-actions-") as directory:
     source = Path(directory) / "harness.cpp"; binary = Path(directory) / "harness"
     source.write_text(platform + fixture + HARNESS.replace("// INSERT_COMMANDS", commands))
-    subprocess.run(["g++", "-std=c++20", "-O1", "-g", "-D__NO_MYSQL__", "-ffunction-sections", "-fdata-sections",
+    subprocess.run(["g++", "-std=c++20", "-O1", "-g", "-ffunction-sections", "-fdata-sections",
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-pthread", "-no-pie",
                     "-I" + str(ROOT / "src"), str(source), str(ROOT / "src/persistence/latency_trace.c"),
                     "-Wl,--gc-sections", str(HARNESS_STUBS), "-o", str(binary)], check=True)

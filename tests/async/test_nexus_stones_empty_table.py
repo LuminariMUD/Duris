@@ -26,7 +26,7 @@ with tempfile.TemporaryDirectory(prefix="nexus-loader-", dir=build) as temporary
             extract_function("nexus_stones.c", "NexusStoneInfo *nexus_row("), "")
         path.write_text(fixture.replace("// PRODUCTION_CODE", selected))
         binary = directory / backend
-        flags = ["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else ["-I/usr/include/mysql"]
+        flags = ['-I/usr/include/mysql'] if backend == "flatfile" else ["-I/usr/include/mysql"]
         subprocess.run([
             "g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
             "-fsanitize=address,undefined", "-fno-omit-frame-pointer",

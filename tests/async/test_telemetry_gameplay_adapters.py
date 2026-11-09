@@ -22,7 +22,6 @@ def main(*, sanitize: bool = False) -> None:
             "-Wextra",
             "-Werror",
             "-pthread",
-            "-D__NO_MYSQL__",
             "-I",
             str(ROOT / "src"),
             str(ROOT / "tests/async/telemetry_gameplay_adapters.cc"),

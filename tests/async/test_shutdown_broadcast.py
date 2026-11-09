@@ -31,7 +31,6 @@ command_info cmd_info[CMD_COPYOVER + 1] = {};
 void sql_log(P_char, const char *, const char *, ...);
 static int wipe_calls = 0, restore_calls = 0;
 static bool mysql_required = true, wipe_succeeds = true, crossed = false;
-bool persistence_mode_requires_mysql() { return mysql_required; }
 bool sql_pwipe(int code) { assert(code == 1723699); ++wipe_calls; return wipe_succeeds; }
 bool sql_pwipe_crossed_boundary() { return crossed; }
 void do_restore(P_char, char *, int) { ++restore_calls; }

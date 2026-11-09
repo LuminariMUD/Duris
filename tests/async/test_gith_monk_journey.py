@@ -11,7 +11,6 @@ import test_creation_prompt_journey as telnet
 from test_character_stat_choice_journey import WebSocketClient
 
 INSPECTOR = r'''
-#include "flatfile/flatfile_player_snapshot_file.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -149,7 +148,7 @@ def main():
         cpp, inspector = Path(directory) / 'inspect.cpp', Path(directory) / 'inspect'
         cpp.write_text(INSPECTOR)
         subprocess.run(['g++', '-std=c++20', '-Isrc', str(cpp),
-            'src/player/player_snapshot_codec.c', 'src/flatfile/flatfile_player_snapshot_file.c',
+            'src/player/player_snapshot_codec.c',
             'src/flatfile/flatfile_store.c', '-lcrypto', '-o', str(inspector)], cwd=ROOT, check=True)
         for race, name, alignment in ((16, 'Githyanki', -1000), (30, 'Githzerai', 1000)):
             telnet_journey(binary, inspector, race, name, alignment)

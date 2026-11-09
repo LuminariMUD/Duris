@@ -67,14 +67,6 @@ artifact_population_decision classify(const artifact_population_boot_snapshot &s
 }
 } // namespace
 
-bool persistence_mode_requires_mysql()
-{
-	return false;
-}
-const char *persistence_mode_flatfile_root()
-{
-	return "fixture";
-}
 const char *copyover_state_file()
 {
 	return "copyover.dat";

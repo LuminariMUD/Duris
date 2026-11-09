@@ -10,10 +10,8 @@
 #include "world/difficulty.h"
 #include "economy/boon.h"
 #include "economy/boon_reward_transaction.h"
-#include "economy/boon_shop_transaction.h"
 #include "economy/currency_transaction.h"
 #include "economy/nexus_stones.h"
-#include "flatfile/flatfile_boon_repository.h"
 #include "persistence/persistence_mode.h"
 #include "persistence/persistence_checkpoint.h"
 #include "guild/artifact_guild_transaction.h"
@@ -154,15 +152,6 @@ bool artifact_guild_transaction_submit(P_char, const critical_operation_id &, in
 		std::filesystem::rename(flat_root + "/domains", flat_root + "/unavailable");
 	}
 	return true;
-}
-persistence_mode persistence_mode_get()
-{
-	return flat_root.empty() ? PERSISTENCE_MODE_MARIADB_PRIMARY :
-				   PERSISTENCE_MODE_FLATFILE_PRIMARY;
-}
-const char *persistence_mode_flatfile_root()
-{
-	return flat_root.empty() ? nullptr : flat_root.c_str();
 }
 int gain_exp(P_char, P_char, int amount, int)
 {

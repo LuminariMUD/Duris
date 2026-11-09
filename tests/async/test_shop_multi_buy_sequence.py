@@ -82,7 +82,6 @@ static void money(P_char ch, int64_t value) {
     const auto coins=currency_canonical_value(value);
     for (size_t i=0; i<4; ++i) ch->points.cash[i]=static_cast<int>(coins.amount[i]);
 }
-persistence_mode persistence_mode_get() { return backend; }
 const object_template *find_object_template(int vnum) { return vnum==600 ? &bag_template : nullptr; }
 int real_room(int) { return 0; }
 void send_to_char(const char *message, P_char) { output += message; }

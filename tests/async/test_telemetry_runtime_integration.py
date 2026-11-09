@@ -60,7 +60,7 @@ def main(*, exhaustion: bool = False, outage: bool = False, posthog: bool = Fals
                 "-pthread",
             ]
             if no_mysql:
-                command.append("-D__NO_MYSQL__")
+                command.append()
             if posthog:
                 command += ["-DTELEMETRY_POSTHOG_TESTING", "-fsanitize=undefined", "-fno-sanitize-recover=all"]
             command += [

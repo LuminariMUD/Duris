@@ -158,10 +158,6 @@ extern "C" void mysql_free_result(MYSQL_RES *)
 	++freed_results;
 }
 #else
-const char *persistence_mode_flatfile_root()
-{
-	return "fixture";
-}
 flatfile_nexus_result flatfile_nexus_list(const std::string &,
 					  std::vector<flatfile_nexus_record> *out,
 					  std::string *error)

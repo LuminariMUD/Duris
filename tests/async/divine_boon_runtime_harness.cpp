@@ -76,15 +76,6 @@ void finish()
 }
 }
 
-persistence_mode persistence_mode_get()
-{
-	return PERSISTENCE_MODE_FLATFILE_PRIMARY;
-}
-const char *persistence_mode_flatfile_root()
-{
-	return root.c_str();
-}
-
 int main(int argc, char **argv)
 {
 	assert(argc == 2);

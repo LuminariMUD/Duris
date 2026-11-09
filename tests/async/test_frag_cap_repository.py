@@ -18,7 +18,7 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="frag-cap-store-", dir=output) as directory:
         binary = str(Path(directory) / "harness")
-        flags = ["-D__NO_MYSQL__", "-Isrc/no_mysql"]
+        flags = ['-I/usr/include/mysql']
         libraries = []
         if use_mysql:
             flags = shlex.split(subprocess.check_output(["mysql_config", "--cflags"], text=True))
@@ -28,7 +28,7 @@ def main():
             "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
             "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST", "-Isrc", *flags,
             "tests/async/frag_cap_repository_harness.cpp", "src/combat/frag_cap.c",
-            "src/combat/frag_cap_repository.c", "src/flatfile/flatfile_authority_transaction.c",
+            "src/combat/frag_cap_repository.c",
             "src/flatfile/flatfile_store.c", "-lcrypto", "-pthread", *libraries, "-o", binary,
         ], cwd=ROOT, check=True)
         if not use_mysql:

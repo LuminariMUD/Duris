@@ -11,7 +11,7 @@ def main():
         executable = str(Path(directory) / "disabled-integration")
         command = [
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-pthread",
-            "-D__NO_MYSQL__", "-I", str(ROOT / "src"),
+            "-I", str(ROOT / "src"),
             str(ROOT / "tests/async/telemetry_transport_disabled_integration.cc"),
             str(ROOT / "src/telemetry/telemetry_transport.c"),
             str(ROOT / "src/telemetry/telemetry_queue.c"),

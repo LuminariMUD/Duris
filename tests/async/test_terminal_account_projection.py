@@ -19,8 +19,6 @@ PRELUDE = r'''
 #include "account/account.h"
 #include "player/player_playtime.h"
 #include "player/player_save_pipeline.h"
-#include "flatfile/flatfile_identity_repository.h"
-#include "flatfile/flatfile_account_adapter.h"
 #include "persistence/persistence_mode.h"
 #include <cassert>
 #include <cstring>
@@ -31,7 +29,6 @@ static deferred_save_slot slot;
 static bool account_ok = true;
 P_desc descriptor_list = nullptr;
 static P_acct detached_account=nullptr;
-const char *persistence_mode_flatfile_root() { return "fixture"; }
 flatfile_identity_result flatfile_identity_lookup_pid(const std::string &, int32_t,
     flatfile_identity_record *record, std::string *) {
     record->account="fixture"; return flatfile_identity_result::ok;
@@ -215,7 +212,7 @@ def main():
             extract_function("account.c", "bool save_account_character_departure("),
             extract_function("actoth.c", "bool persistence_save_character_terminal("), CASES)))
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Og", "-g",
-                        "-D__NO_MYSQL__", "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
+                        "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
                         "-Isrc", "src/account/racewar_admission.c", str(cpp), str(HARNESS_STUBS), "-o", str(binary)],
                        cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True)

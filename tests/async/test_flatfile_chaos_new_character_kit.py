@@ -202,7 +202,6 @@ def build_snapshot_inspector(run_root: pathlib.Path) -> pathlib.Path:
     """Compile a read-only inspector using the production snapshot file decoder."""
     source, binary = run_root / "kit_snapshot.cpp", run_root / "kit_snapshot"
     source.write_text(r'''
-#include "flatfile/flatfile_player_snapshot_file.h"
 #include "core/defines.h"
 #include <algorithm>
 #include <cassert>
@@ -243,8 +242,7 @@ int main(int argc, char **argv) {
     std::cout << "persisted kit flags, curse removal and globe passed\n";
 }
 ''')
-    subprocess.run(["g++", "-std=c++20", "-Isrc", str(source),
-                    "src/flatfile/flatfile_player_snapshot_file.c", "src/flatfile/flatfile_store.c",
+    subprocess.run(["g++", "-std=c++20", "-Isrc", str(source), "src/flatfile/flatfile_store.c",
                     "src/player/player_snapshot_codec.c", "-lcrypto", "-o", str(binary)],
                    cwd=ROOT, check=True)
     return binary

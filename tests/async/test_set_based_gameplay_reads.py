@@ -159,7 +159,7 @@ with tempfile.TemporaryDirectory(prefix="duris-gameplay-reads-") as temp_dir:
     subprocess.run(
         [
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic",
-            "-D__NO_MYSQL__", "-Isrc", str(source),
+            "-Isrc", str(source),
             rel("gameplay_read_state.c"), rel("epic_task_catalog.c"),
             "-o", str(binary),
         ],
@@ -440,7 +440,7 @@ source.write_text(ASSIGNMENT_HARNESS.replace("// PRODUCTION_FUNCTIONS", assignme
 subprocess.run([
     "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter",
     "-g", "-O1", "-fsanitize=address,undefined", "-ffunction-sections", "-fdata-sections",
-    "-D__NO_MYSQL__", "-Isrc", str(source),
+    "-Isrc", str(source),
     rel("gameplay_read_state.c"), rel("epic_task_catalog.c"),
     rel("player_snapshot_capture.c"), rel("player_snapshot_codec.c"),
     rel("pet_restore_state.c"), rel("pet_restore_runtime.c"),

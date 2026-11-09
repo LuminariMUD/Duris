@@ -25,7 +25,6 @@ HARNESS = r'''
 #include "core/utils.h"
 #include "core/config.h"
 #include "classes/necromancy.h"
-#include "flatfile/flatfile_corpse_restore.h"
 #include "persistence/persistence_mode.h"
 #include <cassert>
 #include <cstdarg>
@@ -52,14 +51,6 @@ void persistence_alert(int, const char *domain, const char *owner, const char *,
 		       const char *action, const char *, ...)
 {
 	alerts.push_back(std::string(domain) + ":" + owner + ":" + action);
-}
-enum persistence_mode persistence_mode_get(void)
-{
-	return PERSISTENCE_MODE_FLATFILE_PRIMARY;
-}
-const char *persistence_mode_flatfile_root(void)
-{
-	return "/state";
 }
 flatfile_corpse_restore_result flatfile_corpse_restore_catalog(const std::string &root,
 							       std::string *error)
@@ -158,6 +149,6 @@ with tempfile.TemporaryDirectory(prefix="corpse-routing-", dir=ROOT / "bin/tests
     binary = Path(build) / "harness"
     source.write_text(HARNESS.replace("// PRODUCTION", production))
     subprocess.run(["g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
-                    "-fsanitize=address,undefined", "-D__NO_MYSQL__", "-Isrc", "-Isrc/no_mysql",
+                    "-fsanitize=address,undefined", "-Isrc", '-I/usr/include/mysql',
                     str(source), str(HARNESS_STUBS), "-o", str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True)

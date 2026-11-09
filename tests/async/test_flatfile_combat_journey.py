@@ -584,7 +584,6 @@ def reconnect_character(
 
 
 OVERLORD_FIXTURE = r'''
-#include "flatfile/flatfile_player_snapshot_file.h"
 #include "flatfile/flatfile_store.h"
 #include "player/player_snapshot_codec.h"
 #include <cstdio>
@@ -646,7 +645,6 @@ def make_overlord(state_root: pathlib.Path, name: str) -> None:
         source.write_text(OVERLORD_FIXTURE, encoding="utf-8")
         subprocess.run(["g++", "-std=c++20", "-Isrc", str(source),
                         "src/player/player_snapshot_codec.c",
-                        "src/flatfile/flatfile_player_snapshot_file.c",
                         "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(binary)],
                        cwd=ROOT, check=True, timeout=300)
         subprocess.run([str(binary), str(state_root), name], check=True, timeout=30)

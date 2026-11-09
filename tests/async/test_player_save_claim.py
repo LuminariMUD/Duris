@@ -42,8 +42,7 @@ with tempfile.TemporaryDirectory(prefix="flat-claim-test-", dir=ROOT / "bin/test
     work = pathlib.Path(temporary)
     binary = work / "flatfile_player_save_claim"
     built = subprocess.run(
-        ["g++", str(HARNESS_STUBS), "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-D__NO_MYSQL__",
-         "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST", "-Isrc", "-Isrc/no_mysql", "tests/async/flatfile_player_save_claim_harness.cpp",
+        ["g++", str(HARNESS_STUBS), "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST", "-Isrc", '-I/usr/include/mysql', "tests/async/flatfile_player_save_claim_harness.cpp",
          *[rel(name) for name in SOURCES], "-lcrypto", "-pthread", "-o", str(binary)],
         cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
     )
