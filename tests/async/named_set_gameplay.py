@@ -372,17 +372,17 @@ def main():
         evidence = {"binary_sha256": hashlib.sha256(game.binary.read_bytes()).hexdigest(),
                     "compat_binary_sha256": hashlib.sha256(compat.read_bytes()).hexdigest(),
                     "completed": []}
+        if options.resume:
+            previous = json.loads((runtime / "sequence.json").read_text())
+            assert previous["binary_sha256"] == evidence["binary_sha256"]
+            assert previous["compat_binary_sha256"] == evidence["compat_binary_sha256"]
+            frozen = (runtime / "authority.sql").read_bytes()
+            assert hashlib.sha256(frozen).hexdigest() == previous["authority_sha256"]
+            sql(frozen.decode())
+            evidence["completed"] = previous["completed"]
+            evidence["reused"] = list(previous["completed"])
         try:
-            if options.resume:
-                previous = json.loads((runtime / "sequence.json").read_text())
-                assert previous["binary_sha256"] == evidence["binary_sha256"]
-                assert previous["compat_binary_sha256"] == evidence["compat_binary_sha256"]
-                frozen = (runtime / "authority.sql").read_bytes()
-                assert hashlib.sha256(frozen).hexdigest() == previous["authority_sha256"]
-                sql(frozen.decode())
-                evidence["completed"] = previous["completed"]
-                evidence["reused"] = list(previous["completed"])
-            else:
+            if not options.resume:
                 game.start("initial-account")
                 client = journey.MudClient(game.port)
                 game.clients.append(client)
