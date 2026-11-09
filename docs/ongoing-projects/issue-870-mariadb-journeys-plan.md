@@ -3,7 +3,7 @@
 Status: batches 1, 2 and 4 are qualified, including every weapon, copyover and live-item mode. Named sets/historical assassin comparison, naming/docs and aggregate gates remain.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-named-set-journeys`. See the current-work section before continuing.
+Review head: `branch/issue-870-assassin-comparison`. See the current-work section before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -736,3 +736,29 @@ This is an estimate, not a time limit or permission to omit required proof.
   and every case before marking batch3 complete; preserve failures and repair
   actual defects without dropping cases. Historical assassin comparison,
   naming/docs and full regression/DB gates still follow. No whole-issue claim.
+
+
+### Assassin conversion underway
+
+- Existing pinned BASE `24a2776f13a2f3580c91f945743b09f80144b829`
+  already has a MariaDB Makefile backend and the fresh-bootstrap migration runner.
+  Its runtime schema check is strict; use each variant's own bootstrap/migrations.
+  `mariadb_authority(source_root=...)` adds that concrete schema-root requirement;
+  all existing callers retain their current default.
+- Keep the original and cleanse-only archives byte-verified against BASE plus the
+  existing patch. Use the current verified builder with each archive as its ROOT,
+  its already-supported MariaDB default, the seed187 linker wrapper, and the real
+  250ms clock for all three variants. Do not use the old builder's hard-coded
+  flat-file backend or mix the current fast clock with historical ordinary clocks.
+- Replace the removed snapshot writer with shared SQL `seed_actors()`, adding the
+  audit's Cleric victim and its four remove-poison/two slow-poison memorized slots.
+  Poison/coating persistence comes from SQL; retain levels/races, equal gear,
+  mismatches, poison/cure/movement and all comparison assertions. Check relevant
+  class/skill/memorization constants agree between current and BASE headers.
+- The obsolete C++ actor writer is removed after updating its real manifest-input
+  regression to track the Python seeder/auditor instead. That regression, Python
+  compilation, CLI help and diff checks passed; no comparative runtime proof yet.
+- Move the mechanical naming step before comparison preparation so its runtime
+  manifests and verified-build keys are generated once against the final names.
+  Then prepare the three variants with CPU affinity capped to four build workers,
+  run the full matrix and revised scenarios, and complete aggregate gates.

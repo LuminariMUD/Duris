@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare Assassin openings on pinned, seeded, isolated flat-file servers.
+"""Compare Assassin openings on pinned, seeded, isolated MariaDB servers.
 
 The actors and gear are controlled reference fixtures. Results measure real
 command dispatch and damage delivery, not live PvP win rates.
@@ -22,7 +22,7 @@ import time
 import test_flatfile_combat_journey as journey
 from run_paladin_balance_journey import command, hp
 from test_flight_network_journey import command as combat_command
-from test_assassin_combat_journey import ACTORS, fixture
+from test_assassin_combat_journey import ACTORS, fixture, seed_actors, spell_id
 
 ROOT = journey.ROOT
 MANIFEST = ROOT / "bin/tests/assassin-comparative/binaries.json"
@@ -38,7 +38,6 @@ RUNTIME_INPUTS = (
     "tests/async/run_assassin_balance_journey.py",
     "tests/async/test_assassin_combat_journey.py",
     "tests/async/test_flatfile_combat_journey.py",
-    "tests/async/assassin_journey_fixture.cpp",
     "tests/async/_paths.py",
     "tests/async/run_paladin_balance_journey.py",
     "tests/async/run_divine_refusal_journey.py",
@@ -112,6 +111,24 @@ def prepare_binaries():
         assert source_digest(cleansed) == source_digest(fresh), "cached cleanse-only has extra source inputs"
     print("Fresh archive verification passed for original and cleanse-only sources", flush=True)
 
+    # Both historical Makefiles already support MariaDB. Use the current
+    # verified builder with each immutable source root, keeping the real clock.
+    for header, names in {
+        "src/core/defines.h": ("CLASS_WARRIOR", "CLASS_ROGUE", "CLASS_CLERIC", "BIT_1", "BIT_2", "BIT_3", "BIT_5", "BIT_6", "BIT_9", "BIT_10", "BIT_13"),
+        "src/magic/spells.h": ("TAG_MEMORIZE", "SONG_DRIFTING", "SPELL_REMOVE_POISON", "SPELL_SLOW_POISON",
+                                "SKILL_BACKSTAB", "SKILL_1H_PIERCING", "SKILL_APPLY_POISON", "SKILL_MIXPOISON",
+                                "SKILL_CONTROL_FLEE", "SKILL_CRITICAL_STAB", "SKILL_RANGE_WEAPONS", "SKILL_DARTS",
+                                "SKILL_DUAL_WIELD", "SKILL_AWARENESS"),
+        "src/core/structs.h": ("AFFTYPE_NOSHOW", "AFFTYPE_NODISPEL", "AFFTYPE_NOAPPLY",
+                               "AFFTYPE_PERM", "AFFTYPE_CUSTOM1", "MEMTYPE_FULL"),
+    }.items():
+        current_header = (ROOT / header).read_text().replace('\\\n', "")
+        prior_header = (original / header).read_text().replace('\\\n', "")
+        for macro in names:
+            pattern = r"(?m)^#define " + macro + r" ([^\n]+)"
+            current = re.search(pattern, current_header)
+            prior = re.search(pattern, prior_header)
+            assert current and prior and current[1].split("//")[0].strip() == prior[1].split("//")[0].strip(), macro
     seed = Path(__file__).with_name("assassin_seed_fixture.cpp")
     seed_sha = hashlib.sha256(seed.read_bytes()).hexdigest()
     seed_object = directory / f"seed-{seed_sha[:12]}.o"
@@ -119,17 +136,18 @@ def prepare_binaries():
     result = {}
     runtime_sha = source_digest(ROOT, RUNTIME_INPUTS)
     for name, source in (("original", original), ("cleansed", cleansed), ("revised", ROOT)):
-        utility_path = source / "tests/async/server_build_artifacts.py"
+        utility_path = ROOT / "tests/async/server_build_artifacts.py"
         spec = importlib.util.spec_from_file_location("assassin_builder_" + name, utility_path)
         builder = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(builder)
+        builder.ROOT = source
         saved = {key: os.environ.get(key) for key in
                  ("MAKEFLAGS", "DURIS_REGRESSION_BUILD_CACHE", "WSL_INTEROP")}
         try:
             os.environ["MAKEFLAGS"] = f"EXTRA_LDFLAGS=-Wl,--wrap=_Z9randomizem,{seed_object}"
             os.environ["DURIS_REGRESSION_BUILD_CACHE"] = str(source / "bin/qualification-cache")
             os.environ.pop("WSL_INTEROP", None)
-            binary = builder.build_flatfile_server(source / "bin/qualification-build")
+            binary = builder.build_flatfile_server(source / "bin/qualification-build", real_clock=True)
         finally:
             for key, value in saved.items():
                 if value is None:
@@ -140,14 +158,15 @@ def prepare_binaries():
         result[name] = dict(binary=str(binary), binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
                             source=BASE if name != "revised" else subprocess.check_output(
                                 ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-                            src_sha256=source_digest(source), runtime_sha256=runtime_sha, seed=187, seed_fixture_sha256=seed_sha)
+                            src_sha256=source_digest(source), runtime_sha256=runtime_sha, seed=187, seed_fixture_sha256=seed_sha,
+                            backend="mariadb-primary", pulse_usec=250000, schema_source=str(source))
     result["cleansed"]["patch_sha256"] = hashlib.sha256(patch).hexdigest()
     assert result["original"]["binary_sha256"] != result["cleansed"]["binary_sha256"], \
         "original and cleanse-only binaries are identical"
     MANIFEST.write_text(json.dumps(result, indent=2) + "\n")
 
 
-def run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state):
+def run_revised_scenarios(staff, assassin, victim, sql):
     """Exercise equal items, a mismatch, poison timing, cure and movement."""
     def set_char(who, field, value):
         command(staff, f"setbit char {who} {field} '{value}'")
@@ -180,7 +199,10 @@ def run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state):
     def inspect():
         victim.send("save")
         victim.expect("Saving Venomtarget.", timeout=30)
-        return subprocess.check_output([str(snapshot_fixture), str(state), "inspect"], text=True)
+        first = spell_id("SONG_DRIFTING") + 1
+        return sql("SELECT CONCAT('affect ',pid,' ',type,' ',level,' ',modifier) FROM player_affects "
+                   "WHERE type BETWEEN " + str(first) + " AND " + str(first + 6) + " ORDER BY pid,id;"
+                   "SELECT CONCAT('coating ',pid,' ',value4) FROM player_items WHERE vnum=22810 ORDER BY pid,id")
 
     def give(vnum, keyword, person):
         assert "created" in command(staff, f"load obj {vnum}")
@@ -395,13 +417,11 @@ def run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state):
     return result
 
 
-def run_variant(name, binary, snapshot_fixture, skip_matrix=False):
-    with tempfile.TemporaryDirectory(prefix="assassin-audit-", dir=ROOT / "bin/tests") as temporary:
+def run_variant(name, binary, skip_matrix=False):
+    schema_root = ROOT if name == "revised" else MANIFEST.parent / f"{name}-24a2776f1"
+    with journey.mariadb_authority(schema_root) as (environment, sql), \
+            tempfile.TemporaryDirectory(prefix="assassin-audit-", dir=ROOT / "bin/tests") as temporary:
         runtime = Path(temporary)
-        state = runtime / "state"
-        state.mkdir(mode=0o700)
-        (state / "domains").mkdir(mode=0o700)
-        subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
         fixture(runtime)
         world_path = runtime / "areas_mini/mini.wld"
         world = world_path.read_text()
@@ -459,13 +479,8 @@ PH 0 0 -1
         critical.mkdir(parents=True, mode=0o700)
         (runtime / "journals/players").mkdir(mode=0o700)
         plain, tls, websocket = journey.available_ports()
-        environment = dict(PATH=os.environ.get("PATH", "/usr/bin:/bin"), ENVIRONMENT="local",
-                           PERSISTENCE_MODE="flatfile-primary", FLATFILE_STATE_DIR=str(state),
-                           CRITICAL_COMMAND_JOURNAL_DIR=str(critical), REDIS="FALSE", CHAOS_MUD="FALSE",
-                           LISTEN_ADDRESS="127.0.0.1", DURIS_TLS_PORT=str(tls),
-                           DURIS_WEBSOCKET_PORT=str(websocket), DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1")
-        if "LD_LIBRARY_PATH" in os.environ:
-            environment["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+        environment.update(CRITICAL_COMMAND_JOURNAL_DIR=str(critical),
+                           DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket))
         output_path = runtime / "server.out"
         process = None
         clients = []
@@ -511,7 +526,18 @@ PH 0 0 -1
                     client.send("save")
                     client.expect("Saving " + character + ".")
                 stop()
-                subprocess.run([str(snapshot_fixture), str(state), "audit"], check=True)
+                seed_actors(sql, fresh_affects=True)
+                # Audit's victim is a Cleric with four remove-poison and two
+                # slow-poison slots, matching the retired synthetic snapshot.
+                sql("UPDATE player_data SET m_class=32 WHERE pid=3")
+                for spell, count in ((spell_id("SPELL_REMOVE_POISON"), 4), (spell_id("SPELL_SLOW_POISON"), 2)):
+                    sql(f"INSERT INTO player_skills(pid,skill_id,learned,taught) VALUES(3,{spell},100,100) "
+                        "ON DUPLICATE KEY UPDATE learned=100,taught=100")
+                    for _ in range(count):
+                        sql(f"INSERT INTO player_affects(pid,type,duration,flags,modifier) "
+                            f"VALUES(3,{spell_id('TAG_MEMORIZE')},-1,790,{spell})")
+                assert sql("SELECT CONCAT(pid,':',name) FROM player_data ORDER BY pid").splitlines() == [
+                    str(pid) + ':' + actor[0] for pid, actor in enumerate(ACTORS, 1)]
                 boot(output)
                 staff, assassin, victim = (login(actor) for actor in ACTORS)
                 assert "created" in command(staff, "load obj 22810")
@@ -558,7 +584,7 @@ PH 0 0 -1
                             print(name, row, flush=True)
                 if not skip_matrix:
                     assert any(row["landed"] for row in rows), "no backstab reached combat"
-                scenarios = run_revised_scenarios(staff, assassin, victim, snapshot_fixture, state) \
+                scenarios = run_revised_scenarios(staff, assassin, victim, sql) \
                     if name == "revised" and skip_matrix else {}
                 stop()
             except Exception:
@@ -587,11 +613,6 @@ def main():
         "original and cleanse-only sources are identical; rerun --prepare"
     assert manifest["original"]["binary_sha256"] != manifest["cleansed"]["binary_sha256"], \
         "original and cleanse-only binaries are identical; rerun --prepare"
-    fixture_binary = ROOT / "bin/tests/assassin-comparative/snapshot-fixture"
-    subprocess.run(["g++", "-std=c++20", "-Isrc", "tests/async/assassin_journey_fixture.cpp",
-                    "src/player/player_snapshot_codec.c",
-                    "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(fixture_binary)],
-                   cwd=ROOT, check=True)
     result = {}
     runtime_sha = source_digest(ROOT, RUNTIME_INPUTS)
     for variant, entry in manifest.items():
@@ -599,6 +620,7 @@ def main():
             continue
         assert entry.get("runtime_sha256") == runtime_sha, "runtime fixture inputs changed; rerun --prepare"
         assert entry["source"] == BASE or variant == "revised"
+        assert entry["backend"] == "mariadb-primary" and entry["pulse_usec"] == 250000
         assert entry["src_sha256"] == source_digest(ROOT if variant == "revised" else
                                                      MANIFEST.parent / f"{variant}-24a2776f1")
         if variant == "cleansed":
@@ -608,7 +630,7 @@ def main():
             Path(__file__).with_name("assassin_seed_fixture.cpp").read_bytes()).hexdigest()
         binary = Path(entry["binary"])
         assert hashlib.sha256(binary.read_bytes()).hexdigest() == entry["binary_sha256"]
-        result[variant] = run_variant(variant, binary, fixture_binary, options.scenarios_only)
+        result[variant] = run_variant(variant, binary, options.scenarios_only)
     if selected == "all":
         assert len(result["original"]["openings"]) == len(result["cleansed"]["openings"]) == 12
     path = MANIFEST.with_name("results-scenarios.json" if options.scenarios_only else
