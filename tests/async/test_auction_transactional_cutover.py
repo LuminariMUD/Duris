@@ -135,7 +135,7 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
 
     def test_outbox_waits_for_async_publication_callback(self):
         transaction = (SRC / "auction_transaction.c").read_text()
-        declarations = transaction[transaction.index("enum class outbox_publication_state"):
+        declarations = transaction[transaction.index("struct pending_auction"):
                                    transaction.index("std::string operation_key(")]
         houses = (SRC / "auction_houses.c").read_text()
         producer = section(houses, "bool auction_publish_committed_event(",
@@ -144,6 +144,7 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
 #include "economy/auction_transaction.h"
 #include "sql/sql_async.h"
 #include <cassert>
+#include <cstdlib>
 #include <mutex>
 #include <unordered_map>
 static std::function<void(bool, const sql_rows &)> done;
@@ -166,7 +167,10 @@ bool auction_command_decode_result(const uint8_t *, size_t, auction_command_resu
 }
 static void auction_publish_event(const auction_command_result &, unsigned long long,
                                   const sql_row &) { ++broadcasts; }
-''' + declarations + producer + \
+''' + declarations + r'''
+P_char find_player_by_pid(int) { return nullptr; }
+bool publish(std::unordered_map<std::string, pending_auction>::iterator, P_char) { std::abort(); }
+''' + producer + \
             extract_function("auction_transaction.c", "critical_outbox_delivery_result\nauction_transaction_outbox_delivery(") + \
             extract_function("auction_transaction.c", "void auction_transaction_outbox_published(") + \
             extract_function("auction_transaction.c", "void auction_transaction_publish_outbox(") + r'''
