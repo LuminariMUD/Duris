@@ -134,7 +134,7 @@ its whole debit once and delivers none. Trusted-player purchases can charge zero
 Success follows durable ownership and live publication. This does not make wallet,
 keeper and ownership saves one cross-domain atomic transaction. The production
 owner is `src/economy/shop.c`; [#454](https://github.com/LuminariMUD/Duris/issues/454)
-records the both-backend qualification.
+records the command qualification.
 
 Every batch moves its items in memory at once. `get all`, `drop all`, `put all` and `empty`
 select their items first, apply cumulative weight, count, space and quiver capacity as they go,

@@ -1491,29 +1491,15 @@ void delete_kept_character(const kept_character_recovery_record &record,
 
 void PurgeCorpseFile(P_obj corpse)
 {
-	char *tmp;
-	char Gbuf1[MAX_STRING_LENGTH], Gbuf2[MAX_STRING_LENGTH];
-
 	if (!corpse || (corpse->type != ITEM_CORPSE) || !IS_SET(corpse->value[1], PC_CORPSE))
 	{
 		logit(LOG_DEBUG, "item not a corpse in PurgeCorpseFile");
 		return;
 	}
 
-	snprintf(Gbuf2, MAX_STRING_LENGTH, "%s%d", corpse->action_description,
-		 corpse->value[CORPSE_SAVEID]);
-	for (tmp = Gbuf2; *tmp; tmp++)
-		*tmp = LOWER(*tmp);
-
-	checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "%s/Corpses/%s", SAVE_DIR, Gbuf2);
-	strcpy(Gbuf2, Gbuf1);
-	strcat(Gbuf2, ".bak");
-
-	unlink(Gbuf1);
-	unlink(Gbuf2);
-
 #ifndef _PFILE_
-	if (corpse->action_description && corpse->value[CORPSE_SAVEID] &&
+	// A corpse leaving the world during the boot restore keeps its saved row.
+	if (!skip_corpse_save && corpse->action_description && corpse->value[CORPSE_SAVEID] &&
 	    !queue_corpse_save(corpse, true))
 		persistence_alert(AVATAR, "corpse", "remove", "none", "none", "queue_failed",
 				  "save_id=%d", corpse->value[CORPSE_SAVEID]);

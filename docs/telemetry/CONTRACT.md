@@ -34,11 +34,10 @@ telemetry, retention, account linkage or automatic balance changes are authorize
   [PERFORMANCE_GATE.md](PERFORMANCE_GATE.md); #273 to #275 are the rested-bonus study
   and the balance shadow policy and application under `studies/` and `balance/`.
 - No new header includes game character, SQL, socket, mutex or filesystem types.
-  Standalone compilation must work both with and without `__NO_MYSQL__`.
-- Flat-file authority explicitly reports disabled/unsupported telemetry. There is
-  no file sink, SQL fallback, dependency on telemetry for login/save, or fabricated
-  healthy zero. An independent SQL endpoint would require a separate reviewed
-  connection-role/configuration change.
+  Standalone compilation must work without linking the game server.
+- The MariaDB gameplay server uses the opt-in PostHog sink. Disabled telemetry
+  creates no file sink, SQL fallback, dependency on telemetry for login/save, or
+  fabricated healthy zero.
 
 ## Units, identity and time
 
@@ -854,7 +853,7 @@ The gameplay journey is `tests/async/run_telemetry_player_journey.py`.
 
 ### Runtime connection (#59)
 
-Both gameplay persistence builds use opt-in backend `posthog` (`3`). The old SQL
+The MariaDB gameplay server uses opt-in telemetry backend `posthog` (`3`). The old SQL
 writer is absent from active linking. The worker consumes native records once,
 keeps the admitted-tail fence before sealing, and preserves valid logical
 copyover identity even when the bounded flush fails. `world telemetry` exposes

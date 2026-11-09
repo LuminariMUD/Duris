@@ -110,7 +110,7 @@ that is off says why beside it, in the file.
 It needs `clang-tidy` and `clang-tidy-diff` (Debian/Ubuntu: `clang-tidy`). There is no
 compile database, so the script writes `bin/tidy/compile_commands.json` from
 `src/Makefile`'s flags: the `.c` files are C++20, and the MariaDB build's defines decide
-what is analysed, so code only under `__NO_MYSQL__` is not. A finding on a changed line
+what is analysed. A finding on a changed line
 fails the check; the hook runs it after formatting and refuses the commit. Fix the line,
 or, where it is right as it is, add `// NOLINT(check-name): reason`. `--staged` checks
 `src/` as staged, written to `bin/tidy/staged/`, so an unstaged edit does not change the
