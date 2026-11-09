@@ -21,25 +21,34 @@ extern "C" time_t time(time_t *out)
 		*out = now;
 	return now;
 }
+static float wars_modifier = .25f;
+static P_char wars_owner = nullptr;
+static std::vector<P_obj> wars_drops;
 float get_property(const char *name, double fallback)
 {
-	return std::string(name) == "artifact.wars.modifier" ? .25f : fallback;
+	return std::string(name) == "artifact.wars.modifier" ? wars_modifier : fallback;
 }
-P_char find_player_by_pid(int)
+P_char find_player_by_pid(int pid)
 {
-	return nullptr;
+	return pid == 42 ? wars_owner : nullptr;
 }
-P_obj unequip_char(P_char, int, bool)
+P_obj unequip_char(P_char owner, int pos, bool)
 {
-	std::abort();
+	assert(owner == wars_owner);
+	P_obj object = owner->equipment[pos];
+	owner->equipment[pos] = nullptr;
+	return object;
 }
-void obj_to_room(P_obj, int)
+void obj_to_room(P_obj object, int room)
 {
-	std::abort();
+	assert(wars_owner && room == wars_owner->in_room);
+	wars_drops.push_back(object);
 }
-void obj_from_char(P_obj)
+void obj_from_char(P_obj object)
 {
-	std::abort();
+	assert(wars_owner && wars_owner->carrying == object);
+	wars_owner->carrying = object->next_content;
+	object->next_content = nullptr;
 }
 void nevent_periodic_mark_failure(const char *)
 {
@@ -503,6 +512,65 @@ static void payment_cases(Guild *guild)
 	assert(guild_save_pulse(false) == 0 && !replacement.payment_pending);
 	saved_payment(850, 91, 2000000000);
 	puts("PASS kingdom payment admission/commit boundary, later rewards, rollback and fresh paired retries, late realm changes and recreation");
+}
+
+static void artifact_wars_drop_only_cases()
+{
+	wars_modifier = SHIPPED_ARTIFACT_WARS_MODIFIER;
+	assert(wars_modifier == 0.0f);
+	const time_t now = time(nullptr);
+	for (int type : { ARTIFACT_MAJOR, ARTIFACT_UNIQUE, ARTIFACT_IOUN })
+		for (bool worn : { false, true })
+		{
+			artifact_rows.clear();
+			artifact_binds.clear();
+			jobs.clear();
+			wars_drops.clear();
+			char_data owner = {};
+			owner.in_room = 100;
+			GET_HIT(&owner) = 777;
+			wars_owner = &owner;
+			obj_data objects[4] = {};
+			for (int index = 0; index < 3; ++index)
+			{
+				objects[index].extra_flags = ITEM_ARTIFACT;
+				artifact_rows[900 + index] = { true, ARTIFACT_ON_PC, 42,
+							       now + 8000 + index * 1000,
+							       (type - 1 + index) % 3 + 1 };
+				objects[index].next_content = &objects[index + 1];
+			}
+			owner.carrying = &objects[0];
+			if (worn)
+			{
+				owner.equipment[0] = &objects[0];
+				owner.carrying = &objects[1];
+				objects[0].next_content = nullptr;
+			}
+
+			// One of each category is legal, in inventory or equipment.
+			event_artifact_wars_sql(nullptr, nullptr, nullptr, nullptr);
+			assert(wars_drops.empty() && jobs.empty());
+			assert(owner.carrying == &objects[worn ? 1 : 0]);
+			assert(owner.equipment[0] == (worn ? &objects[0] : nullptr));
+
+			// A second same-type artifact acquired just before the sweep triggers
+			// all existing drops, including the otherwise legal third category.
+			artifact_rows.at(901).type = type;
+			event_artifact_wars_sql(nullptr, nullptr, nullptr, nullptr);
+			assert(wars_drops.size() == 3);
+			for (int index = 0; index < 3; ++index)
+			{
+				assert(wars_drops[index] == &objects[index]);
+				assert(artifact_rows.at(900 + index).timer ==
+				       now + 8000 + index * 1000);
+			}
+			assert(!owner.equipment[0] && owner.carrying == &objects[3]);
+			assert(GET_HIT(&owner) == 777 && jobs.empty());
+			wars_owner = nullptr;
+		}
+	wars_drops.clear();
+	wars_modifier = .25f; // Retain configured-penalty capture coverage below.
+	puts("PASS shipped artifact-war policy: legal mixed categories, same-type drops from inventory/equipment, unchanged timers and health");
 }
 
 static void artifact_ordering_cases()
@@ -1192,6 +1260,7 @@ int main(int argc, char **argv)
 		std::to_string(ENOMEM)));
 	puts("PASS real guild capture, spending/settings, current-state retry and exact-capture ACK; snapshot diagnostics survive the real reporter");
 	payment_cases(guild);
+	artifact_wars_drop_only_cases();
 	artifact_ordering_cases();
 	identity_snapshot_cases();
 	population_snapshot_cases();

@@ -58,6 +58,7 @@
 #include "world/weather.h"
 #include "net/ws_handlers.h"
 #include "core/safe_format.h"
+#include <unordered_set>
 #include <algorithm>
 #include <array>
 #include "abilities/abilities.h"
@@ -76,6 +77,8 @@ extern P_char character_list;
 extern P_char combat_list;
 extern P_char dead_guys;
 extern P_desc descriptor_list;
+
+static std::unordered_set<P_obj> live_objects;
 
 /* Game-thread invalidation for post-movement liveness checks. */
 uint64_t character_removal_generation = 0;
@@ -3453,6 +3456,7 @@ void extract_obj(P_obj obj, int gone_for_good)
 			obj->next->prev = obj->prev;
 	}
 
+	forget_live_object(obj);
 	artifact_object_extracted(obj, gone_for_good);
 
 	obj->prev = NULL;
@@ -3481,12 +3485,20 @@ bool obj_is_in_container(P_obj obj, P_obj container)
 	return FALSE;
 }
 
+void remember_live_object(P_obj object)
+{
+	live_objects.insert(object);
+}
+
+void forget_live_object(P_obj object)
+{
+	live_objects.erase(object);
+}
+
+// The uid check rejects a freed pointer that a newer object has reused.
 P_obj find_live_object(P_obj expected, uint64_t uid)
 {
-	for (P_obj object = object_list; object; object = object->next)
-		if (object == expected && object->obj_uid == uid)
-			return object;
-	return nullptr;
+	return live_objects.count(expected) && expected->obj_uid == uid ? expected : nullptr;
 }
 
 /*
@@ -4126,6 +4138,7 @@ void extract_char(P_char ch)
 
 	if (IS_NPC(ch))
 		shopkeeper_mob_extracted(ch);
+	forget_live_character(ch);
 	// Pull the char from the list
 	// If at the head..
 	if (ch == character_list)
