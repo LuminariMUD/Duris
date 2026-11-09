@@ -1,21 +1,25 @@
 # No-rent flag fixes
 
-Status: in progress, shipping as stacked pull requests (no separate issue).
+Status: complete. All four pull requests are merged to `master`.
 Date: 2026-11-09.
-Source inspected: `master` at `fa173cbad`, then merged up to `c60ae726a`.
+Source inspected: `master` at `fa173cbad`, then merged up to `ddbcaa90a`.
 
 ## Progress
 
-Each row is one pull request, stacked on the one above it. To continue in a new
-session, check out the last branch that exists and pick up the first row not marked
-done.
+Each row is one pull request, stacked on the one above it. Nothing is left to build:
+merge them in order, top row first, and retarget the next one at `master` before
+merging each, because deleting a merged base branch closes the PR stacked on it. Each
+PR relies on the one before it. Line numbers below are from before this work.
+
+If master moves and #933 conflicts again, merge master into `branch/norent-flag-fix`,
+then merge each branch into the next one up the table.
 
 | PR | Sections | Branch | State |
 |---|---|---|---|
-| [#933](https://github.com/LuminariMUD/Duris/pull/933) | 1, 2, 3 and their tests | `branch/norent-flag-fix` | In review |
-| [#937](https://github.com/LuminariMUD/Duris/pull/937) | 4 (lockers) | `branch/norent-flag-fix-lockers` | In review |
-| Next | 5 (seven items, auction refusal) | `branch/norent-flag-fix-items` | Built and tested |
-| Next | 6 (help and docs) | `branch/norent-flag-fix-help` | Not started |
+| [#933](https://github.com/LuminariMUD/Duris/pull/933) | 1, 2, 3 and their tests | `branch/norent-flag-fix` | Merged |
+| [#937](https://github.com/LuminariMUD/Duris/pull/937) | 4 (lockers) | `branch/norent-flag-fix-lockers` | Merged |
+| [#939](https://github.com/LuminariMUD/Duris/pull/939) | 5 (seven items, auction refusal) | `branch/norent-flag-fix-items` | Merged |
+| [#940](https://github.com/LuminariMUD/Duris/pull/940) | 6 (help and docs) | `branch/norent-flag-fix-help` | Merged |
 
 Notes from building so far:
 
@@ -24,9 +28,34 @@ Notes from building so far:
   camp and `extractlink` cases use a second, mortal character in room 1457.
 - No artifact prototype is no-rent, and the coin pile isn't, so section 1 has no
   coin or artifact handling.
-- Section 4 tests a public chest made with `eq sort none`. Private chests use the
-  existing `locker_container_access_allowed` check, which a leave invalidates first,
-  so a private chest is only cleared while the visitor has it open.
+- The journey caught a real gap in section 4: leaving or closing a private chest
+  ended the access the hand-back relied on, so a no-rent item stayed in it. The
+  locker now remembers which private chests the visitor opened that visit.
+- Staff can `camp` at once from a locker-flagged room, so a no-rent item crumbles there
+  instead of falling where the locker would store it. Mortals can't: `camp` and `quit`
+  are refused inside a locker, and idle void and `extractlink` move the character out
+  first.
+- Review of #937 found the hand-back ran after the visitor's own save, so a crash
+  between the two saves lost a no-rent bag and what it held. Every player save now
+  hands items back first.
+
+Rechecked after merging master at `ddbcaa90a`:
+
+- #933 conflicted only in the journey test, where master removed the flat-file branch.
+  That is resolved. It is mergeable and was waiting on CI and review at last check.
+- The section 5 prototypes and code edits are intact.
+- The `ITEM_NORENT` lines left in `magic.c` are meant to stay: flame blade (line 8231)
+  under decision 5, and soulbind (lines 29071 and 29346) under decision 4.
+- Doom blade (352) and holy blade (426) get no-rent and transient from their
+  prototypes, so their help in section 6 still holds after
+  [#915](https://github.com/LuminariMUD/Duris/pull/915) changed how they are summoned.
+- The section 6 help text is present in both help sources, and the journey reads the
+  flame blade, doom blade, holy blade, rent, camp and locker topics through the live
+  `help` command.
+
+The journey also runs a public and a private chest, soulbound crumbling and the
+idle-void exit. A full burn-in was not run; that skill stops the server and is only
+for an explicit request.
 
 ## Outcome and scope
 
@@ -122,7 +151,7 @@ Rules, for worn items, carried items and items inside bags, staff included:
   "`$p` is no-rent and falls to the floor."
 - These crumble with a message instead: `ITEM_NODROP` (36 prototypes once section
   5 is done) and `ITEM2_SOULBIND`, because they can't be dropped, and anything when
-  the character is in a locker room or `NOWHERE`.
+  the character is in `NOWHERE`.
 - Transient items need no special case. `obj_to_room` already dissolves them.
 
 `purge_drop_item` ([actwiz.c:5306](../../src/cmd/actwiz.c#L5306)) is the closest
@@ -163,14 +192,14 @@ room contents, including chests and bags:
 - A no-rent item goes back to the user with `obj_to_char` and a notice.
 - A no-rent item without `ITEM_TAKE` is discarded. 55 of the 147 no-rent locker
   rows in the local database are blood stains.
-- Only touch a private chest the user can open, and record the take with
+- Only touch a private chest the visitor opened this visit, and record the take with
   `LockerMovementAudit` so the chest log stays accurate.
 
 This also returns items already stored, the next time someone visits, so decision
 3 needs no separate code. The existing artifact check isn't enough because it only
 sees the top level of the room. Leave
 [locker_async.c:498](../../src/persistence/locker_async.c#L498) as it is, so a
-no-rent item in a private chest the visitor can't open stays stored.
+no-rent item in a private chest the visitor didn't open stays stored.
 
 ### 5. Seven items lose the flag
 
