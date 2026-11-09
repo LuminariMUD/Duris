@@ -3,7 +3,7 @@
 Status: standalone conversions and the full907-file regression/native/build gate passed. First DB run153/154; its sole pet-reader failure is repaired and qualified. Full154-leg DB retry is running; final readiness remains pending.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-world-recovery-alert`. See the latest qualification notes before continuing.
+Review head: `branch/issue-870-nexus-combat-fixture`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -821,3 +821,31 @@ Failed aggregate results are preserved; focused successes never replace them.
   evidence/this plan, mark #958 ready, and verify clean/pushed Git plus PR labels/
   readiness. Then complete the goal and return the worktree/plan paths. No merge
   or deployment is requested.
+
+### Nexus combat-fixture precondition
+
+- Aggregate34613 is still collecting all154 legs. The corrected pet and world-
+  recovery cases passed, but nexus_journey timed out waiting for a mortal kill.
+  Preserve that failure in `nexus-regen-capacity-failure.log`; do not relabel the
+  aggregate as successful from its later focused repair.
+- The real prepared guardian diagnostic showed current/max/base HP1/30000/30000
+  and regeneration+14. The old fixture reduced only current HP; parries and the
+  native mace absorption could let that supposedly one-HP target regenerate.
+  The fixture already intends a weakened live boss for a capture/state journey,
+  with level1/armor1000/agility1 and mortal attackers; it is not a raid-balance test.
+- Outcome/files: make that existing precondition stable in test_mysql_nexus_journey.py.
+  Set only the live guardian's base HP to1, use native restore (which balances its
+  maxima), and require a live stat report showing current/max/base HP all1 before
+  mortal combat. Record the actual base/max values in evidence. Preserve native
+  defenses/procs, the60s window, player base stats and every capture/cooldown/
+  epic/cargo/restart/expiry/unique-guardian assertion. No production/template,
+  native source, schema, chance or timeout change.
+- Complete focused journey exited0 under the disposable wrapper:
+  `nexus-combat-fixture-fixed.log`/`.exit`. Both Marduk and Enlil passed mortal
+  guardian defeat/full capture/epics; actual cargo/contraband bonus and exclusion,
+  cold scores/ownership/guardians/placements, expiry/neutral reload and one-guardian
+  checks also passed. Player base stats remained unchanged; ordinary image6dfb5020….
+- The907-file gate remains valid: direct dependency search finds this DB-only
+  journey only in exclusion-name sets and their contract test. Await34613's
+  terminal result, archive its complete154 logs, then rerun the complete DB gate
+  with this committed fixture correction. Final readiness remains pending.
