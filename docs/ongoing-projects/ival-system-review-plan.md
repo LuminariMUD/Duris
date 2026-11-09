@@ -22,8 +22,8 @@ separate authorized operation. Flat-file server persistence is unsupported.
 - F01–F04 circle, packed-average, apply-order, zero and duplicate repairs;
   F08 numeric/config/property bounds and unavailable-score admission; F14 shared
   material quantities and checked XP; F15 dead reset/recovery work removal.
-- Published implementation through [#975](https://github.com/LuminariMUD/Duris/pull/975),
-  commit `83c45c569`. Publication does not mean every PR has merged.
+- Published implementation through [#981](https://github.com/LuminariMUD/Duris/pull/981),
+  commit `0f7e12253`. Publication does not mean every PR has merged.
 - Native evidence: 19,334 effective templates; 8,720 seeded generated items in
   formula-delta runs; 2,649 unchanged shipped property values. Results apply to
   their recorded revisions, not automatically to future changes. Durable results
@@ -69,8 +69,8 @@ checks passed. Existing results were reused after the plan-only revision.
 
 ## B — finish valuation semantics and explanation (F05/F06/F09/F11)
 
-**Implemented and qualified:** `branch/ival-semantics`, based on #978; publication
-follows commit checks. The 321 unique mappings retain first-match prices, with
+**Review-ready:** `527ad4c40` + `0f7e12253`, [PR #981](https://github.com/LuminariMUD/Duris/pull/981)
+(bug label), `branch/ival-semantics`, stacked on #978. The 321 unique mappings retain first-match prices, with
 90 explicit utility policies. Twenty callbacks proven to use the common melee-only
 gate lose inactive credit on packed non-backstab weapons; backstab, periodic and
 invoke routes retain credit. Unsplit legacy native prices are labeled incomplete
@@ -202,7 +202,7 @@ by the batch. Codec/source-contract tests alone never prove a persistence journe
 
 Local: `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
 Remote: `duris-staging:/home/staging/duris-worktrees/ival-system-improvements`.
-Latest batch: `branch/ival-semantics` for B, based on `branch/ival-enhancement-contract`
+Latest batch: `branch/ival-semantics` for B (#981), based on `branch/ival-enhancement-contract`
 (#978). Synchronize committed work to the remote worktree. A and B are implemented;
 C and D remain open.
 
