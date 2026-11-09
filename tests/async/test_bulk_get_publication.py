@@ -87,6 +87,9 @@ static bool item_command_object_is_takeable(P_char, P_obj object)
     return object->weight >= 0;
 }
 static bool checkgetput(P_char, P_obj) { return false; }
+static P_obj find_live_object(P_obj object, uint64_t uid) {
+    return object && object->obj_uid == uid ? object : nullptr;
+}
 static void writeCorpse(P_obj) {}
 static void send_to_char(const char *message, P_char) { output += message; }
 '''
