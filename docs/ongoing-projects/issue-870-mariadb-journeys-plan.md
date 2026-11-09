@@ -1,6 +1,6 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: 13 partial-conversion runners passed their functional journeys; the shop runtime repair remains before batch 1 is complete.
+Status: all 14 partial-conversion runners and telemetry performance passed; standalone racial/cast conversion is under qualification. Aggregate gates remain.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
 Branch: `branch/issue-870-mariadb-journeys`.
@@ -117,7 +117,7 @@ Each batch should produce a reviewable commit with its focused runtime proof.
   select MariaDB by default; retain cache refresh and concurrent reader checks.
 - [x] Finish `test_flight_network_journey.py`: use SQL progress, correct the
   default and build invocation, and retain reconnect/interruption/copyover modes.
-- [ ] Finish `test_shop_multi_buy_journey.py`: retain wallet, item identities,
+- [x] Finish `test_shop_multi_buy_journey.py`: retain wallet, item identities,
   parentage and cold-restart assertions. Translate any still-relevant delayed
   writer/offline-sale case using the existing MariaDB fault patterns; a file
   lock is not a MariaDB writer stall. Remove only exclusively retired semantics.
@@ -478,8 +478,8 @@ This is an estimate, not a time limit or permission to omit required proof.
   as `bin/tests/issue-870/shop-unsaved-bag-failure-*`. Do not drop that case.
   The new delayed-sale leg holds `critical_operation_inbox` with a dedicated
   SQL session and requires `ACCOUNT MENU` before unlocking; it is still unrun.
-- Server repair is in progress on `branch/issue-870-fresh-container-grants`
-  above #897. Outcome: newly loaded carried bags can receive a transactional
+- Server repair is qualified on `branch/issue-870-container-grants-fix`
+  before #897. Outcome: newly loaded carried bags can receive a transactional
   child batch without synchronous SQL or a guessed owner/revision. Reuse the
   existing creation queue: capture the actor's inventory, queue an ownership
   read on the same writer, then hydrate its actual row and submit the child
@@ -496,11 +496,23 @@ This is an estimate, not a time limit or permission to omit required proof.
   regression passed with new unavailable-checkpoint/read, deferred-parent,
   offline-resume and failure-callback assertions. Creation-batch and
   reconciliation contracts and the existing newbie lifecycle runtime passed.
-  Prompt runtime and the real full shop journey still need their final results.
-  Keep future server repairs separate from script conversion PR #897.
+  Prompt runtime also passed. With the companion #897 conversion, the complete
+  real shop journey passed, including a fresh unsaved bag, all 108 ration UIDs/
+  parentage/wallet across restart, and sale/logout while SQL saves are locked.
+  It then verified exactly-once payment, no returned sold UID and stable buyback
+  after restart. The retired deferred-sale receipt was corrected to the current
+  immediate-memory sale contract; the lock now holds actual player/shop/log
+  tables until the account menu, without querying locked inventory tables.
+  Source repair commit: `50112a024`, inserted as a prerequisite of #897.
+  It has the same source/native fixture bytes as the originally tested local
+  `a504cd578` (verified with `git diff --exit-code`); no published history was
+  rewritten. Binary SHA-256:
+  `4f13e85355b8940a950d14e3a4b3e061cf294a43369e68c249b17ce3b44d823c`.
+  Full runtime evidence: `bin/tests/issue-870/shop-multi-buy*`; earlier failures
+  remain under `shop-unsaved-bag-failure-*` and `shop-retired-sale-expectation-*`.
 - Latest code and plan are committed/pushed on the stacked branches. The worktree
   may be on a parent while its evidence is updated; check `git status` before
-  editing, then continue from `branch/issue-870-fresh-container-grants` for the server repair.
+  editing, then continue from `branch/issue-870-container-grants-fix` for the server repair.
 - Remaining batches 2–6 are still required: standalone gameplay/protocol/timing,
   named sets and historical assassin comparison, four item journeys, naming/docs,
   full regression/DB gates and qualification of #880's other standalone edits.
