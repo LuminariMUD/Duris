@@ -102,9 +102,6 @@ def run(binary, backend, output_path):
     graph, guilds = authored_graph(), guild_rooms()
     assert len(guilds) == 27, 'guild catalog includes only active hometown rows'
     inspector = ROOT / 'bin/qualification/issue213/player-inspector'
-    if backend == 'flatfile' and not inspector.exists():
-        subprocess.run(['python3', 'tests/async/test_flatfile_player_repository.py',
-                        '--build-inspector', str(inspector)], cwd=ROOT, check=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     (ROOT / 'bin/tests').mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='issue213-' + backend + '-', dir=ROOT / 'bin/tests') as temporary:

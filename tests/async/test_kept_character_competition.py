@@ -13,9 +13,6 @@ from test_kept_character_journey import kept_journey_binary, persistence, login,
 
 def run(binary, backend):
     inspector = account.ROOT / "bin/tests/kept-character-inspector"
-    if backend == "flatfile":
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(inspector)], cwd=account.ROOT, check=True)
     with persistence(backend) as (environment, sql):
         with account.IsolatedServer(binary, dict(environment, DURIS_WEBSOCKET="TRUE")) as server:
             winner = account.MudClient(server.plain_port)

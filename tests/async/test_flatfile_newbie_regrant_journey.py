@@ -17,6 +17,8 @@ import test_flatfile_combat_journey as journey
 import test_flatfile_chaos_new_character_kit as chaos_kit
 
 ROOT = Path(__file__).resolve().parents[2]
+MASTER_SPELLBOOK_VNUM = 7
+MAX_CIRCLE = 12
 
 
 class ObserverClient(journey.MudClient):
@@ -61,8 +63,15 @@ def saved_items(sql):
         lines.append(f"ITEM {uid} {vnum} {flags}")
         if book != "NULL":
             spells = sorted(json.loads(book))
-            journey.require(spells and int(pages) == len(spells) and len(set(spells)) == len(spells),
-                            f"malformed saved spellbook on item {uid}: pages={pages} spells={len(spells)} {book}")
+            # Starter books count one page per spell; the master book stores the sum of its
+            # spell circles (FillMasterSpellBook), each between 1 and MAX_CIRCLE.
+            if int(vnum) == MASTER_SPELLBOOK_VNUM:
+                pages_match = len(spells) <= int(pages) <= MAX_CIRCLE * len(spells)
+            else:
+                pages_match = int(pages) == len(spells)
+            journey.require(spells and pages_match and len(set(spells)) == len(spells),
+                            f"malformed saved spellbook on item {uid}: vnum={vnum} pages={pages} "
+                            f"spells={len(spells)} {book}")
             lines.append(f"BOOK {uid} {pages} " + " ".join(map(str, spells)))
     return sorted(lines)
 

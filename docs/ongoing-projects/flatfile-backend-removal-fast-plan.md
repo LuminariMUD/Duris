@@ -421,29 +421,28 @@ must stay green after each one.
 
 | Compile-level leftovers and most remaining journeys | 6 | 16 tests move to `make test-db`; 7 are deleted or return to `make test-all` |
 
-The six still deferred, with what each needs:
+| Last batch | 2 | Three journeys move to `make test-db`; the inspector test and 15 flat-only `run_*` scripts are deleted |
 
-- `flatfile_auction_coin_put_journey`: a full-world boot, because
-  `init_auction_houses()` does not run under `--minimal`.
-- `flatfile_locker_journey`: converted but blocked by suspected finding 1 below.
-- `flatfile_newbie_regrant_journey`: converted but blocked by suspected finding 2 below.
-- `pet_restart_journey`: SQL seeding across `player_items` and `player_pet_items`.
-- `flatfile_full_world_boot`: depends on flat directories and a saved `RENT_CAMPED`,
-  which MariaDB does not store.
-- `flatfile_player_repository`: about 41 files still reference its inspector.
+The two still deferred, each needing an owner decision:
 
-Suspected gameplay findings, not caused by this work and not changed in `src/`:
-
-1. Entering a locker by your own character name is refused in the converted journey.
-   `locker_enter_character` builds the locker name from `account_characters.racewar`,
-   which is 0 there while the locker is `account.journeyacct.1.locker`. Check whether
-   real data has the same mismatch, or only this journey's seed.
-2. The Chaos Sorcerer spellbook assertion requires `value3` to equal the spell count;
-   observed `pages=1668 spells=226`. `FillMasterSpellBook` stores the sum of spell
-   circles, so the old assertion may never have held for that book.
+- `flatfile_locker_journey`: blocked by a production bug for trusted characters.
+  `account.c:2490` and `:2783` set the account racewar through
+  `account_admission_racewar()`, which returns `ACCT_IMMORTAL` (0), and
+  `sql_player.c:1057` saves it. `locker_enter_character` in `storage_lockers.c` then
+  builds `account.<name>.0.locker`, while default entry uses `GET_RACEWAR` and gets
+  `.1.`, so entry by your own character name is refused.
+- `pet_restart_journey`: 7 of 8 stages pass. After `quit` it expects one held pet row;
+  MariaDB keeps a second row as `custody_pending`, which looks deliberate
+  (`player_snapshot_repository.c`, around line 970). Decide whether the test should
+  accept that row.
 
 Login assertions after death, and two `You break camp...` logins, now expect the
 normal `Welcome to Duris` text, because `rtype` is always 0 on MariaDB.
+
+Also left behind: 29 scripts no longer build the deleted inspector but keep dead
+`flatfile` branches, and `run_item_pilot`, `run_paladin_balance`, and
+`run_weapon_actions` survive only as imported libraries. Some docs still name the
+deleted `run_*` scripts.
 
 `make test-all` has no database, so a converted journey belongs in
 `tests/run_db_tests.sh`. Remaining conversions use `mariadb_authority()` in

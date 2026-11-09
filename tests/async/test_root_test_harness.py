@@ -165,6 +165,9 @@ assert runner.MANUAL_ONLY_TEST_NAMES == {
     "test_minor_creation_instrument_journey.py",
     "test_generated_npc_journey.py",
     "test_flatfile_chaos_new_character_kit.py",
+    "test_flatfile_newbie_regrant_journey.py",
+    "test_flatfile_auction_coin_put_journey.py",
+    "test_flatfile_full_world_boot.py",
 }
 discovered = {path.name for path in runner.discover_tests(None)}
 assert not (runner.MANUAL_ONLY_TEST_NAMES & discovered)

@@ -296,8 +296,6 @@ if __name__ == '__main__':
     args.output = (args.output or ROOT / f'bin/qualification/issue213/browser-{args.backend}.json').resolve()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.inspector = ROOT / 'bin/qualification/issue213/player-inspector'
-    if args.backend == 'flatfile' and not args.inspector.exists():
-        subprocess.run(['python3', 'tests/async/test_flatfile_player_repository.py', '--build-inspector', str(args.inspector)], cwd=ROOT, check=True)
     evidence = {'backend': args.backend, 'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                 'binary_sha256': hashlib.sha256(args.server.read_bytes()).hexdigest(),
                 'frontend_url': args.frontend_url, 'passed': False,

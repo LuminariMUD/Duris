@@ -32,9 +32,6 @@ def waiting_login(server):
 
 def run(binary, backend):
     inspector = account.ROOT / "bin/tests/kept-character-inspector"
-    if backend == "flatfile":
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(inspector)], cwd=account.ROOT, check=True)
     with persistence(backend) as (environment, sql):
         fixture = account.IsolatedServer(binary, dict(environment, DURIS_WEBSOCKET="TRUE"))
         if backend == "flatfile":

@@ -77,6 +77,9 @@ minor_creation_instrument $DB python3 tests/async/test_minor_creation_instrument
 generated_npc $DB python3 tests/async/test_generated_npc_journey.py --server SERVER_BINARY
 generated_npc_redis $DB python3 tests/async/test_generated_npc_journey.py --server SERVER_BINARY --mode redis
 chaos_new_character_kit $DB python3 tests/async/test_flatfile_chaos_new_character_kit.py --server SERVER_BINARY
+newbie_regrant $DB python3 tests/async/test_flatfile_newbie_regrant_journey.py --server SERVER_BINARY
+auction_coin_put $DB python3 tests/async/test_flatfile_auction_coin_put_journey.py --server SERVER_BINARY
+full_world_boot $DB python3 tests/async/test_flatfile_full_world_boot.py --server SERVER_BINARY
 frag_cap_repository $DB python3 tests/async/test_frag_cap_repository.py --mysql
 divine_boon_schema tests/async/run_divine_boon_schema_mysql.sh
 frag_cap $DB python3 tests/async/test_frag_cap_journey.py --backend mariadb --server SERVER_BINARY

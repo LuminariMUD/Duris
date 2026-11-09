@@ -272,11 +272,6 @@ def main() -> None:
     ROOT.joinpath("bin/tests").mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="duris-252-inspector-", dir=ROOT / "bin/tests") as temporary:
         inspector = pathlib.Path(temporary) / "inspector"
-        subprocess.run(
-            ["python3", "tests/async/test_flatfile_player_repository.py",
-             "--build-inspector", str(inspector)],
-            cwd=ROOT, check=True, timeout=180,
-        )
         timings = {factor: run_case(binary, factor, inspector)
                    for factor in (0.5, 1.0, 2.0)}
     require(timings[1.0] > timings[0.5] * 1.35,
