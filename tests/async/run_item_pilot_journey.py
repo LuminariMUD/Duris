@@ -178,6 +178,11 @@ def run_case(binary,family,enabled,abort):
                 server.start(); client=server.client=journey.reconnect_character(server.port)
             else:
                 client.send('get '+name); client.expect('You get ')
+                if abort == 'crash':
+                    # Crash recovery starts from a durably carried source. The
+                    # pending item action itself must never return after boot.
+                    client.send('save'); client.expect(f'Saving {journey.CHARACTER}.')
+                    assert int(sql("SELECT COUNT(*) FROM player_items WHERE vnum=22802")) == 1
             if family=='ioun':
                 client.send('wear mirrored'); client.expect('begins orbiting your head')
                 client.send('kill sentinel')
