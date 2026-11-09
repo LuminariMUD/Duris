@@ -7582,12 +7582,12 @@ int required_weapon_skill(P_obj wpn)
 	case WEAPON_SPIKED_MACE:
 	case WEAPON_STAFF:
 	case WEAPON_LANCE:
+	case WEAPON_NUMCHUCKS:
 		return IS_SET(wpn->extra_flags, ITEM_TWOHANDS) ? SKILL_2H_BLUDGEON :
 								 SKILL_1H_BLUDGEON;
 		break;
 	case WEAPON_WHIP:
 	case WEAPON_FLAIL:
-	case WEAPON_NUMCHUCKS:
 		return IS_SET(wpn->extra_flags, ITEM_TWOHANDS) ? SKILL_2H_FLAYING :
 								 SKILL_1H_FLAYING;
 		break;
@@ -11463,7 +11463,6 @@ int pv_common(P_char ch, P_char opponent, const P_obj wpn, int *damAccumulator)
 
 	/* weapon skill notch, check for automatic defensive skills */
 	if (!((wpn_skill = required_weapon_skill(wpn)) &&
-	      ((wpn_skill != SKILL_1H_FLAYING) && (wpn_skill != SKILL_2H_FLAYING)) &&
 	      notch_skill(ch, wpn_skill, get_property("skill.notch.offensive.auto", 4))) &&
 	    GET_STAT(opponent) == STAT_NORMAL && !IS_IMMOBILE(ch) &&
 	    (has_innate(ch, INNATE_EYELESS) || CAN_SEE(opponent, ch) ||

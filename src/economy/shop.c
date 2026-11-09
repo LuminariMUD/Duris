@@ -231,16 +231,15 @@ static void shop_produced_completion(P_char ch, bool committed, uint64_t first_i
 		return;
 	produced_purchase_batch batch = std::move(found->second);
 	produced_purchase_batches.erase(found);
-	if (ch && ch->desc)
+	if (ch->desc)
 		ch->desc->prompt_mode = TRUE;
 	if (!committed)
 	{
 		// Grant failures settle here after the grant queue relinquishes its objects.
-		if (ch)
-			shop_creation_refund(ch, batch);
+		shop_creation_refund(ch, batch);
 		shop_discard_produced(batch);
 		shop_purchase_report(ch, batch, 0);
-		if (ch && batch.requested == 1)
+		if (batch.requested == 1)
 			send_to_char(
 				"The purchase could not be delivered; you were not charged.\r\n",
 				ch);
@@ -250,11 +249,6 @@ static void shop_produced_completion(P_char ch, bool committed, uint64_t first_i
 	const int64_t total = batch.price * static_cast<int64_t>(batch.item_uids.size());
 	if (keeper && !batch.keeper_credited && total > 0)
 		ADD_MONEY(keeper, total);
-	if (!ch)
-	{
-		shop_discard_produced(batch); // durable delivery reconstructs the forest
-		return;
-	}
 	char message[MAX_STRING_LENGTH];
 	if (keeper)
 	{

@@ -39,7 +39,8 @@ def build_fixture(binary):
 def run(backend, binary):
     output_root = ROOT / "bin/tests"
     output_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="frag-cap-journey-", dir=output_root) as temporary:
+    # Keep Redis's Unix socket below its path limit in long checkout paths.
+    with tempfile.TemporaryDirectory(prefix="frag-cap-journey-") as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)
         (runtime / "help").symlink_to(ROOT / "help", target_is_directory=True)
