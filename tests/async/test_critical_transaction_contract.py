@@ -170,17 +170,5 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-outbox-", dir=ROOT / "bi
         check=True,
     )
     subprocess.run([str(binary)], check=True)
-    # Link the actual worker against the client-free backend too: this build
-    # deliberately never starts a SQL outbox and lifecycle drains must succeed.
-    subprocess.run(
-        [
-            "g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
-            "-pthread", "-D__NO_MYSQL__", "-Isrc/no_mysql", "-Isrc",
-            str(source), rel("critical_outbox.c"), rel("item_transfer_command.c"),
-            rel("player_snapshot_codec.c"), rel("critical_command.c"), "-lcrypto",
-            str(HARNESS_STUBS), "-o", str(binary),
-        ], cwd=ROOT, check=True,
-    )
-    subprocess.run([str(binary)], check=True)
 
 print("critical transaction schema, repository, outbox, lifecycle, and redaction contracts passed")

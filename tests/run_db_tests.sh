@@ -38,10 +38,47 @@ xargs -P "${TEST_DB_JOBS:-12}" -L 1 bash -c '
     run_one "${args[@]}"
 ' _ <<EOF
 flight_network $DB python3 tests/async/test_flight_network_journey.py --backend mariadb --server SERVER_BINARY
+connection_limit $DB python3 tests/async/test_connection_limit_journey.py --server SERVER_BINARY
+castle_key_reset $DB python3 tests/async/test_castle_key_reset_journey.py --server SERVER_BINARY
+character_stat_choice $DB python3 tests/async/test_character_stat_choice_journey.py --server SERVER_BINARY
+creation_prompt $DB python3 tests/async/test_creation_prompt_journey.py --server SERVER_BINARY
+starter_arrow $DB python3 tests/async/test_starter_arrow_journey.py --server SERVER_BINARY
+gith_monk $DB python3 tests/async/test_gith_monk_journey.py --server SERVER_BINARY
+gmcp_control $DB python3 tests/async/test_gmcp_control_journey.py --server SERVER_BINARY
+game_loop_session $DB python3 tests/async/test_game_loop_session_journey.py --server SERVER_BINARY
+creation_deferred_play $DB python3 tests/async/test_creation_deferred_play_journey.py --backend mariadb --server SERVER_BINARY
+shop_multi_buy $DB python3 tests/async/test_shop_multi_buy_journey.py --backend mariadb --server SERVER_BINARY
+norent_key_rent $DB python3 tests/async/test_norent_key_rent_journey.py --backend mariadb --server SERVER_BINARY
+websocket_session_guard $DB python3 tests/async/test_websocket_session_guard_journey.py --backend mariadb --server SERVER_BINARY
+storage_chest_crash $DB python3 tests/async/test_storage_chest_crash_journey.py --backend mariadb --server SERVER_BINARY
+shaman_totems $DB python3 tests/async/test_shaman_totems.py --server SERVER_BINARY
+hardcore_third_death $DB python3 tests/async/test_flatfile_hardcore_death_journey.py --server SERVER_BINARY
+ranged_kill_xp $DB python3 tests/async/test_ranged_kill_xp_journey.py --server SERVER_BINARY
+account_recovery_journey $DB python3 tests/async/test_account_recovery_journey.py --server SERVER_BINARY
+first_session_currency $DB python3 tests/async/test_flatfile_first_session_currency.py --server SERVER_BINARY
+area_coin_pickup $DB python3 tests/async/test_area_coin_pickup.py --server SERVER_BINARY
+log_hygiene $DB python3 tests/async/test_log_hygiene_journey.py --server SERVER_BINARY
+hostname_files $DB python3 tests/async/test_hostname_files_journey.py --server SERVER_BINARY
+studioproc_duplicate_record $DB python3 tests/async/test_studioproc_duplicate_record.py --server SERVER_BINARY
 locker_grant_journey $DB python3 tests/async/test_mysql_locker_grant_journey.py --server SERVER_BINARY
 artifact_owner_restart $DB python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server SERVER_BINARY
 legacy_traps $DB python3 tests/async/test_legacy_trap_journey.py SERVER_BINARY mariadb
 mysql_combat $DB python3 tests/async/test_mysql_combat_journey.py --server SERVER_BINARY
+combat_journey $DB python3 tests/async/test_flatfile_combat_journey.py --server SERVER_BINARY
+collector_intake_journey $DB python3 tests/async/test_flatfile_collector_intake_journey.py --server SERVER_BINARY
+death_restart_journey $DB python3 tests/async/test_flatfile_death_restart_journey.py --server SERVER_BINARY
+mob_gold_dial $DB python3 tests/async/test_mob_gold_dial_runtime.py --server SERVER_BINARY
+boot_preflight $DB python3 tests/async/test_flatfile_boot_preflight.py --server SERVER_BINARY
+headbutt_feedback $DB python3 tests/async/test_headbutt_feedback_journey.py --server SERVER_BINARY
+assassin_combat $DB python3 tests/async/test_assassin_combat_journey.py --server SERVER_BINARY
+conjurer_gameplay $DB python3 tests/async/test_conjurer_gameplay_journey.py --server SERVER_BINARY
+shambler_reflection $DB python3 tests/async/test_shambler_reflection_journey.py --server SERVER_BINARY
+minor_creation_instrument $DB python3 tests/async/test_minor_creation_instrument_journey.py --server SERVER_BINARY
+generated_npc $DB python3 tests/async/test_generated_npc_journey.py --server SERVER_BINARY
+generated_npc_redis $DB python3 tests/async/test_generated_npc_journey.py --server SERVER_BINARY --mode redis
+chaos_new_character_kit $DB python3 tests/async/test_flatfile_chaos_new_character_kit.py --server SERVER_BINARY
+frag_cap_repository $DB python3 tests/async/test_frag_cap_repository.py --mysql
+divine_boon_schema tests/async/run_divine_boon_schema_mysql.sh
 frag_cap $DB python3 tests/async/test_frag_cap_journey.py --backend mariadb --server SERVER_BINARY
 hatred_journey $DB python3 tests/async/run_innate_hatred_journey.py --backend mariadb --server SERVER_BINARY
 death_level_projection $DB python3 tests/async/run_death_level_projection_journey.py --backend mariadb --binary SERVER_BINARY --output bin/tests/db/death-level-projection

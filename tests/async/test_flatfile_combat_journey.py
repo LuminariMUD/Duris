@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """End-to-end combat, death, corpse-loot, save, and reconnect regression.
 
-The journey boots the real server with an isolated flat-file authority and a
+The journey boots the real server against a disposable MariaDB schema and a
 small deterministic world fixture.  It deliberately crosses protocol parsing,
 account and character creation, command dispatch, combat pulses, NPC and player
 death, both corpse types, item movement, terminal saves, and player reload.
@@ -11,11 +11,10 @@ from __future__ import annotations
 
 import server_build_artifacts
 
+import argparse
+import contextlib
 import os
 import fcntl
-import hashlib
-import json
-import struct
 import pathlib
 import random
 import re
@@ -23,9 +22,9 @@ import shutil
 import signal
 import socket
 import subprocess
-import sys
 import tempfile
 import time
+import uuid
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -45,6 +44,60 @@ def require(condition: bool, message: str) -> None:
 
 _port_lock = None
 _reserved_ports: set[int] = set()
+
+
+@contextlib.contextmanager
+def mariadb_authority():
+    """A freshly migrated schema on the with_disposable_mariadb.sh server.
+
+    Yields (env, sql): env is the base server environment for that schema, and
+    sql(statement, selected=True) runs a statement and returns its stripped output.
+    """
+    host = os.environ["TEST_DB_HOST"]
+    require(host in ("127.0.0.1", "localhost"), "use a disposable loopback database")
+    database = "journey_" + uuid.uuid4().hex[:12]
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ENVIRONMENT": "local",
+        "REDIS": "FALSE", "CHAOS_MUD": "FALSE", "LISTEN_ADDRESS": "127.0.0.1",
+        "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
+        "PERSISTENCE_MODE": "mariadb-primary", "DB_TLS": "FALSE", "DB_HOST": host,
+        "DB_PORT": os.environ.get("TEST_DB_PORT", "3306"), "DB_NAME": database,
+        "DB_USER": os.environ["TEST_DB_USER"], "DB_PASSWD": os.environ["TEST_DB_PASSWORD"],
+        "DB_ALLOWED_TARGETS": host + "/" + database, "MYSQL_PWD": os.environ["TEST_DB_PASSWORD"],
+    }
+    if "LD_LIBRARY_PATH" in os.environ:
+        env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+    mysql = ["mysql", "--protocol=tcp", "-h", host, "-P", env["DB_PORT"], "-u", env["DB_USER"], "-N", "-B"]
+    mysql.append("--ssl-mode=DISABLED" if "--ssl-mode" in subprocess.check_output(
+        ["mysql", "--help"], text=True, stderr=subprocess.STDOUT) else "--skip-ssl")
+
+    def sql(statement: str, selected: bool = True) -> str:
+        return subprocess.check_output(mysql + ([database] if selected else []),
+                                       input=statement, text=True, env=env).strip()
+
+    sql(f"CREATE DATABASE {database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", False)
+    try:
+        sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
+        for step in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
+            subprocess.run(["python3", "scripts/migration_runner.py", *step], cwd=ROOT, env=env,
+                           check=True, capture_output=True)
+        # Published news, as a provisioned world has; the prompt's "(news)" marker depends on it.
+        sql("INSERT INTO mud_info(name,content) VALUES('news','Journey news.')")
+        yield env, sql
+    finally:
+        sql(f"DROP DATABASE {database}", False)
+
+
+def import_help(runtime: pathlib.Path, environment: dict[str, str]) -> None:
+    """Load the real help catalogue into the disposable schema (a provisioned world has it)."""
+    if not (runtime / "help").exists():
+        (runtime / "help").symlink_to(ROOT / "help", target_is_directory=True)
+    (runtime / "scripts").mkdir()
+    importer = runtime / "scripts/import_help_to_prod.sh"
+    shutil.copy2(ROOT / "scripts/import_help_to_prod.sh", importer)
+    imported = subprocess.run(["bash", str(importer), "--local"], input="yes\n", text=True,
+                              env=environment, capture_output=True, timeout=90)
+    require(imported.returncode == 0, imported.stdout[-2000:] + imported.stderr[-2000:])
 
 
 def available_ports() -> tuple[int, int, int]:
@@ -235,57 +288,43 @@ S
     zone_path.write_text(zone.replace("\nS\n", "\n" + reset + "S\n"))
 
 
-def inspect_authority(state_root: pathlib.Path) -> dict:
-    return json.loads(subprocess.check_output(
-        [str(INSPECTOR), str(state_root), "inspect", "1"], text=True, timeout=15))
+def inspect_authority(sql, character: str = CHARACTER) -> dict:
+    """The character's saved wallet, bank, counters and item custody, read from the schema."""
+    row = sql("SELECT pid,copper,silver,gold,platinum,wallet_revision,numb_deaths,exp,level,"
+              f"racewar,account_name FROM player_data WHERE name='{character}'").split("\t")
+    pid, racewar, account = row[0], row[9], row[10]
+    # An account has no bank row before its first deposit; that reads as an empty bank.
+    bank = sql("SELECT bank_copper,bank_silver,bank_gold,bank_platinum,bank_revision FROM account_banks "
+               f"WHERE account_name='{account}' AND racewar={racewar}").split()
+    items = sql("SELECT item_uid,vnum,root_item_uid,parent_item_uid,item_revision,owner_type "
+                "FROM item_current_owner WHERE state=1 AND "
+                f"((owner_type=1 AND owner_id={pid}) OR owner_type=3) ORDER BY item_uid")
+    rows = [line.split("\t") for line in items.splitlines()]
+    custody = [(row[5], {"uid": int(row[0]), "vnum": int(row[1]), "root": int(row[2]),
+                         "parent": int(row[3]) if row[3] != "NULL" else None,
+                         "revision": int(row[4])}) for row in rows]
+    return {
+        "pid": int(pid),
+        "wallet": [int(value) for value in row[1:5]],
+        "wallet_revision": int(row[5]),
+        "death_count": int(row[6]),
+        "experience": int(row[7]),
+        "level": int(row[8]),
+        "bank": [int(value) for value in bank[:4]] if bank else [0, 0, 0, 0],
+        "bank_revision": int(bank[4]) if bank else 0,
+        "player_items": [item for owner, item in custody if owner == "1"],
+        "room_items": [item for owner, item in custody if owner == "3"],
+        "snapshot_uids": [int(uid) for uid in sql(
+            f"SELECT obj_uid FROM player_items WHERE pid={pid} ORDER BY obj_uid").split()],
+    }
 
 
-def add_ghost_record(state_root: pathlib.Path, parent_uid: int) -> int:
-    """Add one ownership record with no payload item under the player's root.
-
-    Never used on .env data.
-    """
-    path = state_root / "domains/item_ownership"
-    with (state_root / "domains/.critical-authority.lock").open("r+b") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        data = bytearray(path.read_bytes())
-        require(data[:8] == b"DUROWN\0\0", "custody fixture magic changed")
-        version, size, _ = struct.unpack_from("<IIQ", data, 8)
-        require(version == 4 and size == len(data) - 56, "custody fixture format changed")
-        require(hashlib.sha256(data[56:]).digest() == data[24:56], "invalid custody fixture")
-        # Version 4 keeps the owner/item rows unchanged; its new collector
-        # flag lives in operation rows, which this insertion preserves verbatim.
-        owners, items, _ = struct.unpack_from("<III", data, 56)
-        at = 68 + owners * 25
-        last_uid = 0
-        parent = None
-        for _ in range(items):
-            row = struct.unpack_from("<QQQBQQQiBI", data, at)
-            last_uid = row[0]
-            if row[0] == parent_uid:
-                parent = row
-            at += 58 + row[-1]
-        require(parent is not None and parent[3:6] == (1, 1, 0), "fixture root is not player-owned")
-        ghost_uid = last_uid + 10000
-        ghost = struct.pack("<QQQBQQQiBI", ghost_uid, parent_uid, parent_uid,
-                            1, 1, 0, 1, 15, 1, 0)
-        data[at:at] = ghost
-        struct.pack_into("<I", data, 12, size + len(ghost))
-        struct.pack_into("<I", data, 60, items + 1)
-        data[24:56] = hashlib.sha256(data[56:]).digest()
-        temporary = path.with_name("item_ownership.fixture")
-        with temporary.open("wb") as output:
-            os.fchmod(output.fileno(), 0o600)
-            output.write(data)
-            output.flush()
-            os.fsync(output.fileno())
-        os.replace(temporary, path)
-        directory = os.open(path.parent, os.O_DIRECTORY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
-    return ghost_uid
+def add_ghost_record(sql, pid: int, parent_uid: int) -> int:
+    """Add one ownership row with no payload item under the player's root."""
+    ghost = 9000000000000000000 + pid
+    sql("INSERT INTO item_current_owner(item_uid,root_item_uid,parent_item_uid,owner_type,owner_id,"
+        f"item_revision,vnum,state) VALUES({ghost},{parent_uid},{parent_uid},1,{pid},1,15,1)")
+    return ghost
 
 
 def attack_until_death(client: MudClient) -> None:
@@ -306,7 +345,7 @@ def attack_until_death(client: MudClient) -> None:
         client.send("hit executioner")
 
 
-def ghost_ownership_record(port: int, state_root: pathlib.Path, run_root: pathlib.Path) -> int:
+def ghost_ownership_record(port: int, sql, run_root: pathlib.Path) -> int:
     """An ownership record whose payload item is gone is only counted at load.
 
     Memory is the authority: the character loads every payload item the catalog
@@ -317,15 +356,15 @@ def ghost_ownership_record(port: int, state_root: pathlib.Path, run_root: pathli
     try:
         client.send("save")
         client.expect(f"Saving {CHARACTER}.")
-        before = inspect_authority(state_root)
+        before = inspect_authority(sql)
         banana = next(item["uid"] for item in before["player_items"] if item["vnum"] == 15)
         client.send("quit")
         client.expect("ACCOUNT MENU", timeout=30)
         client.send("0")
         client.close()
-        ghost = add_ghost_record(state_root, banana)
+        ghost = add_ghost_record(sql, before["pid"], banana)
         require(any(item["uid"] == ghost and item["parent"] == banana
-                    for item in inspect_authority(state_root)["player_items"]),
+                    for item in inspect_authority(sql)["player_items"]),
                 "ghost ownership record was not installed")
         client = reconnect_character(port)
         client.send("inventory")
@@ -336,7 +375,7 @@ def ghost_ownership_record(port: int, state_root: pathlib.Path, run_root: pathli
             time.sleep(0.01)
         client.send("save")
         client.expect(f"Saving {CHARACTER}.")
-        after = inspect_authority(state_root)
+        after = inspect_authority(sql)
         require(any(item["uid"] == banana for item in after["player_items"]),
                 "the save after the load dropped a held item")
         require(after["wallet"] == before["wallet"], "the load changed the wallet")
@@ -344,7 +383,7 @@ def ghost_ownership_record(port: int, state_root: pathlib.Path, run_root: pathli
         client.send("quit")
         client.expect("ACCOUNT MENU", timeout=30)
         elapsed = time.monotonic() - started
-        print(f"flatfile-primary ghost-record camp-to-account-menu (n=1, isolated): {elapsed:.3f}s",
+        print(f"mariadb-primary ghost-record camp-to-account-menu (n=1, isolated): {elapsed:.3f}s",
               flush=True)
         client.send("0")
         return ghost
@@ -583,73 +622,14 @@ def reconnect_character(
         raise
 
 
-OVERLORD_FIXTURE = r'''
-#include "flatfile/flatfile_player_snapshot_file.h"
-#include "flatfile/flatfile_store.h"
-#include "player/player_snapshot_codec.h"
-#include <cstdio>
-#include <openssl/sha.h>
-#include <strings.h>
-template<class T> void number(std::vector<uint8_t>& out, T value) {
-    for (size_t i=0; i<sizeof(T); ++i)
-        out.push_back(static_cast<uint64_t>(value) >> (i*8));
-}
-int main(int argc, char **argv) {
-    if (argc != 3) return 2;
-    const std::string root = argv[1];
-    for (int32_t pid = 1; pid <= 64; ++pid) {
-        player_snapshot snapshot; std::string error;
-        if (flatfile_player_snapshot_read(root, pid, &snapshot, &error) !=
-            flatfile_player_load_result::ok)
-            continue;
-        bool named = false;
-        for (const auto &entry : snapshot.status_strings)
-            named |= entry.field == player_status_string_field::name &&
-                     !strcasecmp(entry.value.c_str(), argv[2]);
-        if (!named) continue;
-        for (auto &field : snapshot.status_integers)
-            if (field.field == player_status_field::level ||
-                field.field == player_status_field::highest_level)
-                field.signed_value = field.unsigned_value = 62;
-        std::vector<uint8_t> payload, bytes;
-        snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
-        if (player_snapshot_encode(snapshot, &payload) != player_snapshot_codec_result::ok)
-            return 1;
-        using namespace flatfile_player_snapshot_file;
-        bytes.insert(bytes.end(), player_magic.begin(), player_magic.end());
-        number(bytes, player_file_version); number<uint32_t>(bytes, payload.size());
-        number(bytes, snapshot.pid); number(bytes, snapshot.revision);
-        number(bytes, snapshot.components);
-        unsigned char digest[SHA256_DIGEST_LENGTH];
-        SHA256(payload.data(), payload.size(), digest);
-        bytes.insert(bytes.end(), digest, digest + sizeof(digest));
-        bytes.insert(bytes.end(), payload.begin(), payload.end());
-        return flatfile_atomic_write(player_directory(root), player_filename(pid), bytes,
-                                     &error) ? 0 : 1;
-    }
-    std::fprintf(stderr, "no flat-file player is named %s\n", argv[2]);
-    return 1;
-}
-'''
-
-
-def make_overlord(state_root: pathlib.Path, name: str) -> None:
-    """Raise flat-file character `name` to OVERLORD while no server runs.
+def make_overlord(sql, name: str) -> None:
+    """Raise character `name` to OVERLORD while no server runs.
 
     Character creation refuses god_list names, the one way a new character
     ever started as an OVERLORD, so a journey that needs a god promotes an
     ordinary character here, as staff must after a wipe.
     """
-    with tempfile.TemporaryDirectory(prefix="overlord-fixture-", dir=ROOT / "bin/tests") as build:
-        source = pathlib.Path(build) / "overlord.cpp"
-        binary = pathlib.Path(build) / "overlord"
-        source.write_text(OVERLORD_FIXTURE, encoding="utf-8")
-        subprocess.run(["g++", "-std=c++20", "-Isrc", str(source),
-                        "src/player/player_snapshot_codec.c",
-                        "src/flatfile/flatfile_player_snapshot_file.c",
-                        "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(binary)],
-                       cwd=ROOT, check=True, timeout=300)
-        subprocess.run([str(binary), str(state_root), name], check=True, timeout=30)
+    sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{name}'")
 
 
 def verify_npc_loot_and_die(port: int) -> None:
@@ -664,8 +644,9 @@ def verify_npc_loot_and_die(port: int) -> None:
         client.close()
 
 
-def recover_player_corpse(port: int, state_root: pathlib.Path, reset_coins: bool = False) -> None:
-    client = reconnect_character(port, "You rejoin the land of the living")
+def recover_player_corpse(port: int, sql, reset_coins: bool = False) -> None:
+    # MariaDB keeps no last-exit reason, so the login after a death prints the normal text.
+    client = reconnect_character(port, "Welcome to Duris")
     try:
         client.send("look")
         client.expect("The corpse of a Human is lying here.", timeout=10)
@@ -674,7 +655,7 @@ def recover_player_corpse(port: int, state_root: pathlib.Path, reset_coins: bool
         require(CHARACTER in corpse, "player corpse did not contain the saved loot marker")
         # A player's coins go into the corpse at death, and the death saved the empty
         # wallet (persistence reset phase 2 step 4).
-        require(inspect_authority(state_root)["wallet"] == [0, 0, 0, 0],
+        require(inspect_authority(sql)["wallet"] == [0, 0, 0, 0],
                 "the death did not save an empty wallet")
         client.send(f"get coins {CHARACTER}")
         client.expect("There were: 3 silver coins." if reset_coins else
@@ -712,16 +693,9 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                 first_session_only: bool = False, populated_bank: bool = False,
                 boons_enabled: bool = False) -> None:
     print(f"combat journey: reset_coins={reset_coins} boons_enabled={boons_enabled}", flush=True)
-    with tempfile.TemporaryDirectory(prefix="duris-combat-state-") as state_tmp:
-        with tempfile.TemporaryDirectory(prefix="duris-combat-run-") as run_tmp:
-            state_root = pathlib.Path(state_tmp)
+    with tempfile.TemporaryDirectory(prefix="duris-combat-run-") as run_tmp:
+        with mariadb_authority() as (environment, sql):
             run_root = pathlib.Path(run_tmp)
-            state_root.chmod(0o700)
-            (state_root / "domains").mkdir(mode=0o700)
-            subprocess.run([str(INSPECTOR), str(state_root), "seed-combat"], check=True)
-            if populated_bank:
-                subprocess.run([str(INSPECTOR), str(state_root), "seed-creation-bank"],
-                               check=True)
             (run_root / "logs/log").mkdir(parents=True)
             (run_root / "logs/log/.gitignore").write_text("*\n!.gitignore\n")
             make_fixture(run_root, reset_coins)
@@ -737,24 +711,14 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
             (journal_root / "critical").mkdir(mode=0o700)
             plain_port, tls_port, websocket_port = available_ports()
             output_path = run_root / "server.out"
-            environment = {
-                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-                "ENVIRONMENT": "local",
-                "PERSISTENCE_MODE": "flatfile-primary",
-                "FLATFILE_STATE_DIR": str(state_root),
+            environment.update({
                 "CRITICAL_COMMAND_JOURNAL_DIR": str(journal_root / "critical"),
-                "LISTEN_ADDRESS": "127.0.0.1",
                 "DURIS_TLS_PORT": str(tls_port),
-                "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
                 "DURIS_WEBSOCKET_PORT": str(websocket_port),
-                "REDIS": "FALSE",
                 "DURIS_NEVENT_TRACE_PLAYER": "1",
                 # The ghost record's missing_payload_rows line is a trace (#11).
                 "DURIS_PERSISTENCE_TRACE": "1",
-                "CHAOS_MUD": "FALSE",
-            }
-            if runtime_library_path := os.environ.get("LD_LIBRARY_PATH"):
-                environment["LD_LIBRARY_PATH"] = runtime_library_path
+            })
 
             with output_path.open("w", encoding="utf-8") as output:
                 process = subprocess.Popen(
@@ -782,11 +746,17 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                         "isolated combat server did not boot:\n" + boot_output[-8000:],
                     )
 
+                    if populated_bank:
+                        # The account already has money on the character's side. The row
+                        # is inserted after the boot, whose currency checks want a baseline.
+                        sql("SET FOREIGN_KEY_CHECKS=0;"
+                            "INSERT INTO account_banks(account_name,racewar,bank_copper,bank_silver,"
+                            f"bank_gold,bank_platinum,bank_revision) VALUES('{ACCOUNT}',1,19,23,31,47,2)")
                     client = MudClient(plain_port)
                     create_character(client)
                     if first_session_only:
                         from test_flatfile_first_session_currency import verify_first_session
-                        verify_first_session(client, plain_port, state_root, populated_bank)
+                        verify_first_session(client, plain_port, sql, populated_bank)
                         return
                     if not boons_enabled:
                         client.send("toggle boon")
@@ -795,14 +765,14 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                     client.close()
                     client = None
                     coin_balance = [0, 3, 0, 0] if reset_coins else [1, 0, 0, 0]
-                    require(inspect_authority(state_root)["wallet"] == coin_balance,
+                    require(inspect_authority(sql)["wallet"] == coin_balance,
                             "NPC pickup/save did not conserve coins")
                     verify_npc_loot_and_die(plain_port)
-                    recover_player_corpse(plain_port, state_root, reset_coins)
+                    recover_player_corpse(plain_port, sql, reset_coins)
                     verify_recovered_loot(plain_port)
-                    require(inspect_authority(state_root)["wallet"] == coin_balance,
+                    require(inspect_authority(sql)["wallet"] == coin_balance,
                             "reconnect or corpse recovery changed the coin total")
-                    ghost = ghost_ownership_record(plain_port, state_root, run_root)
+                    ghost = ghost_ownership_record(plain_port, sql, run_root)
 
                     process.send_signal(signal.SIGTERM)
                     process.wait(timeout=30)
@@ -820,12 +790,12 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                         "FATAL:" not in server_output and "assert:" not in server_output,
                         "combat journey logged a fatal/assertion failure:\n" + server_output[-8000:],
                     )
-                    # Boot again with the same authority. Compare the wallet and the
+                    # Boot again with the same schema. Compare the wallet and the
                     # rest after re-entry and another save. The boot reaps every player
                     # record with no payload (#11): the ghost, and the starter kit that
                     # dissolved when the character dropped it. The login after it counts
                     # nothing.
-                    before_restart = inspect_authority(state_root)
+                    before_restart = inspect_authority(sql)
                     require(any(item["uid"] == ghost for item in before_restart["player_items"]),
                             "the ghost record was not in place before the restart")
                     before_restart["player_items"] = [
@@ -853,7 +823,7 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                     client.send("0")
                     client.close()
                     client = None
-                    after_restart = inspect_authority(state_root)
+                    after_restart = inspect_authority(sql)
                     for field in ("wallet", "wallet_revision", "player_items",
                                   "death_count", "experience", "level"):
                         require(after_restart[field] == before_restart[field],
@@ -890,19 +860,10 @@ VARIANTS = {"default": {}, "reset-coins": {"reset_coins": True},
 
 
 if __name__ == "__main__":
-    if sys.argv[1:2] == ["--variant"]:
-        run_journey(pathlib.Path(sys.argv[3]), **VARIANTS[sys.argv[2]])
-        raise SystemExit(0)
-    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                    "--build-inspector", str(INSPECTOR)], cwd=ROOT, check=True, timeout=180)
-    # Private temporary roots retain standalone build cleanup. The regression
-    # runner shares a verified executable across journeys; runtime fixtures
-    # remain isolated and are removed on both success and failure.
-    with tempfile.TemporaryDirectory(prefix=f"flatfile-combat-{os.getpid()}-",
-                                     dir=ROOT / "bin/tests") as build_tmp:
-        binary = build_flatfile_server(pathlib.Path(build_tmp))
-        # The variants share only the binaries and wait on game time: run them at once.
-        variants = [subprocess.Popen([sys.executable, __file__, "--variant", name, str(binary)],
-                                     cwd=ROOT) for name in VARIANTS]
-        require(not any([variant.wait() for variant in variants]), "a combat variant failed")
-    print("flat-file combat, player death, corpse recovery, save, and reconnect journey passed")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=pathlib.Path, required=True)
+    args = parser.parse_args()
+    # The variants share one disposable server and its instance-wide migration lock.
+    for options in VARIANTS.values():
+        run_journey(args.server.resolve(), **options)
+    print("combat, player death, corpse recovery, save, and reconnect journey passed")

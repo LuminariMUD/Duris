@@ -14,7 +14,6 @@ import time
 import test_flatfile_combat_journey as journey
 
 FIXTURE = r'''
-#include "flatfile/flatfile_player_snapshot_file.h"
 #include "flatfile/flatfile_store.h"
 #include "player/player_snapshot_codec.h"
 #include <cassert>
@@ -89,7 +88,7 @@ def run(binary):
         source = root / 'fixture.cpp'; source.write_text(FIXTURE)
         fixture = root / 'fixture'
         subprocess.run(['g++', '-std=c++20', '-Isrc', str(source),
-                        'src/player/player_snapshot_codec.c', 'src/flatfile/flatfile_player_snapshot_file.c',
+                        'src/player/player_snapshot_codec.c',
                         'src/flatfile/flatfile_store.c', '-lcrypto', '-o', str(fixture)], cwd=journey.ROOT, check=True)
         process = output = None
         admin = player = None

@@ -26,9 +26,6 @@ with tempfile.TemporaryDirectory(prefix="duris-item-codec-", dir=ROOT / "bin/tes
             "-Isrc",
             "tests/async/player_item_snapshot_codec_harness.cpp",
             rel("player_snapshot_codec.c"),
-            rel("flatfile_player_snapshot_file.c"),
-            rel("flatfile_store.c"),
-            "-lcrypto",
             "-o",
             str(binary),
         ],
@@ -40,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix="duris-item-codec-", dir=ROOT / "bin/tes
     if compile_result.returncode:
         raise SystemExit(compile_result.stdout)
     run_result = subprocess.run(
-        [str(binary), temporary],
+        [str(binary)],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,

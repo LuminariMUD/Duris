@@ -266,9 +266,9 @@ with tempfile.TemporaryDirectory(prefix="duris-gate-lightning-") as directory:
     source = Path(directory) / "harness.cpp"
     binary = Path(directory) / "harness"
     source.write_text(platform + foundation + devices + HARNESS.replace("// INSERT_SPELLS", production))
-    subprocess.run(["g++", "-std=c++20", "-O1", "-g", "-D__NO_MYSQL__", "-ffunction-sections", "-fdata-sections",
+    subprocess.run(["g++", "-std=c++20", "-O1", "-g", "-ffunction-sections", "-fdata-sections",
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-pthread", "-no-pie",
-                    "-I" + str(ROOT / "src"), str(source), str(ROOT / "src/persistence/latency_trace.c"),
+                    "-I" + str(ROOT / "src"), "-I/usr/include/mysql", str(source), str(ROOT / "src/persistence/latency_trace.c"),
                     str(HARNESS_STUBS), "-Wl,--gc-sections", "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, env=dict(os.environ,
         ASAN_OPTIONS="detect_leaks=1:halt_on_error=1", UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1",

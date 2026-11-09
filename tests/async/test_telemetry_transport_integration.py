@@ -11,7 +11,7 @@ def main():
         executable = str(Path(directory) / "disabled-integration")
         command = [
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-pthread",
-            "-D__NO_MYSQL__", "-I", str(ROOT / "src"),
+            "-I", str(ROOT / "src"), "-I/usr/include/mysql",
             str(ROOT / "tests/async/telemetry_transport_disabled_integration.cc"),
             str(ROOT / "src/telemetry/telemetry_transport.c"),
             str(ROOT / "src/telemetry/telemetry_queue.c"),
@@ -19,7 +19,7 @@ def main():
             str(ROOT / "src/telemetry/telemetry_repository.c"),
             *[str(ROOT / "src/telemetry" / name) for name in (
                 "telemetry_posthog.c", "telemetry_outage.c", "telemetry_config.c", "telemetry_health.c")],
-            "-lcrypto", "-lcurl", "-lcjson", "-o", executable,
+            "-lmysqlclient", "-lcrypto", "-lcurl", "-lcjson", "-o", executable,
         ]
         subprocess.run(command, cwd=ROOT, check=True, timeout=60)
         subprocess.run([executable], cwd=ROOT, check=True, timeout=15)

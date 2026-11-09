@@ -18,16 +18,16 @@ banned address is told so and closed, and the server stays up. A full server ref
 
 from __future__ import annotations
 
+import argparse
 import os
 import json
 import socket
-import tempfile
 import threading
 import time
 from pathlib import Path
 
 from test_account_recovery_journey import (
-    ACCOUNT, OLD_PASSWORD, IsolatedServer, MudClient, build_flatfile_server, create_account, require,
+    ACCOUNT, OLD_PASSWORD, IsolatedServer, MudClient, create_account, require,
     enter_account_name, login_to_menu,
 )
 
@@ -300,166 +300,167 @@ def connection_churn(server: IsolatedServer, legitimate: MudClient) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="duris-connection-limit-build-") as build:
-        binary = build_flatfile_server(Path(build), real_clock=True)
-        with IsolatedServer(binary, {"DURIS_WEBSOCKET": "TRUE",
-                                     "DURIS_TRUSTED_PROXY_IP": PROXY}, ban) as server:
-            port = server.plain_port
-            tls_port, websocket_port = port + 1, port + 2
-            held = []
-            try:
-                # Silent from the start at the account name prompt: closed after 120 s.
-                silent = BoundClient(port, "127.0.0.3")
-                silent.expect("account name")
-                silent_since = time.monotonic()
-                website = WebsiteClient(websocket_port)
-                held.append(website.socket)
-                website.start()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=Path, required=True)
+    binary = parser.parse_args().server.resolve()
+    with IsolatedServer(binary, {"DURIS_WEBSOCKET": "TRUE",
+                                 "DURIS_TRUSTED_PROXY_IP": PROXY}, ban) as server:
+        port = server.plain_port
+        tls_port, websocket_port = port + 1, port + 2
+        held = []
+        try:
+            # Silent from the start at the account name prompt: closed after 120 s.
+            silent = BoundClient(port, "127.0.0.3")
+            silent.expect("account name")
+            silent_since = time.monotonic()
+            website = WebsiteClient(websocket_port)
+            held.append(website.socket)
+            website.start()
 
-                # A TLS connection counts while it negotiates (GnuTLS ends a silent one
-                # after 40 s).
+            # A TLS connection counts while it negotiates (GnuTLS ends a silent one
+            # after 40 s).
+            for _ in range(LIMIT):
+                held.append(socket.create_connection(("127.0.0.1", tls_port), timeout=5,
+                                                     source_address=("127.0.0.4", 0)))
+            time.sleep(1)
+            excess_tls = socket.create_connection(("127.0.0.1", tls_port), timeout=5,
+                                                  source_address=("127.0.0.4", 0))
+            require(closed_within(excess_tls, 10) is not None,
+                    "a ninth connection from an address with eight in TLS negotiation was kept")
+
+            for _ in range(LIMIT):
+                client = BoundClient(port, "127.0.0.1")
+                client.expect("account name")
+                held.append(client)
+            refused = socket.create_connection(("127.0.0.1", port), timeout=5)
+            text = closed_within(refused, 10)
+            require(text is not None and REFUSAL in text,
+                    f"the ninth connection from one address was not refused: {text!r}")
+            # Socket closure can precede the asynchronous log writer's append.
+            deadline = time.monotonic() + 10
+            while True:
+                debug = (server.run_root / "logs/log/debug").read_text(errors="replace")
+                if "Refused connection from 127.0.0.1" in debug or time.monotonic() >= deadline:
+                    break
+                time.sleep(0.05)
+            require("Refused connection from 127.0.0.1" in debug,
+                    "the refusal left no debug-log line:\n" + debug[-4000:])
+
+            # Any name takes a connection past the account name prompt; it still counts.
+            for letter in "abcdefgh":
+                client = BoundClient(port, "127.0.0.5")
+                client.expect("account name")
+                client.send(f"Limit{letter}")
+                client.expect("is this correct?")
+                held.append(client)
+            refused = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                               source_address=("127.0.0.5", 0))
+            text = closed_within(refused, 10)
+            require(text is not None and REFUSAL in text,
+                    f"a ninth connection after eight named ones was not refused: {text!r}")
+
+            banned = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                              source_address=(BANNED, 0))
+            text = closed_within(banned, 10)
+            require(text is not None and b"banned" in text,
+                    f"a connection from a banned address was not closed: {text!r}")
+            require(server.process.poll() is None, "a banned address stopped the server")
+
+            # Another address still logs in.
+            other = BoundClient(port, "127.0.0.2")
+            create_account(other, OLD_PASSWORD)
+            held.append(other)
+
+            # Silent at the password prompt: closed after 120 s as well.
+            waiting = BoundClient(port, "127.0.0.6")
+            waiting.expect("account name")
+            waiting.send(ACCOUNT)
+            waiting.expect("password")
+            waiting_since = time.monotonic()
+
+            # Behind the proxy each PROXY-named client is counted on its own, and the
+            # proxy's own address is shared by its clients, so it is never capped.
+            # The request's X-Forwarded-For, which a PROXY-protocol proxy passes on
+            # untouched, does not take a connection out of its PROXY address's count.
+            for _ in range(LIMIT - 1):
+                held.append(proxied(websocket_port, "198.51.100.1"))
+            held.append(proxied(websocket_port, "198.51.100.1", forwarded_for="10.66.0.1",
+                                fragmented=True))
+            time.sleep(1)
+            excess = proxied(websocket_port, "198.51.100.1")
+            require(closed_within(excess, 10) is not None,
+                    "the ninth proxied connection from one client address was kept")
+            second = proxied(websocket_port, "198.51.100.2")
+            require(closed_within(second, 2) is None,
+                    "a proxied client was refused for another client's connections")
+            held.append(second)
+
+            # One IPv6 host normally has a /64 to itself: its addresses count together.
+            for host in range(1, LIMIT + 1):
+                held.append(proxied(websocket_port, f"2001:db8::{host}"))
+            time.sleep(1)
+            excess = proxied(websocket_port, f"2001:db8::{LIMIT + 1}")
+            require(closed_within(excess, 10) is not None,
+                    "a ninth connection from one IPv6 /64 was kept")
+            other_network = proxied(websocket_port, "2001:db8:0:1::1")
+            require(closed_within(other_network, 2) is None,
+                    "a connection from another IPv6 /64 was refused")
+            held.append(other_network)
+
+            for _ in range(LIMIT + 1):
+                client = BoundClient(port, PROXY)
+                client.expect("account name")
+                held.append(client)
+            # The proxy appends the real client to whatever X-Forwarded-For it was sent.
+            first = handshake(websocket_port, "198.51.100.3")
+            held.append(first)
+            held.append(handshake(websocket_port, "198.51.100.3, 198.51.100.4"))
+            require(closed_within(first, 2) is None,
+                    "a website login closed another client's as a stale one from its address")
+
+            for client, since, prompt in ((silent, silent_since, "account name"),
+                                          (waiting, waiting_since, "password")):
+                remaining = 120 - (time.monotonic() - since)
+                text = closed_within(client.socket, remaining + 15)
+                require(text is not None and b"Idle Timeout" in text,
+                        f"a connection silent at the {prompt} prompt was kept")
+                require(time.monotonic() - since >= 115,
+                        f"the connection silent at the {prompt} prompt was closed early")
+            time.sleep(max(0.0, website.since + 130 - time.monotonic()))
+            website.stopping.set()
+            website.join()
+            require(website.ended is None, "a website client that sent a message every 25 s "
+                    f"was closed: {website.ended!r}")
+
+            connection_churn(server, other)
+
+            # Fill the server: a TLS connection it refuses keeps no GnuTLS session
+            # (about 8 KiB each before). The connections opened just after `waiting`
+            # reach their 120 s now and free slots, so probe until one is refused.
+            for octet in range(40, 72):
                 for _ in range(LIMIT):
-                    held.append(socket.create_connection(("127.0.0.1", tls_port), timeout=5,
-                                                         source_address=("127.0.0.4", 0)))
-                time.sleep(1)
-                excess_tls = socket.create_connection(("127.0.0.1", tls_port), timeout=5,
-                                                      source_address=("127.0.0.4", 0))
-                require(closed_within(excess_tls, 10) is not None,
-                        "a ninth connection from an address with eight in TLS negotiation was kept")
-
-                for _ in range(LIMIT):
-                    client = BoundClient(port, "127.0.0.1")
-                    client.expect("account name")
-                    held.append(client)
-                refused = socket.create_connection(("127.0.0.1", port), timeout=5)
-                text = closed_within(refused, 10)
-                require(text is not None and REFUSAL in text,
-                        f"the ninth connection from one address was not refused: {text!r}")
-                # Socket closure can precede the asynchronous log writer's append.
-                deadline = time.monotonic() + 10
-                while True:
-                    debug = (server.run_root / "logs/log/debug").read_text(errors="replace")
-                    if "Refused connection from 127.0.0.1" in debug or time.monotonic() >= deadline:
-                        break
-                    time.sleep(0.05)
-                require("Refused connection from 127.0.0.1" in debug,
-                        "the refusal left no debug-log line:\n" + debug[-4000:])
-
-                # Any name takes a connection past the account name prompt; it still counts.
-                for letter in "abcdefgh":
-                    client = BoundClient(port, "127.0.0.5")
-                    client.expect("account name")
-                    client.send(f"Limit{letter}")
-                    client.expect("is this correct?")
-                    held.append(client)
-                refused = socket.create_connection(("127.0.0.1", port), timeout=5,
-                                                   source_address=("127.0.0.5", 0))
-                text = closed_within(refused, 10)
-                require(text is not None and REFUSAL in text,
-                        f"a ninth connection after eight named ones was not refused: {text!r}")
-
-                banned = socket.create_connection(("127.0.0.1", port), timeout=5,
-                                                  source_address=(BANNED, 0))
-                text = closed_within(banned, 10)
-                require(text is not None and b"banned" in text,
-                        f"a connection from a banned address was not closed: {text!r}")
-                require(server.process.poll() is None, "a banned address stopped the server")
-
-                # Another address still logs in.
-                other = BoundClient(port, "127.0.0.2")
-                create_account(other, OLD_PASSWORD)
-                held.append(other)
-
-                # Silent at the password prompt: closed after 120 s as well.
-                waiting = BoundClient(port, "127.0.0.6")
-                waiting.expect("account name")
-                waiting.send(ACCOUNT)
-                waiting.expect("password")
-                waiting_since = time.monotonic()
-
-                # Behind the proxy each PROXY-named client is counted on its own, and the
-                # proxy's own address is shared by its clients, so it is never capped.
-                # The request's X-Forwarded-For, which a PROXY-protocol proxy passes on
-                # untouched, does not take a connection out of its PROXY address's count.
-                for _ in range(LIMIT - 1):
-                    held.append(proxied(websocket_port, "198.51.100.1"))
-                held.append(proxied(websocket_port, "198.51.100.1", forwarded_for="10.66.0.1",
-                                    fragmented=True))
-                time.sleep(1)
-                excess = proxied(websocket_port, "198.51.100.1")
-                require(closed_within(excess, 10) is not None,
-                        "the ninth proxied connection from one client address was kept")
-                second = proxied(websocket_port, "198.51.100.2")
-                require(closed_within(second, 2) is None,
-                        "a proxied client was refused for another client's connections")
-                held.append(second)
-
-                # One IPv6 host normally has a /64 to itself: its addresses count together.
-                for host in range(1, LIMIT + 1):
-                    held.append(proxied(websocket_port, f"2001:db8::{host}"))
-                time.sleep(1)
-                excess = proxied(websocket_port, f"2001:db8::{LIMIT + 1}")
-                require(closed_within(excess, 10) is not None,
-                        "a ninth connection from one IPv6 /64 was kept")
-                other_network = proxied(websocket_port, "2001:db8:0:1::1")
-                require(closed_within(other_network, 2) is None,
-                        "a connection from another IPv6 /64 was refused")
-                held.append(other_network)
-
-                for _ in range(LIMIT + 1):
-                    client = BoundClient(port, PROXY)
-                    client.expect("account name")
-                    held.append(client)
-                # The proxy appends the real client to whatever X-Forwarded-For it was sent.
-                first = handshake(websocket_port, "198.51.100.3")
-                held.append(first)
-                held.append(handshake(websocket_port, "198.51.100.3, 198.51.100.4"))
-                require(closed_within(first, 2) is None,
-                        "a website login closed another client's as a stale one from its address")
-
-                for client, since, prompt in ((silent, silent_since, "account name"),
-                                              (waiting, waiting_since, "password")):
-                    remaining = 120 - (time.monotonic() - since)
-                    text = closed_within(client.socket, remaining + 15)
-                    require(text is not None and b"Idle Timeout" in text,
-                            f"a connection silent at the {prompt} prompt was kept")
-                    require(time.monotonic() - since >= 115,
-                            f"the connection silent at the {prompt} prompt was closed early")
-                time.sleep(max(0.0, website.since + 130 - time.monotonic()))
-                website.stopping.set()
-                website.join()
-                require(website.ended is None, "a website client that sent a message every 25 s "
-                        f"was closed: {website.ended!r}")
-
-                connection_churn(server, other)
-
-                # Fill the server: a TLS connection it refuses keeps no GnuTLS session
-                # (about 8 KiB each before). The connections opened just after `waiting`
-                # reach their 120 s now and free slots, so probe until one is refused.
-                for octet in range(40, 72):
-                    for _ in range(LIMIT):
-                        held.append(socket.create_connection(
-                            ("127.0.0.1", port), timeout=5, source_address=(f"127.0.0.{octet}", 0)))
-                for octet in range(72, 100):
-                    probe = socket.create_connection(("127.0.0.1", port), timeout=5,
-                                                     source_address=(f"127.0.0.{octet}", 0))
-                    if closed_within(probe, 5) is not None:
-                        break
-                    held.append(probe)
-                else:
-                    raise AssertionError("the server never filled up")
-                before = rss_kib(server)
-                for _ in range(1000):
-                    socket.create_connection(("127.0.0.1", tls_port), timeout=5,
-                                             source_address=("127.0.0.38", 0)).close()
-                time.sleep(1)
-                growth = rss_kib(server) - before
-                require(growth < 3072,
-                        f"a full server grew {growth} KiB over 1000 refused TLS connections")
-            finally:
-                for client in held:
-                    (client.socket if isinstance(client, MudClient) else client).close()
-            server.shutdown()
+                    held.append(socket.create_connection(
+                        ("127.0.0.1", port), timeout=5, source_address=(f"127.0.0.{octet}", 0)))
+            for octet in range(72, 100):
+                probe = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                                 source_address=(f"127.0.0.{octet}", 0))
+                if closed_within(probe, 5) is not None:
+                    break
+                held.append(probe)
+            else:
+                raise AssertionError("the server never filled up")
+            before = rss_kib(server)
+            for _ in range(1000):
+                socket.create_connection(("127.0.0.1", tls_port), timeout=5,
+                                         source_address=("127.0.0.38", 0)).close()
+            time.sleep(1)
+            growth = rss_kib(server) - before
+            require(growth < 3072,
+                    f"a full server grew {growth} KiB over 1000 refused TLS connections")
+        finally:
+            for client in held:
+                (client.socket if isinstance(client, MudClient) else client).close()
+        server.shutdown()
     print("connection limit journey passed")
     return 0
 

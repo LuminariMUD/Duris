@@ -10,11 +10,11 @@ connection closed, and a connection's files go when it closes. The directory's
 
 from __future__ import annotations
 
-import tempfile
+import argparse
 import time
 from pathlib import Path
 
-from test_account_recovery_journey import IsolatedServer, MudClient, build_flatfile_server, require
+from test_account_recovery_journey import IsolatedServer, MudClient, require
 
 
 def hostname_files(run_root: Path) -> set[str]:
@@ -30,29 +30,29 @@ def stale_files(run_root: Path) -> None:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="duris-hostname-files-build-") as build:
-        binary = build_flatfile_server(Path(build))
-        with IsolatedServer(binary, None, stale_files) as server:
-            run_root = server.run_root
-            require(hostname_files(run_root) == set(),
-                    f"the boot left {sorted(hostname_files(run_root))} in lib/etc/hosts")
-            require((run_root / "lib/etc/hosts/.gitignore").is_file(),
-                    "the boot removed lib/etc/hosts/.gitignore")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=Path, required=True)
+    with IsolatedServer(parser.parse_args().server.resolve(), None, stale_files) as server:
+        run_root = server.run_root
+        require(hostname_files(run_root) == set(),
+                f"the boot left {sorted(hostname_files(run_root))} in lib/etc/hosts")
+        require((run_root / "lib/etc/hosts/.gitignore").is_file(),
+                "the boot removed lib/etc/hosts/.gitignore")
 
-            client = MudClient(server.plain_port)
-            deadline = time.monotonic() + 30
-            while not hostname_files(run_root) and time.monotonic() < deadline:
-                time.sleep(0.05)
-            written = hostname_files(run_root)
-            require(len(written) == 1 and next(iter(written)).endswith(".127.0.0.1"),
-                    f"the lookup of 127.0.0.1 wrote {sorted(written)}")
-            client.close()
-            deadline = time.monotonic() + 30
-            while hostname_files(run_root) and time.monotonic() < deadline:
-                time.sleep(0.05)
-            require(hostname_files(run_root) == set(),
-                    f"a closed connection left {sorted(hostname_files(run_root))}")
-            server.shutdown()
+        client = MudClient(server.plain_port)
+        deadline = time.monotonic() + 30
+        while not hostname_files(run_root) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        written = hostname_files(run_root)
+        require(len(written) == 1 and next(iter(written)).endswith(".127.0.0.1"),
+                f"the lookup of 127.0.0.1 wrote {sorted(written)}")
+        client.close()
+        deadline = time.monotonic() + 30
+        while hostname_files(run_root) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        require(hostname_files(run_root) == set(),
+                f"a closed connection left {sorted(hostname_files(run_root))}")
+        server.shutdown()
     print("hostname files journey passed")
     return 0
 

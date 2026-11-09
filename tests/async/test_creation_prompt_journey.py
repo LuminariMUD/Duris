@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """Real Telnet account/character creation, correction, confirmation and relog.
 
-Each scenario boots an isolated flat-file server with synthetic accounts. No
-production account, database, or listener is used. The existing recovery fixture
+Each scenario boots an isolated server on a disposable MariaDB schema with
+synthetic accounts. No production account, database, or listener is used. The existing recovery fixture
 provides the real socket client and server lifecycle, not mocked nanny handlers.
 """
 
+import argparse
 from pathlib import Path
 import re
 import subprocess
-import tempfile
 import time
 
 from test_account_recovery_journey import (
     ACCOUNT, OLD_PASSWORD, EMAIL, IsolatedServer, MudClient,
-    build_flatfile_server, create_account, enter_account_name, require,
+    create_account, enter_account_name, require,
 )
 from test_flatfile_combat_journey import make_overlord
 
@@ -226,7 +226,7 @@ def invitation_rejection(client, server, *, invited=False):
     reply(client, "save", f"Saving {STAFF}.")
     # A mortal must camp to quit, so the server stops with the character in game.
     server.shutdown()
-    make_overlord(server.state_root, STAFF)
+    make_overlord(server.sql, STAFF)
     reboot(server)
     client = MudClient(server.plain_port)
     try:
@@ -500,7 +500,6 @@ def run_journeys(binary):
 
 
 if __name__ == "__main__":
-    build_root = Path(__file__).resolve().parents[2] / "bin/tests"
-    build_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="creation-prompts-build-", dir=build_root) as build_tmp:
-        run_journeys(build_flatfile_server(Path(build_tmp)))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=Path, required=True)
+    run_journeys(parser.parse_args().server.resolve())

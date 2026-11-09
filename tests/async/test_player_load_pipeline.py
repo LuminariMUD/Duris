@@ -436,7 +436,6 @@ for contract in (
     "pool_connection_guard guard",
     "mysql_rollback(connection)",
     "selected_execute_callback()",
-    "flatfile_player_load_repository_execute_selected",
 ):
     assert contract in PIPELINE
 

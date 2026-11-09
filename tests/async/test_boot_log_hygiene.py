@@ -55,7 +55,7 @@ assert "`DURIS_PERSISTENCE_TRACE`" in (ROOT / "docs/operations/CONFIGURATION.md"
 
 # --- stale ownership records are reaped at boot, never inside a save -----------
 # A player's active record whose item is in no payload row is an item the player no
-# longer holds (ADR 0002). Both backends delete those records once per boot, after the
+# longer holds (ADR 0002). Boot deletes those records once, after the
 # owner revisions are hydrated and before run_the_game() starts the writer; a save never
 # releases a record, since a delete that met a foreign key would fail the save.
 comm = (SRC / "comm.c").read_text()
@@ -68,9 +68,7 @@ reap = reap[:reap.index("\n}\n")]
 assert "reap_unheld_player_items(DB, &deleted, &population.retained_uids)" in reap
 assert "if (!population.complete)" in reap
 assert index(main, "artifact_population_prepare_boot(copyover_boot)") < index(main, "reap_unheld_player_items_at_boot();")
-assert "flatfile_item_repository_reap_unheld_player_items(" in reap
-for name in ("player_snapshot_repository.c", "item_claim_repository.c",
-             "flatfile_player_repository.c"):
+for name in ("player_snapshot_repository.c", "item_claim_repository.c"):
     save = (SRC / name).read_text()
     assert "reap_unheld_player_items(" not in save.replace(
         "unsigned int reap_unheld_player_items(", ""), name
@@ -163,8 +161,7 @@ assert contains(donation_worker, "#include <sys/poll.h>")
 # transaction, discarding the accounts and account_ips writes with it.
 sql_player = (SRC / "sql_player.c").read_text()
 # Anchor on the definition; the bare signature also matches the prototype.
-# The MariaDB definition follows the flat-file stub.
-save_chars = split_at(sql_player, "bool sql_save_account(struct acct_entry *acc)\n{", 2)[2]
+save_chars = split_at(sql_player, "bool sql_save_account(struct acct_entry *acc)\n{", 1)[1]
 save_chars = save_chars.split("\n}\n", 1)[0]
 assert contains(save_chars, "if (pid <= 0)\n\t\t\t\t\tcontinue;")
 assert not contains(save_chars, '"NULL"')

@@ -10,8 +10,7 @@ output.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="artifact-boot-", dir=output) as directory:
     binary = Path(directory) / "boot"
     subprocess.run([
-        "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-D__NO_MYSQL__",
-        "-Isrc", "-Isrc/no_mysql", "-ffunction-sections", "-fdata-sections",
+        "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Isrc", '-I/usr/include/mysql', "-ffunction-sections", "-fdata-sections",
         "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer",
         "tests/async/artifact_population_boot_harness.cpp", "src/guild/artifact_population_boot.c",
         "src/guild/artifact_population.c", "src/item/item_transfer_command.c",

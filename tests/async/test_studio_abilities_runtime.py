@@ -300,9 +300,9 @@ with tempfile.TemporaryDirectory(prefix="duris-studio-runtime-") as directory:
     harness = harness.replace("// INSERT_FIRE", function(studio,"static int sp_fire("))
     harness = harness.replace("// INSERT_OBJECT_BRIDGE", function(studio,"int studioproc_obj("))
     source.write_text(platform+fixture+boundary+harness.replace("INSERT_JSON",json.dumps(sample)))
-    subprocess.run(["g++", "-std=c++20", "-O1", "-g", "-D__NO_MYSQL__", "-ffunction-sections", "-fdata-sections",
+    subprocess.run(["g++", "-std=c++20", "-O1", "-g", "-ffunction-sections", "-fdata-sections",
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-pthread", "-no-pie",
-                    "-I"+str(ROOT / "src"), str(source), str(ROOT / "src/persistence/latency_trace.c"),
+                    "-I"+str(ROOT / "src"), "-I/usr/include/mysql", str(source), str(ROOT / "src/persistence/latency_trace.c"),
                     str(ROOT / "src/item/studio_ability_model.c"), "-lcjson", "-Wl,--gc-sections", str(HARNESS_STUBS), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, env=dict(os.environ,
         ASAN_OPTIONS="detect_leaks=1:halt_on_error=1", UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1",

@@ -13,7 +13,6 @@ import test_flatfile_combat_journey as journey
 
 
 STAFF_FIXTURE = r'''
-#include "flatfile/flatfile_player_snapshot_file.h"
 #include "flatfile/flatfile_store.h"
 #include "player/player_snapshot_codec.h"
 #include <cassert>
@@ -144,7 +143,6 @@ def elevate_player(root: Path, state: Path) -> None:
             "-Isrc",
             str(source),
             "src/player/player_snapshot_codec.c",
-            "src/flatfile/flatfile_player_snapshot_file.c",
             "src/flatfile/flatfile_store.c",
             "-lcrypto",
             "-o",

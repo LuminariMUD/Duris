@@ -24,7 +24,6 @@ account = (SRC / "account.c").read_text(encoding="utf-8")
 nanny = (SRC / "nanny.c").read_text(encoding="utf-8")
 websocket = (SRC / "ws_handlers.c").read_text(encoding="utf-8")
 sql_player = (SRC / "sql_player.c").read_text(encoding="utf-8")
-flatfile = (SRC / "flatfile_account_adapter.c").read_text(encoding="utf-8")
 makefile = (ROOT / "src/Makefile").read_text(encoding="utf-8")
 
 check_at = function_body(account, "account_check_racewar_admission_at(P_desc")
@@ -91,10 +90,6 @@ assert "account/racewar_admission.o" in makefile
 # Both maintained account backends already round-trip the timestamps that the
 # admission commit now writes before entry.
 assert "acc->acct_good" in sql_player and "acc->acct_evil" in sql_player
-assert "record->last_good = account->acct_good" in flatfile
-assert "record->last_evil = account->acct_evil" in flatfile
-assert "account->acct_good = record.last_good" in flatfile
-assert "account->acct_evil = record.last_evil" in flatfile
 
 with tempfile.TemporaryDirectory(prefix="duris-racewar-admission-") as temporary:
     binary = f"{temporary}/racewar_admission_policy_test"

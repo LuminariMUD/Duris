@@ -1,8 +1,14 @@
-// Link real repository + transport in the disabled build, without SQL stubs.
+// Link real repository + transport with the disabled backend selected.
 #include "telemetry/telemetry_repository.h"
 #include "telemetry/telemetry_transport.h"
+#include "sql/sql_telemetry_connection.h"
 #include <cassert>
 #include <cstdio>
+
+MYSQL *sql_open_telemetry_connection(void)
+{
+	return nullptr;
+}
 
 int main()
 {

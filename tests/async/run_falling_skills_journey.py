@@ -144,8 +144,7 @@ S
         subprocess.run([str(journey.INSPECTOR), str(state), 'seed-combat'], check=True)
         fixture = root / 'fixture'
         subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-Isrc',
-                        'tests/async/falling_journey_fixture.cpp', 'src/player/player_snapshot_codec.c',
-                        'src/flatfile/flatfile_player_snapshot_file.c', 'src/flatfile/flatfile_store.c',
+                        'tests/async/falling_journey_fixture.cpp', 'src/player/player_snapshot_codec.c', 'src/flatfile/flatfile_store.c',
                         '-lcrypto', '-o', str(fixture)], cwd=journey.ROOT, check=True)
         process = client = output = None
 

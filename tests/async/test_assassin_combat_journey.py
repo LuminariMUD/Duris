@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Real-server Assassin command, weapon delivery and victim routing regression.
 
-Reuses the verified flat-file build and combat journey isolation. Synthetic
+Reuses the combat journey isolation on disposable MariaDB. Synthetic
 high-HP players make this reachability proof, independent of the balance audit.
 No checkout .env, shared server, player data or database is used.
 """
 
+import argparse
 from pathlib import Path
-import os
 import re
 import signal
 import subprocess
@@ -67,33 +67,51 @@ A small journey dart rests here.~
                                for number, body in sorted(records, key=lambda row: int(row[0]))) + "$~\n")
 
 
-def run(binary, build):
-    fixture_binary = build / "assassin-fixture"
-    subprocess.run(["g++", "-std=c++20", "-Isrc", "tests/async/assassin_journey_fixture.cpp",
-                    "src/player/player_snapshot_codec.c", "src/flatfile/flatfile_player_snapshot_file.c",
-                    "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(fixture_binary)],
-                   cwd=ROOT, check=True)
-    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                    "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True, timeout=180)
-    with tempfile.TemporaryDirectory(prefix="assassin-combat-", dir=ROOT / "bin/tests") as temporary:
+HEADER = (ROOT / "src/magic/spells.h").read_text()
+
+
+def spell_id(name):
+    return int(re.search(r"^#define " + name + r" (\d+)", HEADER, re.M)[1])
+
+def seed_actors(sql, level=56, fresh_affects=False):
+    """Staff, a level-capped Assassin and a high-HP victim, in the arena."""
+    skills = [(spell_id("SKILL_" + name), 100) for name, least in (
+        ("BACKSTAB", 0), ("1H_PIERCING", 0), ("APPLY_POISON", 0), ("MIXPOISON", 0),
+        ("CONTROL_FLEE", 45), ("CRITICAL_STAB", 51), ("RANGE_WEAPONS", 0), ("DARTS", 0))
+        if level >= least] + [(spell_id("SKILL_DUAL_WIELD"), 90), (spell_id("SKILL_AWARENESS"), 70)]
+    for pid, classes, spec, rank in ((1, 1, 0, 62), (2, 1 << 12, 1, level), (3, 1, 0, level)):
+        stats = ",".join(f"base_{stat}=100" for stat in
+                         ("str", "dex", "agi", "con", "pow", "int", "wis", "luk"))
+        statements = [f"UPDATE player_data SET m_class={classes},spec={spec},level={rank},highest_level={rank},"
+                      f"base_hit=10000,hit_diff=0,{stats},last_room=22800 WHERE pid={pid}"]
+        if fresh_affects:
+            statements.append(f"DELETE FROM player_affects WHERE pid={pid}")
+        if pid == 2:
+            statements.append(f"DELETE FROM player_skills WHERE pid={pid}")
+            statements += [f"INSERT INTO player_skills(pid,skill_id,learned,taught) VALUES({pid},{skill},{value},{value})"
+                           for skill, value in skills]
+        sql(";".join(statements))
+
+
+def poison_state(sql):
+    """The saved Weakness affects and coated dagger, as "affect/coating" lines."""
+    return sql("SELECT CONCAT('affect ',pid,' ',type,' ',level,' ',modifier) FROM player_affects "
+               "WHERE type=1537 ORDER BY id;"
+               "SELECT CONCAT('coating ',pid,' ',value4) FROM player_items WHERE vnum=22810 ORDER BY id")
+
+
+def run(binary):
+    with tempfile.TemporaryDirectory(prefix="assassin-combat-", dir=ROOT / "bin/tests") as temporary, \
+            journey.mariadb_authority() as (authority, sql):
         runtime = Path(temporary)
-        state = runtime / "state"
-        state.mkdir(mode=0o700)
-        (state / "domains").mkdir(mode=0o700)
-        subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
         fixture(runtime)
         (runtime / "logs/log").mkdir(parents=True)
         critical = runtime / "journals/critical"
         critical.mkdir(parents=True, mode=0o700)
         (runtime / "journals/players").mkdir(mode=0o700)
         plain, tls, websocket = journey.available_ports()
-        environment = dict(PATH=os.environ.get("PATH", "/usr/bin:/bin"), ENVIRONMENT="local",
-                           PERSISTENCE_MODE="flatfile-primary", FLATFILE_STATE_DIR=str(state),
-                           CRITICAL_COMMAND_JOURNAL_DIR=str(critical), REDIS="FALSE", CHAOS_MUD="FALSE",
-                           LISTEN_ADDRESS="127.0.0.1", DURIS_TLS_PORT=str(tls),
-                           DURIS_WEBSOCKET_PORT=str(websocket), DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1")
-        if "LD_LIBRARY_PATH" in os.environ:
-            environment["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+        environment = dict(authority, CRITICAL_COMMAND_JOURNAL_DIR=str(critical),
+                           DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket))
         process = None
         clients = []
         output_path = runtime / "server.out"
@@ -144,7 +162,7 @@ def run(binary, build):
                     client.send("save")
                     client.expect("Saving " + name + ".")
                 stop()
-                subprocess.run([str(fixture_binary), str(state)], check=True)
+                seed_actors(sql)
                 boot()
                 staff, assassin, victim = (login(*actor) for actor in ACTORS)
                 for vnum, keyword in ((22810, "journeydagger"), (22811, "journeyvenom"), (22812, "journeydart")):
@@ -191,7 +209,7 @@ def run(binary, build):
                 stop()
 
                 # Reconfigure only while stopped; now exercise the level-46 curve.
-                subprocess.run([str(fixture_binary), str(state), "46"], check=True)
+                seed_actors(sql, 46, fresh_affects=True)
                 boot()
                 staff, assassin, victim = (login(*actor) for actor in ACTORS)
                 listing = command(assassin, "mixpoison list").lower()
@@ -226,7 +244,7 @@ def run(binary, build):
                 else:
                     raise AssertionError("level-46 Weakness never established")
                 victim.send("save"); victim.expect("Saving Venomtarget.")
-                saved = subprocess.check_output([str(fixture_binary), str(state), "inspect"], text=True)
+                saved = poison_state(sql)
                 weakness = re.search(r"affect 3 1537 (\d+) (-\d+)", saved)
                 assert weakness and int(weakness[1]) == 46 and -15 <= int(weakness[2]) <= -5, saved
                 after_stats = command(staff, "stat mob Venomtarget")
@@ -244,12 +262,12 @@ def run(binary, build):
                 logout(assassin)
                 assassin = login(*ACTORS[1])
                 assassin.send("save"); assassin.expect("Saving Shadeblade.")
-                coated = subprocess.check_output([str(fixture_binary), str(state), "inspect"], text=True)
+                coated = poison_state(sql)
                 assert "coating 2 1537" in coated, coated
                 logout(victim)
                 victim = login(*ACTORS[2])
                 victim.send("save"); victim.expect("Saving Venomtarget.")
-                restored = subprocess.check_output([str(fixture_binary), str(state), "inspect"], text=True)
+                restored = poison_state(sql)
                 assert re.search(r"affect 3 1537 46 " + re.escape(weakness[2]) + r"\b", restored), restored
                 print("Assassin Weakness persisted delivery level 46 after source advance and victim reconnect:", weakness[2], flush=True)
                 print("Assassin coated weapon retained poison ID 1537 through real save/reconnect", flush=True)
@@ -266,10 +284,9 @@ def run(binary, build):
 
 def main():
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="assassin-build-", dir=ROOT / "bin/tests") as temporary:
-        build = Path(temporary)
-        binary = journey.build_flatfile_server(build)
-        run(binary, build)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=Path, required=True)
+    run(parser.parse_args().server.resolve())
 
 
 if __name__ == "__main__":

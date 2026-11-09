@@ -132,7 +132,6 @@ class Server:
             (root/'journals'/name).mkdir(parents=True,mode=0o700)
     def start(self, *, full_world=False):
         env={'PATH':os.environ.get('PATH','/usr/bin:/bin'),'ENVIRONMENT':'local',
-            'PERSISTENCE_MODE':'flatfile-primary','FLATFILE_STATE_DIR':str(self.state),
             'CRITICAL_COMMAND_JOURNAL_DIR':str(self.root/'journals/critical'),
             'LISTEN_ADDRESS':'127.0.0.1','DURIS_TLS_PORT':str(self.tls),
             'DURIS_WEBSOCKET_LISTEN_ADDRESS':'127.0.0.1','DURIS_WEBSOCKET_PORT':str(self.ws),

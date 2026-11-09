@@ -133,12 +133,10 @@ int main()
 }
 '''
 
-# Both load paths clamp too: SQL read_cargo() and the flat-file install.
+# The load path clamps too: SQL read_cargo().
 cargo = source("ship_cargo.c").read_text(encoding="utf-8")
 assert contains(cargo, "ship_cargo_market_mod[port_id][cargo_type] = bound_market_mod(false, modifier);")
 assert contains(cargo, "ship_contra_market_mod[port_id][cargo_type] = bound_market_mod(true, modifier);")
-assert contains(cargo, "bound_market_mod(false, record.cargo[index])")
-assert contains(cargo, "bound_market_mod(true, record.contraband[index])")
 drift = extract_function("ship_cargo.c", "static void adjust_cargo_market()")
 assert contains(drift, "bound_market_mod(false, ship_cargo_market_mod[i][j])")
 assert contains(drift, "bound_market_mod(true, ship_contra_market_mod[i][j])")

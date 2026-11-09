@@ -7,8 +7,7 @@ read there and shown on a later pulse. Only the boot load (ctf_populate_boons) q
 """
 from _paths import SRC
 
-source = (SRC / "ctf.c").read_text()
-mysql = source[source.index("#else", source.index("#ifdef __NO_MYSQL__")):]
+mysql = (SRC / "ctf.c").read_text()
 
 entry = mysql[mysql.index("int add_ctf_entry("):mysql.index("void show_ctf(")]
 assert "sql_queue(" in entry and "INSERT INTO ctf_data" in entry, entry

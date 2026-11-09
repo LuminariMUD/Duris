@@ -406,6 +406,69 @@ and pick up at the first step not marked done.
 | 4. Launcher, backup, restore, CI, docs | `branch/flatfile-removal-tools` | done |
 | 5. Tests and deferred list | `branch/flatfile-removal-tests` | done |
 
+### Deferred test conversion (branch `branch/flatfile-removal-test-conversion`, #864)
+
+Each batch removes names from `FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`; `make test-all`
+must stay green after each one.
+
+| Batch | Deferred left | Notes |
+|---|---|---|
+| Remove deleted sources, includes, and stubs from harnesses | 165 | Mechanical |
+| Repair harness compile and link failures | 128 | Harnesses compile real client headers; some now use SQL or queue fakes |
+| Repoint source-text contracts | 64 | No MariaDB behavior change found; `test_ship_salvage.py` now checks what a stubbed `sql_save_ship` receives, not a read-back |
+| Journeys already in `make test-db` become manual-only | 51 | 13 tests; they run on MariaDB with `--server` |
+
+| Shared journey harness on MariaDB; 22 journeys move to `make test-db` | 29 | `mariadb_authority()` builds a disposable migrated schema; converted journeys are manual-only and listed in `tests/run_db_tests.sh` |
+
+| Compile-level leftovers and most remaining journeys | 6 | 16 tests move to `make test-db`; 7 are deleted or return to `make test-all` |
+
+The six still deferred, with what each needs:
+
+- `flatfile_auction_coin_put_journey`: a full-world boot, because
+  `init_auction_houses()` does not run under `--minimal`.
+- `flatfile_locker_journey`: converted but blocked by suspected finding 1 below.
+- `flatfile_newbie_regrant_journey`: converted but blocked by suspected finding 2 below.
+- `pet_restart_journey`: SQL seeding across `player_items` and `player_pet_items`.
+- `flatfile_full_world_boot`: depends on flat directories and a saved `RENT_CAMPED`,
+  which MariaDB does not store.
+- `flatfile_player_repository`: about 41 files still reference its inspector.
+
+Suspected gameplay findings, not caused by this work and not changed in `src/`:
+
+1. Entering a locker by your own character name is refused in the converted journey.
+   `locker_enter_character` builds the locker name from `account_characters.racewar`,
+   which is 0 there while the locker is `account.journeyacct.1.locker`. Check whether
+   real data has the same mismatch, or only this journey's seed.
+2. The Chaos Sorcerer spellbook assertion requires `value3` to equal the spell count;
+   observed `pages=1668 spells=226`. `FillMasterSpellBook` stores the sum of spell
+   circles, so the old assertion may never have held for that book.
+
+Login assertions after death, and two `You break camp...` logins, now expect the
+normal `Welcome to Duris` text, because `rtype` is always 0 on MariaDB.
+
+`make test-all` has no database, so a converted journey belongs in
+`tests/run_db_tests.sh`. Remaining conversions use `mariadb_authority()` in
+`test_flatfile_combat_journey.py` and replace file seeding with SQL.
+
+Finding from the journey conversion: MariaDB has no saved `save_intent`, so
+`d->rtype` in `account.c` is always 0. Logging in after a death prints the normal
+login text rather than "You rejoin the land of the living...", and by reading
+`nanny.c` the death-return birthplace routing and hunger reset are skipped too. This
+is how production already behaves; removing the flat-file backend did not change it.
+Converted journeys assert the MariaDB behavior, and the owner can decide whether to
+restore the old return handling.
+
+Still deferred from the compile batch: `divine_boon_repository` and
+`frag_cap_repository` (their default mode is flat-file only), `flatfile_help_catalog`
+(needs a fake `help_cache` for about 150 assertions), `epic_gain_runtime`, and
+`new_player_bank_hydration` (fixtures rebuilt on the deleted boon and player-domain APIs).
+
+Possible existing server issues found while converting, not caused by this work and
+not changed: `save_account_character_departure` returns before stamping
+`acct_good`/`acct_evil` when `sql_queue` refuses, skipping the side-switch cooldown;
+`PurgeCorpseFile` has no `skip_corpse_save` guard and passes `action_description` to
+`snprintf` without a null check.
+
 ### Step 5 evidence
 
 `tests/run_regression_tests.py` now holds `FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real fixed-point model, async worker and durable flat-file CAS under sanitizers."""
+"""Real fixed-point model and async worker under sanitizers."""
 import os
 from pathlib import Path
 import subprocess
@@ -185,36 +185,11 @@ void worker() {
     runtime.stop();
     assert(!runtime.debit(42, profile, 200, 14000, 1, false, 8));
 }
-void files(const std::string &root) {
-    std::filesystem::create_directories(root + "/domains");
-    chmod(root.c_str(), 0700); chmod((root + "/domains").c_str(), 0700);
-    artifact_mana_record record;
-    assert(artifact_mana_store_read(false, root, 81, record) == artifact_mana_read::missing);
-    record = artifact_mana_empty(81, profile, 100);
-    assert(artifact_mana_store_write(false, root, 0, record));
-    auto previous = record;
-    assert(artifact_mana_spend(record, profile, 1000, 333, false));
-    assert(artifact_mana_store_write(false, root, 1, record));
-    assert(artifact_mana_store_write(false, root, 1, record)); // exact retry
-    assert(!artifact_mana_store_write(false, root, 0, previous)); // stale owner snapshot
-    auto stale = record; stale.reserve += 1;
-    assert(!artifact_mana_store_write(false, root, 1, stale));
-    {
-        artifact_mana_runtime restored(artifact_mana_persistent_backend(false, root));
-        assert(ready(restored, 81, 1000, 2000));
-        artifact_mana_record recovered;
-        assert(restored.inspect(81, profile, 1000, 2000, recovered));
-        assert(recovered == record); // restart/transfer reload by UID
-        assert(ready(restored, 82, 1000, 2000)); // cloned new UID starts empty
-        assert(restored.inspect(82, profile, 1000, 2000, recovered) && recovered.reserve == 0);
-    }
-    std::fstream damaged(root + "/domains/artifact-mana-81", std::ios::binary|std::ios::in|std::ios::out);
-    damaged.seekp(65); damaged.put(char(17)); damaged.close();
-    assert(artifact_mana_store_read(false, root, 81, record) == artifact_mana_read::error);
-    assert(!artifact_mana_store_write(false, root, 0, previous));
-}
-int main(int argc, char **argv) {
-    assert(argc == 2); model(); worker(); files(argv[1]);
+// The SQL store is exercised by the database suite; these runs inject a backend.
+artifact_mana_read artifact_mana_store_read(uint64_t, artifact_mana_record &) { return artifact_mana_read::error; }
+bool artifact_mana_store_write(uint64_t, const artifact_mana_record &) { return false; }
+int main() {
+    model(); worker();
 }
 '''
 
@@ -226,9 +201,9 @@ with tempfile.TemporaryDirectory(prefix="duris-artifact-mana-") as directory:
     subprocess.run([
         os.environ.get("CXX", "g++"), "-std=c++20", "-Wall", "-Wextra", "-Werror",
         "-g", "-O1", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-no-pie",
-        "-D__NO_MYSQL__", "-I", str(ROOT / "src"), str(harness),
-        *[str(ROOT / "src/item" / f"artifact_mana_{part}.c") for part in ("model", "runtime", "store")],
-        str(ROOT / "src/flatfile/flatfile_store.c"), "-lcrypto", "-pthread", "-o", str(binary),
+        "-I", str(ROOT / "src"), "-I/usr/include/mysql", str(harness),
+        *[str(ROOT / "src/item" / f"artifact_mana_{part}.c") for part in ("model", "runtime")],
+        "-lcrypto", "-pthread", "-o", str(binary),
     ], check=True)
-    subprocess.run([str(binary), str(work / "authority")], check=True, timeout=30)
-print("artifact mana model, async admission/recovery and flat-file CAS passed")
+    subprocess.run([str(binary)], check=True, timeout=30)
+print("artifact mana model and async admission/recovery passed")

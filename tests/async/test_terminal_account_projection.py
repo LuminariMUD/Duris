@@ -19,26 +19,20 @@ PRELUDE = r'''
 #include "account/account.h"
 #include "player/player_playtime.h"
 #include "player/player_save_pipeline.h"
-#include "flatfile/flatfile_identity_repository.h"
-#include "flatfile/flatfile_account_adapter.h"
-#include "persistence/persistence_mode.h"
+#include "sql/sql_async.h"
 #include <cassert>
 #include <cstring>
 #include <string>
 
 struct deferred_save_slot { int pending; };
 static deferred_save_slot slot;
-static bool account_ok = true;
 P_desc descriptor_list = nullptr;
 static P_acct detached_account=nullptr;
-const char *persistence_mode_flatfile_root() { return "fixture"; }
-flatfile_identity_result flatfile_identity_lookup_pid(const std::string &, int32_t,
-    flatfile_identity_record *record, std::string *) {
-    record->account="fixture"; return flatfile_identity_result::ok;
-}
 P_acct flatfile_account_state_load(const char *, std::string *) { return detached_account; }
 void flatfile_account_state_release(P_acct) {}
 static int writes, hooks, cleared, alerts;
+static bool account_ok = true;
+bool sql_queue_at(persistence_query_site, const char *, ...) { ++writes; return account_ok; }
 static std::string last_alert;
 static player_save_pipeline_result outcome = player_save_pipeline_result::queued;
 int calculate_save_room(P_char, int, int) { return 22800; }
@@ -117,9 +111,12 @@ int main() {
             assert(alerts == (!accepted + !store_ok));
             if (!store_ok) assert(last_alert == "write_failed");
             else if (!accepted) assert(last_alert == "queue_failed");
-            const auto denied=account_racewar_evaluate(ACCOUNT_RACEWAR_EVIL,false,
-                account.acct_good,account.acct_evil,time(nullptr),3600);
-            assert(!denied.allowed && denied.remaining_seconds>=3599);
+            // A refused departure write leaves the account unstamped.
+            if (store_ok) {
+                const auto denied=account_racewar_evaluate(ACCOUNT_RACEWAR_EVIL,false,
+                    account.acct_good,account.acct_evil,time(nullptr),3600);
+                assert(!denied.allowed && denied.remaining_seconds>=3599);
+            }
             if (accepted) {
                 assert(entry.pid == 42 && entry.race == RACE_HUMAN);
                 assert(entry.m_class == CLASS_MONK && entry.last_room == 22800);
@@ -129,8 +126,9 @@ int main() {
             assert(desc.character == &player && player.desc == &desc);
         }
     }
-    // Link-dead saves still submit without manufacturing an account context.
+    // Link-dead saves find the account through the descriptor list.
     player.desc = nullptr;
+    descriptor_list = &desc;
     outcome = player_save_pipeline_result::queued;
     writes = 0; account_ok=true;
     account.acct_good=time(nullptr)-7200;
@@ -215,7 +213,7 @@ def main():
             extract_function("account.c", "bool save_account_character_departure("),
             extract_function("actoth.c", "bool persistence_save_character_terminal("), CASES)))
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Og", "-g",
-                        "-D__NO_MYSQL__", "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
+                        "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
                         "-Isrc", "src/account/racewar_admission.c", str(cpp), str(HARNESS_STUBS), "-o", str(binary)],
                        cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True)

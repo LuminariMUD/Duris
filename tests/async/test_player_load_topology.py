@@ -165,10 +165,8 @@ with tempfile.TemporaryDirectory(prefix="duris-player-load-topology-") as temp_d
     subprocess.run([str(binary)], check=True, timeout=20)
 
 repository = (SRC / "player_load_repository.c").read_text()
-flatfile = (SRC / "flatfile_player_repository.c").read_text()
 materialize = (SRC / "player_load_materialize.c").read_text()
-for source in (repository, flatfile):
-    assert "player_load_reconcile_item_topology" in source
+assert "player_load_reconcile_item_topology" in repository
 assert "outcome=topology_repaired" in materialize
 assert "recovery=next_full_save" in materialize
 # An ownership row without a payload is an item the character no longer holds; its next

@@ -213,12 +213,6 @@ check("divine claims reserve cooldown before submitting an asynchronous grant",
       summon.index("account_bound_reward_summons") <
       summon.index("item_creation_grant_submit_to_player(ch, obj, ch)")
       and "OBJ_CARRIED(obj)" not in summon)
-shop_completion = shop[shop.index("static void shop_trade_completion("):]
-shop_completion = shop_completion[:shop_completion.index("void push(")]
-check("committed shop container placement does not rerun fallible put checks",
-      "obj_to_obj(object, destination);" in shop_completion
-      and "put(ch, object, destination" not in shop_completion)
-
 # Minimal-world death must remain valid when the optional corpse portal prototype
 # is absent. This was found while exercising the player-corpse transfer boundary.
 death_portal = fight[fight.index("P_obj portal = read_object(400220, VIRTUAL);"):]

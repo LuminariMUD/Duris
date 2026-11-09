@@ -591,7 +591,7 @@ def main():
         "original and cleanse-only binaries are identical; rerun --prepare"
     fixture_binary = ROOT / "bin/tests/assassin-comparative/snapshot-fixture"
     subprocess.run(["g++", "-std=c++20", "-Isrc", "tests/async/assassin_journey_fixture.cpp",
-                    "src/player/player_snapshot_codec.c", "src/flatfile/flatfile_player_snapshot_file.c",
+                    "src/player/player_snapshot_codec.c",
                     "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(fixture_binary)],
                    cwd=ROOT, check=True)
     subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",

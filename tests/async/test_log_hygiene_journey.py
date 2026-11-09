@@ -14,13 +14,13 @@
 
 from __future__ import annotations
 
+import argparse
 import socket
 import struct
-import tempfile
 import time
 from pathlib import Path
 
-from test_account_recovery_journey import IsolatedServer, build_flatfile_server, require
+from test_account_recovery_journey import IsolatedServer, require
 
 MISSED_LOADS = (
     "M 0 11 9 12 0 0 0 0 * a chance of 0 never loads\n"
@@ -44,41 +44,41 @@ def log(run_root: Path, name: str) -> str:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="duris-log-hygiene-build-") as build:
-        binary = build_flatfile_server(Path(build))
-        with IsolatedServer(binary, None, missed_loads) as server:
-            run_root = server.run_root
-            mob_log = log(run_root, "mob")
-            for kind in "MFR":
-                line = (f"{kind} cmd not executed: mob 11 in room 12, limit 9, "
-                        "chance 0%")
-                require(line in mob_log, f"no {line!r} in the mob log:\n{mob_log[-4000:]}")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=Path, required=True)
+    with IsolatedServer(parser.parse_args().server.resolve(), None, missed_loads) as server:
+        run_root = server.run_root
+        mob_log = log(run_root, "mob")
+        for kind in "MFR":
+            line = (f"{kind} cmd not executed: mob 11 in room 12, limit 9, "
+                    "chance 0%")
+            require(line in mob_log, f"no {line!r} in the mob log:\n{mob_log[-4000:]}")
 
-            # Reset before the server accepts it: getpeername() then fails. The server
-            # accepts once a pulse, so it can take the connection before the reset; then
-            # it is tried again.
-            for _ in range(10):
-                reset = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                reset.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
-                reset.connect(("127.0.0.1", server.plain_port))
-                reset.close()
-                deadline = time.monotonic() + 3
-                while ("Losing descriptor without char [host=unknown"
-                       not in log(run_root, "debug") and time.monotonic() < deadline):
-                    time.sleep(0.1)
-                if "Losing descriptor without char [host=unknown" in log(run_root, "debug"):
-                    break
-            else:
-                raise AssertionError("a reset connection was not logged as host=unknown:\n"
-                                     + log(run_root, "debug")[-4000:])
+        # Reset before the server accepts it: getpeername() then fails. The server
+        # accepts once a pulse, so it can take the connection before the reset; then
+        # it is tried again.
+        for _ in range(10):
+            reset = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            reset.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+            reset.connect(("127.0.0.1", server.plain_port))
+            reset.close()
+            deadline = time.monotonic() + 3
+            while ("Losing descriptor without char [host=unknown"
+                   not in log(run_root, "debug") and time.monotonic() < deadline):
+                time.sleep(0.1)
+            if "Losing descriptor without char [host=unknown" in log(run_root, "debug"):
+                break
+        else:
+            raise AssertionError("a reset connection was not logged as host=unknown:\n"
+                                 + log(run_root, "debug")[-4000:])
 
-            server.shutdown()
-            status = log(run_root, "status")
-            require("Shutdown by Launcher: signal from launcher" in status,
-                    "the status log does not say who stopped the game:\n" + status[-4000:])
-            for raw in ("Word of Unmaking", "\r", "&+"):
-                require(raw not in status, f"the status log holds {raw!r}:\n{status[-4000:]}")
-            require("UNTRACEABLE" not in log(run_root, "debug"), "a host still carries color")
+        server.shutdown()
+        status = log(run_root, "status")
+        require("Shutdown by Launcher: signal from launcher" in status,
+                "the status log does not say who stopped the game:\n" + status[-4000:])
+        for raw in ("Word of Unmaking", "\r", "&+"):
+            require(raw not in status, f"the status log holds {raw!r}:\n{status[-4000:]}")
+        require("UNTRACEABLE" not in log(run_root, "debug"), "a host still carries color")
     print("log hygiene journey passed")
     return 0
 

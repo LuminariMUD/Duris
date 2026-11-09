@@ -3,49 +3,22 @@
 import argparse
 import json
 from pathlib import Path
-import subprocess
-import tempfile
 import time
-from test_account_recovery_journey import IsolatedServer, OLD_PASSWORD, ROOT, require, build_flatfile_server
+from test_account_recovery_journey import IsolatedServer, OLD_PASSWORD, require
 import test_creation_prompt_journey as telnet
 from test_character_stat_choice_journey import WebSocketClient
 
-INSPECTOR = r'''
-#include "flatfile/flatfile_player_snapshot_file.h"
-#include <cassert>
-#include <cstdio>
-#include <cstdlib>
-#include <set>
-int main(int argc, char **argv) {
-    assert(argc == 5);
-    player_snapshot snapshot; std::string error;
-    assert(flatfile_player_snapshot_read(argv[1], atoi(argv[2]), &snapshot, &error) == flatfile_player_load_result::ok);
-    bool race=false, cls=false, side=false, alignment=false;
-    int expected_race=atoi(argv[3]), expected_alignment=atoi(argv[4]);
-    for (const auto &entry : snapshot.status_integers) {
-        if (entry.field==player_status_field::race) race=entry.unsigned_value==static_cast<unsigned>(expected_race);
-        if (entry.field==player_status_field::class_primary) cls=entry.unsigned_value==(1u<<6);
-        if (entry.field==player_status_field::racewar) side=entry.unsigned_value==(expected_alignment>0?1u:2u);
-        if (entry.field==player_status_field::alignment) alignment=entry.signed_value==expected_alignment;
-    }
-    assert(race && cls && side && alignment);
-    std::set<int> kit;
-    for (const auto &item : snapshot.items)
-        if (item.vnum>=1147 && item.vnum<=1151) {
-            kit.insert(item.vnum);
-            assert(item.object_uid && item.equipment_slot>=0);
-            printf("%d:%llu\n",item.vnum,static_cast<unsigned long long>(item.object_uid));
-        }
-    assert(kit.size()==5);
-}
-'''
-
-
-def inspect(server, inspector, race, alignment):
-    snapshots = list((server.state_root / 'players').glob('*.snapshot'))
-    require(len(snapshots) == 1, 'expected one synthetic character')
-    return subprocess.check_output([str(inspector), str(server.state_root), snapshots[0].stem,
-                                    str(race), str(alignment)], text=True)
+def inspect(server, race, alignment):
+    """Assert the saved race, Monk class, faction and alignment; return the kit's identities."""
+    row = server.sql("SELECT pid,race,m_class,racewar,alignment FROM player_data WHERE name='Taverek'").split()
+    require(row[1:] == [str(race), str(1 << 6), '1' if alignment > 0 else '2', str(alignment)],
+            f'saved character is not the expected Monk: {row}')
+    kit = server.sql(f"SELECT vnum,obj_uid,equip_slot FROM player_items WHERE pid={row[0]} "
+                     "AND vnum BETWEEN 1147 AND 1151 ORDER BY vnum,obj_uid").splitlines()
+    fields = [line.split() for line in kit]
+    require({vnum for vnum, _, _ in fields} == {str(vnum) for vnum in range(1147, 1152)} and
+            all(int(uid) and int(slot) >= 0 for _, uid, slot in fields), f'incomplete Monk kit: {kit}')
+    return [f'{vnum}:{uid}' for vnum, uid, _ in fields]
 
 
 def restart(server):
@@ -58,7 +31,7 @@ def restart(server):
         time.sleep(.1)
 
 
-def telnet_journey(binary, inspector, race, name, alignment):
+def telnet_journey(binary, race, name, alignment):
     with IsolatedServer(binary, {}) as server:
         client = telnet.MudClient(server.plain_port)
         try:
@@ -80,7 +53,7 @@ def telnet_journey(binary, inspector, race, name, alignment):
             telnet.reply(client, '', 'Your starter kit is ready')
             client.expect('Pos: standing >')
             telnet.reply(client, 'save', 'Saving Taverek.')
-            before = inspect(server, inspector, race, alignment)
+            before = inspect(server, race, alignment)
             client.close()
             restart(server)
             client = telnet.MudClient(server.plain_port)
@@ -92,7 +65,7 @@ def telnet_journey(binary, inspector, race, name, alignment):
             telnet.reply(client, '1', '(Y/N)')
             telnet.reply(client, 'y', 'Pos: standing >')
             telnet.reply(client, 'save', 'Saving Taverek.')
-            require(inspect(server, inspector, race, alignment) == before, 'Telnet kit identities changed on reload')
+            require(inspect(server, race, alignment) == before, 'Telnet kit identities changed on reload')
             print(f'PASS Telnet {name} Monk: fixed alignment/faction, equipped kit, save/restart/relog', flush=True)
         finally:
             client.close()
@@ -106,7 +79,7 @@ def ws_save(client):
         response = client.receive()
 
 
-def websocket_journey(binary, inspector, race, name, alignment):
+def websocket_journey(binary, race, name, alignment):
     with IsolatedServer(binary, {'DURIS_WEBSOCKET': 'TRUE'}) as server:
         client = WebSocketClient(server.websocket_port)
         try:
@@ -125,14 +98,14 @@ def websocket_journey(binary, inspector, race, name, alignment):
             require(created['status'] == 'created', f'WebSocket creation failed: {created}')
             client.enter_created_character('Taverek')
             ws_save(client)
-            before = inspect(server, inspector, race, alignment)
+            before = inspect(server, race, alignment)
             client.close()
             restart(server)
             client = WebSocketClient(server.websocket_port)
             client.command('login', {'account': 'Githjourney', 'password': OLD_PASSWORD}, 'auth')
             client.command('enter', {'character': 'Taverek'}, 'gmcp')
             ws_save(client)
-            require(inspect(server, inspector, race, alignment) == before, 'WebSocket kit identities changed on reload')
+            require(inspect(server, race, alignment) == before, 'WebSocket kit identities changed on reload')
             print(f'PASS WebSocket {name} Monk: fixed alignment/faction, equipped kit, save/restart/relog', flush=True)
         finally:
             client.close()
@@ -140,20 +113,11 @@ def websocket_journey(binary, inspector, race, name, alignment):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--binary', type=Path, help='Fresh flat-file server build')
-    args = parser.parse_args()
-    build = ROOT / 'bin/tests'
-    build.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='gith-monk-journey-', dir=build) as directory:
-        binary = args.binary.resolve() if args.binary else build_flatfile_server(Path(directory) / 'server')
-        cpp, inspector = Path(directory) / 'inspect.cpp', Path(directory) / 'inspect'
-        cpp.write_text(INSPECTOR)
-        subprocess.run(['g++', '-std=c++20', '-Isrc', str(cpp),
-            'src/player/player_snapshot_codec.c', 'src/flatfile/flatfile_player_snapshot_file.c',
-            'src/flatfile/flatfile_store.c', '-lcrypto', '-o', str(inspector)], cwd=ROOT, check=True)
-        for race, name, alignment in ((16, 'Githyanki', -1000), (30, 'Githzerai', 1000)):
-            telnet_journey(binary, inspector, race, name, alignment)
-            websocket_journey(binary, inspector, race, name, alignment)
+    parser.add_argument('--server', type=Path, required=True)
+    binary = parser.parse_args().server.resolve()
+    for race, name, alignment in ((16, 'Githyanki', -1000), (30, 'Githzerai', 1000)):
+        telnet_journey(binary, race, name, alignment)
+        websocket_journey(binary, race, name, alignment)
 
 
 if __name__ == '__main__':

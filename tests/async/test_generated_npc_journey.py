@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Qualify generated NPCs through file copyover or MariaDB/Redis recovery.
+"""Qualify generated NPCs through hotboot copyover or Redis world recovery, on MariaDB.
 
 The default mini world uses staff-strung 1255/1256 instances. Pass the generated
 areas directory as the third argument for the full-world roaming journey.
 """
+import argparse
 from pathlib import Path
 import ctypes
 import json
@@ -11,13 +12,11 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 import uuid
 import test_flatfile_combat_journey as journey
 
-FIXTURE = '\n#include "flatfile/flatfile_player_snapshot_file.h"\n#include "flatfile/flatfile_store.h"\n#include "player/player_snapshot_codec.h"\n#include <cassert>\n#include <openssl/sha.h>\ntemplate<class T> void number(std::vector<uint8_t>& out, T value) {\n    for (size_t i=0; i<sizeof(T); ++i) out.push_back(static_cast<uint64_t>(value) >> (i*8));\n}\nint main(int argc, char **argv) {\n    assert(argc == 2);\n    const std::string root = argv[1];\n    for (uint32_t pid : {1}) {\n        player_snapshot snapshot; std::string error;\n        assert(flatfile_player_snapshot_read(root,pid,&snapshot,&error) == flatfile_player_load_result::ok);\n        for (auto &field : snapshot.status_integers) {\n            if (field.field == player_status_field::level || field.field == player_status_field::highest_level)\n                field.signed_value = field.unsigned_value = 62;\n            if (field.field == player_status_field::base_hit) field.signed_value = field.unsigned_value = 200000;\n            if (field.field == player_status_field::hit_difference) field.signed_value = field.unsigned_value = 0;\n        }\n        std::vector<uint8_t> payload, bytes;\n        snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;\n        assert(player_snapshot_encode(snapshot,&payload) == player_snapshot_codec_result::ok);\n        using namespace flatfile_player_snapshot_file;\n        bytes.insert(bytes.end(),player_magic.begin(),player_magic.end());\n        number(bytes,player_file_version); number<uint32_t>(bytes,payload.size());\n        number(bytes,snapshot.pid); number(bytes,snapshot.revision); number(bytes,snapshot.components);\n        unsigned char digest[SHA256_DIGEST_LENGTH]; SHA256(payload.data(),payload.size(),digest);\n        bytes.insert(bytes.end(),digest,digest+sizeof(digest)); bytes.insert(bytes.end(),payload.begin(),payload.end());\n        assert(flatfile_atomic_write(player_directory(root),player_filename(pid),bytes,&error));\n    }\n}\n'
 
 def drain(client,duration=.4):
     end=time.monotonic()+duration
@@ -229,8 +228,8 @@ def run(binary, mode='file', full_world=None):
     output_root = journey.ROOT / 'bin/tests'
     output_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='generated-npc-journey-', dir=output_root) as temporary:
-        root=Path(temporary); state=root/'state'; runtime=root/'runtime'
-        state.mkdir(mode=0o700); (state/'domains').mkdir(mode=0o700); runtime.mkdir()
+        root=Path(temporary); runtime=root/'runtime'
+        runtime.mkdir()
         (runtime/'logs/log').mkdir(parents=True)
         journey.make_fixture(runtime); journey.generate_certificate(runtime)
         # The deployed prototypes use generic placeholder strings. Real string
@@ -257,35 +256,23 @@ def run(binary, mode='file', full_world=None):
         (runtime/'bin/server').mkdir(parents=True)
         for name in ('dms','dms_new'): shutil.copy2(binary,runtime/'bin/server'/name)
         port,tls,ws=journey.available_ports()
-        env=dict(PATH=os.environ.get('PATH','/usr/bin:/bin'),ENVIRONMENT='local',PERSISTENCE_MODE='flatfile-primary',
-                 FLATFILE_STATE_DIR=str(state),
+        env=dict(PATH=os.environ.get('PATH','/usr/bin:/bin'),ENVIRONMENT='local',
                  CRITICAL_COMMAND_JOURNAL_DIR=str(runtime/'journals/critical'),REDIS='FALSE',CHAOS_MUD='FALSE',
                  LISTEN_ADDRESS='127.0.0.1',DURIS_TLS_PORT=str(tls),DURIS_WEBSOCKET_PORT=str(ws),
                  DURIS_WEBSOCKET_LISTEN_ADDRESS='127.0.0.1')
-        database = None
-        if mode == 'redis':
-            database = 'generated_npc_'+uuid.uuid4().hex[:12]
-            host = os.environ['TEST_DB_HOST']; assert host in ('127.0.0.1', 'localhost')
-            env.update(DB_HOST=host, DB_PORT=os.environ.get('TEST_DB_PORT', '3306'), DB_NAME=database, DB_USER=os.environ['TEST_DB_USER'],
-                DB_PASSWD=os.environ['TEST_DB_PASSWORD'], MYSQL_PWD=os.environ['TEST_DB_PASSWORD'],
-                DB_ALLOWED_TARGETS=host+'/'+database, DB_TLS='FALSE', PERSISTENCE_MODE='mariadb-primary')
-            mysql=['mysql','--protocol=tcp','-h',host,'-P',env['DB_PORT'],'-u',env['DB_USER'],'-N','-B']
-            def sql(statement, selected=True):
-                return subprocess.check_output(mysql+([database] if selected else []), input=statement,
-                    text=True, env=env).strip()
-            sql('CREATE DATABASE '+database, False)
-            sql((journey.ROOT/'migrations/bootstrap_multithread_safe.sql').read_text())
-            for arguments in [('adopt','--kind','fresh_bootstrap'),('run',)]:
-                subprocess.run(['python3','scripts/migration_runner.py',*arguments],cwd=journey.ROOT,env=env,check=True)
-        else:
-            if not journey.INSPECTOR.is_file():
-                subprocess.run([sys.executable, 'tests/async/test_flatfile_player_repository.py',
-                                '--build-inspector', str(journey.INSPECTOR)],
-                               cwd=journey.ROOT, check=True, timeout=180)
-            subprocess.run([str(journey.INSPECTOR), str(state), 'seed-combat'], check=True)
-        cpp=root/'staff.cpp'; cpp.write_text(FIXTURE); fixture=root/'staff'
-        subprocess.run(['g++','-std=c++20','-Isrc',str(cpp),'src/player/player_snapshot_codec.c',
-            'src/flatfile/flatfile_player_snapshot_file.c','src/flatfile/flatfile_store.c','-lcrypto','-o',str(fixture)],cwd=journey.ROOT,check=True)
+        database = 'generated_npc_'+uuid.uuid4().hex[:12]
+        host = os.environ['TEST_DB_HOST']; assert host in ('127.0.0.1', 'localhost')
+        env.update(DB_HOST=host, DB_PORT=os.environ.get('TEST_DB_PORT', '3306'), DB_NAME=database, DB_USER=os.environ['TEST_DB_USER'],
+            DB_PASSWD=os.environ['TEST_DB_PASSWORD'], MYSQL_PWD=os.environ['TEST_DB_PASSWORD'],
+            DB_ALLOWED_TARGETS=host+'/'+database, DB_TLS='FALSE', PERSISTENCE_MODE='mariadb-primary')
+        mysql=['mysql','--protocol=tcp','-h',host,'-P',env['DB_PORT'],'-u',env['DB_USER'],'-N','-B']
+        def sql(statement, selected=True):
+            return subprocess.check_output(mysql+([database] if selected else []), input=statement,
+                text=True, env=env).strip()
+        sql('CREATE DATABASE '+database, False)
+        sql((journey.ROOT/'migrations/bootstrap_multithread_safe.sql').read_text())
+        for arguments in [('adopt','--kind','fresh_bootstrap'),('run',)]:
+            subprocess.run(['python3','scripts/migration_runner.py',*arguments],cwd=journey.ROOT,env=env,check=True)
         process=output=client=redis=None
         expected_room = None if full_world else 'The Regression Arena'
         def stop():
@@ -319,8 +306,7 @@ def run(binary, mode='file', full_world=None):
             client.send('save'); client.expect('Saving Taverek.')
             client.send('quit'); client.expect('ACCOUNT MENU',timeout=30)
             stop()
-            if mode == 'file': subprocess.run([str(fixture),str(state)],check=True)
-            else: sql("UPDATE player_data SET level=62,highest_level=62,base_hit=200000 WHERE name='Taverek'")
+            sql("UPDATE player_data SET level=62,highest_level=62,base_hit=200000 WHERE name='Taverek'")
             if mode == 'redis':
                 redis_port = journey.available_ports()[0]
                 redis = subprocess.Popen(['redis-server', '--bind', '127.0.0.1', '--port', str(redis_port),
@@ -417,8 +403,13 @@ def run(binary, mode='file', full_world=None):
                         client.send('shutdown hotboot'); client.expect('Copyover complete!',timeout=90)
                         client.send('save'); client.expect('Saving Taverek.',timeout=30)
                     else:
-                        deadline = time.monotonic() + 60
-                        while 'generation and floor handoff acknowledged' not in journey.runtime_logs(runtime):
+                        # A lease left behind by the crash can delay the next capture: wait
+                        # for one taken after this save, not an earlier cycle's.
+                        logs = journey.runtime_logs(runtime)
+                        captures, recoveries = (logs.count('generation and floor handoff acknowledged'),
+                                                logs.count('restored world recovery generation'))
+                        deadline = time.monotonic() + 120
+                        while journey.runtime_logs(runtime).count('generation and floor handoff acknowledged') <= captures:
                             assert time.monotonic() < deadline, 'no acknowledged Redis snapshot'
                             time.sleep(.2)
                         if cycle == 0:
@@ -426,7 +417,7 @@ def run(binary, mode='file', full_world=None):
                         else:
                             client.send('shutdown reboot'); process.wait(timeout=30)
                         stop(); boot(); client=journey.reconnect_character(port); drain(client)
-                        assert 'restored world recovery generation' in journey.runtime_logs(runtime)
+                        assert journey.runtime_logs(runtime).count('restored world recovery generation') > recoveries
             print(f'PASS: real player string/stat/look, {mode} repeated recovery, retained 1255/1256 identities/base strength/counts and save',flush=True)
         except Exception:
             print((runtime/'server.out').read_text(errors='replace')[-6000:])
@@ -447,15 +438,13 @@ def run(binary, mode='file', full_world=None):
                             redis.wait(timeout=10)
                             raise
                 finally:
-                    if database:
-                        sql('DROP DATABASE '+database, False)
+                    sql('DROP DATABASE '+database, False)
 
 if __name__=='__main__':
-    if len(sys.argv) > 1:
-        run(Path(sys.argv[1]).resolve(), sys.argv[2] if len(sys.argv) > 2 else 'file',
-            Path(sys.argv[3]).resolve() if len(sys.argv) > 3 else None)
-    else:
-        # make test-all: the flat-file server the other journeys share.
-        (journey.ROOT/'bin/tests').mkdir(parents=True,exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix='generated-npc-build-',dir=journey.ROOT/'bin/tests') as build:
-            run(journey.build_flatfile_server(Path(build)))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--server', type=Path, required=True)
+    parser.add_argument('--mode', choices=('file', 'redis'), default='file',
+                        help='file: hotboot copyover; redis: Redis world-state recovery')
+    parser.add_argument('--full-world', type=Path, help='generated areas directory')
+    args = parser.parse_args()
+    run(args.server.resolve(), args.mode, args.full_world.resolve() if args.full_world else None)

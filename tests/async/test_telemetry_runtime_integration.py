@@ -33,10 +33,10 @@ def main(*, exhaustion: bool = False, outage: bool = False, posthog: bool = Fals
     artifacts = ROOT / "bin/tests"
     artifacts.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="telemetry-runtime-", dir=artifacts) as directory:
-        variants: list[tuple[str, bool, Path | None]] = [("flatfile", True, None)]
+        variants: list[tuple[str, Path]] = []
         for include_directory in (Path("/usr/include/mariadb"), Path("/usr/include/mysql")):
             if (include_directory / "mysql.h").is_file():
-                variants.append(("sql", False, include_directory))
+                variants.append(("sql", include_directory))
                 break
         else:
             print("telemetry runtime SQL variant skipped: mysql headers unavailable")
@@ -49,7 +49,7 @@ def main(*, exhaustion: bool = False, outage: bool = False, posthog: bool = Fals
                 str(ROOT / "src/telemetry/telemetry_state.cc"), "-lcrypto", "-o", str(tool),
             ], cwd=ROOT, check=True, timeout=60)
 
-        for label, no_mysql, mysql_include in variants:
+        for label, mysql_include in variants:
             executable = str(Path(directory) / f"telemetry-runtime-integration-{label}")
             command = [
                 "g++",
@@ -59,8 +59,6 @@ def main(*, exhaustion: bool = False, outage: bool = False, posthog: bool = Fals
                 "-Werror",
                 "-pthread",
             ]
-            if no_mysql:
-                command.append("-D__NO_MYSQL__")
             if posthog:
                 command += ["-DTELEMETRY_POSTHOG_TESTING", "-fsanitize=undefined", "-fno-sanitize-recover=all"]
             command += [

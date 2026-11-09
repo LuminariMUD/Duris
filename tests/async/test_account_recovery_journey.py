@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """End-to-end account password recovery by email regression.
 
-Boots the real flat-file server twice against an isolated authority.  The first
+Boots the real server twice against a disposable MariaDB schema.  The first
 boot enables recovery (MAIL_ENABLED=TRUE) with a wire-level fake SMTP server on
 loopback: an account is created with an email address, the password prompt
 offers '?', the reset code is read from the captured SMTP DATA, the password is
@@ -18,7 +18,9 @@ load_env_file's setenv(name, value, 0) lets a real environment variable win.
 from __future__ import annotations
 
 import server_build_artifacts
+from test_flatfile_combat_journey import mariadb_authority
 
+import argparse
 import os
 import pathlib
 import random
@@ -324,7 +326,7 @@ def build_flatfile_server(build_root: pathlib.Path, *, real_clock: bool = False)
 
 
 class IsolatedServer:
-    """One booted flat-file server with its own state, run root, ports, and output file."""
+    """One booted server with its own schema, run root, ports, and output file."""
 
     def __init__(self, binary: pathlib.Path, mail_environment: dict[str, str] | None,
                  prepare_run_root=None, *, full_world=False) -> None:
@@ -333,6 +335,8 @@ class IsolatedServer:
         self.full_world = full_world
         self.mail_environment = mail_environment or {}
         self.prepare_run_root = prepare_run_root
+        self.authority = None
+        self.sql = None
         self.state_tmp = tempfile.TemporaryDirectory(prefix="duris-recovery-state-")
         self.run_tmp = tempfile.TemporaryDirectory(prefix="duris-recovery-run-")
         self.state_root = pathlib.Path(self.state_tmp.name)
@@ -344,6 +348,11 @@ class IsolatedServer:
 
     def __enter__(self) -> "IsolatedServer":
         try:
+            # A caller that brings its own schema passes its environment in.
+            if "DB_NAME" not in self.mail_environment:
+                self.authority = mariadb_authority()
+                database, self.sql = self.authority.__enter__()
+                self.mail_environment = {**database, **self.mail_environment}
             self._boot()
         except Exception:
             self.__exit__(None, None, None)
@@ -363,6 +372,9 @@ class IsolatedServer:
             self.output = None
         self.run_tmp.cleanup()
         self.state_tmp.cleanup()
+        if self.authority is not None:
+            self.authority.__exit__(None, None, None)
+            self.authority = None
 
     def _boot(self) -> None:
         self.state_root.chmod(0o700)
@@ -392,8 +404,6 @@ class IsolatedServer:
         environment = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "ENVIRONMENT": "local",
-            "PERSISTENCE_MODE": "flatfile-primary",
-            "FLATFILE_STATE_DIR": str(self.state_root),
             "CRITICAL_COMMAND_JOURNAL_DIR": str(journal_root / "critical"),
             "LISTEN_ADDRESS": "127.0.0.1",
             "DURIS_TLS_PORT": str(tls_port),
@@ -704,11 +714,9 @@ def run_disabled_journey(binary: pathlib.Path) -> None:
 
 
 if __name__ == "__main__":
-    # The root regression runner executes the flat-file journeys concurrently.
-    # Distinct temporary build roots prevent linker/runtime races and are removed
-    # after each journey, including on failure.
-    with tempfile.TemporaryDirectory(prefix=f"flatfile-recovery-{os.getpid()}-") as build_tmp:
-        server_binary = build_flatfile_server(pathlib.Path(build_tmp))
-        run_enabled_journey(server_binary)
-        run_disabled_journey(server_binary)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=pathlib.Path, required=True)
+    server_binary = parser.parse_args().server.resolve()
+    run_enabled_journey(server_binary)
+    run_disabled_journey(server_binary)
     print("account password recovery by email journey passed")

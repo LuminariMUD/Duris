@@ -270,7 +270,7 @@ with tempfile.TemporaryDirectory(prefix='duris-offline-cleanup-') as temporary:
     source.write_text(HARNESS)
     subprocess.run(['g++', '-std=c++20', '-g', '-O1', '-Wall', '-Wextra', '-Werror',
                     '-ffunction-sections', '-fdata-sections', '-fsanitize=address,undefined',
-                    '-fno-sanitize-recover=all', '-fno-pie', '-no-pie', '-Isrc', '-D__NO_MYSQL__', str(source),
+                    '-fno-sanitize-recover=all', '-fno-pie', '-no-pie', '-Isrc', '-I/usr/include/mysql', str(source),
                     'src/player/player_load_offline.c', 'src/player/player_load_items.c', str(HARNESS_STUBS),
                     '-Wl,--gc-sections', '-o', str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True, cwd=ROOT, timeout=20,

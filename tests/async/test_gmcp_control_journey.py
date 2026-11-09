@@ -12,10 +12,9 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import tempfile
 import time
 
-from test_account_recovery_journey import ACCOUNT, OLD_PASSWORD, ROOT, IsolatedServer, MudClient, build_flatfile_server, require
+from test_account_recovery_journey import ACCOUNT, OLD_PASSWORD, ROOT, IsolatedServer, MudClient, require
 from test_game_loop_session_journey import CHARACTER, create_character, reconnect_character
 from test_creation_prompt_journey import MENU, play_saved_character, reboot, start_character, reply, finish_character_choices
 from test_flatfile_combat_journey import make_overlord
@@ -391,7 +390,7 @@ def run(binary, evidence):
             client.close()
             client = None
             server.shutdown()
-            make_overlord(server.state_root, CHARACTER)
+            make_overlord(server.sql, CHARACTER)
             reboot(server)
             client = MudClient(server.plain_port)
             negotiate(client)
@@ -544,11 +543,8 @@ def run(binary, evidence):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--server", type=Path)
+    parser.add_argument("--server", type=Path, required=True)
     parser.add_argument("--evidence", type=Path)
     args = parser.parse_args()
-    build_root = ROOT / "bin/tests"
-    build_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="gmcp-control-", dir=build_root) as build:
-        run(args.server.resolve() if args.server else build_flatfile_server(Path(build), real_clock=True), args.evidence)
+    run(args.server.resolve(), args.evidence)
     print("booted GMCP control/time/session and combat state journey passed")

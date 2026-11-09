@@ -162,7 +162,6 @@ bool critical_outbox_drain(uint64_t) { return true; }
 bool persistence_flush_all_character_saves() { return true; }
 bool player_save_pipeline_drain(uint64_t) { return true; }
 bool locker_async_drain(uint64_t) { return true; }
-const char *persistence_mode_flatfile_root() { return "fixture"; }
 enum class flatfile_character_delete_result { ok, already_deleted, io_error };
 flatfile_character_delete_result flatfile_character_delete(const std::string&, int, const std::string&, std::string*, uint64_t catalog, uint64_t revision) {
     assert(!catalog && !revision);
@@ -381,10 +380,9 @@ build_root.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='account-delete-', dir=build_root) as directory:
     cpp = Path(directory) / 'runtime.cpp'
     cpp.write_text(prelude + bodies + main)
-    for backend, flags in (('mariadb', []), ('flatfile', ['-D__NO_MYSQL__'])):
-        exe = Path(directory) / f'runtime-{backend}'
-        subprocess.run(['g++', '-std=c++20', '-g', '-fsanitize=address,undefined',
-                        '-fno-omit-frame-pointer', *flags, str(cpp), '-o', str(exe)], check=True)
-        subprocess.run([str(exe)], check=True)
+    exe = Path(directory) / 'runtime-mariadb'
+    subprocess.run(['g++', '-std=c++20', '-g', '-fsanitize=address,undefined',
+                    '-fno-omit-frame-pointer', str(cpp), '-o', str(exe)], check=True)
+    subprocess.run([str(exe)], check=True)
 print('PASS: account deletion runtime refusal at every statement, release, publication, '
-      'retry, in-game refusal and closed-session scenarios on both backends')
+      'retry, in-game refusal and closed-session scenarios on MariaDB')
