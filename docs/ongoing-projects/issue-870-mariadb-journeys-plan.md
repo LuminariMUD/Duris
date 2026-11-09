@@ -716,6 +716,14 @@ This is an estimate, not a time limit or permission to omit required proof.
   SQL fixture in a fresh disposable schema, checking its dump and binary hashes;
   preserve existing generated identities and reuse the two unaffected passes.
   Original failure evidence: `bin/tests/issue-870/named-set-initial-pet-failure/`.
+  Resume guard proof passed: a mismatched binary was rejected without changing
+  the SQL dump or sequence metadata (`named-set-resume-rejection.log`).
+  The pet retry passed both cold reboots with exact nested UID/origin/slots. Its
+  return then hit the normal heavy-item consent guard (`actobj.c`4336): the bag
+  weighs33, and the recipient had not consented to the cat. Seed `consent cat`
+  through the native command before its return; keep the give and all assertions.
+  Server termination was normal; no product repair is justified by this failure.
+  Evidence: `bin/tests/issue-870/named-set-heavy-return-failure/`.
   The entry self-enters the disposable wrapper. The retry adds
   `--resume bin/tests/named-set-mariadb-sequence-ununney2`; its metadata explicitly
   records reused cases. Inspect its terminal result

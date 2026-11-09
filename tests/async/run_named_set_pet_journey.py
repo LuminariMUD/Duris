@@ -77,6 +77,9 @@ try:
         )
         if cycle == 0:
             game.stop()
+    # The loaded bag exceeds the normal 25-unit give limit; its recipient must
+    # consent to the pet before the ordinary return command can proceed.
+    command("consent cat")
     command("order cat give backpack " + CHARACTER, "gives you")
     save(actor, CHARACTER)
     assert any(row[0] == bag for row in game.inventory(PID))
