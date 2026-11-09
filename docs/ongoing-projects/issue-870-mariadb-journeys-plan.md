@@ -831,3 +831,21 @@ These are preserved per-chunk results, not claims that a later binary ran them.
   diagnose any other findings, and rerun the complete DB gate after repairs.
   The successful907-file gate remains valid: only its excluded DB pet journey
   changed, with common helpers and native source unchanged. No whole-issue claim.
+
+- GitHub audit verified appropriate labels on all19 pending/recent PRs; all are
+  ready or merged except #958, deliberately draft until the final gates finish.
+  #918 is now merged by independent review; its three runtime scripts are byte-
+  identical to our qualified copies (review delta e5294b9c→a88af2b07 is empty).
+  #922 now targets master because its prerequisite is merged.
+- Fresh master524eb47b8 adds independent MXP/output-link, auction, smith and
+  proc-library work. Its #918 changes are already present byte-for-byte here.
+  Keep the qualified002ad622e integration baseline for this issue, with explicit
+  native/source hashes, rather than expanding validation into those later features.
+  No original #870 requirement or reviewed #918 repair is omitted by this freeze.
+
+- Historical `nexus_journey` concern is resolved on the qualified image: the
+  complete current DB leg passed in290s, including mortal guardian captures,
+  cooldown/full turn/epic rewards, actual cargo/contraband bonus/exclusion,
+  cold restoration and expiry/neutral reload. Its log records the same6dfb5020…
+  binary. First DB run has reached its final serial recovery/latency checks with
+  151 passing legs and only the already-repaired pet-reader failure so far.
