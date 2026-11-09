@@ -1,9 +1,9 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: conversions, naming and standalone journey qualification are complete. Final full regression/database gates are running; whole-issue completion remains pending.
+Status: conversions, naming and standalone journey qualification are complete. First full regression:903/907 passed; four findings are being repaired. Database gate and whole-issue completion remain pending.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-completion-qualification`. See the latest qualification notes before continuing.
+Review head: `branch/issue-870-save-fixture-callers`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -670,7 +670,7 @@ These are preserved per-chunk results, not claims that a later binary ran them.
 
 ### Current continuation checkpoint
 
-- Branch `branch/issue-870-completion-qualification`, source integration6fba71dbf
+- Integrated base `branch/issue-870-completion-qualification`, source integration6fba71dbf
   and paid-crash import fixea9fd03ca, draft
   [#958](https://github.com/LuminariMUD/Duris/pull/958), enhancement/documentation,
   after ready bug #957. Master002ad622e is forward-merged; no history rewritten.
@@ -713,20 +713,51 @@ These are preserved per-chunk results, not claims that a later binary ran them.
   crash/restart path passed: wallet100000→99989, item UID1072350 under parent
   UID1072324, identical after SIGKILL/cold restart. Evidence
   `integrated-paid-fresh-crash.{json,log,exit}`. No schema or receipt change.
-- **Active aggregate controller55425:** production prebuild exited0
-  (`final-production-prebuild.log`/`.exit`). It now runs
-  `make test-all -j4 TEST_JOBS=8` (907 discovered files plus native gate), followed
-  by `make test-db` only on success. Logs/terminal results:
-  `final-test-all.log`/`.exit`, `final-test-db.log`/`.exit`. DB logs are copied to
-  `final-db-first-run/` after terminal completion; preserve them before any retry.
-  No full-suite pass is claimed yet. Poll this controller before restarting work.
-- Next: publish the consolidated plan, finish ready-state descriptions for
-  #938/#948/#955 with their explicit qualification follow-ups, inspect both
-  terminal aggregate results, autonomously repair actual failures as separate
-  focused changes, then finish scope/names/evidence/diff review and mark #958 ready.
-  No CI wait/full burn-in. Source is frozen at reviewed master002ad622e plus the
-  documented task commits; do not relabel earlier matrix images as later builds.
+- **First aggregate controller55425 is terminal:** production prebuild exited0.
+  `make test-all -j4 TEST_JOBS=8` completed907 files,903 passed/4 failed,
+  0 timeouts/signals in457.42s (make exit2). Preserved
+  `final-test-all-first-run.log`/`.exit`. It correctly did not start test-db.
+  The four concrete repairs and focused results follow below; no full-suite
+  success is claimed yet.
+- #938/#948/#955 descriptions now record their qualified runtime results and
+  linked follow-ups; all three are ready. #958 remains draft. Next: finish the
+  four aggregate repairs, repeat full test-all and test-db to terminal success,
+  then finish scope/names/evidence/diff review and mark the final review work ready.
+  Preserve failed results before retries. No CI wait/full burn-in.
 - The mission remains all #870 work with autonomous issue repair and tested,
   labeled, pushed PRs ready for review. Final-suite findings are the remaining
   uncertainty. No GitHub merge, release, deployment or production action was
   performed by this task.
+
+
+### First aggregate result and focused repairs
+
+- `make test-all -j4 TEST_JOBS=8` completed all907 files:903 passed,4 failed,
+  0 timeouts/signals,457.42s; terminal make exit2. Production build passed.
+  Preserved complete result: `final-test-all-first-run.log`/`.exit`. Aggregate
+  controller55425 is terminal; it correctly did not start test-db after failure.
+- Two fixtures introduced by the reviewed-master merge still called the old
+  two-argument written-ack API. `test_item_movement_prompt_runtime.py` now passes
+  its actual queued component mask; `test_newbie_grant_lifecycle.py` passes the
+  STATUS component its baseline marked/queued. Keep all executable grant/prompt
+  assertions. Both focused executable tests exited0 after that repair (including
+  ASan/UBSan prompts), and `make -C src` passed. Evidence
+  `test_{item_movement_prompt_runtime,newbie_grant_lifecycle}-ack-mask-fixed.log`/`.exit`.
+  This is a focused test-only follow-up after #958.
+- Artifact inventory's old assignment-site parser loses all80 callbacks after
+  master #902 moved the same native499 bindings into their shared catalog.
+  An unfixed candidate confirms171 templates but0 callbacks, versus the tracked
+  80 bindings/69 callbacks. Do not regenerate that loss into documentation.
+  Update the existing consumer to compiler-selected catalog entries and require
+  unchanged inventory plus correct later-stage overrides, as a separate fix.
+- Telemetry passed reducer and first HTTPS matrix, then its second-build pin
+  case measured448292us against the existing250000us pulse limit under the
+  compilation pool. Its isolated run exited0 for both build variants, all64
+  reducer and33 HTTPS cases each, with the same pulse limit. This is consistent
+  with compilation contention; the runner currently has one shared pool. Keep
+  that hard latency test outside the pool, then require a green full aggregate.
+  Isolated log `telemetry-posthog-isolated.log`/`.exit`; no threshold relaxation.
+- #938, #948 and #955 are now ready with the exact integrated runtime results
+  and explicit linked follow-ups. #958 remains draft until both aggregate gates
+  and the final audit pass. Current repair branch:
+  `branch/issue-870-save-fixture-callers` after #958.
