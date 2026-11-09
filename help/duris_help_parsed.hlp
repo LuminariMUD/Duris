@@ -807,7 +807,6 @@ Aggr - Last Edited: 2007-04-19 19:17:09 by Unknown
 *aggr          : Check aggressiveness
 *aggr off      : Turn off aggressiveness
 *aggr 120      : You will only be aggressive to monsters when your hitpoints >=120
-NOTE: Paladins may *not* have this option set to ON, as it goes against all their training and principles.
 
 ==See also==
 
@@ -2894,7 +2893,7 @@ warrior, paladin, bodyslam, kneel, shieldless bash
 Battle-Forger
 Battle-Forger - Last Edited: 2026-10-18
 ============================================================
-Battle-Forger is a Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Battle-Forger is an Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -3305,7 +3304,7 @@ acquire/pray/cast your spells when you multiclass.
 Blacksmith
 Blacksmith - Last Edited: 2026-10-18
 ============================================================
-Blacksmith is a Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Blacksmith is an Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -5848,7 +5847,7 @@ defense.
 Star Magus
 Star Magus - Last Edited: 2026-10-18
 ============================================================
-Star Magus is a Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Star Magus is an Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -6416,7 +6415,7 @@ lands of the living. It has been known to fail however...
 Dark Dreamer
 Dark Dreamer - Last Edited: 2026-10-18
 ============================================================
-Dark Dreamer is a Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Dark Dreamer is an Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -6451,7 +6450,7 @@ Requirements are registration values, not automatic learning or preparation. Bas
 Dark Knight
 Dark Knight - Last Edited: 2026-10-18
 ============================================================
-Dark Knight is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Dark Knight is an Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -6731,7 +6730,7 @@ deal with the simple reality of direction is lost.
 Demonic Rider
 Demonic Rider - Last Edited: 2026-10-18
 ============================================================
-Demonic Rider is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Demonic Rider is an Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -10835,7 +10834,7 @@ chills them to the bone.
 Frost Magus
 Frost Magus - Last Edited: 2026-10-18
 ============================================================
-Frost Magus is a Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Frost Magus is an Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -16082,7 +16081,7 @@ chart.
 Magician
 Magician - Last Edited: 2026-10-18
 ============================================================
-Magician is a Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Magician is an Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -27837,7 +27836,7 @@ Requirements are registration values, not automatic learning or preparation. Bas
 Violator
 Violator - Last Edited: 2026-10-18
 ============================================================
-Violator is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Violator is an Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -28489,7 +28488,7 @@ Requirements are registration values, not automatic learning or preparation. Bas
 Tempest Magus
 Tempest Magus - Last Edited: 2026-10-18
 ============================================================
-Tempest Magus is a Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Tempest Magus is an Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
