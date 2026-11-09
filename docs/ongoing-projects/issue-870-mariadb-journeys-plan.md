@@ -1,6 +1,6 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: implementation in progress; launch/shop, news, death and corpse journeys qualified; onboarding and the remaining partial-conversion checks running.
+Status: 13 partial-conversion runners passed their functional journeys; telemetry performance and a shop runtime repair remain before batch 1 is complete.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
 Branch: `branch/issue-870-mariadb-journeys`.
@@ -119,7 +119,7 @@ Each batch should produce a reviewable commit with its focused runtime proof.
   parentage and cold-restart assertions. Translate any still-relevant delayed
   writer/offline-sale case using the existing MariaDB fault patterns; a file
   lock is not a MariaDB writer stall. Remove only exclusively retired semantics.
-- [ ] Finish `test_norent_key_rent_journey.py` and
+- [x] Finish `test_norent_key_rent_journey.py` and
   `test_artifact_owner_restart_journey.py`: remove inspector fallbacks and retain
   rent/crash/copyover, owner conflict, custody and restart assertions.
 
@@ -370,8 +370,7 @@ This is an estimate, not a time limit or permission to omit required proof.
 ### News, onboarding and death projection
 
 - Code: `c2fdd28eb`, `branch/issue-870-login-journeys`,
-  [PR #890](https://github.com/LuminariMUD/Duris/pull/890), draft pending the
-  full onboarding result. Base: #888. News now publishes its first synthetic
+  [PR #890](https://github.com/LuminariMUD/Duris/pull/890), ready for review after full qualification. Base: #888. News now publishes its first synthetic
   edition to SQL instead of an ignored file; inspector fallbacks are gone.
 - Passed: `tests/async/with_disposable_mariadb.sh python3 tests/async/run_news_prompt_journey.py --backend mariadb --server bin/server/dms_new`.
   Includes acknowledgement isolation, invalid/valid/periodic reload, reconnect,
@@ -381,7 +380,9 @@ This is an estimate, not a time limit or permission to omit required proof.
   Telnet/WS protected and actual-delevel deaths, menu projection, cold restart
   and long-session side cooldown all passed. Evidence: `death-projection/`
   and `death-projection-run.log` below the task evidence directory.
-- These two tests ran the edits later committed unchanged as `c2fdd28eb`;
+- Full onboarding passed without `--case` narrowing: all seven routes and
+  28 recorded cases. Its `onboarding.json` has `completed: true`.
+- These tests ran the edits later committed unchanged as `c2fdd28eb`;
   the death report's Git revision is the parent `014f99194` plus those edits.
   Binary hash is the shared `fe10882b...` recorded above.
 
@@ -425,42 +426,71 @@ This is an estimate, not a time limit or permission to omit required proof.
   options, seeding and unused state setup were removed. Existing `Server`'s
   unused state parameter is passed `None` until its item-batch API cleanup.
 
+### Telemetry and item custody
+
+- Telemetry code `f2ddec22d`, `branch/issue-870-telemetry-journey`,
+  [PR #895](https://github.com/LuminariMUD/Duris/pull/895), draft until the paired
+  performance gate completes. The full normal local-receiver journey passed:
+  `python3 tests/async/run_telemetry_player_journey.py --backend mariadb`.
+  It received 42 events over 44 attempts/reservations and verified disabled
+  save/reload, mortal/group/pet gameplay, outage saves, reload/reconnect,
+  failed/successful copyover, privacy, quota and time-allocation conservation.
+  Log: `bin/tests/issue-870/telemetry-run.log`; detailed artifacts:
+  `bin/issue59/acceptance/`. This uses its own instrumented binary, not the
+  ordinary binary hash recorded for the other journeys. The normal temporary
+  binary was cleaned by the runner; its hash was not retained.
+- Rent/artifact code `04da5426e`, `branch/issue-870-item-custody-journeys`,
+  [PR #896](https://github.com/LuminariMUD/Duris/pull/896), ready for review.
+  Both full journeys passed using the ordinary binary hash above and the new
+  default backend:
+  `tests/async/with_disposable_mariadb.sh python3 tests/async/test_norent_key_rent_journey.py --server bin/server/dms_new`;
+  `tests/async/with_disposable_mariadb.sh python3 tests/async/test_artifact_owner_restart_journey.py --server bin/server/dms_new`.
+  Six rent/no-rent carried/equipped/nested cases, cold restart, crash and
+  copyover passed. Artifact tests passed all four stale owner types, exactly-one
+  feeding, handoffs/repeated login, UID/timer/soul/custody preservation,
+  duplicate conflict recovery, offline expiry, duplicate cleanup and fresh
+  generations across repeated restarts. Logs: `norent-key-run.log` and
+  `artifact-owner-run.log`; the rent report is copied to `norent-key.json`.
+- The explicit `--reconnect-only` flight mode also passed; log:
+  `bin/tests/issue-870/flight-reconnect-run.log`. The full default/interruptions
+  matrix was already green in [PR #892](https://github.com/LuminariMUD/Duris/pull/892).
+
 ### Current work / next action
 
-- Full onboarding is running without `--case` narrowing:
-  `tests/async/with_disposable_mariadb.sh python3 tests/async/run_issue213_onboarding_journey.py --server bin/server/dms_new --output bin/tests/issue-870/onboarding.json`.
-  Check `onboarding-run.log` and the final `completed` field before marking
-  #890 ready. It has passed the initial seven guide routes and is continuing
-  the real quest/shop/threshold matrices; it is not yet qualified.
-- Cache/flight: `b53854e6b`, `branch/issue-870-cache-flight-journeys`, based
-  on #891. Both full runs passed:
-  `tests/async/with_disposable_mariadb.sh python3 tests/async/test_information_cache_journey.py --server bin/server/dms_new`;
-  `tests/async/with_disposable_mariadb.sh python3 tests/async/test_flight_network_journey.py --server bin/server/dms_new`.
-  No `--backend` override was needed: the default is now MariaDB.
-  Cache retained its active pager generation, refreshed automatically in 23.592 s,
-  served 36 pre-refresh commands/12 navigation groups and 91 concurrent score
-  samples (median 0.250 s, max 0.265 s). Flight passed all 25 stops, 39 route
-  steps, two occupied/empty-return copyovers, restricted destinations, logout,
-  crash/relogin/EXP, seven named dragon corpses, both NPC attack altitudes,
-  unlink/extraction recovery and live-passenger socket reconnect. Its isolated
-  interruption child exited successfully too. Logs: `information-cache-run.log`
-  and `flight-network-run.log`. An additional explicit `--reconnect-only` run is
-  in progress, logged to `flight-reconnect-run.log`.
-- Later code (not yet qualified): Cleric/aura `6723fd439` and `8dd6a13a7` on
-  `branch/issue-870-cleric-journeys`; telemetry `f2ddec22d` on
-  `branch/issue-870-telemetry-journey`; rent/artifact `04da5426e` on
-  `branch/issue-870-item-custody-journeys`; shop `55927b624` on
-  `branch/issue-870-shop-journey`. The dedicated worktree may be on one of these
-  stacked branches; check `git status` before editing. All code is committed.
-  Their logs are respectively `cleric-run.log`, `aura-run.log`, `telemetry-run.log`,
-  `norent-key-run.log`, `artifact-owner-run.log` and `shop-multi-buy-run.log`.
-  Aura already passed; Cleric exposed a stale retired-aura assertion, preserved
-  as `cleric-retired-aura-failure.log`. Its repaired run uses current Cleric
-  Protection/Spell Protection grants and explicitly rejects the Paladin healing
-  aura. Keep its spell, timer, copyover and unspec checks intact.
-- Telemetry's normal local-receiver run builds its existing instrumented server.
-  Run `--performance` after compilation and other load have settled; do not run
-  `--cloud`. Shop replaces the obsolete file lock with a SQL writer lock and
-  requires quit to unload the actor before releasing the pending sale.
-- Remaining batches above are still required. Aggregate regression/DB gates and
-  the other standalone conversions have not been run for this work yet.
+- Ready PR stack: #887 baseline → #888 launch/shop bootstrap → #890 login/news/
+  onboarding/death → #891 corpses → #892 cache/flight → #893 Cleric/aura.
+  #895 telemetry remains draft pending performance; #896 rent/artifact above it
+  is ready. #897 shop conversion is draft pending its reproduced server fix.
+  Every PR has an appropriate documentation, bug or enhancement label. No merge,
+  tag/release or deployment was requested or performed.
+- Telemetry performance is running after the heavy builds and other journeys
+  finished: `python3 tests/async/run_telemetry_player_journey.py --backend mariadb --performance`.
+  It runs three paired workloads (six legs), not the cloud campaign. Current
+  tool process session: `11319`; inspect/poll that live handle before restarting.
+  Log: `bin/tests/issue-870/telemetry-performance-run.log`. The live performance
+  binary SHA-256 is `0731f59506dd86d4942eb1490e5708bea81bea40821435b7c1dac14f9a56eb3c`.
+  The first disabled leg passed; the complete gate is not yet qualified.
+- Shop conversion code: `55927b624`, `branch/issue-870-shop-journey`,
+  [draft PR #897](https://github.com/LuminariMUD/Duris/pull/897). Its full run
+  failed at the preserved fresh/unsaved staff-bag purchase: zero items delivered,
+  no charge, before the delayed-sale leg. The failure and report are preserved
+  as `bin/tests/issue-870/shop-unsaved-bag-failure-*`. Do not drop that case.
+  The new delayed-sale leg holds `critical_operation_inbox` with a dedicated
+  SQL session and requires `ACCOUNT MENU` before unlocking; it is still unrun.
+- Traced shop failure: `shop_begin_produced()` in `src/economy/shop.c` submits
+  a creation batch. `submit_grant_batch()` in
+  `src/item/item_movement_transaction.c` requires a destination entry in
+  `item_ownership_runtime`; a newly loaded carried bag has none. The runtime
+  cache is hydrated on load/read and item-transfer completions, not simply on
+  an inventory save request. Investigate the smallest correct existing creation
+  queue/ownership preparation path. Prepare any necessary server fix as a
+  separate focused PR above #897, with the existing real journey as regression
+  and focused native coverage. Do not add synchronous SQL to the game loop,
+  fake ownership rows, another persistence layer, or discard the live case.
+- Latest code and plan are committed/pushed on the stacked branches. The worktree
+  may be on a parent while its evidence is updated; check `git status` before
+  editing, then continue from `branch/issue-870-shop-journey` for the server repair.
+- Remaining batches 2–6 are still required: standalone gameplay/protocol/timing,
+  named sets and historical assassin comparison, four item journeys, naming/docs,
+  full regression/DB gates and qualification of #880's other standalone edits.
+  No aggregate result or whole-issue completion is claimed yet.
