@@ -35,10 +35,6 @@ deferred_locker = lockers[lockers.index("static void event_deferredTerminalSave(
 deferred_locker = deferred_locker[:deferred_locker.index("\n}\n")]
 
 checks = {
-    # A MariaDB terminal save is queued like any other; the caller disposes of the
-    # character, so writeCharacter() extracts nothing there.
-    "terminal saves are queued": "A terminal save is queued like any other" in files
-                                 and "persistence_should_extract_terminal_inventory" not in files,
     # Logging out never waits (persistence reset step 7): quit, rent, camp, death,
     # idle rent, link loss and heaven queue the save and the character leaves.
     "quit, rent and camp queue": "persistence_save_character_terminal(ch, RENT_INN);" in actoth

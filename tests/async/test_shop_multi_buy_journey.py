@@ -87,7 +87,7 @@ PH 0 0 -1
     assert generated.returncode == 0, generated.stdout[-4000:] + generated.stderr[-4000:]
 
 
-def run(binary, backend, report):
+def run(binary, backend, report, crash_paid_fresh=False):
     report.parent.mkdir(parents=True, exist_ok=True)
     evidence = {"backend": backend, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
                 "purchases": [], "checks": [], "passed": False}
@@ -209,10 +209,66 @@ def run(binary, backend, report):
                 command(god, "setbit room here flag ROOM_MAGIC_LIGHT 1")
                 command(god, "setbit room here flag SAFE 1")
                 command(player, "drop all")
+                if crash_paid_fresh:
+                    money(god)
                 for vnum, keyword in ((BAG, "bag"), (SMALL_BAG, "smallbag")):
                     loaded = command(god, f"load obj {vnum}")
                     assert "created" in loaded, loaded
                     assert "Ok." in command(god, f"give {keyword} {PLAYER}")
+                if crash_paid_fresh:
+                    # A fresh bag has no saved owner. The debit and produced UID
+                    # must survive the same crash, even before the output callback.
+                    def financial_state():
+                        row = sql(
+                            "SELECT p.copper+10*p.silver+100*p.gold+1000*p.platinum,"
+                            "(SELECT COUNT(*) FROM item_current_owner o JOIN player_items i "
+                            "ON i.obj_uid=o.item_uid WHERE o.owner_type=1 AND o.owner_id=p.pid "
+                            f"AND o.state=1 AND i.vnum={RATION}) FROM player_data p "
+                            f"WHERE p.name='{PLAYER}'")
+                        return tuple(map(int, row.split("\t")))
+
+                    before_wallet, before_items = financial_state()
+                    assert before_wallet == 100000 and before_items == 0
+                    player.send("buy ration bag 1")
+                    deadline = time.monotonic() + 15
+                    while time.monotonic() < deadline:
+                        wallet, items = financial_state()
+                        if wallet < before_wallet:
+                            os.kill(process.pid, signal.SIGSTOP)
+                            break
+                        time.sleep(.005)
+                    else:
+                        raise AssertionError("paid fresh-bag purchase did not commit")
+                    paid_wallet, paid_items = financial_state()
+                    assert paid_wallet == wallet and paid_items == items
+                    process.kill()
+                    process.wait(timeout=10)
+                    for client in clients:
+                        client.close()
+                    clients.clear()
+                    boot()
+                    player = login(PLAYER, ACCOUNT)
+                    restored_wallet, restored_items = financial_state()
+                    assert (restored_wallet, restored_items) == (paid_wallet, paid_items)
+                    assert 0 < before_wallet - restored_wallet < before_wallet
+                    assert restored_items == 1, (
+                        "paid fresh-bag purchase lost the item after crash",
+                        before_wallet, restored_wallet, restored_items)
+                    uid, parent, physical_parent = map(int, sql(
+                        "SELECT o.item_uid,COALESCE(o.parent_item_uid,0),"
+                        "COALESCE(b.obj_uid,0) FROM item_current_owner o "
+                        "JOIN player_items i ON i.obj_uid=o.item_uid "
+                        "LEFT JOIN player_items b ON b.id=i.container_id "
+                        f"WHERE o.owner_type=1 AND o.owner_id=(SELECT pid FROM player_data WHERE name='{PLAYER}') "
+                        f"AND o.state=1 AND i.vnum={RATION}").split("\t"))
+                    assert uid and parent and parent == physical_parent
+                    assert "test ration" in command(player, "look in bag")
+                    evidence["paid_fresh_bag_crash"] = {
+                        "wallet_before": before_wallet, "wallet_after": restored_wallet,
+                        "item_uid": uid, "parent_uid": parent}
+                    evidence["passed"] = True
+                    print("PASS paid fresh-bag wallet, item UID and parent across SIGKILL/restart", flush=True)
+                    return
                 assert "created" in command(god, f"load obj {BAG}")
                 money(god)
                 # Qualify the carried bag as restored ordinary player state;
@@ -392,7 +448,10 @@ def main():
     parser.add_argument("--backend", choices=("mariadb",), default="mariadb")
     parser.add_argument("--server", type=Path)
     parser.add_argument("--report", type=Path)
+    parser.add_argument("--crash-paid-fresh", action="store_true")
     args = parser.parse_args()
+    if args.crash_paid_fresh and args.backend != "mariadb":
+        parser.error("crash-paid-fresh requires MariaDB")
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     subprocess.run(["make", "build-area-tools"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     with tempfile.TemporaryDirectory(prefix="shop-build-", dir=ROOT / "bin/tests") as build:
@@ -400,7 +459,7 @@ def main():
             binary = args.server.resolve()
         else:
             binary = journey.build_flatfile_server(Path(build) / "server")
-        run(binary, args.backend, args.report or ROOT / f"bin/qualification/issue454/{args.backend}-journey.json")
+        run(binary, args.backend, args.report or ROOT / f"bin/qualification/issue454/{args.backend}-journey.json", args.crash_paid_fresh)
 
 
 if __name__ == "__main__":
