@@ -281,7 +281,8 @@ int main() {
                 "  That other one uses up an extra attack if any are left.\n"
                 "  An NPC target is refused.\n"
                 "  Nothing happens if you already share it or the target already has it.\n"
-                "  It ends when you use a command, or when the target walks 2 rooms away.\n");
+                "  It ends when you use a command, or when the target walks 2 rooms away.\n"
+                "  Any other travel by either of you ends it, even when traveling together.\n");
         assert(essence_of_wolf_attack_cap(9) == 0 && essence_of_wolf_attack_cap(39) == 3 &&
                essence_of_wolf_attack_cap(40) == 4);
     }

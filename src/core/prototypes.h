@@ -1364,6 +1364,8 @@ void apply_affs(P_char, int);
 void balance_affects(P_char);
 void char_from_room(P_char);
 bool char_to_room(P_char, int, int);
+// Only the ordinary movement executor may preserve Essence during placement.
+bool char_to_room(P_char, int, int, bool ordinary_movement);
 void equip_char(P_char, P_obj, int, int);
 void extract_char(P_char);
 void hold_durable_pet_items(P_char);
