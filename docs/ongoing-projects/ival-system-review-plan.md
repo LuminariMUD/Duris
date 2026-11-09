@@ -1261,6 +1261,45 @@ list-number behavior. Keep this separate from the loader change. Then convert
 enhancement config and finish remaining F08/property/admission bounds. No
 database, migration or production operation occurred.
 
+### Chunk 19 — validate recipe selections before indexing (F08, implemented)
+
+Branch: `branch/ival-recipe-selection`, based on `branch/ival-crafting-config-bounds`.
+
+**Outcome:** parse complete bounded recipe numbers and require positive choices
+before any list indexing. Share the existing vnum-first/list-number selection
+policy across Craft and Forge. Reject invalid/missing selections before the
+selected-target action; valid precedence and ordering remain unchanged. The
+existing recipe-provider normalization/import behavior is separate and unchanged.
+
+**Non-goals:** recipe ownership/provider changes, formula/config tuning, new
+command syntax, persistence or deployment.
+
+**Files:** crafting selection and the existing native crafting regression, plus
+this handoff.
+
+**Proof:** native boundary cases for nonpositive/out-of-range/malformed choices,
+empty lists, stable vnum precedence, valid list numbers and unchanged book data;
+run existing crafting/persistence contracts and the server build. Full command/
+MariaDB journeys remain F16.
+
+**Ablation:** replace two selection loops with one small private selector. Reuse
+the strict scalar parser; add no command framework or new public API.
+
+**Validation:** native ASan/UBSan/float-cast-overflow tests cover nonpositive and
+out-of-range choices, malformed/overflowing text, empty lists, invalid book
+entries, valid indices, stable vnum precedence (including a vnum that is also a
+list number), INT_MAX IDs and unchanged book bytes. Existing native crafting
+quantity/XP/config tests, module and recipe-persistence contracts pass, as does
+the server build. Ival formula, recipe provider/import and storage inputs remain
+unchanged. Full command/MariaDB qualification remains F16. No database,
+migration or production operation occurred.
+
+**Continuation:** convert enhancement configuration using the shared scalar
+parsers and finish remaining F08/property/input bounds. During F16, explicitly
+qualify the current provider paths: Craft normalizes/imports through
+`crafting_get_player_recipes`, while Forge currently reads SQL directly; do not
+assume identical book filtering/import behavior from the existing contract test.
+
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization
