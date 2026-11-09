@@ -274,7 +274,7 @@ def enter(rig: Rig) -> journey.MudClient:
 
 def save(client: journey.MudClient) -> None:
     client.send("save")
-    client.expect("Save", timeout=20)
+    client.expect("Saving", timeout=20)
     time.sleep(2)
 
 

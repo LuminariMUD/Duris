@@ -1,6 +1,6 @@
 # Flat-file backend removal: fast approach
 
-Status: first pass implemented in a PR stack; test conversion deferred. See "Implementation log" at the end.
+Status: implemented in a PR stack (#859 to #866), ready for review, not merged or deployed. Two tests stay deferred pending owner decisions. See "Implementation log" at the end.
 Date: 2026-11-09.
 Source baseline: `06743dec0`. A recount at `4c2708c96` found no change to
 persistence paths or to the counts below.
@@ -402,8 +402,15 @@ and pick up at the first step not marked done.
 | --- | --- | --- |
 | 2a. Strip `__NO_MYSQL__`, Makefile | `branch/flatfile-backend-removal-plan` | done (#859) |
 | 2b + 3. Runtime dispatch, delete backend | `branch/flatfile-removal-runtime` | done (#860) |
-| 4. Launcher, backup, restore, CI, docs | `branch/flatfile-removal-tools` | done |
-| 5. Tests and deferred list | `branch/flatfile-removal-tests` | done |
+| 4. Launcher, backup, restore, CI, docs | `branch/flatfile-removal-tools` | done (#862) |
+| 5. Tests and deferred list | `branch/flatfile-removal-tests` | done (#863) |
+| Deferred test conversion | `branch/flatfile-removal-test-conversion` | done (#864) |
+| Remove unused shop trade path | `branch/flatfile-removal-shop-trade` | done (#865) |
+| Last journeys, inspector removal, final proof | `branch/flatfile-removal-last-tests` | done (#866) |
+
+Merge in that order, retargeting each child PR before merging its base. The
+`do-not-delete/flatfile-backup-nov-2026` branch is a locked copy of master from
+before this stack.
 
 ### Deferred test conversion (branch `branch/flatfile-removal-test-conversion`, #864)
 
@@ -456,11 +463,6 @@ is how production already behaves; removing the flat-file backend did not change
 Converted journeys assert the MariaDB behavior, and the owner can decide whether to
 restore the old return handling.
 
-Still deferred from the compile batch: `divine_boon_repository` and
-`frag_cap_repository` (their default mode is flat-file only), `flatfile_help_catalog`
-(needs a fake `help_cache` for about 150 assertions), `epic_gain_runtime`, and
-`new_player_bank_hydration` (fixtures rebuilt on the deleted boon and player-domain APIs).
-
 Possible existing server issues found while converting, not caused by this work and
 not changed: `save_account_character_departure` returns before stamping
 `acct_good`/`acct_evil` when `sql_queue` refuses, skipping the side-switch cooldown;
@@ -501,13 +503,26 @@ The fresh-server database run first failed `artifact_guild`, `statistics`,
 or link errors. Each was repaired and passes when run on its own; the whole suite
 was not repeated afterward, because only test files changed.
 
-Known failures that are not from this work: `world_restart_clean`, `_copyover`,
-`_crash`, `_handover`, and `_taken` fail identically on the untouched starting
-commit, timing out waiting for the `Save` prompt.
+`world_restart_clean`, `_copyover`, `_crash`, `_handover`, and `_taken` failed
+identically on the untouched starting commit, timing out waiting for `Save`. The
+journey was stale: the `save` command prints `Saving <name>.`. It now expects
+`Saving`.
 
-First pass is done. Remaining work is the deferred list under "Completion and
-deferred work": each conversion removes a name from
-`FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`, starting at `test_flatfile_combat_journey.py`.
+### Final proof (full stack)
+
+At `3285034f1`, top of the stack before the journey fix above.
+
+| Check | Result |
+| --- | --- |
+| `python3 tests/run_regression_tests.py` | 897 passed, 0 failed, 2 named exclusions |
+| `tests/run_db_tests.sh` | 147 of 152 passed; the 5 failures were the `world_restart_*` journeys above |
+| The 5 `world_restart_*` journeys rerun with the fix, same server binary | all 5 passed |
+
+Run the database suite from a short checkout path. In a path as long as this
+worktree's, Redis unix socket paths exceed 107 characters and Redis exits.
+
+Remaining work is the two names left in `FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`, each
+waiting on the owner decision described above.
 
 ### Step 4 evidence
 
