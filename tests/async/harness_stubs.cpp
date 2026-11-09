@@ -16,10 +16,12 @@
 #include "guild/artifact_guild_state.h"
 #include "persistence/persistence_log.h"
 #include "player/player_save_worker.h"
+#include "player/player_save_pipeline.h"
 #include "player/player_load_items.h"
 #include "economy/divine_boon_activity.h"
 #include "economy/divine_boon_delivery.h"
 #include "sql/sql_async.h"
+#include "sql/item_owner_rows.h"
 #include "economy/divine_trade_runtime.h"
 #include "economy/currency_transaction.h"
 
@@ -52,6 +54,19 @@ HARNESS_STUB starter_kit_state starter_kit_intent_read(uint32_t, critical_comman
 	return starter_kit_state::invalid;
 }
 HARNESS_STUB bool player_revision_snapshot_copy(int, player_revision_snapshot *)
+{
+	return false;
+}
+// A fixture without the save pipeline cannot prepare a new destination container.
+HARNESS_STUB player_save_pipeline_result player_save_pipeline_request(P_char,
+								      player_component_mask_t, int,
+								      int)
+{
+	return player_save_pipeline_result::unavailable;
+}
+HARNESS_STUB bool sql_persistence_item_owner_fields_match(unsigned long long, const char *,
+							  unsigned long long, unsigned long long,
+							  const char *const *)
 {
 	return false;
 }

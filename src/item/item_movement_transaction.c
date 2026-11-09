@@ -17,6 +17,7 @@
 #include "item/item_ownership_runtime.h"
 #include "item/starter_kit_intent.h"
 #include "player/player_revision_state.h"
+#include "player/player_save_pipeline.h"
 #include "guild/artifact_admission.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/collector_transaction.h"
@@ -25,8 +26,11 @@
 #include "player/player_snapshot_codec.h"
 #include "player/player_load_items.h"
 #include "core/prototypes.h"
+#include "core/files.h"
 #include "core/utils.h"
 #include "net/gmcp.h"
+#include "sql/item_owner_rows.h"
+#include "sql/sql_async.h"
 
 #include <algorithm>
 #include <array>
@@ -112,6 +116,13 @@ struct pending_creation_grant
 
 struct creation_grant_queue
 {
+	enum class parent_preparation
+	{
+		none,
+		reading,
+		failed
+	};
+	parent_preparation parent = parent_preparation::none;
 	item_creation_prepare_fn prepare;
 	std::deque<pending_creation_grant> requests;
 	std::deque<pending_creation_grant> following_requests;
@@ -1108,6 +1119,18 @@ bool submit_grant_batch(P_char actor, const std::vector<P_obj> &roots,
 
 bool start_creation_grant(P_char actor, creation_grant_queue &queue, item_movement_reject *reject)
 {
+	if (queue.parent == creation_grant_queue::parent_preparation::reading)
+		return reject_with(reject, item_movement_reject::pending_conflict);
+	if (queue.parent == creation_grant_queue::parent_preparation::failed)
+	{
+		// Keep failure delivery in the existing queue until an offline actor returns.
+		const uint32_t pid = static_cast<uint32_t>(GET_PID(actor));
+		queue.active = true;
+		creation_grant_batch_completion(actor, false, {}, EIO,
+						reinterpret_cast<const uint8_t *>(&pid),
+						sizeof(pid));
+		return true;
+	}
 	if (queue.starter)
 	{
 		player_revision_snapshot revision{};
@@ -1667,6 +1690,68 @@ static bool queue_creation_batch(P_char actor, P_obj const *objects, size_t coun
 		return false;
 	}
 	auto found = creation_grants.find(actor_pid);
+	item_ownership_runtime_entry parent{};
+	if (target_container && !item_ownership_runtime_lookup(target_container->obj_uid, &parent))
+	{
+		// LOAD and other live creations need not have been checkpointed yet. Save
+		// the carried parent, then read its committed ownership on the same writer
+		// before admitting the child grant. No game-thread query or guessed revision.
+		const int room = actor->in_room == NOWHERE ? NOWHERE : world[actor->in_room].number;
+		const auto saved = player_save_pipeline_request(actor, PLAYER_COMPONENT_INVENTORY,
+								RENT_CRASH, room);
+		if (saved != player_save_pipeline_result::queued &&
+		    saved != player_save_pipeline_result::coalesced &&
+		    saved != player_save_pipeline_result::unchanged)
+		{
+			creation_grants.erase(found);
+			return false;
+		}
+		const uint64_t container_uid = target_container->obj_uid;
+		const uint64_t first_uid = objects[0]->obj_uid;
+		found->second.parent = creation_grant_queue::parent_preparation::reading;
+		if (!sql_read(
+			    SQL_ITEM_OWNER_SELECT " WHERE current_item.item_uid=" +
+				    std::to_string(container_uid),
+			    [actor_pid, container_uid, first_uid](bool ok, const sql_rows &rows)
+			    {
+				    auto current = creation_grants.find(actor_pid);
+				    if (current == creation_grants.end() ||
+					current->second.requests.empty() ||
+					current->second.requests.front().item_uid != first_uid ||
+					current->second.parent !=
+						creation_grant_queue::parent_preparation::reading)
+					    return;
+				    bool matched = false;
+				    if (ok && rows.size() == 1 && rows[0].fields.size() == 9 &&
+					rows[0][8])
+				    {
+					    std::array<const char *, 9> fields{};
+					    for (size_t index = 0; index < fields.size(); ++index)
+						    fields[index] = rows[0][index];
+					    matched = sql_persistence_item_owner_fields_match(
+						    container_uid, "player", actor_pid, 0,
+						    fields.data());
+					    item_ownership_runtime_entry ownership{};
+					    matched = matched &&
+						      item_ownership_runtime_lookup(container_uid,
+										    &ownership) &&
+						      item_owner_identity_equal(
+							      ownership.owner,
+							      { item_owner_type::player, actor_pid,
+								0 }) &&
+						      ownership.state == item_custody_state::active;
+				    }
+				    current->second.parent =
+					    matched ?
+						    creation_grant_queue::parent_preparation::none :
+						    creation_grant_queue::parent_preparation::failed;
+			    }))
+		{
+			creation_grants.erase(found);
+			return false;
+		}
+		return true;
+	}
 	item_movement_reject reject = item_movement_reject::none;
 	if (start_creation_grant(actor, found->second, &reject))
 		return true;

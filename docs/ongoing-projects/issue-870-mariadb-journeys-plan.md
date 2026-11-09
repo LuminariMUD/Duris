@@ -1,6 +1,6 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: 13 partial-conversion runners passed their functional journeys; telemetry performance and a shop runtime repair remain before batch 1 is complete.
+Status: 13 partial-conversion runners passed their functional journeys; the shop runtime repair remains before batch 1 is complete.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
 Branch: `branch/issue-870-mariadb-journeys`.
@@ -108,7 +108,7 @@ Each batch should produce a reviewable commit with its focused runtime proof.
 - [x] Finish `run_cleric_rebalance_journey.py` and
   `run_innate_aura_keywords_journey.py`: keep SQL seeding and saved-affect expiry,
   specialization, command and keyword checks. Remove unused inspector/state args.
-- [ ] Finish `run_telemetry_player_journey.py`: remove unused state configuration,
+- [x] Finish `run_telemetry_player_journey.py`: remove unused state configuration,
   retaining the local receiver and its gameplay/copyover/performance assertions.
   Use its local test mode; do not send synthetic events to live analytics.
 - [x] Finish `test_corpse_trap_restart_journey.py`: use SQL item/trap state and
@@ -431,8 +431,7 @@ This is an estimate, not a time limit or permission to omit required proof.
 ### Telemetry and item custody
 
 - Telemetry code `f2ddec22d`, `branch/issue-870-telemetry-journey`,
-  [PR #895](https://github.com/LuminariMUD/Duris/pull/895), draft until the paired
-  performance gate completes. The full normal local-receiver journey passed:
+  [PR #895](https://github.com/LuminariMUD/Duris/pull/895), ready for review after both modes passed. The full normal local-receiver journey passed:
   `python3 tests/async/run_telemetry_player_journey.py --backend mariadb`.
   It received 42 events over 44 attempts/reservations and verified disabled
   save/reload, mortal/group/pet gameplay, outage saves, reload/reconnect,
@@ -461,17 +460,17 @@ This is an estimate, not a time limit or permission to omit required proof.
 
 - Ready PR stack: #887 baseline → #888 launch/shop bootstrap → #890 login/news/
   onboarding/death → #891 corpses → #892 cache/flight → #893 Cleric/aura.
-  #895 telemetry remains draft pending performance; #896 rent/artifact above it
-  is ready. #897 shop conversion is draft pending its reproduced server fix.
+  #895 telemetry and #896 rent/artifact above it are ready. #897 shop conversion is draft pending its reproduced server fix.
   Every PR has an appropriate documentation, bug or enhancement label. No merge,
   tag/release or deployment was requested or performed.
-- Telemetry performance is running after the heavy builds and other journeys
-  finished: `python3 tests/async/run_telemetry_player_journey.py --backend mariadb --performance`.
-  It runs three paired workloads (six legs), not the cloud campaign. Current
-  tool process session: `11319`; inspect/poll that live handle before restarting.
-  Log: `bin/tests/issue-870/telemetry-performance-run.log`. The live performance
-  binary SHA-256 is `0731f59506dd86d4942eb1490e5708bea81bea40821435b7c1dac14f9a56eb3c`.
-  The first disabled leg passed; the complete gate is not yet qualified.
+- Telemetry performance passed all three paired workloads (six legs, 240 saves):
+  `python3 tests/async/run_telemetry_player_journey.py --backend mariadb --performance`.
+  Pooled native pulse p99 was 645 µs disabled / 541 µs enabled; pooled save p99
+  was 1,775,503 / 1,755,792 µs. These local samples passed the existing gate;
+  they are not production capacity measurements. Instrumented binary SHA-256:
+  `0731f59506dd86d4942eb1490e5708bea81bea40821435b7c1dac14f9a56eb3c`.
+  Logs, a hash record and copied pair summaries are under `bin/tests/issue-870/`.
+  Session `11319` is terminal with exit 0; do not restart it.
 - Shop conversion code: `55927b624`, `branch/issue-870-shop-journey`,
   [draft PR #897](https://github.com/LuminariMUD/Duris/pull/897). Its full run
   failed at the preserved fresh/unsaved staff-bag purchase: zero items delivered,
@@ -479,19 +478,29 @@ This is an estimate, not a time limit or permission to omit required proof.
   as `bin/tests/issue-870/shop-unsaved-bag-failure-*`. Do not drop that case.
   The new delayed-sale leg holds `critical_operation_inbox` with a dedicated
   SQL session and requires `ACCOUNT MENU` before unlocking; it is still unrun.
-- Traced shop failure: `shop_begin_produced()` in `src/economy/shop.c` submits
-  a creation batch. `submit_grant_batch()` in
-  `src/item/item_movement_transaction.c` requires a destination entry in
-  `item_ownership_runtime`; a newly loaded carried bag has none. The runtime
-  cache is hydrated on load/read and item-transfer completions, not simply on
-  an inventory save request. Investigate the smallest correct existing creation
-  queue/ownership preparation path. Prepare any necessary server fix as a
-  separate focused PR above #897, with the existing real journey as regression
-  and focused native coverage. Do not add synchronous SQL to the game loop,
-  fake ownership rows, another persistence layer, or discard the live case.
+- Server repair is in progress on `branch/issue-870-fresh-container-grants`
+  above #897. Outcome: newly loaded carried bags can receive a transactional
+  child batch without synchronous SQL or a guessed owner/revision. Reuse the
+  existing creation queue: capture the actor's inventory, queue an ownership
+  read on the same writer, then hydrate its actual row and submit the child
+  batch. Offline/failure delivery stays in that queue and existing business
+  callback. Already-cached parents keep their existing path. No schema,
+  persistence redesign, new service, cache or backend selector is introduced.
+- Repair files: `src/item/item_movement_transaction.c`,
+  `src/sql/{sql.h,item_owner_rows.h}`, `tests/async/harness_stubs.cpp`, and
+  `tests/async/test_item_movement_input_queue.py`. The existing ownership-row
+  declaration/macros move to a narrow header used by both real callers; this
+  avoids importing MySQL connection headers into the item runtime and changing
+  unrelated native-harness compiler flags.
+- Repair proof so far: `make -C src -j4` passed; ASan/UBSan item-input queue
+  regression passed with new unavailable-checkpoint/read, deferred-parent,
+  offline-resume and failure-callback assertions. Creation-batch and
+  reconciliation contracts and the existing newbie lifecycle runtime passed.
+  Prompt runtime and the real full shop journey still need their final results.
+  Keep future server repairs separate from script conversion PR #897.
 - Latest code and plan are committed/pushed on the stacked branches. The worktree
   may be on a parent while its evidence is updated; check `git status` before
-  editing, then continue from `branch/issue-870-shop-journey` for the server repair.
+  editing, then continue from `branch/issue-870-fresh-container-grants` for the server repair.
 - Remaining batches 2–6 are still required: standalone gameplay/protocol/timing,
   named sets and historical assassin comparison, four item journeys, naming/docs,
   full regression/DB gates and qualification of #880's other standalone edits.
