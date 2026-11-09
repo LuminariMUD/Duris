@@ -60,18 +60,30 @@ void mxp_handle_negotiation(P_desc descriptor, unsigned char command)
 
 namespace
 {
-std::string attribute(const std::string &value, bool url)
+std::string attribute(const std::string &value, bool url, bool mudlet)
 {
+	// Mudlet keeps attribute entities literally; MUSHclient decodes them.
+	// Choose the recipient's quoting at this wire boundary, never in producers.
+	if (mudlet && !url &&
+	    (value.find_first_of("<>") != std::string::npos ||
+	     value.find("]]") != std::string::npos))
+		return {};
 	std::string result;
 	for (unsigned char c : value)
 	{
-		// URI targets must survive a legacy terminal's CP437 conversion.
-		if (url && c >= 128)
+		// URI syntax survives attribute quoting, older native clients and CP437.
+		if (url && (c >= 128 || c == '"' || c == '\'' || c == '<' || c == '>' || c == '[' ||
+			    c == ']'))
 		{
 			constexpr char hex[] = "0123456789ABCDEF";
 			result += '%';
 			result += hex[c >> 4];
 			result += hex[c & 15];
+			continue;
+		}
+		if (mudlet)
+		{
+			result += c;
 			continue;
 		}
 		switch (c)
@@ -96,17 +108,24 @@ std::string attribute(const std::string &value, bool url)
 			break;
 		}
 	}
-	return result;
+	char quote = '"';
+	if (mudlet && result.find(quote) != std::string::npos)
+	{
+		quote = '\'';
+		if (result.find(quote) != std::string::npos)
+			return {};
+	}
+	return quote + result + quote;
 }
 
-// Preserve raw ANSI SGR used by existing output, but never let authored ESC[z
-// sequences leave locked MXP mode. The link freezer declines raw-ESC metadata.
+// Preserve SGR and the greeting's cursor-forward layout, but never allow raw
+// MXP mode changes. The link freezer declines raw-ESC metadata.
 AnsiString literal_controls(const AnsiString &text)
 {
 	AnsiString result;
 	for (size_t i = 0; i < text.size(); ++i)
 	{
-		bool sgr = false;
+		bool safe_csi = false;
 		if (text.ch(i) == '\x1b' && text.ch(i + 1) == '[')
 		{
 			size_t end = i + 2;
@@ -114,9 +133,9 @@ AnsiString literal_controls(const AnsiString &text)
 			       ((text.ch(end) >= '0' && text.ch(end) <= '9') ||
 				text.ch(end) == ';'))
 				++end;
-			sgr = text.ch(end) == 'm';
+			safe_csi = text.ch(end) == 'm' || text.ch(end) == 'C';
 		}
-		if (text.ch(i) == '\x1b' && !sgr)
+		if (text.ch(i) == '\x1b' && !safe_csi)
 		{
 			result.push_back('^' | text.attr(i));
 			result.push_back('[' | text.attr(i));
@@ -133,7 +152,7 @@ AnsiString literal_controls(const AnsiString &text)
 }
 
 std::string mxp_render_output(const char *markup, std::span<const OutputLink> links,
-			      bool plain_terminal, int lastbit)
+			      bool plain_terminal, int lastbit, bool mudlet)
 {
 	auto frame = freeze_output_links(markup, links, plain_terminal);
 	frame.text = literal_controls(frame.text);
@@ -154,10 +173,16 @@ std::string mxp_render_output(const char *markup, std::span<const OutputLink> li
 	for (const auto &link : frame.links)
 	{
 		emit(position, link.begin);
+		const auto target =
+			attribute(link.target, link.kind == OutputLinkKind::Url, mudlet);
+		if (target.empty())
+		{
+			emit(link.begin, link.end);
+			position = link.end;
+			continue;
+		}
 		const std::string tag = link.kind == OutputLinkKind::Command ? "SEND" : "A";
-		const std::string open = "\x1b[1z<" + tag + " HREF=\"" +
-					 attribute(link.target, link.kind == OutputLinkKind::Url) +
-					 "\">\x1b[7z";
+		const std::string open = "\x1b[1z<" + tag + " HREF=" + target + ">\x1b[7z";
 		const std::string close = "\x1b[1z</" + tag + ">\x1b[7z";
 		position = link.begin;
 		while (position < link.end)

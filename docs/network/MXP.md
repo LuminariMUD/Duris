@@ -40,10 +40,16 @@ link frame converts them to visible Unicode code-point ranges after the terminal
 The renderer emits `<SEND HREF="...">` for help commands and `<A HREF="...">` for
 URLs. Every generated tag is emitted in secure mode (`ESC [ 1 z`), immediately
 returning to locked mode. Labels and ordinary text stay in locked mode. Targets
-escape `&`, `<`, `>`, quotes and apostrophes. Newlines and page boundaries close
+use quoted attributes, with entity escaping for standards-decoding clients.
+Mudlet retains entities literally inside attributes, so the existing negotiated
+client name selects literal attribute values for it. This decision is local to
+the recipient's serializer, including snoopers, and uses the client name already
+retained by native copyover. It adds no negotiation, registry or saved field.
+Newlines and page boundaries close
 the current link; the next portion opens the same target independently.
 
-Raw input cannot switch MXP modes: non-SGR escape controls are displayed as `^[`,
+Raw input cannot switch MXP modes: escape controls other than ANSI SGR and the
+greeting's numeric cursor-forward CSI are displayed as `^[`,
 other C0/C1 controls as `?`, with newline/tab and existing ANSI SGR retained.
 Literal angle brackets and ampersands in labels remain literal text. Labels and
 targets never become raw executable code or HTML. Clicking a command remains a
@@ -89,10 +95,26 @@ rejected URL cannot reappear as a shorter fragment link. Large help chunks map
 from the full page's character offsets. News acceptance counts the canonical
 bytes actually admitted to the existing command accumulator.
 
-Non-ASCII URL target bytes are percent-encoded UTF-8 in MXP attributes, keeping
-destinations intact through CP437 terminal conversion. Display labels keep their
-normal terminal character conversion. Help commands retain normal client input
-encoding and command dispatch.
+Non-ASCII URL target bytes and URI punctuation unsafe for native attribute or
+legacy-client quoting are percent-encoded in MXP attributes. Query ampersands
+retain their separator meaning. Display labels keep their normal terminal
+character conversion. Help commands retain normal client input encoding and
+command dispatch. Mudlet command targets use a quote delimiter absent from the
+target; targets with both quote types, angle brackets or a legacy long-string
+delimiter fall back to readable unlinked labels. No target is shortened or
+submitted with altered help text.
+
+This distinction is verified in
+[Mudlet's pinned attribute consumer](https://github.com/Mudlet/Mudlet/blob/Mudlet-5.1.1/src/TMxpLinkTagHandler.cpp)
+and [MUSHclient's entity substitution](https://github.com/nickgammon/mushclient/blob/v5.06/mxp/mxpStart.cpp),
+as well as actual native clicks. Mudlet 5.1.1 and MUSHclient 5.06 were qualified
+against a disposable MariaDB MUD with synthetic help pages. Both followed a
+help reference during active paging and opened
+`https://example.test/?x=1&name=two` with the exact query intact. Mudlet also
+passed before/after an actual native hotboot with MCCP: the accepted socket inode
+remained the same and a subsequent help click sent exactly one command. The
+declared Mudlet 4.19.1 minimum was source-inspected for attribute behavior but
+its binary was unavailable in this environment; it was not run.
 
 ## Verification boundaries
 

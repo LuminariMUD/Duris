@@ -28,8 +28,9 @@ No database migration or help-content rewrite is expected.
 - Repository: `LuminariMUD/Duris`.
 - Base: `origin/master` at `91f40a01fe` when this worktree was created.
 - First PR branch: `branch/clickable-links-phase1`.
-- Current implementation branch: `branch/clickable-links-web-protocol`, stacked
-  on `branch/clickable-links-urls` (then help, MXP, output and the first PR branch).
+- Current implementation branch: `branch/clickable-links-qualification`, stacked
+  on `branch/clickable-links-web-protocol`, then URLs, help, MXP, output and the
+  first PR branch.
 - Worktree: `/home/aiwithapex/projects/duris-worktrees/clickable-links-phase1`.
 - Plan: `docs/ongoing-projects/clickable-links-phase1.md` in that worktree.
 - Deliver focused, reviewable commits and PRs as each chunk is verified. Stack
@@ -694,6 +695,64 @@ client clicks and original-socket hotboot qualification. Browser fixture QA is
 not a claim that those live server/native journeys have passed. The local
 `mudlet` wrapper points to an absent AppImage; locate or provision an isolated
 client without changing user profiles. The goal remains active.
+
+### Chunk 8: real clients, hotboot and native compatibility
+
+The real isolated MariaDB server and /play browser passed account entry,
+help-reference activation during active paging, keyboard activation of retained
+history targets, a help search-result click, exact external query-string URLs
+and say-channel URLs. This uses normal WebSocket traffic and server dispatch,
+not replayed payloads. Evidence: bin/tests/phase1-web-client-live.log and
+/tmp/clickable-links-live-browser.png. The booted existing GMCP lifecycle
+journey also passes (phase1-gmcp-booted.log), as does the MariaDB/Redis copyover
+journey with two actual process replacements (phase1-copyover-booted.log).
+
+Native Mudlet 5.1.1 with default MXP/MCCP negotiated successfully. A real mouse
+click sent exactly one help Weather and replaced the active pager. Refresh and
+normal pager teardown were exercised in the client; forward/back and clipping
+retain the integration harness's coverage. Native testing exposed two
+compatibility regressions, repaired on this qualification branch:
+
+- Mudlet retains the amp entity literally in HREF attributes, whereas MUSHclient
+  decodes entities. The recipient's existing negotiated client_name now selects
+  the correct attribute serialization. It is already retained by copyover and
+  no new protocol state is needed. URI punctuation is serialized safely; unusual
+  help targets that cannot be represented safely in the older Mudlet attribute
+  form stay readable without a link. The protocol document specifies the limits.
+- The existing greeting uses numeric cursor-forward ANSI for its layout. Native
+  MXP now preserves that operation alongside SGR while still defusing raw MXP
+  mode changes. It no longer displays those layout escapes as caret text.
+
+After staging the repaired binary in the private runtime, a real native hotboot
+kept the same accepted TCP socket inode with MCCP active. Help/URL links rendered
+again; a real URL click opened exactly https://example.test/?x=1&name=two through
+an isolated native URL handler without sending a game command, and a help click
+again sent exactly one command. No reconnect was substituted for this proof.
+The before/after URL capture and socket observation are under
+/tmp/clickable-links-native/; screenshots include help.png, clicked.png and
+after-hotboot.png. The manual lab controller's 30-minute holding deadline later
+terminated its fixture; that cleanup deadline is not an application assertion or
+an additional passing journey. Its individual click/socket assertions had
+already passed. No production account, listener, profile or database was used.
+
+The user confirmed Mudlet is the actual client and approved a brief portable
+MUSHclient 5.06 cross-check. That client also entered the same isolated MUD,
+followed a help link during paging and opened the HTTPS URL above. The browser's
+focused address bar confirmed the complete destination with the literal query
+ampersand. The URL's network error is expected: example.test is synthetic.
+MUSHclient's portable first-run resource/import dialogs were test setup only.
+No native client package was modified. Mudlet 4.19.1 source was inspected for the
+same attribute behavior; the existing launcher referred to an absent binary and
+the attempted old release download returned 404. That exact binary remains
+untested; actual qualification used official Mudlet 5.1.1.
+
+Normal and ASan/UBSan output integration pass with new per-recipient attribute,
+snooper, quote/fallback, URI-punctuation and greeting-layout regressions.
+make -C src -j8, formatting, Telnet/TLS short-write/backpressure/MCCP runtime and
+copyover evidence tests pass. Logs:
+bin/tests/phase1-native-compat-{output,asan,build,telnet,copyover}.log.
+The final compatibility PR and review metadata are being prepared. Native and
+browser feature qualification is complete; nothing has been merged or deployed.
 
 ## Scope review
 
