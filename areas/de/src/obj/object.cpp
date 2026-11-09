@@ -212,6 +212,8 @@ bool compareObjectType(const objectType *obj1, const objectType *obj2)
 		return false;
 	if (obj1->affect4Bits != obj2->affect4Bits)
 		return false;
+	if (obj1->affect5Bits != obj2->affect5Bits)
+		return false;
 
 	if (obj1->objType != obj2->objType)
 		return false;
@@ -841,6 +843,7 @@ int itemvalue(objectType *obj)
 	input.bitvector2 = obj->affect2Bits;
 	input.bitvector3 = obj->affect3Bits;
 	input.bitvector4 = obj->affect4Bits;
+	input.bitvector5 = obj->affect5Bits;
 	for (int i = 0; i < NUMB_OBJ_VALS; ++i)
 		input.value[i] = obj->objValues[i];
 	for (int i = 0; i < NUMB_OBJ_APPLIES; ++i)

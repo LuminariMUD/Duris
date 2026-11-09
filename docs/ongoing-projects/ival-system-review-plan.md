@@ -97,6 +97,12 @@ clang tooling to parse this checkout. This is local tool selection, not a source
 or warning-policy exception.
 The commit hooks passed with `CLANG_TIDY=/usr/bin/clang-tidy-18` and
 `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/x86_64-linux-gnu/c++/13:/usr/include/c++/13/backward`.
+On this NTFS checkout, the worktree/revision form of `git clang-format --diff`
+can produce only synthetic `100644 -> 100755` mode changes despite
+`core.fileMode=false`. Keep source modes unchanged. Staged formatting checks and
+direct `clang-format --style=file --dry-run --Werror <touched files>` verify the
+actual content; use a native Linux checkout for the final revision-wide wrapper
+check if its mode-only artifact persists.
 
 **Ablation:** this independent part of Stage 4 can land before evaluator changes
 because it removes a dependency that never affects load admission. Updating the
@@ -280,7 +286,71 @@ reader's unrecognized-extra-data branch rejects `B5`; preserve ordinary records
 and apply/description/trap ordering when adding support, and copy bank 5 into the
 new valuation input without introducing an unreviewed weight.
 
-Next: repair editor bank-5 read/write preservation with a native round trip,
+### Chunk 6 — preserve bank 5 through editor object I/O (implemented)
+
+Branch: `branch/ival-editor-b5-roundtrip`, based on `branch/ival-editor-object-formatting`.
+Formatting prerequisite: `a3b901b18`,
+[PR #889](https://github.com/LuminariMUD/Duris/pull/889) (enhancement label),
+stacked on #886. Only pre-existing formatting drift in the object structure,
+reader, and writer is changed there; both editor builds passed.
+
+**Outcome:** read and write the server's optional `B5` record without losing the
+fifth affect bank or following descriptions/applies/traps, and pass that bank to
+the shared evaluator. Preserve legacy records without `B5`. Reject malformed or
+out-of-range masks rather than narrowing them silently.
+The authored mask and shared input explicitly retain all 64 bits; the legacy
+editor's other bank fields remain unchanged. Clone/equality behavior includes B5.
+
+**Non-goals:** new valuation weights, new editor flag menus, player persistence,
+or a new object-file dialect. This is authored content I/O, not a server storage
+backend; player persistence remains MariaDB only.
+
+**Files:** `areas/de/src/obj/{object.h,readobj.cpp,writeobj.cpp,object.cpp}`, the
+object-save declaration and callers in `fh.h` and `misc/misc.cpp`, and a focused
+native reader/writer regression. Formatting prerequisites remain separate commits.
+
+**Proof:** `python3 tests/async/test_editor_object_roundtrip.py` passed with the
+production reader/writer, clone/comparison code, and real lexical/description/
+keyword helpers under ASan/UBSan. There are 74 valid round trips, including absent
+and zero B5, every mask bit, the full 64-bit mask, leading whitespace, same-line
+and next-line masks, all four applies, descriptions/traps, and following records.
+Malformed, duplicate, overflowing, and overlong masks exit cleanly without
+sanitizer findings. The real editor valuation adapter also forwards the full B5
+mask to a controlled numeric endpoint; this is field-transfer proof, not a new
+valuation weight. Existing `test_monk_glove_tools.py` checks passed with the actual
+shared numeric module.
+
+Native boundary testing found the reader's 512-byte buffer violated the lexical
+helper's documented three-byte reserve. Its allocation now includes that reserve.
+The compiler also flagged a progress-message overflow in the full file writer;
+the pathname itself was assembled into another unchecked fixed buffer. Separate
+commit `8b7438a71` replaces both with strings. The native test executes the full
+writer with a valid nested path longer than 512 bytes and an oversized filename,
+verifying success or a normal open error without buffer overflow.
+
+Independent PR review reproduced a tab/vertical-tab-prefixed negative mask on
+the next line being accepted as unsigned. The reader now normalizes whitespace
+at that boundary before sign validation; positive forms still round-trip.
+Review also reproduced the full save workflow clearing `g_madeChanges` after an
+object write to `/dev/full` failed. The object writer now reports open/write/close
+failure, the full save returns before clearing dirty state, and object-only mode
+retains its retry/discard prompt. The existing native harness executes the real
+`writeFiles()` with other area writers doubled: success clears dirty state;
+open failure and buffered/unbuffered write failures preserve it. Failed output
+may be partial and is reported as such; this does not introduce multi-file atomic
+publication. The additional save-workflow formatting is isolated in `7b3346403`.
+
+Both maintained editor builds and `make -C src -j4` passed. Formatting/clang-tidy
+commit checks passed, and direct whole-file clang-format checks passed for all
+five touched C/C++ files. The revision-wide wrapper check produced only the NTFS
+mode artifact described above, with no text diff. Implementation: `c697d5e7b`;
+the filename repair is the preceding `8b7438a71` commit.
+
+**Ablation:** one stored field and one optional record in the existing parser and
+writer suffice. Reuse the native I/O helpers; no parallel parser, converter,
+framework, or valuation-policy change is needed.
+
+Next: finish editor bank-5 read/write preservation with a native round trip,
 then continue the native binding/context catalog and full-context reporting.
 The shared arithmetic now supplies the server and editor; do not reintroduce a
 copied formula while completing diagnostics and template normalization.

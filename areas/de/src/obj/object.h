@@ -91,6 +91,7 @@ typedef struct _objectType
 	uint affect2Bits;
 	uint affect3Bits;
 	uint affect4Bits;
+	unsigned long long affect5Bits;
 
 	int objValues[NUMB_OBJ_VALS];
 

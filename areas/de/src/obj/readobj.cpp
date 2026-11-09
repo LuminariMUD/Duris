@@ -34,6 +34,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <cerrno>
+#include <cctype>
 
 #include "../fh.h"
 #include "../types.h"
@@ -64,7 +66,8 @@ objectType *readObjectFromFile(FILE *objectFile, char *nextStrn, const bool chec
 {
 	uchar applies = 0;
 	bool preConv = g_oldObjConv;
-	char strn[512];
+	bool read_bank5 = false;
+	char strn[512 + 3]; // readAreaFileLine reserves three characters beyond its limit.
 
 	objectType *objPtr;
 
@@ -311,7 +314,7 @@ objectType *readObjectFromFile(FILE *objectFile, char *nextStrn, const bool chec
 		setVarBoolVal(&g_varHead, VAR_OBJAFFECT_NAME, true, false);
 	}
 
-	// Now, check for E, A, T, #, or EOF - E is extra description, A is an "object
+	// Now, check for B5, E, A, T, #, or EOF - E is extra description, A is an "object
 	// apply modifier", T is a trap, # at the start of a string means that we've
 	// hit the next object, and EOF means the list of objects is done
 
@@ -330,9 +333,46 @@ objectType *readObjectFromFile(FILE *objectFile, char *nextStrn, const bool chec
 			break;
 		}
 
+		char *record = strn;
+		while (std::isspace(static_cast<unsigned char>(*record)))
+			++record;
 		if (strn[0] == '\0') // blank line
 		{
 			continue;
+		}
+		else if (!strncmp(record, "B5", 2) &&
+			 (record[2] == '\0' || std::isspace(static_cast<unsigned char>(record[2]))))
+		{
+			char *value = record + 2;
+			while (std::isspace(static_cast<unsigned char>(*value)))
+				++value;
+			// The server's token reader also accepts the mask on the next line.
+			if (!*value)
+			{
+				if (!readAreaFileLine(objectFile, strn, 512, ENTITY_OBJECT, objNumb,
+						      ENTITY_TYPE_UNUSED, ENTITY_NUMB_UNUSED,
+						      "affect5 mask", 1, NULL, false, true))
+					exit(1);
+				value = strn;
+			}
+			while (std::isspace(static_cast<unsigned char>(*value)))
+				++value;
+			char *end;
+			errno = 0;
+			const auto mask = strtoull(value, &end, 10);
+			while (std::isspace(static_cast<unsigned char>(*end)))
+				++end;
+			if (read_bank5 || value == end || *value == '-' || *end || errno == ERANGE)
+			{
+				char message[128];
+				snprintf(message, sizeof(message),
+					 "Error: Invalid B5 mask for object #%u. Aborting.\n",
+					 objNumb);
+				_outtext(message);
+				exit(1);
+			}
+			objPtr->affect5Bits = mask;
+			read_bank5 = true;
 		}
 		else if (strcmpnocase(strn, "E")) // extra description
 		{

@@ -33,6 +33,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <string>
 
 #include "../fh.h"
 #include "../types.h"
@@ -110,6 +111,9 @@ void writeObjecttoFile(FILE *objectFile, const objectType *obj)
 		fputs("\n", objectFile);
 	}
 
+	if (obj->affect5Bits)
+		fprintf(objectFile, "B5 %llu\n", obj->affect5Bits);
+
 	// write all the extra descs
 
 	descNode = obj->extraDescHead;
@@ -147,42 +151,33 @@ void writeObjecttoFile(FILE *objectFile, const objectType *obj)
 // writeObjectFile : Write the object file - contains all the objects
 //
 
-void writeObjectFile(const char *filename)
+bool writeObjectFile(const char *filename)
 {
 	FILE *objectFile;
-	char objectFilename[512] = "";
-	char strn[512];
 
 	uint numb = getLowestObjNumber();
 	const uint highest = getHighestObjNumber();
 
 	// assemble the filename of the object file
 
-	if (g_readFromSubdirs)
-		strcpy(objectFilename, "obj/");
-
-	if (filename)
-		strcat(objectFilename, filename);
-	else
-		strcat(objectFilename, getMainZoneNameStrn());
-
-	strcat(objectFilename, ".obj");
+	const std::string objectFilename = std::string(g_readFromSubdirs ? "obj/" : "") +
+					   (filename ? filename : getMainZoneNameStrn()) + ".obj";
 
 	// open the object file for writing
 
-	if ((objectFile = fopen(objectFilename, "wb")) == NULL)
+	if ((objectFile = fopen(objectFilename.c_str(), "wb")) == NULL)
 	{
 		_outtext("Couldn't open ");
-		_outtext(objectFilename);
+		_outtext(objectFilename.c_str());
 		_outtext(" for writing - aborting\n");
 
-		return;
+		return false;
 	}
 
-	sprintf(strn, "Writing %s - %u object type%s\n", objectFilename, g_numbObjTypes,
-		plural(g_numbObjTypes));
-
-	_outtext(strn);
+	const std::string message = "Writing " + objectFilename + " - " +
+				    std::to_string(g_numbObjTypes) + " object type" +
+				    plural(g_numbObjTypes) + "\n";
+	_outtext(message.c_str());
 
 	while (numb <= highest)
 	{
@@ -194,5 +189,13 @@ void writeObjectFile(const char *filename)
 		numb++;
 	}
 
-	fclose(objectFile);
+	const bool write_failed = ferror(objectFile);
+	if (fclose(objectFile) != 0 || write_failed)
+	{
+		_outtext("Couldn't write ");
+		_outtext(objectFilename.c_str());
+		_outtext(" - save failed. Output may be partial; changes remain unsaved.\n");
+		return false;
+	}
+	return true;
 }
