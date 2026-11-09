@@ -61,16 +61,11 @@ failure of those requirements.
 
 ## A — publish the existing enhancement patch (F10)
 
-**Next action.** The local patch in `src/item/enhance.c`, `lib/enhance.cfg`, and
-`tests/async/test_enhance_ival_runtime.py` is already implemented and tested:
-exact displayed/debited currency; removal of the inert spell section and undefined
-flag row; unsupported sections still warn. Spell producers and dynamic-affect
-representation have been traced; no further spell-policy investigation is needed.
-
-**Finish:** remove the trailing blank line reported by `git diff --check`, review
-the existing diff, run required commit hooks, and commit/push/open its focused PR.
-Reuse the completed native enhancement checks, related contracts, and server
-build unless the code changes. Do not add more config validation to this batch.
+**Complete:** `a2860a3aa`, [PR #978](https://github.com/LuminariMUD/Duris/pull/978)
+(bug label), stacked on #977. Exact displayed/debited currency, removed inert
+spell/undefined-flag rows, and retained unsupported-section diagnostics. Native
+sanitizer enhancement tests, related contracts, server build and format/tidy
+checks passed. Existing results were reused after the plan-only revision.
 
 ## B — finish valuation semantics and explanation (F05/F06/F09/F11)
 
@@ -185,12 +180,12 @@ by the batch. Codec/source-contract tests alone never prove a persistence journe
 
 Local: `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
 Remote: `duris-staging:/home/staging/duris-worktrees/ival-system-improvements`.
-Plan branch: `branch/ival-focused-delivery-plan`, based on
-`branch/ival-property-bounds` at `83c45c569`. The three runtime/config/test files
-listed in A remain uncommitted and must be preserved; this plan change is docs-only.
-Synchronize only committed work to the remote development worktree.
+Latest published implementation: `branch/ival-enhancement-contract`, PR #978,
+based on `branch/ival-focused-delivery-plan` (#977). Step A's prior uncommitted
+patch is now committed. Synchronize committed work to the remote worktree.
 
 Current formula: `ival-v7-numeric-bounds`. Archive/evidence links above preserve
 baseline revisions and earlier PRs. Read the relevant historical finding when
 needed; do not reload the entire archive or restart the audit. The next
-implementation action is A, followed immediately by B.
+implementation action is B; start with the existing proc mapping and its native
+characterization fixture, then finish the remaining B acceptance cases.
