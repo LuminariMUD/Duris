@@ -15,7 +15,8 @@ struct item_value_input
 {
 	int type = 0;
 	unsigned int wear_flags = 0, extra_flags = 0, extra2_flags = 0;
-	unsigned long bitvector = 0, bitvector2 = 0, bitvector3 = 0, bitvector4 = 0, bitvector5 = 0;
+	unsigned long bitvector = 0, bitvector2 = 0, bitvector3 = 0, bitvector4 = 0;
+	unsigned long long bitvector5 = 0;
 	int value[NUMB_OBJ_VALS]{};
 	item_value_apply affected[MAX_OBJ_AFFECT]{};
 };

@@ -111,6 +111,9 @@ void writeObjecttoFile(FILE *objectFile, const objectType *obj)
 		fputs("\n", objectFile);
 	}
 
+	if (obj->affect5Bits)
+		fprintf(objectFile, "B5 %llu\n", obj->affect5Bits);
+
 	// write all the extra descs
 
 	descNode = obj->extraDescHead;
