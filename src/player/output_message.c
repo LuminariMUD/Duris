@@ -145,5 +145,7 @@ void send_authored_output(const char *message, char_data *recipient, const Outpu
 				context;
 	resolved.spans = context.spans;
 	resolved.original_message = context.original_message;
+	resolved.links = context.links;
+	resolved.links_prepared = context.links_prepared;
 	send_to_char(message, recipient, preserve_authored_layout(message, resolved));
 }

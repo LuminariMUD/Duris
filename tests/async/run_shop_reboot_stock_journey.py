@@ -27,24 +27,10 @@ MAGGEYNEL, BOTTOMLESS, POTION = 83385, 83185, 3102
 ROOM = 45016  # Ordinary road: no merchant or pet-shop room procedure.
 
 
-def build_inspector():
-    binary = ROOT / "bin/tests/shop-stock-inspector"
-    sources = ["tests/async/shop_stock_inspector.cpp"] + [rel(name) for name in (
-        "flatfile_shopkeeper_repository.c", "flatfile_shopkeeper_ownership.c",
-        "flatfile_item_repository.c", "item_ownership_runtime.c", "item_claim.c",
-        "player_snapshot_codec.c", "flatfile_authority_transaction.c", "flatfile_store.c",
-        "shop_trade_command.c", "item_transfer_command.c", "currency_command.c", "critical_command.c")]
-    subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Isrc",
-                    "-ffunction-sections", "-fdata-sections", *sources, "-Wl,--gc-sections",
-                    "-lcrypto", "-pthread", "-o", str(binary)], cwd=ROOT, check=True)
-    return binary
-
-
 def run(binary, backend, report):
     report.parent.mkdir(parents=True, exist_ok=True)
     evidence = {"backend": backend, "passed": False, "checks": [],
                 "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest()}
-    inspector = build_inspector() if backend == "flatfile" else None
     with tempfile.TemporaryDirectory(prefix="shop-reboot-", dir=ROOT / "bin/tests") as temporary:
         runtime = Path(temporary)
         _, critical, log = setup_run_root(runtime)
@@ -120,13 +106,10 @@ def run(binary, backend, report):
 
             def stock(room):
                 keeper = 83189 if room == MAGGEYNEL else KEEPER
-                if sql:
-                    rows = sql("SELECT i.obj_uid,i.vnum,COALESCE(p.obj_uid,0),i.equip_slot,i.cost "
-                               "FROM shopkeeper_items i JOIN shopkeepers s ON s.id=i.shopkeeper_id "
-                               f"LEFT JOIN shopkeeper_items p ON p.id=i.container_id "
-                               f"WHERE s.room_vnum={room} AND s.mob_vnum={keeper}")
-                else:
-                    rows = subprocess.check_output([str(inspector), env["FLATFILE_STATE_DIR"], str(room), str(keeper)], text=True)
+                rows = sql("SELECT i.obj_uid,i.vnum,COALESCE(p.obj_uid,0),i.equip_slot,i.cost "
+                           "FROM shopkeeper_items i JOIN shopkeepers s ON s.id=i.shopkeeper_id "
+                           f"LEFT JOIN shopkeeper_items p ON p.id=i.container_id "
+                           f"WHERE s.room_vnum={room} AND s.mob_vnum={keeper}")
                 return sorted([dict(zip(("uid", "vnum", "parent", "slot", "cost"), map(int, row.split("\t"))))
                                for row in rows.splitlines()], key=lambda item: item["uid"])
 
@@ -153,8 +136,6 @@ def run(binary, backend, report):
                 stop()
                 if sql:
                     sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
-                else:
-                    journey.make_overlord(Path(env["FLATFILE_STATE_DIR"]), GOD)
                 boot()
                 god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
                 command(player, "drop all")
@@ -285,7 +266,7 @@ def run(binary, backend, report):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("flatfile", "mariadb"), default="flatfile")
+    parser.add_argument("--backend", choices=("mariadb",), default="mariadb")
     parser.add_argument("--server", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()

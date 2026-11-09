@@ -23,8 +23,10 @@
 #include <vector>
 
 constexpr uint16_t ITEM_TRANSFER_PAYLOAD_VERSION = 7;
+constexpr uint16_t ITEM_TRANSFER_PAID_CREATION_VERSION = 8;
 constexpr size_t ITEM_TRANSFER_MAX_ITEMS = 3000;
 constexpr size_t ITEM_TRANSFER_HEADER_BYTES = 96;
+constexpr size_t ITEM_TRANSFER_PAID_CREATION_HEADER_BYTES = 104;
 constexpr size_t ITEM_TRANSFER_ENTRY_BYTES = 40;
 constexpr size_t ITEM_TRANSFER_ITEM_BLOB_MAX_BYTES = 128 * 1024;
 constexpr size_t ITEM_TRANSFER_RESULT_BYTES = 48;
@@ -125,6 +127,9 @@ struct item_transfer_payload
 	std::array<item_transfer_entry, ITEM_TRANSFER_MAX_ITEMS> items;
 	uint32_t item_blob_size;
 	std::array<uint8_t, ITEM_TRANSFER_ITEM_BLOB_MAX_BYTES> item_blob;
+	// Version 8: reason_id is the negative shop price, settled with item custody.
+	bool paid_creation = false;
+	uint64_t paid_wallet_revision = 0;
 };
 
 struct item_transfer_result
@@ -134,7 +139,7 @@ struct item_transfer_result
 	uint64_t from_owner_revision;
 	uint64_t to_owner_revision;
 	uint64_t max_item_revision;
-	uint64_t corpse_revision;
+	uint64_t corpse_revision; // wallet revision for a paid creation receipt
 	// Set only when the same durable authority commit also changed collector
 	// metadata. The game thread uses this replay-safe flag to invalidate its
 	// asynchronous collector projection after the item result is published.

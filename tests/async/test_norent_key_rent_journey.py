@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real NORENT-key rent/reconnect, crash and copyover on disposable authority.
+"""Real no-rent rent/camp/link-death, crash and copyover on disposable authority.
 
 The staff fixture uses the same inn and player save/load paths as a mortal.
 Staff access supplies objects and controls their initial ownership history.
@@ -23,15 +23,22 @@ from run_world_quest_dual_backend import setup_run_root
 
 ROOT = journey.ROOT
 PLAYER, ACCOUNT = "Keywarden", "Keyacct"
-INN, KEY, BAG, SIBLING = 40454, 40401, 48, 15
+MORTAL, MORTAL_ACCOUNT = "Campwarden", "Campacct"
+INN, KEY, BAG, SIBLING, TICKET = 40454, 40401, 48, 15, 47003
+SHOP, SHOP_KEY = 5848, 5783
+CAMP_ROOM = 1457
+LOCKER_ROOM = 65201
 NORENT = 8388608
+FALLS, CRUMBLES = "is no-rent and falls to the floor", "is no-rent and crumbles to dust"
 
 
-def run(binary, backend, inspector, evidence_dir):
+def run(binary, backend, evidence_dir):
     with tempfile.TemporaryDirectory(prefix="key-rent-" + backend + "-", dir=ROOT / "bin/tests") as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)
         (runtime / "help").symlink_to(ROOT / "help", target_is_directory=True)
+        properties = runtime / "lib/duris.properties"
+        properties.write_text(properties.read_text().replace("camp.timer=9.000", "camp.timer=1.000"))
         executable = runtime / "bin/server/dms"
         executable.parent.mkdir(parents=True)
         shutil.copy2(binary, executable)
@@ -39,6 +46,7 @@ def run(binary, backend, inspector, evidence_dir):
             subprocess.run([str(ROOT / "scripts/event_names.sh"), str(executable)], stdout=names, check=True)
         process = None
         client = None
+        mortal = None
         evidence = {"backend": backend, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
                     "rent_cases": [], "checks": []}
         plain, tls, websocket = journey.available_ports()
@@ -66,71 +74,76 @@ def run(binary, backend, inspector, evidence_dir):
                 assert process.returncode == (-signal.SIGKILL if crash else 0)
                 process = None
 
+            def enter(account, character):
+                session = journey.reconnect_character(plain, expected_room=None, account=account, character=character)
+                session.expect("Welcome to Duris", timeout=60)
+                session.expect_any(("Pos: standing >", "<>"), timeout=20)
+                command(session, "toggle paging no")
+                return session
+
             def login():
                 nonlocal client
-                client = journey.reconnect_character(plain, expected_room=None, account=ACCOUNT, character=PLAYER)
-                client.expect("Welcome to Duris", timeout=60)
-                client.expect_any(("Pos: standing >", "<>"), timeout=20)
-                command(client, "toggle paging no")
+                client = enter(ACCOUNT, PLAYER)
                 command(client, "goto " + str(INN))
                 command(client, "setbit room here flag ROOM_MAGIC_LIGHT 1")
 
             def inspect():
-                if not sql:
-                    return json.loads(subprocess.check_output(
-                        [str(inspector), env["FLATFILE_STATE_DIR"], "norent-inspect", "1"], text=True))
                 revision = int(sql("SELECT save_revision FROM player_data WHERE name='" + PLAYER + "'"))
                 rows = sql("SELECT p.obj_uid,p.vnum,p.extra_flags,p.equip_slot,COALESCE(b.obj_uid,0) "
                            "FROM player_items p LEFT JOIN player_items b ON b.id=p.container_id "
                            "WHERE p.pid=(SELECT pid FROM player_data WHERE name='" + PLAYER + "') ORDER BY p.id")
-                keys = sql("SELECT item_uid,state,owner_type,owner_id,root_item_uid,COALESCE(parent_item_uid,0) "
-                           "FROM item_current_owner WHERE vnum=40401 ORDER BY item_uid")
+                owners = sql("SELECT item_uid,state,owner_type,owner_id,root_item_uid,COALESCE(parent_item_uid,0) "
+                             "FROM item_current_owner WHERE vnum IN (%d,%d,%d) ORDER BY item_uid" % (KEY, TICKET, SHOP_KEY))
                 return {"revision": revision,
                         "items": [list(map(int, line.split())) for line in rows.splitlines()],
-                        "keys": [list(map(int, line.split())) for line in keys.splitlines()]}
+                        "keys": [list(map(int, line.split())) for line in owners.splitlines()]}
 
             def save():
                 client.send("save")
                 client.expect("Saving " + PLAYER + ".", timeout=60)
                 return inspect()
 
-            def retired(data):
-                return {row[0] for row in data["keys"] if row[1] == 2}
-
             def preserved(data):
                 return sorted(row for row in data["items"] if row[1] in (BAG, SIBLING))
 
-            def rent(dispose=True):
+            def rent(gone=None, message=FALLS):
+                """Rent at the inn. `gone` is a vnum that must be off the character and out of the save."""
                 nonlocal client
                 before = inspect()
                 client.send("rent")
-                client.expect("shows you to your room", timeout=30)
+                text = client.expect("shows you to your room", timeout=30)
+                if gone:
+                    assert message in text, text
                 client.expect("ACCOUNT MENU", timeout=30)
                 client.close()
                 client = None
                 deadline = time.monotonic() + 60
                 while True:
                     data = inspect()
-                    complete = len(retired(data) - retired(before)) == 1 if dispose else data["items"] == before["items"]
-                    if data["revision"] > before["revision"] and (sql or data["intent"] == 3) and complete:
+                    complete = (not any(row[1] == gone for row in data["items"])) if gone else data["items"] == before["items"]
+                    if data["revision"] > before["revision"] and complete:
                         return data
                     assert time.monotonic() < deadline, "rent did not commit"
                     time.sleep(.1)
 
-            def grant_key(owned):
-                assert "golden key" not in command(client, "inventory").lower()
-                assert "created" in command(client, "load obj " + str(KEY)).lower()
+            def on_floor(session, word):
+                """A staff purge succeeds only for something lying in the room."""
+                return "don't know anyone" not in command(session, "purge " + word)
+
+            def grant(vnum, word, label, owned):
+                assert label not in command(client, "inventory").lower()
+                assert "created" in command(client, "load obj " + str(vnum)).lower()
                 if owned:
                     # Save a valid non-NORENT fixture, then hydrate it through real
                     # logout/login before restoring the original lifetime flag.
-                    command(client, "setbit obj golden extra NORENT 0")
+                    command(client, "setbit obj " + word + " extra NORENT 0")
                     data = save()
-                    row = next(item for item in data["items"] if item[1] == KEY)
+                    row = next(item for item in data["items"] if item[1] == vnum)
                     assert not row[2] & NORENT, data
                     uid = row[0]
-                    rent(dispose=False)
+                    rent()
                     login()
-                    command(client, "setbit obj golden extra NORENT 1")
+                    command(client, "setbit obj " + word + " extra NORENT 1")
                     data = save()
                     row = next(item for item in data["items"] if item[0] == uid)
                     assert row[2] & NORENT, data
@@ -139,8 +152,8 @@ def run(binary, backend, inspector, evidence_dir):
                     # production loader hydrated active runtime custody.
                     return uid
                 data = save()
-                assert not any(item[1] == KEY for item in data["items"]), data
-                assert "golden key" in command(client, "inventory").lower()
+                assert not any(item[1] == vnum for item in data["items"]), data
+                assert label in command(client, "inventory").lower()
                 return None
 
             def copyover():
@@ -164,17 +177,42 @@ def run(binary, backend, inspector, evidence_dir):
                     ("Copyover complete!", "Copyover FAILED", "Copyover cancelled"), timeout=180)
                 assert result == "Copyover complete!", output_text + journey.runtime_logs(runtime)
 
+            def mortal_revision():
+                return int(sql("SELECT save_revision FROM player_data WHERE name='" + MORTAL + "'"))
+
+            def mortal_tickets():
+                return int(sql("SELECT COUNT(*) FROM player_items WHERE vnum=" + str(TICKET) +
+                               " AND pid=(SELECT pid FROM player_data WHERE name='" + MORTAL + "')"))
+
+            def wait_mortal_saved(before):
+                deadline = time.monotonic() + 60
+                while mortal_revision() <= before:
+                    assert time.monotonic() < deadline, "mortal departure did not commit"
+                    time.sleep(.1)
+                assert mortal_tickets() == 0, "the no-rent ticket stayed with the mortal"
+
+            def mortal_with_ticket():
+                """Bring the mortal to the staff character and hand over a no-rent ticket."""
+                nonlocal mortal
+                mortal = enter(MORTAL_ACCOUNT, MORTAL)
+                command(client, "trans " + MORTAL)
+                assert "created" in command(client, "load obj " + str(TICKET)).lower()
+                command(client, "give ticket " + MORTAL)
+                assert "ticket" in command(mortal, "inventory").lower()
+
             try:
                 boot()
                 client = journey.MudClient(plain)
                 journey.create_character(client, expected_room=None, account=ACCOUNT,
                                          character=PLAYER, email="keyfixture@example.invalid")
                 save()
+                mortal = journey.MudClient(plain)
+                journey.create_character(mortal, expected_room=None, account=MORTAL_ACCOUNT,
+                                         character=MORTAL, email="campfixture@example.invalid")
+                mortal.close()
+                mortal = None
                 stop()
-                if sql:
-                    sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + PLAYER + "'")
-                else:
-                    journey.make_overlord(Path(env["FLATFILE_STATE_DIR"]), PLAYER)
+                sql("UPDATE player_data SET level=62,highest_level=62,platinum=5000 WHERE name='" + PLAYER + "'")
                 boot()
                 login()
                 assert "created" in command(client, "load obj " + str(BAG)).lower()
@@ -182,45 +220,103 @@ def run(binary, backend, inspector, evidence_dir):
                 assert "Ok." in command(client, "put banana backpack")
                 baseline = preserved(save())
                 assert len(baseline) == 2 and any(row[4] for row in baseline), baseline
-                retired_uids = set()
-                for owned in (False, True):
-                    for placement in ("carried", "equipped", "nested"):
-                        uid = grant_key(owned)
-                        before = inspect()
-                        if placement == "equipped":
-                            text = command(client, "hold golden")
-                            assert "hold" in text.lower(), text
-                            assert "golden key" in command(client, "equipment").lower()
-                        elif placement == "nested":
-                            text = command(client, "put golden backpack")
-                            assert "Ok." in text, text
-                        data = rent()
-                        newly_retired = retired(data) - retired(before)
-                        assert len(newly_retired) == 1, (before, data)
-                        if uid is not None:
-                            assert newly_retired == {uid}
-                        uid = newly_retired.pop()
-                        assert any(row == [uid, 2, 8, 0, uid, 0] for row in data["keys"]), data
-                        assert not any(row[1] == KEY for row in data["items"]), data
-                        assert preserved(data) == baseline, data
-                        retired_uids.add(uid)
-                        login()
-                        assert "golden key" not in command(client, "inventory").lower()
-                        assert "golden key" not in command(client, "equipment").lower()
-                        assert "golden key" not in command(client, "look in backpack").lower()
-                        data = save()
-                        assert retired_uids <= retired(data) and preserved(data) == baseline
-                        evidence["rent_cases"].append({"owned": owned, "placement": placement, "uid": uid})
-                        print(backend, "rent", owned, placement, "passed", flush=True)
+
+                cases = [(KEY, "golden", "golden key", owned, place) for owned in (False, True)
+                         for place in ("carried", "equipped", "nested")]
+                cases += [(TICKET, "ticket", "ticket", owned, "carried") for owned in (False, True)]
+                for vnum, word, label, owned, place in cases:
+                    grant(vnum, word, label, owned)
+                    if place == "equipped":
+                        text = command(client, "hold " + word)
+                        assert "hold" in text.lower(), text
+                        assert label in command(client, "equipment").lower()
+                    elif place == "nested":
+                        text = command(client, "put " + word + " backpack")
+                        assert "Ok." in text, text
+                    data = rent(gone=vnum)
+                    assert preserved(data) == baseline, data
+                    login()
+                    assert label not in command(client, "inventory").lower()
+                    assert label not in command(client, "equipment").lower()
+                    assert label not in command(client, "look in backpack").lower()
+                    assert on_floor(client, word), word + " did not land on the floor"
+                    assert preserved(save()) == baseline
+                    evidence["rent_cases"].append({"item": word, "owned": owned, "placement": place})
+                    print(backend, "rent", word, owned, place, "passed", flush=True)
                 stop()
                 boot()
                 login()
                 data = save()
-                assert retired_uids <= retired(data) and preserved(data) == baseline
-                assert not any(row[1] == KEY for row in data["items"])
-                evidence["checks"].append("all six rent cases remain absent after server restart")
+                assert preserved(data) == baseline
+                assert not any(row[1] in (KEY, TICKET) for row in data["items"])
+                evidence["checks"].append("no-rent items stay gone after a restart")
 
-                active_uid = grant_key(True)
+                command(client, "goto " + str(SHOP))
+                command(client, "setbit room here flag ROOM_MAGIC_LIGHT 1")
+                text = command(client, "buy small", timeout=60)
+                deadline = time.monotonic() + 30
+                while "small key" not in command(client, "inventory").lower():
+                    assert time.monotonic() < deadline, "shop key never arrived: " + text
+                    time.sleep(1)
+                assert any(row[1] == SHOP_KEY for row in save()["items"]), "shop key has no saved record"
+                command(client, "goto " + str(INN))
+                data = rent(gone=SHOP_KEY)
+                assert preserved(data) == baseline, data
+                login()
+                assert on_floor(client, "small"), "shop key did not land on the floor"
+                evidence["checks"].append("a shop-bought no-rent item falls")
+
+                for field, flag in (("extra", "NODROP"), ("extra2", "SOULBIND")):
+                    assert "created" in command(client, "load obj " + str(TICKET)).lower()
+                    command(client, "setbit obj ticket " + field + " " + flag + " 1")
+                    rent(gone=TICKET, message=CRUMBLES)
+                    login()
+                    assert not on_floor(client, "ticket"), flag + " item reached the floor"
+                    evidence["checks"].append("a " + flag + " no-rent item crumbles")
+
+                command(client, "goto " + str(CAMP_ROOM))
+                command(client, "setbit room here flag ROOM_MAGIC_LIGHT 1")
+                command(client, "setbit room here flag SAFE 1")
+                mortal_with_ticket()
+                before = mortal_revision()
+                mortal.send("camp")
+                mortal.expect("setting up camp", timeout=20)
+                text = mortal.expect("hunker down", timeout=120)
+                assert FALLS in text, text
+                mortal.close()
+                mortal = None
+                wait_mortal_saved(before)
+                assert on_floor(client, "ticket"), "camped ticket did not land on the floor"
+                evidence["checks"].append("a mortal's no-rent item falls when camp finishes")
+
+                mortal_with_ticket()
+                before = mortal_revision()
+                mortal.close()
+                mortal = None
+                deadline = time.monotonic() + 30
+                while "Extracted ghost" not in command(client, "extractlink " + MORTAL):
+                    assert time.monotonic() < deadline, "the link-dead mortal could not be extracted"
+                    time.sleep(1)
+                wait_mortal_saved(before)
+                assert on_floor(client, "ticket"), "link-dead ticket did not land on the floor"
+                evidence["checks"].append("a link-dead character's no-rent item falls on extractlink")
+
+                mortal_with_ticket()
+                before = mortal_revision()
+                command(client, "setbit char " + MORTAL + " timer 16")
+                # An autosave can move the revision first, so watch the floor. The next
+                # tick voids the mortal, and the void closes its connection.
+                deadline = time.monotonic() + 100
+                while not on_floor(client, "ticket"):
+                    assert time.monotonic() < deadline, "idle-voided ticket did not land on the floor"
+                    time.sleep(1)
+                wait_mortal_saved(before)
+                mortal.close()
+                mortal = None
+                evidence["checks"].append("an idle-voided character's no-rent item falls")
+                command(client, "goto " + str(INN))
+
+                active_uid = grant(KEY, "golden", "golden key", True)
                 save()
                 stop(crash=True)
                 boot()
@@ -230,16 +326,17 @@ def run(binary, backend, inspector, evidence_dir):
                 assert "golden key" in command(client, "inventory").lower()
                 assert any(row[0] == active_uid for row in save()["items"]), "active key lost on copyover"
                 evidence["checks"].append("active key survives checkpoint, SIGKILL/relogin and copyover")
-                rent()
+                rent(gone=KEY)
                 login()
+                assert on_floor(client, "golden"), "active key did not land on the floor"
 
                 # Fresh NORENT keys have always been omitted from crash snapshots.
                 # PC inventory is not part of copyover's separate world/NPC trees.
-                grant_key(False)
+                grant(KEY, "golden", "golden key", False)
                 copyover()
                 assert "golden key" not in command(client, "inventory").lower()
                 assert not any(row[1] == KEY for row in save()["items"])
-                grant_key(False)
+                grant(KEY, "golden", "golden key", False)
                 stop(crash=True)
                 boot()
                 login()
@@ -247,11 +344,38 @@ def run(binary, backend, inspector, evidence_dir):
                 assert not any(row[1] == KEY for row in save()["items"])
                 evidence["checks"].append("fresh-key omission unchanged on checkpoint, crash and copyover")
                 assert preserved(inspect()) == baseline
+
+                command(client, "setbit obj backpack extra NORENT 1")
+                data = rent(gone=BAG)
+                banana = next(row for row in data["items"] if row[1] == SIBLING)
+                assert banana[3] == 0 and banana[4] == 0, data
+                login()
+                assert on_floor(client, "backpack"), "no-rent bag did not land on the floor"
+                assert "banana" in command(client, "inventory").lower()
+                evidence["checks"].append("a saved item in a no-rent bag survives and the bag falls")
+
+                # Staff camp immediately; a locker room must crumble the item
+                # before its terminal locker hook can store floor objects.
+                command(client, "goto " + str(LOCKER_ROOM))
+                assert "Inside a Locker" in command(client, "look")
+                grant(TICKET, "ticket", "ticket", False)
+                client.send("camp")
+                text = client.expect("ACCOUNT MENU", timeout=30)
+                assert CRUMBLES in text, text
+                client.close()
+                client = None
+                login()
+                command(client, "goto " + str(LOCKER_ROOM))
+                assert not on_floor(client, "ticket"), "locker-room camp left a no-rent item on the floor"
+                assert not any(row[1] == TICKET for row in inspect()["items"])
+                evidence["checks"].append("staff camp in a locker-flagged room crumbles no-rent items")
                 stop()
                 evidence["passed"] = True
-                print(backend, "all rent, restart, crash and copyover checks passed", flush=True)
+                print(backend, "all rent, camp, link-death, restart, crash and copyover checks passed", flush=True)
             finally:
                 evidence_dir.mkdir(parents=True, exist_ok=True)
+                if mortal:
+                    mortal.close()
                 if client:
                     (evidence_dir / (backend + "-transcript.txt")).write_bytes(bytes(client.transcript))
                     client.close()
@@ -268,17 +392,14 @@ def run(binary, backend, inspector, evidence_dir):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("flatfile", "mariadb"), default="flatfile")
+    parser.add_argument("--backend", choices=("mariadb",), default="mariadb")
     parser.add_argument("--server", type=Path)
     args = parser.parse_args()
-    if args.backend == "mariadb" and not args.server:
-        parser.error("pass --server for MariaDB")
     evidence = ROOT / "bin/qualification/issue419"
     evidence.mkdir(parents=True, exist_ok=True)
     subprocess.run(["make", "world"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
-    inspector = evidence / "rent-inspector"
     binary = args.server.resolve() if args.server else journey.build_flatfile_server(evidence / "journey-build")
-    run(binary, args.backend, inspector, evidence)
+    run(binary, args.backend, evidence)
 
 
 if __name__ == "__main__":

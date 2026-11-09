@@ -110,7 +110,13 @@ def available_ports() -> tuple[int, int, int]:
     """
     global _port_lock
     if _port_lock is None:
-        _port_lock = open(os.path.join(tempfile.gettempdir(), "duris-test-ports.lock"), "a")
+        lock_path = os.path.join(tempfile.gettempdir(), "duris-test-ports.lock")
+        try:
+            _port_lock = open(lock_path, "a")
+        except PermissionError:
+            # Linux protects another user's /tmp files from O_CREAT, even for
+            # the root launcher used by UID-dropping journeys. Reuse the lock.
+            _port_lock = open(lock_path, "r+")
     for _ in range(200):
         # Below the kernel's ephemeral range, which outgoing connections and
         # Docker's published ports draw from while the server is still booting.
