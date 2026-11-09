@@ -17,7 +17,7 @@ Some mobs will hunt you down if you attack them and flee.
 Need help? Try the nchat channel! Type 'nchat' followed by your question.
 Type "spells" to see what spells your class is able to use.
 In certain rooms, you can heal at an advanced rate!  In others, you won't heal at all!
-Some mobs are friendlier than others. Try 'ask <mob> hi' to get a quest started or look for clues in their description on what to ask them about.
+Zone quests start by talking to the right mob. Try "ask <mob> hi", and read the mob's description for clues about what else to ask. Some zone quests start when you give an item to a mob.
 Type toggle group to let others know that you're interested in grouping.
 Taking a long time to pray or memorize your spells? Try using meditate while you pray/memorize.
 The main stat for armor class is agility. You can improve your armor class with equipment.
@@ -26,7 +26,7 @@ Pay attention to what your group does. If someone does something you don't under
 Boats are sold in many hometowns. These will allow you to cross rivers and other bodies of water.
 Walking around in the dark? Buy a torch or lantern and hold it, or ask a cleric to cast continual light on a piece of your equipment.
 Without ultravision or infravision, you will need a light source to see outdoors at night. You can use the time command to check whether it is night time or not.
-Been to the website yet?  Point your browser to https://duris.sbs .
+Visit https://duris.sbs to explore the official Duris website.
 If someone wants to group with you and says "f/c", that means you need to type "follow <person>" and "consent <person>".
 Your stats are shown as descriptive ratings until level 20, when their exact numbers are revealed.
 When casting offensive spells make sure you are careful about noticing new mobs entering with the same target name.
@@ -114,15 +114,34 @@ Most spellcasters must prepare spells before casting them. Type "rest", then "me
 Changed your mind in the middle of a spell? Type "abort" to stop casting.
 Sharing the loot? Type "split <amount> <coin type>" to divide coins evenly among your group.
 Have a pet? Use "order <pet> <command>", or "order followers <command>" to command them all.
-Looking for work? Find a bartender and type "ask <bartender> quest", then type "quest" to review your task.
+Bartenders sell world quests to characters of level 11 or higher. You can find bartenders in every hometown and in many other zones. Type "ask bartender quest" to buy a quest.
 Epic points are a separate reward currency. Check your balance with "score" and read "help epic" to learn what they can do.
 The Gods of Duris grant automatic bonuses for limited times. Type "boon" to see which ones are active.
-Tired of walking? Flight carriers link many stops. Type "list" at a carrier to learn its stop, and "flights" to see the stops you know.
+Flight paths carry you quickly across the world. Find a flight carrier and type "list" to learn that stop and see its routes. Buy a ticket and give it to the carrier to fly, and type "flights" anywhere to see the stops you have learned.
 A tradeskill teacher can train you in mining, forging or crafting, but you can only know one of them at a time.
 Humans and orcs can add a second class at level 50. Type "multiclass" to see your choices, but the decision is permanent.
 Looking for allies? Type "society" for guild commands and read "help guild" to learn more. Guild members talk on the "gcc" channel.
 Running out of room? Lockers in the hometowns can hold your spare equipment. Read "help locker" to learn how to use them.
 Level cap holding you back? PvP frags decide how far each side can climb. Type "fraglist" for the standings and read "help level cap".
-Type "achievements zones" to see your progress through zone quests, and "leaderboard quests" to see how you rank.
-Using Mudlet? Find the Duris interface at https://duris.sbs/mudlet-gui .
-Join other players on Discord at https://discord.gg/hrcnREz5X .
+Type "achievements zones" to see how many quests you have completed in each zone.
+Duris has a fully developed and supported client for Mudlet. Visit https://duris.sbs/mudlet-gui to get it.
+Visit https://discord.gg/hrcnREz5X to join the Duris Discord server and chat with other players.
+Visit https://duris.sbs/news to read all the latest news, including changes to the game, the website and the Mudlet client.
+Did you know that your game account also works on the website? Visit https://duris.sbs/login to sign in and use the forum, or visit https://duris.sbs/play to play Duris in your web browser.
+New to Duris? Visit https://duris.sbs/newbie to read the newbie guide.
+Did you know that you can look up the details of player fights online? Visit https://duris.sbs/pvp to see combat logs, gear and locations.
+Curious about game statistics like class matchups and top players? Visit https://duris.sbs/pvp/stats to see them.
+Want to know when each faction is most active? Visit https://duris.sbs/statistics/faction-activity to find out.
+Want to know when rival factions are online at the same time? Visit https://duris.sbs/statistics/faction-overlap to find out.
+Want to see the deadliest players? Visit https://duris.sbs/frag-leaderboard to see the frag leaderboard.
+Need a map of the world? Visit https://duris.sbs/wiki/map to see the game maps.
+A frag is a point you earn for killing a player from an enemy side. Type "fraglist" to see the top and lowest fraggers, each side's frag totals and the current level caps.
+Type "leaderboard" to see the top 20 characters in the game. Their scores come from levels, experience, player kills, ship reputation and epic points. Type "leaderboard quests" to see who has completed the most quests.
+Wearing several pieces of random gear from the same zone forms a named set, which can give you extra hit points and spells. Type "namedreport" to see which spells each set gives and how many pieces you need.
+Type "quest" to see your bartender quest, including its target, area and progress.
+Bartender quests ask you to kill monsters or speak to someone. Finishing one earns you experience, coins and an item.
+Can't find the target of your bartender quest? Type "ask bartender map" to buy a map, then type "quest" to see it.
+Want to do a bartender quest with friends? Have each friend "consent" you, then type "quest share <player>" to share it with them. You can share a quest with up to four friends.
+Mobs that offer quests show a (Q) beside their names. Type "toggle quest" to turn this marker on or off.
+As you earn epic points, the Gods may give you an epic task, such as finding a runestone. Type "score" to see your current task, because some rewards are reduced until you finish it.
+The Gods of Duris sometimes run special quests of their own. These quests are meant for fun, so join in when you get the chance.
