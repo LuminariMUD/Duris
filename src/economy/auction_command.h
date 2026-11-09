@@ -70,7 +70,7 @@ struct auction_command_payload
 	std::array<char, AUCTION_NAME_MAX_BYTES + 1> actor_name;
 	uint64_t expected_wallet_revision;
 	uint64_t expected_bank_revision;
-	int64_t value;
+	int64_t value; // Bid amount; money claims bind a positive amount (zero replays old claims).
 	int64_t start_price;
 	int64_t buy_price;
 	int64_t listing_fee;

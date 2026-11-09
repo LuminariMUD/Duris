@@ -4165,7 +4165,7 @@ place to camp for the night and then type "camp". You must then wait a
 period of time before you can exit the game. If you leave the room in which
 you are trying to set up camp or if you fight, camping will automatically
 cancel. Once you fully camp, you will be sent to the main menu, just as
-when you rent.
+when you rent. Items flagged no rent fall to the floor when you finish.
 Should you choose to 'camp abort', 'camp stop' or 'camp off', you will stop attempting to set up camp.
 Warning: If you go link-dead, camping will stop
 (linkdead rent does *not* reset your homeroom).
@@ -7479,7 +7479,7 @@ Doom Blade - Last Edited: 2014-07-26 01:08:54 by ashyel
 * Area of effect: <caster>
 * Aggressive:     No
 * Cumulative:     No
-* Duration:       Permanent
+* Duration:       Until you leave the game
 * Type of spell:  Summoning
 Doomblade conjures a death sickle for the use of the
 Reaper, an extremely powerful and potent weapon that
@@ -10158,7 +10158,7 @@ Flame Blade - Last Edited: 2017-09-17 05:14:30 by lohrr
 * Area of effect: <caster>
 * Aggressive:     No
 * Cumulative:     No
-* Duration:       Forever
+* Duration:       Until you leave the game
 * Type of spell:  Summoning
 This spell summons a blade of pure flame to appear for the Druid to wield.  The statistics on the blade increase based on the level of the caster at the time of casting, including a possible proc at higher levels.
 
@@ -15783,8 +15783,9 @@ for the protection of these lockers -any illegal entry or attempts at
 subterfuge will be punished.
 Anything you drop in a locker room will be stored and saved as if you were
 carrying it on your person and rented. This means items that are transient
-will crumble and items flagged no rent will disappear. Anyone who is on
-your grant list will be able to access your locker as well. Please see
+will crumble, and items flagged no rent can't be stored and are handed back
+to you. Anyone who is on your grant list will be able to access your locker
+as well. Please see
 "help grant" for information on giving others access to your locker!
 To help with sorting and finding eq stored in a locker the command "equip
 sort" can be used. Typing that while in the locker will show a long list
@@ -21922,6 +21923,7 @@ Syntax:         rent
 This command is for use in a reception or inn, which appear throughout the
 world. "Rent" will store your items and make you leave the game. The next
 time you enter the game, you'll start out at the inn where you rented.
+Items flagged no rent can't be stored and fall to the floor when you leave.
 Warning: Players who have been recently attacked by another player may
 have to wait a few minutes before being allowed to rent at an inn.
 

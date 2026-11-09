@@ -385,6 +385,9 @@ def main():
             evidence["reused_from"] = {key: previous[key] for key in (
                 "binary_sha256", "compat_binary_sha256")}
             evidence["reused_from"]["completed"] = list(previous["completed"])
+            # A second resume keeps the first one's record of who ran what.
+            if "reused_from" in previous:
+                evidence["reused_from"]["reused_from"] = previous["reused_from"]
             frozen = (runtime / "authority.sql").read_bytes()
             assert hashlib.sha256(frozen).hexdigest() == previous["authority_sha256"]
             sql(frozen.decode())
@@ -418,9 +421,6 @@ def main():
                 subprocess.run([sys.executable, str(journey.ROOT / "tests/async" / script), *arguments],
                                cwd=journey.ROOT, env=environment, check=True)
                 evidence["completed"].append(label)
-                # The wear runner uses one result path; retain each completed zone.
-                if label.startswith("wear-"):
-                    (runtime / (label + "-result.json")).write_bytes((runtime / "named-wear-result.json").read_bytes())
                 (runtime / "sequence.json").write_text(json.dumps(evidence, indent=2))
             evidence["passed"] = True
             print("Complete named-set SQL sequence passed", flush=True)

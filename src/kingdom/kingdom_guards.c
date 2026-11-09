@@ -1446,23 +1446,10 @@ int kingdom_guard_proc(P_char ch, P_char pl, int cmd, char * /*arg*/)
 }
 
 /*
- * Install the proc on the guard prototype. Called from kingdom_initialize()
- * beside the harvest nodes' binding, and self-gating the same way: a world
- * without the prototype simply has no guards, which is already this module's
- * documented fallback.
+ * Install banner bindings without loading realms, guards, or events.
  */
-void kingdom_guards_bind_proc(void)
+void kingdom_bind_banner_procs(void)
 {
-	const int rnum = kingdom_guard_rnum();
-
-	if (rnum >= 0)
-		mob_index[rnum].func.mob = kingdom_guard_proc;
-
-	const int champion = kingdom_champion_rnum();
-
-	if (champion >= 0)
-		mob_index[champion].func.mob = kingdom_champion_proc;
-
 	/* The banners' tick and their breakability both come from this binding;
 	 * without it a planted banner is scenery. Bound through real_object()
 	 * rather than real_object0() for the reason kingdom_harvest.c spells
@@ -1475,6 +1462,21 @@ void kingdom_guards_bind_proc(void)
 		obj_index[combat].func.obj = kingdom_banner_proc;
 	if (sanctity >= 0)
 		obj_index[sanctity].func.obj = kingdom_banner_proc;
+}
+
+void kingdom_guards_bind_proc(void)
+{
+	const int rnum = kingdom_guard_rnum();
+
+	if (rnum >= 0)
+		mob_index[rnum].func.mob = kingdom_guard_proc;
+
+	const int champion = kingdom_champion_rnum();
+
+	if (champion >= 0)
+		mob_index[champion].func.mob = kingdom_champion_proc;
+
+	kingdom_bind_banner_procs();
 }
 
 /*
