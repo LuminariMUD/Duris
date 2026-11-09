@@ -554,6 +554,72 @@ the remaining input coverage, proc-route metadata, arithmetic fixes, consumer
 deltas, and MariaDB command/persistence journeys; this structural work does not
 complete F01–F16.
 
+### Chunk 9 — include every class/specialization circle registration (F01, implemented)
+
+Branch: `branch/ival-circle-extents`, based on `branch/ival-readonly-template-runtime`.
+
+**Outcome:** scan the actual class and specialization array extents, including
+class zero and specialization four. Preserve invalid-spell result 0 and the
+valid-but-unregistered fallback 13. Advance formula identity to
+`ival-v2-class-spec-extents`.
+
+**Non-goals:** packed averaging, coefficients, no-registration policy changes,
+other arithmetic repairs, or rollout. Those remain separate findings.
+
+**Files:** `get_mincircle()` in `src/economy/tradeskill.c`, the formula revision,
+existing native characterization/report tests, and the existing real-engine
+qualifier's circle-delta mode. No runtime switch or parallel calculator is added.
+
+**Proof:** first/last class/spec and actual earth spell registrations under
+ASan/UBSan, then native full-context template comparison plus seeded calls to the
+real random-equipment generator. The delta mode extracts the exact pre-fix native
+circle function from its Git revision and interposes only that context lookup;
+it refuses comparison if the numeric evaluator or runtime adapter changed.
+Every value comes from the production evaluator. Record changed circles, changed
+values, provenance, threshold and economic effects before publishing this slice.
+
+**Ablation:** range iteration supplies the actual extents without new constants,
+lookup tables, policy options, or helper layers. Reuse the qualified native
+harness and generator instead of introducing another valuation implementation.
+
+**Results:** sanitizer characterization passed all class/spec boundaries, invalid
+IDs and the retained fallback, plus actual earth-form, earthen-tomb, granite-hammer
+and smashing-fury registrations. Level-60, one-in-30 synthetic packed items show
+earth form **78 → 60** and earthen tomb **78 → 72**. The initialized native table
+changes four circles: earthen tomb (399) 13 → 12, Girilals granite hammer (652)
+13 → 11, Ileshs smashing fury (653) 13 → 12, and earth form (684) 13 → 10.
+
+The [qualification summary](ival-evidence/f01/summary.json),
+[changed circles](ival-evidence/f01/changed-circles.csv),
+[changed values](ival-evidence/f01/changed-values.csv), and
+[generator circle inventory](ival-evidence/f01/generator-circles.csv) record the
+run. **None of 19,334 indexed template scores or 8,720 seeded generated scores
+changed.** The generator run uses its actual production RNG and generator,
+16 seed groups, five source levels and every native slot. All 61 generator spell
+table rows retain their previous circles. All production native constructor versus
+template comparisons and CLI/provenance/error checks passed with formula v2.
+
+Exact score equality makes every score-derived salvage 5/10/15/20, craft/forge
+player/recipe/material/XP, enhancement source/donor/result/price, quest floor/zone
+weight, and bag 25/50/125 effect **zero in these measured cohorts**, independent
+of which level, donor, or threshold comparison consumes those identical values.
+This does not inventory mutable player items. A player-modified packed earth
+spell can change score as the synthetic fixtures demonstrate; persistence and
+command journeys remain F16 before rollout. No economic coefficients changed.
+
+The evidence was generated before commit: `source_revision` deliberately records
+the dirty parent plus formula/binary/input identities, and before/after native
+function hashes identify the compared code. Reproduce with:
+
+```text
+python3 tests/async/test_item_value_template_runtime.py --circle-baseline 071b2bf8bedaed308aa9616225091c59c9acdaa8 --delta-output docs/ongoing-projects/ival-evidence/f01
+```
+
+The characterization, report I/O, monk tools/pilot, native enhancement and world
+quest reward checks passed; full server build and formatting passed. The editor's
+class bound was already corrected in Chunk 5; its missing specialization data
+remains explicitly estimated. F02/F03/F04/F08 and F16 remain open.
+
 ## Main conclusions
 
 1. **Fix calculation invariants first.** Specialization 4 is omitted from minimum
@@ -728,6 +794,9 @@ clamps to 2..11 for a different purpose.
 
 **Acceptance:** first/last class and specialization tests, earth-form/tomb
 registration fixtures, absent/invalid IDs, and packed-item old/new score deltas.
+
+Implemented and qualified in Chunk 9. The fallback policy and coefficients are
+unchanged; no measured active-template or random-generator economic cohort moves.
 
 ### F02 — P1: remove premature rounding from random-one packed procs
 
