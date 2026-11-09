@@ -199,7 +199,9 @@ int main() {
         assert(std::string(sibling.acct_password) == "different");
     }
     queue_ok = false;
+    account.acct_evil = sibling.acct_evil = 0;
     assert(!save_account_character_departure(&player));
+    assert(account.acct_evil >= time(nullptr)-1 && sibling.acct_evil == account.acct_evil);
 }
 '''
 
