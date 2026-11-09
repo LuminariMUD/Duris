@@ -41,6 +41,15 @@ anchors refer to the reviewed baseline.
 
 Implementation checkout:
 `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
+Matching remote checkout on `duris-staging`:
+`/home/staging/duris-worktrees/ival-system-improvements`.
+Both checkouts use the tracked plan at
+`docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
+`origin/branch/ival-proclib-event-ownership`; its initial synchronized commit is
+`c9822bbd3`. Uncommitted Chunk 8 implementation remains in the local checkout
+and is not included in this synchronization. These are development worktrees;
+creating them does not deploy or change the running server.
+
 Initial implementation branch: `branch/ival-system-improvements`, plan commit
 `df2bfe359`, based on `c5db5ed5b`. Persistence remains MariaDB only. Dependent
 implementation chunks will use stacked branches/PRs; no release tag or deployment
