@@ -1833,17 +1833,9 @@ void do_salvation(P_char ch, char * /*arg*/, int /*cmd*/)
 // Returns the lowest material vnum (lowest quality) for material with the same type as obj->material.
 // I.e. for a material type FEATHER -> returns 400000 (vnum for a small feather).
 //   Material range for FEATHER is 400000 (lowest quality) - 400004 (highest quality).
-int get_matstart(P_obj obj)
+int material_start_vnum(int objmat)
 {
 	int matstart;
-	::byte objmat;
-
-	if (!obj)
-	{
-		return 0;
-	}
-
-	objmat = obj->material;
 
 	switch (objmat)
 	{
@@ -1998,6 +1990,11 @@ int get_matstart(P_obj obj)
 		break;
 	}
 	return matstart;
+}
+
+int get_matstart(P_obj obj)
+{
+	return obj ? material_start_vnum(obj->material) : 0;
 }
 
 void do_refine(P_char ch, char *arg, int /*cmd*/)

@@ -14,16 +14,17 @@ db = (SRC / "db.c").read_text()
 
 # These shared APIs avoid a copied parser/formula. They do not establish full
 # valuation-context parity, which is tracked separately in the ival plan (F07).
-assert "read_object" in report
-assert "itemvalue" in report
-assert "get_matstart" in report
-assert "extract_obj" in report
+assert "cache_object_template" in report and "itemvalue(*obj)" in report
+assert "material_start_vnum" in report
+assert "read_object(" not in report and "extract_obj(" not in report
 
 # The executable mode is offline/read-only: boot the object database, write the
 # report, and exit before listening for player connections.
 assert "--material-rarity-report" in comm
 assert "boot_material_rarity_objects" in comm
-assert "ne_init_event_pool();" in db
+offline = db[db.index("bool boot_material_rarity_objects("):db.index("/** Load world data")]
+assert "initialize_property_values()" in offline and "assign_spell_pointers()" in offline
+assert "ne_init_event_pool" not in offline and "mm_create" not in offline
 assert "write_material_rarity_report" in comm
 assert comm.index("if (material_rarity_report_mode)") < comm.index("initialize_mysql")
 assert "bool write_material_rarity_report" in header
@@ -47,6 +48,8 @@ HARNESS = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "item/material_rarity.h"
+#include "item/item_value.h"
+#include "world/object_template.h"
 #include <cassert>
 #include <cstdlib>
 
@@ -61,11 +64,13 @@ extern "C" FILE *__wrap_fopen(const char *path, const char *mode)
 
 P_index obj_index = nullptr;
 int top_of_objt = -1;
-void boot_material_rarity_objects(int mini_mode) { assert(mini_mode == 1); }
-P_obj read_object(int, int) { assert(false); return nullptr; }
-void extract_obj(P_obj, int) { assert(false); }
-int itemvalue(P_obj) { assert(false); return 0; }
-int get_matstart(P_obj) { assert(false); return 0; }
+int mini_mode = 1;
+int no_specials = 0;
+bool boot_material_rarity_objects(int mode) { assert(mode == 1); return true; }
+bool cache_object_template(int) { assert(std::getenv("BAD_TEMPLATE")); return false; }
+const object_template *find_object_template(int) { assert(false); return nullptr; }
+int itemvalue(const object_template &, item_value_breakdown *) { assert(false); return 0; }
+int material_start_vnum(int) { assert(false); return 0; }
 
 int main(int argc, char **argv)
 {
@@ -74,6 +79,12 @@ int main(int argc, char **argv)
     bool material_rarity_report_mode = true;
     const char *material_rarity_report_dir = argv[1];
     int mini_mode = 1;
+    if (std::getenv("BAD_TEMPLATE")) {
+        static index_data index{};
+        index.virtual_number = 123;
+        obj_index = &index;
+        top_of_objt = 0;
+    }
     // COMMAND
     assert(false); // The report branch must exit before ordinary boot.
 }
@@ -95,7 +106,7 @@ def check_output_failures():
             "g++", "-std=c++20", "-g", "-O1", "-Wall", "-Wextra", "-Werror",
             "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
             "-Isrc", str(source), rel("material_rarity.c"), str(HARNESS_STUBS),
-            "-Wl,--wrap=fopen", "-o", str(binary),
+            "-Wl,--wrap=fopen", "-lcrypto", "-o", str(binary),
         ], cwd=root, check=True)
         env = {**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
                "UBSAN_OPTIONS": "halt_on_error=1"}
@@ -103,7 +114,7 @@ def check_output_failures():
         def run(target, success, diagnostic, unbuffered=False):
             command = [str(binary), str(target)] + (["unbuffered"] if unbuffered else [])
             result = subprocess.run(command, capture_output=True,
-                                    text=True, env=env)
+                                    text=True, env=env, cwd=base)
             assert result.returncode == (0 if success else 1), result.stderr
             assert diagnostic in result.stderr, result.stderr
             assert "runtime error:" not in result.stderr and "AddressSanitizer" not in result.stderr
@@ -113,6 +124,13 @@ def check_output_failures():
         run(good, True, "written to")
         assert all((good / name).is_file() for name in filenames)
         assert "count_mode=one-per-required-material" in (good / filenames[3]).read_text()
+        assert "formula_revision=ival-legacy-v1" in (good / filenames[3]).read_text()
+        bad = subprocess.run([str(binary), str(base / "bad-template")], capture_output=True,
+                             text=True, env={**env, "BAD_TEMPLATE": "1"}, cwd=base)
+        assert bad.returncode == 1 and "cannot parse object template 123" in bad.stderr
+        (base / "areas/world.trg").mkdir(parents=True)
+        run(base / "bad-fingerprint", False, "fingerprint failed")
+        (base / "areas/world.trg").rmdir()
         # An existing directory is supported (the report may be regenerated).
         run(good, True, "written to")
         run(base / "missing-parent" / "output", False, "cannot create")

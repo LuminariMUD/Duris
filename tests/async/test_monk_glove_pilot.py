@@ -57,6 +57,7 @@ if __name__ == "__main__":
         source = Path(tmp) / "pilot.cpp"; binary = source.with_suffix("")
         source.write_text(code)
         subprocess.run(["g++", "-std=c++20", "-g", "-O1", "-fsanitize=address,undefined",
+            "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
             "-fno-omit-frame-pointer", "-Isrc", str(source), str(HARNESS_STUBS),
             "src/item/item_value.c", "src/item/item_value_runtime.c", "-o", str(binary)],
             cwd=ROOT, check=True)

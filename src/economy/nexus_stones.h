@@ -123,6 +123,7 @@ struct NexusStoneInfo
 };
 
 int init_nexus_stones();
+void assign_nexus_object_procs();
 int load_nexus_stones(bool report_empty = false);
 bool nexus_stone_info(int stone_id, NexusStoneInfo *info);
 int check_nexus_bonus(P_char ch, int amount, int type);

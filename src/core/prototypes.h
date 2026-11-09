@@ -789,6 +789,7 @@ void board_load_board(const char *, char **, char **, int *);
 void board_reset_board(char **, char **, int *);
 void board_save_board(const char *, char **, char **, int *);
 void initialize_boards(void);
+void assign_board_object_procs(void);
 
 /* chaos.c */
 
@@ -883,7 +884,8 @@ void MemReport(void);
 void boot_db(int);
 void boot_pose_messages(void);
 void boot_world(int);
-void boot_zones(int);
+// Offline metadata loading does not initialize randomized reset timers.
+void boot_zones(int, bool initialize_reset_timers = true);
 void clear_char(P_char);
 uint64_t allocate_character_runtime_id();
 P_char find_character_by_runtime_id(uint64_t);
@@ -2989,6 +2991,7 @@ void trapdamage(P_char ch, P_obj obj);
 
 /* properties.c */
 bool initialize_properties();
+bool initialize_property_values();
 void do_properties(P_char, char *, int);
 void do_difficulty(P_char, char *, int);
 void do_pulse(P_char, char *, int);
