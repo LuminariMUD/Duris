@@ -105,6 +105,8 @@ int main() {
         for (float invalid : {-1.f, 1.f, 2.f, std::numeric_limits<float>::infinity(),
                               std::numeric_limits<float>::quiet_NaN()})
             assert(!ship_crate_order_cost(slot, type, 1, INT_MAX, invalid, &cost));
+        // A total float rounds down must not turn a full discount into a nominal price.
+        assert(!ship_crate_order_cost(slot, type, 16777217, 1, 1.f, &cost));
         assert(ship_crate_order_cost(slot, type, 7, 1, .4f, &cost) && cost == 5);
         slot.type = type;
         slot.val0 = slot.val1 = INT_MAX - 2;
