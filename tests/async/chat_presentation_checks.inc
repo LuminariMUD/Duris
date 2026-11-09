@@ -24,6 +24,24 @@ static void chat_presentation_matrix()
 	da.next = &db;
 	da.connected = db.connected = CON_PLAYING;
 	da.gmcp_enabled = db.gmcp_enabled = true;
+	// A previous command's pager-budget fallback must not override subsequent
+	// non-paged chat presentation (including a different recipient's output).
+	a.screen_length = 12;
+	SET_BIT(alice.specials.act, PLR_PAGING_ON);
+	const std::string crowded(8000, '&');
+	OutputContext crowded_style{ OutputChannel::Chat, OutputPolicy::Static, nullptr,
+				      ATTR_FG(25) };
+	command_action = [&](P_char recipient)
+	{
+		for (int i = 0; i < 3; ++i)
+			send_to_char(crowded.c_str(), recipient, LOG_NONE, crowded_style);
+	};
+	char crowded_command[] = "presentation-fixture";
+	process_with_paging(&alice, crowded_command);
+	assert(pager_style_fallback && drain(&da).size() == crowded.size() * 3);
+	assert(!da.showstr_count);
+	command_action = {};
+	REMOVE_BIT(alice.specials.act, PLR_PAGING_ON);
 	descriptor_list = &da;
 	world[0].people = &alice;
 	alice.next_in_room = &bob;

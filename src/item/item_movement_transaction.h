@@ -93,6 +93,12 @@ bool item_creation_grant_submit_batch_to_player(P_char actor, P_obj const *objec
 						P_char recipient, P_obj target_container,
 						item_movement_completion_fn completion,
 						const void *context, size_t context_size);
+// Paid batches prepare the recipient's wallet and target before the combined receipt.
+bool item_creation_grant_submit_paid_batch_to_player(P_char actor, P_obj const *objects,
+						     size_t count, P_char recipient,
+						     P_obj target_container, int64_t payment,
+						     item_movement_completion_fn completion,
+						     const void *context, size_t context_size);
 // Restore committed source snapshots as detached roots, replacing missing or
 // displaced live bodies without changing their durable destination topology.
 bool item_creation_grant_reconstruct(const item_transfer_payload &payload,

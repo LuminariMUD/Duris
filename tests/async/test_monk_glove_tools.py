@@ -132,6 +132,7 @@ with tempfile.TemporaryDirectory(prefix="monk-glove-tools-", dir=ROOT / "bin/tes
         path.write_text(code.replace("// FUNCTIONS", functions).replace("// COMMON CASES", common))
         binary = path.with_suffix("")
         command = ["g++", "-std=c++20", "-g", "-O1", "-fsanitize=address,undefined",
+                   "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
                    "-fno-omit-frame-pointer", "-Isrc", "-Iareas/de/src", str(path)]
         command += ["src/item/item_value.c"]
         command += [str(HARNESS_STUBS), "src/item/item_value_runtime.c"] if name == "runtime" else ["-D_DE_", "-D__UNIX__"]

@@ -130,6 +130,22 @@ NexusStoneInfo *nexus_row(int stone_id)
 }
 } // namespace
 
+void assign_nexus_object_procs()
+{
+	for (int vnum : { OBJ_NEXUS_STONE, OBJ_GUARDIAN_MACE })
+	{
+		const int rnum = real_object(vnum);
+		if (rnum < 0)
+		{
+			logit(LOG_DEBUG, "init_nexus_stones(): object template %d is missing",
+			      vnum);
+			continue;
+		}
+		obj_index[rnum].func.obj = vnum == OBJ_NEXUS_STONE ? nexus_stone :
+								     nexus_guardian_pwn_mace;
+	}
+}
+
 int init_nexus_stones()
 {
 	fprintf(stderr, "-- Booting nexus stones\n");
@@ -146,18 +162,7 @@ int init_nexus_stones()
 						   nexus_sage :
 						   nexus_stone_guardian;
 	}
-	for (int vnum : { OBJ_NEXUS_STONE, OBJ_GUARDIAN_MACE })
-	{
-		const int rnum = real_object(vnum);
-		if (rnum < 0)
-		{
-			logit(LOG_DEBUG, "init_nexus_stones(): object template %d is missing",
-			      vnum);
-			continue;
-		}
-		obj_index[rnum].func.obj = vnum == OBJ_NEXUS_STONE ? nexus_stone :
-								     nexus_guardian_pwn_mace;
-	}
+	assign_nexus_object_procs();
 
 	if (!load_nexus_stones(true))
 	{
