@@ -165,6 +165,19 @@ def add_full_world_arena(runtime):
     path.write_bytes(zones.replace(b'\nS\n', resets, 1))
 
 
+def wait_artifact_bootstrap(client):
+    # A fresh full catalogue publishes absent artifact identities in
+    # bounded batches. Let it settle before injecting copyover faults.
+    deadline = time.monotonic() + 180
+    while True:
+        status = paged(client, 'world persistence', 'artifact_guild')
+        if re.search(r'artifact_guild .*dirty_artifacts=0 dirty_guilds=0 .*history_pending=0', status):
+            break
+        assert time.monotonic() < deadline, status
+        time.sleep(.5)
+    print('full-world artifact/guild bootstrap is durable before fault injection', flush=True)
+
+
 def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_failures=False):
     with journey.mariadb_authority() as (env, sql), \
             tempfile.TemporaryDirectory(prefix='duris-copyover-journey-') as temporary:
@@ -314,16 +327,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                       'and retains the world when replacement boot fails', flush=True)
                 return
             if full_world:
-                # A fresh full catalogue publishes absent artifact identities in
-                # bounded batches. Let it settle before injecting copyover faults.
-                deadline = time.monotonic() + 180
-                while True:
-                    status = paged(client, 'world persistence', 'artifact_guild')
-                    if re.search(r'artifact_guild .*dirty_artifacts=0 dirty_guilds=0 .*history_pending=0', status):
-                        break
-                    assert time.monotonic() < deadline, status
-                    time.sleep(.5)
-                print('full-world artifact/guild bootstrap is durable before fault injection', flush=True)
+                wait_artifact_bootstrap(client)
             if compressed: client.enable_compression()
             process.send_signal(signal.SIGUSR1)
             client.expect('Copyover FAILED', timeout=60)
@@ -535,6 +539,8 @@ path.write_bytes(data.replace(old, new))
 os.execv({str(valid)!r}, {args!r})
 """)
                 staged.chmod(0o700)
+                if full_world:
+                    wait_artifact_bootstrap(client)
                 client.send('copyover')
                 client.socket.settimeout(15)
                 while client.socket.recv(65536):
