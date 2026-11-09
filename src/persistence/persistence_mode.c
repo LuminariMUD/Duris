@@ -14,23 +14,10 @@
 
 #include "persistence/persistence_mode.h"
 
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-static bool fail(char *error, size_t error_size, const char *format, ...)
-{
-	va_list args;
-
-	if (error && error_size)
-	{
-		va_start(args, format);
-		vsnprintf(error, error_size, format, args);
-		va_end(args);
-	}
-	return false;
-}
+#include <algorithm>
+#include <cstdlib>
+#include <cstring>
+#include <string>
 
 bool persistence_mode_configure(char *error, size_t error_size)
 {
@@ -38,10 +25,16 @@ bool persistence_mode_configure(char *error, size_t error_size)
 
 	if (!configured || !*configured || !strcmp(configured, "mariadb-primary"))
 		return true;
-	return fail(error, error_size,
-		    "invalid PERSISTENCE_MODE '%s'; MariaDB is the only supported backend, "
-		    "use mariadb-primary",
-		    configured);
+	if (error && error_size)
+	{
+		const std::string message =
+			std::string("invalid PERSISTENCE_MODE '") + configured +
+			"'; MariaDB is the only supported backend, use mariadb-primary";
+		const size_t length = std::min(message.size(), error_size - 1);
+		memcpy(error, message.data(), length);
+		error[length] = '\0';
+	}
+	return false;
 }
 
 const char *persistence_mode_name(void)

@@ -31,7 +31,7 @@ and [Verification](#verification) for executable checks.
 - [actcomm.c](../../src/cmd/actcomm.c) and
   [fight.c](../../src/combat/fight.c): the ASK and killer/group KILL hooks.
 - [sql.c](../../src/sql/sql.c) and
-  [flatfile_world_quest_history.c](../../src/flatfile/flatfile_world_quest_history.c):
+  flatfile_world_quest_history.c:
   backend-specific completion history and daily counts behind `sql_world_quest_*`.
 - [difficulty.c](../../src/world/difficulty.c) and
   [currency_transaction.c](../../src/economy/currency_transaction.c): difficulty
@@ -600,7 +600,7 @@ the owning source paths above as well. Run each focused script below with
 - [test_world_quest_remaining_unloaded.py](../../tests/async/test_world_quest_remaining_unloaded.py):
   production score/status serialization and quest text with unknown allowance,
   missing labels, completed work, and read-only rendering.
-- [test_flatfile_world_quest_history.py](../../tests/async/test_flatfile_world_quest_history.py):
+- test_flatfile_world_quest_history.py:
   flatfile completion records, daily counting, corruption, and persistence.
 
 [run_world_quest_dual_backend.py](../../tests/async/run_world_quest_dual_backend.py)

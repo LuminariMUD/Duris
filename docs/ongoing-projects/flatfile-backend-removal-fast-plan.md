@@ -342,8 +342,13 @@ docker run --rm --cap-add SYS_ADMIN --security-opt seccomp=unconfined \
   DURIS_RUN_BACKUP_INTEGRATION=1 python3 -u \
     tests/async/test_persistence_backup_integration.py \
     PersistenceRecoveryIntegration.test_mariadb_full_dump_schema_history_values_and_isolated_service_boot \
-    PersistenceRecoveryIntegration.test_locker_receipt_qualification_rejects_corruption_and_unexpected_entries -v'
+    PersistenceRecoveryIntegration.test_locker_receipt_qualification_rejects_corruption_and_unexpected_entries \
+    PersistenceRecoveryIntegration.test_qualifier_checks_nonempty_combat_and_starter_records -v'
 ```
+
+Run the database suite from a short checkout path. Journeys put a Redis unix socket
+under `bin/tests/<temporary>/`, and a path over 107 characters makes Redis exit at
+startup; the long `flatfile-backend-removal-plan` worktree path is enough to cause it.
 
 Narrow both `build_native_fixture()` and `setUpClass()`: currently even these
 cases require flat-file repository sources and `dms_restore_flatfile`. Keep
@@ -400,6 +405,21 @@ and pick up at the first step not marked done.
 | 2b + 3. Runtime dispatch, delete backend | `branch/flatfile-removal-runtime` | done (#860) |
 | 4. Launcher, backup, restore, CI, docs | `branch/flatfile-removal-tools` | done |
 | 5. Tests and deferred list | `branch/flatfile-removal-tests` | in progress |
+
+### Step 5 evidence
+
+`tests/run_regression_tests.py` now holds `FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`,
+177 exact names, and prints how many it excluded. 49 backend-only `test_flatfile_*`
+tests with no other reference, and 37 orphaned harnesses, are deleted. The
+selected harnesses are adapted: persistence mode, build contract, launcher, backup
+unit tests, restore integration (narrowed, with new nonempty combat and starter-kit
+qualifier cases), combat-intent backup, locker shutdown recovery, and the six
+database-suite scripts. `persistence_restore_fixture.cpp` is now receipts-only.
+
+A sample of 25 of the 54 deferred tests that fail by assertion, and the cause
+grouping of all 177, showed harness or source-text breakage, not a MariaDB behavior
+change: 37 build a flat-file server, 86 include or compile deleted code, and 54
+assert source text or stubbed harness behavior.
 
 ### Step 4 evidence
 

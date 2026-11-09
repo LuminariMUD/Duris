@@ -11,7 +11,6 @@
 #include "persistence/persistence_observability.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_codec.h"
-#include "flatfile/flatfile_player_repository.h"
 #include "sql/sql.h"
 #include "sql/sql_pool.h"
 #include "item/item_movement_transaction.h"
@@ -114,10 +113,6 @@ static void reap_fixture(int)
 	}
 }
 const unsigned LockerChest::m_chestVnum = 173;
-const char *persistence_mode_flatfile_root()
-{
-	return nullptr;
-}
 const char *sql_persistence_db_name()
 {
 	return test_database.c_str();
@@ -407,16 +402,6 @@ class TestLocker : public StorageLocker
 	void lose_holder() { m_chLocker = nullptr; }
 };
 void LockerChest::FillExtraDescBuf(char *) {}
-player_save_apply_result flatfile_locker_snapshot_apply(const std::string &,
-							const flatfile_locker_save &, std::string *)
-{
-	abort();
-}
-player_save_apply_result flatfile_player_snapshot_apply(const std::string &,
-							const player_snapshot &, std::string *)
-{
-	abort();
-}
 
 // PRODUCTION_BODIES
 

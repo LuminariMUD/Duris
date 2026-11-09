@@ -18,10 +18,8 @@ class CombatIntentBackupTests(Fixture):
 
     def setUp(self):
         super().setUp()
-        self.live = self.base / "live"
-        shutil.rmtree(self.live)  # Only Fixture's freshly provisioned synthetic state.
-        backup.run([str(self.fixture), "seed", str(self.live)], phase="test")
-        backup.run([str(self.fixture), "seed-combat", str(self.live)], phase="test")
+        self.critical = self.p["journal_roots"]["critical"]
+        backup.run([str(self.fixture), "seed-combat", str(self.critical)], phase="test")
         self.store = self.p["journal_roots"]["critical"] / "combat-intents"
         self.pending = self.store / ("c1" + "00" * 15 + ".intent")
         self.recorded = self.store / ("c2" + "00" * 15 + ".recorded")
@@ -50,7 +48,7 @@ class CombatIntentBackupTests(Fixture):
         store.mkdir(mode=0o700)
         previous = self.create()
         preserved = backup.inventory(previous)
-        capture = backup.flatfile_capture
+        capture = backup.mariadb_capture
         record = store / "42.kit"
 
         def racing_capture(stage, p, capacity_base=None):
@@ -59,13 +57,13 @@ class CombatIntentBackupTests(Fixture):
             record.chmod(0o600)
             return capture(stage, p, capacity_base)
 
-        with mock.patch.object(backup, "flatfile_capture", side_effect=racing_capture):
-            result = backup.schedule(self.p, "flatfile-primary")
+        with mock.patch.object(backup, "mariadb_capture", side_effect=racing_capture):
+            result = backup.schedule(self.p, "mariadb-primary")
         self.assertEqual(result["result"], "failed")
         self.assertEqual(backup.inventory(previous), preserved)
         self.assertEqual(len(backup.generations(self.p["root"])), 1)
         self.assertFalse(list(self.p["root"].glob(".staging-*")))
-        self.assertEqual(backup.schedule(self.p, "flatfile-primary")["result"], "ok")
+        self.assertEqual(backup.schedule(self.p, "mariadb-primary")["result"], "ok")
 
     def test_starter_completion_during_authority_capture_refuses_backup(self):
         store = self.p["journal_roots"]["critical"] / "starter-kits"
@@ -76,19 +74,19 @@ class CombatIntentBackupTests(Fixture):
         record.chmod(0o600)
         previous = self.create()
         preserved = backup.inventory(previous)
-        capture = backup.flatfile_capture
+        capture = backup.mariadb_capture
 
         def racing_capture(stage, p, capacity_base=None):
             completed = bytes([1]) + pending[1:]
             record.write_bytes(completed + hashlib.sha256(completed).digest())
             return capture(stage, p, capacity_base)
 
-        with mock.patch.object(backup, "flatfile_capture", side_effect=racing_capture):
-            result = backup.schedule(self.p, "flatfile-primary")
+        with mock.patch.object(backup, "mariadb_capture", side_effect=racing_capture):
+            result = backup.schedule(self.p, "mariadb-primary")
         self.assertEqual(result["result"], "failed")
         self.assertEqual(backup.inventory(previous), preserved)
         self.assertEqual(len(backup.generations(self.p["root"])), 1)
-        self.assertEqual(backup.schedule(self.p, "flatfile-primary")["result"], "ok")
+        self.assertEqual(backup.schedule(self.p, "mariadb-primary")["result"], "ok")
 
     def test_boot_lock_durable_evidence_temporaries_and_schedule(self):
         temporary = self.store / ("." + self.pending.name + ".tmp.123.4")
@@ -96,7 +94,7 @@ class CombatIntentBackupTests(Fixture):
         before = backup.inventory(self.store)
         with (self.store / ".service-lock").open("rb") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            result = backup.schedule(self.p, "flatfile-primary")
+            result = backup.schedule(self.p, "mariadb-primary")
         self.assertEqual(result["result"], "ok")
         generation = self.p["root"] / result["generation"]
         captured = generation / "journals/critical/combat-intents"
@@ -107,7 +105,7 @@ class CombatIntentBackupTests(Fixture):
         self.assertEqual(backup.inventory(self.store), before)
         self.assertGreater(backup.read_json(self.p["root"] / "schedule.json")["completed"], 0)
         self.assertEqual(backup.status(self.p)["result"], "ok")
-        self.assertEqual(backup.schedule(self.p, "flatfile-primary")["event"], "status")
+        self.assertEqual(backup.schedule(self.p, "mariadb-primary")["event"], "status")
 
     def test_capture_rejects_invalid_combat_entries(self):
         valid = self.pending.read_bytes()
@@ -159,17 +157,17 @@ class CombatIntentBackupTests(Fixture):
 
         def racing_copy(source, destination, *args, **kwargs):
             if source == self.pending:
-                backup.run([str(self.fixture), "recover-combat", str(self.live)], phase="test")
+                backup.run([str(self.fixture), "recover-combat", str(self.critical)], phase="test")
             return copy(source, destination, *args, **kwargs)
 
         with mock.patch.object(backup.shutil, "copy2", side_effect=racing_copy):
-            result = backup.schedule(self.p, "flatfile-primary")
+            result = backup.schedule(self.p, "mariadb-primary")
         self.assertEqual(result["result"], "failed")
         self.assertEqual(backup.inventory(previous), preserved)
         self.assertEqual(len(backup.generations(self.p["root"])), 1)
         self.assertFalse(list(self.p["root"].glob(".staging-*")))
         self.assertFalse((self.p["root"] / "schedule.json").exists())
-        self.assertEqual(backup.schedule(self.p, "flatfile-primary")["result"], "ok")
+        self.assertEqual(backup.schedule(self.p, "mariadb-primary")["result"], "ok")
         self.assertEqual(backup.status(self.p)["result"], "ok")
 
     def test_native_qualifier_checks_completed_and_pending_commands(self):
@@ -207,55 +205,6 @@ class CombatIntentBackupTests(Fixture):
                     with self.assertRaises(backup.BackupError):
                         backup.run(command, phase="test")
 
-    def restore_during_commit(self, before_snapshot):
-        capture = backup.flatfile_capture
-
-        def commit():
-            backup.run([str(self.fixture), "recover-combat", str(self.live)], phase="test")
-
-        def racing_capture(stage, p, capacity_base=None):
-            self.assertTrue((stage / "journals/critical/combat-intents" / self.pending.name).exists())
-            if before_snapshot:
-                commit()
-            detail = capture(stage, p, capacity_base)
-            if not before_snapshot:
-                commit()
-            return detail
-
-        with mock.patch.object(backup, "flatfile_capture", side_effect=racing_capture):
-            generation = self.create()
-        captured = backup.inventory(generation)
-        live_before = backup.inventory(self.live)
-        journals_before = backup.inventory(self.store)
-
-        def recover(candidate, mode, env):
-            self.assertEqual(mode, "flatfile-primary")
-            result = backup.run([str(self.fixture), "recover-combat", str(candidate / "state")],
-                                phase="test")
-            self.assertEqual(result.strip(), b"already_applied" if before_snapshot else b"applied")
-
-        # Replace only the dedicated-filesystem guard and game boot. Copy, checksums,
-        # native qualification and repository replay all run against real fixture bytes.
-        self.p["restore_root"].mkdir(mode=0o700)
-        with mock.patch.object(restore, "restore_capacity"), \
-             mock.patch.object(restore, "service_load", side_effect=recover):
-            result = restore.restore(self.p, generation.name, self.ledger())
-        self.assertEqual(result["result"], "qualified")
-        candidate = self.p["restore_root"] / result["candidate"]
-        store = candidate / "journals/critical/combat-intents"
-        self.assertFalse((store / self.pending.name).exists())
-        self.assertTrue((store / self.pending.with_suffix(".recorded").name).exists())
-        backup.run([str(self.fixture), "recover-combat", str(candidate / "state")], phase="test")
-        self.assertEqual(backup.inventory(generation), captured)
-        self.assertEqual(backup.inventory(self.live), live_before)
-        self.assertEqual(backup.inventory(self.store), journals_before)
-
-    def test_restore_replays_commit_newer_than_authority_snapshot(self):
-        self.restore_during_commit(False)
-
-    def test_restore_replays_idempotently_when_commit_precedes_snapshot(self):
-        self.restore_during_commit(True)
-
     def test_mariadb_capture_keeps_pre_snapshot_combat_evidence(self):
         capture = backup.mariadb_capture
 
@@ -263,7 +212,7 @@ class CombatIntentBackupTests(Fixture):
             captured = stage / "journals/critical/combat-intents" / self.pending.name
             self.assertEqual(captured.read_bytes(), self.pending.read_bytes())
             detail = capture(stage, p, capacity_base)
-            backup.run([str(self.fixture), "recover-combat", str(self.live)], phase="test")
+            backup.run([str(self.fixture), "recover-combat", str(self.critical)], phase="test")
             return detail
 
         with mock.patch.object(backup, "mariadb_capture", side_effect=racing_capture):
