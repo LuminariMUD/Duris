@@ -595,6 +595,9 @@ in progress even though help and URL producers now reach native MXP delivery.
 
 ### Chunk 6: negotiated browser text and chat presentation
 
+Review: [PR #942](https://github.com/LuminariMUD/Duris/pull/942), implementation
+commit `ccb0aa0f8`, stacked on #934; labels `enhancement`, `documentation`.
+
 Implemented on `branch/clickable-links-web-protocol`:
 
 - Exact `Duris.Links 1` support through the existing Core.Supports parser and
@@ -628,7 +631,8 @@ Add/Remove/Set, no subscription, all chat entry points, all-stream reporting and
 disable behavior. Deferred-prompt serialization and `make -C src -j8` passed.
 The local benchmark covers new-capability chat (about 20–21 microseconds CPU per
 message for both full/body snapshots, 12,800 messages to 64 recipients); this is
-not a live capacity claim. Formatting and commit hooks remain required at commit.
+not a live capacity claim. Formatting and commit-time tidy passed; the branch is
+pushed for review.
 
 Evidence: `bin/tests/phase1-web-protocol-{output,asan,gmcp,prompts,build}.log`,
 `bin/tests/phase1-web-protocol-benchmark.csv`. The output harness exports real
