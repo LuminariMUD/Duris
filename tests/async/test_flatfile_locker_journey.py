@@ -50,13 +50,23 @@ def boot(binary, run_root, environment, port):
         process = subprocess.Popen(
             [str(binary), "--minimal", "-d", str(run_root), str(port)], cwd=run_root,
             env=environment, text=True, stdout=output, stderr=subprocess.STDOUT)
-    deadline = time.monotonic() + 120
-    while "Entering game loop." not in output_path.read_text(errors="replace")[start:]:
-        journey.require(process.poll() is None and time.monotonic() < deadline,
-                        "server did not boot:\n" +
-                        output_path.read_text(errors="replace")[-8000:])
-        time.sleep(0.1)
-    return process
+    try:
+        deadline = time.monotonic() + 120
+        while b"Entering game loop." not in output_path.read_bytes()[start:]:
+            journey.require(process.poll() is None and time.monotonic() < deadline,
+                            "server did not boot:\n" +
+                            output_path.read_text(errors="replace")[-8000:])
+            time.sleep(0.1)
+        return process
+    except BaseException:
+        if process.poll() is None:
+            process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=10)
+        raise
 
 
 def stop(process):
