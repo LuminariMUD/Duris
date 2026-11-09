@@ -16,6 +16,7 @@ import subprocess
 import tempfile
 import argparse
 import json
+import re
 
 from _paths import ROOT, extract_function
 
@@ -110,6 +111,7 @@ int get_ival_from_proc(obj_proc_type);
 struct zone_interval { int bottom = 0, top = 0, zone = -1; };
 static std::vector<zone_interval> quest_intervals;
 // QUEST_POLICIES
+// BAG_POLICY
 
 static int replacement_cost(int sval) {
     int cost;
@@ -174,6 +176,19 @@ static void value_delta(const char *cohort, int id, P_obj object) {
     const auto updated = consumer_values(object, false);
     assert(rolls == random && identities == ids);
     const int vnum = obj_index[object->R_num].virtual_number;
+    std::set<int> apply_kinds;
+    int apply_stages = 0;
+    for (const auto &apply : object->affected) {
+        if (apply.location != APPLY_NONE) apply_kinds.insert(apply.location);
+        switch (apply.location) {
+        case APPLY_AC: if (apply.modifier) apply_stages |= 1; break;
+        case APPLY_STR_MAX: case APPLY_DEX_MAX: case APPLY_INT_MAX: case APPLY_WIS_MAX:
+        case APPLY_CON_MAX: case APPLY_CHA_MAX: case APPLY_AGI_MAX: case APPLY_POW_MAX: case APPLY_LUCK_MAX:
+            apply_stages |= 1; break;
+        case APPLY_HITROLL: case APPLY_DAMROLL: case APPLY_COMBAT_PULSE: case APPLY_SPELL_PULSE:
+            apply_stages |= 2; break;
+        }
+    }
     P_obj obj = object;
     // PACKED_DECLARATIONS
     unsigned int callbacks = 0;
@@ -208,9 +223,12 @@ static void value_delta(const char *cohort, int id, P_obj object) {
             floor_gained += new_floor && !old_floor;
         }
     }
-    std::fprintf(deltas, "%d,%d,%d,%d,%d,%d,%d,%d,%u,%d,%d\n", obj_index[object->R_num].func.obj ? get_ival_from_proc(obj_index[object->R_num].func.obj) : 0,
+    std::fprintf(deltas, "%d,%d,%d,%d,%d,%d,%d,%d,%u,%d,%d,%zu,%d", obj_index[object->R_num].func.obj ? get_ival_from_proc(obj_index[object->R_num].func.obj) : 0,
                  source_eligible_reward(object), vnum, zone >= 0 ? zone_table[zone].number : -1, floor_lost, floor_gained,
-                 count, dense, callbacks, object->value[6], object->value[7]);
+                 count, dense, callbacks, object->value[6], object->value[7], apply_kinds.size(), apply_stages);
+    for (const auto &apply : object->affected)
+        std::fprintf(deltas, ",%d,%d", apply.location, apply.modifier);
+    std::fprintf(deltas, ",%d\n", qualification_bag_candidate(object));
 }
 
 static void generated_deltas() {
@@ -354,7 +372,8 @@ int main(int argc, char **)
                    "enhance_min_level_before,enhance_min_level_after,donor_min_before,donor_min_after,"
                    "replacement_cost_copper_before,replacement_cost_copper_after,nominal_superior_cost_copper_before,nominal_superior_cost_copper_after,"
                    "native_proc_credit,quest_source_eligible,template_vnum,quest_zone,quest_floor_lost,quest_floor_gained,"
-                   "packed_slot_count,packed_dense,packed_callback_mask,proc_level,proc_denominator\n", deltas);
+                   "packed_slot_count,packed_dense,packed_callback_mask,proc_level,proc_denominator,apply_kind_count,apply_stage_mask,"
+                   "apply0,modifier0,apply1,modifier1,apply2,modifier2,apply3,modifier3,faerie_candidate\n", deltas);
         FILE *settings = std::fopen("consumer-settings.json", "w"); assert(settings);
         std::fprintf(settings, "{\"max_mortal_level\":%d,\"craft_level_gate\":%d,\"craft_xp_per_ival\":%d,\"enhance_level_gate\":%d,"
                      "\"enhance_donor_delta\":%d,\"enhance_insignia_bonus\":%d,\"enhance_cap\":%d,\"enhance_radius\":%d,"
@@ -455,12 +474,16 @@ def consumer_effects(rows, settings, quest_rows):
                                   max((r["after"] - r["before"] for r in changed), default=0)],
             "salvage_quality_crossings": {str(limit): sum(bool(r["salvageable"]) and
                 ((r["before"] <= limit) != (r["after"] <= limit)) for r in changed) for limit in (5, 10, 15, 20)},
-            "salvage_recipe_autofail_100_crossings": sum(bool(r["salvageable"]) and
+            "salvage_recipe_roll_100_crossings": sum(bool(r["salvageable"]) and
                 ((r["before"] >= 100) != (r["after"] >= 100)) for r in changed),
-            "faerie_bag_crossings": {str(limit): sum(
+            "faerie_bag_crossings": {str(limit): sum(bool(r["faerie_candidate"]) and (
+                ((r["before"] <= limit) != (r["after"] <= limit)) if limit == 125 else
+                ((r["before"] >= limit) != (r["after"] >= limit))) for r in changed) for limit in (25, 50, 125)},
+            "faerie_bag_high_value_log_crossings": sum(bool(r["faerie_candidate"]) and
+                ((r["before"] > 100) != (r["after"] > 100)) for r in changed),
+            "raw_score_25_50_125_crossings": {str(limit): sum(
                 ((r["before"] <= limit) != (r["after"] <= limit)) if limit == 125 else
                 ((r["before"] >= limit) != (r["after"] >= limit)) for r in changed) for limit in (25, 50, 125)},
-            "faerie_bag_over_100_crossings": sum((r["before"] > 100) != (r["after"] > 100) for r in changed),
             "recipe_admission_changes": sum(r["recipe_before"] != r["recipe_after"] for r in changed),
             "craft_mortal_level_requirement_changes": sum(
                 min(maximum + 1, r["craft_min_level_before"]) != min(maximum + 1, r["craft_min_level_after"]) for r in recipes),
@@ -489,6 +512,8 @@ def consumer_effects(rows, settings, quest_rows):
                 r["proc_denominator"] > 0 and r["template_vnum"] not in (21, 22) for r in changed),
             "changed_partially_callable_packed_ids": [r["id"] for r in changed if r["packed_dense"] and
                 0 < r["packed_callback_mask"] < (1 << r["packed_slot_count"]) - 1],
+            "changed_single_apply_kind_ids": [r["id"] for r in changed if r["apply_kind_count"] == 1],
+            "changed_without_mixed_apply_stages_ids": [r["id"] for r in changed if r["apply_stage_mask"] != 3],
         }
         result[cohort] = effects
     zones = {}
@@ -542,6 +567,15 @@ def main():
                               "bool source_eligible_reward(", "void build_intervals()"):
                 native_queries += "\n" + extract_function("world_quest_policy.c", signature)
             code = code.replace("// QUEST_POLICIES", native_queries)
+            move = (ROOT / "src/cmd/actmove.c").read_text()
+            bag_range = re.search(r"robjint = number\((\d+), (\d+)\);", move)
+            assert bag_range, "update qualification when bag sampling changes"
+            start = move.index("else if (!IS_SET(robj->wear_flags, ITEM_TAKE)", bag_range.start())
+            end = move.index("\n\t\t\t\t\t\t{", start)
+            rejection = move[start + len("else if "):end].strip()
+            code = code.replace("// BAG_POLICY", "static bool qualification_bag_candidate(P_obj robj) {\n"
+                "if (!robj) return false;\nconst int vnum = OBJ_VNUM(robj);\n"
+                f"return vnum >= {bag_range[1]} && vnum <= {bag_range[2]} && !{rejection};\n}}")
             enhance = (ROOT / "src/item/enhance.c").read_text()
             fight = (ROOT / "src/combat/fight.c").read_text()
             start = fight.index("\tconst int spells[3] = { obj->value[5] % 1000")
@@ -648,7 +682,7 @@ def main():
                             ("kingdom_config", world / "lib/kingdom.cfg"),
                             ("item_abilities", world / "lib/item_abilities.json")):
             assert provenance[label + "_sha256"] == hashlib.sha256(file.read_bytes()).hexdigest()
-        assert provenance["formula_revision"] == "ival-v3-packed-mean"
+        assert provenance["formula_revision"] == "ival-v4-apply-composition"
         assert provenance["context"] == "configured-healthy-boot"
         assert provenance["mini_mode"] == "0" and provenance["no_specials"] == "0"
         if args.delta_output:

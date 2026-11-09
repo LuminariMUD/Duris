@@ -28,6 +28,8 @@ HARNESS = r'''
 #include <cstdlib>
 #include <cstring>
 #include <utility>
+#include <algorithm>
+#include <array>
 
 extern Skill skills[MAX_AFFECT_TYPES + 1];
 void initialize_skills();
@@ -146,7 +148,7 @@ static void applies()
     object.affected[1] = {APPLY_HITROLL, 3};
     assert(itemvalue(&object) == 60);
     std::swap(object.affected[0], object.affected[1]);
-    assert(itemvalue(&object) == 58); // LEGACY F03: same stats, different slot order.
+    assert(itemvalue(&object) == 60); // Apply additions precede apply factors in both orders.
 
     object = item();
     object.affected[0] = {APPLY_HIT, 10};
@@ -181,6 +183,61 @@ static void applies()
             assert(itemvalue(&object) >= 1);
         }
     std::puts("applies: order, zero, fourth slot, duplicate/cancelled stats and byte extremes");
+}
+
+static void apply_permutations()
+{
+    const struct { int location, modifier, score; } singles[] = {
+        {APPLY_AC, -10, 15}, {APPLY_STR_MAX, 2, 13}, {APPLY_HITROLL, 3, 37},
+        {APPLY_DAMROLL, 3, 37}, {APPLY_COMBAT_PULSE, -1, 150}, {APPLY_SPELL_PULSE, -1, 150}};
+    for (const auto &single : singles) for (int slot = 0; slot < MAX_OBJ_AFFECT; ++slot) {
+        auto object = item();
+        object.affected[slot].location = single.location;
+        object.affected[slot].modifier = single.modifier;
+        assert(itemvalue(&object) == single.score);
+    }
+    const item_value_apply choices[] = {{APPLY_AC, -10}, {APPLY_STR_MAX, 2},
+        {APPLY_HITROLL, 3}, {APPLY_DAMROLL, 2}, {APPLY_COMBAT_PULSE, -1}, {APPLY_SPELL_PULSE, -1},
+        {APPLY_STR_RACE, 1}, {APPLY_AGI_RACE, 1}};
+    constexpr int choice_count = std::size(choices);
+    int checked = 0;
+    for (int a = 0; a < choice_count; ++a)
+    for (int b = a + 1; b < choice_count; ++b)
+    for (int c = b + 1; c < choice_count; ++c)
+    for (int d = c + 1; d < choice_count; ++d)
+    for (int type : {ITEM_WORN, ITEM_ARMOR, ITEM_WEAPON})
+    for (bool premium : {false, true})
+    for (bool twohands : {false, true})
+    {
+        if ((type != ITEM_WEAPON && twohands) || (type == ITEM_WEAPON && premium)) continue;
+        const int selected[] = {a, b, c, d};
+        std::array<int, 4> order{0, 1, 2, 3};
+        item_value_breakdown expected{};
+        bool first = true;
+        do {
+            auto object = item();
+            object.type = type;
+            if (premium) object.wear_flags |= ITEM_WEAR_EYES;
+            if (twohands) object.extra_flags |= ITEM_TWOHANDS;
+            object.value[0] = type == ITEM_WEAPON ? WEAPON_LONGSWORD : 10;
+            object.value[1] = 2; object.value[2] = 6;
+            if (type == ITEM_WEAPON) object.wear_flags |= ITEM_WIELD;
+            for (int slot = 0; slot < MAX_OBJ_AFFECT; ++slot) {
+                const auto apply = choices[selected[order[slot]]];
+                object.affected[slot].location = apply.location;
+                object.affected[slot].modifier = apply.modifier;
+            }
+            const auto original = object;
+            item_value_breakdown detail;
+            itemvalue(&object, &detail);
+            assert(!std::memcmp(&object, &original, sizeof(object)));
+            if (first) { expected = detail; first = false; }
+            else assert(detail.score == expected.score && detail.base == expected.base &&
+                        detail.multiplier == expected.multiplier && detail.unrounded == expected.unrounded);
+            ++checked;
+        } while (std::next_permutation(order.begin(), order.end()));
+    }
+    std::printf("apply permutations: %d mixed AC/max-stat/hit/damage/pulse/racial cases, identical breakdowns and unchanged slots\n", checked);
 }
 
 static void proc_policy()
@@ -240,7 +297,7 @@ int main(int argc, char **argv)
         return 0;
     }
     assert(itemvalue(nullptr) == 0);
-    circles(); packed_rounding(); applies(); proc_policy(); resolved_racial_context();
+    circles(); packed_rounding(); applies(); apply_permutations(); proc_policy(); resolved_racial_context();
     auto object = packed(32);
     const auto original = object;
     const auto index = indexes[0];

@@ -443,8 +443,11 @@ static void test_essence()
     clear_attempt();
 }
 
-static void test_superior(bool packed_case = false)
+enum class superior_case { ordinary, packed, mixed_applies };
+static void test_superior(superior_case probe = superior_case::ordinary)
 {
+    const bool packed_case = probe == superior_case::packed;
+    const bool mixed_case = probe == superior_case::mixed_applies;
     pouch_usage = 0;
     char_data ch{};
     ch.player.level = 60;
@@ -517,15 +520,23 @@ static void test_superior(bool packed_case = false)
         base.value[6] = 60;
         base.value[7] = 30;
     }
+    if (mixed_case) {
+        base.value[0] = 2;
+        base.affected[2] = {APPLY_HITROLL, 3};
+        base.affected[3] = {APPLY_STR_MAX, 2};
+    }
     item = base;
     const int original_value = itemvalue(&item);
     if (packed_case) assert(original_value == 21); // 18 before F02; all charges use this corrected value.
-    if (packed_case) {
-        ch.player.level = 6; // Old value 18 passed this limit; corrected 21 does not.
+    if (mixed_case) assert(original_value == 76); // 74 before F03.
+    if (packed_case || mixed_case) {
+        ch.player.level = packed_case ? 6 : 25; // Old values passed these limits; corrected ones do not.
+        const auto unchanged = item;
         do_enhance(&ch, command, 0);
         assert(output.find("at your level") != std::string::npos);
         assert(charges == 0 && GET_MONEY(&ch) == 20000 && materials == initial_materials);
         assert(item.affected[0].modifier == 2 && item.affected[1].modifier == 2);
+        assert(!std::memcmp(&item, &unchanged, sizeof(item)));
         clear_attempt();
         ch.player.level = 60;
     }
@@ -625,7 +636,8 @@ int main()
     test_replacement();
     test_essence();
     test_superior();
-    test_superior(true);
+    test_superior(superior_case::packed);
+    test_superior(superior_case::mixed_applies);
 }
 """
 

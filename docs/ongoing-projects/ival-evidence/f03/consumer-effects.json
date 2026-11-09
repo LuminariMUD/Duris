@@ -1,0 +1,1049 @@
+{
+  "template": {
+    "changed_scores": 140,
+    "score_delta_range": [
+      1,
+      643
+    ],
+    "salvage_quality_crossings": {
+      "5": 0,
+      "10": 0,
+      "15": 0,
+      "20": 0
+    },
+    "salvage_recipe_roll_100_crossings": 2,
+    "faerie_bag_crossings": {
+      "25": 0,
+      "50": 0,
+      "125": 1
+    },
+    "faerie_bag_high_value_log_crossings": 2,
+    "raw_score_25_50_125_crossings": {
+      "25": 0,
+      "50": 1,
+      "125": 1
+    },
+    "recipe_admission_changes": 0,
+    "craft_mortal_level_requirement_changes": 47,
+    "recipe_material_plan_changes": 58,
+    "recipe_high_units_delta_one_craft_each": 34,
+    "recipe_low_units_delta_one_craft_each": -27,
+    "nominal_recipe_xp_delta_one_craft_each": 143000,
+    "enhance_source_mortal_level_requirement_changes": 49,
+    "enhance_mortal_source_donor_floor_shifts": {
+      "5000": [
+        51,
+        52
+      ],
+      "5021": [
+        64,
+        65
+      ],
+      "6830": [
+        73,
+        75
+      ],
+      "8721": [
+        99,
+        101
+      ],
+      "13315": [
+        86,
+        89
+      ],
+      "16214": [
+        109,
+        112
+      ],
+      "16217": [
+        87,
+        89
+      ],
+      "16222": [
+        96,
+        98
+      ],
+      "19901": [
+        128,
+        131
+      ],
+      "20040": [
+        106,
+        109
+      ],
+      "20068": [
+        151,
+        155
+      ],
+      "20256": [
+        138,
+        142
+      ],
+      "20955": [
+        64,
+        66
+      ],
+      "21614": [
+        33,
+        34
+      ],
+      "22629": [
+        58,
+        59
+      ],
+      "22957": [
+        122,
+        126
+      ],
+      "25717": [
+        130,
+        133
+      ],
+      "25753": [
+        155,
+        159
+      ],
+      "25757": [
+        108,
+        111
+      ],
+      "28911": [
+        148,
+        151
+      ],
+      "31545": [
+        64,
+        66
+      ],
+      "36898": [
+        145,
+        149
+      ],
+      "38702": [
+        117,
+        120
+      ],
+      "43540": [
+        108,
+        110
+      ],
+      "43719": [
+        77,
+        79
+      ],
+      "43720": [
+        82,
+        85
+      ],
+      "43721": [
+        149,
+        153
+      ],
+      "49093": [
+        51,
+        52
+      ],
+      "49097": [
+        74,
+        76
+      ],
+      "54611": [
+        35,
+        36
+      ],
+      "55075": [
+        79,
+        81
+      ],
+      "55169": [
+        66,
+        68
+      ],
+      "55412": [
+        115,
+        119
+      ],
+      "57575": [
+        51,
+        52
+      ],
+      "59200": [
+        123,
+        126
+      ],
+      "66438": [
+        84,
+        86
+      ],
+      "66640": [
+        51,
+        52
+      ],
+      "66663": [
+        110,
+        113
+      ],
+      "66678": [
+        134,
+        137
+      ],
+      "67130": [
+        154,
+        158
+      ],
+      "70941": [
+        94,
+        96
+      ],
+      "70974": [
+        76,
+        79
+      ],
+      "76683": [
+        100,
+        103
+      ],
+      "77562": [
+        79,
+        81
+      ],
+      "78430": [
+        155,
+        158
+      ],
+      "78482": [
+        114,
+        117
+      ],
+      "78507": [
+        100,
+        103
+      ],
+      "78511": [
+        100,
+        103
+      ],
+      "80567": [
+        78,
+        80
+      ],
+      "83514": [
+        85,
+        87
+      ],
+      "85723": [
+        121,
+        124
+      ],
+      "87576": [
+        119,
+        121
+      ],
+      "89163": [
+        38,
+        39
+      ],
+      "91020": [
+        90,
+        92
+      ],
+      "91051": [
+        141,
+        144
+      ],
+      "94362": [
+        82,
+        84
+      ],
+      "97020": [
+        129,
+        132
+      ],
+      "98949": [
+        94,
+        96
+      ],
+      "134109": [
+        39,
+        40
+      ],
+      "138959": [
+        44,
+        45
+      ],
+      "142295": [
+        66,
+        68
+      ]
+    },
+    "replacement_fee_changes": 0,
+    "nominal_superior_cost_delta_mortal_sources_copper": 14800,
+    "enhancement_index_score_bucket_changes": 93,
+    "enhancement_result_cap_crossings": 2,
+    "quest_reward_floor_losses": 0,
+    "quest_reward_floor_gains": 0,
+    "changed_rows_with_unpriced_bank5": 0,
+    "changed_native_proc_credits": [
+      0,
+      35,
+      85,
+      95,
+      100,
+      115,
+      175,
+      195,
+      205,
+      215
+    ],
+    "changed_dense_callable_packed_rows": 33,
+    "changed_partially_callable_packed_ids": [
+      59249
+    ],
+    "changed_single_apply_kind_ids": [],
+    "changed_without_mixed_apply_stages_ids": []
+  },
+  "generated": {
+    "changed_scores": 222,
+    "score_delta_range": [
+      1,
+      34
+    ],
+    "salvage_quality_crossings": {
+      "5": 0,
+      "10": 0,
+      "15": 0,
+      "20": 0
+    },
+    "salvage_recipe_roll_100_crossings": 0,
+    "faerie_bag_crossings": {
+      "25": 0,
+      "50": 0,
+      "125": 0
+    },
+    "faerie_bag_high_value_log_crossings": 0,
+    "raw_score_25_50_125_crossings": {
+      "25": 0,
+      "50": 1,
+      "125": 4
+    },
+    "recipe_admission_changes": 0,
+    "craft_mortal_level_requirement_changes": 0,
+    "recipe_material_plan_changes": 0,
+    "recipe_high_units_delta_one_craft_each": 0,
+    "recipe_low_units_delta_one_craft_each": 0,
+    "nominal_recipe_xp_delta_one_craft_each": 0,
+    "enhance_source_mortal_level_requirement_changes": 88,
+    "enhance_mortal_source_donor_floor_shifts": {
+      "293": [
+        80,
+        84
+      ],
+      "317": [
+        155,
+        163
+      ],
+      "422": [
+        129,
+        135
+      ],
+      "512": [
+        150,
+        157
+      ],
+      "513": [
+        141,
+        148
+      ],
+      "523": [
+        90,
+        95
+      ],
+      "534": [
+        53,
+        56
+      ],
+      "541": [
+        98,
+        103
+      ],
+      "837": [
+        115,
+        121
+      ],
+      "848": [
+        69,
+        73
+      ],
+      "967": [
+        132,
+        139
+      ],
+      "1068": [
+        112,
+        117
+      ],
+      "1069": [
+        78,
+        82
+      ],
+      "1385": [
+        28,
+        30
+      ],
+      "1430": [
+        94,
+        97
+      ],
+      "1931": [
+        163,
+        171
+      ],
+      "1940": [
+        86,
+        90
+      ],
+      "1949": [
+        144,
+        151
+      ],
+      "1958": [
+        100,
+        105
+      ],
+      "2051": [
+        109,
+        115
+      ],
+      "2148": [
+        139,
+        152
+      ],
+      "2476": [
+        124,
+        130
+      ],
+      "2491": [
+        70,
+        74
+      ],
+      "2591": [
+        84,
+        88
+      ],
+      "2690": [
+        128,
+        135
+      ],
+      "2706": [
+        56,
+        59
+      ],
+      "2721": [
+        110,
+        116
+      ],
+      "3017": [
+        102,
+        107
+      ],
+      "3018": [
+        70,
+        73
+      ],
+      "3021": [
+        146,
+        153
+      ],
+      "3041": [
+        85,
+        89
+      ],
+      "3139": [
+        97,
+        102
+      ],
+      "3140": [
+        78,
+        82
+      ],
+      "3258": [
+        103,
+        108
+      ],
+      "3579": [
+        118,
+        123
+      ],
+      "3677": [
+        132,
+        139
+      ],
+      "3705": [
+        75,
+        79
+      ],
+      "3786": [
+        90,
+        95
+      ],
+      "3800": [
+        157,
+        165
+      ],
+      "4219": [
+        80,
+        84
+      ],
+      "4220": [
+        94,
+        99
+      ],
+      "4251": [
+        73,
+        77
+      ],
+      "4654": [
+        146,
+        154
+      ],
+      "4761": [
+        90,
+        95
+      ],
+      "4785": [
+        120,
+        126
+      ],
+      "4788": [
+        81,
+        85
+      ],
+      "4889": [
+        84,
+        88
+      ],
+      "4894": [
+        136,
+        143
+      ],
+      "5207": [
+        124,
+        130
+      ],
+      "5322": [
+        52,
+        55
+      ],
+      "5325": [
+        77,
+        81
+      ],
+      "5426": [
+        149,
+        156
+      ],
+      "5450": [
+        125,
+        132
+      ],
+      "5742": [
+        136,
+        143
+      ],
+      "5857": [
+        125,
+        131
+      ],
+      "5865": [
+        62,
+        65
+      ],
+      "5876": [
+        142,
+        149
+      ],
+      "5879": [
+        131,
+        138
+      ],
+      "5968": [
+        152,
+        159
+      ],
+      "5970": [
+        80,
+        84
+      ],
+      "6296": [
+        155,
+        163
+      ],
+      "6318": [
+        60,
+        63
+      ],
+      "6425": [
+        124,
+        130
+      ],
+      "6526": [
+        100,
+        105
+      ],
+      "6838": [
+        132,
+        138
+      ],
+      "6859": [
+        62,
+        65
+      ],
+      "6955": [
+        51,
+        54
+      ],
+      "6972": [
+        123,
+        129
+      ],
+      "7056": [
+        117,
+        123
+      ],
+      "7066": [
+        131,
+        137
+      ],
+      "7394": [
+        21,
+        22
+      ],
+      "7411": [
+        59,
+        62
+      ],
+      "7490": [
+        138,
+        145
+      ],
+      "7492": [
+        134,
+        141
+      ],
+      "7499": [
+        97,
+        101
+      ],
+      "7514": [
+        108,
+        113
+      ],
+      "7950": [
+        42,
+        45
+      ],
+      "8044": [
+        61,
+        64
+      ],
+      "8048": [
+        122,
+        128
+      ],
+      "8049": [
+        152,
+        159
+      ],
+      "8060": [
+        122,
+        128
+      ],
+      "8401": [
+        148,
+        152
+      ],
+      "8470": [
+        98,
+        103
+      ],
+      "8484": [
+        114,
+        119
+      ],
+      "8500": [
+        159,
+        167
+      ],
+      "8603": [
+        107,
+        112
+      ],
+      "8688": [
+        110,
+        116
+      ],
+      "8701": [
+        160,
+        168
+      ],
+      "8716": [
+        131,
+        137
+      ]
+    },
+    "replacement_fee_changes": 0,
+    "nominal_superior_cost_delta_mortal_sources_copper": 47700,
+    "enhancement_index_score_bucket_changes": 0,
+    "enhancement_result_cap_crossings": 0,
+    "quest_reward_floor_losses": 0,
+    "quest_reward_floor_gains": 0,
+    "changed_rows_with_unpriced_bank5": 11,
+    "changed_native_proc_credits": [
+      0,
+      55
+    ],
+    "changed_dense_callable_packed_rows": 57,
+    "changed_partially_callable_packed_ids": [],
+    "changed_single_apply_kind_ids": [],
+    "changed_without_mixed_apply_stages_ids": []
+  },
+  "quest_zone_reward_weight_ratios": {
+    "50": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0002602133749674,
+      "ratio_max": 1.000262467191601
+    },
+    "68": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.00044286979628,
+      "ratio_max": 1.0004491354143275
+    },
+    "91": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0015698587127158,
+      "ratio_max": 1.0016313213703099
+    },
+    "133": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0010291595197256,
+      "ratio_max": 1.0010434782608695
+    },
+    "162": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0030326004548902,
+      "ratio_max": 1.0030503304524656
+    },
+    "199": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.000825309491059,
+      "ratio_max": 1.0008396305625524
+    },
+    "200": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0021270130659374,
+      "ratio_max": 1.0023972602739726
+    },
+    "202": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0022831050228311,
+      "ratio_max": 1.0027681660899654
+    },
+    "209": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0012121212121212,
+      "ratio_max": 1.0013559322033898
+    },
+    "215": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0001642036124794,
+      "ratio_max": 1.0001858045336307
+    },
+    "226": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0009267840593141,
+      "ratio_max": 1.0009746588693957
+    },
+    "229": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0023296447291787,
+      "ratio_max": 1.002348796241926
+    },
+    "257": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0030438311688312,
+      "ratio_max": 1.0030438311688312
+    },
+    "266": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0027694438033694,
+      "ratio_max": 1.0027732840305061
+    },
+    "289": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0007798284377436,
+      "ratio_max": 1.0008134490238612
+    },
+    "313": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.004980079681275,
+      "ratio_max": 1.0049850448654039
+    },
+    "315": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0007017543859649,
+      "ratio_max": 1.0007089684509038
+    },
+    "324": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0016589250165893,
+      "ratio_max": 1.0016589250165893
+    },
+    "368": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0006170934896637,
+      "ratio_max": 1.0006401024163867
+    },
+    "387": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0003501400560224,
+      "ratio_max": 1.0003505901601029
+    },
+    "407": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0015787811809282,
+      "ratio_max": 1.0016323865491348
+    },
+    "435": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.00124599501602,
+      "ratio_max": 1.001253806197385
+    },
+    "437": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0037128712871286,
+      "ratio_max": 1.003787878787879
+    },
+    "444": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0007072135785007,
+      "ratio_max": 1.0007156488549618
+    },
+    "455": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.002594514455152,
+      "ratio_max": 1.002594514455152
+    },
+    "490": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0004490345756623,
+      "ratio_max": 1.0005085607730124
+    },
+    "546": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0034843205574913,
+      "ratio_max": 1.0046948356807512
+    },
+    "550": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0013153567905295,
+      "ratio_max": 1.0014430014430014
+    },
+    "575": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.000347705146036,
+      "ratio_max": 1.0003627130939428
+    },
+    "583": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0081163039600427,
+      "ratio_max": 1.0081599713055953
+    },
+    "588": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0010551305724082,
+      "ratio_max": 1.0010709504685409
+    },
+    "590": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0085367480325464,
+      "ratio_max": 1.008564737370358
+    },
+    "664": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0005067139599697,
+      "ratio_max": 1.0005177323323842
+    },
+    "666": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0010440229685054,
+      "ratio_max": 1.0010978956999086
+    },
+    "671": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.003427592116538,
+      "ratio_max": 1.0035398230088495
+    },
+    "709": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.000936680404646,
+      "ratio_max": 1.0009630200308166
+    },
+    "766": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0006586169045006,
+      "ratio_max": 1.0006819731757217
+    },
+    "775": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0008635578583764,
+      "ratio_max": 1.0009004952723999
+    },
+    "784": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0024803637866888,
+      "ratio_max": 1.0025591810620602
+    },
+    "805": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0005279831045406,
+      "ratio_max": 1.0005326231691078
+    },
+    "814": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0025224215246638,
+      "ratio_max": 1.0025238362310713
+    },
+    "831": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.000661510278852,
+      "ratio_max": 1.0006653359946773
+    },
+    "857": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0020093770931011,
+      "ratio_max": 1.0020562028786841
+    },
+    "875": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.001336387934326,
+      "ratio_max": 1.001336387934326
+    },
+    "890": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0001503533303262,
+      "ratio_max": 1.000177179305457
+    },
+    "910": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0041135335252982,
+      "ratio_max": 1.004151100041511
+    },
+    "920": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.002877915783096,
+      "ratio_max": 1.0030044275774825
+    },
+    "943": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0005155968032997,
+      "ratio_max": 1.0005327650506126
+    },
+    "970": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.000606918875177,
+      "ratio_max": 1.0006487889273357
+    },
+    "989": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0014093013891685,
+      "ratio_max": 1.0014314928425359
+    },
+    "1340": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0023496240601504,
+      "ratio_max": 1.0023923444976077
+    },
+    "1354": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0005233410090015,
+      "ratio_max": 1.0005291565245
+    },
+    "1389": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0004338394793926,
+      "ratio_max": 1.000445632798574
+    },
+    "1390": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0005211952744961,
+      "ratio_max": 1.0005252560623303
+    },
+    "1424": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0044938505203407,
+      "ratio_max": 1.0044938505203407
+    }
+  },
+  "interpretation": [
+    "Scores, crafting plans, recipe admission and enhancement candidate eligibility come from native code.",
+    "XP and superior prices are nominal if the action is otherwise eligible; currency units are copper.",
+    "A source minimum rising from L to H removes levels L..H-1; a donor floor rising from A to B removes donor values A..B-1 if donor scores are fixed.",
+    "Quest weight ratios assume unchanged mob level fit; the CSV uses unit fit. Geographic and zone eligibility remain separate gates.",
+    "Index tie/selection behavior and complete command/persistence journeys remain F13/F16; legacy mechanical coverage remains F05/F09."
+  ]
+}

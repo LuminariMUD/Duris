@@ -4,7 +4,7 @@
 #include "core/config.h"
 #include "core/defines.h"
 
-inline constexpr const char *ITEM_VALUE_FORMULA_REVISION = "ival-v3-packed-mean";
+inline constexpr const char *ITEM_VALUE_FORMULA_REVISION = "ival-v4-apply-composition";
 
 // Numeric inputs only: no object identity, links, callbacks, or mutable state.
 struct item_value_apply
