@@ -44,6 +44,7 @@
 #include "item/item_movement_transaction.h"
 #include "item/item_command_parser.h"
 #include "item/item_command_policy.h"
+#include "net/command_latency.h"
 #include "item/storage_lockers.h"
 #include "kingdom/kingdom_store_piece.h"
 #include "player/player_snapshot_capture.h"
@@ -384,7 +385,7 @@ static bool take_coins(P_char actor, P_obj money, P_obj container, int showit,
 		extract_obj(money, FALSE);
 	else
 		add_coins(money, 0, 0, 0, 0);
-	if (container && container->type == ITEM_CORPSE &&
+	if (!item_get_ack_publication && container && container->type == ITEM_CORPSE &&
 	    IS_SET(container->value[CORPSE_FLAGS], PC_CORPSE))
 		writeCorpse(container);
 	return true;
@@ -405,7 +406,7 @@ static bool get_can_continue(P_char actor, uint64_t runtime_id, int room, P_obj 
 	if (find_character_by_runtime_id(runtime_id) != actor || !IS_ALIVE(actor) ||
 	    actor->in_room != room || !IS_AWAKE(actor) || IS_IMMOBILE(actor))
 		return false;
-	return !container || (find_live_item_uid(container_uid) == container &&
+	return !container || (find_live_object(container, container_uid) &&
 			      locker_container_access_allowed(actor, container) &&
 			      (OBJ_CARRIED_BY(container, actor) || OBJ_WORN_BY(container, actor) ||
 			       (OBJ_ROOM(container) && container->loc.room == room)));
@@ -449,7 +450,7 @@ static bool publish_container_get(P_char ch, P_obj o_obj, P_obj s_obj, int showi
 	}
 	if (haul)
 	{
-		P_obj delivered = find_live_item_uid(picked_uid);
+		P_obj delivered = find_live_object(o_obj, picked_uid);
 		if (delivered && OBJ_CARRIED_BY(delivered, ch))
 		{
 			haul->haul.push_back(picked_name);
@@ -794,7 +795,7 @@ publish_after_ack:
 		// writeCharacter(ch, 1, ch->in_room);
 
 		/* update player corpse file  (if needed) */
-		if (corpse)
+		if (corpse && !item_get_ack_publication)
 		{
 			writeCorpse(corpse);
 		}
@@ -848,7 +849,7 @@ publish_after_ack:
 		item_get_rejected = false;
 	}
 
-	if (corpse)
+	if (corpse && !item_get_ack_publication)
 		writeCorpse(corpse);
 
 	char_light(ch);
@@ -877,7 +878,7 @@ static bool do_get_commit_pickup_core(P_char ch, P_obj s_obj, P_obj o_obj, bool 
 	if (item_get_rejected)
 		return false;
 	// obj_to_char can consume crumble-on-loot items instead of delivering them.
-	if (!money && (find_live_item_uid(item_uid) != o_obj || !OBJ_CARRIED_BY(o_obj, ch)))
+	if (!money && (!find_live_object(o_obj, item_uid) || !OBJ_CARRIED_BY(o_obj, ch)))
 	{
 		item_get_rejected = true;
 		return false;
@@ -1421,7 +1422,7 @@ static P_obj resolve_synchronous_get_item(const synchronous_get_item &selected,
 					  const bulk_get_state &state, P_obj container)
 {
 	if (selected.item_uid)
-		return find_live_item_uid(selected.item_uid);
+		return find_live_object(selected.object, selected.item_uid);
 	P_obj contents = container ? container->contains : world[state.room].contents;
 	int safety = top_of_objt + 1;
 	for (P_obj object = contents; object && (!container || safety-- > 0);
@@ -1650,6 +1651,11 @@ static void start_bulk_get(P_char actor, P_obj container, const char *filter, bo
 		send_to_char("That container lacks authoritative ownership.\r\n", actor);
 		return;
 	}
+	command_latency_note_bulk_items(state.synchronous_items.size());
+	const uint64_t container_uid = state.container_uid;
+	const bool save_corpse = container && !state.synchronous_items.empty() &&
+				 container->type == ITEM_CORPSE &&
+				 IS_SET(container->value[CORPSE_FLAGS], PC_CORPSE);
 	try
 	{
 		auto [found, inserted] = bulk_gets.emplace(actor_pid, std::move(state));
@@ -1669,6 +1675,9 @@ static void start_bulk_get(P_char actor, P_obj container, const char *filter, bo
 				"You can't collect everything right now; please try again.\r\n",
 				actor);
 	}
+	// Item moves leave this to the batch: one snapshot covers them all, whichever way it ended.
+	if (save_corpse && find_live_object(container, container_uid))
+		writeCorpse(container);
 }
 
 static void start_floor_bulk_get(P_char actor, const char *filter)
@@ -1829,8 +1838,8 @@ void do_get(P_char ch, char *argument, int cmd)
 								return;
 							if (item_get_rejected && next_obj)
 							{
-								next_obj = find_live_item_uid(
-									next_uid);
+								next_obj = find_live_object(
+									next_obj, next_uid);
 								if (next_obj &&
 								    (!OBJ_ROOM(next_obj) ||
 								     next_obj->loc.room !=
@@ -2158,7 +2167,7 @@ void do_get(P_char ch, char *argument, int cmd)
 						return;
 					if (item_get_rejected && next_obj)
 					{
-						next_obj = find_live_item_uid(next_uid);
+						next_obj = find_live_object(next_obj, next_uid);
 						if (next_obj && (!OBJ_INSIDE(next_obj) ||
 								 next_obj->loc.inside != s_obj))
 							next_obj = NULL;

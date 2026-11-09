@@ -929,7 +929,9 @@ the exact bounded top ten describe that window, not process lifetime. Check
 with debug profiling off. They distinguish playing, nanny, pager, editor, SSL,
 and descriptor maintenance. `unattributed_sweep_us` covers work outside the
 explicit scopes, including gates and dequeue. Playing labels use canonical
-command names or `unknown`; arguments and nanny/editor input are excluded.
+command names or `unknown`; arguments and nanny/editor input are excluded,
+except that `get` and `take` also report sanitized `args` and `bulk_items`, the
+number of items a `get all` selected.
 Reports retain at most eight slow operations and throttle output to one report
 per four pulses, carrying suppression counts and the worst suppressed operation
 into the next due report. A small event bucket does not explain a large command

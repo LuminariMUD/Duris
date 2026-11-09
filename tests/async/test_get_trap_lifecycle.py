@@ -137,7 +137,8 @@ void trapdamage(P_char ch,P_obj obj) {
 trap_source = (SRC / 'trap.c').read_text()
 trap_definitions = trap_source[trap_source.index('#define TRAP_DAM_SLEEP'):trap_source.index('static bool trap_damage_supported')]
 parts=[prelude, trap_definitions,
-       extract_function('character_identity.c','P_char find_character_by_runtime_id('),
+       '''P_char find_character_by_runtime_id(uint64_t id) { for(P_char c=character_list;c;c=c->next) if(id&&c->runtime_id==id) return c; return nullptr; }''',
+       '''P_obj find_live_object(P_obj expected,uint64_t uid) { for(P_obj o=object_list;o;o=o->next) if(o==expected&&o->obj_uid==uid) return o; return nullptr; }''',
        take('P_obj find_live_item_uid('), take('static bool get_can_continue('),
        take('struct synchronous_get_item')+';',take('struct bulk_get_state')+';',
        take('struct coin_get_submission_options')+';',
@@ -173,8 +174,9 @@ parts.append(r'''
 int main() {
  // Modes: surviving/lethal/teleport/sleep traps, delivery, crumble, whole/partial/
  // capped coins, bound/no-loot/hitched refusal, and wallet refusal.
- for(bool npc : {false,true}) for(bool container : {false,true}) for(int mode=0; mode<16; ++mode) {
+ for(bool npc : {false,true}) for(bool container : {false,true}) for(int mode=0; mode<16; ++mode) for(bool batch : {false,true}) {
   if(npc && mode!=4) continue;
+  if(batch && (npc || (mode!=4 && mode!=6))) continue;
   if((mode==7 || mode==8 || mode>=13) && !container) continue;
   trap_effect=mode; crumble=mode==5; refuse_coins=mode==12; refuse_audit=mode>=13;
   trap_calls=pickups=reports=waits=corpse_writes=0; output.clear(); audit.clear();
@@ -208,8 +210,11 @@ int main() {
   if(mode==10) item->extra2_flags=ITEM2_NOLOOT;
   if(mode==11) item->hitched_to=&actor;
   bool found=false; int total=0;
+  item_get_ack_publication=batch;
   if(container) do_get_finalize_container_success(&actor,&actor,&corpse,item,total,found,true,"post",(mode==7 || mode==8 || mode==15)?&options:nullptr);
   else do_get_finalize_room_item(&actor,item,found,total);
+  item_get_ack_publication=false;
+  if((mode==4 || mode==6) && !npc) assert(corpse_writes==(container && !batch ? 1 : 0));
   if(mode<4 || mode>=9) {
    assert(!found && total==0 && pickups==0 && reports==0 && waits==0);
    assert(item_get_rejected && trap_calls==(mode<4?1:0) && item->trap_charge==0);

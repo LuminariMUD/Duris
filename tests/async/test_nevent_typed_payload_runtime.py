@@ -116,8 +116,8 @@ int main()
 	char_data second = {};
 	first.runtime_id = allocate_character_runtime_id();
 	second.runtime_id = allocate_character_runtime_id();
-	first.next = &second;
-	character_list = &first;
+	character_list_add(&second);
+	character_list_add(&first);
 
 	require(first.runtime_id != 0 && second.runtime_id != 0, 1);
 	require(first.runtime_id != second.runtime_id, 2);
@@ -126,8 +126,12 @@ int main()
 	require(find_character_by_runtime_id(0) == nullptr, 5);
 
 	const uint64_t stale_id = first.runtime_id;
-	first.runtime_id = allocate_character_runtime_id();
+	forget_live_character(&first);
 	require(find_character_by_runtime_id(stale_id) == nullptr, 6);
+	character_list = &second;
+	first.runtime_id = allocate_character_runtime_id();
+	character_list_add(&first);
+	require(find_character_by_runtime_id(stale_id) == nullptr, 8);
 	require(find_character_by_runtime_id(first.runtime_id) == &first, 7);
 	return 0;
 }
