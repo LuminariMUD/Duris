@@ -1582,14 +1582,24 @@ static session_input_route select_session_input(P_desc descriptor, P_char charac
 	    (creation_grant_input || (!CAN_ACT(character) && !casting_input) ||
 	     (IS_SET(character->specials.affected_by, AFF_CHARM) && !descriptor->original)))
 		return session_input_route::none;
-	const bool dequeued = casting_input ?
-				      get_casting_cmd_from_q(character, &descriptor->input, input) :
-			      descriptor->connected == CON_PLAYING && !descriptor->showstr_count &&
-					      !descriptor->str ?
-				      get_playing_cmd_from_q(character, &descriptor->input, input) :
-				      get_from_q(&descriptor->input, input);
+	// Help references must remain usable while reading paged help. Only the
+	// head command may replace a page; controls and other type-ahead keep their
+	// existing pager behavior. Use the normal playing queue gates and dispatcher.
+	char command[MAX_INPUT_LENGTH] = {};
+	if (descriptor->showstr_count && descriptor->connected == CON_PLAYING && !descriptor->str &&
+	    descriptor->input.head)
+		one_argument(descriptor->input.head->text, command);
+	const bool paging_help = !strcmp(command, "help");
+	const bool dequeued =
+		casting_input ? get_casting_cmd_from_q(character, &descriptor->input, input) :
+		descriptor->connected == CON_PLAYING &&
+				(!descriptor->showstr_count || paging_help) && !descriptor->str ?
+				get_playing_cmd_from_q(character, &descriptor->input, input) :
+				get_from_q(&descriptor->input, input);
 	if (!dequeued)
 		return session_input_route::none;
+	if (paging_help)
+		free_paging_data(descriptor);
 	if (descriptor->showstr_count)
 		return session_input_route::pager;
 	if (descriptor->str)

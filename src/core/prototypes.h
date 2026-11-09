@@ -2082,6 +2082,7 @@ char *next_page(char *, struct descriptor_data *);
 int count_pages(char *, struct descriptor_data *);
 void paginate_string(char *, struct descriptor_data *);
 void page_string(struct descriptor_data *, char *, int);
+void free_paging_data(struct descriptor_data *);
 void show_string(struct descriptor_data *, const char *);
 
 /* storage_lockers.c */
