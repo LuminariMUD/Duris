@@ -5,7 +5,6 @@ import hashlib
 import json
 from pathlib import Path
 import re
-import subprocess
 import tempfile
 import time
 import run_item_pilot_journey as pilot
@@ -15,25 +14,23 @@ import test_flatfile_combat_journey as journey
 WARNING='A brilliant light gathers along the blade.'
 EFFECT='magic missile hits'
 
-def run(binary, inspector):
-    with tempfile.TemporaryDirectory(prefix='duris-item-config-run-') as run_tmp, \
-         tempfile.TemporaryDirectory(prefix='duris-item-config-state-') as state_tmp:
-        root,state=Path(run_tmp),Path(state_tmp); state.chmod(0o700)
-        (state/'domains').mkdir(mode=0o700)
-        subprocess.run([str(inspector),str(state),'seed-combat'],check=True)
+def run(binary):
+    with journey.mariadb_authority() as (environment, sql), \
+         tempfile.TemporaryDirectory(prefix='duris-item-config-run-') as run_tmp:
+        root=Path(run_tmp)
         pilot.configure(root,'studio',True)
         pilot.set_properties(root,{'itemActions.telemetry.enabled':1})
         path=root/'lib/item_abilities.json'; catalog=json.loads(path.read_text())
         ability=catalog['abilities'][0]; ability['cost']=100
         path.write_text(json.dumps(catalog))
-        server=pilot.Server(binary,root,state,'studio'); player=None
+        server=pilot.Server(binary,root,None,'studio',environment); player=None
         results=[]
         try:
             server.start(); operator=server.client=journey.MudClient(server.port)
             journey.create_character(operator)
             operator.send('save'); operator.expect(f'Saving {journey.CHARACTER}.')
             server.stop()
-            subprocess.run([str(inspector),str(state),'seed-item-operator'],check=True)
+            sql("UPDATE player_data SET level=62,highest_level=62,base_hit=200000,hit_diff=0 WHERE name='" + journey.CHARACTER + "'")
             server.start(); operator=server.client=journey.reconnect_character(server.port)
             player=journey.MudClient(server.port)
             journey.create_character(player,account='Dorelin',character='Verenal',email='item-config@example.invalid')
@@ -100,7 +97,7 @@ def run(binary, inspector):
             counts={key:int(value) for key,value in re.findall(r'([a-z_.]+)=(\d+)',metrics)}
             assert counts.get('started',0)>=6 and counts.get('cancelled.reload',0)>=2,metrics
             assert counts.get('completed',0)>=1 and counts.get('callbacks',0)>=1,metrics
-            rows=pilot.mana_rows(state); assert len(rows)==1,rows
+            rows=pilot.mana_rows(sql); assert len(rows)==1,rows
             setting('itemActions.telemetry.enabled',0)
             operator.send('itemmana metrics'); output=weapon.drain(operator,.4)
             assert 'telemetry: disabled' in output and 'selected=' not in output,output
@@ -118,8 +115,7 @@ def run(binary, inspector):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary',type=Path,required=True)
-    parser.add_argument('--inspector',type=Path,required=True)
     parser.add_argument('--output',type=Path)
-    args=parser.parse_args(); result=run(args.binary.resolve(),args.inspector.resolve())
+    args=parser.parse_args(); result=run(args.binary.resolve())
     if args.output: args.output.write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps(result,indent=2))

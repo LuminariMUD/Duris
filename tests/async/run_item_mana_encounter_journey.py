@@ -4,7 +4,6 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import subprocess
 import tempfile
 import time
 import re
@@ -18,18 +17,16 @@ def reserve(client):
     found=re.search(r'Item mana: (\d+)\.(\d{3})',text)
     return int(found[1])*1000+int(found[2]) if found else None
 
-def run(binary,inspector):
-    with tempfile.TemporaryDirectory(prefix='duris-mana-encounter-run-') as run_tmp, \
-         tempfile.TemporaryDirectory(prefix='duris-mana-encounter-state-') as state_tmp:
-        root,state=Path(run_tmp),Path(state_tmp); state.chmod(0o700)
-        (state/'domains').mkdir(mode=0o700)
-        subprocess.run([str(inspector),str(state),'seed-combat'],check=True)
+def run(binary):
+    with journey.mariadb_authority() as (environment, sql), \
+         tempfile.TemporaryDirectory(prefix='duris-mana-encounter-run-') as run_tmp:
+        root=Path(run_tmp)
         pilot.configure(root,'studio',True)
         path=root/'lib/item_abilities.json'; catalog=json.loads(path.read_text())
         ability=catalog['abilities'][0]; ability['cost']=3000
         ability['mana'].update(capacity=10000,regeneration=250)
         path.write_text(json.dumps(catalog))
-        server=pilot.Server(binary,root,state,'studio'); enemy=None
+        server=pilot.Server(binary,root,None,'studio',environment); enemy=None
         warning='A brilliant light gathers along the blade.'; effect='magic missile hits'
         try:
             server.start(); client=server.client=journey.MudClient(server.port)
@@ -75,7 +72,7 @@ def run(binary,inspector):
             client.expect(warning,timeout=5); started=time.monotonic()
             output=client.expect(effect,timeout=8)
             victim=enemy.expect('magic missile',timeout=8)
-            row=next(iter(pilot.mana_rows(state).values()))
+            row=next(iter(pilot.mana_rows(sql).values()))
             result=dict(binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
                 profile=dict(capacity=10000,cost=3000,regeneration_per_second=250),
                 initial_units=10000,pve_attempts=attempts,pve_completed=casts,pve_outcomes=outcomes,
@@ -97,8 +94,7 @@ def run(binary,inspector):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary',type=Path,required=True)
-    parser.add_argument('--inspector',type=Path,required=True)
     parser.add_argument('--output',type=Path)
-    args=parser.parse_args(); result=run(args.binary.resolve(),args.inspector.resolve())
+    args=parser.parse_args(); result=run(args.binary.resolve())
     if args.output: args.output.write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps(result,indent=2))

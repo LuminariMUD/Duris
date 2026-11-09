@@ -5,7 +5,6 @@ import hashlib
 import json
 import re
 from pathlib import Path
-import subprocess
 import tempfile
 import time
 import run_item_pilot_journey as pilot
@@ -14,12 +13,10 @@ import run_spellcast_racial_multiplier_journey as caster
 import test_flatfile_combat_journey as journey
 
 
-def run(binary, inspector, dual):
-    with tempfile.TemporaryDirectory(prefix='duris-item-overlap-run-') as run_tmp, \
-         tempfile.TemporaryDirectory(prefix='duris-item-overlap-state-') as state_tmp:
-        root,state=Path(run_tmp),Path(state_tmp); state.chmod(0o700)
-        (state/'domains').mkdir(mode=0o700)
-        subprocess.run([str(inspector),str(state),'seed-combat'],check=True)
+def run(binary, dual):
+    with journey.mariadb_authority() as (environment, sql), \
+         tempfile.TemporaryDirectory(prefix='duris-item-overlap-run-') as run_tmp:
+        root=Path(run_tmp)
         pilot.configure(root,'studio',True)
         pilot.set_properties(root,{'itemActions.weapons.enabled':1,'itemActions.weapons.windupPulses':24,
             'spellcast.pulse.racial.All':2,'hitpoints.class.Mindflayer':5000})
@@ -29,12 +26,14 @@ def run(binary, inspector, dual):
             records[22803]=records[22801].replace('#22801','#22803').replace('wandblade','secondblade')
             text=re.sub(r'(?m)^(M 0 22801 .*\n)',r'\1E 1 22801 1 16 100 0 0 0 * primary\nE 1 22803 1 17 100 0 0 0 * secondary\n',text)
             assert 'E 1 22803' in text,text
-            environment={}
         else:
             text=text.replace('\nS\n','\nO 0 22801 1 22800 100 0 0 0 * wielded caster source\nS\n')
-            environment={'CHAOS_MUD':'TRUE','CREATION_ALL_CLASSES':'TRUE','CHAOS_STARTER_EPIC_SKILLS':'TRUE'}
+            environment.update(CHAOS_MUD='TRUE',CREATION_ALL_CLASSES='TRUE',CHAOS_STARTER_EPIC_SKILLS='TRUE')
         obj.write_text(''.join(records[v] for v in sorted(records))+'$~\n'); zone.write_text(text)
-        server=pilot.Server(binary,root,state,'studio',environment)
+        # Area-debugger mode reads the generated world copies.
+        (root/'areas/world.obj').write_text(obj.read_text())
+        (root/'areas/world.zon').write_text(zone.read_text())
+        server=pilot.Server(binary,root,None,'studio',environment)
         try:
             server.start(); client=server.client=journey.MudClient(server.port)
             if dual: journey.create_character(client)
@@ -79,12 +78,11 @@ def run(binary, inspector, dual):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary',type=Path,required=True)
-    parser.add_argument('--inspector',type=Path,required=True)
     parser.add_argument('--output',type=Path)
     parser.add_argument('--case',choices=('all','dual','caster'),default='all')
     args=parser.parse_args(); result=dict(binary_sha256=hashlib.sha256(args.binary.read_bytes()).hexdigest(),cases=[])
     for dual in (True,False):
         if args.case not in ('all','dual' if dual else 'caster'): continue
-        result['cases'].append(run(args.binary.resolve(),args.inspector.resolve(),dual))
+        result['cases'].append(run(args.binary.resolve(),dual))
         if args.output: args.output.write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps(result,indent=2))

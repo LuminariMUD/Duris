@@ -10,7 +10,6 @@ from pathlib import Path
 import re
 import signal
 import shutil
-import struct
 import subprocess
 import tempfile
 import time
@@ -55,12 +54,6 @@ def configure(root, family, enabled):
         set_properties(root, {f'itemActions.artifact.{vnum}.{key}':value for key,value in
             dict(enabled=1,manaCost=2000,manaCapacity=100000,manaRegen=1000,passiveFloor=0).items()})
         source = native_template(vnum)
-        lines=source.split('~',4)[4].strip().splitlines()
-        header=list(map(int,lines[0].split())); values=list(map(int,lines[1].split()))
-        base=list(map(int,lines[2].split())); bits=(base[3:]+[0]*5)[:5]
-        affects=[int(value) for pair in re.findall(r'^A\s*\n(-?\d+) (-?\d+)',source,re.M) for value in pair]
-        fields=[vnum,header[0],header[1],header[4],*header[6:11],*base[:3],*values,*bits,*(affects+[0]*8)[:8]]
-        (root/'pilot.item').write_text(' '.join(map(str,fields))+'\n')
     else:
         source = '''#22802
 regression prism~
@@ -101,15 +94,13 @@ A regression prism lies here.~
     (root/'areas/world.trg').write_text('#22802 O\nT CMD use\nitemability 1002\n~\nS\n#~\n' if family=='studio' else '#~\n')
 
 
-def mana_rows(state):
-    rows = {}
-    for path in (state/'domains').glob('artifact-mana-*'):
-        data = path.read_bytes()
-        assert len(data)==104 and data[:8]==b'DURMANA\x01', path
-        assert hashlib.sha256(data[:72]).digest()==data[72:], path
-        values = struct.unpack('<8Q',data[8:72])
-        rows[values[0]] = dict(zip(('uid','profile','profile_revision','version','capacity','regeneration','reserve','settled'),values))
-    return rows
+def mana_rows(sql):
+    columns = ('uid', 'profile', 'profile_revision', 'version', 'capacity',
+               'regeneration', 'reserve', 'settled')
+    rows = sql("SELECT item_uid,profile_id,profile_revision,version,capacity,"
+               "regeneration,reserve,settled_at FROM artifact_mana ORDER BY item_uid")
+    return {values[0]: dict(zip(columns, values))
+            for line in rows.splitlines() if (values := list(map(int, line.split('\t'))))}
 
 
 def vitality_stats(client):
@@ -154,17 +145,15 @@ class Server:
         if self.process: self.output.close()
 
 
-def run_case(binary,inspector,family,enabled,abort):
+def run_case(binary,family,enabled,abort):
     ending='crash' if abort=='crash' else 'abort' if abort else 'complete'
     case=f'{family}-{"on" if enabled else "off"}-{ending}'
     print('pilot journey: '+case,flush=True)
     with ExitStack() as stack:
         root=Path(stack.enter_context(tempfile.TemporaryDirectory(prefix='duris-item-pilot-run-')))
-        state=Path(stack.enter_context(tempfile.TemporaryDirectory(prefix='duris-item-pilot-state-')))
-        state.chmod(0o700); (state/'domains').mkdir(mode=0o700)
-        subprocess.run([str(inspector),str(state),'seed-combat'],check=True)
+        environment, sql = stack.enter_context(journey.mariadb_authority())
         configure(root,family,enabled)
-        server=Server(binary,root,state,family)
+        server=Server(binary,root,None,family,environment)
         try:
             server.start(); client=server.client=journey.MudClient(server.port)
             journey.create_character(client,class_name='c' if family=='tsunami' else 'w')
@@ -174,7 +163,18 @@ def run_case(binary,inspector,family,enabled,abort):
             if family!='studio':
                 client.send('save'); client.expect(f'Saving {journey.CHARACTER}.')
                 server.stop()
-                subprocess.run([str(inspector),str(state),'seed-item',str(root/'pilot.item')],check=True)
+                levels = sql("SELECT level,highest_level FROM player_data WHERE name='" + journey.CHARACTER + "'").split('\t')
+                sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + journey.CHARACTER + "'")
+                server.start(); client=server.client=journey.reconnect_character(server.port)
+                client.send('vis 0'); weapon.drain(client,.3)
+                vnum = 31514 if family == 'tsunami' else 922
+                client.send('load obj ' + str(vnum)); client.expect('You have created')
+                client.send('save'); client.expect(f'Saving {journey.CHARACTER}.')
+                item_uid = int(sql("SELECT obj_uid FROM player_items WHERE vnum=" + str(vnum)))
+                assert item_uid > 0
+                server.stop()
+                sql("UPDATE player_data SET level=" + levels[0] + ",highest_level=" + levels[1] +
+                    " WHERE name='" + journey.CHARACTER + "'")
                 server.start(); client=server.client=journey.reconnect_character(server.port)
             else:
                 client.send('get '+name); client.expect('You get ')
@@ -185,9 +185,9 @@ def run_case(binary,inspector,family,enabled,abort):
                 observed=client.expect('flashes and deflects the incoming spell',timeout=180)
                 assert 'Your a mirrored ioun stone' in observed or 'Your mirrored ioun stone' in observed,observed
                 elapsed=time.monotonic()-started
-                weapon.drain(client,.6); records=mana_rows(state)
+                weapon.drain(client,.6); records=mana_rows(sql)
                 assert len(records)==1,records
-                row=next(iter(records.values())); assert row['uid']==1000922 and row['version']>=2,row
+                row=next(iter(records.values())); assert row['uid']==item_uid and row['version']>=2,row
                 result=dict(case=case,attack_to_paid_interception_s=round(elapsed,3),committed_mana=row,
                     real_native_incoming_spell=True,real_native_deflection=True)
                 print(json.dumps(result),flush=True); return result
@@ -207,7 +207,7 @@ def run_case(binary,inspector,family,enabled,abort):
                     value=re.search(r'Item mana: (\d+)\.(\d{3})',observed)
                     if value and int(value[1])*1000+int(value[2])>=7000: break
                     assert time.monotonic()<deadline,observed
-                before=mana_rows(state); assert len(before)==1,before
+                before=mana_rows(sql); assert len(before)==1,before
             started=time.monotonic(); client.send(command)
             if not enabled:
                 observed=client.expect(effect,timeout=8); assert warning not in observed
@@ -219,14 +219,14 @@ def run_case(binary,inspector,family,enabled,abort):
             client.expect(warning,timeout=8); warned=time.monotonic()
             if abort=='crash':
                 weapon.drain(client,.4)
-                paid=mana_rows(state); uid=next(iter(before))
+                paid=mana_rows(sql); uid=next(iter(before))
                 assert paid[uid]['version']>before[uid]['version'],paid
                 server.process.kill(); server.process.wait(timeout=10)
                 server.stop(); server.start()
                 client=server.client=journey.reconnect_character(server.port)
                 observed=weapon.drain(client,3)
                 assert effect not in observed and warning not in observed,observed
-                assert mana_rows(state)==paid,(paid,mana_rows(state))
+                assert mana_rows(sql)==paid,(paid,mana_rows(sql))
                 elapsed=time.monotonic()-warned
             elif abort:
                 client.send('abort'); observed=client.expect('disperses' if family=='tsunami' else 'gutters out')
@@ -241,7 +241,7 @@ def run_case(binary,inspector,family,enabled,abort):
                 expected = 0 if abort else 4 * min(vitality_level + 15, 60)
                 assert hp_after - hp_before == expected, (hp_before,hp_after,expected)
                 vitality = dict(level=vitality_level,hp_before=hp_before,hp_after=hp_after,bonus=expected)
-            weapon.drain(client,.5); after=mana_rows(state); assert after.keys()==before.keys()
+            weapon.drain(client,.5); after=mana_rows(sql); assert after.keys()==before.keys()
             uid=next(iter(before)); old,new=before[uid],after[uid]
             expected=min(old['capacity'],old['reserve']+(new['settled']-old['settled'])*old['regeneration'])-2000
             assert new['reserve']==expected and new['version']>old['version'],(old,new,expected)
@@ -263,7 +263,7 @@ def run_case(binary,inspector,family,enabled,abort):
                 # Use the empty refuge for new post-restart room transfers.
                 client.send('put prism bag'); client.expect('Ok.',timeout=10)
             client.send('save'); client.expect(f'Saving {journey.CHARACTER}.')
-            server.stop(); stopped=mana_rows(state)
+            server.stop(); stopped=mana_rows(sql)
             server.start(); client=server.client=journey.reconnect_character(server.port,
                 expected_room='The Regression Refuge' if family=='studio' and abort!='crash' else 'The Regression Arena')
             if family=='studio' and abort!='crash':
@@ -282,7 +282,7 @@ def run_case(binary,inspector,family,enabled,abort):
                 value=re.search(r'Item mana: (\d+)\.(\d{3})',observed)
                 if value: break
                 assert time.monotonic()<deadline,observed
-            reserve=int(value[1])*1000+int(value[2]); current=mana_rows(state)
+            reserve=int(value[1])*1000+int(value[2]); current=mana_rows(sql)
             assert uid in current and current[uid]==stopped[uid],(stopped,current)
             maximum=min(new['capacity'],new['reserve']+(int(time.time())-new['settled'])*new['regeneration'])
             assert new['reserve']<=reserve<=maximum and reserve<new['capacity'],(new,reserve,maximum)
@@ -290,14 +290,14 @@ def run_case(binary,inspector,family,enabled,abort):
             result['restart']={'same_uid':True,'durable_record_unchanged':True,'observed_reserve_units':reserve,
                 'maximum_from_elapsed_regeneration':maximum,'pending_revived':False}
             if family=='tsunami' and not abort:
-                before_death=mana_rows(state)
+                before_death=mana_rows(sql)
                 journey.attack_until_death(client); client.expect('ACCOUNT MENU',timeout=45)
                 client.close(); client=server.client=journey.reconnect_character(server.port,'You rejoin the land of the living')
                 client.send(f'get trident {journey.CHARACTER}'); client.expect('You get ',timeout=15)
                 client.send('save'); client.expect(f'Saving {journey.CHARACTER}.')
-                authority=json.loads(subprocess.check_output([str(inspector),str(state),'inspect','1'],text=True))
+                authority=journey.inspect_authority(sql)
                 assert any(item['uid']==uid and item['vnum']==31514 for item in authority['player_items']),authority
-                assert mana_rows(state)==before_death,(before_death,mana_rows(state))
+                assert mana_rows(sql)==before_death,(before_death,mana_rows(sql))
                 result['corpse_loot']={'same_uid':True,'durable_mana_unchanged':True,'real_player_death_and_loot':True}
             if family=='tsunami': result['vitality'] = vitality
             print(json.dumps(result),flush=True)
@@ -310,7 +310,12 @@ def run_case(binary,inspector,family,enabled,abort):
                 server.stop()
                 kept=Path(tempfile.mkdtemp(prefix='pilot-failure-',dir=ROOT/'bin'))
                 shutil.copytree(root,kept/'runtime',symlinks=True)
-                shutil.copytree(state,kept/'state',symlinks=True)
+                with (kept/'authority.sql').open('w') as dump:
+                    subprocess.run(['mysqldump', '--protocol=tcp', '-h', environment['DB_HOST'],
+                                    '-P', environment['DB_PORT'], '-u', environment['DB_USER'],
+                                    '--single-transaction', environment['DB_NAME']],
+                                   env=environment, stdout=dump, check=True)
+                (kept/'authority.sql').chmod(0o600)
                 print('retained disposable failure: '+str(kept),flush=True)
             raise
         finally: server.stop()
@@ -319,7 +324,6 @@ def run_case(binary,inspector,family,enabled,abort):
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary',type=Path,required=True)
-    parser.add_argument('--inspector',type=Path,default=journey.INSPECTOR)
     parser.add_argument('--family',choices=('tsunami','studio','ioun'),default='tsunami')
     parser.add_argument('--output',type=Path)
     parser.add_argument('--case',choices=('all','off-complete','on-complete','on-abort','on-crash'),default='all')
@@ -330,6 +334,6 @@ if __name__=='__main__':
     result=dict(binary_sha256=hashlib.sha256(args.binary.read_bytes()).hexdigest(),cases=[])
     if args.output: args.output.write_text(json.dumps(result,indent=2)+'\n')
     for case in cases:
-        result['cases'].append(run_case(args.binary.resolve(),args.inspector.resolve(),args.family,*case))
+        result['cases'].append(run_case(args.binary.resolve(),args.family,*case))
         if args.output: args.output.write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps(result,indent=2))
