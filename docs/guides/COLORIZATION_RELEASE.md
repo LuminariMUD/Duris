@@ -50,8 +50,7 @@ new characters in the live walkthrough are not promoted to fabricate a guild ses
 
 The production runtime harness executes actual `say`, `do_tell`, `do_reply`, `do_gcc`, `act`,
 `send_to_char`, queue/pager functions, world emitters, `dam_message`, `make_prompt` and the chat JSON
-serializer. Existing game/database/socket boundaries are controlled in that harness; the separate
-live walkthrough crosses real command dispatch, Telnet negotiation, GMCP and flatfile save/reload.
+serializer. Game/database/socket boundaries are controlled in that harness.
 
 Coverage includes:
 
@@ -67,14 +66,6 @@ Coverage includes:
   editor/pager/confirmation prompts and deferred terminal/WebSocket output ordering.
 - Independent saved preferences, failed/coalesced checkpoints, stale revisions, reset, malformed
   stored fields, old snapshot/journal readers and current normal/death snapshot round trips.
-
-The local full gate completed **506 passing test entries and three outdated source-test failures**.
-The three expectations were corrected for the output-preference SQL field and adopted room-title
-send; all three passed on rerun. Thus all **509 entries** were verified across that run and the focused
-rerun. Subsequent terminal-dollar/snapshot-bound fixes passed the actual runtime harness normally
-and with ASan/UBSan, plus strict MariaDB and flatfile builds. This is not presented as a single clean
-509-entry local run. Each merge also requires its current GitHub build/full suite, quality/flatfile,
-disposable recovery and security checks to pass.
 
 Focused reproduction commands:
 

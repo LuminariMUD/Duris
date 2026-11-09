@@ -167,9 +167,6 @@ to the common departure/extraction hooks. No raw game pointer survives a call.
   feedback, invalid planes/room restrictions/raidability, cancellation and
   pure/mixed potion consumption under ASan/UBSan. World lookup, allocation,
   movement and damage use controlled doubles; this is not a production journey.
-
-The live journey records binary SHA-256 and measurements in an optional JSON
-output. Keep those generated logs under `bin/`; do not commit player/state data.
 Persistent mana is in [ARTIFACT_MANA.md](ARTIFACT_MANA.md), the other artifact families
 in [NATIVE_ARTIFACT_PILOTS.md](NATIVE_ARTIFACT_PILOTS.md), and the rollout in the
 [rollout runbook](../operations/ITEM_ABILITY_ROLLOUT.md). Everything ships disabled.

@@ -479,7 +479,7 @@ project. The current Community-Duris/Duris repository was created on 24 August 2
 
 **2026.** From 25 August 2026, Zusuk (moshehbenavraham, founder of LuminariMUD) did a large
 modernisation of the community code: the source tree reorganised, warnings treated as errors, a
-test suite, documentation, and a flat-file backend
+test suite and documentation
 (see [CREDITS_modernizations.md](CREDITS_modernizations.md)). Community releases that year
 brought kingdoms built on guildhalls (a design the 2008 wipe had promised), Chaos events,
 ships and quest records. The September 2026 news gave players a "catch-up" covering December

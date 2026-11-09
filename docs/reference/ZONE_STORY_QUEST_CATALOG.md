@@ -17,7 +17,7 @@ prose/turn-in routes for one accomplishment and are deduplicated, so reordering
 them cannot inflate the denominator. The compiled catalog revision is `1` in
 `zone_story_quest_production.h`; content edits do not bump it automatically.
 Changing that revision requires a separately designed stored-state migration:
-the current SQL and flatfile loaders reject another catalog revision, and this
+the current MariaDB loader rejects another catalog revision, and this
 subsystem does not ship a cross-revision migration/retention tool.
 
 The runtime catalog is built from the quest index immediately after

@@ -123,8 +123,8 @@ an implemented purge/export scheduler.
 
 `telemetry_repository.c` implements the public #260 API. The runtime (#265) calls
 init/apply from its sole joined worker; the repository itself activates nothing and
-adds no thread. Flat-file authority, including runtime
-flat-file mode in the SQL build, returns `flatfile_disabled` without connecting.
+adds no thread. A deliberately disabled telemetry configuration returns
+`flatfile_disabled` without connecting; this name does not select a gameplay backend.
 
 The private SQL factory requires `TELEMETRY_DB_USER` and `TELEMETRY_DB_PASSWD` in
 addition to the existing verified database configuration. Neither falls back to
