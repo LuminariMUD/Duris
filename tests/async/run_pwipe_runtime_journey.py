@@ -79,6 +79,10 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                 artifact.update(path.read_bytes())
         report["website_backend_tree_sha256"] = artifact.hexdigest()
         report["website_node_version"] = subprocess.check_output(["node", "--version"], text=True).strip()
+    suffix = "mariadb-redis" if with_redis else "mariadb"
+    suffix += "-restore" if matched_restore else "-reenable" if redis_reenable else ""
+    suffix += "-discard-rewards" if discard_rewards else ""
+    suffix += "-website" if website else ""
     try:
         sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
         for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
@@ -815,7 +819,7 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                 print(path.read_text(errors="replace")[-8000:])
                 print(journey.runtime_logs(root)[-8000:])
                 if client: print(client.transcript.decode(errors="replace")[-6000:])
-                shutil.copy2(path, output / "pwipe-runtime-failed.log")
+                shutil.copy2(path, output / ("pwipe-runtime-" + suffix + "-failed.log"))
                 raise
             finally:
                 stop()
@@ -836,10 +840,6 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
         report["status"] = "failed"
         raise
     finally:
-        suffix = "mariadb-redis" if with_redis else "mariadb"
-        suffix += "-restore" if matched_restore else "-reenable" if redis_reenable else ""
-        suffix += "-discard-rewards" if discard_rewards else ""
-        suffix += "-website" if website else ""
         (output / ("pwipe-runtime-" + suffix + ".json")).write_text(json.dumps(report, indent=2) + "\n")
         sql("DROP DATABASE " + database, False)
 
