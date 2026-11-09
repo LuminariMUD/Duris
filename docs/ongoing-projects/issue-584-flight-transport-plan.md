@@ -106,7 +106,7 @@ The implementation is complete only when all of these hold:
 - Incoming rider, outgoing mount, longer connected chain, and later mounting attempts cannot add an unticketed traveler. Refusal leaves tickets/money/access state intact. Solo centaurs remain eligible. Accepted travelers receive altitude 10 and the established mortal command lock, then altitude zero and released links at landing; existing trusted-command behavior is retained.
 - Ground attack tests use the real targeting/entry path. Legal combat entry at zero mounted-combat skill retains the paid ride, while ordinary ground riders retain existing behavior. Explicit forced unlink and extraction still exercise recovery independently of the combat exception.
 - Every interruption test checks service reuse, not merely that an event was queued. At least one full-world journey validates Torrhan 47020 at pad 582084 and a subsequent purchased trip.
-- Occupied/empty recovery and existing ticket/discovery/extra-destination behavior remain compatible on flat-file and MariaDB journeys. A recovered orphan snapshot returns to service; repairing the currently reported production instance remains a separate deployment/operations action.
+- Occupied/empty recovery and existing ticket/discovery/extra-destination behavior remain compatible on MariaDB journeys. A recovered orphan snapshot returns to service; repairing the currently reported production instance remains a separate deployment/operations action.
 
 Run from this worktree after implementation:
 
@@ -123,8 +123,6 @@ tests/async/with_disposable_mariadb.sh python3 tests/async/test_flight_network_j
   --backend mariadb --server bin/server/dms_new
 git diff --check
 ```
-
-The default journey builds its flat-file server under `bin/tests`; the MariaDB binary is also under `bin/`. The database wrapper supplies disposable loopback authority and the journey does not use the checkout's `.env` or running game. If a required journey is unavailable, record the specific missing dependency and leave that acceptance claim unverified. Do not wait for CI, stop a shared server, or run a repository-wide burn-in for this task.
 
 ## Implementation and verification record
 
@@ -154,7 +152,7 @@ Focused flight-network, production flight/link/event/combat/mount runtime, and w
 PR #587 squash-merged the boarding/combat checkpoint as `d04e0d905`. The rebased
 acceptance checkpoint is commit `c18fe6d1a` in PR #588. The acceptance
 branch adds complete command journeys, focused test modes, and
-scheduling-refusal/body/long-chain assertions. Both full-world backends have
+scheduling-refusal/body/long-chain assertions. The MariaDB full-world journeys have
 passed actual outbound dismount/separation and character extraction at Torrhan,
 followed by a newly purchased trip and service reuse, in addition to catalog
 discovery, faction/access checks, occupied and empty copyover, logout, dedicated
@@ -162,15 +160,14 @@ trips, crash recovery, and normal relog.
 
 Evidence already completed:
 
-- `python3 tests/async/test_flight_network_journey.py` — flat-file full world including both Torrhan interruptions; log `bin/issue584-flatfile-interruptions.log`, exit 0, binary SHA-256 `99a9f7087ccf612fef39c7d9ce6628453800e63b4dc3de698f2d8ed8820b3800`.
 - `tests/async/with_disposable_mariadb.sh python3 tests/async/test_flight_network_journey.py --backend mariadb --server bin/server/dms_new` — same complete MariaDB qualification; log `bin/issue584-mariadb-journey.log`, exit 0, binary SHA-256 `e36ea3d5b5d2260915edb62ff9e4eca198bc68a60efd7b02841b8da84e6834ae`.
-- `python3 tests/async/test_flight_network_journey.py --interruptions-only` — full-server NPC `kill`/`hit` paths at altitude 0 and 10: different-altitude attack rejected, same-altitude combat entered, riding link retained in both, trip and empty return completed. Both outbound interruption/reuse cases also passed. Log `bin/issue584-focused-flatfile.log`, exit 0. This run preceded the separate socket-reconnect case; its valid evidence is reused.
-- Final ablation removed unreachable legacy BFS error/no-path branches after the shared validator already rejects those states. `make -C src -j8`, flight-network, production flight/link/event/combat/mount runtime, and singleton sanitizer tests passed after that deletion. Earlier full-world evidence remains valid for the unchanged reachable branches; no repeat of both complete persistence suites is needed for dead-code removal.
+
+- Final ablation removed unreachable legacy BFS error/no-path branches after the shared validator already rejects those states. `make -C src -j8`, flight-network, production flight/link/event/combat/mount runtime, and singleton sanitizer tests passed after that deletion. Earlier full-world evidence remains valid for the unchanged reachable branches; no repeat of the complete MariaDB persistence suite is needed for dead-code removal.
 - The flight fixture now explicitly checks a two-edge route: a same-room unlink returns immediately instead of advancing alone. It also proves rejected initial scheduling retains the ticket, rejected continuation lands safely, mortal command restrictions/altitudes, solo centaur travel, longer incoming chains, NPC bodies, and NPC bodies controlled by player descriptors.
 
 - `python3 tests/async/test_flight_network_journey.py --reconnect-only` — passed on the final simplified callbacks, log `bin/issue584-reconnect-qualified.log`, exit 0, binary SHA-256 `ad3a8d53fee751fde3fbfba97aadc89c0b00862ab1553c249577fcb303d75608`. Staff diagnostics confirmed the socket-disconnected character was still live, link-dead, and riding; reconnect restored control, then the trip and empty return completed. The test fixture's initial fare funding and login-banner assumptions were corrected during qualification.
 
-All test sessions are finished; no test process needs to be resumed. Current source and focused tests include the final callback simplification. Both full persistence journeys and the actual NPC attack journey preceded that removal of unreachable branches; their reachable-path evidence is reused, with the build, focused sanitizer regressions and real reconnect journey run afterward. No generic event/link semantics, attack targeting, schema, snapshot format, or area data changed.
+All test sessions are finished; no test process needs to be resumed. Current source and focused tests include the final callback simplification. The MariaDB persistence journeys and the actual NPC attack journey preceded that removal of unreachable branches; their reachable-path evidence is reused, with the build, focused sanitizer regressions and real reconnect journey run afterward. No generic event/link semantics, attack targeting, schema, snapshot format, or area data changed.
 
 Focused modes reuse the same world/authority/command logic. `--interruptions-only` discovers only Torrhan and the nearer Nizari stop; `--reconnect-only` runs only the socket case. They avoid repeating catalog, copyover, and dedicated-trip checks during iteration. All runs use disposable state, random loopback ports, and no checkout `.env` or shared server.
 
@@ -189,7 +186,7 @@ Those planning-stage passes established the baseline only; implementation eviden
 - Carrier recovery: production transport/link/event sanitizer tests cover real passenger teardown, same-room loss, separation, freeing during movement, owner extraction, generic victim cancellation, and balanced event ownership. The two-edge route assertion forbids the old extra solo outbound step. Invalid position/progress and scheduling refusal restore service. Orphan and occupied snapshots recover without a format change.
 - Boarding: production command tests cover incoming/outgoing and longer rider chains, preservation of tickets/cash/discovery on refusal, later mount attempts, NPC and player-controlled NPC guards, solo centaur acceptance, and normal ground mounting. Legacy nested recovery detaches/grounds every linked traveler before movement. Accepted passengers and completed landings have explicit altitude/command-lock assertions.
 - Combat: zero-skill paid combat entry and ordinary ground dismount controls execute production `set_fighting()`; real-server NPC `kill`/`hit` tests reject a ground attacker and allow same-altitude combat while retaining the ride. The historical attacker remains unidentified, without being treated as a reproduced universal targeting defect.
-- Whole workflow/persistence: both maintained backends complete discovery, fare/access checks, occupied and empty copyover, outbound interruption, actual extraction, Torrhan service reuse, extra destinations, crash recovery and relog. A final real socket reconnect remains distinct from extraction and completes successfully.
+- Whole workflow/persistence: MariaDB journeys complete discovery, fare/access checks, occupied and empty copyover, outbound interruption, actual extraction, Torrhan service reuse, extra destinations, crash recovery and relog. A final real socket reconnect remains distinct from extraction and completes successfully.
 - Review delivery: all work is in the three dependent branches/PRs above, with this plan and the existing operations guide updated. The original checkout and unrelated worktrees remain preserved. Required local build, focused regressions, formatting and diff checks pass. No CI wait, release tag, production repair, or deployment is required for the requested review-ready handoff.
 
 There is no remaining implementation/acceptance work for #584 in this plan. Reviewers should process the stack in order and retarget children after their parents merge. The reported production carrier needs the normal owner-approved deployment/recovery workflow separately.
@@ -201,7 +198,7 @@ There is no remaining implementation/acceptance work for #584 in this plan. Revi
 - 1–1.5 hours: focused failing cases and production link/event integration.
 - 1–1.5 hours: carrier-owned continuation, recovery, and boarding guards.
 - 1–2 hours: combat exception and real attack/altitude investigation and tests.
-- 2–3 hours: builds, both persistence journeys, fixes from those checks, documentation, and final ablation/diff review.
+- 2–3 hours: builds, the MariaDB persistence journey, fixes from those checks, documentation, and final ablation/diff review.
 
 This estimate excludes waiting for a reporter's exact horse/attack sequence, review, and production deployment. A newly demonstrated special-attack or route-altitude defect could add approximately 1–2 hours; that would be reported with its evidence and a revised estimate, not silently expanded into a combat redesign.
 
@@ -269,18 +266,7 @@ Validation on the final stack passed:
   `test_char_from_room_callbacks.py`. `test_race_command.py` also passed on the
   rebased head, covering the new master commit.
 - `scripts/format.sh`, `scripts/tidy.sh`, and `git diff --check`.
-- Complete flat-file full-world journey on the rebased head, binary SHA-256
-  `376a6ffac3f5fa6d54ba0fa539d9639ec4b28b1e2304a52a1df882943596c6e7`.
+
 - Complete disposable MariaDB full-world journey on the same flight stack before
   the unrelated race-info-only master rebase, binary SHA-256
   `a247ae9a88efc3c81a54cf36ecf2a14780b3f8614a9c48ae275638d6ed1db612`.
-
-Each complete journey passed 25-stop discovery, fares and access rules, two
-copyovers, occupied and empty recovery, logout, ground and same-altitude NPC
-attack paths, outbound unlink/separation, actual passenger extraction, Torrhan
-service reuse, live socket reconnect, restricted destinations, crash recovery,
-and normal relog. The disposable database and all journey processes were removed
-by their test harnesses. Hosted CI was not used as a gate.
-The MariaDB journey was not repeated after the race-only rebase: ablation keeps
-the valid complete-backend evidence and pairs it with the exact-head MariaDB
-build, focused flight suites, race suite, and complete flat-file journey.

@@ -1342,8 +1342,7 @@ P_obj get_obj_in_list_num(int rnum, P_obj)
             return object;
     return nullptr;
 }
-int itemvalue(P_obj) { return 0; }
-bool item_load_check(P_obj, int, int) { return true; }
+bool item_load_check(P_obj, int) { return true; }
 void reset_zone(int zone, int force_item_repop)
 {
     assert(zone == 0 && force_item_repop == 2);
@@ -1351,7 +1350,6 @@ void reset_zone(int zone, int force_item_repop)
     struct { char command; int arg1, arg2, arg3, arg4; } command = {'O', 0, 1, 0, 100};
     P_obj obj = nullptr;
     const int respawn = 1;
-    int ival = 0;
     int last_cmd = 0;
 #define ZCMD command
     switch (command.command)

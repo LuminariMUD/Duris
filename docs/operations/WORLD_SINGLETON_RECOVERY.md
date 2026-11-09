@@ -57,16 +57,14 @@ Shop inventory has different authorities in each recovery mode:
 - Redis restores NPC location/state without inventory. Its reconciliation
   retains the keeper already restored from the durable shop store and removes
   recovered duplicates and their regenerated template stock.
-- Flat-file trade records remain authoritative for item custody and shop revisions.
-  Native recovery reuses their restored live bodies when their shop and UID agree.
 - Without a durable incumbent, reconciliation selects the recovered keeper
   with the most stock/equipment, breaking ties by instance ID. File-recovered
   duplicates contribute their non-produced stock and equipment to the survivor.
   Produced stock is replenished for the selected shop.
 
 Shop binding uses the configured room, birthplace, or an unambiguous roaming
-shop. Two shops may share a mobile vnum. Flat-file restoration replaces matching
-mobile/room incumbents, and shop commands use the same room-aware binding.
+shop. Two shops may share a mobile vnum. Shop commands use the same room-aware
+binding.
 Unbound ordinary NPCs and objects are outside this cleanup.
 
 `python3 tests/async/test_world_singletons.py` compiles production reconciliation,

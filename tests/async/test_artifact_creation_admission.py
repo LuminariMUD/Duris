@@ -197,8 +197,7 @@ P_obj get_obj_in_list_num(int number,P_obj list) {
 float get_property(const char *,double fallback) { return fallback; }
 int get_property(const char *,int fallback) { return fallback; }
 int real_room0(const int) { return 0; }
-int itemvalue(P_obj) { return 1; }
-bool item_load_check(P_obj,int,int) { return true; }
+bool item_load_check(P_obj,int) { return true; }
 void enhance_on_npc_item_reset_skipped(P_char,P_obj) {}
 int shop_keeper(P_char,P_char,int,char *) { return 0; }
 object_template parse_object_template(int index) {
@@ -699,7 +698,7 @@ extract_function("handler.c","void extract_char_after_terminal_save(P_char ch)")
 extract_function("actoth.c","bool persistence_save_character_terminal(P_char ch, int type)")+"\n"+
 extract_function("actoth.c","bool persistence_save_all_characters_terminal(int type)"))
 source=source.replace("// ACTUAL_UNEQUIP",extract_function("handler.c","P_obj unequip_char("))
-source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)")+"\n"+extract_function("handler.c","P_obj find_live_object(P_obj expected, uint64_t uid)"))
+source=source.replace("// EXTRACTION","static std::unordered_set<P_obj> live_objects;\nvoid remember_live_object(P_obj o) { live_objects.insert(o); }\nvoid forget_live_object(P_obj o) { live_objects.erase(o); }\n"+extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)")+"\n"+extract_function("handler.c","P_obj find_live_object(P_obj expected, uint64_t uid)"))
 source=source.replace("// RECOVERY_TREE",extract_function("world_recovery_pipeline.c","P_obj find_object_uid(")+"\n"+extract_function("world_recovery_pipeline.c","struct planned_object")+";\n"+
  extract_function("world_recovery_pipeline.c","void replace_object_text(")+"\n"+
  extract_function("world_recovery_pipeline.c","P_obj materialize_object("))
@@ -716,7 +715,7 @@ for letter in "OPGE":
  parts.append(reset[start:after+following.start()])
 reset_harness=r"""
 int reset_command(reset_com &command,P_char mob,int respawn,int force_item_repop) {
- int last_cmd=1,ival=0,zone=0; P_obj obj=nullptr,obj_to=nullptr;
+ int last_cmd=1,zone=0; P_obj obj=nullptr,obj_to=nullptr;
  #define ZCMD command
  switch(command.command) {
  // RESET_CASES

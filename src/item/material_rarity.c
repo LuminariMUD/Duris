@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <string>
 
 #include "world/db.h"
 #include "core/defines.h"
@@ -162,9 +163,8 @@ static void write_exclusion(FILE *file, P_obj obj, int vnum, const char *reason,
 	fputc('\n', file);
 }
 
-void write_material_rarity_report(const char *output_dir)
+bool write_material_rarity_report(const char *output_dir)
 {
-	char summary_path[512], recipes_path[512], exclusions_path[512], readme_path[512];
 	char source_name[MAX_STRING_LENGTH], low_name[MAX_STRING_LENGTH],
 		high_name[MAX_STRING_LENGTH];
 	FILE *summary = NULL, *recipes = NULL, *exclusions = NULL, *readme = NULL;
@@ -180,17 +180,14 @@ void write_material_rarity_report(const char *output_dir)
 	{
 		fprintf(stderr, "material rarity report: cannot create %s: %s\n", output_dir,
 			strerror(errno));
-		return;
+		return false;
 	}
 
-	snprintf(summary_path, sizeof(summary_path), "%s/material-rarity-summary.csv", output_dir);
-	snprintf(recipes_path, sizeof(recipes_path), "%s/material-rarity-recipes.csv", output_dir);
-	snprintf(exclusions_path, sizeof(exclusions_path), "%s/material-rarity-exclusions.csv",
-		 output_dir);
-	snprintf(readme_path, sizeof(readme_path), "%s/material-rarity-README.txt", output_dir);
-
-	if (!(summary = fopen(summary_path, "w")) || !(recipes = fopen(recipes_path, "w")) ||
-	    !(exclusions = fopen(exclusions_path, "w")) || !(readme = fopen(readme_path, "w")))
+	const std::string path(output_dir);
+	if (!(summary = fopen((path + "/material-rarity-summary.csv").c_str(), "w")) ||
+	    !(recipes = fopen((path + "/material-rarity-recipes.csv").c_str(), "w")) ||
+	    !(exclusions = fopen((path + "/material-rarity-exclusions.csv").c_str(), "w")) ||
+	    !(readme = fopen((path + "/material-rarity-README.txt").c_str(), "w")))
 	{
 		fprintf(stderr, "material rarity report: cannot open output in %s: %s\n",
 			output_dir, strerror(errno));
@@ -202,7 +199,7 @@ void write_material_rarity_report(const char *output_dir)
 			fclose(exclusions);
 		if (readme)
 			fclose(readme);
-		return;
+		return false;
 	}
 
 	memset(tally, 0, sizeof(tally));
@@ -308,11 +305,22 @@ void write_material_rarity_report(const char *output_dir)
 		"Scope: static object templates only. This is not reset frequency, loot probability,\n");
 	fprintf(readme, "player stock, replenishment rate, or economic scarcity.\n");
 
-	fclose(summary);
-	fclose(recipes);
-	fclose(exclusions);
-	fclose(readme);
+	bool ok = true;
+	for (FILE *file : { summary, recipes, exclusions, readme })
+	{
+		const bool write_failed = ferror(file);
+		if (fclose(file) != 0 || write_failed)
+			ok = false;
+	}
+	if (!ok)
+	{
+		fprintf(stderr,
+			"material rarity report: output failed in %s; discard partial files\n",
+			output_dir);
+		return false;
+	}
 	fprintf(stderr,
 		"material rarity report: %ld qualifying templates, %ld ingredient contributions written to %s\n",
 		qualifying_templates, total_material_units, output_dir);
+	return true;
 }

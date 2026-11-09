@@ -68,11 +68,8 @@ locker, corpse, auction and world item snapshots. Those snapshots already retain
 the physical UID. They never contain or overwrite the authoritative mana reserve.
 A stale owner save therefore cannot replace a newer debit.
 
-MariaDB/MySQL uses the additive `0016_artifact_mana` migration and an InnoDB table
-keyed by `item_uid`. Flat-file primary uses a versioned, SHA-256-checked record at
-`FLATFILE_STATE_DIR/domains/artifact-mana-<uid>`. Writes use the existing atomic
-write/fsync/rename helper under `.artifact-mana.lock`. Database modes never fail
-over to a second flat-file mana authority on SQL errors.
+MariaDB uses the additive `0016_artifact_mana` migration and an InnoDB table
+keyed by `item_uid`. SQL errors never switch mana to a file authority.
 
 One worker performs storage reads and compare-and-swap writes. Game-thread
 admission does no SQL, fsync or disk read. Requests and completions together have
@@ -126,24 +123,22 @@ their original behavior.
 
 ## Backup and rollout
 
-The lifecycle manifest retains both authorities as protected reconciliation state.
-The flat-file backup manager takes the mana writer lock before copying a generation.
-Native restore qualification decodes every retained mana record, including orphan
-UIDs, and rejects corrupt contents, invalid values and noncanonical or mismatched
-filename identities before service boot. Database backups include the mana table
-in the sealed 185-table runtime inventory.
+The lifecycle manifest protects the mana authority as reconciliation state.
+Database backups include the mana table in the sealed runtime inventory. Use the
+managed backup and database restore qualification described in
+[BACKUPS.md](../operations/BACKUPS.md).
 
 Runtime rollback is to disable an ability, category or master flag. It retains the
 mana ledger. Binary/schema rollback is a separate operation: an old binary's sealed
-schema contract can refuse the new migration head. Do not drop the table or remove
-flat-file records as a runtime rollback, because doing so discards the version
+schema contract can refuse the new migration head. Do not drop the table as a
+runtime rollback, because doing so discards the version
 fences. Production migration, initial balance values and live enablement remain
 separate rollout decisions under #297.
 
 ## Verification
 
-The focused runtime test executes the production model, worker and flat-file
-repository under ASan/UBSan. It covers fractional/exact/insufficient spending,
+The focused runtime test executes the production model and worker under
+ASan/UBSan with controlled storage boundaries. It covers fractional/exact/insufficient spending,
 backwards and long offline time, invalid limits, conservation, revision/clamp
 behavior, repeated action tokens, slow/failed writes, coalescing, acknowledgement
 loss, recovery, stale writes, clone initialization and corrupt storage.

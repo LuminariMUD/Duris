@@ -1,5 +1,11 @@
 # Documentation Index
 
+MariaDB is the only supported server persistence backend. Configuration and
+startup requirements are in [CONFIGURATION.md](operations/CONFIGURATION.md);
+build requirements are in [BUILDING.md](guides/BUILDING.md). Local journals,
+receipts, recovery images and authored content files remain in use, but are
+not a flat-file persistence backend.
+
 Setup and first boot live in the root [README](../README.md); its Quick start is the
 onboarding path. This directory holds the development, architecture, operations,
 database, and builder references. Actionable work belongs in the
@@ -169,7 +175,6 @@ the work item it was built under; [CONTRACT.md](telemetry/CONTRACT.md) maps the 
 | Document | Purpose |
 |----------|---------|
 | [testing/REGRESSIONS.md](testing/REGRESSIONS.md) | Per fixed defect: the rule, the tests that hold it, and what they do not cover. |
-| [testing/ITEM_ABILITY_ROLLOUT.md](testing/ITEM_ABILITY_ROLLOUT.md) | Item ability verification record and its [evidence](testing/item-ability-rollout-evidence.json). |
 | [gates/PHASE03_READINESS.md](gates/PHASE03_READINESS.md) | The 200-player readiness gate: inputs, procedure, and current state. |
 | [network/GAME_LOOP_PHASES.md](network/GAME_LOOP_PHASES.md) | The order of a pulse's phases and the session-input decision. |
 | [design/COLLECTOR_OF_ANTIQUITIES.md](design/COLLECTOR_OF_ANTIQUITIES.md) | Collector policy, authorities, runtime publication, and what to run before enabling it. |

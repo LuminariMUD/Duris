@@ -794,22 +794,6 @@ void newbie_reincarnate(P_char ch)
 		ch);
 }
 
-int equipped_value(P_char ch)
-{
-	P_obj temp_obj;
-	int total, k;
-
-	total = 0;
-
-	for (k = 0; k < MAX_WEAR; k++)
-	{
-		temp_obj = ch->equipment[k];
-		if (temp_obj)
-			total += itemvalue(temp_obj);
-	}
-	return total;
-}
-
 bool create_recipe(P_char ch, P_obj temp)
 {
 	/***RECIPE CREATE***/

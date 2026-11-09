@@ -722,8 +722,7 @@ int main(int argc, char **argv)
 	if (material_rarity_report_mode)
 	{
 		boot_material_rarity_objects(mini_mode);
-		write_material_rarity_report(material_rarity_report_dir);
-		return 0;
+		return write_material_rarity_report(material_rarity_report_dir) ? 0 : 1;
 	}
 	logit(LOG_STATUS, "Running game on port %d.", port);
 
@@ -1615,6 +1614,9 @@ static void dispatch_session_input(P_desc descriptor, P_char character, char *in
 							COMMAND_LATENCY_NANNY;
 	prepare_descriptor_latency_event(&event, kind, descriptor,
 					 route == session_input_route::playing ? input : NULL);
+	if (route == session_input_route::playing &&
+	    (!strcmp(event.operation, "get") || !strcmp(event.operation, "take")))
+		command_latency_event_set_get_arguments(&event, input);
 	const uint64_t started_us = loop_monotonic_us();
 	switch (route)
 	{
@@ -1640,6 +1642,7 @@ static void dispatch_session_input(P_desc descriptor, P_char character, char *in
 	}
 	if (route == session_input_route::nanny && is_desc_valid(descriptor))
 		gmcp_session_update(descriptor);
+	event.bulk_items = command_latency_take_bulk_items();
 	command_latency_record(latency, &event,
 			       latency_trace_elapsed_us(started_us, loop_monotonic_us()));
 }

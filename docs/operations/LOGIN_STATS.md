@@ -17,8 +17,7 @@ omitted from the unique-account view. Character lookup uses the existing name
 index, so renamed characters must be requested under their current name. Account
 menu authentication and reconnect notices are not character-entry events.
 
-No schema change or new log is needed. Flat-file builds report that this command
-requires MariaDB. Publish the `LAST` topic from `lib/information/help_index` through
+No schema change or new log is needed. Publish the `LAST` topic from `lib/information/help_index` through
 the normal help import when deploying the command.
 
 Focused verification: `python3 tests/async/test_last_command.py`, and

@@ -81,8 +81,8 @@ showed three acknowledged events and zero retained output bytes. No event-budget
 debt window was observed during collection; the maximum event pass also stays
 below the configured 25ms event budget. Telemetry HTTP/fsync remain in the worker.
 
-The real journeys separately retained 38 MariaDB / 36 flat-file events, totaling
-72,985 / 68,889 compact JSON event bytes, largest event 4,964 / 4,965 bytes.
+The MariaDB journey retained 38 events, totaling 72,985 compact JSON event bytes,
+with a largest event of 4,964 bytes.
 These are delivered event-body sizes, excluding failed attempts and HTTP/envelope
 overhead; they are not a measured performance-run wire-throughput figure.
 

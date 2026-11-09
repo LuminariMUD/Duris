@@ -96,7 +96,7 @@ int pulse = 0;
 #define GET_BIRTHPLACE(ch) ((ch)->birthplace)
 #define OBJ_VNUM(obj) (obj_index[(obj)->R_num].virtual_number)
 #define IS_ARTIFACT(obj) (false)
-#define ITEM_LOAD_CHECK(obj, value, chance) ((chance) == 100)
+#define ITEM_LOAD_CHECK(obj, chance) ((chance) == 100)
 #define REMOVE_BIT(var, bit) ((var) &= ~(bit))
 #define SET_BIT(var, bit) ((var) |= (bit))
 #define IS_SET(var, bit) ((var) & (bit))
@@ -138,10 +138,6 @@ bool live_shopkeeper_for_identity(int)
 void bind_shopkeeper(P_char, int) {}
 void apply_zone_modifier(P_char) {}
 void enhance_on_npc_item_reset_skipped(P_char, P_obj) {}
-int itemvalue(P_obj)
-{
-	return 0;
-}
 bool zone_reset_trace_enabled()
 {
 	return false;
