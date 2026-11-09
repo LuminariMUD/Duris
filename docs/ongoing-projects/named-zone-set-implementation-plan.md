@@ -107,7 +107,7 @@ The required proof is:
   metadata follows the established load-error policy without silently dropping
   items. Cover Ceothia #808/#811/#814, Underworld #44/#300, Braddistock #13/#1350,
   Tiamat #196/#199, and historical Misty Vale origins. Retain full/incremental
-  save and reload evidence for both MariaDB and flat-file storage, nested
+  save and reload evidence for MariaDB storage, nested
   transfers, player/pet/corpse/locker/chest/shop/world items, and edits/clones.
 - **Effects:** actual grants and derived character benefits match the thresholds;
   two different sets and two sharing a spell remove only unsupported benefits
@@ -123,9 +123,9 @@ The required proof is:
 - **Publication:** cached and uncached reports show the complete identical
   roster, IDs, thresholds, restrictions, pagination, and cooldown markers.
   Verify cold/warm/unavailable Redis, expiry, boot warming, and invalidation
-  through the existing cache test. Canonical help must agree on both backends.
+  through the existing cache test. Canonical help must agree with the imported MariaDB catalog.
 
-Focused checks used during integration; reuse valid results for unchanged paths:
+Focused checks:
 
 ```sh
 python3 tests/async/test_named_set_catalog.py
@@ -138,8 +138,7 @@ python3 tests/async/test_named_set_report_cache_live.py
 python3 tests/async/test_random_equipment_golden.py
 python3 tests/async/test_random_mob_theme_runtime.py
 ./scripts/format.sh --check
-make -C src PERSISTENCE_BACKEND=mariadb
-make -C src PERSISTENCE_BACKEND=flatfile
+make -C src
 ```
 
 The owner's final qualification is `make -j4 test-all` on the merged result.

@@ -222,7 +222,7 @@ socket. DurisWeb's companion [PR #118](https://github.com/LuminariMUD/DurisWeb/p
 fixes the previous generic-dialog replacement. Verify the actual deployed client
 with `run_pwipe_launch_browser_journey.py` against a disposable gate before relying
 on its opening-time display. The socket journey
-`run_pwipe_launch_gate_journey.py` covers both maintained admission backends;
+`run_pwipe_launch_gate_journey.py` covers MariaDB admission;
 `run_pwipe_runtime_journey.py` includes the armed launcher-cleanup/new-season case.
 
 Before opening, verify approved entry, public refusal and restart persistence on
@@ -705,7 +705,7 @@ reviewed property catalog and protected outage directory unchanged.
    separately before claiming the entire external cutover.
 
 `test_telemetry_runtime_integration.py --posthog` rehearses the worker/CLI/HTTPS
-sequence in a private directory for both compiled backend variants. It checks
+sequence in a private directory with controlled repository boundaries. It checks
 active-owner refusal, complete drain/reap, archived bytes, idempotence, stale and
 new environment bindings, distinct same-subject identities and zero new HTTP on
 that day. The outage fault harness separately proves next-day allocation and
@@ -929,7 +929,9 @@ the exact bounded top ten describe that window, not process lifetime. Check
 with debug profiling off. They distinguish playing, nanny, pager, editor, SSL,
 and descriptor maintenance. `unattributed_sweep_us` covers work outside the
 explicit scopes, including gates and dequeue. Playing labels use canonical
-command names or `unknown`; arguments and nanny/editor input are excluded.
+command names or `unknown`; arguments and nanny/editor input are excluded,
+except that `get` and `take` also report sanitized `args` and `bulk_items`, the
+number of items a `get all` selected.
 Reports retain at most eight slow operations and throttle output to one report
 per four pulses, carrying suppression counts and the worst suppressed operation
 into the next due report. A small event bucket does not explain a large command
@@ -959,8 +961,7 @@ callback timing, completion/abort, and queued input. Each segment of a cast is d
 the tick the one before it was due plus its own length, so a callback that ran late
 shortens the next segment: a cast finishes at its cast time plus the lateness of its
 last segment, or later only by the one-pulse minimum a segment keeps.
-`tests/async/run_cast_timing_probe.py` measures this on a full-world flat-file server,
-with `--budget-usec` to load the event pass. Aggregate scheduler samples alone do not
+Aggregate scheduler samples alone do not
 establish a particular player's delay or justify changing NPC cadence, priority
 ordering, or budgets.
 
@@ -1265,14 +1266,15 @@ backup identity, restore it under an explicitly non-production name on a loopbac
 host, and set `ENVIRONMENT`, `DB_HOST`, `DB_NAME`, and `DB_ALLOWED_TARGETS` so the
 clone is the only permitted target. Keep the original backup untouched.
 
-Before converting locker authority to flat files, run the read-only, aggregate-only
+For a read-only, aggregate-only audit of imported account lockers, run
 `migrations/check_flatfile_account_locker_conversion.sh --expect-count <known-count>`
 against that clone. It proves each `account.<account>.<side>.locker` row maps to an
 authoritative account and valid racewar side, and checks owner fields, chests, item
 custody identifiers, duplicate active UIDs, and access references. Quarantined or
 otherwise inactive legacy payload rows are outside this authority conversion and remain
 subject to their separate recovery workflow. Any nonzero mismatch or unexpected total
-blocks the cutover; the checker never emits account or locker names.
+blocks a repair; the checker never emits account or locker names. Its retained
+filename does not provide or authorize a flat-file persistence conversion.
 
 The legacy runner is mutation-capable and has no dry-run mode. `--help` is safe, and an
 unknown argument is rejected before configuration is loaded. A normal no-argument run
@@ -1598,14 +1600,23 @@ availability, random equipment). Property/config changes take effect on
 restart without recompilation; check the owning subsystem docs before
 editing.
 
-One property is a live balance switch worth knowing about:
-`artifact.wars.modifier` scales the race-war penalty applied by
-`event_artifact_wars` -- each of a violating player's artifacts loses
-`modifier x punish_level` of its remaining life, clamped to the whole of it.
-The code default is `0.0` (forced drop only), but `lib/duris.properties` ships
-`artifact.wars.modifier=0.500`, so a server using that file halves the
-offender's artifact timers on a first-level violation. Set it to `0` to disable
-the timer penalty.
+`artifact.wars.modifier=0.000` is the shipped setting and matches the code
+default: artifact hoarding causes forced drops without timer loss or damage.
+A player may hold one major artifact, one unique and one ioun. Holding two or
+more of any one type triggers the periodic `event_artifact_wars_sql` check,
+which drops every artifact the player wears or carries, including other types.
+Even a brief ownership overlap can be caught; the sweep interval is not a
+personal grace period. The scope of which artifacts drop is unchanged by this
+timer-policy fix ([issue #861](https://github.com/LuminariMUD/Duris/issues/861)).
+
+Keep this modifier at zero for the intended drop-only rule. A positive override
+still cuts every artifact timer on the violating holder by
+`modifier x punish_level` of its remaining life, clamped to the whole of it;
+the level is the sum of the excess counts above one per type. For example,
+`0.500` halves each timer when the holder has two artifacts of one type.
+Existing installations must also apply the zero setting to their deployed
+properties and reload or restart; changing the repository does not change a
+running server's in-memory setting.
 
 ### Scheduled roaming NPCs
 

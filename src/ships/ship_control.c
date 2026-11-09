@@ -73,6 +73,7 @@
 #include "limits.h"
 #include "core/utility.h"
 #include "core/utils.h"
+#include <charconv>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -129,8 +130,18 @@ int order_sail(P_char ch, P_ship ship, char *arg1, char *arg2)
 int jettison_cargo(P_char ch, P_ship ship, char *arg)
 {
 	int crates = INT_MAX;
-	if (is_number(arg))
-		crates = atoi(arg);
+	if (*arg)
+	{
+		const char *end = arg + strlen(arg);
+		const auto parsed = std::from_chars(arg, end, crates);
+		if (parsed.ec != std::errc{} || parsed.ptr != end || crates <= 0)
+		{
+			send_to_char(
+				"Please specify a valid positive number of crates to jettison.\r\n",
+				ch);
+			return TRUE;
+		}
+	}
 	return jettison_cargo(ch, ship, crates);
 }
 
@@ -142,8 +153,18 @@ int jettison_cargo(P_char ch, P_ship ship, char *arg)
 int jettison_contraband(P_char ch, P_ship ship, char *arg)
 {
 	int crates = INT_MAX;
-	if (is_number(arg))
-		crates = atoi(arg);
+	if (*arg)
+	{
+		const char *end = arg + strlen(arg);
+		const auto parsed = std::from_chars(arg, end, crates);
+		if (parsed.ec != std::errc{} || parsed.ptr != end || crates <= 0)
+		{
+			send_to_char(
+				"Please specify a valid positive number of crates to jettison.\r\n",
+				ch);
+			return TRUE;
+		}
+	}
 	return jettison_contraband(ch, ship, crates);
 }
 

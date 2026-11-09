@@ -89,6 +89,29 @@ void command_latency_event_prepare(command_latency_event *event, command_latency
 			 command_latency_kind_name(kind));
 }
 
+void command_latency_event_set_get_arguments(command_latency_event *event, const char *input)
+{
+	while (isspace((unsigned char)*input))
+		++input;
+	while (*input && !isspace((unsigned char)*input))
+		++input;
+	command_latency_sanitize(event->arguments, sizeof event->arguments, input);
+}
+
+static size_t pending_bulk_items = 0;
+
+void command_latency_note_bulk_items(size_t items)
+{
+	pending_bulk_items = items;
+}
+
+size_t command_latency_take_bulk_items(void)
+{
+	const size_t items = pending_bulk_items;
+	pending_bulk_items = 0;
+	return items;
+}
+
 static void command_latency_retain_slow(command_latency_tracker *tracker,
 					const command_latency_event *event)
 {
@@ -153,14 +176,20 @@ void command_latency_report(const command_latency_tracker *tracker, uint64_t swe
 	for (int index = 0; index < tracker->retained_slow_count; ++index)
 	{
 		const command_latency_event *event = &tracker->slowest[index];
+		char get_detail[COMMAND_LATENCY_ARGUMENTS_LENGTH + 48] = "";
+		if (event->arguments[0])
+			snprintf(get_detail, sizeof get_detail, " args=%s bulk_items=%zu",
+				 event->arguments, event->bulk_items);
 		snprintf(
 			line, sizeof line,
 			"COMMAND OP SLOW: boot=%s tick=%s"
 			" pulse_start_mono_us=%" PRIu64
-			" kind=%s state=%d player_id=%ld player=%s operation=%s duration_us=%" PRIu64,
+			" kind=%s state=%d player_id=%ld player=%s operation=%s duration_us=%" PRIu64
+			"%s",
 			safe_boot_id, formatted_tick, pulse_start_mono_us,
 			command_latency_kind_name(event->kind), event->connection_state,
-			event->player_id, event->player_name, event->operation, event->duration_us);
+			event->player_id, event->player_name, event->operation, event->duration_us,
+			get_detail);
 		command_latency_emit(line, emit, context);
 	}
 
@@ -246,7 +275,8 @@ static void command_latency_emit_suppressed_summary(command_latency_report_state
 		 " suppressed_worst_tick=%s suppressed_worst_pulse_start_mono_us=%" PRIu64
 		 " suppressed_worst_kind=%s suppressed_worst_state=%d"
 		 " suppressed_worst_player_id=%ld suppressed_worst_player=%s"
-		 " suppressed_worst_operation=%s suppressed_worst_duration_us=%" PRIu64,
+		 " suppressed_worst_operation=%s suppressed_worst_duration_us=%" PRIu64
+		 " suppressed_worst_args=%s suppressed_worst_bulk_items=%zu",
 		 safe_boot_id, latency_trace_format_tick(tick, tick_buffer), pulse_start_mono_us,
 		 state->suppressed_reports, state->suppressed_slow_operations,
 		 worst ? latency_trace_format_tick(state->suppressed_worst_tick,
@@ -256,7 +286,9 @@ static void command_latency_emit_suppressed_summary(command_latency_report_state
 		 worst ? command_latency_kind_name(worst->kind) : "-",
 		 worst ? worst->connection_state : -1, worst ? worst->player_id : -1L,
 		 worst ? worst->player_name : "-", worst ? worst->operation : "-",
-		 worst ? worst->duration_us : 0);
+		 worst ? worst->duration_us : 0,
+		 worst && worst->arguments[0] ? worst->arguments : "-",
+		 worst ? worst->bulk_items : 0);
 	command_latency_emit(line, emit, context);
 	state->suppressed_reports = 0;
 	state->suppressed_slow_operations = 0;

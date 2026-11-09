@@ -44,6 +44,7 @@ void act(const char *text, int, P_char, P_obj, void *container, int type)
 void extract_obj(P_obj pile, int) { extracted = pile; }
 void add_coins(P_obj, int, int, int, int) { ++relabels; }
 void writeCorpse(P_obj) { ++corpse_writes; }
+static bool item_get_ack_publication = false;
 static bulk_get_state *corpse_bulk_get(P_char, uint64_t) { return haul; }
 void debug(const char *, ...) {}
 ''' + extract_function("utility.c", "char *coins_to_string(") + "\n" + \
@@ -89,6 +90,14 @@ int main()
     assert(pile.value[0] == 2 && pile.value[1] == 2 && pile.value[2] == 7);
     assert(!extracted && relabels == 1 && corpse_writes == 1);
     assert(room_text == "$n gets some coins from $P." && room_container == &corpse);
+
+    // A bulk get saves the corpse once, after its whole batch.
+    player looter(47);
+    obj_data batch_pile = {}; batch_pile.type = ITEM_MONEY; batch_pile.value[2] = 1;
+    item_get_ack_publication = true;
+    assert(take_coins(&looter.ch,&batch_pile,&corpse,TRUE,all_of(batch_pile)));
+    item_get_ack_publication = false;
+    assert(corpse_writes == 1);
 
     reset();
     bulk_get_state state; haul = &state;

@@ -169,12 +169,12 @@ identity collisions, pending-capacity failure and reload establish a revision
 floor; an older pending retry cannot make a stale snapshot visible. A later
 valid current capture above that floor is required. If the bounded pending set or
 identity guard is full, the new context is rejected/degraded explicitly; no entry
-is overwritten. Repeated disabled and flat-file-disabled publications keep their
+is overwritten. Repeated disabled publications keep their
 disabled outcome and emit no record.
 
 A disabled config is a valid `valid_disabled` snapshot and emits no control
-record. Historical backend `2` remains `valid_flatfile_disabled`; it is distinct
-from flat-file gameplay, which supports the PostHog sink. No hidden telemetry
+record. Telemetry backend enum `2` reports `valid_flatfile_disabled`; this is
+a disabled telemetry state, not a gameplay persistence backend. No hidden telemetry
 file is written. Both outcomes are exposed through the public runtime
 result and disabled quality state. No gameplay path is made dependent on the
 telemetry sink.

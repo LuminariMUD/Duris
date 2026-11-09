@@ -18,12 +18,16 @@ source=source.replace('// PERSISTENCE_REPORTER', reporter)
 source=source.replace('// GUILD_SQL_CAPTURE',
     extract_function('sql_player.c','std::vector<std::string> sql_save_guild_statements(Guild *guild)')+'\n'+
     extract_function('sql_player.c','/* Save one guild: its statements are one writer job. */\nbool sql_save_guild(Guild *guild)'))
+wars_modifier = next(line.split('=', 1)[1].strip()
+    for line in (ROOT/'lib/duris.properties').read_text().splitlines()
+    if line.startswith('artifact.wars.modifier='))
 with tempfile.TemporaryDirectory(prefix='artifact-snapshots-',dir=out) as directory:
     cpp=Path(directory)/'snapshot.cpp'; binary=Path(directory)/'snapshot'
     cpp.write_text(source)
     subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-pthread',
         '-fsanitize=undefined','-fno-sanitize-recover=all',
         '-ffunction-sections','-fdata-sections','-Isrc','-I/usr/include/mysql',
+        f'-DSHIPPED_ARTIFACT_WARS_MODIFIER={float(wars_modifier)}f',
         str(cpp),'src/guild/artifact_population.c','src/guild/artifact_cache_codec.c','src/item/item_transfer_command.c','src/item/item_ownership_runtime.c','src/guild/assocs.c','src/core/safe_format.c',
         'src/kingdom/kingdom.c','src/kingdom/kingdom_db.c','src/kingdom/kingdom_upkeep.c',
         str(HARNESS_STUBS),

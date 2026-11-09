@@ -64,7 +64,7 @@ Staff use `spells all` for the global base-class circle reference and
 | [Classes](../../help/duris_help_parsed.hlp#L4288), [Specialization](../../help/duris_help_parsed.hlp#L22414), [Multiclass](../../help/duris_help_parsed.hlp#L15402), [Class Guides](../../help/duris_help_parsed.hlp#L4274) | Current overview, navigation, specialization, and multiclass help. |
 | [Parsed help](../../help/duris_help_parsed.hlp) | Main descriptions and skill/spell entries for all 30 class IDs, plus specialization, multiclass, and individual ability topics. Each class has direct links below. |
 | [Help index](../../lib/information/help_index) | The other import source: class entries, `SKILL_<CLASS>` entries, commands, spells, skills, and specialization topics. |
-| [Help system](../content/HELP_SYSTEM.md), [cache operation](../operations/help-cache.md), [help style](../content/HELP_STYLE_GUIDE.md) | Source precedence, database/flat-file serving, dynamic sections, refresh, and editing conventions. |
+| [Help system](../content/HELP_SYSTEM.md), [cache operation](../operations/help-cache.md), [help style](../content/HELP_STYLE_GUIDE.md) | Source precedence, MariaDB catalog serving, dynamic sections, refresh, and editing conventions. |
 | [Classes and races operator guide](../content/classes_and_races.txt) | How to enable/disable creation choices and change the race/class matrix. |
 | [Creation switches](../../lib/creation_availability.cfg), [environment example](../../.env.example) | Checked-in creation policy and the broader testing overrides. |
 | [Boot-loaded class-menu text](../../lib/creation/classtable) | The fallback text is loaded at boot; current creation builds its class menu from code and configuration. |
@@ -84,7 +84,7 @@ page can list Dragoon from `class_table` while the creation switch disables it.
 The importer gives parsed-help titles precedence over matching help-index
 titles. Database-backed servers serve the imported catalog, so changing a file
 alone does not publish help. See the help-system resource above for the exact
-pipeline and the separate flat-file path.
+pipeline.
 
 ## Class catalogue
 
@@ -540,13 +540,13 @@ Existing focused checks provide different kinds of evidence:
   it does not qualify every class or the WebSocket alignment path.
 - [Creation hometown/alignment checks](../../tests/async/test_creation_hometowns.py):
   executable shared hometown policy and production WebSocket validation before
-  materialization, compiled for both backends with sanitizers. All alignment
+  materialization, compiled with sanitizers. All alignment
   codes, malformed/stale values, and retained stat state are covered. GN uses a
   controlled handler input because the normal roster currently has no GN cell.
 - [Creation alignment journey](../../tests/async/run_creation_alignment_journey.py):
   full-world Telnet/WebSocket creation, rejected submissions without partial
   bodies, racewar admission, save/restart/relogin, and existing creation
-  overrides on isolated flat-file or MariaDB authority. With `--frontend-url`,
+  overrides on isolated MariaDB authority. With `--frontend-url`,
   it also exercises the paired browser wizard and browser relogin in Chromium;
   only the unrelated website HTTP shell/notification socket are fixtures.
 - [Unspecialize guard](../../tests/async/test_unspecialize_guard.py),

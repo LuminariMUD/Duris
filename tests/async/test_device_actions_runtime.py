@@ -295,7 +295,7 @@ static void staff_area() {
         device_scene s(ITEM_STAFF);
         auto ally=new char_data{}; ally->runtime_id=allocate_character_runtime_id();
         ally->only.pc=s.actor->only.pc; ally->in_room=0; SET_POS(ally,STAT_NORMAL+POS_STANDING);
-        ally->next=character_list; character_list=ally;
+        character_list_add(ally);
         ally->next_in_room=world[0].people; world[0].people=ally;
         std::remove_pointer_t<decltype(s.actor->group)> group{}; s.actor->group=ally->group=&group;
         s.use(); advance(); assert(calls.size()==1 && calls[0].target==s.target->runtime_id);
@@ -305,7 +305,7 @@ static void staff_area() {
         discard_character(s.target); chosen_char=nullptr;
         auto newcomer=new char_data{}; newcomer->runtime_id=allocate_character_runtime_id();
         newcomer->only.pc=s.actor->only.pc; newcomer->in_room=0; SET_POS(newcomer,STAT_NORMAL+POS_STANDING);
-        newcomer->next=character_list; character_list=newcomer;
+        character_list_add(newcomer);
         newcomer->next_in_room=world[0].people; world[0].people=newcomer;
         advance(); assert(calls.size()==1 && calls[0].target==newcomer->runtime_id);
     }

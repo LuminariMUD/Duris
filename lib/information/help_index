@@ -735,6 +735,12 @@ artifacts, each one-of-a-kind. They are unique and only one of each can be
 found in the game, EVER. This is only a list of the current artifacts, not
 including uniques or iouns. 
 
+You may hold one major artifact, one unique and one ioun at a time. If you
+hold two or more of any one type, the periodic artifact check makes all
+artifacts you wear or carry fall to the ground, including other types.
+Inventory counts as well as equipment, and even a brief overlap can trigger
+the check. The forced drop causes no damage or loss of remaining feeding time.
+
 &+LAvernus the life stealer&n
 ---------------------------------------------------------------------------
 &+RKnown Special Power(s)&n: 
@@ -6073,6 +6079,12 @@ means killing someone of the opposite racewar in order to gain a full frag.
 You must reach one full frag to sate your artifact within a number of days
 which varies between each item.  If you fail to feed, your artifact will
 be removed and placed back into the game where it loads, if any.
+
+You may hold one major artifact, one unique and one ioun at a time. If you
+hold two or more of any one type, the periodic artifact check makes all
+artifacts you wear or carry fall to the ground, including other types.
+Inventory counts as well as equipment, and even a brief overlap can trigger
+the check. The forced drop causes no damage or loss of remaining feeding time.
 ===========================================================================
 See also: ARTIFACT, UNIQUE, IOUN
 
@@ -19205,6 +19217,12 @@ unique is one of a kind and therefore artifacts by nature. No unique is
 alike and they all bestow different properties.
 
 For a list of uniques, type "arti unique".
+
+You may hold one major artifact, one unique and one ioun at a time. If you
+hold two or more of any one type, the periodic artifact check makes all
+artifacts you wear or carry fall to the ground, including other types.
+Inventory counts as well as equipment, and even a brief overlap can trigger
+the check. The forced drop causes no damage or loss of remaining feeding time.
 ===========================================================================
 See also: ARTIFACT, IOUN, FEEDING
 
