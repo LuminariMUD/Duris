@@ -45,7 +45,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-readonly-template-runtime`; its initial synchronized commit was
+`origin/branch/ival-circle-extents`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -59,7 +59,8 @@ Plan PR: [#876](https://github.com/LuminariMUD/Duris/pull/876), against `master`
 Current Git status verified 2026-11-09: PRs #876, #877, #878, #879, #884, #885,
 #886, #889, and #894 were merged by external review. PR #902 targets `master`;
 the #919 constructor repair and #927 CTF binding prerequisite are stacked above
-it. Chunk 8 continues on `branch/ival-readonly-template-runtime`. Branch/base
+it. The metadata/report work is published as #930; the circle repair is #935 on
+`branch/ival-circle-extents`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -557,6 +558,8 @@ complete F01–F16.
 ### Chunk 9 — include every class/specialization circle registration (F01, implemented)
 
 Branch: `branch/ival-circle-extents`, based on `branch/ival-readonly-template-runtime`.
+Published: `7ef2f2299`, [PR #935](https://github.com/LuminariMUD/Duris/pull/935)
+(bug label), stacked on #930. Ready for review.
 
 **Outcome:** scan the actual class and specialization array extents, including
 class zero and specialization four. Preserve invalid-spell result 0 and the
@@ -619,26 +622,32 @@ The characterization, report I/O, monk tools/pilot, native enhancement and world
 quest reward checks passed; full server build and formatting passed. The editor's
 class bound was already corrected in Chunk 5; its missing specialization data
 remains explicitly estimated. F02/F03/F04/F08 and F16 remain open.
+The delta retains legacy omitted-input and native-proc policies; their complete
+coverage/classification inventory remains in F05/F09. Next, repair F02 with a
+native old/new numeric-evaluator comparison. The circle-only delta mode must
+keep refusing changed numeric/runtime adapters; do not bypass that proof guard.
 
 ## Main conclusions
 
-1. **Fix calculation invariants first.** Specialization 4 is omitted from minimum
-   spell-circle lookup; random-one proc averaging truncates before scaling; affect
-   order and zero modifiers alter scores despite identical effective stats.
-2. **Restore trustworthy tools.** The editor uses an obsolete, substantially
-   different formula. The offline material report calls the server function
-   without the server's full valuation context.
-3. **Separate arithmetic from policy and object creation.** `itemvalue()` lives in
-   a tradeskill file, reaches global proc/race/spell data, and is called by systems
-   that instantiate objects merely to inspect them. The existing immutable
-   `object_template` layer gives this work a practical starting point.
+1. **Finish the calculation invariants.** F01's omitted class/specialization
+   entries are repaired. Random-one proc averaging still truncates before scaling;
+   affect order and zero modifiers still change scores for equivalent stats.
+2. **Keep tools truthful.** The editor now uses shared arithmetic with explicit
+   context estimates, and the offline material report has normalized context and
+   native corpus qualification. Enhancement configuration/enforcement still needs
+   the F10 repair.
+3. **Finish separating inspection from object creation.** Shared arithmetic,
+   runtime/template adapters and read-only reporting now exist. Other inspection
+   consumers still instantiate items, and proc metadata/route policy still needs
+   the remaining F09/F11/F12 work.
 4. **Make omissions and exceptions explicit.** The fifth affect bank, shield base
    AC, ranged-item properties, some live applies, scripted effects, and proc-route
    differences are not comprehensively represented. Establish coverage before
    assigning new weights.
 5. **Measure downstream changes before shipping.** Ival affects economic costs
-   and eligibility, not just a displayed rating. Existing tests cover useful
-   journeys, but do not establish these invariants or editor/report parity.
+   and eligibility. The current corpus and seeded F01 comparisons establish this
+   slice's measured deltas; subsequent formula repairs and full command/persistence
+   journeys still need their own proof.
 
 Priority meanings: **P1** is incorrect calculation, misleading authoritative
 output, or an unsafe path that should be addressed first; **P2** is a concrete
@@ -1261,6 +1270,7 @@ partial deliveries and their verification are recorded in the implementation log
 ### Stage 3 — repair correctness in small, measured slices
 
 - [ ] Correct minimum-circle bounds and packed averaging (F01/F02).
+  F01 is implemented and qualified in Chunk 9 / #935; F02 remains pending.
 - [ ] Make zero modifiers neutral and multiplier composition order independent
   (F03/F04); address duplicate semantics in its own slice if the delta is broad.
 - [ ] Add finite/overflow checks at evaluator, config, and consumer boundaries
