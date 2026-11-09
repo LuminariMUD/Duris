@@ -26,7 +26,7 @@ PLAYER, ACCOUNT = "Keywarden", "Keyacct"
 MORTAL, MORTAL_ACCOUNT = "Campwarden", "Campacct"
 INN, KEY, BAG, SIBLING, TICKET = 40454, 40401, 48, 15, 47003
 SHOP, SHOP_KEY = 5848, 5783
-CAMP_ROOM = 1457
+CAMP_ROOM, BANK, BLOOD_STAIN = 1457, 16590, 4
 NORENT = 8388608
 FALLS, CRUMBLES = "is no-rent and falls to the floor", "is no-rent and crumbles to dust"
 
@@ -179,6 +179,34 @@ def run(binary, backend, inspector, evidence_dir):
                     ("Copyover complete!", "Copyover FAILED", "Copyover cancelled"), timeout=180)
                 assert result == "Copyover complete!", output_text + journey.runtime_logs(runtime)
 
+            def enter_locker():
+                deadline = time.monotonic() + 90
+                while True:
+                    client.send("enter locker")
+                    match, text = client.expect_any(("this cost you", "Please try later", "Slow your roll",
+                                                     "could not be opened"), timeout=30)
+                    if match == "this cost you":
+                        command(client, "score")
+                        return
+                    assert time.monotonic() < deadline, "locker never opened: " + text
+                    command(client, "score")
+                    time.sleep(1)
+
+            def leave_locker():
+                deadline = time.monotonic() + 90
+                while True:
+                    if "being secured" not in command(client, "open door"):
+                        client.send("north")
+                        outcome, _ = client.expect_any(("applying magic locks", "still being secured"), timeout=30)
+                        if outcome == "applying magic locks":
+                            command(client, "score")
+                            return
+                    assert time.monotonic() < deadline, "locker never closed"
+                    time.sleep(1)
+
+            def stored_in_lockers(vnum):
+                return int(sql("SELECT COUNT(*) FROM locker_items WHERE vnum=" + str(vnum)))
+
             def mortal_revision():
                 return int(sql("SELECT save_revision FROM player_data WHERE name='" + MORTAL + "'"))
 
@@ -304,7 +332,30 @@ def run(binary, backend, inspector, evidence_dir):
                 wait_mortal_saved(before)
                 assert on_floor(client, "ticket"), "link-dead ticket did not land on the floor"
                 evidence["checks"].append("a link-dead character's no-rent item falls on extractlink")
+
+                command(client, "goto " + str(BANK))
+                command(client, "setbit room here flag SAFE 1")
+                command(client, "setbit room here flag ROOM_MAGIC_LIGHT 1")
+                command(client, "load obj 3097")
+                assert "created" in command(client, "load obj " + str(TICKET)).lower()
+                enter_locker()
+                assert "created" in command(client, "load obj " + str(BLOOD_STAIN)).lower()
+                assert "You drop" in command(client, "drop ticket")
+                leave_locker()
+                assert "ticket" in command(client, "inventory").lower(), "floor ticket was not handed back"
+                assert stored_in_lockers(TICKET) == 0 and stored_in_lockers(BLOOD_STAIN) == 0
+                evidence["checks"].append("a locker hands back a no-rent item from its floor")
+                enter_locker()
+                command(client, "eq sort none")
+                text = command(client, "put ticket chest")
+                assert "Ok." in text or "You put" in text, text
+                leave_locker()
+                assert "ticket" in command(client, "inventory").lower(), "chest ticket was not handed back"
+                assert stored_in_lockers(TICKET) == 0
+                evidence["checks"].append("a locker hands back a no-rent item from a chest")
                 command(client, "goto " + str(INN))
+                assert "You drop" in command(client, "drop ticket")
+                assert on_floor(client, "ticket")
 
                 active_uid = grant(KEY, "golden", "golden key", True)
                 save()

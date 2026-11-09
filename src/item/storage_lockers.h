@@ -91,6 +91,7 @@ class StorageLocker
 	}
 	uint64_t VisitId(void) const { return m_chLocker ? m_chLocker->runtime_id : 0; }
 	bool PrivateContentsDurable(void);
+	void ReturnNorentItems(void);
 	bool LockerToPFile(void);
 	void PFileToLocker(void);
 	void SortIValues(void);

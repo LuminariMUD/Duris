@@ -3985,9 +3985,69 @@ static int save_locker_char(P_char ch, int bTerminal)
 	return 1;
 }
 
+// Give a detached no-rent item back to the visitor. What can't be carried, like a
+// blood stain, is discarded.
+static void locker_return_norent_item(P_char user, P_obj item)
+{
+	if (!IS_SET(item->wear_flags, ITEM_TAKE))
+	{
+		extract_obj(item);
+		return;
+	}
+	if (obj_to_char(item, user))
+		act("$p is no-rent and cannot stay in a locker, so it returns to you.", FALSE, user,
+		    item, 0, TO_CHAR);
+}
+
+static void locker_return_norent_contents(P_char user, P_obj container)
+{
+	P_obj next;
+	for (P_obj item = container->contains; item; item = next)
+	{
+		next = item->next_content;
+		if (!IS_SET(item->extra_flags, ITEM_NORENT))
+		{
+			locker_return_norent_contents(user, item);
+			continue;
+		}
+		LockerMovementAudit audit(user, container, NULL, item);
+		if (!audit.Ready())
+			continue;
+		obj_from_obj(item);
+		locker_return_norent_item(user, item);
+		audit.Commit();
+	}
+}
+
+// A chest the visitor can't open keeps what it holds until someone who can comes by.
+void StorageLocker::ReturnNorentItems(void)
+{
+	if (!m_chUser || m_chUser->in_room != m_realRoom)
+		return;
+	for (P_obj object : locker_snapshot_room_contents(m_realRoom))
+	{
+		if (object->type == ITEM_CORPSE)
+			continue;
+		if (FindChestForObject(object))
+		{
+			if (locker_container_access_allowed(m_chUser, object))
+				locker_return_norent_contents(m_chUser, object);
+		}
+		else if (IS_SET(object->extra_flags, ITEM_NORENT))
+		{
+			obj_from_room(object);
+			locker_return_norent_item(m_chUser, object);
+		}
+		else
+			locker_return_norent_contents(m_chUser, object);
+	}
+}
+
 bool StorageLocker::LockerToPFile(void)
 {
 	bool ok = true;
+
+	ReturnNorentItems();
 
 	// first, save private chest items directly to db with their chest_id
 	int private_chest_count = 0;
