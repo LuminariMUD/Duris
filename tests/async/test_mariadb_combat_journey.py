@@ -47,12 +47,14 @@ _reserved_ports: set[int] = set()
 
 
 @contextlib.contextmanager
-def mariadb_authority():
+def mariadb_authority(source_root=None):
     """A freshly migrated schema on the with_disposable_mariadb.sh server.
 
+    source_root optionally pins a historical bootstrap and migration contract.
     Yields (env, sql): env is the base server environment for that schema, and
     sql(statement, selected=True) runs a statement and returns its stripped output.
     """
+    schema_root = pathlib.Path(source_root) if source_root is not None else ROOT
     host = os.environ["TEST_DB_HOST"]
     require(host in ("127.0.0.1", "localhost"), "use a disposable loopback database")
     database = "journey_" + uuid.uuid4().hex[:12]
@@ -77,9 +79,9 @@ def mariadb_authority():
 
     sql(f"CREATE DATABASE {database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", False)
     try:
-        sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
+        sql((schema_root / "migrations/bootstrap_multithread_safe.sql").read_text())
         for step in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
-            subprocess.run(["python3", "scripts/migration_runner.py", *step], cwd=ROOT, env=env,
+            subprocess.run(["python3", "scripts/migration_runner.py", *step], cwd=schema_root, env=env,
                            check=True, capture_output=True)
         # Published news, as a provisioned world has; the prompt's "(news)" marker depends on it.
         sql("INSERT INTO mud_info(name,content) VALUES('news','Journey news.')")

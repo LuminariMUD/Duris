@@ -50,6 +50,7 @@ def command(text, expected=None):
 
 try:
     if uid not in stock():
+        game.make_overlord()
         game.make_overlord(CHARACTER)
         actor = game.boot("named-shop-prepare", account=ACCOUNT, character=CHARACTER)
         command("vis 0")
