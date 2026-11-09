@@ -8,7 +8,6 @@ bool divine_trade_runtime_sale(char_data *, ShipData *, int, int, divine_trade_g
 #include "core/utils.h"
 #include "economy/nexus_stones.h"
 #include "economy/boon.h"
-#include "flatfile/flatfile_nexus_repository.h"
 #include "magic/spells.h"
 #include "ships/ship_npc.h"
 #include "world/epic_transaction.h"
@@ -21,7 +20,10 @@ bool divine_trade_runtime_sale(char_data *, ShipData *, int, int, divine_trade_g
 #include <cmath>
 #include <cstring>
 #include <cstdarg>
-#include <filesystem>
+#include <array>
+#include <string>
+#include <vector>
+#include <mysql.h>
 #include <iostream>
 
 static index_data mob_templates[512] = {};
@@ -38,7 +40,38 @@ P_ship cyrics_revenge = nullptr;
 bool nexus_to_cyrics_revenge = false;
 const char *apply_names[] = { "none", "strength" };
 
-static std::string state_root;
+MYSQL *DB = nullptr;
+struct fixture_row
+{
+	std::string id, name, room, align, stat, amount, bonus;
+};
+static std::vector<fixture_row> nexus_table;
+static size_t nexus_cursor = 0;
+static std::array<char *, 8> nexus_fields;
+bool qry_at(persistence_query_site, const char *, ...)
+{
+	nexus_cursor = 0;
+	return true;
+}
+bool sql_queue_at(persistence_query_site, const char *, ...)
+{
+	return true;
+}
+MYSQL_RES *STDCALL mysql_store_result(MYSQL *)
+{
+	static char handle;
+	return reinterpret_cast<MYSQL_RES *>(&handle);
+}
+MYSQL_ROW STDCALL mysql_fetch_row(MYSQL_RES *)
+{
+	if (nexus_cursor == nexus_table.size())
+		return nullptr;
+	auto &row = nexus_table[nexus_cursor++];
+	nexus_fields = { row.id.data(),	  row.name.data(),   row.room.data(),  row.align.data(),
+			 row.stat.data(), row.amount.data(), row.bonus.data(), nullptr };
+	return nexus_fields.data();
+}
+void STDCALL mysql_free_result(MYSQL_RES *) {}
 static std::string output_messages;
 static int submissions = 0;
 static int saves = 0;
@@ -116,10 +149,6 @@ extern "C" time_t time(time_t *out) noexcept
 	return fixture_time;
 }
 
-const char *persistence_mode_flatfile_root()
-{
-	return state_root.c_str();
-}
 static float cargo_bonus = .110f;
 float get_property(const char *name, double fallback)
 {
@@ -345,17 +374,10 @@ bool epic_transaction_submit(P_char player, int64_t delta, epic_reason_type, int
 	return true;
 }
 
-static void establish(const std::filesystem::path &root, int stat = APPLY_NONE)
+static void establish(int stat = APPLY_NONE)
 {
-	state_root = root.string();
-	std::filesystem::create_directories(root / "metadata");
-	std::filesystem::permissions(root, std::filesystem::perms::owner_all);
-	std::filesystem::permissions(root / "metadata", std::filesystem::perms::owner_all);
-	std::string error;
-	assert(flatfile_nexus_establish(state_root,
-					{ { 1, "Marduk", 1001, 0, stat, 0, 0, 1 },
-					  { 3, "Enlil", 3003, 0, 0, 0, 0, 3 } },
-					&error) == flatfile_nexus_result::ok);
+	nexus_table = { { "1", "Marduk", "1001", "0", std::to_string(stat), "0", "1" },
+			{ "3", "Enlil", "3003", "0", "0", "0", "3" } };
 }
 
 static int guardian_count(int id)
@@ -375,10 +397,8 @@ static int stone_count(int id)
 	return count;
 }
 
-int main(int argc, char **argv)
+int main()
 {
-	assert(argc == 2);
-	const std::filesystem::path root(argv[1]);
 	for (int i = 0; i < 512; ++i)
 	{
 		mob_templates[i].virtual_number = i;
@@ -388,7 +408,7 @@ int main(int argc, char **argv)
 	world[1].number = 3003;
 	char_data staff = {};
 	staff.player.name = const_cast<char *>("Fixture");
-	establish(root / "lifecycle");
+	establish();
 	assert(load_nexus_stones());
 	assert(get_nexus_guardian(1) && GET_VNUM(get_nexus_guardian(1)) == 74);
 	assert(get_nexus_guardian(3) && GET_VNUM(get_nexus_guardian(3)) == 74);
@@ -404,11 +424,7 @@ int main(int argc, char **argv)
 	}
 	for (int align : { -3, -2, -1, 0, 1, 2, 3 })
 	{
-		// Change durable state independently of the in-memory reward cache.
-		std::string error;
-		const auto updated = flatfile_nexus_update_state(state_root, 1, align, 0, &error);
-		assert(updated == flatfile_nexus_result::ok ||
-		       updated == flatfile_nexus_result::unchanged);
+		update_nexus_stone_align(1, align);
 		reload_nexus_stone(&staff, 1);
 		NexusStoneInfo cached;
 		assert(nexus_stone_info(1, &cached) && cached.align == align);
@@ -447,7 +463,8 @@ int main(int argc, char **argv)
 	player.in_room = -1;
 	for (int stat : { APPLY_NONE, -1, 255, APPLY_STR })
 	{
-		establish(root / ("sage-" + std::to_string(stat)), stat);
+		establish(stat);
+		assert(load_nexus_stones());
 		auto sage = read_mobile(MOB_GOOD_SAGE, REAL);
 		sage->player.name = const_cast<char *>("sage");
 		affected_type tag = {};
@@ -489,10 +506,11 @@ int main(int argc, char **argv)
 		}
 		extract_char(sage);
 	}
-	establish(root / "capture");
+	establish();
 	nexus_to_cyrics_revenge = true;
 	cyrics_revenge = reinterpret_cast<P_ship>(&staff);
 	assert(load_nexus_stones());
+	reset_nexus_stones(&staff); // Leave one of each, without the sage rounds' spawns.
 	player.player.level = 51;
 	player.player.racewar = RACEWAR_GOOD;
 	player.in_room = 0;

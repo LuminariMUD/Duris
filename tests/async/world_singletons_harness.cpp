@@ -60,10 +60,6 @@ bool entry_hazard = false;
 void (*entry_hook)(P_char) = nullptr;
 int (*departure_hook)(P_char) = nullptr;
 P_char refused_entry = nullptr;
-persistence_mode persistence_mode_get()
-{
-	return PERSISTENCE_MODE_MARIADB_PRIMARY;
-}
 bool sql_save_shopkeeper(P_char ch, int shop)
 {
 	++shops_saved;

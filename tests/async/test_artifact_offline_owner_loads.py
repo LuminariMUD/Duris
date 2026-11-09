@@ -69,10 +69,8 @@ poofed = body("void poof_artifact(P_obj arti)\n{")
 assert poofed.count("do_shout(owner") == 1
 assert poofed.index("if (owner && owner->in_room != NOWHERE)") < poofed.index("do_shout(owner")
 
-# The lists read each owner's side with the rows (MariaDB) or from its identity (flat-file).
+# The lists read each owner's side with the rows.
 assert "LEFT JOIN player_data p ON p.pid = a.location" in artifact
-assert "flatfile_identity_lookup_pid(" in body(
-    "void list_artifacts_sql(P_char ch, int type, bool Godlist, bool allArtis)\n{")
 
 print("artifact offline owner load contracts passed")
 

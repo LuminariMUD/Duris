@@ -9,7 +9,7 @@ bool divine_trade_runtime_boot(uint64_t)
 #include <ctime>
 #include "economy/divine_boon_repository.h"
 #include "economy/boon_reward_transaction.h"
-#include "persistence/persistence_mode.h"
+#include "sql/sql_pool.h"
 #include "persistence/maintenance_scheduler.h"
 #include "player/player_save_worker.h"
 
@@ -63,6 +63,19 @@ critical_coordinator_health critical_command_coordinator_health_copy()
 namespace
 {
 std::string root;
+// The divine_boon_state row, held in memory behind the SQL repository interface.
+divine_boon_state stored;
+bool row_exists = false;
+divine_boon_store_result load_result = divine_boon_store_result::ok;
+// The commit lands but its acknowledgement is lost, as with a dropped connection.
+bool lose_commit_acknowledgement = false;
+
+void seed(const divine_boon_state &state)
+{
+	stored = state;
+	row_exists = true;
+	load_result = divine_boon_store_result::ok;
+}
 
 player_save_apply_result unused_player(const player_snapshot &, void *)
 {
@@ -76,23 +89,49 @@ void finish()
 }
 }
 
-persistence_mode persistence_mode_get()
+MYSQL *DB = nullptr;
+extern "C"
 {
-	return PERSISTENCE_MODE_FLATFILE_PRIMARY;
+	unsigned int STDCALL mysql_errno(MYSQL *)
+	{
+		return 0;
+	}
+	MYSQL *sql_pool_acquire(void)
+	{
+		return reinterpret_cast<MYSQL *>(&stored);
+	}
+	MYSQL *sql_pool_replace_connection(MYSQL *connection)
+	{
+		return connection;
+	}
+	void sql_pool_release(MYSQL *) {}
 }
-const char *persistence_mode_flatfile_root()
+divine_boon_store_result divine_boon_sql_load(MYSQL *, divine_boon_state *state, bool)
 {
-	return root.c_str();
+	if (load_result != divine_boon_store_result::ok)
+		return load_result;
+	if (!row_exists)
+		return divine_boon_store_result::not_found;
+	*state = stored;
+	return divine_boon_store_result::ok;
+}
+divine_boon_store_result divine_boon_sql_save(MYSQL *, uint64_t expected_revision,
+					      const divine_boon_state &state)
+{
+	if (row_exists && stored == state)
+		return divine_boon_store_result::already_applied;
+	if ((row_exists ? stored.revision : 0) != expected_revision)
+		return divine_boon_store_result::conflict;
+	seed(state);
+	return lose_commit_acknowledgement ? divine_boon_store_result::io_error :
+					     divine_boon_store_result::ok;
 }
 
 int main(int argc, char **argv)
 {
 	assert(argc == 2);
 	root = argv[1];
-	std::filesystem::create_directories(root + "/domains");
-	for (const auto &directory : { root, root + "/domains" })
-		std::filesystem::permissions(directory, std::filesystem::perms::owner_all,
-					     std::filesystem::perm_options::replace);
+	std::filesystem::create_directories(root);
 	assert(!divine_boon_runtime_boot(100)); // Queue refusal never publishes state.
 	assert(!divine_boon_runtime_state() && !divine_boon_runtime_pending());
 	assert(!divine_boon_legacy_admissions_allowed());
@@ -206,13 +245,13 @@ int main(int argc, char **argv)
 	assert(divine_boon_runtime_state()->last_opportunity == base + 20 * DIVINE_BOON_HOUR);
 	next = *divine_boon_runtime_state();
 	assert(divine_boon_set_paused(&next, true, base + 20 * DIVINE_BOON_HOUR));
-	assert(setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1) == 0);
+	lose_commit_acknowledgement = true;
 	assert(divine_boon_runtime_queue(next));
 	finish();
 	assert(!divine_boon_runtime_state() && divine_boon_runtime_pending());
-	assert(unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL") == 0);
+	lose_commit_acknowledgement = false;
 	divine_boon_state recovered;
-	assert(divine_boon_flatfile_load(root, &recovered) == divine_boon_store_result::ok);
+	recovered = stored;
 	assert(recovered == next);
 	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(8);
 	while (divine_boon_runtime_pending() && std::chrono::steady_clock::now() < deadline)
@@ -223,19 +262,13 @@ int main(int argc, char **argv)
 	assert(divine_boon_runtime_state() && *divine_boon_runtime_state() == next);
 	assert(divine_boon_runtime_boot(base + 19 * DIVINE_BOON_HOUR));
 	assert(divine_boon_runtime_state()->last_opportunity == base + 20 * DIVINE_BOON_HOUR);
-	std::ofstream(root + "/domains/divine-boons.state", std::ios::binary | std::ios::trunc)
-		<< "bad";
+	load_result = divine_boon_store_result::invalid;
 	assert(!divine_boon_runtime_boot(base + 20 * DIVINE_BOON_HOUR));
 	assert(!divine_boon_runtime_state() && !divine_boon_runtime_pending());
 	// An existing legacy snapshot closes admission immediately while its draining
 	// transition is queued, then waits for accepted work before publishing Divine.
-	root += "-legacy";
-	std::filesystem::create_directories(root + "/domains");
-	for (const auto &directory : { root, root + "/domains" })
-		std::filesystem::permissions(directory, std::filesystem::perms::owner_all,
-					     std::filesystem::perm_options::replace);
 	divine_boon_state legacy;
-	assert(divine_boon_flatfile_save(root, 0, legacy) == divine_boon_store_result::ok);
+	seed(legacy);
 	old_work.inflight = 1;
 	assert(divine_boon_runtime_boot(100) && divine_boon_runtime_pending());
 	assert(!divine_boon_legacy_admissions_allowed());
@@ -253,11 +286,6 @@ int main(int argc, char **argv)
 
 	// The runtime boot must use the same resolved destination as live rewards,
 	// and persist both deduplication and the original retired audit fields.
-	root += "-shared";
-	std::filesystem::create_directories(root + "/domains");
-	for (const auto &directory : { root, root + "/domains" })
-		std::filesystem::permissions(directory, std::filesystem::perms::owner_all,
-					     std::filesystem::perm_options::replace);
 	divine_boon_state crossed;
 	assert(divine_boon_set_mode(&crossed, divine_boon_mode::draining, 0));
 	assert(divine_boon_set_mode(&crossed, divine_boon_mode::divine, 0));
@@ -270,10 +298,10 @@ int main(int argc, char **argv)
 	crossed.slots[1].zones = { 18, 999 };
 	const auto duplicate = crossed.slots[1];
 	crossed.revision = 1; // First authority record in this independent fixture.
-	assert(divine_boon_flatfile_save(root, 0, crossed) == divine_boon_store_result::ok);
+	seed(crossed);
 	assert(divine_boon_runtime_boot(DIVINE_BOON_HOUR + 1));
 	finish();
-	assert(divine_boon_flatfile_load(root, &recovered) == divine_boon_store_result::ok);
+	recovered = stored;
 	assert(recovered == *divine_boon_runtime_state());
 	assert(recovered.slots[0].zones == first.zones && !recovered.slots[1].id);
 	assert(recovered.recent.size() == 1 && recovered.recent[0].objective == duplicate);
@@ -281,7 +309,7 @@ int main(int argc, char **argv)
 		assert(entry.zone == 18);
 	assert(divine_boon_runtime_boot(9 * DIVINE_BOON_HOUR));
 	finish();
-	assert(divine_boon_flatfile_load(root, &recovered) == divine_boon_store_result::ok);
+	recovered = stored;
 	assert(recovered == *divine_boon_runtime_state() && !recovered.slots[0].id);
 	assert(recovered.recent.back().objective.zones == first.zones);
 	for (const auto &entry : recovered.history)

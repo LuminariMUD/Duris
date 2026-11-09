@@ -5,7 +5,7 @@ Exercise cutover/hourly selection, real trade shops, a real payable stone, NPC
 combat EXP, legitimate PvP held across expiry, pause and saved restart/login.
 Only fixture processes receive the test clock. Stone/EXP/PvP objectives and actor
 levels are seeded offline; the saved ship moves between real endpoints offline.
-The flat expiry leg requires GDB and an unstripped debug server.
+
 Weighted policy and navigation controls retain their separate focused evidence.
 """
 import argparse
@@ -42,13 +42,13 @@ def coin_value(value):
 def build_campaign_helper(output):
     sources=['tests/async/divine_boon_campaign_fixture.cpp','src/economy/divine_boon.c',
              'src/economy/divine_boon_repository.c','src/economy/divine_trade.c',
-             'src/economy/divine_trade_repository.c','src/economy/divine_trade_flatfile.c',
-             'src/flatfile/flatfile_ship_repository.c','src/flatfile/flatfile_identity_repository.c',
-             'src/flatfile/flatfile_player_snapshot_file.c','src/player/player_snapshot_codec.c',
-             'src/flatfile/flatfile_player_domain_repository.c', 'src/combat/frag_cap.c', 'src/combat/frag_cap_repository.c', 'src/combat/frag_cap_config.c', 'src/economy/divine_boon_delivery.c',
+             'src/economy/divine_trade_repository.c',
+
+             'src/player/player_snapshot_codec.c',
+             'src/combat/frag_cap.c', 'src/combat/frag_cap_repository.c', 'src/combat/frag_cap_config.c', 'src/economy/divine_boon_delivery.c',
              'src/combat/combat_outcome_command.c', 'src/world/zone_touch_command.c',
              'src/guild/artifact_guild_command.c',
-             'src/flatfile/flatfile_authority_transaction.c','src/flatfile/flatfile_store.c',
+             'src/flatfile/flatfile_store.c',
              'src/persistence/critical_command.c']
     subprocess.run(['g++', "tests/async/harness_stubs.cpp",'-std=c++20','-g','-Og','-ffunction-sections','-fdata-sections',
                     '-Isrc','-I/usr/include/mysql',*sources,'-Wl,--gc-sections','-lcrypto',
@@ -93,8 +93,6 @@ def run(backend, binary):
     # stacks; the loaded-world delta below must be NPC-only, before PvP can pay.
     subprocess.run(['python3', str(ROOT / 'tests/async/test_world_quest_xp_feedback.py')], cwd=ROOT, check=True)
 
-    if backend == 'flatfile' and not shutil.which('gdb'):
-        raise SystemExit('The flat expiry fixture requires GDB and an unstripped debug server')
     if backend == 'mariadb' and (not os.getenv('TEST_DB_HOST')):
         raise SystemExit('MariaDB requires with_disposable_mariadb.sh')
     output_root = ROOT / 'bin/tests'
@@ -260,7 +258,7 @@ def run(backend, binary):
                 libraries = shlex.split(subprocess.check_output(['mysql_config', '--libs'], text=True))
                 subprocess.run(['g++', "tests/async/harness_stubs.cpp", '-std=c++20', '-Isrc', *flags, 'tests/async/divine_boon_zone_fixture.cpp',
                     'src/economy/divine_boon.c', 'src/economy/divine_boon_repository.c',
-                    'src/flatfile/flatfile_authority_transaction.c', 'src/flatfile/flatfile_store.c',
+                    'src/flatfile/flatfile_store.c',
                     '-lcrypto', '-pthread', *libraries, '-o', str(helper)], cwd=ROOT, check=True)
                 subprocess.run([str(helper), backend, str(runtime / 'state'), str(zone), str(side)], env=env, check=True)
                 boot()
@@ -357,7 +355,7 @@ def run(backend, binary):
                 pvp_base = int(pvp_base)
                 pvp_award = pvp_base * 3 // 2
                 before_xp = int(re.search(r'XP (\d+)', actor_fixture('player', name)).group(1))
-                boot(debug=backend == 'flatfile')
+                boot()
                 god = login(GOD, GOD_ACCOUNT)
                 player = login(name, account)
                 victim = login('Boonvictim', 'Boonopponent')
@@ -398,11 +396,7 @@ def run(backend, binary):
                 # prepares its award. Let the real expiry pass before committing.
                 holder = None
                 saw_prepared = False
-                if backend == 'flatfile':
-                    prepared_gate.unlink(missing_ok=True)
-                    release_gate.write_text('hold')
-                else:
-                    holder = subprocess.Popen([str(campaign), backend, str(runtime / 'state'), 'hold', name], env=env, text=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                holder = subprocess.Popen([str(campaign), backend, str(runtime / 'state'), 'hold', name], env=env, text=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
                 try:
                     if holder:
                         assert holder.stdout.readline().strip() == 'LOCKED'
@@ -424,10 +418,7 @@ def run(backend, binary):
                         victim._receive()
                         time.sleep(.05)
                     victim.expect('Your wounds claim you at last', timeout=5)
-                    if backend == 'flatfile':
-                        assert saw_prepared, 'Debugger did not stop the prepared PvP command'
-                    else:
-                        clock_file.write_text(str(epoch + 5 * 3600))
+                    clock_file.write_text(str(epoch + 5 * 3600))
                 finally:
                     release_gate.unlink(missing_ok=True)
                     if holder:
@@ -494,14 +485,7 @@ def run(backend, binary):
                         process.wait(timeout=10)
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--backend', choices=['flatfile', 'mariadb'], default='flatfile')
-    parser.add_argument('--server', type=Path)
+    parser.add_argument('--backend', choices=['mariadb'], default='mariadb')
+    parser.add_argument('--server', type=Path, required=True)
     args = parser.parse_args()
-    (ROOT / 'bin/tests').mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='divine-zone-build-', dir=ROOT / 'bin/tests') as temporary:
-        if args.server:
-            binary = args.server.resolve()
-        else:
-            assert args.backend == 'flatfile', 'pass a MariaDB binary with --server'
-            binary = journey.build_flatfile_server(Path(temporary))
-        run(args.backend, binary)
+    run(args.backend, args.server.resolve())

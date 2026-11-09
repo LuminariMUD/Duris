@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Salvage queues a clean ship and survives the real flat-file save boundary."""
+"""Salvage queues a clean ship, and the save carries what it salvaged."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -11,26 +11,23 @@ HARNESS = r'''
 #include "core/structs.h"
 #include "core/utils.h"
 #include "economy/divine_trade_runtime.h"
-#include "flatfile/flatfile_ship_repository.h"
 #include "ships/ships.h"
 #include <cassert>
 #include <cmath>
 #include <cstring>
-#include <filesystem>
 #include <limits>
-#include <sys/stat.h>
 
-static std::string state_root;
 static ShipData boat;
+static ShipSlot saved_slots[MAXSLOTS];
 static int extracted;
 static room_data ocean[1];
 static index_data crate_index[1];
 P_room world = ocean;
 P_index obj_index = crate_index;
 ShipObjHash shipObjHash;
-const char *persistence_mode_flatfile_root() { return state_root.c_str(); }
-bool flatfile_player_identity_pid(const char *, int32_t *pid, std::string *) {
-    *pid = 42; return true;
+bool sql_save_ship(P_ship ship) {
+    for (int index = 0; index < MAXSLOTS; ++index) saved_slots[index] = ship->slot[index];
+    return true;
 }
 uint64_t divine_trade_runtime_ship_revision(uint32_t) { return 0; }
 bool divine_trade_runtime_save_busy(const ShipData *) { return false; }
@@ -58,13 +55,7 @@ void delete_ship(P_ship, bool) { assert(false); }
 
 // REAL_FUNCTIONS
 
-int main(int argc, char **argv) {
-    assert(argc == 2);
-    umask(0077);
-    state_root = argv[1];
-    std::filesystem::create_directories(state_root + "/domains");
-    std::string error;
-    assert(flatfile_ship_establish(state_root, {}, &error) == flatfile_ship_result::ok);
+int main() {
     boat.m_class = SH_CLIPPER;
     boat.name = const_cast<char *>("Salvager");
     boat.ownername = const_cast<char *>("Captain");
@@ -100,18 +91,13 @@ int main(int argc, char **argv) {
     flush_pending_ship_saves();
     assert(!boat.save_pending && boat.save_saved_signature != saved_signature);
 
-    // Read the durable authority again, rather than a copy of runtime slots.
-    std::vector<flatfile_ship_record> restored;
-    assert(flatfile_ship_list(state_root, &restored, &error) == flatfile_ship_result::ok);
-    assert(restored.size() == 1 && restored[0].slots.size() == MAXSLOTS);
-    const auto &cargo = restored[0].slots[0];
-    const auto &contra = restored[0].slots[1];
-    assert(cargo.slot_type == SLOT_CARGO && cargo.item_index == 2 &&
-           cargo.values[0] == 1 && cargo.values[1] == 0);
-    assert(contra.slot_type == SLOT_CONTRABAND && contra.item_index == 3 &&
-           contra.values[0] == 1 && contra.values[1] == 0);
+    // What the save received, rather than a copy of runtime slots.
+    const auto &cargo = saved_slots[0];
+    const auto &contra = saved_slots[1];
+    assert(cargo.type == SLOT_CARGO && cargo.index == 2 && cargo.val0 == 1 && cargo.val1 == 0);
+    assert(contra.type == SLOT_CONTRABAND && contra.index == 3 && contra.val0 == 1 && contra.val1 == 0);
     assert(salvage_cargo(nullptr, &boat, 1) && !boat.save_pending);
-    puts("PASS: salvage queues a clean saved ship and cargo survives flush/reload");
+    puts("PASS: salvage queues a clean saved ship and the save carries the cargo");
 }
 '''
 
@@ -132,9 +118,6 @@ functions += "\n".join(extract_function(filename, signature) for filename, signa
     ("ship_utils.c", "int salvage_cargo(P_char ch, P_ship ship, int crates)"),
     ("ship_base.c", "static unsigned long long ship_save_signature_mix("),
     ("ship_base.c", "unsigned long long ship_save_signature("),
-    ("ship_base.c", "static bool flat_ship_skill_milli("),
-    ("ship_base.c", "static bool flat_ship_slot_is_loadable("),
-    ("ship_base.c", "static bool flat_ship_capture("),
     ("ship_base.c", "void queue_ship_save("),
     ("ship_base.c", "int write_ship("),
     ("ship_base.c", "void flush_pending_ship_saves("),
@@ -146,10 +129,8 @@ with tempfile.TemporaryDirectory(prefix="ship-salvage-", dir=ROOT / "bin/tests")
     (path / "test.cpp").write_text(HARNESS.replace("// REAL_FUNCTIONS", functions))
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g",
-        "-D__NO_MYSQL__", "-Isrc/no_mysql", "-Isrc", "-I/usr/include/libxml2",
+        '-I/usr/include/mysql', "-Isrc", "-I/usr/include/libxml2",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-        str(path / "test.cpp"), "src/flatfile/flatfile_ship_repository.c",
-        "src/flatfile/flatfile_authority_transaction.c", "src/flatfile/flatfile_store.c",
-        "-lcrypto", "-pthread", "-o", str(path / "test"),
+        str(path / "test.cpp"), "-o", str(path / "test"),
     ], cwd=ROOT, check=True)
-    subprocess.run([str(path / "test"), str(path / "state")], cwd=ROOT, check=True)
+    subprocess.run([str(path / "test")], cwd=ROOT, check=True)

@@ -1,6 +1,3 @@
-#include "flatfile/flatfile_player_snapshot_file.h"
-#include "flatfile/flatfile_store.h"
-#include <openssl/sha.h>
 #include "net/output_preference_state.h"
 #include "player/player_snapshot_codec.h"
 
@@ -96,9 +93,8 @@ static void put32(std::vector<uint8_t> &bytes, size_t at, uint32_t value)
 		bytes[at + index] = static_cast<uint8_t>(value >> (8 * index));
 }
 
-int main(int argc, char **argv)
+int main()
 {
-	require(argc == 2, "temporary file directory required");
 	const auto original = fixture();
 	std::vector<uint8_t> encoded;
 	require(player_item_snapshot_list_encode(original, &encoded) ==
@@ -516,52 +512,6 @@ int main(int argc, char **argv)
 					player_status_string_field::last_read_news_hash &&
 				read_back.status_strings.back().value.empty(),
 			"old snapshot did not default to unread news");
-
-		// Read the old payload through the real checksummed player-file envelope too.
-		using namespace flatfile_player_snapshot_file;
-		std::vector<uint8_t> file(player_magic.begin(), player_magic.end());
-		const auto append = [&file]<typename T>(T number)
-		{
-			for (size_t i = 0; i < sizeof(T); ++i)
-				file.push_back(static_cast<uint8_t>(number >> (8 * i)));
-		};
-		append(player_file_version);
-		append(static_cast<uint32_t>(bytes.size()));
-		append(full.pid);
-		append(full.revision);
-		append(full.components);
-		unsigned char digest[SHA256_DIGEST_LENGTH];
-		SHA256(bytes.data(), bytes.size(), digest);
-		file.insert(file.end(), digest, digest + sizeof(digest));
-		file.insert(file.end(), bytes.begin(), bytes.end());
-		std::string error;
-		const std::string filename = "legacy-" + std::to_string(version) + ".snapshot";
-		require(flatfile_atomic_write(argv[1], filename, file, &error), error);
-		require(flatfile_player_snapshot_read_file(argv[1], filename, full.pid, &read_back,
-							   &error) ==
-					flatfile_player_load_result::ok &&
-				read_back.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION &&
-				std::any_of(read_back.status_integers.begin(),
-					    read_back.status_integers.end(),
-					    [](const auto &row)
-					    {
-						    return row.field ==
-								   player_status_field::
-									   learned_flight_stops &&
-							   row.is_unsigned &&
-							   row.unsigned_value == 0;
-					    }) &&
-				std::any_of(
-					read_back.status_integers.begin(),
-					read_back.status_integers.end(),
-					[](const auto &row)
-					{
-						return row.field ==
-							       player_status_field::
-								       divine_boon_delivery_seq &&
-						       row.is_unsigned && row.unsigned_value == 0;
-					}),
-			"old player file did not load with empty flight discoveries: " + error);
 	}
 	for (uint32_t version : { 9u, 10u, 11u, 12u, 13u, 14u })
 	{

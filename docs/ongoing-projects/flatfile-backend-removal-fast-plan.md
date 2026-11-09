@@ -1,6 +1,6 @@
 # Flat-file backend removal: fast approach
 
-Status: implementation in progress; see "Implementation log" at the end.
+Status: implemented in a PR stack (#859 to #866), ready for review, not merged or deployed. Two tests stay deferred pending owner decisions. See "Implementation log" at the end.
 Date: 2026-11-09.
 Source baseline: `06743dec0`. A recount at `4c2708c96` found no change to
 persistence paths or to the counts below.
@@ -342,8 +342,13 @@ docker run --rm --cap-add SYS_ADMIN --security-opt seccomp=unconfined \
   DURIS_RUN_BACKUP_INTEGRATION=1 python3 -u \
     tests/async/test_persistence_backup_integration.py \
     PersistenceRecoveryIntegration.test_mariadb_full_dump_schema_history_values_and_isolated_service_boot \
-    PersistenceRecoveryIntegration.test_locker_receipt_qualification_rejects_corruption_and_unexpected_entries -v'
+    PersistenceRecoveryIntegration.test_locker_receipt_qualification_rejects_corruption_and_unexpected_entries \
+    PersistenceRecoveryIntegration.test_qualifier_checks_nonempty_combat_and_starter_records -v'
 ```
+
+Run the database suite from a short checkout path. Journeys put a Redis unix socket
+under `bin/tests/<temporary>/`, and a path over 107 characters makes Redis exit at
+startup; the long `flatfile-backend-removal-plan` worktree path is enough to cause it.
 
 Narrow both `build_native_fixture()` and `setUpClass()`: currently even these
 cases require flat-file repository sources and `dms_restore_flatfile`. Keep
@@ -377,8 +382,7 @@ renaming or relocation, removing now-unused test shims, historical documentation
 cleanup, the `file:flatfile-*` rows in `migrations/data_lifecycle_manifest.json`
 and the validator entries that require them, peripheral tooling cleanup
 (coverage, fuzz, and `scripts/validate_colorization_journey.py`), and full-suite
-qualification, and removing the submitter-less `shop_trade_*` path and its
-no-op hooks. Repair a peripheral tool now if a required first-pass command
+qualification. Repair a peripheral tool now if a required first-pass command
 actually depends on it. Do not weaken MariaDB persistence or recovery to make the
 initial deletion faster.
 
@@ -398,8 +402,127 @@ and pick up at the first step not marked done.
 | --- | --- | --- |
 | 2a. Strip `__NO_MYSQL__`, Makefile | `branch/flatfile-backend-removal-plan` | done (#859) |
 | 2b + 3. Runtime dispatch, delete backend | `branch/flatfile-removal-runtime` | done (#860) |
-| 4. Launcher, backup, restore, CI, docs | `branch/flatfile-removal-tools` | done |
-| 5. Tests and deferred list | `branch/flatfile-removal-tests` | in progress |
+| 4. Launcher, backup, restore, CI, docs | `branch/flatfile-removal-tools` | done (#862) |
+| 5. Tests and deferred list | `branch/flatfile-removal-tests` | done (#863) |
+| Deferred test conversion | `branch/flatfile-removal-test-conversion` | done (#864) |
+| Remove unused shop trade path | `branch/flatfile-removal-shop-trade` | done (#865) |
+| Last journeys, inspector removal, final proof | `branch/flatfile-removal-last-tests` | done (#866) |
+
+Merge in that order, retargeting each child PR before merging its base. The
+`do-not-delete/flatfile-backup-nov-2026` branch is a locked copy of master from
+before this stack.
+
+### Deferred test conversion (branch `branch/flatfile-removal-test-conversion`, #864)
+
+Each batch removes names from `FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`; `make test-all`
+must stay green after each one.
+
+| Batch | Deferred left | Notes |
+|---|---|---|
+| Remove deleted sources, includes, and stubs from harnesses | 165 | Mechanical |
+| Repair harness compile and link failures | 128 | Harnesses compile real client headers; some now use SQL or queue fakes |
+| Repoint source-text contracts | 64 | No MariaDB behavior change found; `test_ship_salvage.py` now checks what a stubbed `sql_save_ship` receives, not a read-back |
+| Journeys already in `make test-db` become manual-only | 51 | 13 tests; they run on MariaDB with `--server` |
+
+| Shared journey harness on MariaDB; 22 journeys move to `make test-db` | 29 | `mariadb_authority()` builds a disposable migrated schema; converted journeys are manual-only and listed in `tests/run_db_tests.sh` |
+
+| Compile-level leftovers and most remaining journeys | 6 | 16 tests move to `make test-db`; 7 are deleted or return to `make test-all` |
+
+| Last batch | 2 | Three journeys move to `make test-db`; the inspector test and 15 flat-only `run_*` scripts are deleted |
+
+The two still deferred, each needing an owner decision:
+
+- `flatfile_locker_journey`: blocked by a production bug for trusted characters.
+  `account.c:2490` and `:2783` set the account racewar through
+  `account_admission_racewar()`, which returns `ACCT_IMMORTAL` (0), and
+  `sql_player.c:1057` saves it. `locker_enter_character` in `storage_lockers.c` then
+  builds `account.<name>.0.locker`, while default entry uses `GET_RACEWAR` and gets
+  `.1.`, so entry by your own character name is refused.
+- `pet_restart_journey`: 7 of 8 stages pass. After `quit` it expects one held pet row;
+  MariaDB keeps a second row as `custody_pending`, which looks deliberate
+  (`player_snapshot_repository.c`, around line 970). Decide whether the test should
+  accept that row.
+
+Login assertions after death, and two `You break camp...` logins, now expect the
+normal `Welcome to Duris` text, because `rtype` is always 0 on MariaDB.
+
+Also left behind: 29 scripts no longer build the deleted inspector but keep dead
+`flatfile` branches, and `run_item_pilot`, `run_paladin_balance`, and
+`run_weapon_actions` survive only as imported libraries. Some docs still name the
+deleted `run_*` scripts.
+
+`make test-all` has no database, so a converted journey belongs in
+`tests/run_db_tests.sh`. Remaining conversions use `mariadb_authority()` in
+`test_flatfile_combat_journey.py` and replace file seeding with SQL.
+
+Finding from the journey conversion: MariaDB has no saved `save_intent`, so
+`d->rtype` in `account.c` is always 0. Logging in after a death prints the normal
+login text rather than "You rejoin the land of the living...", and by reading
+`nanny.c` the death-return birthplace routing and hunger reset are skipped too. This
+is how production already behaves; removing the flat-file backend did not change it.
+Converted journeys assert the MariaDB behavior, and the owner can decide whether to
+restore the old return handling.
+
+Possible existing server issues found while converting, not caused by this work and
+not changed: `save_account_character_departure` returns before stamping
+`acct_good`/`acct_evil` when `sql_queue` refuses, skipping the side-switch cooldown;
+`PurgeCorpseFile` has no `skip_corpse_save` guard and passes `action_description` to
+`snprintf` without a null check.
+
+### Step 5 evidence
+
+`tests/run_regression_tests.py` now holds `FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`,
+174 exact names, and prints how many it excluded. 49 backend-only `test_flatfile_*`
+tests with no other reference, and 37 orphaned harnesses, are deleted. The
+selected harnesses are adapted: persistence mode, build contract, launcher, backup
+unit tests, restore integration (narrowed, with new nonempty combat and starter-kit
+qualifier cases), combat-intent backup, locker shutdown recovery, and the six
+database-suite scripts. `persistence_restore_fixture.cpp` is now receipts-only.
+
+When the list stood at 177, its causes were: 37 build a flat-file server, 86 include
+or compile deleted code, and 54 fail an assertion. A sample of 25 of those 54 showed
+source-text or stubbed-harness breakage, not a MariaDB behavior change. The other 29
+were not read individually, so a behavior change hiding among them is not ruled out.
+
+### Final proof (first pass)
+
+Commands are the ones in the Proof section; results at the commit recorded in the PR.
+
+| Check | Result |
+| --- | --- |
+| Starting commit, `make test-all` | 1011 of 1011 passed in 18 minutes |
+| Starting commit, `tests/run_db_tests.sh` | 107 of 112 passed |
+| Strip comparison | 520 of 521 identical; the other differs by one reflowed line |
+| Fresh build under `bin/flatfile-removal-fast`, plus `-O2` production profile | clean under `-Werror` |
+| `python3 tests/run_regression_tests.py` | passes with 174 named exclusions |
+| `tests/run_db_tests.sh` on the fresh server | 102 of 112 passed; 5 more pass individually after the harness repairs below; the last 5 also fail on the starting commit |
+| Restore integration in a root container | all 3 cases passed, including new nonempty combat and starter-kit records |
+
+The fresh-server database run first failed `artifact_guild`, `statistics`,
+`telemetry_repository`, `artifact_mana`, and `last_command`, all on harness compile
+or link errors. Each was repaired and passes when run on its own; the whole suite
+was not repeated afterward, because only test files changed.
+
+`world_restart_clean`, `_copyover`, `_crash`, `_handover`, and `_taken` failed
+identically on the untouched starting commit, timing out waiting for `Save`. The
+journey was stale: the `save` command prints `Saving <name>.`. It now expects
+`Saving`.
+
+### Final proof (full stack)
+
+At `3285034f1`, top of the stack before the journey fix above.
+
+| Check | Result |
+| --- | --- |
+| `python3 tests/run_regression_tests.py` | 897 passed, 0 failed, 2 named exclusions |
+| `tests/run_db_tests.sh` | 147 of 152 passed; the 5 failures were the `world_restart_*` journeys above |
+| The 5 `world_restart_*` journeys rerun with the fix, same server binary | all 5 passed |
+
+Run the database suite from a short checkout path. In a path as long as this
+worktree's, Redis unix socket paths exceed 107 characters and Redis exits.
+
+Remaining work is the two names left in `FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`, each
+waiting on the owner decision described above.
 
 ### Step 4 evidence
 
@@ -432,10 +555,9 @@ Also removed because only the deleted paths used them: `divine_trade_flatfile`,
 `artifact_population_flatfile`, `boon_shop_transaction`, `boon_shop_command`,
 `kingdom_restore.h`, the flat boon helpers in `boon.c`, and `item_claim_log_item`.
 
-Left in place on purpose: `shop_trade_transaction`, `shop_trade_runtime`, and
-`shop_trade_command` have no submitter after this change, but seven files call
-their no-op busy/ready/capture hooks and `shop.c` shares the payload type.
-Removing them is ordinary dead-code cleanup, recorded under deferred work.
+`shop_trade_transaction`, `shop_trade_runtime`, and `shop_trade_command` had no
+submitter after this change; they and their no-op hooks are removed on
+`branch/flatfile-removal-shop-trade`.
 
 Proof so far: the server, `pfile`, and `telemetry-state` build at `-Og` under
 `-Werror`, and `run_mysql_bank_restart_journey.py` passes on the new binary.

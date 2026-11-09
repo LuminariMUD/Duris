@@ -16,7 +16,6 @@
 #include "economy/currency_value.h"
 #include "economy/auction_transaction.h"
 #include "economy/collector_transaction.h"
-#include "economy/shop_trade_transaction.h"
 
 #include "core/files.h"
 #include "net/gmcp.h"
@@ -419,8 +418,7 @@ try
 	    currency_transaction_wallet_busy(character) ||
 	    reserved_trade_payments.count(GET_PID(character)) ||
 	    auction_transaction_player_busy(character) ||
-	    collector_transaction_player_busy(character) ||
-	    shop_trade_transaction_player_busy(character))
+	    collector_transaction_player_busy(character))
 		return false;
 	const currency_vector before{ { GET_COPPER(character), GET_SILVER(character),
 					GET_GOLD(character), GET_PLATINUM(character) } };
@@ -490,8 +488,7 @@ bool currency_transaction_reserve_chest(P_char character)
 	if (reserved_chest_pid || !reserved_trade_payments.empty() ||
 	    !player_account(character, &account) || currency_transaction_wallet_busy(character) ||
 	    auction_transaction_player_busy(character) ||
-	    collector_transaction_player_busy(character) ||
-	    shop_trade_transaction_player_busy(character))
+	    collector_transaction_player_busy(character))
 		return false;
 	reserved_chest_pid = static_cast<uint32_t>(GET_PID(character));
 	reserved_chest_account = std::move(account);

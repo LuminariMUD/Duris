@@ -45,7 +45,7 @@ epic award path; that does not make it a zone-story completion.
 - [specs.mobile.c](../../src/specs/specs.mobile.c): `world_quest()` handles
   bartender requests, fees, abandonment, and replacement.
 - [sql.c](../../src/sql/sql.c) and
-  [flatfile_world_quest_history.c](../../src/flatfile/flatfile_world_quest_history.c):
+  flatfile_world_quest_history.c:
   bartender completion history and daily allowance, through the
   `sql_world_quest_*` interface on both builds.
 - [zone_story_quest_runtime.c](../../src/world/zone_story_quest_runtime.c),

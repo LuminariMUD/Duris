@@ -14,7 +14,7 @@ actoth = (SRC / "actoth.c").read_text()
 harness = Path(__file__).with_name("account_bound_reward_owner_harness.cpp")
 
 owner_start = index(reward, "bool account_bound_reward_owner")
-owner_end = index(reward, "#ifndef __NO_MYSQL__", owner_start)
+owner_end = index(reward, "static P_char reward_item_owner", owner_start)
 owner = reward[owner_start:owner_end]
 assert contains(owner, "ITEM2_ACCOUNT_BOUND")
 assert contains(owner, "parse_reward_marker")
@@ -69,10 +69,10 @@ with tempfile.TemporaryDirectory(prefix="duris-account-reward-owner-") as tempor
         [
             "g++",
             "-std=c++20",
-            "-D__NO_MYSQL__",
             "-ffunction-sections",
             "-fdata-sections",
             "-Isrc",
+            "-I/usr/include/mysql",
             str(harness),
             "src/account/account_reward.c",
             "-Wl,--gc-sections",

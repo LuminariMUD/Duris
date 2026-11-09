@@ -20,10 +20,6 @@ extern "C"
 }
 
 void close_socket(descriptor_data *) {}
-bool persistence_mode_requires_mysql(void)
-{
-	return false;
-}
 void banlog(int, const char *, ...) {}
 int bannedsite(char *, int)
 {

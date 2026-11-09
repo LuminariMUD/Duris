@@ -20,10 +20,6 @@ FLAGS = 1540
 
 def run(binary, backend, transport):
     inspector = account.ROOT / "bin/tests/kept-character-inspector"
-    if backend == "flatfile" and (not inspector.exists() or inspector.stat().st_mtime <
-            (account.ROOT / "tests/async/flatfile_player_repository_harness.cpp").stat().st_mtime):
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(inspector)], cwd=account.ROOT, check=True)
     with persistence(backend) as (environment, sql):
         with account.IsolatedServer(binary, dict(environment, DURIS_WEBSOCKET="TRUE")) as server:
             client = None

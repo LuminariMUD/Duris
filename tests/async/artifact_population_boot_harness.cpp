@@ -67,14 +67,6 @@ artifact_population_decision classify(const artifact_population_boot_snapshot &s
 }
 } // namespace
 
-bool persistence_mode_requires_mysql()
-{
-	return false;
-}
-const char *persistence_mode_flatfile_root()
-{
-	return "fixture";
-}
 const char *copyover_state_file()
 {
 	return "copyover.dat";
@@ -113,9 +105,14 @@ unsigned int artifact_population_read_recovery(const redis_world_boot_snapshot &
 	population->restore_conflict = redis_restore_conflict;
 	return 0;
 }
-unsigned int artifact_population_read_flat_payloads(
-	const std::string &, std::vector<artifact_payload_projection> *items, std::string *,
-	const std::vector<artifact_payload_projection> *additional)
+MYSQL *sql_open_configured_connection(unsigned long)
+{
+	return reinterpret_cast<MYSQL *>(&reads);
+}
+extern "C" void STDCALL mysql_close(MYSQL *) {}
+unsigned int
+artifact_population_read_sql_payloads(MYSQL *, std::vector<artifact_payload_projection> *items,
+				      const std::vector<artifact_payload_projection> *additional)
 {
 	++reads;
 	if (durable_error)

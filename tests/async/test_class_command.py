@@ -260,17 +260,15 @@ def main():
         source = directory / "class.cpp"
         source.write_text(HARNESS.replace("#include <fstream>", "#include <fstream>\n#include <filesystem>")
                           .replace("int main() {", "\n".join(functions) + "\nint main() {"))
-        for backend in ("mariadb", "flatfile"):
-            binary = directory / backend
-            flags = ["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else []
-            subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
-                            "-ffunction-sections", "-fdata-sections",
-                            "-Wl,--gc-sections", "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined",
-                            "-Isrc", "-I/usr/include/mysql", "-I/usr/include/libxml2", *flags,
-                            str(source), "src/cmd/class.c", "src/cmd/race.c", "src/core/common.c", "src/core/constant.c",
-                            "src/account/creation_availability_config.c", "src/classes/specializations.c",
-                            "-o", str(binary)], cwd=ROOT, check=True)
-            subprocess.run([str(binary)], cwd=directory, check=True)
+        binary = directory / "class"
+        subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
+                        "-ffunction-sections", "-fdata-sections",
+                        "-Wl,--gc-sections", "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined",
+                        "-Isrc", "-I/usr/include/mysql", "-I/usr/include/libxml2",
+                        str(source), "src/cmd/class.c", "src/cmd/race.c", "src/core/common.c", "src/core/constant.c",
+                        "src/account/creation_availability_config.c", "src/classes/specializations.c",
+                        "-o", str(binary)], cwd=ROOT, check=True)
+        subprocess.run([str(binary)], cwd=directory, check=True)
 
         # A cold real help-catalog failure must preserve the command's facts.
         prelude = HARNESS.split("int main() {", 1)[0]
@@ -284,15 +282,15 @@ int main() {
     auto text = run("info guardian");
     assert(text.find("Added skill: rescue") != std::string::npos);
     assert(text.find("Parent class: Warrior") != std::string::npos);
-    puts("PASS: real unavailable flat-file help preserves the class profile and grant differences");
+    puts("PASS: real unavailable help preserves the class profile and grant differences");
 }
 ''')
         binary = directory / "help-unavailable"
-        subprocess.run(["g++", "-std=c++20", "-D__NO_MYSQL__", "-Isrc/no_mysql", "-Isrc",
+        subprocess.run(["g++", "-std=c++20", '-I/usr/include/mysql', "-Isrc",
                         "-I/usr/include/libxml2", "-ffunction-sections", "-fdata-sections",
                         "-Wl,--gc-sections", str(source), "src/cmd/class.c", "src/cmd/race.c",
                         "src/core/common.c", "src/core/constant.c", "src/account/creation_availability_config.c",
-                        "src/classes/specializations.c", "src/cmd/wikihelp.c", "src/flatfile/flatfile_help_catalog.c",
+                        "src/classes/specializations.c", "src/cmd/wikihelp.c", "src/cmd/help_cache.c",
                         str(HARNESS_STUBS), "-o", str(binary)], cwd=ROOT, check=True)
         with tempfile.TemporaryDirectory(prefix="missing-help-", dir=directory) as empty:
             subprocess.run([str(binary)], cwd=empty, check=True)

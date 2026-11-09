@@ -47,7 +47,6 @@ extern "C" void quest_journey_invalidate(P_char ch)
 #include "sql/sql_async.h"
 #include "item/item_movement_transaction.h"
 #ifdef __NO_MYSQL__
-#include "flatfile/flatfile_world_quest_history.h"
 #endif
 #include <cjson/cJSON.h>
 #include <algorithm>

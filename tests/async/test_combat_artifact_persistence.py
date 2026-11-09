@@ -46,9 +46,7 @@ for label, passed in checks.items():
 assert all(checks.values())
 
 assert "*owner_pid = 0;" in bind_lookup and "*timer = 0;" in bind_lookup
-assert "artifact_cache_loaded" in bind_lookup and "return false;" in bind_lookup
-assert "flatfile_artifact_" not in bind_lookup
-print("[PASS] flat bind lookup uses boot-hydrated memory and initializes failure outputs")
+print("[PASS] bind lookup initializes failure outputs")
 
 assert artifact_text.count("if (!sql_get_bind_data(") == 2
 for caller, next_caller in (

@@ -11,7 +11,6 @@
 #include "persistence/persistence_observability.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_codec.h"
-#include "flatfile/flatfile_player_repository.h"
 #include "sql/sql.h"
 #include "sql/sql_pool.h"
 #include "item/item_movement_transaction.h"
@@ -37,10 +36,6 @@ P_obj object_list;
 static std::deque<critical_command> grants;
 static std::deque<critical_completion> grant_completions;
 static std::string pending_domain;
-bool shop_trade_transaction_player_busy(P_char)
-{
-	return pending_domain == "shop-pending";
-}
 bool auction_transaction_player_busy(P_char)
 {
 	return pending_domain == "auction-pending";
@@ -62,7 +57,6 @@ void locker_identify_pulse() {}
 void private_chest_purchase_pulse() {}
 void sql_chest_log_pulse() {}
 void locker_chest_changes_pulse() {}
-void shop_trade_transaction_handle_completions(const critical_completion *, size_t) {}
 void auction_transaction_handle_completions(const critical_completion *, size_t) {}
 void collector_transaction_handle_completions(const critical_completion *, size_t) {}
 void combat_outcome_transaction_handle_completions(const critical_completion *, size_t) {}
@@ -114,10 +108,6 @@ static void reap_fixture(int)
 	}
 }
 const unsigned LockerChest::m_chestVnum = 173;
-const char *persistence_mode_flatfile_root()
-{
-	return nullptr;
-}
 const char *sql_persistence_db_name()
 {
 	return test_database.c_str();
@@ -407,16 +397,6 @@ class TestLocker : public StorageLocker
 	void lose_holder() { m_chLocker = nullptr; }
 };
 void LockerChest::FillExtraDescBuf(char *) {}
-player_save_apply_result flatfile_locker_snapshot_apply(const std::string &,
-							const flatfile_locker_save &, std::string *)
-{
-	abort();
-}
-player_save_apply_result flatfile_player_snapshot_apply(const std::string &,
-							const player_snapshot &, std::string *)
-{
-	abort();
-}
 
 // PRODUCTION_BODIES
 

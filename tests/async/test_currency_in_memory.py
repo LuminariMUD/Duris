@@ -146,7 +146,7 @@ int main()
     assert(currency_transaction_reserve_trade(&twin.ch,0));
     currency_transaction_release_trade(46);
     // A chest receipt holds both the purchaser and every account/side peer.
-    for (P_char *busy : {&fixture_auction_pending, &fixture_collector_pending, &fixture_shop_pending}) {
+    for (P_char *busy : {&fixture_auction_pending, &fixture_collector_pending}) {
         *busy=&alice.ch;
         assert(!currency_transaction_reserve_chest(&alice.ch));
         *busy=nullptr;

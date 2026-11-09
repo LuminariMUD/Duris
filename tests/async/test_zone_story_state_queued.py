@@ -14,7 +14,7 @@ from _source_contract import function_bodies
 SRC = Path(__file__).resolve().parents[2] / "src"
 text = (SRC / "sql/zone_story_quest_state_repository.c").read_text()
 save = function_bodies(text, r"\bsql_zone_story_quest_state_save\s*\(")[0]
-mariadb = save[save.index("#else"):]
+mariadb = save
 assert "sql_queue_sized_work(" in mariadb and not re.search(r"\b(qry|db_query)\s*\(", mariadb), mariadb
 # The writer escapes and formats the multi-megabyte document, not the game thread (#807).
 assert "sql_escape_string" not in save and "mysql_real_escape_string(connection" in mariadb, save

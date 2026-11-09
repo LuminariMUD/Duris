@@ -277,9 +277,6 @@ def main():
     evidence.mkdir(parents=True, exist_ok=True)
     subprocess.run(["make", "world"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     inspector = evidence / "rent-inspector"
-    if args.backend == "flatfile":
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(inspector)], cwd=ROOT, check=True)
     binary = args.server.resolve() if args.server else journey.build_flatfile_server(evidence / "journey-build")
     run(binary, args.backend, inspector, evidence)
 

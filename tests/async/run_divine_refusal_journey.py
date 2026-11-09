@@ -13,7 +13,6 @@ import test_flatfile_combat_journey as journey
 
 
 STAFF_FIXTURE = r'''
-#include "flatfile/flatfile_player_snapshot_file.h"
 #include "flatfile/flatfile_store.h"
 #include "player/player_snapshot_codec.h"
 #include <cassert>
@@ -144,7 +143,6 @@ def elevate_player(root: Path, state: Path) -> None:
             "-Isrc",
             str(source),
             "src/player/player_snapshot_codec.c",
-            "src/flatfile/flatfile_player_snapshot_file.c",
             "src/flatfile/flatfile_store.c",
             "-lcrypto",
             "-o",
@@ -317,18 +315,6 @@ def main() -> int:
         return 2
     binary = Path(sys.argv[1]).resolve()
     require(binary.is_file(), f"server binary does not exist: {binary}")
-    journey.INSPECTOR.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            "python3",
-            "tests/async/test_flatfile_player_repository.py",
-            "--build-inspector",
-            str(journey.INSPECTOR),
-        ],
-        cwd=journey.ROOT,
-        check=True,
-        timeout=180,
-    )
     run_scenario(binary, False)
     run_scenario(binary, True)
     print(

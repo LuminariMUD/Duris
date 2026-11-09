@@ -86,7 +86,6 @@ assert "BACKEND_STAMP" in makefile
 for backend, profile in (
     ("mariadb", "development"),
     ("mariadb", "production"),
-    ("flatfile", "development"),
 ):
     output = subprocess.run(
         [

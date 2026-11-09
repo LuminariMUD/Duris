@@ -7,11 +7,9 @@ import os
 from pathlib import Path
 import socket
 import struct
-import subprocess
-import tempfile
 import time
 
-from test_account_recovery_journey import IsolatedServer, require, OLD_PASSWORD, ROOT, build_flatfile_server
+from test_account_recovery_journey import IsolatedServer, require, OLD_PASSWORD
 import test_creation_prompt_journey as telnet
 from test_creation_prompt_journey import reboot
 from test_flatfile_combat_journey import make_overlord
@@ -93,17 +91,17 @@ class WebSocketClient:
             self.receive()
 
 
-def inspect_stats(server, inspector):
-    snapshots = list((server.state_root / "players").glob("*.snapshot"))
-    require(len(snapshots) == 1, f"expected one synthetic saved character: {snapshots}")
-    record = json.loads(subprocess.check_output([str(inspector), str(server.state_root),
-                                                "inspect", snapshots[0].stem], text=True))
+def inspect_stats(server):
+    rows = server.sql("SELECT last_room,base_str,base_dex,base_agi,base_con,base_pow,base_int,"
+                      "base_wis,base_cha,base_kar,base_luk FROM player_data").splitlines()
+    require(len(rows) == 1, f"expected one synthetic saved character: {rows}")
+    room, *stats = map(int, rows[0].split())
     if server.full_world:
-        require(record["room"] == 22800, f"character did not save in the selected tutorial: {record['room']}")
-    return record["base_stats"]
+        require(room == 22800, f"character did not save in the selected tutorial: {room}")
+    return stats
 
 
-def run(binary, inspector, method, *, legacy=False, full_world=False):
+def run(binary, method, *, legacy=False, full_world=False):
     with IsolatedServer(binary, {"DURIS_WEBSOCKET": "TRUE"}, full_world=full_world) as server:
         client = WebSocketClient(server.websocket_port)
         try:
@@ -210,7 +208,7 @@ def run(binary, inspector, method, *, legacy=False, full_world=False):
             require(len(vitals) >= 2 and (not full_world or vitals[-1]["maxHp"] > 1)
                     and vitals[-1]["hp"] == vitals[-1]["maxHp"],
                     f"starter readiness left the browser's pre-kit vitals stale: {vitals}")
-            before = inspect_stats(server, inspector)
+            before = inspect_stats(server)
             account_info = client.command("account_info", expected="account")
             require(account_info["data"]["characters"][0]["level"] == 1,
                     "new character account summary retained its pre-entry level")
@@ -224,12 +222,9 @@ def run(binary, inspector, method, *, legacy=False, full_world=False):
                               ("swap_stats", {"stat1": "str", "stat2": "con"}),
                               ("accept_stats", {}), ("reset_chargen", {})):
                 client.command(cmd, data, "error")
-            require(inspect_stats(server, inspector) == before, "playing creation command changed saved stats")
+            require(inspect_stats(server) == before, "playing creation command changed saved stats")
             client.close()
             server.shutdown()
-            # Promote only this synthetic offline character to make quit immediate.
-            # This fixture command changes level, never the authoritative base stats.
-            make_overlord(server.state_root, "Taverek")
             reboot(server)
             deadline = time.monotonic() + 120
             while "Entering game loop." not in server.server_output():
@@ -240,6 +235,10 @@ def run(binary, inspector, method, *, legacy=False, full_world=False):
             auth = client.command("login", {"account": "Statjourney", "password": OLD_PASSWORD}, "auth")
             require(auth["status"] == "success" and auth["data"]["characters"][0]["level"] == 1,
                     f"restart login failed or lost new-character projection: {auth}")
+            # Promote only this synthetic offline character to make quit immediate.
+            # This fixture command changes level, never the authoritative base stats. It
+            # follows the summary check because the summary reads this same row.
+            make_overlord(server.sql, "Taverek")
             client.command("enter", {"character": "Taverek"}, "gmcp")
             # The saved-character path must load unchanged stats and bypass method choice.
             save = client.command("game", "save", "text")
@@ -247,7 +246,7 @@ def run(binary, inspector, method, *, legacy=False, full_world=False):
             while "Saving Taverek" not in json.dumps(save):
                 require(time.monotonic() < deadline, "no save after reload")
                 save = client.receive()
-            require(inspect_stats(server, inspector) == before, "saved base stats changed across restart/relogin")
+            require(inspect_stats(server) == before, "saved base stats changed across restart/relogin")
             returned = client.command("game", "quit", "account")
             require(returned["action"] == "return_to_menu", "quit did not return to account menu")
             # Success consumed the old attempt; there are no reusable ready stats.
@@ -259,7 +258,7 @@ def run(binary, inspector, method, *, legacy=False, full_world=False):
             collision = client.command("create_character", creation)
             require(collision["status"] == "error" and "already in use" in collision["message"],
                     "name collision was not retained for retry")
-            require(inspect_stats(server, inspector) == before, "name collision changed existing character")
+            require(inspect_stats(server) == before, "name collision changed existing character")
             swapped = client.command("swap_stats", {"stat1": "str", "stat2": "luk"}, "stats_swapped")
             require(swapped["phase"] == "ready", "collision lost the valid attempt")
             retried = client.command("create_character", {**creation, "name": "Veralis"})
@@ -270,7 +269,7 @@ def run(binary, inspector, method, *, legacy=False, full_world=False):
             client.close()
 
 
-def run_telnet(binary, inspector, method, *, full_world=False):
+def run_telnet(binary, method, *, full_world=False):
     with IsolatedServer(binary, {}, full_world=full_world) as server:
         client = telnet.MudClient(server.plain_port)
         try:
@@ -281,7 +280,7 @@ def run_telnet(binary, inspector, method, *, full_world=False):
             telnet.reply(client, "", "Your starter kit is ready")
             client.expect("Pos: standing >")
             telnet.reply(client, "save", "Saving Taverek.")
-            before = inspect_stats(server, inspector)
+            before = inspect_stats(server)
             low, high = (87, 90) if method == "default" else (80, 95)
             for index, value in enumerate(before):
                 bonus = 5 if index in (0, 1, 2, 9) else 0
@@ -299,7 +298,7 @@ def run_telnet(binary, inspector, method, *, full_world=False):
             telnet.reply(client, "1", "(Y/N)")
             telnet.reply(client, "y", "Pos: standing >")
             telnet.reply(client, "save", "Saving Taverek.")
-            require(inspect_stats(server, inspector) == before,
+            require(inspect_stats(server) == before,
                     "Telnet saved stats changed across restart/relogin")
             server.shutdown()
             print(f"PASS {'full-world' if full_world else 'minimal-world'} real Telnet {method}: "
@@ -310,16 +309,11 @@ def run_telnet(binary, inspector, method, *, full_world=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", type=Path, help="use an already-built flat-file server")
+    parser.add_argument("--server", type=Path, required=True)
     parser.add_argument("--full-world", action="store_true", help="qualify the actual tutorial rooms and world")
     args = parser.parse_args()
-    build_root = ROOT / "bin/tests"
-    build_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="stat-choice-build-", dir=build_root) as build_tmp:
-        binary = args.binary.resolve() if args.binary else build_flatfile_server(Path(build_tmp))
-        inspector = ROOT / "bin/tests/stat-choice/inspector"
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py", "--build-inspector", str(inspector)], cwd=ROOT, check=True)
-        for method in ("default", "advanced"):
-            run_telnet(binary, inspector, method, full_world=args.full_world)
-        for method, legacy in (("default", False), ("advanced", False), ("default", True)):
-            run(binary, inspector, method, legacy=legacy, full_world=args.full_world)
+    binary = args.server.resolve()
+    for method in ("default", "advanced"):
+        run_telnet(binary, method, full_world=args.full_world)
+    for method, legacy in (("default", False), ("advanced", False), ("default", True)):
+        run(binary, method, legacy=legacy, full_world=args.full_world)

@@ -4,7 +4,6 @@
 // Arguments: host port user password database now work-id.
 #include "combat/frag_cap_config.h"
 #include "combat/frag_cap_repository.h"
-#include "persistence/persistence_mode.h"
 #include "persistence/maintenance_repository.h"
 #include "persistence/persistence_observability.h"
 #include "sql/sql_pool.h"
@@ -13,15 +12,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-
-enum persistence_mode persistence_mode_get(void)
-{
-	return PERSISTENCE_MODE_MARIADB_PRIMARY;
-}
-const char *persistence_mode_flatfile_root(void)
-{
-	return nullptr;
-}
 
 static MYSQL *connection;
 

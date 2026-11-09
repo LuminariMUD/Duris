@@ -1,10 +1,7 @@
 #include "combat/frag_cap_repository.h"
-#include "flatfile/flatfile_store.h"
 
 #include <cassert>
 #include <cstdlib>
-#include <filesystem>
-#include <fstream>
 #include <iostream>
 
 using result = frag_cap_store_result;
@@ -13,38 +10,6 @@ constexpr int64_t hour = FRAG_CAP_HOUR;
 
 namespace
 {
-#ifdef __NO_MYSQL__
-std::string root;
-result load(frag_cap_state *state)
-{
-	return frag_cap_flatfile_load(root, state);
-}
-
-bool parent(int event, int64_t admitted_at, int64_t now, int points)
-{
-	flatfile_authority_lock lock;
-	assert(lock.acquire(root, nullptr));
-	assert(flatfile_authority_transaction_recover(root, lock, nullptr) ==
-	       flatfile_authority_transaction_result::ok);
-	const std::string filename = "cap-test-receipt-" + std::to_string(event);
-	std::vector<uint8_t> bytes;
-	if (flatfile_read(root + "/domains", filename, 1, &bytes, nullptr) ==
-	    flatfile_read_result::ok)
-		return true;
-	frag_cap_state state;
-	assert(frag_cap_flatfile_load_locked(root, lock, &state) == result::ok);
-	const frag_cap_award award = { frag_cap_side::good, points };
-	assert(frag_cap_apply(&state, admitted_at, now, &award, 1));
-	std::vector<flatfile_authority_operation> operations;
-	assert(frag_cap_flatfile_prepare(root, lock, state, &operations) == result::ok);
-	flatfile_authority_operation receipt;
-	receipt.filename = filename;
-	receipt.bytes = { 1 };
-	operations.push_back(receipt);
-	return flatfile_authority_transaction_commit_operations(root, lock, operations, nullptr) ==
-	       flatfile_authority_transaction_result::ok;
-}
-#else
 MYSQL *connection;
 void sql(const char *query)
 {
@@ -79,29 +44,11 @@ bool parent(int event, int64_t admitted_at, int64_t now, int points, bool rollba
 	sql(rollback ? "ROLLBACK" : "COMMIT");
 	return true;
 }
-#endif
 }
 
-int main(int argc, char **argv)
+int main()
 {
 	frag_cap_state state, restored;
-#ifdef __NO_MYSQL__
-	assert(argc == 2);
-	root = argv[1];
-	std::filesystem::create_directories(root + "/domains");
-	for (const auto &directory : { root, root + "/domains" })
-		std::filesystem::permissions(directory, std::filesystem::perms::owner_all,
-					     std::filesystem::perm_options::replace);
-	assert(load(&restored) == result::not_found);
-	assert(frag_cap_flatfile_adopt(root, 25, start, &state) == result::ok);
-	assert(frag_cap_flatfile_adopt(root, 56, start + hour, &restored) == result::ok);
-	assert(restored == state); // Repeated activation never resets the round.
-	flatfile_authority_lock unowned;
-	std::vector<flatfile_authority_operation> operations;
-	assert(frag_cap_flatfile_prepare(root, unowned, state, &operations) == result::invalid);
-#else
-	(void)argc;
-	(void)argv;
 	connection = mysql_init(nullptr);
 	assert(connection &&
 	       mysql_real_connect(connection, getenv("DB_HOST"), getenv("DB_USER"),
@@ -129,7 +76,6 @@ int main(int argc, char **argv)
 	assert(load(&restored) == result::ok && restored == state);
 	assert(parent(100, start, start, 5, true));
 	assert(load(&restored) == result::ok && restored == state);
-#endif
 	auto captured = state;
 	critical_command command{};
 	command.accepted_at_usec = start;
@@ -155,41 +101,11 @@ int main(int argc, char **argv)
 	assert(parent(2, start + 2 * hour, start + 2 * hour, 5));
 	assert(load(&restored) == result::ok && restored.earned[0] == 10);
 	state = restored;
-#ifdef __NO_MYSQL__
-	int event = 10;
-	for (const char *fault : { "DURIS_FLATFILE_TEST_FAIL_BEFORE_AUTHORITY_COMMIT",
-				   "DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL",
-				   "DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE" })
-	{
-		assert(setenv(fault, "1", 1) == 0);
-		assert(!parent(event, start + 3 * hour, start + 3 * hour, 1));
-		assert(unsetenv(fault) == 0);
-		assert(load(&restored) == result::ok);
-		const bool before_commit = std::string(fault).find("FAIL_BEFORE") !=
-					   std::string::npos;
-		assert(restored.earned[0] == state.earned[0] + (before_commit ? 0 : 1));
-		assert(parent(event, start + 3 * hour, start + 3 * hour, 1));
-		assert(load(&restored) == result::ok && restored.earned[0] == state.earned[0] + 1);
-		state = restored;
-		++event;
-	}
-#endif
 	assert(parent(3, start + 4 * hour, start + 4 * hour, 10));
 	assert(load(&restored) == result::ok && restored.earned[0] >= 20 && restored.level == 31);
 	state = restored;
 	assert(parent(3, start + 4 * hour, start + 60 * hour, 10));
 	assert(load(&restored) == result::ok && restored == state);
-#ifdef __NO_MYSQL__
-	assert(frag_cap_flatfile_tick(root, start + 72 * hour) == result::ok);
-	assert(load(&restored) == result::ok && restored.level == 32 &&
-	       restored.earned == (std::array<uint64_t, 2>{}));
-	assert(frag_cap_flatfile_tick(root, start + 72 * hour) == result::ok);
-	std::ofstream(root + "/domains/frag-cap.state", std::ios::binary | std::ios::trunc)
-		<< "bad";
-	const auto before = restored;
-	assert(frag_cap_flatfile_adopt(root, 25, start + 60 * hour, &restored) == result::invalid);
-	assert(restored == before);
-#else
 	sql("START TRANSACTION");
 	assert(frag_cap_sql_load(connection, &state, true) == result::ok);
 	assert(frag_cap_settle(&state, start + 72 * hour));
@@ -263,7 +179,6 @@ int main(int argc, char **argv)
 	assert(load(&restored) == result::invalid);
 	assert(frag_cap_sql_save(connection, state) == result::invalid);
 	mysql_close(connection);
-#endif
 	std::cout
 		<< "PASS shared cap storage: adoption, reopen, parent receipt replay, rollback/recovery, timer, corruption\n";
 }

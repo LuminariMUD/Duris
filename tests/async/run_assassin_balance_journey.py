@@ -39,8 +39,6 @@ RUNTIME_INPUTS = (
     "tests/async/test_assassin_combat_journey.py",
     "tests/async/test_flatfile_combat_journey.py",
     "tests/async/assassin_journey_fixture.cpp",
-    "tests/async/test_flatfile_player_repository.py",
-    "tests/async/flatfile_player_repository_harness.cpp",
     "tests/async/_paths.py",
     "tests/async/run_paladin_balance_journey.py",
     "tests/async/run_divine_refusal_journey.py",
@@ -591,11 +589,9 @@ def main():
         "original and cleanse-only binaries are identical; rerun --prepare"
     fixture_binary = ROOT / "bin/tests/assassin-comparative/snapshot-fixture"
     subprocess.run(["g++", "-std=c++20", "-Isrc", "tests/async/assassin_journey_fixture.cpp",
-                    "src/player/player_snapshot_codec.c", "src/flatfile/flatfile_player_snapshot_file.c",
+                    "src/player/player_snapshot_codec.c",
                     "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(fixture_binary)],
                    cwd=ROOT, check=True)
-    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                    "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True, timeout=180)
     result = {}
     runtime_sha = source_digest(ROOT, RUNTIME_INPUTS)
     for variant, entry in manifest.items():

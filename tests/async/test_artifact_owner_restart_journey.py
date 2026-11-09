@@ -361,8 +361,6 @@ if __name__ == '__main__':
     with tempfile.TemporaryDirectory(prefix='artifact-owner-build-', dir=ROOT / 'bin/tests') as temporary:
         build = Path(temporary)
         inspector = build / 'inspector'
-        if args.backend == 'flatfile':
-            subprocess.run(['python3', 'tests/async/test_flatfile_player_repository.py', '--build-inspector', str(inspector)], check=True)
         if args.server:
             binary = args.server.resolve()
         else:

@@ -25,8 +25,6 @@ class LockerOwnershipCutoverTests(unittest.TestCase):
         cls.movement = (SRC / "item_movement_transaction.c").read_text()
         cls.snapshot = (SRC / "locker_async.c").read_text()
         cls.copyover = (SRC / "copyover.c").read_text()
-        cls.flat_items = (SRC / "flatfile_item_repository.c").read_text()
-        cls.flat_lockers = (SRC / "flatfile_locker_repository.c").read_text()
 
     def test_live_identity_uses_stable_locker_and_chest_ids(self):
         for token in (
@@ -73,11 +71,6 @@ class LockerOwnershipCutoverTests(unittest.TestCase):
         self.assertNotIn("owner_ref", locker_restore)
         self.assertIn('sql_persistence_item_owner_fields_match(\n\t\t\t    obj->obj_uid, "locker"',
                       locker_restore)
-
-    def test_flat_locker_is_saved_from_its_snapshot(self):
-        # No item transfer moves items into or out of a locker: its save claims them.
-        self.assertNotIn("locker_deposit", self.flat_items)
-        self.assertIn("flatfile_locker_prepare_public_save", self.flat_lockers)
 
     def test_snapshot_is_not_ownership_authority_and_worker_is_pointer_free(self):
         # The game thread only captures; the writer claims through the repository.

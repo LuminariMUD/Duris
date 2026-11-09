@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
-"""Prove Hardcore's third counted death through real flat-file save and restart.
-
-The synthetic authority includes the empty catalogs required by permanent
-character deletion, which the minimal-world boot deliberately skips.
-"""
+"""Prove Hardcore's third counted death through a real MariaDB save and restart."""
 
 import argparse
-import os
 from pathlib import Path
 import signal
 import subprocess
@@ -19,31 +14,18 @@ ROOT = journey.ROOT
 
 
 def run(binary):
-    with tempfile.TemporaryDirectory(prefix="flatfile-hardcore-", dir=ROOT / "bin/tests") as directory:
-        root = Path(directory)
-        runtime, state = root / "runtime", root / "state"
+    with tempfile.TemporaryDirectory(prefix="flatfile-hardcore-", dir=ROOT / "bin/tests") as directory, \
+            journey.mariadb_authority() as (environment, sql):
+        runtime = Path(directory) / "runtime"
         runtime.mkdir()
-        state.mkdir(mode=0o700)
-        (state / "domains").mkdir(mode=0o700)
-        subprocess.run([str(journey.INSPECTOR), str(state), "seed-hardcore"], check=True)
         journey.make_fixture(runtime)
         journey.generate_certificate(runtime)
         (runtime / "lib/information/hardcore_hall_of_fame").write_text("0\n")
         (runtime / "logs/log").mkdir(parents=True)
         (runtime / "journals/critical").mkdir(parents=True, mode=0o700)
         plain, tls, websocket = journey.available_ports()
-        environment = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "ENVIRONMENT": "local", "PERSISTENCE_MODE": "flatfile-primary",
-            "FLATFILE_STATE_DIR": str(state),
-            "CRITICAL_COMMAND_JOURNAL_DIR": str(runtime / "journals/critical"),
-            "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls),
-            "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_WEBSOCKET_PORT": str(websocket),
-            "REDIS": "FALSE", "CHAOS_MUD": "FALSE",
-        }
-        if "LD_LIBRARY_PATH" in os.environ:
-            environment["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+        environment.update(CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
+                           DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket))
         output_path = runtime / "server.out"
         process = client = None
         with output_path.open("w") as output:
@@ -58,7 +40,7 @@ def run(binary):
                     if proc.poll() is not None or time.monotonic() > deadline:
                         proc.terminate() if proc.poll() is None else None
                         proc.wait(timeout=10)
-                        raise AssertionError("flat-file Hardcore fixture failed to boot")
+                        raise AssertionError("Hardcore fixture failed to boot")
                     time.sleep(0.1)
                 return proc
 
@@ -69,13 +51,30 @@ def run(binary):
 
             def assert_deaths(expected):
                 deadline = time.monotonic() + 20
-                while journey.inspect_authority(state)["death_count"] != expected:
+                while journey.inspect_authority(sql)["death_count"] != expected:
                     assert time.monotonic() < deadline, "counted death was not saved"
                     time.sleep(0.1)
 
+            def assert_character_deleted():
+                deadline = time.monotonic() + 20
+                while sql(f"SELECT COUNT(*) FROM player_data WHERE name='{journey.CHARACTER}'") != "0":
+                    assert time.monotonic() < deadline, "the deleted character's row remains"
+                    time.sleep(0.1)
+
             def assert_empty_account():
-                client.send("1")
-                client.expect("doesn't have any characters (0/")
+                # SQL commit precedes its game-thread completion callback.
+                deadline = time.monotonic() + 20
+                while True:
+                    client.send("1")
+                    result, _ = client.expect_any(("doesn't have any characters (0/",
+                                                   "Which character would you like to play?"))
+                    if result == "doesn't have any characters (0/":
+                        return
+                    assert time.monotonic() < deadline, "deleted character remained selectable"
+                    client.send("0")
+                    client.expect("ACCOUNT MENU")
+                    client.expect("Please select an option")
+                    time.sleep(0.1)
 
             try:
                 process = boot()
@@ -95,7 +94,7 @@ def run(binary):
                     if death == 3:
                         assert "Your character has been permanently deleted." in result
                         assert_empty_account()
-                        assert not (state / "players/1.snapshot").exists()
+                        assert_character_deleted()
                     else:
                         assert "permanently deleted" not in result, f"death {death} was final"
                         assert_deaths(death)
@@ -108,12 +107,12 @@ def run(binary):
                     if death < 3:
                         client = journey.reconnect_character(plain)
                         assert_deaths(death)
-                    print(f"flat-file Hardcore death {death}: {'deleted' if death == 3 else 'reloaded'}",
+                    print(f"Hardcore death {death}: {'deleted' if death == 3 else 'reloaded'}",
                           flush=True)
 
                 stop()
                 process = boot()
-                assert not (state / "players/1.snapshot").exists(), "deleted snapshot returned"
+                assert_character_deleted()
                 client = journey.MudClient(plain)
                 prompt, _ = client.expect_any(("term type", "account name"))
                 if prompt == "term type":
@@ -148,12 +147,8 @@ def run(binary):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--server", type=Path)
+    parser.add_argument("--server", type=Path, required=True)
     args = parser.parse_args()
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                    "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True)
-    with tempfile.TemporaryDirectory(prefix="hardcore-build-", dir=ROOT / "bin/tests") as directory:
-        binary = args.server.resolve() if args.server else journey.build_flatfile_server(Path(directory))
-        run(binary)
-    print("flat-file Hardcore third counted death and restart journey passed")
+    run(args.server.resolve())
+    print("Hardcore third counted death and restart journey passed")

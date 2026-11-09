@@ -17,9 +17,8 @@ def function(signature, start=0):
         end += 1
     return source[begin:end]
 
-sql_branch = source.index('#else')
-lookup = function('string wiki_help(string str)', sql_branch)
-render = function('string wiki_help_single(string str)', sql_branch)
+lookup = function('string wiki_help(string str)')
+render = function('string wiki_help_single(string str)')
 race_description = function('string wiki_help_prose(') + '\n' + function('string wiki_race_description(')
 assert 'qry(' not in lookup + render and 'mysql_' not in lookup + render
 actinf = (ROOT / 'src/cmd/actinf.c').read_text()

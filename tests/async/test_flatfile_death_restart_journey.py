@@ -8,7 +8,7 @@ character's and no longer in the corpse. Put back into the corpse, the mace is t
 a third restart, and the character loots it again.
 """
 
-import os
+import argparse
 import pathlib
 import shutil
 import signal
@@ -50,11 +50,9 @@ def listing(client, command):
 
 
 def run(binary: pathlib.Path) -> None:
-    with tempfile.TemporaryDirectory(prefix="duris-death-state-") as state_tmp, \
-            tempfile.TemporaryDirectory(prefix="duris-death-run-") as run_tmp:
-        state_root = pathlib.Path(state_tmp)
+    with tempfile.TemporaryDirectory(prefix="duris-death-run-") as run_tmp, \
+            journey.mariadb_authority() as (environment, _sql):
         run_root = pathlib.Path(run_tmp)
-        state_root.chmod(0o700)
         (run_root / "logs/log").mkdir(parents=True)
         for directory in ("areas", "areas_mini", "docs"):
             (run_root / directory).symlink_to(ROOT / directory, target_is_directory=True)
@@ -67,20 +65,8 @@ def run(binary: pathlib.Path) -> None:
         journey.generate_certificate(run_root)
         (run_root / "journals/critical").mkdir(parents=True, mode=0o700)
         port, tls_port, websocket_port = journey.available_ports()
-        environment = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "ENVIRONMENT": "local",
-            "PERSISTENCE_MODE": "flatfile-primary",
-            "FLATFILE_STATE_DIR": str(state_root),
-            "CRITICAL_COMMAND_JOURNAL_DIR": str(run_root / "journals/critical"),
-            "LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_TLS_PORT": str(tls_port),
-            "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_WEBSOCKET_PORT": str(websocket_port),
-            "REDIS": "FALSE",
-        }
-        if runtime_library_path := os.environ.get("LD_LIBRARY_PATH"):
-            environment["LD_LIBRARY_PATH"] = runtime_library_path
+        environment.update(CRITICAL_COMMAND_JOURNAL_DIR=str(run_root / "journals/critical"),
+                           DURIS_TLS_PORT=str(tls_port), DURIS_WEBSOCKET_PORT=str(websocket_port))
         process = boot(binary, run_root, environment, port, "first.out")
         try:
             client = journey.MudClient(port)
@@ -97,8 +83,8 @@ def run(binary: pathlib.Path) -> None:
 
             # The full world restores the corpse where the character died.
             process = boot(binary, run_root, environment, port, "second.out")
-            client = journey.reconnect_character(port, "You rejoin the land of the living",
-                                                 expected_room=None)
+            # MariaDB keeps no last-exit reason, so this login prints the normal text.
+            client = journey.reconnect_character(port, "Welcome to Duris", expected_room=None)
             journey.require("a small wooden mace" in listing(client, "look in corpse"),
                             "the restored corpse lost the mace")
             client.send("get mace corpse")
@@ -113,8 +99,7 @@ def run(binary: pathlib.Path) -> None:
 
             # The loot is the character's after a restart, and gone from the corpse.
             process = boot(binary, run_root, environment, port, "third.out")
-            client = journey.reconnect_character(port, "You break camp and get ready to move on",
-                                                 expected_room=None)
+            client = journey.reconnect_character(port, "Welcome to Duris", expected_room=None)
             client.send("inventory")
             client.expect("a small wooden mace", timeout=10)
             corpse = listing(client, "look in corpse")
@@ -132,8 +117,7 @@ def run(binary: pathlib.Path) -> None:
 
             # The mace is in the corpse after a restart, not with the character.
             process = boot(binary, run_root, environment, port, "fourth.out")
-            client = journey.reconnect_character(port, "You break camp and get ready to move on",
-                                                 expected_room=None)
+            client = journey.reconnect_character(port, "Welcome to Duris", expected_room=None)
             journey.require("a small wooden mace" not in listing(client, "inventory"),
                             "the mace put into the corpse came back to the character")
             journey.require("a small wooden mace" in listing(client, "look in corpse"),
@@ -158,7 +142,7 @@ def run(binary: pathlib.Path) -> None:
 
 
 if __name__ == "__main__":
-    with tempfile.TemporaryDirectory(prefix=f"flatfile-death-{os.getpid()}-",
-                                     dir=ROOT / "bin/tests") as build_tmp:
-        run(journey.build_flatfile_server(pathlib.Path(build_tmp)))
-    print("flat-file die, restart and loot journey passed")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=pathlib.Path, required=True)
+    run(parser.parse_args().server.resolve())
+    print("die, restart and loot journey passed")

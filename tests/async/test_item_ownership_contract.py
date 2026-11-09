@@ -98,23 +98,6 @@ class ItemOwnershipContractTests(unittest.TestCase):
         self.assertIn("persistence_next_item_uid()", db)
         self.assertNotIn("next_obj_uid = loaded", redis)
 
-    def test_flatfile_system_owner_revision_is_hydrated_before_gameplay(self):
-        comm = (SRC / "comm.c").read_text()
-        helper = comm[
-            comm.index("static bool hydrate_flatfile_system_item_owner(void)") :
-            comm.index("static void maintenance_handle_completions")
-        ]
-        self.assertIn("flatfile_item_repository_load_owner(", helper)
-        self.assertIn("item_ownership_runtime_hydrate_owner(owner, revision)", helper)
-        self.assertIn("items.empty()", helper)
-        boot = comm[comm.index("if (!persistence_mode_requires_mysql() &&\n\t    !item_uid_allocator_reserve") :]
-        # Recovery replays durable custody before revisions enter memory.
-        # World loading and gameplay then use the hydrated system owner.
-        self.assertLess(boot.index("locker_recovery_boot()"),
-                        boot.index("hydrate_flatfile_system_item_owner()"))
-        self.assertLess(boot.index("hydrate_flatfile_system_item_owner()"),
-                        boot.index("boot_db(mini_mode)"))
-
     def test_snapshot_repositories_do_not_write_owner_authority(self):
         for name in ("player_snapshot_repository.c", "sql_player.c", "files.c"):
             source = (SRC / name).read_text()

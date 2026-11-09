@@ -169,7 +169,7 @@ with tempfile.TemporaryDirectory(prefix='duris-locker-shutdown-') as td:
                 run(state, 'recover')  # second boot cannot repeat or duplicate recovery
                 print(f'[PASS] {case}: process exit/restart, topology, quantities, ownership and item-only player recovery', flush=True)
 
-            external_pending = ('shop-pending', 'auction-pending', 'collector-pending', 'quest-pending', 'other-fenced')
+            external_pending = ('auction-pending', 'collector-pending', 'quest-pending', 'other-fenced')
             for case in ('movement', 'ambiguous-grant', 'holder-missing', 'public-object-missing', 'malformed', 'blocked-publish', 'blocked-io', *external_pending,
                          'room-cycle', 'public-cycle', 'holder-cycle', 'occupant-cycle'):
                 reset()

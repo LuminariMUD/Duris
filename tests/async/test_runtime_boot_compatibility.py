@@ -67,7 +67,7 @@ class RuntimeBootCompatibilityTest(unittest.TestCase):
 
     def test_mysql_boundary_precedes_hydration_workers_replay_and_gameplay(self):
         mysql_boundary = (
-            "if (persistence_mode_requires_mysql() && initialize_mysql() < 0)"
+            "if (initialize_mysql() < 0)"
         )
         main = self.comm[
             self.comm.index(mysql_boundary):

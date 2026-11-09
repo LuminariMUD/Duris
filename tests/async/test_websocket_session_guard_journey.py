@@ -197,9 +197,6 @@ def chaos_change(binary):
 
 
 def run(binary, backend):
-    if backend == "flatfile":
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(INSPECTOR)], cwd=account.ROOT, check=True)
     for journey in (in_game_commands, delete_at_first_play, waiting_application, fenced_login):
         with persistence(backend) as (environment, sql):
             fixture = account.IsolatedServer(binary, dict(environment, DURIS_WEBSOCKET="TRUE"))

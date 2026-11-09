@@ -6,11 +6,10 @@ collector's maintenance takes the eligible item out of the live corpse. Coins ar
 collected and stay.
 """
 
-import os
+import argparse
 import pathlib
 import signal
 import subprocess
-import sys
 import tempfile
 import time
 
@@ -58,34 +57,17 @@ def wait_for_collection(port: int, *login: str) -> None:
 
 
 def run(binary: pathlib.Path) -> None:
-    with tempfile.TemporaryDirectory(prefix="duris-collector-state-") as state_tmp, \
-            tempfile.TemporaryDirectory(prefix="duris-collector-run-") as run_tmp:
-        state_root = pathlib.Path(state_tmp)
+    with tempfile.TemporaryDirectory(prefix="duris-collector-run-") as run_tmp, \
+            journey.mariadb_authority() as (environment, _sql):
         run_root = pathlib.Path(run_tmp)
-        state_root.chmod(0o700)
-        (state_root / "domains").mkdir(mode=0o700)
-        subprocess.run([str(journey.INSPECTOR), str(state_root), "seed-combat"], check=True)
         (run_root / "logs/log").mkdir(parents=True)
         journey.make_fixture(run_root)
         enable_collector(run_root)
         journey.generate_certificate(run_root)
         (run_root / "journals/critical").mkdir(parents=True, mode=0o700)
         plain_port, tls_port, websocket_port = journey.available_ports()
-        environment = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "ENVIRONMENT": "local",
-            "PERSISTENCE_MODE": "flatfile-primary",
-            "FLATFILE_STATE_DIR": str(state_root),
-            "CRITICAL_COMMAND_JOURNAL_DIR": str(run_root / "journals/critical"),
-            "LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_TLS_PORT": str(tls_port),
-            "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_WEBSOCKET_PORT": str(websocket_port),
-            "REDIS": "FALSE",
-            "CHAOS_MUD": "FALSE",
-        }
-        if runtime_library_path := os.environ.get("LD_LIBRARY_PATH"):
-            environment["LD_LIBRARY_PATH"] = runtime_library_path
+        environment.update(CRITICAL_COMMAND_JOURNAL_DIR=str(run_root / "journals/critical"),
+                           DURIS_TLS_PORT=str(tls_port), DURIS_WEBSOCKET_PORT=str(websocket_port))
         output_path = run_root / "server.out"
         with output_path.open("w", encoding="utf-8") as output:
             process = subprocess.Popen(
@@ -106,7 +88,8 @@ def run(binary: pathlib.Path) -> None:
                 journey.complete_npc_combat_journey(client)
                 client.close()
                 journey.verify_npc_loot_and_die(plain_port)
-                wait_for_collection(plain_port, "You rejoin the land of the living")
+                # MariaDB keeps no last-exit reason, so this login prints the normal text.
+                wait_for_collection(plain_port, "Welcome to Duris")
                 process.send_signal(signal.SIGTERM)
                 process.wait(timeout=30)
                 server_output = output_path.read_text(errors="replace")
@@ -124,10 +107,7 @@ def run(binary: pathlib.Path) -> None:
 
 
 if __name__ == "__main__":
-    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                    "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True,
-                   timeout=180)
-    with tempfile.TemporaryDirectory(prefix=f"flatfile-collector-{os.getpid()}-",
-                                     dir=ROOT / "bin/tests") as build_tmp:
-        run(journey.build_flatfile_server(pathlib.Path(build_tmp)))
-    print("flat-file collector intake journey passed")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=pathlib.Path, required=True)
+    run(parser.parse_args().server.resolve())
+    print("collector intake journey passed")

@@ -13,7 +13,6 @@
  ****************************************************************************/
 
 #include "player/player_save_pipeline.h"
-#include "economy/shop_trade_transaction.h"
 #include "persistence/persistence_observability.h"
 #include <cstdlib>
 #include <cstring>
@@ -318,8 +317,6 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 			snapshot.encoded_size_bound +=
 				snapshot.creation_account.size() + sizeof(uint32_t);
 		}
-		if (!shop_trade_transaction_capture_items(ch, &snapshot))
-			return player_save_pipeline_result::capture_failed;
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
 		if (auto trade = trade_captures.find(GET_PID(ch)); trade != trade_captures.end())
 		{

@@ -135,8 +135,4 @@ if __name__ == '__main__':
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--backend', choices=('flatfile', 'mariadb'), required=True)
     args = parser.parse_args()
-    if not journey.INSPECTOR.is_file():
-        journey.INSPECTOR.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(['python3', 'tests/async/test_flatfile_player_repository.py',
-                        '--build-inspector', str(journey.INSPECTOR)], cwd=ROOT, check=True, timeout=180)
     run(args.binary.resolve(), args.backend)

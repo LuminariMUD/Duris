@@ -58,7 +58,6 @@
 #include <mutex>
 #include "item/item_movement_transaction.h"
 #include "item/item_ownership_runtime.h"
-#include "economy/shop_trade_transaction.h"
 #include "economy/auction_transaction.h"
 #include "economy/collector_service.h"
 #include "economy/collector_transaction.h"
@@ -2041,7 +2040,6 @@ void enter_game(P_desc d)
 	divine_boon_delivery_player_ready(ch);
 	locker_identify_replay(ch);
 	item_movement_transaction_player_ready(ch);
-	shop_trade_transaction_player_ready(ch);
 	auction_transaction_player_ready(ch);
 	collector_transaction_player_ready(ch);
 	collector_service_player_ready(ch, true);

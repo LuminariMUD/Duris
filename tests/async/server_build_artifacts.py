@@ -47,7 +47,7 @@ def input_key(environment, pulse):
         digest.update(json.dumps(value, sort_keys=True).encode() + b"\0")
 
     add({key: value for key, value in environment.items() if key not in IGNORED_ENV})
-    add({"contract": 1, "backend": "flatfile", "timeout": 600, "pulse": pulse})
+    add({"contract": 1, "backend": "mariadb", "timeout": 600, "pulse": pulse})
     add(str(ROOT))  # Absolute source paths are embedded in compiler debug info.
     # Do not depend on Git: exported source trees and dirty worktrees are valid.
     paths = list((ROOT / "src").rglob("*"))
@@ -64,7 +64,7 @@ def compiler_configuration(environment):
     # Read the effective compiler, including command-line overrides inherited
     # through MAKEFLAGS. A no-op target avoids compiling or updating outputs.
     configuration = subprocess.check_output(
-        ["make", "-s", "--no-print-directory", "-C", "src", "PERSISTENCE_BACKEND=flatfile",
+        ["make", "-s", "--no-print-directory", "-C", "src",
          "--eval=.PHONY: artifact-config",
          "--eval=artifact-config:;@echo DURIS_ARTIFACT_CC=$(CC); echo DURIS_ARTIFACT_FLAGS=$(CFLAGS) $(INCLUDES) $(LDFLAGS) $(LIBS)",
          "artifact-config"], cwd=ROOT, env=environment, text=True).strip()
@@ -152,7 +152,7 @@ def compile_server(build_root, environment, pulse):
     started = time.monotonic()
     jobs = int(subprocess.check_output(['nproc'], env=environment, text=True))
     build = subprocess.run(
-        ["make", "-C", "src", "PERSISTENCE_BACKEND=flatfile",
+        ["make", "-C", "src",
          f"BIN_ROOT={build_root}", f"OBJDIR={build_root / 'objects/server'}",
          f"SERVER_BIN_DIR={binary.parent}", f"DMS_BINARY={binary}", f"-j{jobs}",
          f"TEST_PULSE_USEC={pulse or ''}"],
@@ -160,20 +160,16 @@ def compile_server(build_root, environment, pulse):
         stderr=subprocess.STDOUT, timeout=600,
     )
     if build.returncode:
-        raise AssertionError("flat-file server build failed:\n" + build.stdout[-8000:])
+        raise AssertionError("server build failed:\n" + build.stdout[-8000:])
     validate_log(build.stdout, pulse)
     return binary, build.stdout, time.monotonic() - started
 
 
 def validate_log(output, pulse):
-    if "-D__NO_MYSQL__" not in output:
-        raise AssertionError("flat build did not select __NO_MYSQL__")
-    if "-I/usr/include/mysql" in output:
-        raise AssertionError("flat build used system MySQL headers")
-    if "-lmysqlclient" in output:
-        raise AssertionError("flat build linked the MySQL client")
+    if "-I/usr/include/mysql" not in output:
+        raise AssertionError("server build did not use the MySQL client headers")
     if ("-DOPT_USEC=" in output) != bool(pulse) or (pulse and f"-DOPT_USEC={pulse} " not in output):
-        raise AssertionError(f"flat build did not select the {pulse or 'default'} pulse")
+        raise AssertionError(f"server build did not select the {pulse or 'default'} pulse")
 
 
 def verified_artifact(cache, key, pulse):

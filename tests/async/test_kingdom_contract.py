@@ -367,13 +367,7 @@ def test_sql_columns_match_loader_upsert_and_migration() -> None:
     # runs on code, so a column list, a count or a VALUES format written out
     # in a comment can never stand in for the real one.
     db = strip_comments(read("src/kingdom/kingdom_db.c"))
-    # Only the MariaDB half declares the column string; take the code between
-    # the `#ifndef __NO_MYSQL__` guard and its `#else`.
-    sql_half = re.search(r"#ifndef __NO_MYSQL__(.*?)#else", db, re.S)
-    check(sql_half is not None, "MariaDB half of kingdom_db.c found")
-    if not sql_half:
-        return
-    sql_half = sql_half.group(1)
+    sql_half = db
     m = re.search(r'kingdom_realm_columns\s*=\s*((?:"[^"]*"\s*)+);', sql_half)
     check(m is not None, "kingdom_realm_columns single column string found")
     if not m:
@@ -634,13 +628,11 @@ def test_kingdom_help_is_two_entries_that_agree() -> None:
 
 def test_payment_durability_is_one_write() -> None:
     """A treasury debit and the realm record that explains it must land
-    together. Under MariaDB that is one writer job, in one transaction; under
-    the flat-file build both catalogue after-images share one recovery
-    journal. A failure is remembered as payment_pending so the generic flush
-    cannot publish the realm's 'paid' mark ahead of the guild's debit."""
+    together, as one writer job in one transaction. A failure is remembered as
+    payment_pending so the generic flush cannot publish the realm's 'paid'
+    mark ahead of the guild's debit."""
     sql_player = read("src/sql/sql_player.c")
-    # Two definitions exist: the __NO_MYSQL__ stub and the real one. The real
-    # one builds the statements; pin how it runs them there.
+    # The definition builds the statements; pin how it runs them there.
     bodies = [
         b
         for b in function_bodies(sql_player, r"\bbool\s+sql_save_guild\s*\(\s*Guild\s*\*\s*\w+\s*\)")
@@ -707,19 +699,7 @@ def test_payment_durability_is_one_write() -> None:
         "kingdom_persist_payment is defined (non-static, the header's signature) in kingdom_upkeep.c",
     )
     if persist:
-        body = persist[0]
-        split = re.search(r"#ifndef\s+__NO_MYSQL__(.*?)#else", body, re.S)
-        check(
-            split is not None,
-            "kingdom_persist_payment splits the MariaDB and flat-file branches on __NO_MYSQL__",
-        )
-        mariadb = split.group(1) if split else ""
-        flatfile = body[split.end() :] if split else ""
-        check(
-            "save_with_kingdom(" in flatfile,
-            "the flat-file payment path journals the guild and realm through "
-            "Guild::save_with_kingdom",
-        )
+        mariadb = persist[0]
         check(
             "guild->save()" in mariadb and "payment_pending = true" in mariadb
             and "payment_pending = false" not in mariadb,
@@ -739,27 +719,13 @@ def test_payment_durability_is_one_write() -> None:
         ]
         check(
             bool(setters)
-            and all(
-                re.search(r"\b(?:" + "|".join(sorted(set(setters))) + r")\s*\(", branch)
-                for branch in (mariadb, flatfile)
-            ),
-            "both payment paths mark the realm payment_pending when the pair did not land",
+            and re.search(r"\b(?:" + "|".join(sorted(set(setters))) + r")\s*\(", mariadb) is not None,
+            "the payment path marks the realm payment_pending when the pair did not land",
             f"setters in file={sorted(set(setters))}",
         )
     db = read("src/kingdom/kingdom_db.c")
-    paired = function_bodies(db, r"\bbool\s+kingdom_db_save_payment_pair\s*\(")
-    flat_pair = [b for b in paired if "flatfile_association_prepare_save(" in b]
-    check(len(flat_pair) == 1, "the flat-file paid-pair writer is defined", f"{len(paired)}")
-    if flat_pair:
-        code = strip_comments(flat_pair[0])
-        check(
-            "flatfile_association_prepare_save(" in code
-            and "flatfile_authority_store::metadata" in code
-            and "flatfile_authority_transaction_commit_operations(" in code,
-            "the guild and realm catalogue after-images share one authority transaction",
-        )
     sql_pair = function_bodies(db, r"\bsql_work\s+kingdom_guild_save_work\s*\(")
-    check(len(sql_pair) == 1, "the MariaDB paid-pair writer is defined", f"{len(paired)}")
+    check(len(sql_pair) == 1, "the MariaDB paid-pair writer is defined", f"{len(sql_pair)}")
     if sql_pair:
         code = strip_comments(sql_pair[0])
         guild_at = code.find("guild_statements)")
@@ -811,17 +777,14 @@ def test_payment_durability_is_one_write() -> None:
     )
 
     flushes = function_bodies(db, r"\bvoid\s+kingdom_db_flush_dirty\s*\(\s*void\s*\)")
-    check(len(flushes) == 2, "kingdom_db_flush_dirty is defined once per backend", f"{len(flushes)}")
+    check(len(flushes) == 1, "kingdom_db_flush_dirty is defined once", f"{len(flushes)}")
     # ORDER, not presence. "payment_pending appears somewhere in the body" was
     # satisfied by a mention in the tail log line while the publishing loop
     # skipped the test entirely; what the label claims -- and what keeps a
     # paid mark from being published ahead of its guild debit -- is that the
-    # test comes BEFORE every write. Each backend publishes through its own
-    # call: the upsert under MariaDB, the catalogue merge under flat file.
+    # test comes BEFORE every write.
     # The guard must sit in the publishing loop's OWN block, ahead of the
-    # write: "somewhere earlier in the function" is not enough either, since
-    # the flat-file body counts pending records in a first loop and would go
-    # on satisfying a whole-body test after the second loop stopped checking.
+    # write: "somewhere earlier in the function" is not enough either.
     for i, body in enumerate(flushes):
         guard_at = [m.start() for m in re.finditer(r"\.\s*payment_pending\b", body)]
         write_at = [
@@ -833,7 +796,7 @@ def test_payment_durability_is_one_write() -> None:
         ]
         check(
             bool(guard_at) and bool(write_at) and not unguarded,
-            f"kingdom_db_flush_dirty backend #{i + 1} tests payment_pending BEFORE it publishes, "
+            f"kingdom_db_flush_dirty #{i + 1} tests payment_pending BEFORE it publishes, "
             "in the publishing loop itself",
             f"guards at {guard_at}, writes with no guard in their block: {unguarded}",
         )
@@ -844,12 +807,6 @@ def test_payment_durability_is_one_write() -> None:
         and "payment_pending" not in "".join(re.findall(r'"([^"]*)"', columns.group(1))),
         "payment_pending is not a column of kingdom_realm_columns",
     )
-    for fn in ("encode_catalog", "decode_catalog"):
-        bodies = function_bodies(db, r"\bbool\s+" + fn + r"\s*\(")
-        check(
-            len(bodies) == 1 and "payment_pending" not in bodies[0],
-            f"{fn} does not encode payment_pending (runtime state never persisted)",
-        )
 
     claim = strip_comments(read("src/kingdom/kingdom_claim.c"))
     check(
@@ -2604,37 +2561,9 @@ def test_store_refused_grant_restores_coin_and_material() -> None:
     )
 
 
-def test_flatfile_room_type_bound_is_the_guildhall_count() -> None:
-    """A flat-file guildhall catalogue carrying one room the validator refuses
-    is invalid as a whole, and that is a fatal boot error. The validator's
-    bound must therefore BE the guildhall room-type count."""
-    header = strip_comments(read("src/flatfile/flatfile_association_repository.h"))
-    bound = re.search(r"FLATFILE_GUILDHALL_ROOM_TYPE_COUNT\s*=\s*(\d+)\s*;", header)
-    types = re.search(r"#define\s+GH_ROOM_NUM_TYPES\s+(\d+)", strip_comments(read("src/guild/guildhall.h")))
-    check(
-        bound is not None and types is not None and bound.group(1) == types.group(1),
-        "the flat-file room-type bound equals GH_ROOM_NUM_TYPES",
-        f"bound={bound.group(1) if bound else None} types={types.group(1) if types else None}",
-    )
-    repository = strip_comments(read("src/flatfile/flatfile_association_repository.c"))
-    check(
-        "room.type >= FLATFILE_GUILDHALL_ROOM_TYPE_COUNT" in repository
-        and re.search(r"room\.type\s*>\s*\d", repository) is None,
-        "valid_guildhalls() bounds room types by the shared constant, not a literal",
-    )
-    check(
-        re.search(
-            r"static_assert\(\s*GH_ROOM_NUM_TYPES\s*==\s*FLATFILE_GUILDHALL_ROOM_TYPE_COUNT",
-            strip_comments(read("src/guild/guildhall_db.c")),
-        )
-        is not None,
-        "guildhall_db.c static_asserts the two counts equal",
-    )
-
-
-def test_workshop_rooms_come_from_one_factory_for_both_backends() -> None:
-    """There were two type-to-class switches, one per backend; a type known
-    to one would have loaded as a generic room on the other."""
+def test_workshop_rooms_come_from_one_factory() -> None:
+    """A second type-to-class switch would load a type known only to the
+    first as a generic room."""
     db = read("src/guild/guildhall_db.c")
     factory = function_bodies(db, r"\bGuildhallRoom\s*\*\s*make_guildhall_room\s*\(")
     check(len(factory) == 1, "make_guildhall_room() is defined once", f"{len(factory)}")
@@ -2654,11 +2583,6 @@ def test_workshop_rooms_come_from_one_factory_for_both_backends() -> None:
     check(
         len(loader) == 1 and "make_guildhall_room(" in loader[0],
         "the MariaDB room loader builds through the shared factory",
-    )
-    flat = function_bodies(db, r"\bvoid\s+materialize_guildhall_room\s*\(")
-    check(
-        len(flat) == 1 and "make_guildhall_room(" in flat[0],
-        "the flat-file room loader builds through the shared factory",
     )
 
 

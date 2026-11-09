@@ -5,7 +5,6 @@
 #include "persistence/persistence_mode.h"
 #include "player/player_save_pipeline.h"
 #include "player/player_snapshot_repository.h"
-#include "flatfile/flatfile_player_repository.h"
 #include "sql/sql_player.h"
 
 #include <cassert>
@@ -21,8 +20,7 @@ static std::vector<std::string> order;
 static int dirty = 0;
 static int alerts = 0;
 static P_char invalid_account = nullptr;
-static P_char fixture_auction_pending = nullptr, fixture_collector_pending = nullptr,
-	      fixture_shop_pending = nullptr;
+static P_char fixture_auction_pending = nullptr, fixture_collector_pending = nullptr;
 bool auction_transaction_player_busy(P_char ch)
 {
 	return ch && ch == fixture_auction_pending;
@@ -30,10 +28,6 @@ bool auction_transaction_player_busy(P_char ch)
 bool collector_transaction_player_busy(P_char ch)
 {
 	return ch && ch == fixture_collector_pending;
-}
-bool shop_trade_transaction_player_busy(P_char ch)
-{
-	return ch && ch == fixture_shop_pending;
 }
 
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...)
@@ -56,20 +50,6 @@ const char *get_account_name_safe(P_char ch)
 	if (ch == invalid_account)
 		return "Unknown";
 	return ch && GET_PID(ch) == 45 ? "other_account" : "money_account";
-}
-persistence_mode persistence_mode_get(void)
-{
-	return PERSISTENCE_MODE_MARIADB_PRIMARY;
-}
-const char *persistence_mode_flatfile_root(void)
-{
-	return nullptr;
-}
-player_save_apply_result flatfile_bank_delta_apply(const std::string &, const std::string &, int8_t,
-						   const std::array<int64_t, 4> &,
-						   flatfile_authority_operation *, std::string *)
-{
-	return { player_save_apply_outcome::applied, 0, 0 };
 }
 player_save_apply_result bank_delta_repository_apply_from_pool(const bank_delta_snapshot &)
 {

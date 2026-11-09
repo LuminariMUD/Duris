@@ -618,9 +618,9 @@ output.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-", dir=output) as temp:
     temp = Path(temp)
     source = temp / "fixture.cpp"
-    source.write_text(support + HARNESS)
+    source.write_text(support + "bool sql_ship_write_pulse() { return true; }\n" + HARNESS)
     common = ["g++", "-std=c++20", "-g", "-fsanitize=address,undefined",
-              "-fno-omit-frame-pointer", "-fno-sanitize-recover=undefined", "-ffunction-sections", "-fdata-sections", "-Isrc", "-D__NO_MYSQL__"]
+              "-fno-omit-frame-pointer", "-fno-sanitize-recover=undefined", "-ffunction-sections", "-fdata-sections", "-Isrc", "-I/usr/include/mysql", ]
     subprocess.run(common + ["-Dexecl=fixture_execl", "-c", "src/persistence/copyover.c",
                             "-o", str(temp / "copyover.o")], cwd=ROOT, check=True)
     subprocess.run(common + [str(source), str(temp / "copyover.o"),

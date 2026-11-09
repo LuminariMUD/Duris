@@ -44,14 +44,12 @@ with tempfile.TemporaryDirectory(prefix="nexus-runtime-", dir=build) as temporar
     subprocess.run([
         "g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-        "-ffunction-sections", "-fdata-sections", "-D__NO_MYSQL__",
-        "-Isrc", "-Isrc/no_mysql", "-Isrc/ships", "-I/usr/include/libxml2",
+        "-ffunction-sections", "-fdata-sections", "-Isrc", '-I/usr/include/mysql', "-Isrc/ships", "-I/usr/include/libxml2",
         "tests/async/nexus_runtime_harness.cpp", rel("nexus_stones.c"),
-        rel("flatfile_nexus_repository.c"), rel("flatfile_store.c"),
         str(utility), str(HARNESS_STUBS), "-Wl,--gc-sections", "-lcrypto", "-pthread",
         "-o", str(binary),
     ], cwd=ROOT, check=True)
-    subprocess.run([str(binary), str(directory / "state")], cwd=ROOT, check=True,
+    subprocess.run([str(binary)], cwd=ROOT, check=True,
                    env={**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
                         "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1"})
 

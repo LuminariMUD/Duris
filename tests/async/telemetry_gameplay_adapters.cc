@@ -2,6 +2,7 @@
 #include "telemetry/telemetry_runtime.h"
 #include "telemetry/telemetry_transport_private.h"
 #include "core/structs.h"
+#include "sql/sql_telemetry_connection.h"
 
 #include "telemetry/telemetry_session.h"
 #include "telemetry_test_runtime.h"
@@ -15,6 +16,12 @@
 #include <cstdlib>
 #include <thread>
 #include <vector>
+
+// The fake repository binding replaces the SQL one, which never opens a connection here.
+MYSQL *sql_open_telemetry_connection(void)
+{
+	return nullptr;
+}
 
 P_room world = nullptr;
 struct zone_data *zone_table = nullptr;
