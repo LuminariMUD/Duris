@@ -4019,7 +4019,7 @@ static void locker_return_norent_contents(P_char user, P_obj container)
 	}
 }
 
-// A chest the visitor can't open keeps what it holds until someone who can comes by.
+// A private chest the visitor hasn't opened keeps what it holds until someone who has.
 void StorageLocker::ReturnNorentItems(void)
 {
 	if (!m_chUser || m_chUser->in_room != m_realRoom)
@@ -4028,9 +4028,10 @@ void StorageLocker::ReturnNorentItems(void)
 	{
 		if (object->type == ITEM_CORPSE)
 			continue;
-		if (FindChestForObject(object))
+		if (LockerChest *chest = FindChestForObject(object))
 		{
-			if (locker_container_access_allowed(m_chUser, object))
+			if (!chest->IsPrivateChest() ||
+			    m_chestsOpenedThisVisit.count(chest->GetChestId()))
 				locker_return_norent_contents(m_chUser, object);
 		}
 		else if (IS_SET(object->extra_flags, ITEM_NORENT))

@@ -2342,9 +2342,9 @@ static void remove_norent_item(P_char ch, P_obj item, P_obj container)
 		else
 			obj_to_char(content, ch);
 	}
-	// Nothing can land nowhere, and a locker's floor is storage.
+	// A ghost being extracted may not be in any room.
 	if (IS_SET(item->extra_flags, ITEM_NODROP) || IS_SET(item->extra2_flags, ITEM2_SOULBIND) ||
-	    ch->in_room == NOWHERE || IS_ROOM(ch->in_room, ROOM_LOCKER))
+	    ch->in_room == NOWHERE)
 	{
 		act("$p is no-rent and crumbles to dust.", TRUE, ch, item, 0, TO_CHAR);
 		act("$p is no-rent and crumbles to dust.", TRUE, ch, item, 0, TO_ROOM);
