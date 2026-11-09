@@ -197,8 +197,7 @@ P_obj get_obj_in_list_num(int number,P_obj list) {
 float get_property(const char *,double fallback) { return fallback; }
 int get_property(const char *,int fallback) { return fallback; }
 int real_room0(const int) { return 0; }
-int itemvalue(P_obj) { return 1; }
-bool item_load_check(P_obj,int,int) { return true; }
+bool item_load_check(P_obj,int) { return true; }
 void enhance_on_npc_item_reset_skipped(P_char,P_obj) {}
 int shop_keeper(P_char,P_char,int,char *) { return 0; }
 object_template parse_object_template(int index) {
@@ -716,7 +715,7 @@ for letter in "OPGE":
  parts.append(reset[start:after+following.start()])
 reset_harness=r"""
 int reset_command(reset_com &command,P_char mob,int respawn,int force_item_repop) {
- int last_cmd=1,ival=0,zone=0; P_obj obj=nullptr,obj_to=nullptr;
+ int last_cmd=1,zone=0; P_obj obj=nullptr,obj_to=nullptr;
  #define ZCMD command
  switch(command.command) {
  // RESET_CASES

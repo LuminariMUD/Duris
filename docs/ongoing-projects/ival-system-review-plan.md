@@ -1,6 +1,7 @@
 # Ival system: end-to-end review and improvement plan
 
-Status: review complete; implementation proposed.
+Status: implementation in progress; review findings remain open unless recorded
+as completed in the implementation log below.
 Reviewed: 2026-11-09.
 Baseline: `8e254bc0dd0be09ecf99822573ff5edde4373293`, local branch
 `branch/confirm-character-deletion-name`. The checkout was clean before this review.
@@ -21,9 +22,10 @@ covers authored and generated items, server/editor calculations, native and pack
 procs, enhancement, crafting/forging, salvage, rewards, reports, presentation,
 and the persistence of valuation inputs.
 
-The requested deliverable is this plan. No gameplay implementation, tuning,
-deployment, migration, player-data change, or production operation was performed.
-The only intended tracked change is this document. Temporary native probes were
+The original review delivered this plan without gameplay implementation, tuning,
+deployment, migration, player-data changes, or production operations. The user
+subsequently authorized implementation, focused commits, pushes, and labeled PRs.
+Temporary native probes from the original review were
 built under `bin/tests/ival-audit-20261109/`; compiled artifacts are not committed.
 Automatic approval review blocked their deletion, including exact-file cleanup,
 so these ignored local evidence files remain. No detailed rejection reason was
@@ -34,6 +36,71 @@ valuation functions, sanitizer boundary probes, an authored-object inventory,
 and ten existing focused checks. It is **not** a live-server or full-world
 qualification. Evidence and its limits are recorded below. Source links and line
 anchors refer to the reviewed baseline.
+
+## Implementation log and handoff
+
+Implementation checkout:
+`C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
+Initial implementation branch: `branch/ival-system-improvements`, plan commit
+`df2bfe359`, based on `c5db5ed5b`. Persistence remains MariaDB only. Dependent
+implementation chunks will use stacked branches/PRs; no release tag or deployment
+is appropriate before review and qualification.
+Plan PR: [#876](https://github.com/LuminariMUD/Duris/pull/876), against `master`.
+
+### Chunk 1 — remove unused reset/recovery valuations (F15, partial)
+
+Branch: `branch/ival-reset-admission`, based on `branch/ival-system-improvements`.
+
+**Outcome:** item load admission takes only the object and zone chance. Remove
+the unused score argument, seven reset evaluations, the recovery evaluation, and
+the unused `equipped_value()` helper with its retired commented caller.
+Artifact halving, chance comparison, shopkeeper exceptions, and RNG draws retain
+their existing behavior.
+
+**Non-goals:** formula changes, balance changes, locker sorting, and deployment.
+F15's locker work and stale valuation descriptions remain pending.
+
+**Files:** `src/core/{utility.c,utils.h,prototypes.h}`, `src/world/{db.c,
+world_recovery_npc_items.c}`, the dead helper/caller in `src/classes/drannak.c`
+and `src/combat/fight.c`, and their focused reset/recovery harnesses.
+
+**Proof:** a native sanitizer regression executes the production load check for
+all 100 random outcomes across ordinary/artifact objects and nine chance values
+(1,800 cases), asserting one RNG draw per attempt. The following checks passed:
+
+```text
+python3 tests/async/test_item_load_check.py
+python3 tests/async/test_castle_key_reset.py
+python3 tests/async/test_elemental_groves_key_reset.py
+python3 tests/async/test_artifact_creation_admission.py
+python3 tests/async/test_world_recovery_npc_items.py
+python3 tests/async/test_world_recovery_pipeline.py
+python3 tests/async/test_npc_missing_item_material_fallback_contract.py
+./scripts/format.sh --staged --check
+make -C src -j4
+```
+
+The native tests use ASan/UBSan, except the material fallback source contract.
+The server binary is `bin/server/dms_new`. This chunk changes neither persistence
+nor commands, so it requires no database migration or live-server operation.
+
+Local tooling: run Linux commands through WSL in the Windows worktree. WSL Git
+needs `GIT_DIR=/home/aiwithapex/projects/duris/.git/worktrees/duris1` and
+`GIT_WORK_TREE=/mnt/c/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
+Use `core.fileMode=false` and `core.autocrlf=true` for that mixed-filesystem
+checkout. Keep the three existing hook/format/tidy scripts locally LF when running
+Linux hooks; do not commit newline-only changes. The host's default clang tooling
+selects GCC 16 headers; GCC 13 standard include paths are needed for the installed
+clang tooling to parse this checkout. This is local tool selection, not a source
+or warning-policy exception.
+
+**Ablation:** this independent part of Stage 4 can land before evaluator changes
+because it removes a dependency that never affects load admission. Updating the
+existing interface and callers needs no new valuation/cache/index abstraction.
+
+Next: publish this chunk, then establish native characterization and
+truthful diagnostics (Stage 1), followed by the shared evaluator/context work.
+No formula-changing slice is complete without the delta qualification below.
 
 ## Main conclusions
 
@@ -627,8 +694,8 @@ replacement for the existing `eqrate` command.
 
 ## Delivery sequence and review boundaries
 
-Each stage should be independently reviewable. Check boxes describe future work,
-not completed implementation.
+Each stage should be independently reviewable. Unchecked boxes remain pending;
+partial deliveries and their verification are recorded in the implementation log.
 
 ### Stage 1 — establish reproducible baselines and truthful diagnostics
 
@@ -671,6 +738,8 @@ not completed implementation.
   bound faerie-bag work (F12/F13).
 - [ ] Remove dead reset calculations and optimize only measured locker/index
   work (F15). Preserve unrelated gameplay/RNG behavior.
+  Reset/recovery and retired-helper removal is implemented in Chunk 1; locker and
+  description work remains pending.
 - [ ] Share material quantity arithmetic and keep report semantics explicit.
 
 ### Stage 5 — integration qualification and rollout evidence

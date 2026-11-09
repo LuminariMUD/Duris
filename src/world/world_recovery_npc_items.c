@@ -91,7 +91,7 @@ P_obj load_recovery_object(P_char mob, const reset_com &command, int artifact_re
 		extract_obj(object);
 		return nullptr;
 	}
-	if (!ITEM_LOAD_CHECK(object, itemvalue(object), command.arg4) && !IS_SHOPKEEPER(mob))
+	if (!ITEM_LOAD_CHECK(object, command.arg4) && !IS_SHOPKEEPER(mob))
 	{
 		enhance_on_npc_item_reset_skipped(mob, object);
 		extract_obj(object);
