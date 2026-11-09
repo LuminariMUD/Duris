@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-'''Run the real song dispatch loops with effects that kill the singer and its targets.'''
+'''Run song dispatch lifetime, ongoing stealth and command reveal regressions.'''
 from pathlib import Path
 import re
 import subprocess
 import tempfile
 from _paths import ROOT, extract_function, source
+from contract_text import contains
 
 fixture = r'''
 #include "abilities/abilities.h"
@@ -13,6 +14,7 @@ fixture = r'''
 #include "core/utils.h"
 #include "magic/spells.h"
 #include "net/comm.h"
+#include "world/weather.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -30,7 +32,8 @@ uint64_t character_removal_generation;
 static std::vector<P_char> sung;
 static P_char ally;
 static std::vector<uint64_t> doomed; // Runtime ids released on the next effect.
-static int aggros, rests, waits, scheduled;
+static int aggros, rests, waits, scheduled, song_chance = 100;
+time_info_data time_info{};
 static uint64_t next_id = 1;
 static P_char make_char() {
     auto ch = new char_data{};
@@ -78,7 +81,7 @@ bool grouped(P_char, P_char target) { return target == ally; }
 bool bard_saves(P_char, P_char, int) { return true; }
 void bard_aggro(P_char, P_char) { ++aggros; }
 int bard_song_level(P_char, int) { return 30; }
-int bard_calc_chance(P_char, int) { return 100; }
+int bard_calc_chance(P_char, int) { return song_chance; }
 int number(int low, int) { return low; }
 int dice(int count, int) { return count; }
 const Rolls live_rolls = { dice, number };
@@ -92,6 +95,9 @@ int flag2idx(int) { return 0; }
 int get_song_level(int, int, int) { return 1; }
 void affect_remove(P_char, affected_type *) {}
 bool affected_by_spell(P_char, int) { return false; }
+void affect_from_char(P_char, int) { assert(false); }
+bool IS_OUTDOORS(int) { return false; }
+bool IS_TWILIGHT_ROOM(int) { return false; }
 void set_short_affected_by(P_char, int, int) { ++rests; }
 void CharWait(P_char, int) { ++waits; }
 void do_action(P_char, char *, int) {}
@@ -127,12 +133,19 @@ void event_bardsong(P_char, P_char, P_obj, void *);
     'static int riff_lag(',
     'void do_riff(P_char ch,',
 ]) + r'''
+// Execute the production interpreter's hide gate before a song command.
+static void command_hide_rule(P_char ch, int cmd) {
+    P_char exec_char = ch;
+    const char *argument = "";
+    COMMAND_HIDE_RULE
+}
 struct Crowd { P_char bard, first, second, third; };
 static Crowd crowd() {
     character_list = nullptr;
     world[1].people = nullptr;
     sung.clear(); doomed.clear();
     aggros = rests = waits = scheduled = 0;
+    song_chance = 100;
     Crowd c{};
     c.third = make_char();
     c.second = make_char();
@@ -201,17 +214,66 @@ int main() {
         assert(!aggros);
         ally = nullptr; clear_room();
     }
+    // Starting and switching via either song command still reveal ordinary hide.
+    // Look/scan/sneak are controls for commands that preserve it. Sneak survives.
+    for (int cmd : {CMD_PLAY, CMD_WAIL, CMD_LOOK, CMD_SCAN, CMD_SNEAK})
+        for (bool already_singing : {false, true}) {
+            Crowd c = crowd();
+            if (!already_singing) REMOVE_BIT(c.bard->specials.affected_by3, AFF3_SINGING);
+            c.bard->specials.affected_by = AFF_HIDE | AFF_SNEAK;
+            command_hide_rule(c.bard, cmd);
+            assert(bool(IS_AFFECTED(c.bard, AFF_HIDE)) == (cmd != CMD_PLAY && cmd != CMD_WAIL));
+            assert(IS_AFFECTED(c.bard, AFF_SNEAK));
+            assert(bool(IS_AFFECTED3(c.bard, AFF3_SINGING)) == already_singing);
+            clear_room();
+        }
+    // A Bard who hides after starting Flight/Sleep stays hidden on later beats,
+    // even if a verse fails. Recording effects isolate this from combat/reveal
+    // effects inside individual song handlers.
+    struct song_case { int song, flags; };
+    for (auto song : {STEALTH_SONGS}) for (bool fail : {false, true}) {
+        Crowd c = crowd(); ally = c.first;
+        songs[0].song = song.song; songs[0].flags = song.flags;
+        c.bard->specials.affected_by = c.first->specials.affected_by = AFF_HIDE | AFF_SNEAK;
+        affected_type singing{};
+        singing.bitvector3 = AFF3_SINGING; singing.modifier = 4;
+        c.bard->affected = &singing;
+        song_chance = fail ? 0 : 100;
+        for (int beat = 0; beat < (fail ? 1 : 2); ++beat) {
+            event_bardsong(c.bard, nullptr, nullptr, &song.song);
+            assert(IS_AFFECTED(c.bard, AFF_HIDE) && IS_AFFECTED(c.bard, AFF_SNEAK));
+            assert(IS_AFFECTED(c.first, AFF_HIDE) && IS_AFFECTED(c.first, AFF_SNEAK));
+        }
+        assert(scheduled == (fail ? 0 : 2) && rests == (fail ? 1 : 0));
+        assert(sung.size() == (fail ? 0u : song.flags == SONG_ALLIES ? 4u : 6u));
+        assert(singing.modifier == (fail ? 4 : 2));
+        ally = nullptr; clear_room();
+    }
     std::puts("PASS song dispatch survives the singer, target and next target dying mid-song");
+    std::puts("PASS ongoing Flight/Sleep preserve hide and sneak; start/switch still reveal hide");
 }
 '''
 
 catalog = source('bard.c').read_text()
+song_catalog = {name: (song, flags) for name, song, flags in re.findall(
+    r'\{ "(\w+)", \w+, \w+, (\w+), ([\w |]+) \}', catalog)}
 target_flags = []
 for song in ('flight', 'calming', 'peace', 'forgetfulness'):
-    flags = re.search(r'\{ "'+song+r'", \w+, \w+, \w+, ([\w |]+) \}', catalog).group(1)
+    flags = song_catalog[song][1]
     assert flags == ('SONG_ALLIES' if song == 'flight' else '0'), (song, flags)
     target_flags.append('int('+flags+')')
 fixture = fixture.replace('TARGET_FLAGS', ','.join(target_flags))
+fixture = fixture.replace('STEALTH_SONGS', ','.join(
+    'song_case{' + ','.join(song_catalog[name]) + '}' for name in ('flight', 'sleep')))
+
+interpreter = extract_function('interp.c', 'void command_interpreter(')
+hide_start = interpreter.index('// Kill hide if applicable')
+hide_end = interpreter.index('if (IS_AFFECTED(exec_char, AFF_MEDITATE))', hide_start)
+assert hide_start < interpreter.index('((*cmd_info[cmd].command_pointer)')
+fixture = fixture.replace('COMMAND_HIDE_RULE', interpreter[hide_start:hide_end])
+for command in ('CMD_PLAY', 'CMD_WAIL'):
+    assert contains(source('interp.c').read_text(),
+                    f'CMD_Y({command}, STAT_RESTING + POS_SITTING, do_play, 0, TRUE);')
 
 out = ROOT / 'bin/tests'
 out.mkdir(parents=True, exist_ok=True)
