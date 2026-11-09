@@ -347,11 +347,6 @@ if __name__ == "__main__":
     parser.add_argument("--baseline", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    if not journey.INSPECTOR.is_file():
-        journey.INSPECTOR.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(journey.INSPECTOR)],
-                       cwd=ROOT, check=True, timeout=180)
     result = run(args.binary.resolve(), args.baseline)
     args.output.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2))

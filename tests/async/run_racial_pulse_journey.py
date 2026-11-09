@@ -235,8 +235,6 @@ def main() -> None:
             tempfile.TemporaryDirectory(prefix="duris-pulse-state-") as state_tmp, \
             tempfile.TemporaryDirectory(prefix="duris-pulse-run-") as run_tmp:
         inspector = pathlib.Path(tools) / "inspector"
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(inspector)], cwd=ROOT, check=True, timeout=180)
         state_root, run_root = pathlib.Path(state_tmp), pathlib.Path(run_tmp)
         state_root.chmod(0o700)
         (state_root / "domains").mkdir(mode=0o700)

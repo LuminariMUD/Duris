@@ -315,18 +315,6 @@ def main() -> int:
         return 2
     binary = Path(sys.argv[1]).resolve()
     require(binary.is_file(), f"server binary does not exist: {binary}")
-    journey.INSPECTOR.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [
-            "python3",
-            "tests/async/test_flatfile_player_repository.py",
-            "--build-inspector",
-            str(journey.INSPECTOR),
-        ],
-        cwd=journey.ROOT,
-        check=True,
-        timeout=180,
-    )
     run_scenario(binary, False)
     run_scenario(binary, True)
     print(

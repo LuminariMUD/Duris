@@ -80,9 +80,6 @@ def command(client, text, timeout=20):
 
 def run(binary, backend, interruptions_only=False, reconnect_only=False, skip_interruptions=False):
     inspector = journey.INSPECTOR
-    if backend == 'flatfile':
-        subprocess.run(['python3', 'tests/async/test_flatfile_player_repository.py',
-                        '--build-inspector', str(inspector)], cwd=ROOT, check=True, timeout=300)
     with tempfile.TemporaryDirectory(prefix='flight-' + backend + '-', dir=ROOT / 'bin/tests') as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)

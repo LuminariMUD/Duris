@@ -27,9 +27,6 @@ PLAYERS = (("telnet", "Levelmonk"), ("websocket", "Webmonk"))
 def run(binary, backend, output):
     output.mkdir(parents=True, exist_ok=False)
     inspector = output / "player-inspector"
-    if backend == "flatfile":
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(inspector)], cwd=ROOT, check=True)
     evidence = {"backend": backend, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
                 "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                 "cases": [], "complete": False}

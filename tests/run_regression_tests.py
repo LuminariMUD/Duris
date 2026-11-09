@@ -152,6 +152,9 @@ MANUAL_ONLY_TEST_NAMES = frozenset(
         "test_minor_creation_instrument_journey.py",
         "test_generated_npc_journey.py",
         "test_flatfile_chaos_new_character_kit.py",
+        "test_flatfile_newbie_regrant_journey.py",
+        "test_flatfile_auction_coin_put_journey.py",
+        "test_flatfile_full_world_boot.py",
     }
 )
 
@@ -160,11 +163,7 @@ MANUAL_ONLY_TEST_NAMES = frozenset(
 # docs/ongoing-projects/flatfile-backend-removal-fast-plan.md.
 FLATFILE_REMOVAL_DEFERRED_TEST_NAMES = frozenset(
     {
-        "test_flatfile_auction_coin_put_journey.py",
-        "test_flatfile_full_world_boot.py",
         "test_flatfile_locker_journey.py",
-        "test_flatfile_newbie_regrant_journey.py",
-        "test_flatfile_player_repository.py",
         "test_pet_restart_journey.py",
     }
 )

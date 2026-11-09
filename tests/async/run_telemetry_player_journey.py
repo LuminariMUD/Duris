@@ -276,8 +276,6 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                         subprocess.run([sys.executable, "scripts/migration_runner.py", *args],
                                        cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
                 else:
-                    subprocess.run([sys.executable, "tests/async/test_flatfile_player_repository.py",
-                                    "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True)
                     subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
                 env.update(PERSISTENCE_MODE=backend + "-primary", PERSISTENCE_BACKEND=backend,
                            FLATFILE_STATE_DIR=str(state), CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),

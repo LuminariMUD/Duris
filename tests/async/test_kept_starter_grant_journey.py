@@ -19,9 +19,6 @@ from build_restore_qualifier import build as build_restore_qualifier
 
 def run(binary, backend, chaos, transport):
     inspector = account.ROOT / "bin/tests/kept-character-inspector"
-    if backend == "flatfile":
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(inspector)], cwd=account.ROOT, check=True)
     with persistence(backend) as (environment, sql):
         environment.update(DURIS_WEBSOCKET="TRUE", CHAOS_MUD="TRUE" if chaos else "FALSE")
         with account.IsolatedServer(binary, environment, full_world=True) as server:
