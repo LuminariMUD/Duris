@@ -3,7 +3,6 @@
 // seam; the real production factory has separate trust-boundary tests.
 #include "telemetry/telemetry_repository.h"
 #include "telemetry/telemetry_failure.h"
-#include "persistence/persistence_mode.h"
 
 #include <atomic>
 #include <cstdio>
@@ -23,12 +22,6 @@ static const char *case_name = "startup";
 			std::exit(1);                                                              \
 		}                                                                                  \
 	} while (0)
-static persistence_mode mode = PERSISTENCE_MODE_MARIADB_PRIMARY;
-persistence_mode persistence_mode_get(void)
-{
-	return mode;
-}
-
 static telemetry_repository_config repository_config(telemetry_producer_id fresh_producer = {})
 {
 	return { telemetry_storage_backend::sql,     0U,
@@ -36,44 +29,6 @@ static telemetry_repository_config repository_config(telemetry_producer_id fresh
 		 TELEMETRY_BATCH_MAX_BYTES_PROPOSAL, fresh_producer };
 }
 
-#ifdef __NO_MYSQL__
-int main()
-{
-	case_name = "no-mysql";
-	CHECK(telemetry_classify_sql_failure(1213U, telemetry_sql_phase::statement) ==
-	      telemetry_failure_class::transient_transaction);
-	CHECK(telemetry_classify_sql_failure(1205U, telemetry_sql_phase::statement) ==
-	      telemetry_failure_class::transient_transaction);
-	CHECK(telemetry_classify_sql_failure(2013U, telemetry_sql_phase::statement) ==
-	      telemetry_failure_class::transient_connection);
-	CHECK(telemetry_classify_sql_failure(1054U, telemetry_sql_phase::statement) ==
-	      telemetry_failure_class::permanent_schema);
-	CHECK(telemetry_classify_sql_failure(1146U, telemetry_sql_phase::statement) ==
-	      telemetry_failure_class::permanent_schema);
-	CHECK(telemetry_classify_sql_failure(1142U, telemetry_sql_phase::statement) ==
-	      telemetry_failure_class::permanent_permission);
-	CHECK(telemetry_classify_sql_failure(1366U, telemetry_sql_phase::statement) ==
-	      telemetry_failure_class::invalid_record);
-	CHECK(telemetry_classify_sql_failure(1054U, telemetry_sql_phase::commit) ==
-	      telemetry_failure_class::commit_ambiguous);
-	telemetry_repository_shutdown();
-	auto config = repository_config();
-	config.schema_version = 0;
-	CHECK(telemetry_repository_init(config) == telemetry_repository_outcome::invalid_config);
-	config = repository_config();
-	config.fresh_producer = { 1U, 0U };
-	CHECK(!telemetry_repository_config_is_bounded(config));
-	config.fresh_producer = { 1U, 2U };
-	CHECK(telemetry_repository_config_is_bounded(config));
-	config = repository_config();
-	CHECK(telemetry_repository_init(config) == telemetry_repository_outcome::flatfile_disabled);
-	CHECK(telemetry_repository_health_copy().state == telemetry_health_state::disabled);
-	CHECK(telemetry_repository_apply(nullptr, 1).outcome == telemetry_batch_outcome::disabled);
-	telemetry_repository_request_stop();
-	telemetry_repository_shutdown();
-	std::puts("SQL-free repository runtime: PASS");
-}
-#else
 #include <mysql.h>
 #include <new>
 #include <string>
@@ -261,7 +216,6 @@ static void reset_fixture()
 	fault_insert_skips = 0;
 	injected_error = 0;
 	factory_unavailable = false;
-	mode = PERSISTENCE_MODE_MARIADB_PRIMARY;
 	for (const char *table : { "telemetry_interval", "telemetry_session", "telemetry_config",
 				   "telemetry_player_day", "telemetry_cohort_day",
 				   "telemetry_rollup_state", "telemetry_quarantine" })
@@ -1291,14 +1245,8 @@ static void bounds_and_lifecycle_tests()
 	CHECK(query_calls == calls);
 	shutdown_fixture();
 	CHECK(telemetry_repository_health_copy().state == telemetry_health_state::stopped);
-	case_name = "flatfile authority and explicit backend disable never open SQL";
+	case_name = "explicit backend disable never opens SQL";
 	auto factory_before = factory_calls;
-	mode = PERSISTENCE_MODE_FLATFILE_PRIMARY;
-	CHECK(telemetry_repository_init(repository_config()) ==
-	      telemetry_repository_outcome::flatfile_disabled);
-	CHECK(factory_calls == factory_before);
-	shutdown_fixture();
-	mode = PERSISTENCE_MODE_MARIADB_PRIMARY;
 	auto disabled = repository_config();
 	disabled.backend = telemetry_storage_backend::flatfile_disabled;
 	CHECK(telemetry_repository_init(disabled) ==
@@ -1367,4 +1315,3 @@ int main()
 	std::puts("SQL repository runtime: PASS (record kinds 1-8, 10 golden fixtures, and focused "
 		  "failure/isolation regressions)");
 }
-#endif

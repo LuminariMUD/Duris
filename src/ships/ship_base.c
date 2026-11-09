@@ -71,12 +71,6 @@
  * the retry gate and reports whether everything is durable, so copyover can
  * be aborted rather than lose ship state.
  *
- * Two backends sit behind all of that, selected by __NO_MYSQL__: SQL tables,
- * or a validated flat-file record built by the static flat_ship_*() helpers
- * near the top of this file.  Everything crossing that boundary is
- * range-checked on the way in -- see flat_ship_slot_is_loadable() for why
- * slot indices in particular matter.
- *
  * A note on string ownership
  * --------------------------
  * ShipData's strings are str_dup()ed and privately owned, but the HULL
@@ -112,19 +106,6 @@
 #include "sql/sql_player.h"
 #include "redis/redis_ship_legacy.h"
 #include "redis/redis_world_runtime.h"
-#ifdef __NO_MYSQL__
-#include "flatfile/flatfile_identity_adapter.h"
-#include "flatfile/flatfile_ship_repository.h"
-#include "persistence/persistence_mode.h"
-
-#include <cmath>
-#include <limits>
-#include <new>
-#include <string>
-#include <unordered_set>
-#include <utility>
-#include <vector>
-#endif
 
 extern char buf[MAX_STRING_LENGTH];
 extern bool insert_money_pickup(int pid, int money);
@@ -290,268 +271,6 @@ char tmp_str[MAX_STRING_LENGTH];
 int shiperror, davy_jones_locker_rnum, ship_transit_rnum;
 struct ShipFragData shipfrags[20];
 
-#ifdef __NO_MYSQL__
-/*
- * Convert a crew skill to the fixed-point thousandths the flat-file record
- * stores.  Returns false (leaving `*milli` untouched) for a value that is not
- * finite or does not fit an int32, so a corrupt skill cannot be written out.
- */
-static bool flat_ship_skill_milli(float value, int32_t *milli)
-{
-	const double scaled = static_cast<double>(value) * 1000.0;
-	if (!milli || !std::isfinite(scaled) || scaled < std::numeric_limits<int32_t>::min() ||
-	    scaled > std::numeric_limits<int32_t>::max())
-		return false;
-	*milli = static_cast<int32_t>(scaled);
-	return true;
-}
-
-/*
- * Whether a persisted slot record can safely be loaded into a ShipSlot.
- *
- * This is the trust boundary for slot data: it checks the slot index, the
- * mounting position and -- crucially -- that the item index is in range for
- * the slot's OWN type, since ShipSlot::index subscripts a different table
- * (weapon_data, equipment_data, or the commodity names) depending on `type`.
- */
-static bool flat_ship_slot_is_loadable(const flatfile_ship_slot_record &slot)
-{
-	if (slot.slot_index >= MAXSLOTS || slot.position < -1 || slot.position > SLOT_EQUI)
-		return false;
-	switch (slot.slot_type)
-	{
-	case SLOT_EMPTY:
-		return slot.item_index == -1;
-	case SLOT_WEAPON:
-	case SLOT_AMMO:
-		return slot.item_index >= 0 && slot.item_index < MAXWEAPON;
-	case SLOT_CARGO:
-	case SLOT_CONTRABAND:
-		return slot.item_index >= 0 && slot.item_index < NUM_PORTS;
-	case SLOT_EQUIPMENT:
-		return slot.item_index >= 0 && slot.item_index < MAXEQUIPMENT;
-	default:
-		return false;
-	}
-}
-
-/*
- * Resolve an owner name to a player id for records that predate pid storage.
- * Returns false when the name has no identity, leaving `*pid` untouched.
- */
-static bool flat_ship_resolve_legacy_owner(const char *owner_name, uint32_t *pid,
-					   std::string *error)
-{
-	int32_t resolved = 0;
-	if (!pid || !flatfile_player_identity_pid(owner_name, &resolved, error) || resolved <= 0)
-		return false;
-	*pid = static_cast<uint32_t>(resolved);
-	return true;
-}
-
-/*
- * Serialise a live ship into a flat-file record.
- *
- * Validates the runtime fields it is about to persist -- owner, class, race,
- * db id -- and refuses rather than writing a record that could not be loaded
- * back.  `error` receives a reason on failure.
- */
-static bool flat_ship_capture(P_ship ship, flatfile_ship_record *record, std::string *error)
-{
-	if (!ship || !record || !ship->ownername || ship->db_id < -1 || ship->m_class < 0 ||
-	    ship->m_class >= MAXSHIPCLASS || ship->race < std::numeric_limits<int8_t>::min() ||
-	    ship->race > std::numeric_limits<int8_t>::max())
-	{
-		if (error)
-			*error = "ship has invalid runtime fields";
-		return false;
-	}
-	int32_t owner_pid = 0;
-	if (!flatfile_player_identity_pid(ship->ownername, &owner_pid, error) || owner_pid <= 0)
-	{
-		if (error && error->empty())
-			*error = "ship owner identity is unavailable";
-		return false;
-	}
-	flatfile_ship_record captured = {};
-	captured.ship_id = ship->db_id > 0 ? static_cast<uint32_t>(ship->db_id) : 0;
-	captured.owner_pid = static_cast<uint32_t>(owner_pid);
-	captured.owner_name = ship->ownername;
-	captured.ship_name = ship->name ? ship->name : "";
-	captured.ship_class = static_cast<uint8_t>(ship->m_class);
-	captured.frags = ship->frags;
-	captured.anchor_room = ship->anchor;
-	captured.time_played = ship->time;
-	captured.mainsail = ship->mainsail;
-	captured.race = static_cast<int8_t>(ship->race);
-	captured.money = ship->money;
-	captured.flags = static_cast<uint64_t>(ship->flags);
-	for (int index = 0; index < 4; ++index)
-	{
-		captured.armor[index] = ship->armor[index];
-		captured.internal[index] = ship->internal[index];
-	}
-	captured.crew.crew_index = ship->crew.index;
-	if (!flat_ship_skill_milli(ship->crew.sail_skill, &captured.crew.sail_skill_milli) ||
-	    !flat_ship_skill_milli(ship->crew.guns_skill, &captured.crew.guns_skill_milli) ||
-	    !flat_ship_skill_milli(ship->crew.rpar_skill, &captured.crew.repair_skill_milli))
-	{
-		if (error)
-			*error = "ship has invalid crew skill";
-		return false;
-	}
-	captured.crew.sail_chief = ship->crew.sail_chief;
-	captured.crew.guns_chief = ship->crew.guns_chief;
-	captured.crew.repair_chief = ship->crew.rpar_chief;
-	try
-	{
-		captured.slots.resize(MAXSLOTS);
-	}
-	catch (const std::bad_alloc &)
-	{
-		if (error)
-			*error = "could not allocate ship slots";
-		return false;
-	}
-	for (int index = 0; index < MAXSLOTS; ++index)
-	{
-		auto &slot = captured.slots[index];
-		slot.slot_index = static_cast<uint8_t>(index);
-		slot.slot_type = ship->slot[index].type;
-		slot.item_index = ship->slot[index].index;
-		slot.position = ship->slot[index].position;
-		slot.timer = ship->slot[index].timer;
-		slot.values = { ship->slot[index].val0, ship->slot[index].val1,
-				ship->slot[index].val2, ship->slot[index].val3,
-				ship->slot[index].val4 };
-		if (!flat_ship_slot_is_loadable(slot))
-		{
-			if (error)
-				*error = "ship has invalid slot fields";
-			return false;
-		}
-	}
-	*record = std::move(captured);
-	return true;
-}
-
-/*
- * Whether a flat-file ship record is safe to materialise.
- *
- * The load-side counterpart of flat_ship_capture()'s validation: every field
- * that will be used as an array subscript or a table index is range-checked
- * here, so a damaged file is rejected instead of corrupting the world.
- */
-static bool flat_ship_record_is_loadable(const flatfile_ship_record &record, std::string *error)
-{
-	if (record.ship_id > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
-	    record.owner_pid > static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) ||
-	    record.ship_class >= MAXSHIPCLASS || record.race == NPCSHIP ||
-	    real_room(record.anchor_room) == NOWHERE || record.slots.size() > MAXSLOTS)
-	{
-		if (error)
-			*error = "ship catalog contains fields unsupported by the runtime";
-		return false;
-	}
-	for (const auto &slot : record.slots)
-		if (!flat_ship_slot_is_loadable(slot))
-		{
-			if (error)
-				*error = "ship catalog contains invalid slot fields";
-			return false;
-		}
-	int32_t owner_pid = 0;
-	if (!flatfile_player_identity_pid(record.owner_name.c_str(), &owner_pid, error) ||
-	    owner_pid <= 0 || static_cast<uint32_t>(owner_pid) != record.owner_pid)
-	{
-		if (error && error->empty())
-			*error = "ship owner identity does not match the catalog";
-		return false;
-	}
-	return true;
-}
-
-/*
- * Build a live ship from a validated flat-file record and load it into the
- * world.
- *
- * Refuses records that fail flat_ship_record_is_loadable().  `error` receives
- * a reason on failure.  This is the flat-file half of read_ships().
- */
-static bool flat_ship_materialize(const flatfile_ship_record &record, std::string *error)
-{
-	P_ship ship = new_ship(record.ship_class);
-	if (!ship)
-	{
-		if (error)
-			*error = "could not allocate ship runtime state";
-		return false;
-	}
-	ship->db_id = static_cast<int>(record.ship_id);
-	ship->ownername = str_dup(record.owner_name.c_str());
-	CAP(ship->ownername);
-	ship->frags = record.frags;
-	ship->anchor = record.anchor_room;
-	ship->time = record.time_played;
-	ship->mainsail = record.mainsail;
-	ship->race = record.race;
-	ship->money = record.money;
-	ship->flags = static_cast<ulong>(record.flags);
-	for (int index = 0; index < 4; ++index)
-	{
-		ship->armor[index] = record.armor[index];
-		ship->internal[index] = record.internal[index];
-	}
-	ship->crew.index = record.crew.crew_index;
-	ship->crew.sail_skill = record.crew.sail_skill_milli / 1000.0f;
-	ship->crew.guns_skill = record.crew.guns_skill_milli / 1000.0f;
-	ship->crew.rpar_skill = record.crew.repair_skill_milli / 1000.0f;
-	ship->crew.sail_chief = record.crew.sail_chief;
-	ship->crew.guns_chief = record.crew.guns_chief;
-	ship->crew.rpar_chief = record.crew.repair_chief;
-	for (const auto &stored_slot : record.slots)
-	{
-		auto &slot = ship->slot[stored_slot.slot_index];
-		slot.type = stored_slot.slot_type;
-		slot.index = stored_slot.item_index;
-		slot.position = stored_slot.position;
-		slot.timer = stored_slot.timer;
-		slot.val0 = stored_slot.values[0];
-		slot.val1 = stored_slot.values[1];
-		slot.val2 = stored_slot.values[2];
-		slot.val3 = stored_slot.values[3];
-		slot.val4 = stored_slot.values[4];
-	}
-	name_ship(record.ship_name.c_str(), ship);
-	if (!load_ship(ship, real_room(record.anchor_room)))
-	{
-		shipObjHash.erase(ship);
-		delete_ship(ship, true);
-		if (error)
-			*error = "could not place ship in its anchor room";
-		return false;
-	}
-	ship->mainsail = BOUNDED(0, ship->mainsail, SHIP_MAX_SAIL(ship));
-	update_crew(ship);
-	reset_crew_stamina(ship);
-	set_ship_armor(ship, false);
-	update_ship_status(ship);
-	ship->save_pending = false;
-	ship->save_retry_after = 0;
-	ship->save_saved_signature = ship_save_signature(ship);
-	if (ship->crew.sail_skill != record.crew.sail_skill_milli / 1000.0f ||
-	    ship->crew.guns_skill != record.crew.guns_skill_milli / 1000.0f ||
-	    ship->crew.rpar_skill != record.crew.repair_skill_milli / 1000.0f)
-	{
-		// update_crew raises old records to the crew's native minimums. Persist
-		// that materialized state before a prepared trade relies on its preimage.
-		ship->save_saved_signature = 0;
-		queue_ship_save(ship, "normalized loaded crew");
-	}
-	return true;
-}
-#endif
-
 /*
  * Boot the whole ship subsystem.  Called once from the world loader.
  *
@@ -561,8 +280,7 @@ static bool flat_ship_materialize(const flatfile_ship_record &record, std::strin
  * TO_DELETE, and then brings up the cargo market, Cyric's Revenge and the
  * automatons quest.
  *
- * A failed ship load is fatal under the flat-file backend, where the ship
- * file is the sole authority; under MySQL it is logged and boot continues.
+ * A failed ship load is logged and boot continues.
  */
 void initialize_ships()
 {
@@ -574,11 +292,7 @@ void initialize_ships()
 
 	if (!read_ships())
 	{
-#ifdef __NO_MYSQL__
-		fatal_boot_error("ship_base", "flat ship authority could not be loaded");
-#else
 		logit(LOG_FILE, "Error reading ships from file!\r\n");
-#endif
 	}
 
 	ShipVisitor svs;
@@ -616,11 +330,9 @@ void initialize_ships()
  */
 void shutdown_ships()
 {
-#ifndef __NO_MYSQL__
 	// The caller drained the writer. Publish completed proof receipts before
 	// final saves inspect the account fences shared by multiple ships.
 	sql_ship_write_pulse();
-#endif
 	int i;
 	P_char ch, ch_next;
 	P_obj obj, obj_next;
@@ -1245,9 +957,6 @@ void delete_ship(P_ship ship, bool npc)
 		return;
 	}
 
-#ifdef __NO_MYSQL__
-	const bool retrying = !npc && IS_SET(ship->flags, TO_DELETE);
-#endif
 	const auto deferred_customs = ship->flags & CUSTOMS_PENDING;
 	if (!npc)
 		REMOVE_BIT(ship->flags, TO_DELETE | CUSTOMS_PENDING);
@@ -1259,11 +968,6 @@ void delete_ship(P_ship ship, bool npc)
 		ship->save_retry_after = time(nullptr) + 1;
 		shipObjHash.add(ship);
 	};
-
-#ifdef __NO_MYSQL__
-	const uint32_t prior_dirty_ship = ship->save_pending ? static_cast<uint32_t>(ship->db_id) :
-							       0;
-#endif
 
 	std::vector<divine_trade_book> before_proof;
 	if (!npc)
@@ -1278,7 +982,6 @@ void delete_ship(P_ship ship, bool npc)
 
 	if (!npc)
 	{
-#ifndef __NO_MYSQL__
 		if (!sql_delete_ship(ship->ownername, static_cast<uint32_t>(ship->db_id)))
 		{
 			logit(LOG_DEBUG, "Failed to delete ship row for %s; aborting ship removal.",
@@ -1286,78 +989,8 @@ void delete_ship(P_ship ship, bool npc)
 			defer_delete();
 			return;
 		}
-#else
-		if (ship->db_id > 0)
-		{
-			const char *root = persistence_mode_flatfile_root();
-			std::string error;
-
-			std::vector<flatfile_authority_operation> proof;
-			bool encoded = true;
-			for (const auto &book :
-			     divine_trade_runtime_ship_books(static_cast<uint32_t>(ship->db_id)))
-			{
-				flatfile_authority_operation image;
-				image.filename = "divine-trade-" + std::to_string(book.boon_id) +
-						 "-" + std::to_string(book.account) + ".book";
-				if (!divine_trade_book_encode(book, &image.bytes))
-				{
-					encoded = false;
-					break;
-				}
-				proof.push_back(std::move(image));
-			}
-			auto result = root && encoded ?
-					      flatfile_ship_remove(
-						      root, static_cast<uint32_t>(ship->db_id),
-						      ship->ownername, &error, &proof) :
-					      flatfile_ship_result::invalid;
-
-			if (result == flatfile_ship_result::io_error)
-			{
-				// The journal may have committed before the acknowledgement failed.
-				// Recover/read before freeing or exposing this ship's old inventory.
-				std::vector<flatfile_ship_record> persisted;
-				if (flatfile_ship_list(root, &persisted, &error) ==
-					    flatfile_ship_result::ok &&
-				    std::none_of(persisted.begin(), persisted.end(),
-						 [&](const auto &stored) {
-							 return stored.ship_id ==
-								static_cast<uint32_t>(ship->db_id);
-						 }))
-					result = flatfile_ship_result::ok;
-				else
-				{
-					defer_delete();
-					return;
-				}
-			}
-			if (result != flatfile_ship_result::ok &&
-			    result != flatfile_ship_result::unchanged)
-			{
-				logit(LOG_DEBUG,
-				      "Failed to delete flat ship for %s; aborting ship removal: %s",
-				      ship->ownername,
-				      error.empty() ? "authority failure" : error.c_str());
-				if (retrying)
-				{
-					defer_delete();
-					return;
-				}
-				ship->flags |= deferred_customs;
-				divine_trade_runtime_restore_books(std::move(before_proof),
-								   prior_dirty_ship);
-				shipObjHash.add(ship);
-				return;
-			}
-		}
-#endif
 	}
 
-#ifdef __NO_MYSQL__
-	if (!npc)
-		divine_trade_runtime_ship_saved(static_cast<uint32_t>(ship->db_id));
-#endif
 	if (!npc)
 		divine_trade_runtime_ship_deleted(static_cast<uint32_t>(ship->db_id));
 
@@ -3559,7 +3192,6 @@ int write_ship(P_ship ship)
 	if (!SHIP_LOADED(ship))
 		return FALSE;
 
-#ifndef __NO_MYSQL__
 	if (!sql_save_ship(ship))
 	{
 		ship->save_pending = true;
@@ -3571,41 +3203,6 @@ int write_ship(P_ship ship)
 	ship->save_retry_after = 0;
 	ship->save_saved_signature = ship_save_signature(ship);
 	return TRUE;
-#else
-	const char *root = persistence_mode_flatfile_root();
-	std::string error;
-	flatfile_ship_record record;
-	std::vector<flatfile_authority_operation> proof;
-	for (const auto &book : divine_trade_runtime_ship_books(static_cast<uint32_t>(ship->db_id)))
-	{
-		flatfile_authority_operation image;
-		image.filename = "divine-trade-" + std::to_string(book.boon_id) + "-" +
-				 std::to_string(book.account) + ".book";
-		if (!divine_trade_book_encode(book, &image.bytes))
-		{
-			ship->save_pending = true;
-			return FALSE;
-		}
-		proof.push_back(std::move(image));
-	}
-
-	if (!root || !flat_ship_capture(ship, &record, &error) ||
-	    flatfile_ship_upsert(root ? root : "", &record, &error, &proof) !=
-		    flatfile_ship_result::ok)
-	{
-		ship->save_pending = true;
-		ship->save_retry_after = time(NULL) + 1;
-		logit(LOG_FILE, "flat ship save failed for %s; will retry soon: %s",
-		      ship->ownername, error.empty() ? "authority failure" : error.c_str());
-		return FALSE;
-	}
-	ship->db_id = static_cast<int>(record.ship_id);
-	divine_trade_runtime_ship_saved(static_cast<uint32_t>(ship->db_id));
-	ship->save_pending = false;
-	ship->save_retry_after = 0;
-	ship->save_saved_signature = ship_save_signature(ship);
-	return TRUE;
-#endif
 }
 
 /*
@@ -3703,7 +3300,7 @@ bool drain_pending_ship_saves(void)
 /*
  * Load every ship from persistent storage at boot.
  *
- * Dispatches to the SQL or flat-file backend.  Ships that fail validation are
+ * Ships that fail validation are
  * skipped with a log line rather than aborting the load; ships flagged
  * TO_DELETE are loaded and then removed by initialize_ships().
  *
@@ -3711,57 +3308,7 @@ bool drain_pending_ship_saves(void)
  */
 int read_ships()
 {
-#ifndef __NO_MYSQL__
 	return sql_load_all_ships() ? TRUE : FALSE;
-#else
-	const char *root = persistence_mode_flatfile_root();
-	if (!root)
-	{
-		logit(LOG_FILE, "flat ship load failed: state root is unavailable");
-		return FALSE;
-	}
-	std::string error;
-	std::vector<flatfile_ship_record> records;
-	auto result = flatfile_ship_list(root, &records, &error);
-	if (result == flatfile_ship_result::not_found)
-	{
-		result = flatfile_ship_import_legacy(root, "Ships", flat_ship_resolve_legacy_owner,
-						     &error);
-		if (result == flatfile_ship_result::not_found)
-			result = flatfile_ship_establish(root, {}, &error);
-		if (result == flatfile_ship_result::ok ||
-		    result == flatfile_ship_result::already_exists)
-			result = flatfile_ship_list(root, &records, &error);
-	}
-	if (result != flatfile_ship_result::ok)
-	{
-		logit(LOG_FILE, "flat ship load failed: %s",
-		      error.empty() ? "authority failure" : error.c_str());
-		return FALSE;
-	}
-	for (const auto &record : records)
-		if (!flat_ship_record_is_loadable(record, &error))
-		{
-			logit(LOG_FILE, "flat ship load failed for ship %u: %s", record.ship_id,
-			      error.empty() ? "invalid record" : error.c_str());
-			return FALSE;
-		}
-	for (const auto &record : records)
-		if (!flat_ship_materialize(record, &error))
-		{
-			/* A full ship-room pool is not corruption: keep the record and
-			 * place the ship when rooms free up. */
-			if (shiperror == 4)
-			{
-				note_unplaced_ship(record.owner_name.c_str());
-				continue;
-			}
-			logit(LOG_FILE, "flat ship load failed for ship %u: %s", record.ship_id,
-			      error.empty() ? "materialization failure" : error.c_str());
-			return FALSE;
-		}
-	return TRUE;
-#endif
 }
 
 /*
@@ -3789,31 +3336,12 @@ stored_ship_state place_stored_ship(const char *owner)
 {
 	if (get_ship_from_owner(const_cast<char *>(owner)))
 		return stored_ship_state::placed;
-#ifndef __NO_MYSQL__
 	if (!sql_ship_stored(owner))
 		return stored_ship_state::none;
 	bool unplaced = false;
 	if (sql_place_ship(owner, &unplaced))
 		return stored_ship_state::placed;
 	return unplaced ? stored_ship_state::no_room : stored_ship_state::unreadable;
-#else
-	const char *root = persistence_mode_flatfile_root();
-	std::string error;
-	std::vector<flatfile_ship_record> records;
-	if (!root || flatfile_ship_list(root, &records, &error) != flatfile_ship_result::ok)
-		return stored_ship_state::unreadable;
-	for (const auto &record : records)
-	{
-		if (strcasecmp(record.owner_name.c_str(), owner))
-			continue;
-		if (!flat_ship_record_is_loadable(record, &error))
-			return stored_ship_state::unreadable;
-		if (flat_ship_materialize(record, &error))
-			return stored_ship_state::placed;
-		return shiperror == 4 ? stored_ship_state::no_room : stored_ship_state::unreadable;
-	}
-	return stored_ship_state::none;
-#endif
 }
 
 /*
@@ -3969,9 +3497,7 @@ P_ship find_ship_by_database_id(uint32_t id)
 }
 void delete_ship_runtime(const char *owner_name)
 {
-#ifndef __NO_MYSQL__
 	sql_forget_ship(owner_name);
-#endif
 	if (P_ship ship = get_ship_from_owner(const_cast<char *>(owner_name));
 	    ship && ship->db_id > 0)
 		divine_trade_runtime_ship_deleted(ship->db_id);

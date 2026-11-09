@@ -1,6 +1,5 @@
 #include "guild/artifact_population_repository.h"
 
-#ifndef __NO_MYSQL__
 #include "guild/artifact_identity.h"
 #include "core/defines.h"
 #include "economy/collector_codec.h"
@@ -620,4 +619,3 @@ artifact_population_read_sql_payloads(MYSQL *connection,
 	*items = std::move(staged);
 	return 0;
 }
-#endif

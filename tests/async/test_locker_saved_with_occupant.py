@@ -27,7 +27,7 @@ write = body(files, "int writeCharacter(P_char ch, int type, int room)")
 queued = write[write.index("CHAR_RFLAG_NO_DB_BASELINE) && queued_save)"):]
 assert queued.index("player_save_pipeline_request(") < queued.index("locker_post_save_hook(ch);") < \
     queued.index("return queued == player_save_pipeline_result::queued")
-assert write.count("locker_post_save_hook(ch);") == 2
+assert write.count("locker_post_save_hook(ch);") == 1
 assert "(-81)" not in write
 print("[PASS] writeCharacter() runs the locker post-save hook on each of its paths")
 

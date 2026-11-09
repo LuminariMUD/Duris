@@ -11,7 +11,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
 #include "economy/boon_reward_command.h"
-#include "economy/boon_shop_command.h"
 #include "world/zone_touch_command.h"
 #include <cassert>
 
@@ -60,21 +59,6 @@ int main()
     compact[0] = 0;
     assert(!boon_reward_command_decode_result(compact.data(), compact.size(), &decoded_result));
 
-    boon_shop_payload shop = {42, 3};
-    critical_command shop_command = {};
-    assert(boon_shop_command_build(&shop_command, operation, shop));
-    boon_shop_payload decoded_shop = {};
-    assert(boon_shop_command_decode_payload(shop_command, &decoded_shop));
-    assert(decoded_shop.pid == 42 && decoded_shop.stat_index == 3);
-    boon_shop_result shop_result = {42, 3, 61, 4, 9};
-    std::array<uint8_t, BOON_SHOP_RESULT_BYTES> shop_bytes = {};
-    assert(boon_shop_command_encode_result(shop_result, &shop_bytes));
-    boon_shop_result decoded_shop_result = {};
-    assert(boon_shop_command_decode_result(shop_bytes.data(), shop_bytes.size(),
-                                           &decoded_shop_result));
-    assert(decoded_shop_result.stat_value == 61 &&
-           decoded_shop_result.remaining_stat_points == 4);
-
     zone_touch_payload zone = {};
     zone.zone_number = 900;
     zone.toucher_pid = 42;
@@ -112,7 +96,7 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
             subprocess.run([
                 "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", f"-I{SRC}",
                 str(harness), str(SRC / "critical_command.c"),
-                str(SRC / "boon_reward_command.c"), str(SRC / "boon_shop_command.c"),
+                str(SRC / "boon_reward_command.c"),
                 str(SRC / "zone_touch_command.c"), str(SRC / "artifact_guild_command.c"), str(SRC / "epic_command.c"),
                 "-lcrypto", "-o", str(binary),
             ], check=True)
@@ -128,22 +112,18 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
             self.assertNotIn(forbidden, callback)
 
     def test_boon_shop_spends_the_point_before_the_stat_rises(self):
-        # Flat-file submits the purchase; MariaDB spends the point on the writer and
-        # raises the stat in the callback, giving the point back at 100.
+        # The point is spent on the writer and the stat rises in the callback, which
+        # gives the point back at 100.
         source = (SRC / "boon.c").read_text()
         start = source.index("void boon_shop(P_char")
-        end = source.index("struct flat_boon_display_filters", start)
+        end = source.index("\n}\n", start)
         shop = source[start:end]
-        submit = shop.index("boon_shop_transaction_submit")
-        spend = shop.index("UPDATE boons_shop SET stats = stats - 1", submit)
-        self.assertLess(submit, spend)
+        spend = shop.index("UPDATE boons_shop SET stats = stats - 1")
         self.assertIn("stats > 0", shop)
         self.assertIn("mysql_affected_rows(connection) == 1", shop)
         self.assertLess(spend, shop.index("boon_shop_raise_stat(buyer, stat)"))
         self.assertIn("UPDATE boons_shop SET stats = stats + 1", shop)
         self.assertNotIn("qry(", shop)
-        comm = (SRC / "comm.c").read_text()
-        self.assertIn("boon_shop_transaction_handle_completions(completions, count)", comm)
 
     def test_boon_list_escapes_the_author_filter(self):
         # `boon list u <name>` is open to every player; the name reached the query raw,
@@ -191,77 +171,6 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
         self.assertIn("pid,`option`,event_value", boon)
         self.assertIn("verify_boon_reward_zone_schema.sh", runner)
 
-    def test_flat_boon_rewards_replay_before_acknowledgement(self):
-        repository = (SRC / "flatfile_boon_repository.c").read_text()
-        transaction = (SRC / "boon_reward_transaction.c").read_text()
-        nanny = (SRC / "nanny.c").read_text()
-
-        for token in (
-            "flatfile_boon_find_pending_reward",
-            "flatfile_boon_acknowledge_reward",
-            "catalog_legacy_version",
-            "reward_published",
-        ):
-            self.assertIn(token, repository)
-
-        ready_start = transaction.index("void boon_reward_transaction_player_ready")
-        ready_end = transaction.index("critical_outbox_delivery_result", ready_start)
-        ready = transaction[ready_start:ready_end]
-        start = transaction.index("bool publish_reward(")
-        publication = transaction[start:transaction.index("} // namespace", start)]
-        publish = publication.index("boon_publish_transaction_result")
-        retained = publication.index("if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)", publish)
-        self.assertLess(publish, retained)
-        self.assertNotIn("acknowledge_flat_reward", publication)
-        self.assertIn("publish_reward(character, reward.operation_id", ready)
-        self.assertIn("legacy_uncheckpointed", ready)
-        outbox = transaction[transaction.index("boon_reward_transaction_outbox_delivery"):transaction.index("boon_reward_health boon_reward_transaction_health_copy")]
-        self.assertNotIn("persistence_alert(", outbox)
-        self.assertNotIn("wizlog(", outbox)
-        self.assertIn("boon_reward_requires_checkpoint(result)", outbox)
-        self.assertIn("boon_reward_requires_checkpoint(result)", publication)
-        self.assertIn("published_flat.insert(key)", publication)
-        self.assertIn("if (retain)", publication)
-        self.assertIn("flatfile_boon_find_pending_reward", ready)
-
-        self.assertEqual(nanny.count("boon_reward_transaction_player_ready("), 1)
-        self.assertIn("boon_reward_transaction_player_ready(", (SRC / "account.c").read_text())
-
-    def test_flat_boon_query_helpers_route_before_sql(self):
-        # Step 8: MariaDB reads the boons on the writer, so these helpers are flat-file only.
-        boon = (SRC / "boon.c").read_text()
-        for function, flat_token in (
-            ("int is_boon_valid", "flatfile_boon_load_definitions"),
-            ("int count_boons", "flatfile_boon_load_definitions"),
-            ("bool get_boon_data", "flatfile_boon_load_definitions"),
-            ("bool get_boon_shop_data", "flatfile_boon_load_player"),
-        ):
-            start = boon.index(function)
-            next_function = boon.find("\n}\n", start) + 3
-            body = boon[start:next_function]
-            self.assertIn("flat_boon_root", body)
-            self.assertIn(flat_token, body)
-            self.assertNotIn("qry(", body)
-
-    def test_flat_boon_definition_mutations_route_before_sql(self):
-        # Flat-file writes its catalog; MariaDB creates, removes and extends on the writer.
-        boon = (SRC / "boon.c").read_text()
-        for function, flat_token, sql_token in (
-            ("int create_boon", "flatfile_boon_create", "sql_read_work("),
-            ("int remove_boon", "flatfile_boon_deactivate", "sql_queue("),
-        ):
-            start = boon.index(function)
-            next_function = boon.find("\n}\n", start) + 3
-            body = boon[start:next_function]
-            self.assertIn("flat_boon_root", body)
-            self.assertIn(flat_token, body)
-            self.assertIn(sql_token, body)
-            self.assertNotIn("qry(", body)
-        start = boon.index("int extend_boon(")
-        body = boon[start:boon.find("\n}\n", start) + 3]
-        self.assertIn("flatfile_boon_extend", body)
-        self.assertNotIn("qry(", body)
-
     def test_mysql_boon_commands_leave_the_game_loop(self):
         # Step 8: the boon commands read and write the boons on the writer.
         boon = (SRC / "boon.c").read_text()
@@ -275,62 +184,6 @@ class BoonRewardZoneCutoverTests(unittest.TestCase):
                       "boon_notify_snapshot(id, boon.racewar, boon.pid, BN_CREATE)",
                       "BN_EXTEND : BN_REACTIVATE"):
             self.assertIn(token, live)
-
-    def test_flat_boon_maintenance_enumerates_the_catalog(self):
-        boon = (SRC / "boon.c").read_text()
-        start = boon.index("void boon_maintenance()")
-        end = boon.index("void check_boon_completion(", start)
-        maintenance = boon[start:end]
-        self.assertIn("flatfile_boon_load_definitions", maintenance)
-        self.assertIn("definition.active", maintenance)
-        # MariaDB's boon_scan maintenance job expires its boons on the writer.
-        self.assertNotIn("qry(", maintenance)
-
-    def test_flat_boon_display_routes_before_sql_with_all_filters(self):
-        boon = (SRC / "boon.c").read_text()
-        start = boon.index("int boon_display(P_char")
-        end = boon.index("int create_boon(BoonData", start)
-        display = boon[start:end]
-        self.assertLess(display.index("boon_display_flat"), display.index("sql_read_for(ch, dbqry"))
-        for token in (
-            "flat_filters.player_ids",
-            "flat_filters.authors",
-            "flat_filters.types",
-            "flat_filters.options",
-            "flat_filters.active",
-            "flat_filters.inactive",
-            "flat_filters.random",
-            "flat_filters.manual",
-        ):
-            self.assertIn(token, display)
-
-        flat_start = boon.index("static int boon_display_flat")
-        flat_display = boon[flat_start:start]
-        for token in (
-            "flatfile_boon_load_definitions",
-            "boon_like_match",
-            "definition.target_pid",
-            "definition.racewar",
-            "boon_display_row(ch, boon)",
-            "Displaying %d result(s)",
-        ):
-            self.assertIn(token, flat_display)
-        self.assertIn("boon_display_rows(viewer, rows)", display)
-        renderer_start = boon.index("static const char *boon_affect_label")
-        renderer = boon[renderer_start:flat_start]
-        for token in (
-            "boon_type_description",
-            "boon_option_description",
-            "boon_mob_label",
-            "boon_race_label",
-            "nexus_stone_info",
-            "get_building_from_id",
-            "Guildhall::find_by_id",
-            "Invalid Affect",
-            "Invalid Spell",
-            "Invalid Attribute",
-        ):
-            self.assertIn(token, renderer)
 
     def test_account_bound_reward_boundary_remains_covered(self):
         contracts = "\n".join((ROOT / path).read_text() for path in (

@@ -107,12 +107,6 @@
  *                 boot sees either the committed pair or the previous pair;
  *                 a lost acknowledgement never creates an unpaired payment.
  *
- *      flat-file  the guild and realm catalogues are after-images in one
- *                 recovery journal. The journal lands before either image;
- *                 an interruption after one is installed is completed at the
- *                 next authority access. A failed commit marks the realm
- *                 payment_pending for retry.
- *
  *    THE PENDING RULE. A paid mark must never reach disk without its debit,
  *    and kingdom_db_save_realm() is a primitive that cannot enforce that for
  *    itself. Only the composed guild/realm writer publishes a pending record.
@@ -125,10 +119,8 @@
  *    record to disk with its guild when the pair lands. An unguarded writer
  *    would publish the pending realm's paid mark (and any raised
  *    highest_claim) over a treasury that still shows the coin -- the exact
- *    half-state payment_pending exists to prevent. Both backends'
- *    kingdom_db_flush_dirty() skip pending records for the same reason, and
- *    the flat-file realm write is never attempted before the guild's has
- *    succeeded.
+ *    half-state payment_pending exists to prevent. kingdom_db_flush_dirty()
+ *    skips pending records for the same reason.
  *
  *    A DEFAULT (a rung advanced, a ring reverted) moves no coin, so it is
  *    written on its own the moment it is applied, and a failed write leaves
@@ -377,7 +369,7 @@ void kingdom_clear_arrears(kingdom_realm &realm)
  *
  * The debit is IN-MEMORY ONLY: sub_copper() moves the counters and writes the
  * ledger line, but neither it nor sub_money() runs Guild::save()
- * (guild/assocs.c:655) -- the engine's one path, sql and flatfile both, that
+ * (guild/assocs.c:655) -- the engine's one path that
  * writes the counters out. kingdom_persist_payment() writes the guild and the
  * realm together right after the debit; a caller that skipped that would see
  * the payment undone at the next boot. */
@@ -407,9 +399,8 @@ static void hold_payment(kingdom_realm &realm, const char *why)
 	      realm.realm_id, realm.assoc_id, why);
 }
 
-/* Capture the debited guild and realm as one unit. MariaDB true means admitted,
- * not committed: the pending flag lasts until that capture's receipt succeeds.
- * Flat-file true still means the recoverable pair has been committed. */
+/* Capture the debited guild and realm as one unit. True means admitted,
+ * not committed: the pending flag lasts until that capture's receipt succeeds. */
 bool kingdom_persist_payment(Guild *guild, kingdom_realm &realm)
 {
 	if (!guild)
@@ -418,7 +409,6 @@ bool kingdom_persist_payment(Guild *guild, kingdom_realm &realm)
 		return false;
 	}
 
-#ifndef __NO_MYSQL__
 	realm.payment_pending = true;
 	if (!guild->save())
 	{
@@ -426,17 +416,6 @@ bool kingdom_persist_payment(Guild *guild, kingdom_realm &realm)
 		return false;
 	}
 	return true;
-#else
-	if (!guild->save_with_kingdom(realm))
-	{
-		hold_payment(realm, "recoverable guild/realm commit failed");
-		return false;
-	}
-
-	realm.dirty = false;
-	realm.payment_pending = false;
-	return true;
-#endif
 }
 
 /* Pending state belongs to the realm, so erasing it also erases its retry.
@@ -456,16 +435,9 @@ void kingdom_upkeep_retry_pending(void)
 			      realm.realm_id, assoc_id);
 			continue;
 		}
-#ifndef __NO_MYSQL__
 		// Poll first, and never enqueue another copy while the current one waits.
 		if (!guild->save_pending(true) && realm.payment_pending)
 			(void)kingdom_persist_payment(guild, realm);
-#else
-		if (kingdom_persist_payment(guild, realm))
-			logit(LOG_KINGDOM,
-			      "pending payment for realm %d (association %d) is now durable",
-			      realm.realm_id, assoc_id);
-#endif
 	}
 }
 
@@ -576,9 +548,8 @@ void kingdom_upkeep_event(void)
 
 	/* Deposits and the other bookkeeping that only sets `dirty` would
 	 * otherwise sit in memory until the next DUE sweep -- an hour by
-	 * default. Under MariaDB this is one upsert per dirty realm; under the
-	 * flat-file build it is one catalogue rewrite, and only when something
-	 * is dirty. Records held for a pending payment are never written here:
+	 * default. This is one upsert per dirty realm. Records held for a
+	 * pending payment are never written here:
 	 * kingdom_db_flush_dirty() skips them, and this gate keeps the call
 	 * (and its log line) off the routine path when only those are dirty. */
 	if (any_flushable_realm())

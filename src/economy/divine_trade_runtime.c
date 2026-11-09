@@ -14,13 +14,9 @@
 #include "ships/ship_cargo_transaction.h"
 #include "player/player_save_pipeline.h"
 #include "persistence/critical_command_coordinator.h"
-#include "persistence/persistence_mode.h"
-#ifndef __NO_MYSQL__
 #include "sql/sql.h"
 #include "sql/sql_player.h"
 #include "persistence/critical_command_repository.h"
-#endif
-#include "flatfile/flatfile_ship_repository.h"
 #include <cstdlib>
 #include <atomic>
 #include <cerrno>
@@ -105,75 +101,30 @@ try
 	if (pending)
 		return false;
 	std::vector<divine_trade_book> loaded;
-	if (boon_id)
-	{
-		if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-		{
-			const char *root = persistence_mode_flatfile_root();
-			if (!root || !divine_trade_flatfile_books(root, boon_id, &loaded))
-				return false;
-		}
-		else
-		{
-#ifdef __NO_MYSQL__
-			return false;
-#else
-			if (!divine_trade_sql_books(DB, boon_id, &loaded))
-				return false;
-#endif
-		}
-	}
+	if (boon_id && !divine_trade_sql_books(DB, boon_id, &loaded))
+		return false;
 
 	retired_ships.clear();
 	if (!loaded.empty())
 	{
 		std::set<uint32_t> durable_ids;
-		if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-		{
-			std::vector<flatfile_ship_record> ships;
-			std::string error;
-			if (flatfile_ship_list(persistence_mode_flatfile_root(), &ships, &error) !=
-			    flatfile_ship_result::ok)
-				return false;
-			for (const auto &ship : ships)
-				durable_ids.insert(ship.ship_id);
-			uint32_t reserved = 0;
-			for (const auto &book : loaded)
-			{
-				reserved = std::max(reserved, book.first_ship_id);
-				for (const auto &lot : book.lots)
-					reserved = std::max(reserved, lot.ship_id);
-			}
-			const auto held = flatfile_ship_reserve_ids(
-				persistence_mode_flatfile_root(), reserved, &error);
-			if (held != flatfile_ship_result::ok &&
-			    held != flatfile_ship_result::unchanged)
-				return false;
-		}
-		else
-		{
-#ifdef __NO_MYSQL__
+		if (mysql_query(DB, "SELECT id FROM ships"))
 			return false;
-#else
-			if (mysql_query(DB, "SELECT id FROM ships"))
-				return false;
-			MYSQL_RES *rows = mysql_store_result(DB);
-			if (!rows)
-				return false;
-			while (MYSQL_ROW row = mysql_fetch_row(rows))
-				if (row[0])
-					durable_ids.insert(std::strtoul(row[0], nullptr, 10));
-			mysql_free_result(rows);
-			uint32_t reserved = 0;
-			for (const auto &book : loaded)
-			{
-				reserved = std::max(reserved, book.first_ship_id);
-				for (const auto &lot : book.lots)
-					reserved = std::max(reserved, lot.ship_id);
-			}
-			sql_reserve_ship_ids(reserved);
-#endif
+		MYSQL_RES *rows = mysql_store_result(DB);
+		if (!rows)
+			return false;
+		while (MYSQL_ROW row = mysql_fetch_row(rows))
+			if (row[0])
+				durable_ids.insert(std::strtoul(row[0], nullptr, 10));
+		mysql_free_result(rows);
+		uint32_t reserved = 0;
+		for (const auto &book : loaded)
+		{
+			reserved = std::max(reserved, book.first_ship_id);
+			for (const auto &lot : book.lots)
+				reserved = std::max(reserved, lot.ship_id);
 		}
+		sql_reserve_ship_ids(reserved);
 		for (const auto &book : loaded)
 			for (const auto &lot : book.lots)
 				if (!durable_ids.count(lot.ship_id))
@@ -425,31 +376,17 @@ try
 			return;
 		auto recovery = std::make_shared<trade_recovery>();
 		const auto command = pending->command;
-		const bool flat = persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY;
-		const char *configured_root = persistence_mode_flatfile_root();
-		const std::string root = configured_root ? configured_root : "";
 		// State opportunities use owner 1. The one global trade reconciliation uses
 		// owner 2 on the same ordered Divine writer lane, without retaining actors.
 		const auto submitted = persistence_writer_submit(
 			persistence_job_kind::divine_boon, 2, command.payload.size(),
-			[recovery, command, flat, root]
+			[recovery, command]
 			{
 				try
 				{
-					critical_apply_result result;
-					if (flat)
-						result = divine_trade_flatfile_apply(root, command);
-					else
-					{
-#ifdef __NO_MYSQL__
-						result.outcome =
-							critical_apply_outcome::terminal_failure;
-#else
-						result =
-							critical_command_repository_apply_from_pool(
-								command, nullptr);
-#endif
-					}
+					const critical_apply_result result =
+						critical_command_repository_apply_from_pool(
+							command, nullptr);
 					recovery->outcome = result.outcome;
 				}
 				catch (const std::bad_alloc &)

@@ -51,12 +51,11 @@ with tempfile.TemporaryDirectory(prefix="frag-cap-config-", dir=output) as direc
 maintenance = source("maintenance_repository.c").read_text()
 for retired in ("unlock_victim_levels_below", "unlock_minimum_share_points", "killer_allies", "frag_leaderboard", "pkill_info"):
     assert retired not in maintenance
-assert "frag_cap_flatfile_tick" in maintenance and "frag_cap_settle" in maintenance
+assert "frag_cap_settle" in maintenance
 runtime = source("frag_cap_runtime.c").read_text()
 assert "persistence_writer_submit" in runtime and "pending->state.revision > published.revision" in runtime
 comm = source("comm.c").read_text()
 assert "frag_cap_runtime_boot" in comm and "frag_cap_runtime_pulse" in comm
-for producer in ("combat_outcome_repository.c", "flatfile_player_domain_repository.c"):
-    assert "frag_cap_apply_combat" in source(producer).read_text()
+assert "frag_cap_apply_combat" in source("combat_outcome_repository.c").read_text()
 assert "frag_cap_runtime_status" in source("fraglist.c").read_text()
 print("PASS frag-cap configuration: real defaults/overrides/validation, legacy floor, Hardcore bounds and shared wiring")

@@ -61,7 +61,7 @@ struct critical_entity_key
 	uint64_t id;
 };
 
-// The numbers are stored with every command the database or a flat-file record keeps, so a
+// The numbers are stored with every command the database keeps, so a
 // removed type leaves its number unused.
 enum class critical_command_type : uint16_t
 {

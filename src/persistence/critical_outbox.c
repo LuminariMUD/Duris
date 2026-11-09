@@ -573,10 +573,6 @@ void critical_outbox_resume(void)
 
 bool critical_outbox_drain(uint64_t timeout_msec)
 {
-#ifdef __NO_MYSQL__
-	(void)timeout_msec;
-	return true; // This backend intentionally has no SQL outbox worker.
-#else
 	const auto deadline =
 		std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_msec);
 	std::unique_lock<std::mutex> lock(outbox_mutex);
@@ -602,7 +598,6 @@ bool critical_outbox_drain(uint64_t timeout_msec)
 					  std::min(deadline, std::chrono::steady_clock::now() +
 								     std::chrono::milliseconds(5)));
 	}
-#endif
 }
 
 critical_outbox_health critical_outbox_health_copy(void)

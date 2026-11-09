@@ -29,7 +29,6 @@
 #include "economy/currency_transaction.h"
 #include "item/item_movement_transaction.h"
 #include "item/item_ownership_runtime.h"
-#include "persistence/persistence_mode.h"
 #include "player/player_load_items.h"
 #include "player/player_snapshot_codec.h"
 
@@ -442,14 +441,9 @@ bool materialize_purchase(P_char character, const collector_command_result &resu
 	    items[0].vnum != payload.items[0].vnum)
 		return false;
 	const item_owner_identity owner = { item_owner_type::player, payload.actor_pid, 0 };
-	const bool flatfile_primary = persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY;
-	// Flat-file materialization allocates its own snapshot identity.  The
-	// temporary graph identity is deliberately non-SQL, while a SQL result must
-	// carry the actual auto-increment id returned by the repository.  Select by
-	// runtime persistence mode so a client-capable binary cannot accidentally
-	// reject a valid flat-file-primary purchase.
-	const uint32_t database_id = flatfile_primary ? 1 : result.materialized_item_id;
-	if (!flatfile_primary && !database_id)
+	// A SQL result must carry the actual auto-increment id returned by the repository.
+	const uint32_t database_id = result.materialized_item_id;
+	if (!database_id)
 		return false;
 	std::vector<player_load_item_identity> identities = {
 		{ database_id, 0, 1, PLAYER_LOAD_ITEM_OVERRIDE_ALL, result.entry.uid,
@@ -461,16 +455,6 @@ bool materialize_purchase(P_char character, const collector_command_result &resu
 							  result.to_owner_revision, false, true,
 							  &metrics))
 		return false;
-	if (flatfile_primary)
-	{
-		P_obj materialized = find_live_item(result.entry.uid);
-		if (!materialized || !OBJ_CARRIED_BY(materialized, character))
-			return false;
-		// Flat-file player snapshots allocate their own per-snapshot row
-		// identities. Never let this temporary graph identity masquerade as a
-		// SQL row ID.
-		materialized->db_item_id = 0;
-	}
 	return true;
 }
 

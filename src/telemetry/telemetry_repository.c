@@ -15,7 +15,6 @@
 #include "telemetry/telemetry_repository.h"
 #include "telemetry/telemetry_failure.h"
 #include "telemetry/telemetry_schema_private.h"
-#include "persistence/persistence_mode.h"
 #include "sql/sql_telemetry_connection.h"
 
 #include <algorithm>
@@ -33,10 +32,8 @@
 #include <utility>
 #include <vector>
 
-#ifndef __NO_MYSQL__
 #include <openssl/sha.h>
 #include "sql/sql_thread_init.h"
-#endif
 
 namespace
 {
@@ -48,9 +45,7 @@ std::atomic<bool> stop_requested{ false };
 telemetry_repository_config settings{};
 bool initialized = false;
 bool restart_allowed = false; // guarded by health_mutex
-#ifndef __NO_MYSQL__
 bool freshness_verified = false; // survives connection reconnects; reset after join
-#endif
 
 void saturating_add(std::uint64_t &value, std::uint64_t amount)
 {
@@ -64,7 +59,6 @@ telemetry_monotonic_usec now_usec()
 		.count();
 }
 
-#ifndef __NO_MYSQL__
 struct mysql_thread_guard
 {
 	bool ready = false;
@@ -1172,8 +1166,6 @@ void batch_failure(telemetry_apply_batch_result &result, const telemetry_record 
 	}
 }
 
-#endif
-
 [[maybe_unused]] void publish(const telemetry_apply_batch_result &result)
 {
 	std::lock_guard<std::mutex> lock(health_mutex);
@@ -1193,7 +1185,6 @@ void batch_failure(telemetry_apply_batch_result &result, const telemetry_record 
 					       result.quarantined_count ?
 				       telemetry_health_state::degraded :
 				       telemetry_health_state::healthy;
-#ifndef __NO_MYSQL__
 		if (result.quarantined_count != 0U && result.input_count != 0U)
 		{
 			health.last_failure_producer = pending[0].header.key.producer;
@@ -1207,7 +1198,6 @@ void batch_failure(telemetry_apply_batch_result &result, const telemetry_record 
 						1U
 					} << static_cast<std::uint8_t>(pending[index].header.kind);
 		}
-#endif
 	}
 	else
 	{
@@ -1221,7 +1211,6 @@ void batch_failure(telemetry_apply_batch_result &result, const telemetry_record 
 			saturating_add(health.retryable_failures, 1);
 		if (result.outcome == telemetry_batch_outcome::permanent_failure)
 			saturating_add(health.circuit_open_count, 1);
-#ifndef __NO_MYSQL__
 		if (result.input_count != 0U)
 		{
 			health.last_failure_producer = pending[0].header.key.producer;
@@ -1233,7 +1222,6 @@ void batch_failure(telemetry_apply_batch_result &result, const telemetry_record 
 					std::uint64_t{ 1U }
 					<< static_cast<std::uint8_t>(pending[index].header.kind);
 		}
-#endif
 	}
 	if (stop_requested.load())
 		health.state = telemetry_health_state::stopping;
@@ -1264,12 +1252,7 @@ telemetry_repository_outcome telemetry_repository_init(telemetry_repository_conf
 		health.backend = config.backend;
 		health.state = telemetry_health_state::starting;
 	}
-#ifdef __NO_MYSQL__
-	const bool disabled = true;
-#else
-	const bool disabled = config.backend == telemetry_storage_backend::flatfile_disabled ||
-			      persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY;
-#endif
+	const bool disabled = config.backend == telemetry_storage_backend::flatfile_disabled;
 	if (disabled)
 	{
 		std::lock_guard<std::mutex> lock(health_mutex);
@@ -1283,7 +1266,6 @@ telemetry_repository_outcome telemetry_repository_init(telemetry_repository_conf
 		health.disabled_reason = telemetry_disabled_reason::flatfile_authority;
 		return telemetry_repository_outcome::flatfile_disabled;
 	}
-#ifndef __NO_MYSQL__
 	mysql_thread_guard thread;
 	const bool opened = thread.ready && open_connection();
 	bool usable = opened;
@@ -1326,7 +1308,6 @@ telemetry_repository_outcome telemetry_repository_init(telemetry_repository_conf
 	       telemetry_failure_is_permanent(init_failure_class) ?
 			telemetry_repository_outcome::permanent_failure :
 			telemetry_repository_outcome::unavailable;
-#endif
 }
 
 telemetry_apply_batch_result telemetry_repository_apply(const telemetry_record *records,
@@ -1334,12 +1315,6 @@ telemetry_apply_batch_result telemetry_repository_apply(const telemetry_record *
 {
 	telemetry_apply_batch_result result{};
 	result.outcome = telemetry_batch_outcome::unavailable;
-#ifdef __NO_MYSQL__
-	(void)records;
-	(void)count;
-	result.outcome = telemetry_batch_outcome::disabled;
-	return result;
-#else
 	if (telemetry_repository_health_copy().state == telemetry_health_state::disabled)
 	{
 		result.outcome = telemetry_batch_outcome::disabled;
@@ -1481,7 +1456,6 @@ telemetry_apply_batch_result telemetry_repository_apply(const telemetry_record *
 	}
 	publish(result);
 	return result;
-#endif
 }
 
 telemetry_health_snapshot telemetry_repository_health_copy(void)
@@ -1504,13 +1478,11 @@ telemetry_repository_outcome telemetry_repository_request_stop(void)
 void telemetry_repository_shutdown(void)
 {
 	// Caller owns and has joined the sole SQL worker before entering here.
-#ifndef __NO_MYSQL__
 	mysql_thread_guard thread;
 	disconnect();
 	pending_count = 0;
 	pending = {};
 	freshness_verified = false;
-#endif
 	initialized = false;
 	stop_requested.store(true);
 	std::lock_guard<std::mutex> lock(health_mutex);

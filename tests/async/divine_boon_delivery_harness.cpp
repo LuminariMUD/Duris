@@ -17,7 +17,6 @@
 #include "world/epic_bonus.h"
 #include "economy/nexus_stones.h"
 #include "player/player_save_pipeline.h"
-#include "economy/shop_trade_transaction.h"
 #include "player/player_snapshot_capture.h"
 #include "item/storage_lockers.h"
 #include "persistence/persistence_observability.h"

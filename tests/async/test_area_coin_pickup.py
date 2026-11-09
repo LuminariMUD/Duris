@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Pick up the library's hidden, area-authored money through the real server.
 
-Uses only temporary world/player data and loopback listeners. --server accepts
-an already built flat-file server; otherwise build with the shared test helper.
+Uses only temporary world/player data, a disposable MariaDB schema and loopback
+listeners. --server names an already built server.
 """
 
 import argparse
-import os
 from pathlib import Path
 import re
 import signal
@@ -15,19 +14,15 @@ import tempfile
 import time
 
 from test_flatfile_combat_journey import (
-    CHARACTER, ROOT, INSPECTOR, MudClient, available_ports, build_flatfile_server,
-    create_character, generate_certificate, inspect_authority, make_fixture,
-    require, runtime_logs,
+    CHARACTER, ROOT, MudClient, available_ports, create_character, generate_certificate,
+    inspect_authority, make_fixture, mariadb_authority, require, runtime_logs,
 )
 
 
 def run(binary: Path, command: str) -> None:
-    with tempfile.TemporaryDirectory(prefix="duris-area-coins-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="duris-area-coins-") as temporary, \
+            mariadb_authority() as (env, sql):
         root = Path(temporary)
-        state = root / "state"
-        state.mkdir(mode=0o700)
-        (state / "domains").mkdir(mode=0o700)
-        subprocess.run([str(INSPECTOR), str(state), "seed-combat"], check=True)
         (root / "logs/log").mkdir(parents=True)
         (root / "logs/log/.gitignore").write_text("*\n!.gitignore\n")
         make_fixture(root)
@@ -48,18 +43,8 @@ def run(binary: Path, command: str) -> None:
         generate_certificate(root)
         (root / "journals" / "critical").mkdir(parents=True, mode=0o700)
         port, tls, websocket = available_ports()
-        env = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "ENVIRONMENT": "local", "PERSISTENCE_MODE": "flatfile-primary",
-            "FLATFILE_STATE_DIR": str(state),
-            "CRITICAL_COMMAND_JOURNAL_DIR": str(root / "journals/critical"),
-            "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls),
-            "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_WEBSOCKET_PORT": str(websocket),
-            "REDIS": "FALSE", "CHAOS_MUD": "FALSE",
-        }
-        if "LD_LIBRARY_PATH" in os.environ:
-            env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+        env.update(CRITICAL_COMMAND_JOURNAL_DIR=str(root / "journals/critical"),
+                   DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket))
         output_path = root / "server.out"
         with output_path.open("w") as output:
             process = subprocess.Popen(
@@ -95,14 +80,14 @@ def run(binary: Path, command: str) -> None:
                     raise AssertionError("could not discover the hidden fixture coins")
                 client.send("look in statue")
                 client.expect("a small pile of hidden coins", timeout=20)
-                require(inspect_authority(state)["wallet"] == [0, 0, 0, 0],
+                require(inspect_authority(sql)["wallet"] == [0, 0, 0, 0],
                         "fixture started with money")
                 client.send(command)
                 client.expect("You get", timeout=30)
                 # The coins reach the wallet in memory; the save writes it.
                 client.send("save")
                 client.expect(f"Saving {CHARACTER}.", timeout=15)
-                authority = inspect_authority(state)
+                authority = inspect_authority(sql)
                 require(authority["wallet"] == [0, 0, 0, 10],
                         "area coin pickup did not durably credit ten platinum")
                 require(not any(item["vnum"] == 22802 for item in authority["room_items"]),
@@ -114,7 +99,7 @@ def run(binary: Path, command: str) -> None:
                 client.expect("does not contain the coins.", timeout=20)
                 client.send("save")
                 client.expect(f"Saving {CHARACTER}.", timeout=15)
-                require(inspect_authority(state)["wallet"] == [0, 0, 0, 10],
+                require(inspect_authority(sql)["wallet"] == [0, 0, 0, 10],
                         "repeated pickup duplicated area money")
                 process.send_signal(signal.SIGTERM)
                 process.wait(timeout=30)
@@ -139,11 +124,7 @@ def run(binary: Path, command: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--server", type=Path)
-    args = parser.parse_args()
-    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                    "--build-inspector", str(INSPECTOR)], cwd=ROOT, check=True, timeout=180)
-    with tempfile.TemporaryDirectory(prefix="area-coin-build-", dir=ROOT / "bin/tests") as build:
-        binary = args.server.resolve() if args.server else build_flatfile_server(Path(build))
-        for command in ("get coins statue", "get all.coins statue", "take all statue"):
-            run(binary, command)
+    parser.add_argument("--server", type=Path, required=True)
+    binary = parser.parse_args().server.resolve()
+    for command in ("get coins statue", "get all.coins statue", "take all statue"):
+        run(binary, command)

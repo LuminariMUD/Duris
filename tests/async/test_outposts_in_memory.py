@@ -5,8 +5,8 @@ Every outpost read (the owner, hit points, golems, archers, the outpost list) se
 three rows on the game loop, and every change (a new owner, hit points after a fight or a
 repair, the portal, golems, archers, the meurtriere, a reset, test clearoutposts) updated
 them there. Only the game writes the outposts, so they are read at boot and kept in
-memory, and each change updates memory once its write is queued on the writer. Both
-backends now change a record the same way: load it, change it, save it.
+memory, and each change updates memory once its write is queued on the writer. A change
+loads the record, changes it, and saves it.
 """
 from pathlib import Path
 import re
@@ -19,13 +19,11 @@ code = strip_comments(text)
 QUERY = re.compile(r"\b(qry|db_query|mysql_query|mysql_store_result)\s*\(")
 
 load = function_bodies(text, r"\bbool\s+load_outpost_records\s*\(")[0]
-mariadb = load[load.index("#else"):]
+mariadb = load
 boot = mariadb[mariadb.index("if (establish)"):mariadb.index("*records = stored_outposts;")]
 assert QUERY.search(boot) and not QUERY.search(mariadb.replace(boot, "")), mariadb
 
-saves = function_bodies(text, r"\bbool\s+save_outpost_record\s*\(")
-assert len(saves) == 2, "each backend has its save"
-queued = saves[1]
+queued = function_bodies(text, r"\bbool\s+save_outpost_record\s*\(")[0]
 assert queued.index("sql_queue(") < queued.index("stored = record;"), queued
 
 # Outside the boot read, nothing queries.

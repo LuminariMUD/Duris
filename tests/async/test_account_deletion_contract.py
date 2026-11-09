@@ -10,9 +10,6 @@ SQL_PLAYER = (SRC / "sql_player.c").read_text(encoding="utf-8", errors="replace"
 ITEM_REPOSITORY = (SRC / "item_transfer_repository.c").read_text(
     encoding="utf-8", errors="replace"
 )
-FLAT_DELETE = (SRC / "flatfile_account_delete.c").read_text(
-    encoding="utf-8", errors="replace"
-)
 GUILD = (SRC / "assocs.c").read_text(encoding="utf-8", errors="replace")
 SHIP = (SRC / "ship_base.c").read_text(encoding="utf-8", errors="replace")
 
@@ -35,14 +32,8 @@ password = function_body(ACCOUNT, "void get_account_password(")
 password_completion = function_body(ACCOUNT, "static void finish_account_password(")
 begin_delete = function_body(ACCOUNT, "void delete_account(")
 confirm_delete = function_body(ACCOUNT, "void verify_delete_account(")
-drain_guard = ACCOUNT[
-    ACCOUNT.index("class account_deletion_drain_guard") : ACCOUNT.index(
-        "void remove_deleted_account_characters"
-    )
-]
 sql_delete = function_body(SQL_PLAYER, "bool sql_delete_account(const char *name", last=True)
 finish_delete = function_body(ACCOUNT, "static void finish_account_deletion(")
-flat_delete = function_body(FLAT_DELETE, "flatfile_account_delete_result flatfile_account_delete(")
 guild_forget = function_body(GUILD, "void forget_deleted_guild_member(")
 ship_runtime_remove = function_body(SHIP, "void delete_ship_runtime(")
 destroy_item_owners = function_body(
@@ -75,23 +66,6 @@ assert password_completion.index("if (!password_valid)") < password_completion.i
 )
 assert "account_deletion_locker_runtime_active(account_name, identities)" in confirm_delete
 
-# Every asynchronous writer that can republish live account/character state is drained.
-for call in (
-    "maintenance_scheduler_quiesce()",
-    "critical_command_coordinator_quiesce()",
-    "critical_outbox_quiesce()",
-    "persistence_flush_all_character_saves()",
-    "player_save_pipeline_quiesce()",
-    "player_save_pipeline_drain(3000)",
-    "locker_async_drain(3000)",
-    "artifact_save_drain(3000)",
-):
-    assert call in drain_guard
-assert "drain_pending_ship_saves()" in confirm_delete
-assert confirm_delete.index("account_deletion_drain_guard drain_guard") > confirm_delete.index("#else")
-flat_completion = confirm_delete[confirm_delete.index("#else"):]
-assert flat_completion.index("artifacts_forget_deleted_account_character(identity.pid)") < flat_completion.index("remove_deleted_account_characters(d, identities)")
-
 runtime_remove = function_body(ACCOUNT, "void remove_deleted_account_characters(")
 detach_character = runtime_remove.index("character->desc = NULL")
 detach_descriptor = runtime_remove.index("character_desc->character = NULL")
@@ -109,22 +83,11 @@ assert contains(runtime_forget, "redis_invalidate_ship_snapshot(identity.name.c_
 assert contains(runtime_forget, "forget_deleted_guild_member(identity.name.c_str())")
 assert contains(runtime_forget, "delete_ship_runtime(identity.name.c_str())")
 assert "delete_ship_by_owner(owner_name, false)" in ship_runtime_remove
-assert "P_member *link = &guild->members" in guild_forget
-assert "flatfile_association_list(root, &records, &error)" in guild_forget
-assert "guild->frags.frags = durable->frags" in guild_forget
-assert "guild->save()" not in guild_forget
 # On MariaDB the member leaves its guild as the deletion's statements did, and the guild is
 # saved again: a save queued while the deletion ran still held the member.
-mariadb_forget = guild_forget[guild_forget.index("#ifndef __NO_MYSQL__") : guild_forget.index("#else")]
-assert "guild->forget_deleted_member(character_name, 0);" in mariadb_forget
+assert "guild->forget_deleted_member(character_name, 0);" in guild_forget
 member_forget = function_body(GUILD, "void Guild::forget_deleted_member(")
-saved = member_forget[member_forget.index("#ifndef __NO_MYSQL__") :]
-assert "\tsave();\n#endif" in saved
-
-# Compile-time backend selection prevents an accidental dual-authority delete.
-assert "#ifndef __NO_MYSQL__" in confirm_delete
-assert "#else" in confirm_delete
-assert "flatfile_account_delete(" in confirm_delete
+assert "\tsave();\n}" in member_forget
 
 # MariaDB deletes on the persistence writer, one job and so one transaction, behind the
 # account's queued saves: it locks the fence, removes the credential last, reconciles
@@ -163,7 +126,7 @@ assert sql_delete.index("UPDATE guilds g JOIN guild_members gm") < sql_delete.in
 
 # The account's characters leave the game before the deletion is queued, so no save of
 # theirs lands after it; the session waits for the reply with its input held.
-mariadb = confirm_delete[confirm_delete.index("#ifndef __NO_MYSQL__") : confirm_delete.index("#else")]
+mariadb = confirm_delete
 assert mariadb.index("remove_deleted_account_characters(d, identities)") < mariadb.index(
     "sql_delete_account("
 )
@@ -179,17 +142,6 @@ assert mariadb.index("wait_for_writer(d)") < mariadb.index("sql_delete_account("
 assert "writer_replied(id)" in mariadb
 assert "finish_account_deletion(" in mariadb
 assert "drain_guard" not in mariadb
-
-# Flat-file deletion tombstones every character first, then publishes identity and
-# credential removal through the recoverable authority journal, credential last.
-character_remove = flat_delete.index("flatfile_character_delete(")
-identity_remove = flat_delete.index("flatfile_identity_prepare_sync_account(")
-credential_prepare = flat_delete.index("flatfile_account_prepare_remove(")
-authority_commit = flat_delete.index("flatfile_authority_transaction_commit_operations(")
-credential_check = flat_delete.rindex("flatfile_account_exists(")
-identity_check = flat_delete.rindex("flatfile_identity_list_account(")
-assert character_remove < identity_remove < credential_prepare < authority_commit
-assert authority_commit < credential_check < identity_check
 
 # Success destroys the live session credential and closes the connection; failure keeps
 # the fence for a retry.

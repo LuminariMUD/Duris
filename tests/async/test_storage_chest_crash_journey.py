@@ -24,10 +24,6 @@ POTION = "a thick cyan potion"
 
 
 def run(binary, backend):
-    if backend == "flatfile":
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True,
-                       timeout=300)
     with tempfile.TemporaryDirectory(prefix="chest-crash-", dir=ROOT / "bin/tests") as temporary:
         runtime = Path(temporary)
         (runtime / "logs/log").mkdir(parents=True)

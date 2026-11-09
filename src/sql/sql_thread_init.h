@@ -29,8 +29,6 @@
  * their own handling of a genuine per-thread failure.
  */
 
-#ifndef __NO_MYSQL__
-
 #include <mutex>
 
 #include <mysql/mysql.h>
@@ -50,14 +48,5 @@ inline int sql_worker_thread_init()
 		return 1;
 	return mysql_thread_init();
 }
-
-#else
-
-inline int sql_worker_thread_init()
-{
-	return 0;
-}
-
-#endif
 
 #endif

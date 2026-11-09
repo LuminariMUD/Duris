@@ -47,7 +47,6 @@
 #include "world/map.h"
 #include "core/mm.h"
 #include "item/objmisc.h"
-#include "persistence/persistence_mode.h"
 #include "redis/redis_presence_runtime.h"
 #include "redis/redis_floor_runtime.h"
 #include "player/player_save_pipeline.h"
@@ -4637,11 +4636,6 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 	const bool pwipe = !str_cmp(arg, "pwipe");
 	if (pwipe)
 	{
-		if (!persistence_mode_requires_mysql())
-		{
-			send_to_char("Pwipe is unavailable in flatfile-primary mode.\r\n", ch);
-			return;
-		}
 		if (GET_LEVEL(ch) < OVERLORD)
 		{
 			send_to_char(
@@ -11667,7 +11661,6 @@ void which_stat(P_char ch, char *argument)
 // The names that logged in from the address (% as a wildcard), read on the writer.
 void whois_ip(P_char ch, char *ip_address)
 {
-#ifndef __NO_MYSQL__
 	const std::string address = ip_address;
 	sql_read_for(
 		ch,
@@ -11701,10 +11694,6 @@ void whois_ip(P_char ch, char *ip_address)
 			}
 			send_to_char(".\n", live);
 		});
-#else
-	(void)ip_address;
-	send_to_char("This command requires MySQL support which is not compiled in.\n", ch);
-#endif
 }
 
 void do_whois(P_char ch, char *arg, int /*cmd*/)
@@ -11738,13 +11727,10 @@ void do_whois(P_char ch, char *arg, int /*cmd*/)
 			send_to_char("Please enter a valid ip address.\n", ch);
 			return;
 		}
-#ifndef __NO_MYSQL__
 		send_to_char_f(ch, "&=LWIP Address: '%s'&N\n", ip_address);
-#endif
 		whois_ip(ch, ip_address);
 		return;
 	}
-#ifndef __NO_MYSQL__
 	const int pid = get_player_pid_from_name(name);
 	if (pid < 1)
 	{
@@ -11795,9 +11781,6 @@ void do_whois(P_char ch, char *arg, int /*cmd*/)
 			send_to_char_f(live, "&=LWIP Address: '%s'&N\n", last.c_str());
 			whois_ip(live, last.data());
 		});
-#else
-	send_to_char("This command requires MySQL support which is not compiled in.\n", ch);
-#endif
 }
 
 char *food_modifiers(P_obj food)

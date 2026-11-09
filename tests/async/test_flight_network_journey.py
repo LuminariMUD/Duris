@@ -17,7 +17,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import uuid
 
 import test_flatfile_combat_journey as journey
 from run_world_quest_dual_backend import setup_run_root
@@ -46,38 +45,18 @@ MASK = sum(1 << (mob - 47015) for mob, _, _ in STOPS)
 
 @contextmanager
 def authority(backend, runtime):
-    env = dict(PATH=os.environ.get('PATH', '/usr/bin:/bin'), ENVIRONMENT='local',
-               REDIS='FALSE', CHAOS_MUD='FALSE', LISTEN_ADDRESS='127.0.0.1',
-               DURIS_WEBSOCKET_LISTEN_ADDRESS='127.0.0.1')
-    if 'LD_LIBRARY_PATH' in os.environ:
-        env['LD_LIBRARY_PATH'] = os.environ['LD_LIBRARY_PATH']
     if backend == 'flatfile':
+        env = dict(PATH=os.environ.get('PATH', '/usr/bin:/bin'), ENVIRONMENT='local',
+                   REDIS='FALSE', CHAOS_MUD='FALSE', LISTEN_ADDRESS='127.0.0.1',
+                   DURIS_WEBSOCKET_LISTEN_ADDRESS='127.0.0.1')
+        if 'LD_LIBRARY_PATH' in os.environ:
+            env['LD_LIBRARY_PATH'] = os.environ['LD_LIBRARY_PATH']
         state = runtime / 'state'
         state.mkdir(mode=0o700)
         env.update(PERSISTENCE_MODE='flatfile-primary', FLATFILE_STATE_DIR=str(state))
         yield env, None
         return
-    host = os.environ['TEST_DB_HOST']
-    assert host in ('127.0.0.1', 'localhost'), 'use a disposable loopback database'
-    database = 'flight_journey_' + uuid.uuid4().hex[:12]
-    env.update(PERSISTENCE_MODE='mariadb-primary', DB_TLS='FALSE', DB_HOST=host,
-               DB_PORT=os.environ.get('TEST_DB_PORT', '3306'), DB_NAME=database,
-               DB_USER=os.environ['TEST_DB_USER'], DB_PASSWD=os.environ['TEST_DB_PASSWORD'],
-               DB_ALLOWED_TARGETS=host + '/' + database, MYSQL_PWD=os.environ['TEST_DB_PASSWORD'])
-    mysql = ['mysql', '--protocol=tcp', '-h', host, '-P', env['DB_PORT'], '-u', env['DB_USER'], '-N', '-B']
-    mysql.append('--ssl-mode=DISABLED' if '--ssl-mode' in subprocess.check_output(
-        ['mysql', '--help'], text=True, stderr=subprocess.STDOUT) else '--skip-ssl')
-
-    def sql(statement, selected=True):
-        return subprocess.check_output(mysql + ([database] if selected else []),
-                                       input=statement, text=True, env=env).strip()
-
-    sql('CREATE DATABASE ' + database + ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', False)
-    try:
-        sql((ROOT / 'migrations/bootstrap_multithread_safe.sql').read_text())
-        for step in (('adopt', '--kind', 'fresh_bootstrap'), ('run',)):
-            subprocess.run(['python3', 'scripts/migration_runner.py', *step], cwd=ROOT,
-                           env=env, check=True, capture_output=True)
+    with journey.mariadb_authority() as (env, sql):
         # The maintained importer reads only the copied fixture sources and explicit test DB.
         (runtime / 'scripts').mkdir()
         importer = runtime / 'scripts/import_help_to_prod.sh'
@@ -86,8 +65,6 @@ def authority(backend, runtime):
                                   text=True, env=env, capture_output=True, timeout=90)
         assert imported.returncode == 0, imported.stdout[-4000:] + imported.stderr[-4000:]
         yield env, sql
-    finally:
-        sql('DROP DATABASE ' + database, False)
 
 
 def command(client, text, timeout=20):
@@ -103,9 +80,6 @@ def command(client, text, timeout=20):
 
 def run(binary, backend, interruptions_only=False, reconnect_only=False, skip_interruptions=False):
     inspector = journey.INSPECTOR
-    if backend == 'flatfile':
-        subprocess.run(['python3', 'tests/async/test_flatfile_player_repository.py',
-                        '--build-inspector', str(inspector)], cwd=ROOT, check=True, timeout=300)
     with tempfile.TemporaryDirectory(prefix='flight-' + backend + '-', dir=ROOT / 'bin/tests') as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)

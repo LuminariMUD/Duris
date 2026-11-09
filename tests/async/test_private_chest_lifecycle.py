@@ -51,11 +51,7 @@ static room_data rooms[2];
 P_room world = rooms;
 extern const int top_of_world = 1;
 static bool manager;
-static bool flat_backend;
 MYSQL *DB = reinterpret_cast<MYSQL *>(1);
-persistence_mode persistence_mode_get() {
-    return flat_backend ? PERSISTENCE_MODE_FLATFILE_PRIMARY : PERSISTENCE_MODE_MARIADB_PRIMARY;
-}
 static uint64_t next_uid = 1;
 static password_completion completion;
 static std::function<void(P_char, const sql_rows &)> log_completion;
@@ -175,14 +171,8 @@ static void run(const std::string &mode) {
     }
     if (mode.starts_with("log")) {
         manager = true;
-        flat_backend = mode == "log-flatfile";
         char no_arg[] = "";
         assert(locker_logcmd(&actor, no_arg));
-        if (flat_backend) {
-            assert(!log_completion);
-            assert(feedback.find("require SQL storage") != std::string::npos);
-            return;
-        }
         assert(log_completion);
         if (mode == "log-role-revoked") manager = false;
         else if (mode == "log-visit-replaced") ++locker_char.runtime_id;
@@ -197,14 +187,13 @@ static void run(const std::string &mode) {
     }
     if (mode == "manager" || mode == "role-revoked" || mode == "open-admission-failed") manager = true;
     if (mode == "open-admission-failed" || mode == "failed-open-admission-failed") admit_log = false;
-    if (mode == "flatfile" || mode == "sql-unavailable") {
-        flat_backend = mode == "flatfile";
-        if (!flat_backend) DB = nullptr;
+    if (mode == "sql-unavailable") {
+        DB = nullptr;
         char unavailable[] = "vault correct";
         assert(locker_opencmd(&actor, unavailable));
         assert(!completion && events.empty());
         assert(locker.GetCurrentChestId() == 0);
-        assert(feedback.find(flat_backend ? "require SQL storage" : "temporarily unavailable") != std::string::npos);
+        assert(feedback.find("temporarily unavailable") != std::string::npos);
         return;
     }
     if (mode == "missing" || mode == "overlength" || mode == "failed-open-admission-failed") {
@@ -348,9 +337,9 @@ with tempfile.TemporaryDirectory(prefix="private-chest-lifecycle-", dir=build) a
     for case in ("rehash", "rehash-failed", "rehash-stale", "open", "wrong", "missing", "overlength", "open-admission-failed",
                  "failed-open-admission-failed", "close-admission-failed", "changed-hash", "close-pending", "superseded-open", "recreated",
                  "stale-user", "close", "close-door", "disconnect", "select-other",
-                 "manager", "role-revoked", "flatfile", "sql-unavailable",
+                 "manager", "role-revoked", "sql-unavailable",
                  "log", "log-role-revoked", "log-visit-replaced", "log-other-user",
-                 "log-departed", "log-flatfile", "furniture", "not-locker"):
+                 "log-departed", "furniture", "not-locker"):
         result = subprocess.run([str(binary), case],
                                 env={**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1"})
         if result.returncode:

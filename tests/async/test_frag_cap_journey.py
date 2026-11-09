@@ -29,9 +29,9 @@ def build_fixture(binary):
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Isrc", "-I/usr/include/mysql",
         "tests/async/frag_cap_journey_fixture.cpp", "src/combat/frag_cap.c", "src/combat/frag_cap_repository.c",
-        "src/flatfile/flatfile_identity_repository.c", "src/flatfile/flatfile_player_snapshot_file.c",
-        "src/player/player_snapshot_codec.c", "src/flatfile/flatfile_authority_transaction.c",
-        "src/flatfile/flatfile_store.c", "src/persistence/critical_command.c",
+        "src/persistence/critical_command.c",
+        "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
+        "tests/async/harness_stubs.cpp",
         "-lcrypto", "-lmysqlclient", "-pthread", "-o", str(binary),
     ], cwd=ROOT, check=True)
 
@@ -39,7 +39,8 @@ def build_fixture(binary):
 def run(backend, binary):
     output_root = ROOT / "bin/tests"
     output_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="frag-cap-journey-", dir=output_root) as temporary:
+    # Keep Redis's Unix socket below its path limit in long checkout paths.
+    with tempfile.TemporaryDirectory(prefix="frag-cap-journey-") as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)
         (runtime / "help").symlink_to(ROOT / "help", target_is_directory=True)
@@ -253,14 +254,7 @@ def run(backend, binary):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--backend", choices=("flatfile", "mariadb"), default="flatfile")
-    parser.add_argument("--server", type=Path)
+    parser.add_argument("--backend", choices=("mariadb",), default="mariadb")
+    parser.add_argument("--server", type=Path, required=True)
     args = parser.parse_args()
-    (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="frag-cap-build-", dir=ROOT / "bin/tests") as temporary:
-        if args.server:
-            binary = args.server.resolve()
-        else:
-            assert args.backend == "flatfile", "pass a MariaDB binary with --server"
-            binary = journey.build_flatfile_server(Path(temporary))
-        run(args.backend, binary)
+    run(args.backend, args.server.resolve())

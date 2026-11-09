@@ -353,8 +353,8 @@ bool valid_trade_tag(const player_snapshot &snapshot)
 
 bool valid_metadata(const player_snapshot &snapshot)
 {
-	// This tag is a SQL transaction input, not part of the persisted flat-file
-	// snapshot codec. Never silently encode an after-image without its history.
+	// This tag is a SQL transaction input, not part of the persisted snapshot
+	// codec. Never silently encode an after-image without its history.
 	if (snapshot.pending_world_quest.present || !valid_trade_tag(snapshot))
 		return false;
 	return snapshot.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION && snapshot.pid > 0 &&

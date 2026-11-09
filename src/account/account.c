@@ -34,7 +34,6 @@
 #include "item/item_movement_transaction.h"
 #include "item/item_ownership_runtime.h"
 #include "item/locker_identify.h"
-#include "economy/shop_trade_transaction.h"
 #include "core/utils.h"
 #include "core/safe_format.h"
 #include "account/account.h"
@@ -70,10 +69,6 @@
 #include "persistence/locker_async.h"
 #include "persistence/maintenance_scheduler.h"
 #include "persistence/persistence_observability.h"
-#include "flatfile/flatfile_account_adapter.h"
-#include "flatfile/flatfile_identity_repository.h"
-#include "flatfile/flatfile_account_delete.h"
-#include "persistence/persistence_mode.h"
 #include "ships/ships.h"
 #include "guild/assocs.h"
 #include "net/poll.h"
@@ -314,7 +309,6 @@ bool prepare_account_reconnect(P_char character, P_desc descriptor)
 	zone_touch_transaction_player_ready(character);
 	locker_identify_replay(character);
 	item_movement_transaction_player_ready(character);
-	shop_trade_transaction_player_ready(character);
 	auction_transaction_player_ready(character);
 	collector_transaction_player_ready(character);
 	collector_service_player_ready(character, false);
@@ -515,11 +509,9 @@ void send_account_password_prompt(P_desc d)
 	STATE(d) = CON_GET_ACCT_PASSWD;
 }
 
-#ifndef __NO_MYSQL__
 /* Do not let a same-account save capture the old password while its replacement
  * is on the writer. Cleared on the game thread after the transaction replies. */
 static std::unordered_set<std::string> account_recovery_writes;
-#endif
 
 /* Publish credential changes only after durable storage. Both paths share the
  * same fence so a queued account snapshot cannot restore the old credentials. */
@@ -579,7 +571,6 @@ static void account_apply_credentials(
 		done(requester, outcome);
 	};
 
-#ifndef __NO_MYSQL__
 	char canonical[ACCOUNT_RECOVERY_NAME_BUF];
 	if (!account_recovery_canonical_name(owner_name.c_str(), canonical) ||
 	    !account_recovery_writes.insert(canonical).second)
@@ -646,17 +637,6 @@ static void account_apply_credentials(
 		account_recovery_writes.erase(key);
 		finish(writer_replied(wait_id), account_recovery_apply_outcome::write_failed);
 	}
-#else
-
-	char **value = changing_email ? &fresh->acct_email : &fresh->acct_password;
-	if (*value)
-		FREE(*value);
-	*value = str_dup(changing_email ? email.c_str() : password.c_str());
-
-	finish(keep_session, write_account(fresh) == 1 ?
-				     account_recovery_apply_outcome::ok :
-				     account_recovery_apply_outcome::write_failed);
-#endif
 }
 
 void account_apply_recovered_password(
@@ -1297,12 +1277,6 @@ void account_create(P_desc d, std::function<void(P_desc, bool)> done)
 		FREE(account->acct_email);
 	account->acct_email = str_dup("");
 	account->acct_confirmed = 1;
-#ifdef __NO_MYSQL__
-	std::string error;
-	// The native account revision CAS requires absence for a revision-zero create.
-	return done(d,
-		    !account->persistence_revision && flatfile_account_state_save(account, &error));
-#else
 	const std::string name = escape_str(account->acct_name);
 	const std::string password = account->acct_password;
 	const std::string insert = sql_format(
@@ -1348,7 +1322,6 @@ void account_create(P_desc d, std::function<void(P_desc, bool)> done)
 		writer_replied(request);
 		done(d, false);
 	}
-#endif
 }
 
 void verify_new_account_information(P_desc d, char *arg)
@@ -1754,9 +1727,8 @@ void account_confirm_char(P_desc d, char *arg)
 						    ch->specials.was_in_room;
 		if (!sync_account_character_projection(ch, projection_room, TRUE))
 		{
-			statuslog(
-				56,
-				"&+RALERT&n: loaded flat-file account character projection save failed");
+			statuslog(56,
+				  "&+RALERT&n: loaded account character projection save failed");
 			persistence_alert(AVATAR, "account", "redacted", "none", "none",
 					  "write_failed",
 					  "loaded character projection save failed");
@@ -2832,21 +2804,6 @@ bool save_account_character_departure(P_char ch)
 	const bool good = !IS_TRUSTED(ch) && IS_RACEWAR_GOOD(ch);
 	const bool evil = !IS_TRUSTED(ch) && IS_RACEWAR_EVIL(ch);
 	const long departed_at = time(nullptr);
-#ifdef __NO_MYSQL__
-	P_acct loaded = nullptr;
-	if (!account && (good || evil))
-	{
-		flatfile_identity_record identity;
-		std::string error;
-		const char *root = persistence_mode_flatfile_root();
-		if (!root || flatfile_identity_lookup_pid(root, GET_PID(ch), &identity, &error) !=
-				     flatfile_identity_result::ok)
-			return false;
-		account = loaded = flatfile_account_state_load(identity.account.c_str(), &error);
-		if (!account)
-			return false;
-	}
-#else
 	if (!good && !evil)
 		return true;
 	// A departure must survive a pending recovery and descriptor destruction.
@@ -2857,19 +2814,12 @@ bool save_account_character_departure(P_char ch)
 		    good ? "last_good_char" : "last_evil_char",
 		    good ? "last_good_char" : "last_evil_char", departed_at, GET_PID(ch)))
 		return false;
-#endif
 	if (!account)
 		return true;
 	if (good)
 		account->acct_good = departed_at;
 	else if (evil)
 		account->acct_evil = departed_at;
-#ifdef __NO_MYSQL__
-	const bool saved = write_account(account) == 1;
-	if (loaded)
-		flatfile_account_state_release(loaded);
-	return saved;
-#else
 	for (P_desc d = descriptor_list; d; d = d->next)
 		if (d->account && d->account != account && d->account->acct_name &&
 		    account->acct_name && !strcasecmp(d->account->acct_name, account->acct_name))
@@ -2880,12 +2830,10 @@ bool save_account_character_departure(P_char ch)
 				d->account->acct_evil = departed_at;
 		}
 	return true;
-#endif
 }
 
 /* A session waiting for the writer holds its input (comm.c) until the reply, which finds
- * it by this id, so a connection closed meanwhile just drops the reply. On flat-file the
- * reply comes at once. */
+ * it by this id, so a connection closed meanwhile just drops the reply. */
 uint64_t wait_for_writer(P_desc d)
 {
 	static uint64_t sequence = 0;
@@ -3308,7 +3256,6 @@ void verify_delete_account(P_desc d, char *arg)
 	}
 	close_other_account_sessions(d);
 
-#ifndef __NO_MYSQL__
 	// The account's characters leave the game before the deletion, so no save of theirs
 	// can land after it. The deletion runs on the writer, behind the account's queued saves
 	// (its fence among them), while this session waits. Memory lets go of the characters
@@ -3339,34 +3286,6 @@ void verify_delete_account(P_desc d, char *arg)
 		writer_replied(id);
 		finish_account_deletion(d, false, identities.size());
 	}
-#else
-	bool deleted = false;
-	{
-		account_deletion_drain_guard drain_guard;
-		flush_pending_ship_saves();
-		if (drain_pending_ship_saves() && drain_guard.drain())
-		{
-			std::string error;
-			const auto result = flatfile_account_delete(
-				persistence_mode_flatfile_root(), account_name, &error);
-			deleted = result == flatfile_account_delete_result::ok ||
-				  result == flatfile_account_delete_result::already_deleted;
-			if (!deleted)
-				logit(LOG_FILE, "flat-file account deletion failed: %s",
-				      error.empty() ? "unspecified authority failure" :
-						      error.c_str());
-		}
-	}
-	if (deleted)
-	{
-		forget_deleted_account_characters(identities);
-		for (const auto &identity : identities)
-			artifacts_forget_deleted_account_character(identity.pid);
-		remove_deleted_account_characters(d, identities);
-		account_recovery_forget(account_name.c_str());
-	}
-	finish_account_deletion(d, deleted, identities.size());
-#endif
 }
 
 /* Gives `to` a copy of what `from` holds. */
@@ -3436,34 +3355,6 @@ static void copy_account(P_acct to, const struct acct_entry *from)
 
 void account_read(P_desc d, const char *name, account_read_done done)
 {
-#ifdef __NO_MYSQL__
-	std::string error;
-	bool exists = false;
-	if (!flatfile_account_state_exists(name, &exists, &error))
-	{
-		logit(LOG_FILE, "account read failed");
-		done(d, false, nullptr);
-		return;
-	}
-	if (!exists)
-	{
-		done(d, true, nullptr);
-		return;
-	}
-	P_acct loaded = flatfile_account_state_load(name, &error);
-	if (!loaded)
-	{
-		logit(LOG_FILE, "account read failed");
-		done(d, false, nullptr);
-		return;
-	}
-	/* The adapter returns an isolated standard-library DTO; the live account gets
-	 * a copy through the live-account allocator. */
-	P_acct account = allocate_account();
-	copy_account(account, loaded);
-	flatfile_account_state_release(loaded);
-	done(d, true, account);
-#else
 	const uint64_t id = wait_for_writer(d);
 	if (!sql_load_account(name,
 			      [id, done](bool ok, P_acct loaded)
@@ -3483,7 +3374,6 @@ void account_read(P_desc d, const char *name, account_read_done done)
 		logit(LOG_FILE, "account read not queued");
 		done(d, false, nullptr);
 	}
-#endif
 }
 
 int write_account(P_acct acct) // returns -1 if error, 1 if no errors
@@ -3493,7 +3383,6 @@ int write_account(P_acct acct) // returns -1 if error, 1 if no errors
 	if (!acct)
 		return -1;
 
-#ifndef __NO_MYSQL__
 	char recovery_name[ACCOUNT_RECOVERY_NAME_BUF];
 	if (account_recovery_canonical_name(acct->acct_name, recovery_name) &&
 	    account_recovery_writes.count(recovery_name))
@@ -3503,17 +3392,6 @@ int write_account(P_acct acct) // returns -1 if error, 1 if no errors
 		logit(LOG_FILE, "sql_save_account failed");
 		return -1;
 	}
-#else
-	std::string flatfile_error;
-	// During Keep, save account settings without projecting a cached list over
-	// the first snapshot's independently committed membership.
-	if (!flatfile_account_state_save(acct, &flatfile_error,
-					 !account_creation_owner_pending(acct->acct_name)))
-	{
-		logit(LOG_FILE, "flat-file account save failed");
-		return -1;
-	}
-#endif
 
 	// The account's other sessions get what was saved from memory.
 	for (d = descriptor_list; d; d = d->next)

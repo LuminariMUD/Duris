@@ -11,7 +11,7 @@ build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='news-publication-', dir=build) as temp:
     for backend in ('mysql', 'flatfile'):
         binary = Path(temp) / backend
-        flags = (['-D__NO_MYSQL__', '-Isrc/no_mysql'] if backend == 'flatfile'
+        flags = (['-I/usr/include/mysql'] if backend == 'flatfile'
                  else ['-I/usr/include/mysql'])
         subprocess.run([
             'g++', '-std=c++20', '-Wall', '-Wextra', '-Wpedantic', '-Werror',

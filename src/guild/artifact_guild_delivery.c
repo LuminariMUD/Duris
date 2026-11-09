@@ -3,8 +3,6 @@
 #include "guild/artifact_guild_repository.h"
 #include "guild/artifact_guild_state.h"
 #include "guild/artifact_guild_transaction.h"
-#include "flatfile/flatfile_artifact_guild_delivery.h"
-#include "persistence/persistence_mode.h"
 #include "player/player_save_worker.h"
 #include "sql/sql_async.h"
 #include "core/prototypes.h"
@@ -41,7 +39,7 @@ struct delivery_context
 std::mutex pending_mutex;
 std::map<std::array<uint8_t, CRITICAL_COMMAND_ID_BYTES>, std::shared_ptr<delivery_context>> pending;
 bool initialized = false, ready = false;
-uint64_t native_owner = 0, next_boot_check = 0;
+uint64_t next_boot_check = 0;
 std::array<uint8_t, CRITICAL_COMMAND_ID_BYTES> check_cursor{};
 unsigned int boot_error = 0;
 std::shared_ptr<delivery_check> bootstrap;
@@ -108,119 +106,37 @@ std::shared_ptr<delivery_context> retain_committed(const critical_command &comma
 
 // These native control jobs have their own writer owner kind. Reusing the
 // artifact snapshot owner's sequence could replace an unrelated pending save.
-bool queue_native(const std::shared_ptr<delivery_check> &check, size_t bytes,
-		  std::function<unsigned int()> work)
-{
-	const auto submitted = persistence_writer_submit(
-		persistence_job_kind::artifact_delivery, ++native_owner, bytes,
-		[check, work = std::move(work)]()
-		{
-			unsigned int error = 0;
-			try
-			{
-				error = work();
-			}
-			catch (const std::bad_alloc &)
-			{
-				error = ENOMEM;
-			}
-			catch (...)
-			{
-				error = EIO;
-			}
-			check->ok = error == 0;
-			check->error_code = error;
-			check->finished.store(true, std::memory_order_release);
-			return player_save_apply_result{
-				error ? player_save_apply_outcome::terminal_failure :
-					player_save_apply_outcome::applied,
-				0, error
-			};
-		});
-	return submitted == player_save_submit_result::accepted;
-}
 bool queue_bootstrap(const std::shared_ptr<delivery_check> &check)
 {
-#ifndef __NO_MYSQL__
-	if (persistence_mode_requires_mysql())
-		return sql_queue_work(
-			[check](MYSQL *connection)
-			{
-				return artifact_guild_repository_pending_deliveries(
-					       connection, &check->commands) ?
-					       0U :
-					       (mysql_errno(connection) ?
-							mysql_errno(connection) :
-							static_cast<unsigned int>(errno ? errno :
-											  EIO));
-			},
-			check);
-#endif
-	const char *configured = persistence_mode_flatfile_root();
-	if (!configured)
-		return false;
-	const std::string root = configured;
-	return queue_native(
-		check, sizeof(delivery_check) + root.size(),
-		[check, root]()
+	return sql_queue_work(
+		[check](MYSQL *connection)
 		{
-			std::string error;
-			const auto initialized =
-				flatfile_artifact_guild_delivery_initialize(root, &error);
-			if (initialized != flatfile_player_domain_result::ok)
-				return static_cast<unsigned int>(
-					initialized == flatfile_player_domain_result::io_error ?
-						EIO :
-						EILSEQ);
-			const auto loaded = flatfile_artifact_guild_delivery_list(
-				root, &check->commands, &error);
-			return loaded == flatfile_player_domain_result::ok ?
+			return artifact_guild_repository_pending_deliveries(connection,
+									    &check->commands) ?
 				       0U :
-				       static_cast<unsigned int>(
-					       loaded == flatfile_player_domain_result::io_error ?
-						       EIO :
-						       EILSEQ);
-		});
+				       (mysql_errno(connection) ?
+						mysql_errno(connection) :
+						static_cast<unsigned int>(errno ? errno : EIO));
+		},
+		check);
 }
 bool queue_check(const std::shared_ptr<delivery_context> &context,
 		 const std::shared_ptr<delivery_check> &check)
 {
-#ifndef __NO_MYSQL__
-	if (persistence_mode_requires_mysql())
-		return sql_queue_work(
-			[context, check](MYSQL *connection)
-			{
-				bool ok = artifact_guild_repository_delivery_acknowledged(
-					connection, context->command, &check->acknowledged);
-				if (ok && !check->acknowledged)
-					ok = artifact_guild_repository_delivery_saved(
-						connection, context->command, &check->saved);
-				return ok ? 0U :
-					    (mysql_errno(connection) ?
-						     mysql_errno(connection) :
-						     static_cast<unsigned int>(errno ? errno :
-										       EIO));
-			},
-			check);
-#endif
-	const char *configured = persistence_mode_flatfile_root();
-	if (!configured)
-		return false;
-	const std::string root = configured;
-	return queue_native(
-		check, sizeof(delivery_check) + context->command.payload.size() + root.size(),
-		[context, check, root]()
+	return sql_queue_work(
+		[context, check](MYSQL *connection)
 		{
-			std::string error;
-			const auto result = flatfile_artifact_guild_delivery_advance(
-				root, context->command, &check->acknowledged, &error);
-			return result == flatfile_player_domain_result::ok ?
-				       0U :
-				       static_cast<unsigned int>(
-					       result == flatfile_player_domain_result::io_error ?
-						       EIO :
-						       EILSEQ);
-		});
+			bool ok = artifact_guild_repository_delivery_acknowledged(
+				connection, context->command, &check->acknowledged);
+			if (ok && !check->acknowledged)
+				ok = artifact_guild_repository_delivery_saved(
+					connection, context->command, &check->saved);
+			return ok ? 0U :
+				    (mysql_errno(connection) ?
+					     mysql_errno(connection) :
+					     static_cast<unsigned int>(errno ? errno : EIO));
+		},
+		check);
 }
 void cleanup_markers(uint64_t now)
 {
@@ -257,67 +173,25 @@ void cleanup_markers(uint64_t now)
 	if (ids.empty())
 		return;
 	auto check = std::make_shared<delivery_check>();
-	bool queued = false;
-#ifndef __NO_MYSQL__
-	if (persistence_mode_requires_mysql())
-		queued = sql_queue_work(
-			[ids, check](MYSQL *connection)
-			{
-				unsigned int error = 0;
-				for (const auto &id : ids)
-				{
-					critical_command command;
-					bool acknowledged = false;
-					if (!artifact_guild_repository_load_delivery(
-						    connection, critical_operation_id{ id },
-						    &command, &acknowledged))
-						error = mysql_errno(connection) ?
-								mysql_errno(connection) :
-								EILSEQ;
-					else if (acknowledged)
-						check->commands.push_back(std::move(command));
-				}
-				return error;
-			},
-			check);
-	else
-#endif
-	{
-		const char *configured = persistence_mode_flatfile_root();
-		if (configured)
+	const bool queued = sql_queue_work(
+		[ids, check](MYSQL *connection)
 		{
-			const std::string root = configured;
-			queued = queue_native(
-				check,
-				sizeof(delivery_check) + ids.size() * CRITICAL_COMMAND_ID_BYTES,
-				[ids, root, check]()
-				{
-					unsigned int error_code = 0;
-					std::string error;
-					flatfile_authority_lock lock;
-					if (!lock.acquire(root, &error))
-						return static_cast<unsigned int>(EIO);
-					for (const auto &id : ids)
-					{
-						critical_command command;
-						bool acknowledged = false;
-						const auto loaded = flatfile_artifact_delivery_load(
-							root, lock, critical_operation_id{ id },
-							&command, &acknowledged, &error);
-						if (loaded != flatfile_player_domain_result::ok)
-							error_code =
-								loaded == flatfile_player_domain_result::
-											io_error ?
-									EIO :
-									EILSEQ;
-						else if (acknowledged)
-							check->commands.push_back(
-								std::move(command));
-					}
-					return error_code;
-				});
-		}
-	}
+			unsigned int error = 0;
+			for (const auto &id : ids)
+			{
+				critical_command command;
+				bool acknowledged = false;
+				if (!artifact_guild_repository_load_delivery(
+					    connection, critical_operation_id{ id }, &command,
+					    &acknowledged))
+					error = mysql_errno(connection) ? mysql_errno(connection) :
+									  EILSEQ;
+				else if (acknowledged)
+					check->commands.push_back(std::move(command));
+			}
+			return error;
+		},
+		check);
 	if (queued)
 		cleanup = std::move(check);
 	else

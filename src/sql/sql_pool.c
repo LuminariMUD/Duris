@@ -27,8 +27,6 @@
 #include <sys/socket.h>
 #include <time.h>
 
-#ifndef __NO_MYSQL__
-
 #include <mysql.h>
 
 /* ------------------------------------------------------------------ */
@@ -360,47 +358,3 @@ int sql_pool_is_active(void)
 	pthread_mutex_unlock(&pool_mutex);
 	return active;
 }
-
-#else /* __NO_MYSQL__ */
-
-/* Stubs -- no MySQL available.  The pool is a no-op. */
-
-int sql_pool_init(int size)
-{
-	(void)size;
-	return -1;
-}
-
-void sql_pool_shutdown(void) {}
-
-void sql_pool_interrupt_borrowed(void) {}
-
-MYSQL *sql_pool_acquire_with_status(int *pool_was_active)
-{
-	if (pool_was_active)
-		*pool_was_active = 0;
-	return NULL;
-}
-
-MYSQL *sql_pool_acquire(void)
-{
-	return sql_pool_acquire_with_status(NULL);
-}
-
-void sql_pool_release(MYSQL *conn)
-{
-	(void)conn;
-}
-
-MYSQL *sql_pool_replace_connection(MYSQL *conn)
-{
-	(void)conn;
-	return NULL;
-}
-
-int sql_pool_is_active(void)
-{
-	return 0;
-}
-
-#endif /* __NO_MYSQL__ */

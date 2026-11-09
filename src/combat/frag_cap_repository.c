@@ -1,7 +1,5 @@
 #include "combat/frag_cap_repository.h"
 
-#include "flatfile/flatfile_store.h"
-
 #include <algorithm>
 #include <charconv>
 #include <cstring>
@@ -9,39 +7,6 @@
 
 namespace
 {
-constexpr const char *filename = "frag-cap.state";
-
-frag_cap_store_result recover(const std::string &root, flatfile_authority_lock &lock)
-{
-	if (root.empty())
-		return frag_cap_store_result::invalid;
-	if (!lock.acquire(root, nullptr))
-		return frag_cap_store_result::io_error;
-	const auto result = flatfile_authority_transaction_recover(root, lock, nullptr);
-	return result == flatfile_authority_transaction_result::ok ?
-		       frag_cap_store_result::ok :
-	       result == flatfile_authority_transaction_result::invalid ?
-		       frag_cap_store_result::invalid :
-		       frag_cap_store_result::io_error;
-}
-
-frag_cap_store_result commit(const std::string &root, const flatfile_authority_lock &lock,
-			     const frag_cap_state &state)
-{
-	std::vector<flatfile_authority_operation> operations;
-	const auto prepared = frag_cap_flatfile_prepare(root, lock, state, &operations);
-	if (prepared != frag_cap_store_result::ok)
-		return prepared;
-	const auto result =
-		flatfile_authority_transaction_commit_operations(root, lock, operations, nullptr);
-	return result == flatfile_authority_transaction_result::ok ?
-		       frag_cap_store_result::ok :
-	       result == flatfile_authority_transaction_result::invalid ?
-		       frag_cap_store_result::invalid :
-		       frag_cap_store_result::io_error;
-}
-
-#ifndef __NO_MYSQL__
 std::string hex(const std::vector<uint8_t> &bytes)
 {
 	constexpr char digits[] = "0123456789abcdef";
@@ -63,7 +28,6 @@ bool parse(const char *text, int &value)
 	const auto parsed = std::from_chars(text, end, value);
 	return parsed.ec == std::errc() && parsed.ptr == end;
 }
-#endif
 }
 
 bool frag_cap_apply_combat(frag_cap_state *state, const critical_command &command,
@@ -85,101 +49,8 @@ bool frag_cap_apply_combat(frag_cap_state *state, const critical_command &comman
 			      policy);
 }
 
-frag_cap_store_result frag_cap_flatfile_load_locked(const std::string &root,
-						    const flatfile_authority_lock &lock,
-						    frag_cap_state *state)
-{
-	if (!state || !lock.matches(root))
-		return frag_cap_store_result::invalid;
-	std::vector<uint8_t> bytes;
-	const auto result =
-		flatfile_read(root + "/domains", filename, FRAG_CAP_MAX_BYTES, &bytes, nullptr);
-	if (result == flatfile_read_result::not_found)
-		return frag_cap_store_result::not_found;
-	if (result != flatfile_read_result::ok)
-		return result == flatfile_read_result::invalid ? frag_cap_store_result::invalid :
-								 frag_cap_store_result::io_error;
-	return frag_cap_state_decode(bytes, state) ? frag_cap_store_result::ok :
-						     frag_cap_store_result::invalid;
-}
-
-frag_cap_store_result
-frag_cap_flatfile_prepare(const std::string &root, const flatfile_authority_lock &lock,
-			  const frag_cap_state &state,
-			  std::vector<flatfile_authority_operation> *operations)
-{
-	if (!operations || !lock.matches(root))
-		return frag_cap_store_result::invalid;
-	flatfile_authority_operation operation;
-	operation.filename = filename;
-	if (!frag_cap_state_encode(state, &operation.bytes))
-		return frag_cap_store_result::invalid;
-	operations->push_back(std::move(operation));
-	return frag_cap_store_result::ok;
-}
-
-frag_cap_store_result frag_cap_flatfile_load(const std::string &root, frag_cap_state *state)
-{
-	flatfile_authority_lock lock;
-	const auto recovered = recover(root, lock);
-	return recovered == frag_cap_store_result::ok ?
-		       frag_cap_flatfile_load_locked(root, lock, state) :
-		       recovered;
-}
-
-frag_cap_store_result frag_cap_flatfile_adopt(const std::string &root, int legacy_floor,
-					      int64_t now, frag_cap_state *state,
-					      const frag_cap_policy &policy)
-{
-	if (!state)
-		return frag_cap_store_result::invalid;
-	flatfile_authority_lock lock;
-	const auto recovered = recover(root, lock);
-	if (recovered != frag_cap_store_result::ok)
-		return recovered;
-	frag_cap_state loaded;
-	const auto result = frag_cap_flatfile_load_locked(root, lock, &loaded);
-	if (result == frag_cap_store_result::not_found)
-	{
-		if (!frag_cap_adopt(&loaded, legacy_floor, 0, now, policy))
-			return frag_cap_store_result::invalid;
-		const auto saved = commit(root, lock, loaded);
-		if (saved != frag_cap_store_result::ok)
-			return saved;
-	}
-	else if (result != frag_cap_store_result::ok)
-		return result;
-	*state = loaded;
-	return frag_cap_store_result::ok;
-}
-
-frag_cap_store_result frag_cap_flatfile_tick(const std::string &root, int64_t now,
-					     const frag_cap_policy &policy)
-{
-	flatfile_authority_lock lock;
-	const auto recovered = recover(root, lock);
-	if (recovered != frag_cap_store_result::ok)
-		return recovered;
-	frag_cap_state state;
-	const auto result = frag_cap_flatfile_load_locked(root, lock, &state);
-	if (result != frag_cap_store_result::ok)
-		return result;
-	const uint64_t before = state.revision;
-	if (now > 0 && now < state.round_start)
-		return frag_cap_store_result::ok; // A newer combat commit overtook this timer request.
-	if (!frag_cap_settle(&state, now, policy))
-		return frag_cap_store_result::invalid;
-	return before == state.revision ? frag_cap_store_result::ok : commit(root, lock, state);
-}
-
 frag_cap_store_result frag_cap_sql_load(MYSQL *connection, frag_cap_state *state, bool for_update)
 {
-#ifdef __NO_MYSQL__
-	(void)connection;
-	(void)state;
-	(void)for_update;
-	return frag_cap_store_result::io_error;
-#else
 	if (!connection || !state)
 		return frag_cap_store_result::invalid;
 	if (mysql_query(connection, for_update ?
@@ -199,16 +70,10 @@ frag_cap_store_result frag_cap_sql_load(MYSQL *connection, frag_cap_state *state
 		loaded = frag_cap_store_result::ok;
 	mysql_free_result(result);
 	return loaded;
-#endif
 }
 
 frag_cap_store_result frag_cap_sql_save(MYSQL *connection, const frag_cap_state &state)
 {
-#ifdef __NO_MYSQL__
-	(void)connection;
-	(void)state;
-	return frag_cap_store_result::io_error;
-#else
 	std::vector<uint8_t> bytes;
 	if (!connection || !frag_cap_state_encode(state, &bytes))
 		return frag_cap_store_result::invalid;
@@ -236,22 +101,12 @@ frag_cap_store_result frag_cap_sql_save(MYSQL *connection, const frag_cap_state 
 		return loaded == frag_cap_store_result::not_found ? frag_cap_store_result::invalid :
 								    loaded;
 	return stored == state ? frag_cap_store_result::ok : frag_cap_store_result::invalid;
-#endif
 }
 
 frag_cap_store_result frag_cap_sql_adopt(MYSQL *connection, int legacy_floor, int legacy_maximum,
 					 int64_t now, frag_cap_state *state,
 					 const frag_cap_policy &policy)
 {
-#ifdef __NO_MYSQL__
-	(void)connection;
-	(void)legacy_floor;
-	(void)legacy_maximum;
-	(void)now;
-	(void)state;
-	(void)policy;
-	return frag_cap_store_result::io_error;
-#else
 	const auto loaded = frag_cap_sql_load(connection, state, true);
 	if (loaded != frag_cap_store_result::not_found)
 		return loaded;
@@ -289,7 +144,6 @@ frag_cap_store_result frag_cap_sql_adopt(MYSQL *connection, int legacy_floor, in
 	if (saved == frag_cap_store_result::ok)
 		*state = adopted;
 	return saved;
-#endif
 }
 
 frag_cap_store_result frag_cap_sql_reset_season(MYSQL *connection, int64_t reset_started_at,

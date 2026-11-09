@@ -23,9 +23,7 @@ def main():
         runtime_before = source_digest(root, RUNTIME_INPUTS)
         for name in ("lib/duris.properties", "areas_mini/mini.wld",
                      "areas/obj/heavens.obj", "tests/async/assassin_journey_fixture.cpp",
-                     "tests/async/test_assassin_combat_journey.py",
-                     "tests/async/test_flatfile_player_repository.py",
-                     "tests/async/flatfile_player_repository_harness.cpp"):
+                     "tests/async/test_assassin_combat_journey.py"):
             path = root / name
             original = path.read_bytes()
             path.write_bytes(original + b"changed")
@@ -35,7 +33,7 @@ def main():
             assert source_digest(root, RUNTIME_INPUTS) == runtime_before, name
         # Baseline verification also pins builder inputs outside src and rejects
         # unexpected compiled files, rather than trusting a qualification-ref.
-        tracked = ("src/server.c", "tests/async/test_flatfile_player_repository.py")
+        tracked = ("src/server.c", "tests/async/assassin_journey_fixture.cpp")
         baseline = source_digest(root, tracked)
         builder = root / tracked[1]
         original = builder.read_bytes()

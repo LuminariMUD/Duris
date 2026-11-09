@@ -376,7 +376,7 @@ def load_ship_failure_blocks(name):
 
 # Every other caller destroys a ship that load_ship() could not place, rather
 # than leaving it registered without rooms.
-for name in ("ship_shop.c", "ship_npc.c", "sql_player.c", "ship_base.c"):
+for name in ("ship_shop.c", "ship_npc.c", "sql_player.c"):
     blocks = list(load_ship_failure_blocks(name))
     assert blocks, name
     for block in blocks:

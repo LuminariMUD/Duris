@@ -32,10 +32,7 @@
  * says they were destroyed are left out, with their contents, because only a save
  * captured before the destruction can still hold them. Intentional player rent
  * also destroys NORENT keys in this transaction, before writing the saved graph.
- * Both backends use these
- * rules: claim_items() in
- * item_claim_repository.c for MariaDB, and flatfile_item_repository_prepare_claim()
- * for the flat-file backend.
+ * claim_items() in item_claim_repository.c applies these rules.
  */
 
 struct item_claim_dupe

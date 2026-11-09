@@ -2,13 +2,8 @@
 #include "account/account.h"
 #include "core/prototypes.h"
 #include "core/utils.h"
-#include "flatfile/flatfile_account_repository.h"
-#include "flatfile/flatfile_identity_repository.h"
-#include "flatfile/flatfile_player_repository.h"
-#include "flatfile/flatfile_player_domain_repository.h"
 #include "item/starter_kit_intent.h"
 #include "persistence/critical_command_coordinator.h"
-#include "persistence/persistence_mode.h"
 #include "player/player_save_pipeline.h"
 #include "player/player_load_pipeline.h"
 #include "sql/sql.h"
@@ -31,7 +26,6 @@ namespace
 std::map<int, std::string> pending;
 std::mutex pending_mutex;
 
-#ifndef __NO_MYSQL__
 std::string escape_value(MYSQL *connection, const std::string &value)
 {
 	std::string escaped(value.size() * 2 + 1, '\0');
@@ -39,7 +33,6 @@ std::string escape_value(MYSQL *connection, const std::string &value)
 		mysql_real_escape_string(connection, escaped.data(), value.c_str(), value.size()));
 	return escaped;
 }
-#endif
 
 bool same(const std::string &a, const std::string &b)
 {
@@ -77,172 +70,6 @@ void report(P_desc d, const kept_character_recovery_record &r)
 		r.level, static_cast<unsigned long long>(r.revision), r.snapshot, r.domains,
 		r.conflict, busy(r.pid));
 }
-
-#ifdef __NO_MYSQL__
-bool native_read(int pid, const std::string &name, kept_character_recovery_record *r)
-{
-	*r = {};
-	r->pid = pid;
-	r->name = name;
-	r->projection.pid = pid;
-	r->projection.count = 1;
-	r->projection.last = time(nullptr);
-	const std::string root = persistence_mode_flatfile_root();
-	std::string error;
-	flatfile_identity_record identity;
-	const auto found = flatfile_identity_lookup_pid(root, pid, &identity, &error);
-	if (found != flatfile_identity_result::ok && found != flatfile_identity_result::not_found)
-		return false;
-	r->catalog_revision = identity.catalog_revision;
-	if (found == flatfile_identity_result::ok)
-	{
-		r->exists = true;
-		r->active = identity.active;
-		r->tombstone = !identity.active;
-		r->name = identity.name;
-		r->owner = identity.account;
-		r->level = identity.level;
-		r->mapping = identity.active && !identity.account.empty();
-		r->projection.count = identity.login_count;
-		r->projection.last = identity.last_login;
-		r->projection.blocked = identity.blocked;
-		r->mapping_owner = identity.account;
-		r->conflict = !same(identity.name, name);
-	}
-	player_snapshot snapshot;
-	const auto loaded = flatfile_player_snapshot_read(root, pid, &snapshot, &error);
-	if (loaded == flatfile_player_load_result::not_found)
-	{
-		flatfile_player_domain_record domains;
-		r->domains = !r->owner.empty() &&
-			     flatfile_player_domain_load(root, pid, r->owner, identity.racewar,
-							 &domains, &error) ==
-				     flatfile_player_domain_result::ok;
-		return r->exists;
-	}
-	if (loaded != flatfile_player_load_result::ok)
-	{
-		r->conflict = true;
-		return r->exists;
-	}
-	r->exists = r->snapshot = true;
-	r->revision = snapshot.revision;
-	int racewar = 0;
-	bool named = false;
-	for (const auto &field : snapshot.status_strings)
-		if (field.field == player_status_string_field::name)
-		{
-			named = true;
-			r->name = field.value;
-			if (!same(field.value, name))
-				r->conflict = true;
-		}
-	if (!named)
-		r->conflict = true;
-	for (const auto &field : snapshot.status_integers)
-	{
-		const int64_t value = field.is_unsigned ?
-					      static_cast<int64_t>(field.unsigned_value) :
-					      field.signed_value;
-		if (field.field == player_status_field::level)
-			r->level = value;
-		if (field.field == player_status_field::action_flags_3)
-			r->flags = value;
-		if (field.field == player_status_field::racewar)
-			racewar = value;
-		if (field.field == player_status_field::race)
-			r->projection.race = value;
-		if (field.field == player_status_field::class_primary)
-			r->projection.m_class = value;
-		if (field.field == player_status_field::class_secondary)
-			r->projection.secondary_class = value;
-		if (field.field == player_status_field::specialization)
-			r->projection.spec = value;
-	}
-	r->projection.level = r->level;
-	r->projection.player_racewar = racewar;
-	r->projection.racewar = account_admission_racewar(racewar, false);
-	if (found == flatfile_identity_result::not_found)
-		r->owner = snapshot.creation_account;
-	flatfile_player_domain_record domains;
-	r->domains = !r->owner.empty() &&
-		     flatfile_player_domain_load(root, pid, r->owner, racewar, &domains, &error) ==
-			     flatfile_player_domain_result::ok;
-	return true;
-}
-
-bool native_attach(const kept_character_recovery_record &expected, const std::string &account)
-{
-	const std::string root = persistence_mode_flatfile_root();
-	std::string error;
-	flatfile_player_snapshot_lock snapshot_lock;
-	flatfile_identity_lock identity_lock;
-	if (!snapshot_lock.acquire(root, expected.pid, &error) ||
-	    !identity_lock.acquire(root, &error))
-		return false;
-	player_snapshot snapshot;
-	if (flatfile_player_snapshot_read(root, expected.pid, &snapshot, &error) !=
-		    flatfile_player_load_result::ok ||
-	    snapshot.revision != expected.revision)
-		return false;
-	flatfile_account_record owner;
-	if (flatfile_account_load(root, account, &owner, &error) != flatfile_account_result::ok ||
-	    owner.blocked)
-		return false;
-	flatfile_identity_record record;
-	record.pid = expected.pid;
-	record.name = expected.name;
-	record.account = account;
-	record.active = true;
-	for (const auto &field : snapshot.status_integers)
-	{
-		const int64_t value = field.is_unsigned ?
-					      static_cast<int64_t>(field.unsigned_value) :
-					      field.signed_value;
-		switch (field.field)
-		{
-		case player_status_field::level:
-			record.level = value;
-			break;
-		case player_status_field::race:
-			record.race = value;
-			break;
-		case player_status_field::racewar:
-			record.racewar = value;
-			break;
-		case player_status_field::class_primary:
-			record.primary_class = value;
-			break;
-		case player_status_field::class_secondary:
-			record.secondary_class = value;
-			break;
-		default:
-			break;
-		}
-	}
-	if (record.level != 0 ||
-	    (!snapshot.creation_account.empty() && !same(snapshot.creation_account, account)))
-		return false;
-	flatfile_player_domain_record domains;
-	if (flatfile_player_domain_load(root, expected.pid, account, record.racewar, &domains,
-					&error) != flatfile_player_domain_result::ok)
-		return false;
-	flatfile_authority_lock authority;
-	if (!authority.acquire(root, &error))
-		return false;
-	flatfile_authority_operation operation;
-	const auto prepared = flatfile_identity_prepare_recovered_kept(root, identity_lock,
-								       authority, record,
-								       expected.catalog_revision,
-								       &operation, &error);
-	if (prepared == flatfile_identity_result::unchanged)
-		return true;
-	return prepared == flatfile_identity_result::ok &&
-	       flatfile_authority_transaction_commit_operations(root, authority, { operation },
-								&error) ==
-		       flatfile_authority_transaction_result::ok;
-}
-#endif
 }
 
 bool kept_character_recovery_pending(int pid)
@@ -271,7 +98,6 @@ bool kept_character_recovery_releasable(const kept_character_recovery_record &r)
 	       !(r.snapshot && r.domains && !r.owner.empty() && r.mapping);
 }
 
-#ifndef __NO_MYSQL__
 unsigned int kept_character_recovery_read(MYSQL *connection, int pid, const std::string &name,
 					  kept_character_recovery_record *r, bool lock)
 {
@@ -368,7 +194,6 @@ unsigned int kept_character_recovery_release_guard(MYSQL *connection,
 		       0 :
 		       ESTALE;
 }
-#endif
 
 void do_keptchar(P_char staff, char *argument, int /*cmd*/)
 {
@@ -470,9 +295,6 @@ void do_keptchar(P_char staff, char *argument, int /*cmd*/)
 				{ complete(result == character_delete_result::deleted); });
 			return;
 		}
-#ifdef __NO_MYSQL__
-		complete(native_attach(*record, account));
-#else
 		if (!sql_read_work(
 			    [=](MYSQL *connection, sql_rows *) -> unsigned int
 			    {
@@ -528,16 +350,12 @@ void do_keptchar(P_char staff, char *argument, int /*cmd*/)
 			    [complete](bool committed, const sql_rows &) { complete(committed); },
 			    true))
 			complete(false);
-#endif
 	};
 	if (!inspect)
 	{
 		std::lock_guard<std::mutex> lock(pending_mutex);
 		pending.emplace(pid, account);
 	}
-#ifdef __NO_MYSQL__
-	inspected(native_read(pid, name, record.get()));
-#else
 	if (!sql_read_work(
 		    [=](MYSQL *connection, sql_rows *) {
 			    return kept_character_recovery_read(connection, pid, name, record.get(),
@@ -553,5 +371,4 @@ void do_keptchar(P_char staff, char *argument, int /*cmd*/)
 		else
 			complete(false);
 	}
-#endif
 }

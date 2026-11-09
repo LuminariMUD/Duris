@@ -13,7 +13,6 @@
  ****************************************************************************/
 
 #include "player/player_save_pipeline.h"
-#include "economy/shop_trade_transaction.h"
 #include "persistence/persistence_observability.h"
 #include <cstdlib>
 #include <cstring>
@@ -25,7 +24,6 @@
 #include "economy/collector_death_enrollment.h"
 #include "economy/currency_value.h"
 #include "economy/divine_boon_runtime.h"
-#include "flatfile/flatfile_player_repository.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_repository.h"
@@ -76,11 +74,7 @@ bool accepting = false;
 
 player_save_apply_fn selected_snapshot_apply()
 {
-#ifdef __NO_MYSQL__
-	return flatfile_player_snapshot_apply_selected;
-#else
 	return player_snapshot_repository_apply_from_pool;
-#endif
 }
 
 P_char live_player(int pid)
@@ -162,12 +156,6 @@ void finish_completion(const player_save_completion &completion)
 	}
 	// The job is gone. Mark the owner dirty so its next save carries the state again.
 	P_char ch = live_player(completion.pid);
-#ifdef __NO_MYSQL__
-	// The player's records are missing: the next save establishes them synchronously.
-	// (MariaDB has no such save; its writer inserts a missing row from the status.)
-	if (ch && completion.error_code == ENOENT)
-		SET_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);
-#endif
 	const bool remarked = ch &&
 			      player_save_pipeline_mark(completion.pid, completion.components);
 	player_revision_snapshot revision = {};
@@ -329,8 +317,6 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 			snapshot.encoded_size_bound +=
 				snapshot.creation_account.size() + sizeof(uint32_t);
 		}
-		if (!shop_trade_transaction_capture_items(ch, &snapshot))
-			return player_save_pipeline_result::capture_failed;
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
 		if (auto trade = trade_captures.find(GET_PID(ch)); trade != trade_captures.end())
 		{

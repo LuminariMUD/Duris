@@ -1168,9 +1168,8 @@ enum class character_delete_result
 	reconciliation_required
 };
 // Deletes ch's stored state and, once that is done, lets memory forget the character.
-// done gets the outcome on the game thread: at once on flat-file, on a later pulse on
-// MariaDB, where the deletion is one writer job. Never consumes ch, which may leave the
-// game before done runs.
+// done gets the outcome on the game thread on a later pulse: the deletion is one writer
+// job. Never consumes ch, which may leave the game before done runs.
 void delete_character(P_char ch, bool delete_locker = true,
 		      std::function<void(character_delete_result)> done = {});
 struct kept_character_recovery_record;

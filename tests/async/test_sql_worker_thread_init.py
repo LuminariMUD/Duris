@@ -35,7 +35,6 @@ header = (SRC / "sql_thread_init.h").read_text(encoding="utf-8")
 check("the helper initialises the library once", "std::call_once" in header)
 check("the helper calls mysql_library_init", "mysql_library_init(0, nullptr, nullptr)" in header)
 check("the helper still reports a per-thread failure", "return mysql_thread_init();" in header)
-check("the helper has a __NO_MYSQL__ build", "#else" in header and "__NO_MYSQL__" in header)
 
 # No worker may reach past the helper to the raw entry point.
 offenders = []
@@ -82,10 +81,8 @@ int main()
 	int rc = -1;
 	std::thread worker([&] {
 		rc = sql_worker_thread_init();
-#ifndef __NO_MYSQL__
 		if (rc == 0)
 			mysql_thread_end();
-#endif
 	});
 	worker.join();
 	if (rc != 0)

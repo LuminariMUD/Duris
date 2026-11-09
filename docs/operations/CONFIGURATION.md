@@ -151,17 +151,14 @@ can continue using the same runtime.
 
 ## Persistence
 
-`PERSISTENCE_MODE` selects one whole-server authority. It defaults to
-`mariadb-primary`. The accepted values are `mariadb-primary`,
-`mariadb-primary-flatfile-fallback`, and `flatfile-primary`. A MariaDB client build accepts
-`mariadb-primary`; a client-free flat build accepts `flatfile-primary`. The legacy mixed
-fallback token is recognized for a clear diagnostic but fails closed because mixed
-per-operation authority transfer is not supported.
+`PERSISTENCE_MODE` defaults to `mariadb-primary`, the only accepted value: MariaDB is
+the only persistence backend. Any other value stops the launcher and the server with a
+clear error. `FLATFILE_STATE_DIR` and `FLATFILE_BACKUP_DIR` are no longer read and can
+be removed from `.env`.
 
 | Variable | Requirement | Meaning |
 | --- | --- | --- |
-| `PERSISTENCE_MODE` | Optional; defaults to `mariadb-primary` | Select the complete persistence authority; mixed per-write failover is not supported. |
-| `FLATFILE_STATE_DIR` | Required by `flatfile-primary` | Absolute server-user-owned directory with mode `0700` or stricter. |
+| `PERSISTENCE_MODE` | Optional; defaults to `mariadb-primary` | Must be `mariadb-primary` when set. |
 | BACKUP_POLICY_FILE | Required for pre-cycle and scheduled backups | Absolute owner-only approved JSON policy; see [BACKUPS.md](BACKUPS.md). |
 | `PREBOOT_BACKUP` | Optional; off unless `1` | Have `cycle_mud.sh` take a backup before every boot, and refuse the boot when it fails. Off by default: the backup timer takes the backups. |
 | `ENVIRONMENT` | Required: `local` or `production` | Runtime trust role. |
@@ -204,17 +201,7 @@ rollback and do not run two schedulers against the same authority.
 `scripts/cycle_mud.sh --check-config` validates the selected mode without starting the
 server. Add `--production` to require `ENVIRONMENT=production` and the production-port
 runtime role; the production systemd unit always supplies that flag. `--production`
-cannot be combined with `--dev` or `--minimal`. In `flatfile-primary`, the launcher
-does not require database settings, run migrations or schema checks, invoke MySQL
-shutdown logging, or select a database backup because Redis happens to be enabled. It
-snapshots the selected `FLATFILE_STATE_DIR` before boot and refuses to start if that
-snapshot fails. Build the client-free binary with
-`make -C src PERSISTENCE_BACKEND=flatfile` for this mode.
-
-Flat-file IP connection history is stored in the owner-only metadata authority so the
-existing one-hour racewar-side rule and staff/player information paths remain functional
-without a database. Treat the state root and its backups as private player data. Boot
-closes sessions left active by an interrupted prior run and refuses corrupt IP history.
+cannot be combined with `--dev` or `--minimal`.
 
 `DB_NAME` selects the requested database and `DB_ALLOWED_TARGETS` authorizes the
 resolved target. The listen port is an additional guard, not the primary selector.
@@ -621,9 +608,8 @@ allowed origins must be configured, and the local reverse proxy must terminate
 TLS before forwarding to this plaintext listener. The server refuses to create
 the production listener when those controls are absent.
 The health response reports only process and selected-persistence readiness.
-MariaDB mode reads in-memory pool state, and flat-file mode reports ready only
-after its private authority passes startup validation; neither path performs a
-blocking backing-store query. Plain telnet defaults to `7777` and TLS telnet to
+It reads in-memory pool state and performs no blocking backing-store query. Plain
+telnet defaults to `7777` and TLS telnet to
 `7778`; a custom plain-telnet port uses the following port for TLS unless
 `DURIS_TLS_PORT` provides an independent port. Configure a real `duris.crt` and
 `duris.key` in the repository root for networked TLS. The operator key must be

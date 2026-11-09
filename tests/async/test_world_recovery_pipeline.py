@@ -43,7 +43,6 @@ HARNESS = r'''
 #include "world/world_singletons.h"
 #include "persistence/copyover.h"
 #include "persistence/persistence_mode.h"
-#include "flatfile/flatfile_shopkeeper_restore.h"
 #include "guild/artifact_population_repository.h"
 #include "item/item_ownership_runtime.h"
 #include <array>
@@ -342,8 +341,6 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &) 
 void artifact_object_placed(P_obj) {}
 // Ordinary world objects in this fixture do not belong to shopkeepers.
 int singleton_shop_id(P_char) { return -1; }
-persistence_mode persistence_mode_get() { return PERSISTENCE_MODE_MARIADB_PRIMARY; }
-const char *persistence_mode_flatfile_root() { return nullptr; }
 bool flatfile_shopkeeper_bootstrap_new(const std::string &, std::string *) { std::abort(); }
 void fatal_boot_error(const char *, const char *, ...) { std::abort(); }
 P_obj read_object_for_recovery(const artifact_payload_projection &source)

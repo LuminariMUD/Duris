@@ -1,31 +1,11 @@
 #include "economy/divine_boon_repository.h"
 
-#include "flatfile/flatfile_authority_transaction.h"
-#include "flatfile/flatfile_store.h"
-
 #include <charconv>
 #include <limits>
 
 namespace
 {
 constexpr size_t maximum_bytes = 4096;
-constexpr const char *filename = "divine-boons.state";
-
-divine_boon_store_result read_flatfile(const std::string &root, divine_boon_state *state)
-{
-	std::vector<uint8_t> bytes;
-	const auto result =
-		flatfile_read(root + "/domains", filename, maximum_bytes, &bytes, nullptr);
-	if (result == flatfile_read_result::not_found)
-		return divine_boon_store_result::not_found;
-	if (result == flatfile_read_result::invalid)
-		return divine_boon_store_result::invalid;
-	if (result != flatfile_read_result::ok)
-		return divine_boon_store_result::io_error;
-	return divine_boon_state_decode(bytes, state) ? divine_boon_store_result::ok :
-							divine_boon_store_result::invalid;
-}
-
 bool prepare_save(uint64_t expected_revision, const divine_boon_state &state,
 		  std::vector<uint8_t> *bytes)
 {
@@ -33,7 +13,6 @@ bool prepare_save(uint64_t expected_revision, const divine_boon_state &state,
 	       state.revision == expected_revision + 1 && divine_boon_state_encode(state, bytes);
 }
 
-#ifndef __NO_MYSQL__
 std::string hex(const std::vector<uint8_t> &bytes)
 {
 	constexpr char digits[] = "0123456789abcdef";
@@ -46,59 +25,11 @@ std::string hex(const std::vector<uint8_t> &bytes)
 	}
 	return result;
 }
-#endif
-}
-
-divine_boon_store_result divine_boon_flatfile_load(const std::string &root,
-						   divine_boon_state *state)
-{
-	if (root.empty() || !state)
-		return divine_boon_store_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, nullptr) ||
-	    flatfile_authority_transaction_recover(root, lock, nullptr) !=
-		    flatfile_authority_transaction_result::ok)
-		return divine_boon_store_result::io_error;
-	return read_flatfile(root, state);
-}
-
-divine_boon_store_result divine_boon_flatfile_save(const std::string &root,
-						   uint64_t expected_revision,
-						   const divine_boon_state &state)
-{
-	std::vector<uint8_t> bytes;
-	if (root.empty() || !prepare_save(expected_revision, state, &bytes))
-		return divine_boon_store_result::invalid;
-	flatfile_authority_lock lock;
-	if (!lock.acquire(root, nullptr) ||
-	    flatfile_authority_transaction_recover(root, lock, nullptr) !=
-		    flatfile_authority_transaction_result::ok)
-		return divine_boon_store_result::io_error;
-	divine_boon_state current;
-	const auto loaded = read_flatfile(root, &current);
-	if (loaded != divine_boon_store_result::ok && loaded != divine_boon_store_result::not_found)
-		return loaded;
-	if (loaded == divine_boon_store_result::ok && current == state)
-		return divine_boon_store_result::already_applied;
-	const uint64_t revision = loaded == divine_boon_store_result::ok ? current.revision : 0;
-	if (revision != expected_revision)
-		return divine_boon_store_result::conflict;
-	return flatfile_authority_transaction_commit(root, lock, { { filename, std::move(bytes) } },
-						     nullptr) ==
-			       flatfile_authority_transaction_result::ok ?
-		       divine_boon_store_result::ok :
-		       divine_boon_store_result::io_error;
 }
 
 divine_boon_store_result divine_boon_sql_load(MYSQL *connection, divine_boon_state *state,
 					      bool for_update)
 {
-#ifdef __NO_MYSQL__
-	(void)connection;
-	(void)state;
-	(void)for_update;
-	return divine_boon_store_result::io_error;
-#else
 	if (!connection || !state)
 		return divine_boon_store_result::invalid;
 	const char *query =
@@ -134,18 +65,11 @@ divine_boon_store_result divine_boon_sql_load(MYSQL *connection, divine_boon_sta
 		return divine_boon_store_result::invalid;
 	*state = std::move(decoded);
 	return divine_boon_store_result::ok;
-#endif
 }
 
 divine_boon_store_result divine_boon_sql_save(MYSQL *connection, uint64_t expected_revision,
 					      const divine_boon_state &state)
 {
-#ifdef __NO_MYSQL__
-	(void)connection;
-	(void)expected_revision;
-	(void)state;
-	return divine_boon_store_result::io_error;
-#else
 	std::vector<uint8_t> bytes;
 	if (!connection || !prepare_save(expected_revision, state, &bytes))
 		return divine_boon_store_result::invalid;
@@ -176,7 +100,6 @@ divine_boon_store_result divine_boon_sql_save(MYSQL *connection, uint64_t expect
 			       loaded;
 	return current == state ? divine_boon_store_result::already_applied :
 				  divine_boon_store_result::conflict;
-#endif
 }
 
 // Pwipe calls this after its writer drain; preserve the same optimistic revision

@@ -555,7 +555,7 @@ int main(int argc, char **argv) {
                     str(native), "src/economy/divine_boon.c", "src/economy/divine_boon_repository.c",
                     "src/economy/collector_purchase_preparation.c", "src/guild/artifact_population_repository.c",
                     "src/item/legacy_object_identity.c", "src/player/player_load_repository.c", "src/player/player_load_topology.c",
-                    "src/item/item_uid_allocator.c", "src/flatfile/flatfile_item_uid_allocator.c", "src/flatfile/flatfile_store.c",
+                    "src/item/item_uid_allocator.c", "src/flatfile/flatfile_store.c",
                     "src/persistence/persistence_mode.c", "src/redis/redis_maintenance.c", "src/redis/redis_ship_legacy.c",
                     "src/redis/redis_connection.c", "src/redis/redis_command_observability.c", "src/redis/redis_namespace.c", *repository_sources,
                     "-lmysqlclient", "-lcrypto", "-lhiredis", "-lhiredis_ssl", "-lssl", "-Wl,--gc-sections", "-Wl,--wrap=posix_spawn", "-Wl,--wrap=mysql_real_query", "-o", str(binary)], cwd=ROOT, check=True)

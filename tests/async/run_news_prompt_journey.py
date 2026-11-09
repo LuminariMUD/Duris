@@ -29,9 +29,6 @@ def run(binary, backend):
     build = ROOT / 'bin/analysis/news'
     build.mkdir(parents=True, exist_ok=True)
     inspector = build / 'news-inspector'
-    if backend == 'flatfile':
-        subprocess.run(['python3', 'tests/async/test_flatfile_player_repository.py',
-                        '--build-inspector', str(inspector)], cwd=ROOT, check=True)
     with tempfile.TemporaryDirectory(prefix='news-' + backend + '-', dir=ROOT / 'bin/tests') as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)

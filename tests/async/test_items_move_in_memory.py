@@ -43,9 +43,6 @@ print("[PASS] slip, steal, soulbind, key break, storage, load, pouch, weapon dro
 
 AUCTION = (SRC / "auction_houses.c").read_text()
 assert "ownership is still being synchronized" not in AUCTION
-SHOP = (SRC / "shop_trade_runtime.c").read_text()
-assert "const bool player_held = !creates && !shop_owned(action);" in SHOP
-assert "!OBJ_CARRIED_BY(destination, player)" in SHOP
 print("[PASS] auction listings and shop trades start from the object's real holder")
 
 CLAIM = (SRC / "item_claim.h").read_text()
@@ -70,29 +67,14 @@ assert "claim_transfer_item(" in (SRC / "auction_repository.c").read_text()
 COLLECTOR = (SRC / "collector_repository.c").read_text()
 # The owners' revisions, and the collected items' revisions, come from what is stored.
 assert COLLECTOR.count("item_claim_owner_is_memory_held(payload.") == 3
-FLAT = (SRC / "flatfile_item_repository.c").read_text()
-flat_transfer = body(FLAT, "unsigned int apply_transfer(ownership_catalog *catalog,")
-assert flat_transfer.count("claim_catalog_item(") == 2
-assert "claim_catalog_item(" in body(
-    FLAT, "flatfile_item_repository_result flatfile_item_repository_prepare_auction_transfer(")
-collector = body(FLAT, "flatfile_item_repository_result flatfile_item_repository_prepare_collector_transfer(")
-assert "claim_catalog_item(" not in collector
-assert "item_claim_owner_is_memory_held(payload.from_owner.type)" in collector
 RUNTIME = (SRC / "item_ownership_runtime.c").read_text()
 assert "const bool memory_held = item_claim_owner_is_memory_held(payload.from_owner.type);" in RUNTIME
 print("[PASS] item and auction transfers claim what memory holds and collector transfers "
-      "stop fencing on memory owners, on both backends")
+      "stop fencing on memory owners")
 
 LOCKER = (SRC / "locker_async.c").read_text()
 locker_job = body(LOCKER, "static player_save_apply_result locker_write_job(")
-assert "write_locker(*job.snapshot)" in locker_job
-write_locker = body(LOCKER, "static player_save_apply_result write_locker(")
-assert "locker_snapshot_repository_apply_from_pool(snapshot)" in write_locker
-# On flat-file the locker's items are claimed with its catalog record, as a corpse's are.
-assert "flatfile_locker_snapshot_apply(root, save, &error)" in write_locker
-FLAT_PLAYER = (SRC / "flatfile_player_repository.c").read_text()
-assert "apply_world_snapshot(" in body(
-    FLAT_PLAYER, "player_save_apply_result flatfile_locker_snapshot_apply(")
+assert "locker_snapshot_repository_apply_from_pool(*job.snapshot)" in locker_job
 # The writer finds the locker, then deletes, claims and writes in one transaction.
 REPOSITORY = (SRC / "player_snapshot_repository.c").read_text()
 apply_locker = body(REPOSITORY, "player_save_apply_result apply_locker(MYSQL")
@@ -115,12 +97,7 @@ assert "return state == item_custody_state::destroyed;" in leaves and "ITEM_MONE
 assert "item_claim_leaves_owner_alone" not in (SRC / "item_claim_repository.c").read_text()
 LOAD = (SRC / "player_load_repository.c").read_text()
 assert "coin_payload" not in LOAD
-FLAT_PLAYER = (SRC / "flatfile_player_repository.c").read_text()
-assert "flatfile_shop_trade_materialization_prepare_player_remove(" in FLAT_PLAYER
-MATERIALIZE = (SRC / "flatfile_shop_trade_materialization.c").read_text()
-assert "coin_payload" not in MATERIALIZE
 print("[PASS] saves claim live coin piles, never spent ones, and a login loads the saved amount")
-print("[PASS] a flat-file save that carries every held item retires the transfers it replaces")
 
 assert "tests/async/run_item_transfer_schema_mysql.sh" in (
     ROOT / "tests/run_db_tests.sh").read_text()

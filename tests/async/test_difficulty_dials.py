@@ -195,10 +195,8 @@ def test_every_dial_reaches_its_hook() -> None:
     scaled = bartender.index(_flat("temp = difficulty_scale_world_quest_fee(temp);"), priced)
     assert scaled < bartender.index(_flat("currency_transaction_submit_wallet_value("), priced)
 
-    # Both backends' daily allowance takes the dial before today's quests are counted off.
+    # The daily allowance takes the dial before today's quests are counted off.
     sql = _flat(source("sql/sql.c").read_text())
-    assert _flat("maximum = difficulty_scale_world_quest_allowance(maximum); "
-                 "return std::max(maximum - completed_today, 0);") in sql
     assert _flat("returning_value = difficulty_scale_world_quest_allowance(returning_value); "
                  "returning_value -= done_today;") in sql
 

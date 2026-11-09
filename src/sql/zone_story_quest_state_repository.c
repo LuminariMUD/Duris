@@ -20,12 +20,10 @@
 #include <cstdlib>
 #include <limits>
 
-#ifndef __NO_MYSQL__
 #include "sql/sql_async.h"
 
 #include <cstdlib>
 #include <mysql.h>
-#endif
 
 sql_zone_story_quest_state_result
 sql_zone_story_quest_state_load(uint32_t expected_catalog_revision, std::string *state,
@@ -37,11 +35,6 @@ sql_zone_story_quest_state_load(uint32_t expected_catalog_revision, std::string 
 			*error = "zone-story SQL state output is null";
 		return sql_zone_story_quest_state_result::invalid;
 	}
-#ifdef __NO_MYSQL__
-	if (error)
-		*error = "SQL state repository is unavailable in a flat-file build";
-	return sql_zone_story_quest_state_result::io_error;
-#else
 	// Boot only (zone_story_quest_runtime::bootstrap()).
 	MYSQL_RES *result = db_query("SELECT state_version,catalog_revision,state_blob "
 				     "FROM zone_story_quest_state WHERE state_id=1 LIMIT 1");
@@ -97,7 +90,6 @@ sql_zone_story_quest_state_load(uint32_t expected_catalog_revision, std::string 
 		state->append(part[0], mysql_fetch_lengths(parts)[0]);
 	mysql_free_result(parts);
 	return sql_zone_story_quest_state_result::ok;
-#endif
 }
 
 sql_zone_story_quest_state_result
@@ -120,13 +112,6 @@ sql_zone_story_quest_state_save(uint32_t catalog_revision,
 				*error = "zone-story SQL state part is oversized";
 			return sql_zone_story_quest_state_result::invalid;
 		}
-#ifdef __NO_MYSQL__
-	(void)catalog_revision;
-	(void)unshared_bytes;
-	if (error)
-		*error = "SQL state repository is unavailable in a flat-file build";
-	return sql_zone_story_quest_state_result::io_error;
-#else
 	// Queued on the writer, in capture order with the saves; the writer logs a failure.
 	// It escapes and formats the parts too, which the game thread must not pay for. Only
 	// the parts this save alone keeps alive count against the writer's limit. The writer
@@ -172,5 +157,4 @@ sql_zone_story_quest_state_save(uint32_t catalog_revision,
 		return sql_zone_story_quest_state_result::io_error;
 	}
 	return sql_zone_story_quest_state_result::ok;
-#endif
 }

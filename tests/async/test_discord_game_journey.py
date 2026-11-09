@@ -322,8 +322,6 @@ if __name__ == "__main__":
     if not driver.is_file():
         parser.error(f"Node sink driver not found: {driver}")
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py", "--build-inspector",
-                    str(journey.INSPECTOR)], cwd=ROOT, check=True, timeout=180)
     with tempfile.TemporaryDirectory(prefix="discord-game-build-", dir=ROOT / "bin/tests") as build:
         binary = args.server.resolve() if args.server else journey.build_flatfile_server(Path(build))
         run(binary, driver)

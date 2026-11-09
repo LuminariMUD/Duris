@@ -72,7 +72,6 @@ class Fixture(unittest.TestCase):
         self.p = policy(self.base)
         provision(self.base / "live")
         self.env = mock.patch.dict(os.environ, {
-            "FLATFILE_STATE_DIR": str(self.base / "live"),
             "CRITICAL_COMMAND_JOURNAL_DIR": str(self.base / "journals/critical"),
         })
         self.env.start()
@@ -84,7 +83,7 @@ class Fixture(unittest.TestCase):
         self.schema_check.start()
         self.addCleanup(self.schema_check.stop)
 
-    def create(self, mode="flatfile-primary", created=None):
+    def create(self, mode="mariadb-primary", created=None):
         with contextlib.ExitStack() as stack:
             if created is not None:
                 stack.enter_context(mock.patch.object(backup.time, "time", return_value=created))
@@ -297,11 +296,12 @@ class GenerationTests(Fixture):
             self.assertEqual(set(self.p["root"].glob("[0-9]*")), set(before))
             self.assertFalse(list(self.p["root"].glob(".staging-*")))
 
-    def test_fallback_mode_captures_database_authority(self):
-        generation = self.create("mariadb-primary-flatfile-fallback")
-        self.assertEqual(backup.verify(generation)["mode"], "mariadb-primary")
-        self.assertTrue((generation / "database.sql.gz").is_file())
-        self.assertFalse((generation / "state").exists())
+    def test_obsolete_modes_are_rejected(self):
+        for mode in ("flatfile-primary", "mariadb-primary-flatfile-fallback"):
+            with self.subTest(mode=mode), \
+                    self.assertRaisesRegex(backup.BackupError, "invalid_persistence_mode"):
+                self.create(mode)
+        self.assertFalse(list(self.p["root"].glob("[0-9]*")))
 
     def test_rpo_measures_from_capture_start(self):
         started = int(time.time())
@@ -343,14 +343,14 @@ class GenerationTests(Fixture):
         self.assertFalse(list(self.p["restore_root"].glob("candidate-*")))
 
 
-    def test_full_manifest_and_checksum_tamper_both_modes(self):
+    def test_full_manifest_and_checksum_tamper(self):
         for mode in sorted(backup.MODES):
             with self.subTest(mode=mode):
                 path = self.create(mode)
                 meta = backup.verify(path)
                 self.assertEqual(meta["mode"], mode)
                 self.assertIn("runtime-schema.json", meta["files"])
-                data = path / ("state/players/42" if mode == "flatfile-primary" else "database.sql.gz")
+                data = path / "database.sql.gz"
                 data.write_bytes(data.read_bytes() + b"corruption")
                 with self.assertRaisesRegex(backup.BackupError, "checksum"):
                     backup.verify(path)
@@ -364,14 +364,14 @@ class GenerationTests(Fixture):
                 with self.subTest(mode=mode, stage=failed):
                     self.p["root"] = self.base / (mode + "-" + failed)
                     before = self.baseline(mode)
-                    live = backup.inventory(self.base / "live", exclude_locks=True)
+                    live = backup.inventory(self.base / "live")
                     def interrupt(stage):
                         if stage == failed:
                             raise OSError("synthetic injected failure")
                     with mock.patch.object(backup, "checkpoint", interrupt), self.assertRaises(OSError):
                         self.create(mode)
                     self.assert_preserved(before)
-                    self.assertEqual(backup.inventory(self.base / "live", exclude_locks=True), live)
+                    self.assertEqual(backup.inventory(self.base / "live"), live)
                     self.assertFalse(list(self.p["root"].glob(".staging-*")))
 
     def test_fsync_verify_and_publication_failures_preserve_previous(self):
@@ -427,7 +427,7 @@ class GenerationTests(Fixture):
                 self.create()
 
     def test_prune_interruption_preserves_newest_and_trash_for_inspection(self):
-        before = self.baseline("flatfile-primary")
+        before = self.baseline("mariadb-primary")
         def interrupt(stage):
             if stage == "prune_renamed":
                 raise OSError("synthetic interruption")
@@ -462,7 +462,7 @@ class GenerationTests(Fixture):
         with mock.patch.object(backup, "checkpoint", interrupt), self.assertRaises(OSError):
             self.create()
         newest = backup.generations(self.p["root"])[0][0]
-        (newest / "state/players/42").write_bytes(b"corrupted after publication")
+        (newest / "database.sql.gz").write_bytes(b"corrupted after publication")
         with mock.patch.object(backup, "policy_load", return_value=self.p), \
              mock.patch.object(sys, "argv", ["backup", "--policy", "/synthetic/policy", "finalize"]), \
              contextlib.redirect_stderr(io.StringIO()) as output:
@@ -483,7 +483,7 @@ class GenerationTests(Fixture):
 
 
     def test_actual_file_fsync_failure_preserves_previous_generations(self):
-        before = self.baseline("flatfile-primary")
+        before = self.baseline("mariadb-primary")
         real_fsync = backup.os.fsync
         def failed_sync(fd):
             if ".staging-" in os.readlink(f"/proc/self/fd/{fd}"):
@@ -495,7 +495,7 @@ class GenerationTests(Fixture):
         self.assertFalse(list(self.p["root"].glob(".staging-*")))
 
     def test_finalize_after_publication_failure_is_idempotent(self):
-        self.baseline("flatfile-primary")
+        self.baseline("mariadb-primary")
         def interrupt(stage):
             if stage == "after_publish":
                 raise OSError("synthetic publication interruption")
@@ -628,8 +628,7 @@ class CapacityAndInputTests(Fixture):
         self.assertIn('".%s.tmp.%ld.%llu"', (ROOT / "src/flatfile/flatfile_store.c").read_text())
         (receipts / ".43.receipt.tmp.1234.7").write_bytes(b"half-written receipt")
         with mock.patch.dict(os.environ, {"CRITICAL_COMMAND_JOURNAL_DIR": str(critical)}):
-            for mode, capture in (("flatfile-primary", "flatfile_capture"),
-                                  ("mariadb-primary", "mariadb_capture")):
+            for mode, capture in (("mariadb-primary", "mariadb_capture"),):
                 receipt.write_bytes(locker_receipt(PREPARED))
                 original = getattr(backup, capture)
                 def paid_during_capture(stage, p, capacity_base=None):
@@ -654,8 +653,7 @@ class CapacityAndInputTests(Fixture):
         (receipts / "44.receipt").write_bytes(waiting)
         begun = receipts / "43.receipt"
         with mock.patch.dict(os.environ, {"CRITICAL_COMMAND_JOURNAL_DIR": str(critical)}):
-            for mode, capture in (("flatfile-primary", "flatfile_capture"),
-                                  ("mariadb-primary", "mariadb_capture")):
+            for mode, capture in (("mariadb-primary", "mariadb_capture"),):
                 original = getattr(backup, capture)
                 def begun_during_capture(stage, p, capacity_base=None):
                     result = original(stage, p, capacity_base)
@@ -783,13 +781,21 @@ class FailureRecordTests(Fixture):
                 self.assertEqual(json.loads(output.getvalue()),
                                  {"event": "schedule", "result": "failed", **record})
 
+@contextlib.contextmanager
+def fake_private_database(candidate):
+    yield {}
+
+
 class RestoreTests(Fixture):
     def setUp(self):
         super().setUp()
         backup.mkdir(self.p["restore_root"])
-        guard = mock.patch.object(restore, "restore_capacity")
-        guard.start()
-        self.addCleanup(guard.stop)
+        for patcher in (mock.patch.object(restore, "restore_capacity"),
+                        mock.patch.object(restore, "private_database", fake_private_database),
+                        mock.patch.object(restore, "database_import"),
+                        mock.patch.object(restore, "database_qualify")):
+            patcher.start()
+            self.addCleanup(patcher.stop)
     def test_tombstone_preflight_fails_closed(self):
         captured = int(time.time()) - 10
         restore.tombstone_preflight(self.ledger(), self.p, captured)
@@ -805,7 +811,7 @@ class RestoreTests(Fixture):
         newest = self.create()
         for corrupted, drill in ((older, True), (newest, False)):
             with self.subTest(corrupted=corrupted.name, drill=drill):
-                data = corrupted / "state/players/42"
+                data = corrupted / "database.sql.gz"
                 data.write_bytes(data.read_bytes() + b"corruption")
                 self.assertEqual(backup.status(self.p)["result"], "ok")
                 with mock.patch.object(restore, "service_load") as service, \
@@ -830,7 +836,7 @@ class RestoreTests(Fixture):
     def test_failed_service_never_qualifies_and_preserves_generation(self):
         generation = self.create()
         before = backup.inventory(generation)
-        live = backup.inventory(self.base / "live", exclude_locks=True)
+        live = backup.inventory(self.base / "live")
         with mock.patch.object(backup, "run", return_value=b'{"players_loaded": 1}'), \
              mock.patch.object(restore, "service_load", side_effect=backup.BackupError("synthetic_service_failure")):
             with self.assertRaisesRegex(backup.BackupError, "synthetic_service_failure"):
@@ -840,7 +846,7 @@ class RestoreTests(Fixture):
         self.assertTrue((candidates[0] / "FAILED.json").is_file())
         self.assertFalse((candidates[0] / "QUALIFIED.json").exists())
         self.assertEqual(backup.inventory(generation), before)
-        self.assertEqual(backup.inventory(self.base / "live", exclude_locks=True), live)
+        self.assertEqual(backup.inventory(self.base / "live"), live)
 
     def test_erasure_evidence_changed_during_restore_never_qualifies(self):
         generation = self.create()

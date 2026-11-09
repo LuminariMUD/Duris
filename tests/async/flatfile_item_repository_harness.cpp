@@ -1,10 +1,5 @@
 #include "core/defines.h"
-#include "flatfile/flatfile_artifact_repository.h"
-#include "flatfile/flatfile_item_repository.h"
 #include <openssl/sha.h>
-#include "flatfile/flatfile_locker_repository.h"
-#include "flatfile/flatfile_world_item_repository.h"
-#include "flatfile/flatfile_shop_trade_materialization.h"
 #include "player/player_snapshot_codec.h"
 #include "world/world_recovery_pipeline.h"
 

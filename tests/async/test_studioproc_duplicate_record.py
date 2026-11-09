@@ -2,24 +2,24 @@
 """Two studio-proc records for one target: the boot binds the first and logs and skips
 the second. The engine dispatches one record per target, and a second bind would lose
 the target's own C proc, so the second was dead and the C proc switched off."""
+import argparse
 from pathlib import Path
 import tempfile
 
 import run_item_pilot_journey as pilot
-import server_build_artifacts
+import test_flatfile_combat_journey as journey
 
-with tempfile.TemporaryDirectory(prefix="duris-studioproc-build-") as build, \
-        tempfile.TemporaryDirectory(prefix="duris-studioproc-run-") as run, \
-        tempfile.TemporaryDirectory(prefix="duris-studioproc-state-") as state:
-    binary = server_build_artifacts.build_flatfile_server(Path(build))
-    root, state = Path(run), Path(state)
-    state.chmod(0o700)
-    (state / "domains").mkdir(mode=0o700)
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--server", type=Path, required=True)
+binary = parser.parse_args().server.resolve()
+with tempfile.TemporaryDirectory(prefix="duris-studioproc-run-") as run, \
+        journey.mariadb_authority() as (environment, _):
+    root = Path(run)
     pilot.configure(root, "studio", True)
     (root / "areas/world.trg").write_text("#22800 R\nT ENTER\necho first\n~\nS\n"
                                           "#22800 R\nT ENTER\necho second\n~\nS\n#~\n")
     (root / "logs/log").mkdir(parents=True, exist_ok=True)
-    server = pilot.Server(binary, root, state, "studio")
+    server = pilot.Server(binary, root, None, "studio", environment)
     try:
         server.start()
     finally:

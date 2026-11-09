@@ -42,15 +42,12 @@ using namespace std;
 #include "economy/boon.h"
 #include "economy/divine_boon_runtime.h"
 #include "economy/boon_reward_transaction.h"
-#include "economy/boon_shop_transaction.h"
 #include "world/buildings.h"
 #include "combat/ctf.h"
 #include "economy/currency_transaction.h"
 #include "world/epic.h"
-#include "flatfile/flatfile_boon_repository.h"
 #include "guild/guildhall.h"
 #include "economy/nexus_stones.h"
-#include "persistence/persistence_mode.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
@@ -108,7 +105,6 @@ struct boon_options_struct boon_options[] = {
 	{}
 };
 
-void boon_notify(int id, P_char ch, int action);
 static void boon_mob_label(int criteria2, char *buf, size_t len, int for_list);
 static void boon_race_label(int criteria2, char *buf, size_t len);
 
@@ -140,75 +136,6 @@ static void cash_boon_committed(P_char ch, bool committed,
 		return;
 	}
 	send_to_char_f(ch, "Your bank receives a deposit of %s&n.\r\n", coin_stringv(context.cash));
-}
-
-static const char *flat_boon_root()
-{
-	return persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY ?
-		       persistence_mode_flatfile_root() :
-		       nullptr;
-}
-
-static bool copy_flat_boon_definition(const flatfile_boon_definition &source, BoonData *target)
-{
-	if (!target || source.id > static_cast<uint32_t>(std::numeric_limits<int>::max()) ||
-	    source.start_time < std::numeric_limits<int>::min() ||
-	    source.start_time > std::numeric_limits<int>::max() ||
-	    source.duration < std::numeric_limits<int>::min() ||
-	    source.duration > std::numeric_limits<int>::max() ||
-	    source.target_pid > static_cast<uint32_t>(std::numeric_limits<int>::max()))
-		return false;
-	target->id = static_cast<int>(source.id);
-	target->time = static_cast<int>(source.start_time);
-	target->duration = static_cast<int>(source.duration);
-	target->racewar = source.racewar;
-	target->type = source.type;
-	target->option = source.option;
-	target->criteria = source.criteria;
-	target->criteria2 = source.criteria2;
-	target->bonus = source.bonus;
-	target->bonus2 = source.bonus2;
-	target->random = source.random;
-	target->author = source.author;
-	target->active = source.active;
-	target->pid = static_cast<int>(source.target_pid);
-	target->repeat = source.repeat;
-	return true;
-}
-
-static flatfile_boon_definition copy_boon_definition_to_flat(const BoonData &source,
-							     int64_t start_time)
-{
-	flatfile_boon_definition target;
-	target.start_time = start_time;
-	target.duration = source.duration;
-	target.racewar = static_cast<uint8_t>(source.racewar);
-	target.type = static_cast<uint8_t>(source.type);
-	target.option = static_cast<uint8_t>(source.option);
-	target.criteria = source.criteria;
-	target.criteria2 = source.criteria2;
-	target.bonus = source.bonus;
-	target.bonus2 = source.bonus2;
-	target.random = source.random;
-	target.active = true;
-	target.target_pid = static_cast<uint32_t>(source.pid);
-	target.repeat = source.repeat;
-	target.author = source.author;
-	return target;
-}
-
-static int boon_ctf_index(int flag_id)
-{
-	int i;
-
-	for (i = 1; ctfdata[i].id; i++)
-	{
-		if (ctfdata[i].id == flag_id)
-		{
-			return i;
-		}
-	}
-	return -1;
 }
 
 // level 0 means it can be randomly set, otherwise manually by the listed level.
@@ -379,35 +306,6 @@ int get_valid_boon_option(char *arg)
 	return -1;
 }
 
-// Flat-file only: MariaDB reads the boon on the writer (do_boon).
-int is_boon_valid(int id)
-{
-	const char *root = flat_boon_root();
-	if (!root || id <= 0)
-		return FALSE;
-	std::vector<flatfile_boon_definition> definitions;
-	std::string error;
-	if (flatfile_boon_load_definitions(root, &definitions, &error) != flatfile_boon_result::ok)
-		return FALSE;
-	return std::any_of(definitions.begin(), definitions.end(), [&](const auto &definition)
-			   { return definition.id == static_cast<uint32_t>(id); });
-}
-
-// Flat-file only: MariaDB counts the boons on the writer (create_boon()).
-int count_boons(int active, int random)
-{
-	const char *root = flat_boon_root();
-	if (!root)
-		return 0;
-	std::vector<flatfile_boon_definition> definitions;
-	std::string error;
-	if (flatfile_boon_load_definitions(root, &definitions, &error) != flatfile_boon_result::ok)
-		return 0;
-	return static_cast<int>(std::count_if(
-		definitions.begin(), definitions.end(), [&](const auto &definition)
-		{ return (!active || definition.active) && (!random || definition.random); }));
-}
-
 void zero_boon_data(BoonData *bdata)
 {
 	if (!bdata)
@@ -430,43 +328,6 @@ void zero_boon_data(BoonData *bdata)
 	bdata->repeat = 0;
 
 	return;
-}
-
-// Flat-file only: MariaDB reads the boons on the writer.
-bool get_boon_data(int id, BoonData *bdata)
-{
-	const char *root = flat_boon_root();
-	if (!bdata || !root || id <= 0)
-		return FALSE;
-	std::vector<flatfile_boon_definition> definitions;
-	std::string error;
-	if (flatfile_boon_load_definitions(root, &definitions, &error) != flatfile_boon_result::ok)
-		return FALSE;
-	const auto found = std::lower_bound(definitions.begin(), definitions.end(),
-					    static_cast<uint32_t>(id),
-					    [](const auto &definition, uint32_t key)
-					    { return definition.id < key; });
-	return found != definitions.end() && found->id == static_cast<uint32_t>(id) &&
-	       copy_flat_boon_definition(*found, bdata);
-}
-
-// Flat-file only: MariaDB reads the shop on the writer (boon_shop()).
-bool get_boon_shop_data(int pid, BoonShop *bshop)
-{
-	const char *root = flat_boon_root();
-	if (!bshop || !root || pid <= 0)
-		return FALSE;
-	flatfile_boon_player_projection player;
-	std::string error;
-	if (flatfile_boon_load_player(root, static_cast<uint32_t>(pid), &player, &error) !=
-		    flatfile_boon_result::ok ||
-	    player.points < std::numeric_limits<int>::min() ||
-	    player.points > std::numeric_limits<int>::max() ||
-	    player.stats < std::numeric_limits<int>::min() ||
-	    player.stats > std::numeric_limits<int>::max())
-		return FALSE;
-	*bshop = { 0, pid, static_cast<int>(player.points), static_cast<int>(player.stats), 0 };
-	return TRUE;
 }
 
 // Data validation for data in BoonData struct
@@ -1658,48 +1519,22 @@ void do_boon(P_char ch, char *argument, int /*cmd*/)
 			return;
 		}
 		id = atoi(arg);
-		if (!flat_boon_root())
-		{
-			// MariaDB: the boon is read on the writer and removed on a later pulse.
-			sql_read_for(
-				ch,
-				sql_format("SELECT racewar, pid FROM boons WHERE id = '%d'", id),
-				[id](P_char god, const sql_rows &rows)
+		// MariaDB: the boon is read on the writer and removed on a later pulse.
+		sql_read_for(
+			ch, sql_format("SELECT racewar, pid FROM boons WHERE id = '%d'", id),
+			[id](P_char god, const sql_rows &rows)
+			{
+				if (rows.empty())
 				{
-					if (rows.empty())
-					{
-						send_to_char_f(god,
-							       "&+WBoon # %d does not exist&n.\r\n",
-							       id);
-						return;
-					}
-					remove_boon(id);
-					boon_notify_snapshot(id, rows[0][0] ? atoi(rows[0][0]) : 0,
-							     rows[0][1] ? atoi(rows[0][1]) : 0,
-							     BN_VOID);
-					send_to_char_f(god,
-						       "&+WSuccessfully removed boon # %d.&n\r\n",
+					send_to_char_f(god, "&+WBoon # %d does not exist&n.\r\n",
 						       id);
-				});
-			return;
-		}
-		if (!is_boon_valid(id))
-		{
-			send_to_char_f(ch, "&+WBoon # %d does not exist&n.\r\n", id);
-			return;
-		}
-		if (remove_boon(id))
-		{
-			boon_notify(id, NULL, BN_VOID);
-			send_to_char_f(ch, "&+WSuccessfully removed boon # %d.&n\r\n", id);
-			return;
-		}
-		else
-		{
-			send_to_char("&+LRemoval was unsuccessful.&n\r\n", ch);
-			return;
-		}
-		send_to_char("Something's wrong.\r\n", ch);
+					return;
+				}
+				remove_boon(id);
+				boon_notify_snapshot(id, rows[0][0] ? atoi(rows[0][0]) : 0,
+						     rows[0][1] ? atoi(rows[0][1]) : 0, BN_VOID);
+				send_to_char_f(god, "&+WSuccessfully removed boon # %d.&n\r\n", id);
+			});
 		return;
 	}
 	// Extend duration on existing boon
@@ -1715,12 +1550,6 @@ void do_boon(P_char ch, char *argument, int /*cmd*/)
 			return;
 		}
 		id = atoi(arg);
-		// MariaDB checks the boon on the writer, as it extends it.
-		if (flat_boon_root() && !is_boon_valid(id))
-		{
-			send_to_char_f(ch, "&+WBoon # %d does not exist.&n\r\n", id);
-			return;
-		}
 		argument = one_argument(argument, arg);
 		if (!*arg || !isdigit(*arg))
 		{
@@ -1732,16 +1561,7 @@ void do_boon(P_char ch, char *argument, int /*cmd*/)
 		}
 		duration = atoi(arg);
 		// debug("passing id %d duration %d", id, duration);
-		if (!flat_boon_root())
-		{
-			extend_boon_on_writer(ch, id, duration);
-			return;
-		}
-		if (extend_boon(id, duration, GET_NAME(ch)))
-			send_to_char_f(ch, "Boon # %d has been extended for %d minutes.\r\n", id,
-				       duration);
-		else
-			send_to_char("Extension failed.\r\n", ch);
+		extend_boon_on_writer(ch, id, duration);
 		return;
 	}
 	// Randonized boon controller
@@ -1930,22 +1750,11 @@ void boon_shop(P_char ch, char *argument)
 		return;
 	}
 
-	// Flat-file reads the shop here; MariaDB reads it on the writer, where the boon
-	// rewards add the points.
-	const bool flat = flat_boon_root() != nullptr;
-	BoonShop bshop = { 0, GET_PID(ch), 0, 0, 0 };
-	if (flat && !get_boon_shop_data(GET_PID(ch), &bshop))
-		bshop = { 0, GET_PID(ch), 0, 0, 0 };
+	// MariaDB reads the shop on the writer, where the boon rewards add the points.
 
 	// handle arg's.. buy, etc...
 	if (!strcmp(arg, "stat") || !strcmp(arg, "stats"))
 	{
-		if (flat && !bshop.stats)
-		{
-			send_to_char("You don't have any stat points available.\r\n", ch);
-			return;
-		}
-
 		argument = one_argument(argument, arg);
 
 		if (!*arg || isdigit(*arg))
@@ -1969,12 +1778,6 @@ void boon_shop(P_char ch, char *argument)
 			send_to_char(
 				"That's not a valid stat, please choose from the following: str, dex, agi, con, pow, int, wis, con.\r\n",
 				ch);
-			return;
-		}
-		if (flat)
-		{
-			if (!boon_shop_transaction_submit(ch, static_cast<uint8_t>(stat - 1)))
-				send_to_char("The boon shop is temporarily unavailable.\r\n", ch);
 			return;
 		}
 		// MariaDB: the point is spent on the writer and the stat rises on a later pulse.
@@ -2012,11 +1815,6 @@ void boon_shop(P_char ch, char *argument)
 	// no arguments
 	if (!*arg)
 	{
-		if (flat)
-		{
-			boon_shop_show(ch, bshop.points, bshop.stats);
-			return;
-		}
 		sql_read_for(ch,
 			     sql_format("SELECT points, stats FROM boons_shop WHERE pid = %d",
 					GET_PID(ch)),
@@ -2027,49 +1825,6 @@ void boon_shop(P_char ch, char *argument)
 						    found ? atoi(rows[0][1]) : 0);
 			     });
 	}
-}
-
-struct flat_boon_display_filters
-{
-	bool active = false;
-	bool inactive = false;
-	bool random = false;
-	bool manual = false;
-	std::vector<uint32_t> player_ids;
-	std::vector<std::string> authors;
-	std::vector<uint8_t> types;
-	std::vector<uint8_t> options;
-};
-
-static bool boon_like_match(const std::string &value, const std::string &pattern)
-{
-	size_t value_at = 0, pattern_at = 0;
-	size_t wildcard = std::string::npos, retry = 0;
-	while (value_at < value.size())
-	{
-		if (pattern_at < pattern.size() &&
-		    (pattern[pattern_at] == '_' ||
-		     LOWER(pattern[pattern_at]) == LOWER(value[value_at])))
-		{
-			++value_at;
-			++pattern_at;
-		}
-		else if (pattern_at < pattern.size() && pattern[pattern_at] == '%')
-		{
-			wildcard = pattern_at++;
-			retry = value_at;
-		}
-		else if (wildcard != std::string::npos)
-		{
-			pattern_at = wildcard + 1;
-			value_at = ++retry;
-		}
-		else
-			return false;
-	}
-	while (pattern_at < pattern.size() && pattern[pattern_at] == '%')
-		++pattern_at;
-	return pattern_at == pattern.size();
 }
 
 template <typename T>
@@ -2340,56 +2095,6 @@ static void boon_display_row(P_char ch, const BoonData &boon)
 	send_to_char(row, ch);
 }
 
-static int boon_display_flat(P_char ch, const flat_boon_display_filters &filters)
-{
-	const char *root = flat_boon_root();
-	if (!root)
-		return -1;
-	std::vector<flatfile_boon_definition> definitions;
-	std::string error;
-	if (flatfile_boon_load_definitions(root, &definitions, &error) != flatfile_boon_result::ok)
-		return -1;
-	if (IS_TRUSTED(ch))
-		send_to_char_f(ch,
-			       "&+C%-6s   %-10s %-8s %-7s %-6s %-9s %9s %9s %10s %7s %-10s&n\r\n",
-			       "ID", "Random", "Duration", "Racewar", "Type", "Option", "Criteria",
-			       "Criteria2", "Bonus", "Bonus2", "Assigned");
-	else
-		send_to_char_f(ch, "&+C%-6s   %-8s %-7s %s&n\r\n", "ID", "Duration", "Racewar",
-			       "Description");
-	int count = 0;
-	for (const auto &definition : definitions)
-	{
-		const bool active_match = (!filters.active && !filters.inactive) ||
-					  (filters.active && definition.active) ||
-					  (filters.inactive && !definition.active);
-		const bool mode_match = (!filters.manual && !filters.random) ||
-					(filters.manual && !definition.random) ||
-					(filters.random && definition.random);
-		const bool author_match =
-			filters.authors.empty() ||
-			std::any_of(filters.authors.begin(), filters.authors.end(),
-				    [&](const auto &pattern)
-				    { return boon_like_match(definition.author, pattern); });
-		if (!active_match || !mode_match || !author_match ||
-		    !boon_filter_contains(filters.player_ids, definition.target_pid) ||
-		    !boon_filter_contains(filters.types, definition.type) ||
-		    !boon_filter_contains(filters.options, definition.option) ||
-		    (!IS_TRUSTED(ch) &&
-		     ((definition.racewar && definition.racewar != GET_RACEWAR(ch)) ||
-		      (definition.target_pid &&
-		       definition.target_pid != static_cast<uint32_t>(GET_PID(ch))))))
-			continue;
-		BoonData boon;
-		if (!copy_flat_boon_definition(definition, &boon))
-			continue;
-		boon_display_row(ch, boon);
-		++count;
-	}
-	send_to_char_f(ch, "Displaying %d result(s).\r\n", count);
-	return count ? TRUE : FALSE;
-}
-
 // The MariaDB boon list, from the boons read on the writer.
 static void boon_display_rows(P_char ch, const sql_rows &rows)
 {
@@ -2461,7 +2166,6 @@ int boon_display(P_char ch, char *argument)
 	int active = 0, inactive = 0, random = 0, manual = 0;
 	char name[MAX_STRING_LENGTH], type[MAX_STRING_LENGTH], option[MAX_STRING_LENGTH];
 	char player[MAX_STRING_LENGTH];
-	flat_boon_display_filters flat_filters;
 
 	*name = *type = *option = *player = '\0';
 
@@ -2488,7 +2192,6 @@ int boon_display(P_char ch, char *argument)
 						 "OR pid = '%d' ", pid);
 			else
 				snprintf(player, MAX_STRING_LENGTH, "pid = '%d' ", pid);
-			flat_filters.player_ids.push_back(static_cast<uint32_t>(pid));
 			break;
 		}
 		case 'u':
@@ -2503,7 +2206,6 @@ int boon_display(P_char ch, char *argument)
 			else
 				checked_snprintf(name, MAX_STRING_LENGTH, "author LIKE '%s' ",
 						 author.c_str());
-			flat_filters.authors.emplace_back(arg);
 			break;
 		}
 		case 't':
@@ -2527,7 +2229,6 @@ int boon_display(P_char ch, char *argument)
 				else
 					snprintf(type, MAX_STRING_LENGTH, "type = '%d' ",
 						 boon_type);
-				flat_filters.types.push_back(static_cast<uint8_t>(boon_type));
 			}
 			break;
 		}
@@ -2553,7 +2254,6 @@ int boon_display(P_char ch, char *argument)
 				else
 					snprintf(option, MAX_STRING_LENGTH, "opt = '%d' ",
 						 boon_option);
-				flat_filters.options.push_back(static_cast<uint8_t>(boon_option));
 			}
 			break;
 		}
@@ -2600,21 +2300,11 @@ int boon_display(P_char ch, char *argument)
 		random = 1;
 		manual = 1;
 	}
-	flat_filters.active = active;
-	flat_filters.inactive = inactive;
-	flat_filters.random = random;
-	flat_filters.manual = manual;
-
 	// debug("active: %d, inactive: %d, random: %d, manual: %d", active, inactive, random, manual);
 	// debug("name: %s, type: %s, option: %s", name, type, option);
 
 	const char *heading =
 		"&+WThe Gods of Duris have given you and your allies the following boons:&n\r\n";
-	if (flat_boon_root())
-	{
-		send_to_char(heading, ch);
-		return boon_display_flat(ch, flat_filters);
-	}
 	// zone_table[zone_count].number = zone number
 	// pad_ansi(zone_table[zone_count].name, 45].c_str() = zone name
 	// zone_table[zone_count].avg_mob_level = way to find out range of zone
@@ -2699,102 +2389,48 @@ int create_boon(BoonData *bdata, P_char ch)
 		debug("create_boon(): NULL bdata passed to function");
 		return FALSE;
 	}
-	const char *root = flat_boon_root();
-	if (!root)
-	{
-		const BoonData boon = *bdata;
-		const uint64_t runtime_id = ch ? ch->runtime_id : 0;
-		boon_reward_definition_view_invalidate();
-		return sql_read_work(
-			[boon](MYSQL *connection, sql_rows *rows) -> unsigned int
-			{
-				sql_rows active;
-				if (const unsigned int error_code = sql_select(
-					    connection,
-					    "SELECT COUNT(*) FROM boons WHERE active = 1", &active))
-					return error_code;
-				if (active.empty() || !active[0][0] ||
-				    atoi(active[0][0]) >= MAX_BOONS)
-					return 0;
-				if (const unsigned int error_code = sql_execute(
-					    connection,
-					    sql_format(
-						    "INSERT INTO boons (time, duration, racewar, type, opt, criteria, criteria2, bonus, bonus2, random, author, active, pid, rpt) VALUES "
-						    "(%ld, %d, %d, %d, %d, %f, %f, %f, %f, %d, '%s', 1, '%d', '%d')",
-						    static_cast<long>(time(nullptr)), boon.duration,
-						    boon.racewar, boon.type, boon.option,
-						    boon.criteria, boon.criteria2, boon.bonus,
-						    boon.bonus2, boon.random, boon.author.c_str(),
-						    boon.pid, boon.repeat)))
-					return error_code;
-				boon_reward_definition_view_invalidate();
-				return sql_select(connection, "SELECT LAST_INSERT_ID()", rows);
-			},
-			[boon, runtime_id](bool ok, const sql_rows &rows)
-			{
-				const int id =
-					ok && !rows.empty() && rows[0][0] ? atoi(rows[0][0]) : 0;
-				if (id > 0)
-					boon_notify_snapshot(id, boon.racewar, boon.pid, BN_CREATE);
-				else if (ok)
-					debug("Maximum number of boons has been reached.  Aborting create_boon().");
-				boon_create_told(find_character_by_runtime_id(runtime_id), id > 0);
-			});
-	}
-
-	if (count_boons(TRUE, FALSE) >= MAX_BOONS)
-	{
-		debug("Maximum number of boons has been reached.  Aborting create_boon().");
-		boon_create_told(ch, false);
-		return FALSE;
-	}
-	flatfile_boon_definition definition = copy_boon_definition_to_flat(*bdata, time(nullptr));
-	std::string error;
-	if (bdata->racewar < 0 || bdata->racewar > UINT8_MAX || bdata->type < 0 ||
-	    bdata->type > UINT8_MAX || bdata->option < 0 || bdata->option > UINT8_MAX ||
-	    bdata->pid < 0 ||
-	    flatfile_boon_create(root, &definition, &error) != flatfile_boon_result::ok ||
-	    definition.id > static_cast<uint32_t>(std::numeric_limits<int>::max()))
-	{
-		boon_create_told(ch, false);
-		return FALSE;
-	}
-	bdata->id = static_cast<int>(definition.id);
-	boon_notify(bdata->id, nullptr, BN_CREATE);
-	boon_create_told(ch, true);
-	return TRUE;
+	const BoonData boon = *bdata;
+	const uint64_t runtime_id = ch ? ch->runtime_id : 0;
+	boon_reward_definition_view_invalidate();
+	return sql_read_work(
+		[boon](MYSQL *connection, sql_rows *rows) -> unsigned int
+		{
+			sql_rows active;
+			if (const unsigned int error_code = sql_select(
+				    connection, "SELECT COUNT(*) FROM boons WHERE active = 1",
+				    &active))
+				return error_code;
+			if (active.empty() || !active[0][0] || atoi(active[0][0]) >= MAX_BOONS)
+				return 0;
+			if (const unsigned int error_code = sql_execute(
+				    connection,
+				    sql_format(
+					    "INSERT INTO boons (time, duration, racewar, type, opt, criteria, criteria2, bonus, bonus2, random, author, active, pid, rpt) VALUES "
+					    "(%ld, %d, %d, %d, %d, %f, %f, %f, %f, %d, '%s', 1, '%d', '%d')",
+					    static_cast<long>(time(nullptr)), boon.duration,
+					    boon.racewar, boon.type, boon.option, boon.criteria,
+					    boon.criteria2, boon.bonus, boon.bonus2, boon.random,
+					    boon.author.c_str(), boon.pid, boon.repeat)))
+				return error_code;
+			boon_reward_definition_view_invalidate();
+			return sql_select(connection, "SELECT LAST_INSERT_ID()", rows);
+		},
+		[boon, runtime_id](bool ok, const sql_rows &rows)
+		{
+			const int id = ok && !rows.empty() && rows[0][0] ? atoi(rows[0][0]) : 0;
+			if (id > 0)
+				boon_notify_snapshot(id, boon.racewar, boon.pid, BN_CREATE);
+			else if (ok)
+				debug("Maximum number of boons has been reached.  Aborting create_boon().");
+			boon_create_told(find_character_by_runtime_id(runtime_id), id > 0);
+		});
 }
 
 int remove_boon(int id)
 {
-	if (const char *root = flat_boon_root())
-	{
-		if (id <= 0)
-			return 0;
-		std::string error;
-		return flatfile_boon_deactivate(root, static_cast<uint32_t>(id), &error) ==
-		       flatfile_boon_result::ok;
-	}
 	// Gona leave boons on the DB for history lookup purposes. Queued on the writer.
 	boon_reward_definition_view_invalidate();
 	return sql_queue("UPDATE boons SET active='0', duration='0' WHERE id='%d'", id);
-}
-
-// Flat-file only: MariaDB extends on the writer (extend_boon_on_writer()).
-int extend_boon(int id, int extend, const char *name)
-{
-	if (!divine_boon_legacy_admissions_allowed())
-		return FALSE;
-	const char *root = flat_boon_root();
-	if (!root || id <= 0 || extend < 0 || !name || !*name)
-		return FALSE;
-	bool was_active = false;
-	std::string error;
-	if (flatfile_boon_extend(root, static_cast<uint32_t>(id), extend, time(nullptr), name,
-				 &was_active, &error) != flatfile_boon_result::ok)
-		return FALSE;
-	boon_notify(id, nullptr, was_active ? BN_EXTEND : BN_REACTIVATE);
-	return TRUE;
 }
 
 /* Mob-kill boon text from criteria2 only (matches list vs progress wording). */
@@ -2833,82 +2469,6 @@ static void boon_race_label(int criteria2, char *buf, size_t len)
 		return;
 	}
 	checked_snprintf(buf, len, "%s", race_names_table[criteria2].ansi);
-}
-
-void boon_notify(int id, P_char ch, int action)
-{
-	char buff[MAX_STRING_LENGTH];
-	P_desc d;
-
-	if (!action)
-	{
-		debug("boon_notify() called with invalid action");
-		return;
-	}
-
-	BoonData bdata;
-	if (!get_boon_data(id, &bdata))
-	{
-		debug("boon_nofity() called with invalid id");
-		return;
-	}
-
-	for (d = descriptor_list; d; d = d->next)
-	{
-		if (!d->connected && d->character &&
-		    IS_SET(d->character->specials.act2, PLR2_BOON) &&
-		    (IS_TRUSTED(d->character) ||
-		     ((!bdata.racewar || (GET_RACEWAR(d->character) == bdata.racewar)) &&
-		      (!bdata.pid || (bdata.pid == GET_PID(d->character))))))
-		{
-			if (ch && ch != d->character)
-			{
-				continue;
-			}
-			*buff = '\0';
-			switch (action)
-			{
-			case BN_CREATE: // Might become annoying
-				snprintf(
-					buff, MAX_STRING_LENGTH,
-					"&+CYou qualify for a new boon (#%d) that has been created.&n\r\n",
-					bdata.id);
-				break;
-			case BN_REACTIVATE:
-				snprintf(
-					buff, MAX_STRING_LENGTH,
-					"&+CYou qualify for a boon (#%d) that has been reactivated.&n\r\n",
-					bdata.id);
-				break;
-			case BN_EXTEND:
-				snprintf(buff, MAX_STRING_LENGTH,
-					 "&+CThe duration for Boon # %d has been extended.&n\r\n",
-					 bdata.id);
-				break;
-			case BN_COMPLETE: // Completion notification
-				snprintf(buff, MAX_STRING_LENGTH,
-					 "&+CYou have completed boon # %d.&n\r\n", bdata.id);
-				break;
-			case BN_VOID: // boon_remove()
-				snprintf(buff, MAX_STRING_LENGTH,
-					 "&+CBoon # %d is no longer available.&n\r\n", bdata.id);
-				break;
-			case BN_EXPIRE: // Expired notification
-				// TODO: Might just make this only if you have a progress entry for it.
-				// or if you're currently in the zone, or if you're currently in the nexus, etc...
-				snprintf(buff, MAX_STRING_LENGTH, "&+CBoon # %d has expired.&n\r\n",
-					 bdata.id);
-				break;
-			default:
-				break;
-			}
-			if (*buff)
-			{
-				send_to_char(buff, d->character);
-			}
-		}
-	}
-	return;
 }
 
 void boon_notify_snapshot(int id, int racewar, int pid, int action)
@@ -2950,104 +2510,6 @@ void boon_randomize(P_char ch, char *argument)
 	send_to_char_f(ch, "Randomizing boon list with argument: %s.\r\n", argument);
 	send_to_char_f(ch, "Under construction.\r\n");
 	return;
-}
-
-// Flat-file's boon expiry, run when the boon_scan maintenance job is due (MariaDB's job
-// does this on the writer).
-void boon_maintenance()
-{
-	if (!divine_boon_legacy_admissions_allowed())
-		return;
-	BoonData bdata;
-	int expire;
-	std::vector<int> active_ids;
-
-	const char *root = flat_boon_root();
-	if (!root)
-		return;
-	std::vector<flatfile_boon_definition> definitions;
-	std::string error;
-	if (flatfile_boon_load_definitions(root, &definitions, &error) != flatfile_boon_result::ok)
-		return;
-	for (const auto &definition : definitions)
-		if (definition.active &&
-		    definition.id <= static_cast<uint32_t>(std::numeric_limits<int>::max()))
-			active_ids.push_back(static_cast<int>(definition.id));
-
-	for (int boon_id : active_ids)
-	{
-		zero_boon_data(&bdata);
-		if (!get_boon_data(boon_id, &bdata))
-			continue;
-
-		// check durations and expire if necessesary
-		expire = FALSE;
-		if ((bdata.duration != -1) && (bdata.time + (bdata.duration * 60)) < time(0))
-		{
-			boon_notify(bdata.id, NULL, BN_EXPIRE);
-			remove_boon(bdata.id);
-			expire = 2;
-		}
-
-		// Check status of current boon criteria, ie is an epic zone complete, or goodie nexus already goodie, etc..
-		// boon_notify(bdata.id, NULL, BN_VOID);
-		// Check boon completability
-		switch (bdata.option)
-		{
-		case BOPT_ZONE:
-		{
-			// is epic zone already complete?
-			if (epic_zone_done_now(bdata.criteria))
-				expire = TRUE;
-			break;
-		}
-		case BOPT_NEXUS:
-		{
-			NexusStoneInfo nexus;
-			if (!nexus_stone_info(bdata.criteria, &nexus))
-				break;
-			if ((nexus.align == 3 && bdata.racewar == RACEWAR_GOOD) ||
-			    (nexus.align == -3 && bdata.racewar == RACEWAR_EVIL))
-				expire = TRUE;
-			break;
-		}
-		case BOPT_CTFB:
-		{
-			int ctf_i = boon_ctf_index((int)bdata.criteria);
-
-			// If this is based on a boon type flag, and that flag has expired
-			if (ctf_i > 0 && ctfdata[ctf_i].type == CTF_BOON &&
-			    ctfdata[ctf_i].room == 0)
-			{
-				expire = TRUE;
-			}
-			if (expire && ctf_i > 0)
-			{
-				ctf_delete_flag((int)bdata.criteria);
-				ctfdata[ctf_i].room = 0;
-			}
-			break;
-		}
-		case BOPT_CTF:
-		case BOPT_LEVEL:
-		case BOPT_CARGO:
-		case BOPT_AUCTION:
-		case BOPT_OP: // others of same racewar side can capture outpost
-		case BOPT_GH:
-		case BOPT_FRAGS:
-		case BOPT_FRAG:
-		case BOPT_RACE:
-		case BOPT_MOB:
-		case BOPT_NONE:
-		default:
-			break;
-		}
-		if (expire == TRUE)
-		{
-			boon_notify(bdata.id, NULL, BN_VOID);
-			remove_boon(bdata.id);
-		}
-	}
 }
 
 void check_boon_completion(P_char ch, P_char victim, double data, int option)

@@ -258,10 +258,7 @@ if __name__ == "__main__":
     parser.add_argument("--server", type=Path)
     args = parser.parse_args()
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    if args.backend == "flatfile":
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True, timeout=180)
-    elif not all(os.environ.get(name) for name in ("TEST_DB_HOST", "TEST_DB_USER", "TEST_DB_PASSWORD")):
+    if args.backend != "flatfile" and not all(os.environ.get(name) for name in ("TEST_DB_HOST", "TEST_DB_USER", "TEST_DB_PASSWORD")):
         parser.error("MariaDB requires explicit disposable TEST_DB_HOST, TEST_DB_USER and TEST_DB_PASSWORD")
     with tempfile.TemporaryDirectory(prefix="information-build-", dir=ROOT / "bin/tests") as build:
         if args.server:

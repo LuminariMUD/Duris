@@ -95,9 +95,6 @@ def run(binary, backend, report):
     evidence = {"backend": backend, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
                 "purchases": [], "checks": [], "passed": False}
     inspector = ROOT / "bin/tests/shop-multi-buy-inspector"
-    if backend == "flatfile":
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(inspector)], cwd=ROOT, check=True)
     with tempfile.TemporaryDirectory(prefix="shop-journey-", dir=ROOT / "bin/tests") as temporary:
         runtime = Path(temporary)
         _, critical, log = setup_run_root(runtime)

@@ -56,7 +56,6 @@ using namespace std;
 #include "redis/redis_report_cache.h"
 #include "magic/spells.h"
 #include "persistence/persistence_checkpoint.h"
-#include "persistence/persistence_mode.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
 #include "world/timers.h"
@@ -1072,16 +1071,6 @@ void epic_stone_level_char(P_obj obj, P_char ch)
 		epic_stone_level_char_from_level(obj->value[3], ch);
 }
 
-// Flat-file defaults supply payouts but no per-zone epic_level. Preserve the
-// stone prototype's level instead of overwriting it with an unknown zero.
-// SQL continues to honour its authoritative epic_level, including zero.
-static int stone_level_for_zone(int native_level, int configured_level)
-{
-	if (persistence_mode_requires_mysql() || configured_level > 0)
-		return configured_level;
-	return native_level;
-}
-
 static P_obj find_epic_stone(uint64_t uid)
 {
 	for (P_obj obj = object_list; obj; obj = obj->next)
@@ -1161,8 +1150,7 @@ int epic_stone(P_obj obj, P_char ch, int cmd, char *arg)
 			{
 				obj->value[0] = zinfo.epic_payout;
 				obj->value[1] = zinfo.suggested_group_size;
-				obj->value[3] =
-					stone_level_for_zone(obj->value[3], zinfo.epic_level);
+				obj->value[3] = zinfo.epic_level;
 			}
 		}
 
@@ -1285,8 +1273,7 @@ int epic_stone(P_obj obj, P_char ch, int cmd, char *arg)
 		touch.stone_uid = obj->obj_uid;
 		touch.stone_level = obj->value[3];
 		const auto *divine = divine_boon_runtime_state();
-		touch.prepared_delivery = !persistence_mode_requires_mysql() ||
-					  (divine && divine->mode == divine_boon_mode::divine);
+		touch.prepared_delivery = divine && divine->mode == divine_boon_mode::divine;
 		const double precise_base = divine && divine->mode == divine_boon_mode::divine ?
 						    epic_stone_payout_precise(obj, ch) :
 						    epic_value;
@@ -1780,11 +1767,6 @@ int epic_zone_data::displayed_alignment() const
 //   if(!ch || IS_NPC(ch))
 //     return;
 //
-// #ifdef __NO_MYSQL__
-//   send_to_char("This feature is disabled.\r\n", ch);
-//   return;
-// #endif
-//
 //   char buff[MAX_STRING_LENGTH];
 //	char done_str[] = " ";
 //
@@ -1952,11 +1934,6 @@ void do_epic_zones(P_char ch, char * /*arg*/, int /*cmd*/)
 	if (!ch || IS_NPC(ch))
 		return;
 
-#ifdef __NO_MYSQL__
-	send_to_char("This feature is disabled.\r\n", ch);
-	return;
-#endif
-
 	// try cache first
 	char *cached = redis_get_epic_zones();
 	if (cached)
@@ -1978,9 +1955,6 @@ void do_epic_zones(P_char ch, char * /*arg*/, int /*cmd*/)
 
 char *generate_epic_zones_output(void)
 {
-#ifdef __NO_MYSQL__
-	return NULL;
-#else
 	char *output = (char *)malloc(MAX_STRING_LENGTH * 2);
 	if (!output)
 		return NULL;
@@ -2021,7 +1995,6 @@ char *generate_epic_zones_output(void)
 	strcat(output, "\n* = already completed this boot.\n");
 
 	return output;
-#endif
 }
 
 void do_epic_share(P_char ch, char * /*arg*/, int /*cmd*/)

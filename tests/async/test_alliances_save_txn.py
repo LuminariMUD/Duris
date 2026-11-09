@@ -8,9 +8,8 @@ import sys
 text = (SRC / "alliances.c").read_text()
 
 start = text.find('void save_alliances()')
-mariadb = text.find('#else', start)
-end = text.find('#endif', mariadb)
-body = text[mariadb:end] if -1 not in (start, mariadb, end) else ''
+end = text.find('\n}\n', start)
+body = text[start:end] if -1 not in (start, end) else ''
 
 delete_stmt = body.find('"DELETE FROM alliances"')
 insert_stmt = body.find(

@@ -56,29 +56,26 @@ source .env
 set +a
 ```
 
-For `mariadb-primary` or `mariadb-primary-flatfile-fallback`, run these in order:
+Run these in order:
 
 ```bash
 python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-Use `PERSISTENCE_BACKEND=mariadb` for those modes; use `flatfile` for
-`flatfile-primary`, which skips SQL migrations and verification. Refuse unknown
-persistence modes. Complete configuration/dependency setup required by the pulled
-release, preserving intentional local settings. Do not replay historical import,
-repair, or wipe scripts. A failed migration must be resolved before starting a
-writer; never bypass the runner's checks.
+Refuse any `PERSISTENCE_MODE` other than `mariadb-primary`. Complete
+configuration/dependency setup required by the pulled release, preserving intentional
+local settings. Do not replay historical import, repair, or wipe scripts. A failed
+migration must be resolved before starting a writer; never bypass the runner's checks.
 
 ## 3. Rebuild everything from clean sources
 
-Set `deploy_backend` to the selected backend. Run each command only after the
-previous succeeds:
+Run each command only after the previous succeeds:
 
 ```bash
 make clean-all
-make -j4 PERSISTENCE_BACKEND="$deploy_backend" BUILD_PROFILE=development
-make -C src -j4 pfile telemetry-state PERSISTENCE_BACKEND="$deploy_backend" BUILD_PROFILE=development
+make -j4 BUILD_PROFILE=development
+make -C src -j4 pfile telemetry-state BUILD_PROFILE=development
 make -C migrations/tools -j4 all affects pfile_converter
 make world
 ./scripts/cycle_mud.sh --check-config
@@ -87,7 +84,7 @@ make world
 This covers the server, editor, area generators, pfile and telemetry tools,
 migration utilities, and freshly generated world/lookups. Require an executable
 `bin/server/dms_new`, its `.dms_new-backend` stamp equal to
-`$deploy_backend/development`, complete nonempty generated outputs listed in the
+`mariadb/development`, complete nonempty generated outputs listed in the
 root Makefile, and no missing shared libraries. Fix build failures before
 installing or starting anything; do not substitute an old binary for the build.
 

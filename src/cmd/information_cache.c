@@ -16,12 +16,8 @@
 #include "core/refresh_cache.h"
 #include <array>
 #include <cstring>
-#ifdef __NO_MYSQL__
-#include "flatfile/flatfile_help_catalog.h"
-#else
 #include "sql/sql_pool.h"
 #include "sql/sql_thread_init.h"
-#endif
 
 namespace
 {
@@ -32,11 +28,6 @@ constexpr size_t max_page_bytes = 128 * 1024;
 
 bool load_information(information_pages &pages, std::string &error)
 {
-#ifdef __NO_MYSQL__
-	for (size_t i = 0; i < names.size(); ++i)
-		if (!flatfile_information_read(".", names[i], &pages[i], &error, max_page_bytes))
-			return false;
-#else
 	if (sql_worker_thread_init() != 0)
 	{
 		error = "MySQL worker initialization failed";
@@ -101,7 +92,6 @@ bool load_information(information_pages &pages, std::string &error)
 		error = "incomplete information catalog";
 		return false;
 	}
-#endif
 	for (const auto &page : pages)
 		if (page.size() > max_page_bytes)
 		{

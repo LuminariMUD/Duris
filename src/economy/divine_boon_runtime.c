@@ -4,15 +4,12 @@
 
 #include "economy/divine_boon_repository.h"
 #include "economy/boon_reward_transaction.h"
-#include "persistence/persistence_mode.h"
 #include "persistence/maintenance_scheduler.h"
 #include "persistence/critical_command_coordinator.h"
 #include "player/player_save_worker.h"
 
-#ifndef __NO_MYSQL__
 #include "sql/sql.h"
 #include "sql/sql_pool.h"
-#endif
 
 #include <atomic>
 #include <cerrno>
@@ -30,8 +27,6 @@ struct pending_write
 {
 	divine_boon_state next;
 	uint64_t expected_revision;
-	std::string flatfile_root;
-	bool flatfile;
 	bool announce = false;
 	store_result result = store_result::io_error;
 	std::atomic<bool> finished = false;
@@ -47,33 +42,23 @@ player_save_apply_result write_state(const std::shared_ptr<pending_write> &opera
 try
 {
 	store_result result;
-	if (operation->flatfile)
-		result = divine_boon_flatfile_save(operation->flatfile_root,
-						   operation->expected_revision, operation->next);
+	MYSQL *connection = sql_pool_acquire();
+	if (!connection)
+		result = store_result::io_error;
 	else
 	{
-#ifdef __NO_MYSQL__
-		result = store_result::invalid;
-#else
-		MYSQL *connection = sql_pool_acquire();
-		if (!connection)
-			result = store_result::io_error;
-		else
+		result = divine_boon_sql_save(connection, operation->expected_revision,
+					      operation->next);
+		const unsigned error = mysql_errno(connection);
+		if (result == store_result::io_error &&
+		    (error == 2006 || error == 2013 || error == 2055))
 		{
-			result = divine_boon_sql_save(connection, operation->expected_revision,
-						      operation->next);
-			const unsigned error = mysql_errno(connection);
-			if (result == store_result::io_error &&
-			    (error == 2006 || error == 2013 || error == 2055))
-			{
-				connection = sql_pool_replace_connection(connection);
-				if (connection)
-					sql_pool_release(connection);
-			}
-			else
+			connection = sql_pool_replace_connection(connection);
+			if (connection)
 				sql_pool_release(connection);
 		}
-#endif
+		else
+			sql_pool_release(connection);
 	}
 	const bool applied = result == store_result::ok || result == store_result::already_applied;
 	const unsigned error = applied				? 0 :
@@ -126,9 +111,6 @@ bool stage(const divine_boon_state &next, uint64_t expected_revision)
 		pending->expected_revision = expected_revision;
 		pending->announce = ready && published.mode == divine_boon_mode::divine &&
 				    next.mode == divine_boon_mode::divine;
-		pending->flatfile = persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY;
-		const char *root = persistence_mode_flatfile_root();
-		pending->flatfile_root = root ? root : "";
 		if (submit_pending())
 			return true;
 		pending.reset();
@@ -148,19 +130,7 @@ bool divine_boon_runtime_boot(int64_t now)
 	ready = false;
 	divine_boon_state loaded;
 	store_result result;
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		const char *root = persistence_mode_flatfile_root();
-		result = divine_boon_flatfile_load(root ? root : "", &loaded);
-	}
-	else
-	{
-#ifdef __NO_MYSQL__
-		return false;
-#else
-		result = divine_boon_sql_load(DB, &loaded);
-#endif
-	}
+	result = divine_boon_sql_load(DB, &loaded);
 	if (result == store_result::not_found)
 	{
 		loaded.last_opportunity = now - now % DIVINE_BOON_HOUR;

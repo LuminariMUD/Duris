@@ -33,6 +33,5 @@ specials = boot_db[boot_db.index("if (!no_specials)"):]
 specials = specials[:specials.index("\n\t}\n") + 4]
 assert "zone_story_quest_runtime::note_stored_state();" in boot_db.replace(specials, "")
 absent = body(runtime, "bool persisted_state_absent(std::string *error)")
-assert "flatfile_zone_story_quest_result::not_found" in absent
 assert "sql_zone_story_quest_state_result::not_found" in absent
 print("[PASS] a disabled zone-story catalog erases nothing it never stored, and fails closed otherwise")

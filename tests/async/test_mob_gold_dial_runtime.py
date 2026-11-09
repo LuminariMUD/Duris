@@ -11,7 +11,6 @@ setting 5 is neutral, while setting 10 is a 1000x player-favouring inverse.
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import re
 import signal
@@ -22,16 +21,15 @@ import time
 from test_flatfile_combat_journey import (
     MudClient,
     available_ports,
-    build_flatfile_server,
     create_character,
     generate_certificate,
     make_fixture,
     make_overlord,
+    mariadb_authority,
     reconnect_character,
 )
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-INSPECTOR = ROOT / "bin/tests/coin-death-inspector"
 TARGET_VNUM = 22801
 TARGET_KEY = "gold_target"
 NO_MONEY_KEY = "no_money_target"
@@ -122,35 +120,25 @@ def make_gold_fixture(run_root: pathlib.Path) -> pathlib.Path:
     return run_root / "server.out"
 
 
-def environment(state_root: pathlib.Path, run_root: pathlib.Path,
+def environment(base: dict[str, str], run_root: pathlib.Path,
                 tls_port: int, websocket_port: int) -> dict[str, str]:
-    env = {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "ENVIRONMENT": "local",
-        "PERSISTENCE_MODE": "flatfile-primary",
-        "FLATFILE_STATE_DIR": str(state_root),
+    return {
+        **base,
         "CRITICAL_COMMAND_JOURNAL_DIR": str(run_root / "journals/critical"),
-        "LISTEN_ADDRESS": "127.0.0.1",
         "DURIS_TLS_PORT": str(tls_port),
-        "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
         "DURIS_WEBSOCKET_PORT": str(websocket_port),
-        "REDIS": "FALSE",
         "DURIS_NEVENT_TRACE_PLAYER": "1",
-        "CHAOS_MUD": "FALSE",
     }
-    if os.environ.get("LD_LIBRARY_PATH"):
-        env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
-    return env
 
 
-def boot(binary: pathlib.Path, state_root: pathlib.Path, run_root: pathlib.Path,
+def boot(binary: pathlib.Path, base: dict[str, str], run_root: pathlib.Path,
          output_path: pathlib.Path, plain_port: int):
     tls_port, websocket_port = plain_port + 1, plain_port + 2
     output = output_path.open("a", encoding="utf-8")
     process = subprocess.Popen(
         [str(binary), "--minimal", "-s", "-d", str(run_root), str(plain_port)],
         cwd=run_root,
-        env=environment(state_root, run_root, tls_port, websocket_port),
+        env=environment(base, run_root, tls_port, websocket_port),
         stdout=output,
         stderr=subprocess.STDOUT,
         text=True,
@@ -226,18 +214,15 @@ def stat_target_money(client: MudClient, key: str = TARGET_KEY,
 
 
 def run_case(binary: pathlib.Path, setting: int) -> tuple[int, int, int, int]:
-    with tempfile.TemporaryDirectory(prefix=f"gold-fix-state-{setting}-") as state_tmp, \
-            tempfile.TemporaryDirectory(prefix=f"gold-fix-run-{setting}-") as run_tmp:
-        state_root, run_root = pathlib.Path(state_tmp), pathlib.Path(run_tmp)
-        state_root.chmod(0o700)
-        (state_root / "domains").mkdir(mode=0o700)
-        subprocess.run([str(INSPECTOR), str(state_root), "seed-combat"], check=True, timeout=30)
+    with tempfile.TemporaryDirectory(prefix=f"gold-fix-run-{setting}-") as run_tmp, \
+            mariadb_authority() as (base, sql):
+        run_root = pathlib.Path(run_tmp)
         output_path = make_gold_fixture(run_root)
         set_properties(run_root / "lib/duris.properties", {
             "difficulty.dial.mob.gold": str(setting),
         })
         plain, _, _ = available_ports()
-        process, output = boot(binary, state_root, run_root, output_path, plain)
+        process, output = boot(binary, base, run_root, output_path, plain)
         client: MudClient | None = None
         try:
             client = MudClient(plain)
@@ -251,8 +236,8 @@ def run_case(binary: pathlib.Path, setting: int) -> tuple[int, int, int, int]:
             client = None
             stop(process, output)
             # stat char needs a god.
-            make_overlord(state_root, "Taverek")
-            process, output = boot(binary, state_root, run_root, output_path, plain)
+            make_overlord(sql, "Taverek")
+            process, output = boot(binary, base, run_root, output_path, plain)
             client = reconnect_character(plain)
             values = stat_target_money(client)
             no_money = stat_target_money(client, NO_MONEY_KEY, require_nonempty=False)
@@ -286,19 +271,8 @@ def run_case(binary: pathlib.Path, setting: int) -> tuple[int, int, int, int]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--server", type=pathlib.Path,
-                        help="flat-file server binary (default: build one)")
-    args = parser.parse_args()
-    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                    "--build-inspector", str(INSPECTOR)], cwd=ROOT, check=True, timeout=180)
-    if args.server:
-        require(args.server.is_file() and os.access(args.server, os.X_OK),
-                f"server binary is not executable: {args.server}")
-        compare(args.server.resolve())
-        return
-    (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="gold-dial-build-", dir=ROOT / "bin/tests") as build:
-        compare(build_flatfile_server(pathlib.Path(build)))
+    parser.add_argument("--server", type=pathlib.Path, required=True)
+    compare(parser.parse_args().server.resolve())
 
 
 def compare(binary: pathlib.Path) -> None:

@@ -18,7 +18,6 @@ bool divine_boon_cargo_eligible(const divine_boon_slot &)
 #include "persistence/persistence_mode.h"
 #include "player/player_save_pipeline.h"
 #include "player/player_snapshot_repository.h"
-#include "flatfile/flatfile_player_repository.h"
 #include "sql/sql_player.h"
 #include "ships/ship_npc_ai.h"
 
@@ -111,21 +110,6 @@ void mark_player_dirty_components(int, player_component_mask_t)
 const char *get_account_name_safe(P_char ch)
 {
 	return ch && GET_PID(ch) == 45 ? "other_account" : "money_account";
-}
-static persistence_mode fixture_mode = PERSISTENCE_MODE_MARIADB_PRIMARY;
-persistence_mode persistence_mode_get(void)
-{
-	return fixture_mode;
-}
-const char *persistence_mode_flatfile_root(void)
-{
-	return "fixture";
-}
-player_save_apply_result flatfile_bank_delta_apply(const std::string &, const std::string &, int8_t,
-						   const std::array<int64_t, 4> &,
-						   flatfile_authority_operation *, std::string *)
-{
-	return { player_save_apply_outcome::applied, 0, 0 };
 }
 player_save_apply_result bank_delta_repository_apply_from_pool(const bank_delta_snapshot &)
 {
@@ -244,32 +228,37 @@ void sql_reserve_ship_ids(uint32_t id)
 {
 	reserved_ship_id = id;
 }
-flatfile_ship_result flatfile_ship_list(const std::string &,
-					std::vector<flatfile_ship_record> *ships, std::string *)
-{
-	ships->clear();
-	for (uint32_t id : durable_ship_ids)
-	{
-		flatfile_ship_record s;
-		s.ship_id = id;
-		ships->push_back(s);
-	}
-	return flatfile_ship_result::ok;
-}
-flatfile_ship_result flatfile_ship_reserve_ids(const std::string &, uint32_t id, std::string *)
-{
-	reserved_ship_id = id;
-	return flatfile_ship_result::ok;
-}
-bool divine_trade_sql_books(MYSQL *, uint64_t, std::vector<divine_trade_book> *)
-{
-	return true;
-}
-bool divine_trade_flatfile_books(const std::string &, uint64_t,
-				 std::vector<divine_trade_book> *books)
+bool divine_trade_sql_books(MYSQL *, uint64_t, std::vector<divine_trade_book> *books)
 {
 	*books = boot_books;
 	return true;
+}
+// The boot's SELECT id FROM ships, answered from durable_ship_ids.
+static std::vector<std::string> ship_id_rows;
+static size_t next_ship_id_row;
+static char *ship_id_row[1];
+extern "C"
+{
+	int STDCALL mysql_query(MYSQL *, const char *)
+	{
+		ship_id_rows.clear();
+		for (const uint32_t id : durable_ship_ids)
+			ship_id_rows.push_back(std::to_string(id));
+		next_ship_id_row = 0;
+		return 0;
+	}
+	MYSQL_RES *STDCALL mysql_store_result(MYSQL *)
+	{
+		return reinterpret_cast<MYSQL_RES *>(&ship_id_rows);
+	}
+	MYSQL_ROW STDCALL mysql_fetch_row(MYSQL_RES *)
+	{
+		if (next_ship_id_row == ship_id_rows.size())
+			return nullptr;
+		ship_id_row[0] = ship_id_rows[next_ship_id_row++].data();
+		return ship_id_row;
+	}
+	void STDCALL mysql_free_result(MYSQL_RES *) {}
 }
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
@@ -311,11 +300,6 @@ critical_apply_result critical_command_repository_apply_from_pool(const critical
 	       command.payload == retained.payload);
 	++reconciled_commands;
 	return { critical_apply_outcome::already_applied, 0, 0 };
-}
-critical_apply_result divine_trade_flatfile_apply(const std::string &,
-						  const critical_command &command)
-{
-	return critical_command_repository_apply_from_pool(command, nullptr);
 }
 
 static bool physical_ship_exists = true;
@@ -852,7 +836,6 @@ int main()
 
 	// Ownership transfer cannot merge a new account's paid lot into an old
 	// account's proof. The old proof is saved away before any new charge.
-	fixture_mode = PERSISTENCE_MODE_FLATFILE_PRIMARY;
 	boon.id = 17;
 	auto transferred = buy.book_after;
 	transferred.account += 1;
@@ -879,7 +862,6 @@ int main()
 	assert(divine_trade_runtime_book(transferred.account, 17).consumed == 5 &&
 	       divine_trade_runtime_book(buy.book_after.account, 17).lots.size() == 1);
 
-	fixture_mode = PERSISTENCE_MODE_FLATFILE_PRIMARY;
 	boon.id = 17;
 	auto mixed_a = buy.book_after;
 	auto mixed_b = mixed_a;

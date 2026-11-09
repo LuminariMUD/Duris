@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A flat-file locker keeps what it holds across a restart (persistence reset Phase 3 step 8).
+"""A locker keeps what it holds across a restart (persistence reset Phase 3 step 8).
 
 The character drops the banana in its account locker and the server restarts: the locker
 still holds it. It takes the banana back and the server restarts again: the banana is in its
@@ -8,11 +8,10 @@ it enters again once that save has landed (a minimal world loads no guilds after
 The character is promoted to a god, which may use a locker outside a town.
 """
 
-import os
+import argparse
 import pathlib
 import signal
 import subprocess
-import sys
 import tempfile
 import time
 
@@ -98,34 +97,17 @@ def leave(client):
 
 
 def run(binary: pathlib.Path) -> None:
-    with tempfile.TemporaryDirectory(prefix="duris-locker-state-") as state_tmp, \
-            tempfile.TemporaryDirectory(prefix="duris-locker-run-") as run_tmp:
-        state_root = pathlib.Path(state_tmp)
+    with tempfile.TemporaryDirectory(prefix="duris-locker-run-") as run_tmp, \
+            journey.mariadb_authority() as (environment, sql):
         run_root = pathlib.Path(run_tmp)
-        state_root.chmod(0o700)
-        (state_root / "domains").mkdir(mode=0o700)
-        subprocess.run([str(journey.INSPECTOR), str(state_root), "seed-combat"], check=True)
         (run_root / "logs/log").mkdir(parents=True)
         journey.make_fixture(run_root, reset_coins=True)
         add_lockers(run_root)
         journey.generate_certificate(run_root)
         (run_root / "journals/critical").mkdir(parents=True, mode=0o700)
         plain_port, tls_port, websocket_port = journey.available_ports()
-        environment = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "ENVIRONMENT": "local",
-            "PERSISTENCE_MODE": "flatfile-primary",
-            "FLATFILE_STATE_DIR": str(state_root),
-            "CRITICAL_COMMAND_JOURNAL_DIR": str(run_root / "journals/critical"),
-            "LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_TLS_PORT": str(tls_port),
-            "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_WEBSOCKET_PORT": str(websocket_port),
-            "REDIS": "FALSE",
-            "CHAOS_MUD": "FALSE",
-        }
-        if runtime_library_path := os.environ.get("LD_LIBRARY_PATH"):
-            environment["LD_LIBRARY_PATH"] = runtime_library_path
+        environment.update(CRITICAL_COMMAND_JOURNAL_DIR=str(run_root / "journals/critical"),
+                           DURIS_TLS_PORT=str(tls_port), DURIS_WEBSOCKET_PORT=str(websocket_port))
         process = boot(binary, run_root, environment, plain_port)
         try:
             # The character loots the banana and 3 silver, then becomes a god.
@@ -134,17 +116,12 @@ def run(binary: pathlib.Path) -> None:
             journey.complete_npc_combat_journey(client, reset_coins=True)
             client.close()
             stop(process)
-            journey.make_overlord(state_root, journey.CHARACTER)
+            journey.make_overlord(sql, journey.CHARACTER)
 
             process = boot(binary, run_root, environment, plain_port)
             client = journey.reconnect_character(plain_port)
             # First named owner entry must create the same locker as default entry.
             enter_locker(client, 0, journey.CHARACTER)
-            room_text = command(client, "look room")
-            assert "require SQL storage" in room_text, room_text
-            for text in ("eq chest list", "eq chest create vault fixture-secret",
-                         "eq chest password vault none", "eq chest delete vault", "eq log"):
-                assert "require SQL storage" in command(client, text), text
             # Trusted staff keep their stat command; in mortal mode it routes as for a player.
             assert "Character attributes for" not in command(client, "stat")
             command(client, "toggle fog")
@@ -152,8 +129,6 @@ def run(binary: pathlib.Path) -> None:
             assert "what item should i tell" in command(client, "stat no-such-item")
             command(client, "toggle fog")
             assert "Character attributes for" not in command(client, "stat")
-            # Ordinary door opening and public storage must still work on this backend.
-            assert "require SQL storage" not in command(client, "open door")
             client.send("drop banana")
             client.expect("You drop a banana.", timeout=10)
             leave(client)
@@ -204,10 +179,7 @@ def run(binary: pathlib.Path) -> None:
 
 
 if __name__ == "__main__":
-    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                    "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True,
-                   timeout=180)
-    with tempfile.TemporaryDirectory(prefix=f"flatfile-locker-{os.getpid()}-",
-                                     dir=ROOT / "bin/tests") as build_tmp:
-        run(journey.build_flatfile_server(pathlib.Path(build_tmp)))
-    print("flat-file locker journey passed")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=pathlib.Path, required=True)
+    run(parser.parse_args().server.resolve())
+    print("locker journey passed")

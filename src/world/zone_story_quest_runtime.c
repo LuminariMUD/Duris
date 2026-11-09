@@ -17,8 +17,6 @@
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "core/utils.h"
-#include "flatfile/flatfile_zone_story_quest_state.h"
-#include "persistence/persistence_mode.h"
 #include "sql/sql.h"
 #include "sql/zone_story_quest_state_repository.h"
 #include "world/zone_story_quest_production.h"
@@ -58,24 +56,11 @@ bool environment_enabled(const char *name)
 bool load_persisted_state(std::string *error)
 {
 	std::string encoded;
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		const auto loaded = flatfile_zone_story_quest_state_load(
-			persistence_mode_flatfile_root(), content_revision(), &encoded, error);
-		if (loaded == flatfile_zone_story_quest_result::not_found)
-			return true;
-		if (loaded != flatfile_zone_story_quest_result::ok)
-			return false;
-	}
-	else
-	{
-		const auto loaded =
-			sql_zone_story_quest_state_load(content_revision(), &encoded, error);
-		if (loaded == sql_zone_story_quest_state_result::not_found)
-			return true;
-		if (loaded != sql_zone_story_quest_state_result::ok)
-			return false;
-	}
+	const auto loaded = sql_zone_story_quest_state_load(content_revision(), &encoded, error);
+	if (loaded == sql_zone_story_quest_state_result::not_found)
+		return true;
+	if (loaded != sql_zone_story_quest_state_result::ok)
+		return false;
 	return tracker.deserialize_state(encoded, error);
 }
 
@@ -83,22 +68,12 @@ bool load_persisted_state(std::string *error)
 bool persisted_state_absent(std::string *error)
 {
 	std::string encoded;
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-		return flatfile_zone_story_quest_state_load(persistence_mode_flatfile_root(),
-							    content_revision(), &encoded, error) ==
-		       flatfile_zone_story_quest_result::not_found;
 	return sql_zone_story_quest_state_load(content_revision(), &encoded, error) ==
 	       sql_zone_story_quest_state_result::not_found;
 }
 
 bool save_persisted_state(std::string *error)
 {
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-		return flatfile_zone_story_quest_state_save(persistence_mode_flatfile_root(),
-							    content_revision(),
-							    tracker.serialize_state(error),
-							    error) ==
-		       flatfile_zone_story_quest_result::ok;
 	auto captured = tracker.capture_state();
 	return sql_zone_story_quest_state_save(content_revision(), std::move(captured.parts),
 					       captured.unshared_bytes,

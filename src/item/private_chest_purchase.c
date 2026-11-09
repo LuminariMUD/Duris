@@ -28,7 +28,6 @@ struct purchase
 // Like the cargo market, one purchase at a time reserves the affected balances.
 std::shared_ptr<purchase> pending;
 
-#ifndef __NO_MYSQL__
 unsigned int apply_purchase(MYSQL *connection, const purchase &p, sql_rows *rows)
 {
 	auto outcome = [&](const char *result, int id = 0)
@@ -135,7 +134,6 @@ unsigned int apply_purchase(MYSQL *connection, const purchase &p, sql_rows *rows
 			return error;
 	return outcome("created", chest_id);
 }
-#endif
 }
 
 bool private_chest_purchase_locker_busy(int locker_id)
@@ -190,7 +188,6 @@ bool private_chest_purchase_start(P_char actor, int locker_id, const std::string
 
 void private_chest_purchase_pulse(void)
 {
-#ifndef __NO_MYSQL__
 	if (!pending || pending->inflight || std::chrono::steady_clock::now() < pending->retry)
 		return;
 	auto p = pending;
@@ -247,5 +244,4 @@ void private_chest_purchase_pulse(void)
 		p->inflight = false;
 		p->retry = std::chrono::steady_clock::now() + std::chrono::seconds(1);
 	}
-#endif
 }

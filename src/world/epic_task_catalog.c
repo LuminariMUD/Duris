@@ -47,7 +47,6 @@ bool report_refresh(const char *result, size_t count)
 	return !strcmp(result, "ready");
 }
 
-#ifndef __NO_MYSQL__
 bool parse_zone(const char *value, int32_t *zone_number)
 {
 	if (!value || !*value || !zone_number)
@@ -60,7 +59,6 @@ bool parse_zone(const char *value, int32_t *zone_number)
 	*zone_number = static_cast<int32_t>(parsed);
 	return true;
 }
-#endif
 }
 
 bool epic_task_catalog_publish(const int32_t *zone_numbers, size_t count)
@@ -97,9 +95,6 @@ bool epic_task_catalog_publish(const int32_t *zone_numbers, size_t count)
 
 bool epic_task_catalog_refresh(void)
 {
-#ifdef __NO_MYSQL__
-	return report_refresh("database_disabled", 0);
-#else
 	if (!qry("SELECT number FROM zones WHERE task_zone=1 ORDER BY number"))
 		return report_refresh("database_query_failed", 0);
 	MYSQL_RES *rows = mysql_store_result(DB);
@@ -131,7 +126,6 @@ bool epic_task_catalog_refresh(void)
 	mysql_free_result(rows);
 	return error ? report_refresh(error, static_cast<size_t>(row_count)) :
 		       epic_task_catalog_publish(candidate.data(), candidate.size());
-#endif
 }
 
 void epic_task_catalog_complete(const maintenance_result &result)

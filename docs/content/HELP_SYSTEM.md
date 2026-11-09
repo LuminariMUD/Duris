@@ -51,18 +51,6 @@ The `help` command (`do_help`, `src/cmd/actinf.c`) does two things:
     The loader holds up to `CMD_ATTRIB_MAX` entries (1024, `src/cmd/wikihelp.h`)
     and bounds-checks the count, logging and skipping anything beyond the cap.
 
-Without MySQL (`-D__NO_MYSQL__` builds), the same command loads and caches the
-tracked source files that feed the database importer. It applies the importer's
-precedence - individual `lib/information` pages, then `help_index`, then
-`duris_help_parsed.hlp` - and provides case-insensitive exact and substring
-searches without a database connection. Missing or structurally invalid source
-catalogs fail closed with the normal help-system error.
-
-The same client-free content path serves the existing `mud_info` callers for
-motd, news, wizmotd, credits, FAQ, rules, and wizlist directly from their
-allow-listed `lib/information/` files. This keeps boot/login and information
-commands functional without changing the database-backed lookup path.
-
 ## Reviewing missing searches
 
 Both database-cache and flat-file lookups append zero-result searches to

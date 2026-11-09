@@ -17,10 +17,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
-#ifndef __NO_MYSQL__
 #include "sql/sql_pool.h"
 #include "sql/sql_thread_init.h"
-#endif
 
 namespace
 {
@@ -31,11 +29,6 @@ constexpr size_t max_page_bytes = 128 * 1024;
 
 bool load_help(help_catalog &catalog, std::string &error)
 {
-#ifdef __NO_MYSQL__
-	(void)catalog;
-	error = "flat-file help uses its startup catalog";
-	return false;
-#else
 	if (sql_worker_thread_init() != 0)
 	{
 		error = "MySQL worker initialization failed";
@@ -113,7 +106,6 @@ bool load_help(help_catalog &catalog, std::string &error)
 		return false;
 	}
 	return true;
-#endif
 }
 }
 
@@ -124,7 +116,6 @@ bool help_cache_refresh()
 void help_cache_pulse()
 {
 	cache.poll();
-#ifndef __NO_MYSQL__
 	using clock = std::chrono::steady_clock;
 	static auto next_refresh = clock::now() + std::chrono::seconds(60);
 	const auto now = clock::now();
@@ -133,7 +124,6 @@ void help_cache_pulse()
 		cache.request(load_help);
 		next_refresh = now + std::chrono::seconds(60);
 	}
-#endif
 }
 void help_cache_shutdown()
 {

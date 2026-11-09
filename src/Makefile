@@ -53,16 +53,11 @@ endif
 CFLAGS += $(EXTRA_CFLAGS)
 LDFLAGS += $(EXTRA_LDFLAGS)
 
-ifeq ($(PERSISTENCE_BACKEND),mariadb)
+ifneq ($(PERSISTENCE_BACKEND),mariadb)
+$(error PERSISTENCE_BACKEND must be mariadb; the flat-file server backend has been removed)
+endif
 MYSQL_INCLUDES = -I/usr/include/mysql
 MYSQL_LIBS = -lmysqlclient
-else ifeq ($(PERSISTENCE_BACKEND),flatfile)
-CFLAGS += -D__NO_MYSQL__
-MYSQL_INCLUDES = -I./no_mysql
-MYSQL_LIBS =
-else
-$(error PERSISTENCE_BACKEND must be mariadb or flatfile)
-endif
 
 #CFLAGS += -DCTF_MUD=1
 
@@ -175,7 +170,6 @@ OBJS =  $(SHIP_OBJS) \
 				 guild/artifact_population.o \
 				 guild/artifact_population_boot.o \
 				 guild/artifact_population_repository.o \
-				 guild/artifact_population_flatfile.o \
 				 guild/artifact_population_recovery.o \
 				 guild/artifact_cache_codec.o \
 				 economy/donation_event.o \
@@ -224,9 +218,7 @@ OBJS =  $(SHIP_OBJS) \
 				 economy/divine_trade.o \
 				 economy/divine_trade_command.o \
 				 economy/divine_trade_repository.o \
-				 economy/divine_trade_flatfile.o \
                  economy/divine_trade_runtime.o \
-				 flatfile/flatfile_cargo_repository.o \
 				 combat/breath_weapons.o \
 				 world/buildings.o \
          economy/cardgames.o \
@@ -328,47 +320,8 @@ OBJS =  $(SHIP_OBJS) \
 				 persistence/persistence_mode.o \
 				 core/env_file.o \
 				 flatfile/flatfile_store.o \
-				 flatfile/flatfile_shopkeeper_restock.o \
-				 flatfile/flatfile_authority_transaction.o \
-				 flatfile/flatfile_account_repository.o \
-				 flatfile/flatfile_account_delete.o \
-				 flatfile/flatfile_account_reward_summon_repository.o \
-				 flatfile/flatfile_account_adapter.o \
-				 flatfile/flatfile_identity_repository.o \
-				 flatfile/flatfile_identity_adapter.o \
-				 flatfile/flatfile_character_delete.o \
-				 flatfile/flatfile_player_repository.o \
-				 flatfile/flatfile_player_snapshot_file.o \
-				 flatfile/flatfile_item_uid_allocator.o \
-				 flatfile/flatfile_item_repository.o \
-				 flatfile/flatfile_collector_repository.o \
-				 flatfile/flatfile_artifact_repository.o \
-				 flatfile/flatfile_artifact_guild_delivery.o \
-				 flatfile/flatfile_corpse_ownership.o \
-				 flatfile/flatfile_corpse_restore.o \
-				 flatfile/flatfile_association_repository.o \
-				 flatfile/flatfile_locker_repository.o \
-				 flatfile/flatfile_frag_leaderboard_repository.o \
 				 flatfile/flatfile_help_catalog.o \
-				 flatfile/flatfile_ip_activity_repository.o \
-				 flatfile/flatfile_nexus_repository.o \
-				 flatfile/flatfile_auction_repository.o \
-				 flatfile/flatfile_boon_repository.o \
-				 flatfile/flatfile_offline_message_repository.o \
-				 flatfile/flatfile_player_domain_repository.o \
-				 flatfile/flatfile_recipe_repository.o \
-				 flatfile/flatfile_spellbook_repository.o \
-				 flatfile/flatfile_ship_repository.o \
-				 flatfile/flatfile_shopkeeper_repository.o \
 				 flatfile/flatfile_shopkeeper_capture.o \
-				 flatfile/flatfile_shopkeeper_ownership.o \
-				 flatfile/flatfile_shopkeeper_materialize.o \
-				 flatfile/flatfile_shopkeeper_restore.o \
-				 flatfile/flatfile_shop_trade_repository.o \
-				 flatfile/flatfile_shop_trade_materialization.o \
-				 flatfile/flatfile_shop_trophy_history.o \
-				 flatfile/flatfile_world_item_repository.o \
-				 flatfile/flatfile_world_quest_history.o \
 				 persistence/critical_command.o \
 				 persistence/critical_command_coordinator.o \
 				 persistence/critical_command_repository.o \
@@ -380,8 +333,6 @@ OBJS =  $(SHIP_OBJS) \
 				 item/item_movement_transaction.o \
 				 item/starter_kit_intent.o \
 				 account/kept_character_recovery.o \
-				 economy/shop_trade_transaction.o \
-				 economy/shop_trade_runtime.o \
 				 economy/shopkeeper_boot.o \
 				 economy/shopkeeper_restock.o \
 				 item/item_transfer_repository.o \
@@ -408,16 +359,12 @@ OBJS =  $(SHIP_OBJS) \
 				 economy/boon_reward_command.o \
 				 economy/boon_reward_repository.o \
 				 economy/boon_reward_transaction.o \
-				 economy/boon_shop_command.o \
-				 economy/boon_shop_transaction.o \
-				 economy/shop_trade_command.o \
 				 world/zone_story_quest_tracking.o \
 				 world/zone_story_quest_catalog.o \
 				 world/zone_story_quest_repository.o \
 				 world/zone_story_quest_feature.o \
 				 world/zone_story_quest_production.o \
 				 world/zone_story_quest_runtime.o \
-				 flatfile/flatfile_zone_story_quest_state.o \
 				 sql/zone_story_quest_state_repository.o \
 				 world/zone_touch_command.o \
 				 world/zone_touch_repository.o \

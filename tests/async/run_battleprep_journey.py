@@ -195,6 +195,4 @@ if __name__ == "__main__":
     parser.add_argument("--binary", type=Path, required=True)
     args = parser.parse_args()
     (journey.ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py", "--build-inspector",
-                    str(journey.INSPECTOR)], cwd=journey.ROOT, check=True, timeout=180)
     run(args.binary.resolve())

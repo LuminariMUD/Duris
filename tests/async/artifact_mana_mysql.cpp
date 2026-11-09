@@ -40,34 +40,31 @@ int main(int argc, char **argv)
 	const artifact_mana_profile profile{ 7, 1, 100000, 25, 0 };
 	auto record = artifact_mana_empty(uid, profile, 100);
 	artifact_mana_record observed;
-	assert(artifact_mana_store_read(true, "unused", uid, observed) ==
-	       artifact_mana_read::missing);
-	assert(artifact_mana_store_write(true, "unused", 0, record));
+	assert(artifact_mana_store_read(uid, observed) == artifact_mana_read::missing);
+	assert(artifact_mana_store_write(0, record));
 	const auto empty = record;
 	assert(artifact_mana_spend(record, profile, 110, 249, false));
 	assert(record.reserve == 1);
-	assert(artifact_mana_store_write(true, "unused", 1, record));
-	assert(artifact_mana_store_write(true, "unused", 1, record));
-	assert(!artifact_mana_store_write(true, "unused", 0, empty));
+	assert(artifact_mana_store_write(1, record));
+	assert(artifact_mana_store_write(1, record));
+	assert(!artifact_mana_store_write(0, empty));
 	auto stale = record;
 	stale.reserve = 250;
-	assert(!artifact_mana_store_write(true, "unused", 1, stale));
+	assert(!artifact_mana_store_write(1, stale));
 	assert(artifact_mana_spend(record, profile, 120, 50, false));
 	assert(artifact_mana_spend(record, profile, 120, 1, false));
-	assert(artifact_mana_store_write(true, "unused", 2, record)); // coalesced versions
-	assert(artifact_mana_store_read(true, "unused", uid, observed) ==
-	       artifact_mana_read::found);
+	assert(artifact_mana_store_write(2, record)); // coalesced versions
+	assert(artifact_mana_store_read(uid, observed) == artifact_mana_read::found);
 	assert(observed == record);
-	assert(!artifact_mana_store_write(true, "unused", 1, stale));
+	assert(!artifact_mana_store_write(1, stale));
 	MYSQL *connection = sql_pool_acquire();
 	assert(connection);
 	const auto corruption =
 		"UPDATE artifact_mana SET reserve=capacity+1 WHERE item_uid=" + std::to_string(uid);
 	assert(!mysql_real_query(connection, corruption.data(), corruption.size()));
 	sql_pool_release(connection);
-	assert(artifact_mana_store_read(true, "unused", uid, observed) ==
-	       artifact_mana_read::error);
-	assert(!artifact_mana_store_write(true, "unused", 0, empty));
+	assert(artifact_mana_store_read(uid, observed) == artifact_mana_read::error);
+	assert(!artifact_mana_store_write(0, empty));
 	std::puts(
 		"artifact mana SQL enrollment, debit, exact retry, stale CAS and corruption checks passed");
 }

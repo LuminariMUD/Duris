@@ -2,13 +2,10 @@
 #include "combat/frag_cap_config.h"
 #include "combat/frag_cap_repository.h"
 #include "core/prototypes.h"
-#include "persistence/persistence_mode.h"
 #include "player/player_save_worker.h"
 #include "redis/redis_report_cache.h"
-#ifndef __NO_MYSQL__
 #include "sql/sql.h"
 #include "sql/sql_pool.h"
-#endif
 
 #include <atomic>
 #include <cerrno>
@@ -20,8 +17,6 @@ namespace
 struct refresh_result
 {
 	frag_cap_state state;
-	bool flatfile;
-	std::string root;
 	frag_cap_store_result result = frag_cap_store_result::io_error;
 	std::atomic<bool> finished = false;
 };
@@ -36,10 +31,7 @@ std::chrono::steady_clock::time_point retry_at;
 player_save_apply_result read_state(const std::shared_ptr<refresh_result> &operation)
 try
 {
-	if (operation->flatfile)
-		operation->result = frag_cap_flatfile_load(operation->root, &operation->state);
-#ifndef __NO_MYSQL__
-	else if (MYSQL *connection = sql_pool_acquire())
+	if (MYSQL *connection = sql_pool_acquire())
 	{
 		operation->result = frag_cap_sql_load(connection, &operation->state);
 		const unsigned error = mysql_errno(connection);
@@ -48,7 +40,6 @@ try
 		if (connection)
 			sql_pool_release(connection);
 	}
-#endif
 	operation->finished.store(true, std::memory_order_release);
 	return { player_save_apply_outcome::applied, 0, 0 };
 }
@@ -75,39 +66,20 @@ bool frag_cap_runtime_boot(int64_t now)
 	frag_cap_state loaded;
 	const auto policy = frag_cap_config_policy();
 	frag_cap_store_result result;
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		const char *root = persistence_mode_flatfile_root();
-		if (!root)
-			return false;
-		result = frag_cap_flatfile_adopt(root, frag_cap_config_get()->cap_floor_level, now,
-						 &loaded, policy);
-		if (result == frag_cap_store_result::ok)
-			result = frag_cap_flatfile_tick(root, now, policy);
-		if (result == frag_cap_store_result::ok)
-			result = frag_cap_flatfile_load(root, &loaded);
-	}
-	else
-	{
-#ifdef __NO_MYSQL__
+	if (mysql_query(DB, "START TRANSACTION"))
 		return false;
-#else
-		if (mysql_query(DB, "START TRANSACTION"))
-			return false;
-		result = frag_cap_sql_adopt(DB, frag_cap_config_get()->cap_floor_level,
-					    frag_cap_config_get()->legacy_maximum_level, now,
-					    &loaded, policy);
-		const uint64_t revision = loaded.revision;
-		if (result == frag_cap_store_result::ok && !frag_cap_settle(&loaded, now, policy))
-			result = frag_cap_store_result::invalid;
-		if (result == frag_cap_store_result::ok && loaded.revision != revision)
-			result = frag_cap_sql_save(DB, loaded);
-		if (result != frag_cap_store_result::ok || mysql_query(DB, "COMMIT"))
-		{
-			mysql_query(DB, "ROLLBACK");
-			return false;
-		}
-#endif
+	result = frag_cap_sql_adopt(DB, frag_cap_config_get()->cap_floor_level,
+				    frag_cap_config_get()->legacy_maximum_level, now, &loaded,
+				    policy);
+	const uint64_t revision = loaded.revision;
+	if (result == frag_cap_store_result::ok && !frag_cap_settle(&loaded, now, policy))
+		result = frag_cap_store_result::invalid;
+	if (result == frag_cap_store_result::ok && loaded.revision != revision)
+		result = frag_cap_sql_save(DB, loaded);
+	if (result != frag_cap_store_result::ok || mysql_query(DB, "COMMIT"))
+	{
+		mysql_query(DB, "ROLLBACK");
+		return false;
 	}
 	if (result != frag_cap_store_result::ok)
 		return false;
@@ -165,9 +137,6 @@ void frag_cap_runtime_pulse()
 	try
 	{
 		auto operation = std::make_shared<refresh_result>();
-		operation->flatfile = persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY;
-		const char *root = persistence_mode_flatfile_root();
-		operation->root = root ? root : "";
 		const auto submitted = persistence_writer_submit(persistence_job_kind::frag_cap, 1,
 								 FRAG_CAP_MAX_BYTES, [operation]
 								 { return read_state(operation); });

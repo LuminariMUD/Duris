@@ -32,11 +32,7 @@
 #include <unistd.h>
 #include <atomic>
 
-#ifdef __NO_MYSQL__
-#include "no_mysql/mysql.h"
-#else
 #include <mysql.h>
-#endif
 
 #define DURIS_SQL_EXCLUSION_LOCK_EXPRESSION "CONCAT('duris.runtime.',DATABASE())"
 
@@ -56,8 +52,6 @@ inline duris_sql_exclusion_guard_state &duris_sql_exclusion_guard_state_ref()
 	static duris_sql_exclusion_guard_state state = { NULL, 0, 0, false };
 	return state;
 }
-
-#ifndef __NO_MYSQL__
 
 /* Execute one fixed scalar query and copy its non-NULL result. */
 static inline bool duris_sql_exclusion_guard_scalar(MYSQL *connection, const char *query,
@@ -189,26 +183,5 @@ static inline void duris_sql_exclusion_guard_release()
 	state.process_id = 0;
 	state.lost = true;
 }
-
-#else
-
-static inline bool duris_sql_exclusion_guard_validate(MYSQL *)
-{
-	return false;
-}
-
-static inline bool duris_sql_exclusion_guard_allows(MYSQL *)
-{
-	return false;
-}
-
-static inline bool duris_sql_exclusion_guard_acquire(MYSQL *)
-{
-	return false;
-}
-
-static inline void duris_sql_exclusion_guard_release() {}
-
-#endif /* __NO_MYSQL__ */
 
 #endif /* DURIS_SQL_EXCLUSION_GUARD_H */

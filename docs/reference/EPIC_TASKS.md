@@ -141,7 +141,7 @@ There are two delivery paths in current source:
   per-character delivery sequence, ordered receipt application, and a saved
   delivery watermark. STATUS/AFFECTS/SKILLS checkpoints capture the balance and
   task effects together.
-  Flatfile's [player-domain repository](../../src/flatfile/flatfile_player_domain_repository.c)
+  Flatfile's player-domain repository
   accepts zone touches with prepared delivery. Legacy unprepared flatfile
   commands are rejected.
 

@@ -229,10 +229,6 @@ def main():
         source = str(ROOT / "src/telemetry/telemetry_repository.c")
         failure_source = str(ROOT / "src/telemetry/telemetry_failure.c")
         harness = str(ROOT / "tests/async/telemetry_repository_harness.cc")
-        no_sql = tmp / "no_mysql"
-        subprocess.run(common + ["-D__NO_MYSQL__", failure_source, source, harness,
-                                 "-o", str(no_sql)], check=True)
-        subprocess.run([str(no_sql)], check=True, timeout=30)
         mysql = shlex.split(subprocess.check_output(["mysql_config", "--cflags", "--libs"], text=True)) + ["-lcrypto"]
         sql = tmp / "sql"
         subprocess.run(common + [failure_source, source, harness, "-Wl,--wrap=mysql_real_query", "-Wl,--wrap=mysql_errno", "-Wl,--wrap=_Znwm",

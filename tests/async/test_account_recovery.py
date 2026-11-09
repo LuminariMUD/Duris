@@ -9,8 +9,7 @@ window, the queue capacity, the pulse outcomes and the shutdown join with no
 network at all.  The log stubs render their lines into a file so the run can
 prove no reset code, address, host or account name was ever formatted into one.
 
-Compile flags are the working client-free set from test_flatfile_ip_activity.py
-and test_flatfile_kingdom_repository.py, plus the libraries the two modules
+Compile flags are a client-free set, plus the libraries the two modules
 need.  The harness builds its mail configuration in code and never reads MAIL_*.
 """
 

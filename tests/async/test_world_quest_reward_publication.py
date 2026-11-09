@@ -155,94 +155,6 @@ int main() {
 }
 '''
 
-flat_prelude = r'''
-#include "flatfile/flatfile_item_repository.h"
-#include "persistence/persistence_mode.h"
-#include "player/player_snapshot_capture.h"
-#include "net/unicode.h"
-#include <ctime>
-P_index obj_index = nullptr;
-int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
-static player_pending_world_quest captured;
-static bool reject_second = false;
-static size_t capture_bytes = 100, capture_nodes = 2;
-const char *persistence_mode_flatfile_root() { return "unused"; }
-flatfile_item_repository_result flatfile_item_repository_load_owner(
-    const std::string &, const item_owner_identity &owner, uint64_t *revision,
-    std::vector<flatfile_item_ownership_record> *records, std::string *) {
-    assert(owner.id == 42); *revision=7;
-    for (uint64_t uid : {100,101,200,201}) {
-        flatfile_item_ownership_record row;
-        row.item_uid=uid; row.root_item_uid=uid < 200 ? 100 : 200;
-        if (wrong_root && uid==200) row.root_item_uid=100;
-        row.parent_item_uid=uid % 100 == 1 ? uid-1 : 0;
-        row.owner=owner; row.item_revision=1; row.vnum=uid % 100 == 1 ? 1002 : 1001;
-        row.state=item_custody_state::active; records->push_back(row);
-    }
-    return flatfile_item_repository_result::ok;
-}
-player_snapshot_capture_result player_item_snapshot_tree_capture(
-    P_obj object, std::vector<player_item_snapshot> *items, size_t *bytes) {
-    if (reject_second && object->obj_uid==200) return player_snapshot_capture_result::limit_exceeded;
-    player_item_snapshot root{}, child{};
-    root.object_uid=object->obj_uid; root.vnum=1001; root.parent_index=PLAYER_SNAPSHOT_NO_PARENT;
-    child.object_uid=root.object_uid+1; child.vnum=1002; child.parent_index=0;
-    *items={root,child};
-    if (capture_nodes != 2) {
-        items->resize(capture_nodes,child);
-        for (size_t index=1; index<items->size(); ++index)
-            (*items)[index].object_uid=root.object_uid*10000+index;
-    }
-    *bytes=capture_bytes; return player_snapshot_capture_result::ok;
-}
-bool player_save_pipeline_submit_world_quest(P_char, const player_pending_world_quest &quest,
-    std::function<bool(P_char,const player_pending_world_quest &)>) {
-    captured=quest; return true;
-}
-'''
-flat_driver = r'''
-int main() {
-    multiple=true;
-    pc_only_data pc{}; pc.pid=42; pc.quest_mob_vnum=500;
-    char_data actor{}; actor.only.pc=&pc; actor.player.name=const_cast<char *>("Tester");
-    actor.specials.position=POS_STANDING|STAT_NORMAL;
-    obj_data first{}, second{}; first.obj_uid=100; second.obj_uid=200;
-    first.R_num=second.R_num=-1; first.loc_p=second.loc_p=LOC_NOWHERE;
-    first.next=&second; object_list=&first;
-    assert(sql_world_quest_finish_async(&actor,{&first,&second},true,true,{},0,
-        [](P_char){return true;}));
-    assert(captured.reward_items.size()==4 && captured.reward_encoded_size==200);
-    assert(captured.reward_items[2].parent_index==PLAYER_SNAPSHOT_NO_PARENT &&
-           captured.reward_items[3].parent_index==2);
-    captured={}; reject_second=true;
-    assert(!sql_world_quest_finish_async(&actor,{&first,&second},true,true,{},0,
-        [](P_char){return true;}));
-    assert(!captured.present); // no partially captured batch was submitted
-    reject_second=false; capture_bytes=PLAYER_SNAPSHOT_MAX_BYTES/2+1;
-    assert(!sql_world_quest_finish_async(&actor,{&first,&second},true,true,{},0,
-        [](P_char){return true;}) && !captured.present);
-    capture_bytes=100; capture_nodes=PLAYER_SNAPSHOT_MAX_OBJECTS;
-    assert(!sql_world_quest_finish_async(&actor,{&first,&second},true,true,{},0,
-        [](P_char){return true;}) && !captured.present);
-    capture_nodes=2;
-
-    auto state=std::make_shared<world_quest_reward_publication>(); state->pid=42;
-    reject_second=false;
-    assert(sql_world_quest_finish_async(&actor,{&first,&second},true,true,{},0,
-        [](P_char){return true;}));
-    state->items=captured.reward_items;
-    wrong_root=true;
-    assert(!world_quest_publish_reward(&actor,state) && !state->ready && attachments==0);
-    wrong_root=false;
-    assert(!world_quest_publish_reward(&actor,state) && state->ready);
-    assert(world_quest_publish_reward(&actor,state) && attachments==2);
-    assert(world_quest_publish_reward(&actor,state) && attachments==2);
-    object_list=nullptr; allow_restore=true;
-    assert(world_quest_publish_reward(&actor,state) && restores==2 && attachments==4);
-    puts("world quest flatfile batch capture and publication passed");
-}
-'''
-
 (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="quest-reward-publish-", dir=ROOT / "bin/tests") as tmp:
     cpp = Path(tmp) / "test.cpp"
@@ -251,12 +163,5 @@ with tempfile.TemporaryDirectory(prefix="quest-reward-publish-", dir=ROOT / "bin
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g",
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie",
                     "-no-pie", "-Isrc", "-I/usr/include/mysql", "-I/usr/include/libxml2",
-                    str(cpp), "-o", str(binary)], cwd=ROOT, check=True)
-    subprocess.run([str(binary)], cwd=ROOT, check=True)
-    cpp.write_text(prelude + flat_prelude + production +
-                   extract_function("sql/sql.c", "bool sql_world_quest_finish_async(") + flat_driver)
-    subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g",
-                    "-D__NO_MYSQL__", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-                    "-fno-pie", "-no-pie", "-Isrc", "-Isrc/no_mysql", "-I/usr/include/libxml2",
                     str(cpp), "-o", str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True)

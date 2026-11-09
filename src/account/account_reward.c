@@ -24,11 +24,9 @@
 #include "account/account_reward_snapshot.h"
 #include "net/comm.h"
 #include "world/vnum.obj.h"
-#ifndef __NO_MYSQL__
 #include "sql/sql.h"
 #include "sql/sql_async.h"
 #include "sql/sql_player.h"
-#endif
 
 #include <algorithm>
 #include <ctype.h>
@@ -104,7 +102,6 @@ static bool parse_reward_marker(P_obj obj, RewardMarker *parsed)
 	return false;
 }
 
-#ifndef __NO_MYSQL__
 static bool reward_marker_matches(P_obj obj, const char *account, unsigned long long grant_id)
 {
 	RewardMarker marker;
@@ -121,7 +118,6 @@ static bool grant_marker_matches(P_obj obj, const RewardGrant &grant)
 	return grant.template_version == 0 &&
 	       reward_marker_matches(obj, grant.account.c_str(), 0) && OBJ_VNUM(obj) == grant.vnum;
 }
-#endif
 
 /** Match a flagged reward marker to the owning account, including legacy markers. */
 bool account_bound_reward_owner(P_char ch, P_obj obj)
@@ -132,7 +128,6 @@ bool account_bound_reward_owner(P_char ch, P_obj obj)
 	       parse_reward_marker(obj, &marker) && !strcasecmp(marker.account, account);
 }
 
-#ifndef __NO_MYSQL__
 static P_char reward_item_owner(P_obj obj)
 {
 	P_obj top = obj;
@@ -322,9 +317,7 @@ static std::string lifetime_text(const RewardGrant &grant)
 		return "in " + human_duration(grant.expires_seconds, true);
 	return "never (permanent)";
 }
-#endif
 
-#ifndef __NO_MYSQL__
 static std::string escape_sql(const char *value)
 {
 	if (!value)
@@ -1274,13 +1267,9 @@ static std::vector<RewardGrant> grants_for_removal(const char *account, int vnum
 			result.push_back(g);
 	return result;
 }
-#endif
 
 bool account_bound_rewards_on_successful_pwipe(void)
 {
-#ifdef __NO_MYSQL__
-	return true;
-#else
 	const uint64_t epoch = sql_season_epoch();
 	if (!epoch || !sql_begin_transaction())
 		return false;
@@ -1343,10 +1332,8 @@ bool account_bound_rewards_on_successful_pwipe(void)
 		return false;
 	}
 	return true;
-#endif
 }
 
-#ifndef __NO_MYSQL__
 static void dissolve_reward_containers(P_char ch, P_obj parent, const std::string &account)
 {
 	if (!ch || !parent)
@@ -1378,33 +1365,22 @@ static void dissolve_reward_containers(P_char ch, P_obj parent, const std::strin
 		extract_obj(obj);
 	}
 }
-#endif
 
 void account_bound_reward_prepare_player_corpse(P_char ch, P_obj corpse)
 {
-#ifndef __NO_MYSQL__
 	if (ch && corpse && IS_PC(ch))
 	{
 		const char *resolved = reward_account(ch);
 		if (resolved && *resolved)
 			dissolve_reward_containers(ch, corpse, resolved);
 	}
-#else
-	(void)ch;
-	(void)corpse;
-#endif
 }
 
 void account_bound_reward_on_login(P_char ch)
 {
-#ifndef __NO_MYSQL__
 	summon_login_reward(ch);
-#else
-	(void)ch;
-#endif
 }
 
-#ifndef __NO_MYSQL__
 static void divineclaim_help(P_char ch)
 {
 	send_to_char(
@@ -1527,19 +1503,10 @@ static void create_exact_divineclaim(P_char ch, const char *item, const std::str
 	logit(LOG_WIZ, "%s created exact divineclaim #%llu vnum %d for account %s (%s)", J_NAME(ch),
 	      id, OBJ_VNUM(source), account.c_str(), mode);
 }
-#endif
 
 void do_divineclaim(P_char ch, char *argument, int cmd)
 {
 	(void)cmd;
-#ifdef __NO_MYSQL__
-	(void)argument;
-	if (IS_TRUSTED(ch))
-		send_to_char("Account rewards require the database-enabled server.\r\n", ch);
-	else
-		send_to_char("Your account has no active divine rewards.\r\n", ch);
-	return;
-#else
 	if (!IS_TRUSTED(ch))
 	{
 		player_divineclaim(ch, argument);
@@ -1683,5 +1650,4 @@ void do_divineclaim(P_char ch, char *argument, int cmd)
 				create_exact_divineclaim(staff, item.c_str(), *account,
 							 mode.c_str(), amount);
 		});
-#endif
 }

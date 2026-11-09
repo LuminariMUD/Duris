@@ -1,7 +1,6 @@
 """Fresh-candidate restore and qualification. No production promotion operation."""
 import contextlib
 import gzip
-import json
 import os
 from pathlib import Path
 import pwd
@@ -138,8 +137,7 @@ def database_qualify(env, phase):
 
 
 def service_load(candidate, mode, env):
-    binary = backup.ROOT / ("bin/server/dms_restore_flatfile" if mode == "flatfile-primary"
-                            else "bin/server/dms_new")
+    binary = backup.ROOT / "bin/server/dms_new"
     backup.require(binary.is_file(), "server_build_required")
     runtime = candidate / "runtime"
     runtime.mkdir(mode=0o700)
@@ -225,25 +223,12 @@ def restore(p, generation_name, tombstones, drill=False):
             shutil.copytree(generation / "journals", candidate / "journals")
             qualifier = str(backup.ROOT / "bin/tools/qualify_flatfile_restore")
             backup.run([qualifier, "--receipts", str(candidate)], phase="restore_receipts", env=env)
-            if meta["mode"] == "flatfile-primary":
-                shutil.copytree(generation / "state", candidate / "state")
-                backup.require(backup.inventory(generation / "state") == backup.inventory(candidate / "state"),
-                               "restore_copy_checksum_mismatch")
-                env["FLATFILE_STATE_DIR"] = str(candidate / "state")
-                result = backup.run([str(backup.ROOT / "bin/tools/qualify_flatfile_restore"),
-                                     "--state-preflight", str(candidate / "state")],
-                                    phase="restore_state_preflight", env=env)
-                aggregates = json.loads(result)
+            with private_database(candidate) as env:
+                database_import(generation, env)
+                database_qualify(env, "restore_import_check")
+                aggregates = {"schema_history_and_value_reconciliation": "ok"}
                 service_load(candidate, meta["mode"], env)
-                aggregates = json.loads(backup.run([qualifier, str(candidate / "state")],
-                                                   phase="restore_state_check", env=env))
-            else:
-                with private_database(candidate) as env:
-                    database_import(generation, env)
-                    database_qualify(env, "restore_import_check")
-                    aggregates = {"schema_history_and_value_reconciliation": "ok"}
-                    service_load(candidate, meta["mode"], env)
-                    database_qualify(env, "restore_service_check")
+                database_qualify(env, "restore_service_check")
             backup.require(ledger_hash == tombstone_preflight(tombstones, p, meta["created"]),
                            "erasure_evidence_changed_during_restore")
             backup.verify(generation)

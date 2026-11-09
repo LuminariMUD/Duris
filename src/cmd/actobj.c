@@ -4365,10 +4365,8 @@ void do_give(P_char ch, char *argument, int cmd)
 						     PLAYER_COMPONENT_STATUS |
 							     PLAYER_COMPONENT_EQUIPMENT |
 							     PLAYER_COMPONENT_INVENTORY);
-#ifndef __NO_MYSQL__
 		if (object_survived)
 			artifact_switch_check(ch, obj);
-#endif
 	}
 	/*
 	 * added by DTS 5/18/95 to solve light bug

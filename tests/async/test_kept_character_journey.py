@@ -321,9 +321,6 @@ def delayed_disconnect(client, server, sql, inspector, reject=False):
 
 def run(binary, backend, *, override=None, delay=False, reject=False):
     inspector = account.ROOT / "bin/tests/kept-character-inspector"
-    if (override or reject) and backend == "flatfile":
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(inspector)], cwd=account.ROOT, check=True)
     with persistence(backend) as (environment, sql):
         if override == "websocket" or delay:
             environment = dict(environment, DURIS_WEBSOCKET="TRUE")
