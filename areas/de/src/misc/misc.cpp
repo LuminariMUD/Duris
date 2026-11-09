@@ -190,7 +190,8 @@ bool writeFiles(void)
 
 	writeZoneFile(NULL);
 	writeWorldFile(NULL);
-	writeObjectFile(NULL);
+	if (!writeObjectFile(NULL))
+		return false;
 	writeMobFile(NULL);
 
 	if (checkForMobWithQuest())
@@ -1887,13 +1888,11 @@ void editObjsOnly(void)
 
 	editObjType(obj, true);
 
-	if (g_madeChanges)
+	while (g_madeChanges && displayYesNoPrompt("\n\nChanges were made - save them", promptYes,
+						   false) == promptYes)
 	{
-		if (displayYesNoPrompt("\n\nChanges were made - save them", promptYes, false) ==
-		    promptYes)
-		{
-			writeObjectFile(NULL);
-		}
+		if (writeObjectFile(NULL))
+			g_madeChanges = false;
 	}
 }
 

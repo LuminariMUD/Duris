@@ -151,7 +151,7 @@ void writeObjecttoFile(FILE *objectFile, const objectType *obj)
 // writeObjectFile : Write the object file - contains all the objects
 //
 
-void writeObjectFile(const char *filename)
+bool writeObjectFile(const char *filename)
 {
 	FILE *objectFile;
 
@@ -171,7 +171,7 @@ void writeObjectFile(const char *filename)
 		_outtext(objectFilename.c_str());
 		_outtext(" for writing - aborting\n");
 
-		return;
+		return false;
 	}
 
 	const std::string message = "Writing " + objectFilename + " - " +
@@ -189,5 +189,13 @@ void writeObjectFile(const char *filename)
 		numb++;
 	}
 
-	fclose(objectFile);
+	const bool write_failed = ferror(objectFile);
+	if (fclose(objectFile) != 0 || write_failed)
+	{
+		_outtext("Couldn't write ");
+		_outtext(objectFilename.c_str());
+		_outtext(" - save failed. Output may be partial; changes remain unsaved.\n");
+		return false;
+	}
+	return true;
 }

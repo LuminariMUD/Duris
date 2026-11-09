@@ -1603,7 +1603,7 @@ void writeMobFile(const char *filename);
 // writeobj.cpp
 
 void writeObjecttoFile(FILE *objectFile, const objectType *obj);
-void writeObjectFile(const char *filename);
+bool writeObjectFile(const char *filename);
 
 // writeqst.cpp
 

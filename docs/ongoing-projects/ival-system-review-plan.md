@@ -305,13 +305,13 @@ editor's other bank fields remain unchanged. Clone/equality behavior includes B5
 or a new object-file dialect. This is authored content I/O, not a server storage
 backend; player persistence remains MariaDB only.
 
-**Files:** `areas/de/src/obj/{object.h,readobj.cpp,writeobj.cpp,object.cpp}` and a
-focused native reader/writer regression. Any formatting prerequisite must remain
-separate from the functional diff.
+**Files:** `areas/de/src/obj/{object.h,readobj.cpp,writeobj.cpp,object.cpp}`, the
+object-save declaration and callers in `fh.h` and `misc/misc.cpp`, and a focused
+native reader/writer regression. Formatting prerequisites remain separate commits.
 
 **Proof:** `python3 tests/async/test_editor_object_roundtrip.py` passed with the
 production reader/writer, clone/comparison code, and real lexical/description/
-keyword helpers under ASan/UBSan. There are 72 valid round trips, including absent
+keyword helpers under ASan/UBSan. There are 74 valid round trips, including absent
 and zero B5, every mask bit, the full 64-bit mask, leading whitespace, same-line
 and next-line masks, all four applies, descriptions/traps, and following records.
 Malformed, duplicate, overflowing, and overlong masks exit cleanly without
@@ -327,6 +327,18 @@ the pathname itself was assembled into another unchecked fixed buffer. Separate
 commit `8b7438a71` replaces both with strings. The native test executes the full
 writer with a valid nested path longer than 512 bytes and an oversized filename,
 verifying success or a normal open error without buffer overflow.
+
+Independent PR review reproduced a tab/vertical-tab-prefixed negative mask on
+the next line being accepted as unsigned. The reader now normalizes whitespace
+at that boundary before sign validation; positive forms still round-trip.
+Review also reproduced the full save workflow clearing `g_madeChanges` after an
+object write to `/dev/full` failed. The object writer now reports open/write/close
+failure, the full save returns before clearing dirty state, and object-only mode
+retains its retry/discard prompt. The existing native harness executes the real
+`writeFiles()` with other area writers doubled: success clears dirty state;
+open failure and buffered/unbuffered write failures preserve it. Failed output
+may be partial and is reported as such; this does not introduce multi-file atomic
+publication. The additional save-workflow formatting is isolated in `7b3346403`.
 
 Both maintained editor builds and `make -C src -j4` passed. Formatting/clang-tidy
 commit checks passed, and direct whole-file clang-format checks passed for all
