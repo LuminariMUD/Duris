@@ -6684,7 +6684,7 @@ bool has_touch_stone(P_char ch)
 	return FALSE;
 }
 
-bool item_load_check(P_obj item, int /*ival*/, int zone_percent)
+bool item_load_check(P_obj item, int zone_percent)
 {
 	// Artifacts are more rare
 	if (IS_ARTIFACT(item))

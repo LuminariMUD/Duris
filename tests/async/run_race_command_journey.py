@@ -43,7 +43,7 @@ def run(binary, backend):
                 client.expect("Paging mode off")
                 roster = command(client, "race list")
                 good, evil, neutral = map(roster.index, ("GOOD RACES", "EVIL RACES", "NEUTRAL RACES"))
-                special = roster.index("SPECIAL / LEGACY RACES")
+                special = roster.index("DISABLED RACES")
                 assert good < roster.index("Human", good) < evil
                 assert evil < roster.index("Drow Elf", evil) < neutral
                 assert neutral < roster.index("Thri-Kreen", neutral) < special
@@ -51,6 +51,12 @@ def run(binary, backend):
                 assert "Mountain Dwarf" in roster[good:evil]
                 assert "Duergar Dwarf" in roster[evil:neutral]
                 assert "Planetbound Illithid" in roster[special:]
+                assert "Choose their racewar side during creation" in roster[neutral:special]
+                assert "descend:" not in roster and "SPECIAL / LEGACY RACES" not in roster
+                panel = roster[roster.index("  /==="):roster.index("  Race info")]
+                for line in panel.splitlines():
+                    if line:
+                        assert len(line) == 72, repr(line)
                 assert "THE RACEWAR ROSTER" in command(client, "race")
                 assert b"\x1b[" in client.raw_transcript, "terminal color was not rendered"
                 # The SQL catalog loads in the background; wait for actual authored lore.

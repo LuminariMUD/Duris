@@ -9,6 +9,15 @@ Zero means unknown and gives an ordinary login, so existing characters are unaff
 until their next save. The guarded addition re-runs safely. Apply it before starting
 the new server; the boot contract refuses a database at an older head.
 
+`run --online-save-intent` accepts only the sealed 63-step manifest ending at
+this migration, with every earlier step applied, on MariaDB 11.8 and InnoDB.
+Existing writers use named columns and leave the new column at its default.
+The runner strengthens the sealed ALTER to `ALTER ONLINE TABLE`, requires
+INSTANT DDL, and bounds metadata and row-lock waits to one second. Production
+target, allow-list, fresh backup, advisory lock, checksums, ordered history and
+success-last verification remain required. Contention or unsupported DDL fails
+without stopping services; immutable files and ledger checksums stay unchanged.
+
 ## Online zone-story state parts (0061)
 
 `run --online-zone-story-parts` accepts only the sealed 62-step manifest ending at

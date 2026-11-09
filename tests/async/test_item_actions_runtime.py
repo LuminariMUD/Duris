@@ -89,6 +89,7 @@ static void remove_character(P_char ch) {
     P_char *cursor = &character_list;
     while (*cursor && *cursor != ch) cursor = &(*cursor)->next;
     if (*cursor) *cursor = ch->next;
+    forget_live_character(ch);
     delete ch;
 }
 static void remove_source(P_obj obj, P_char owner) {
@@ -176,8 +177,8 @@ struct scene {
         SET_POS(actor, STAT_NORMAL + POS_STANDING);
         SET_POS(target, STAT_NORMAL + POS_STANDING);
         actor->in_room = target->in_room = 0;
-        actor->next = target;
-        character_list = actor;
+        character_list_add(target);
+        character_list_add(actor);
         object_list = source;
         source->obj_uid = 100;
         source->loc_p = LOC_WORN;
@@ -200,6 +201,7 @@ struct scene {
             P_char ch = character_list;
             assert(!ch->nevents && !ch->linked && !ch->linking);
             character_list = ch->next;
+            forget_live_character(ch);
             delete ch;
         }
         while (object_list) {
@@ -307,7 +309,7 @@ static void test_completion_validation() {
         switch (kind) {
         case 0: s.report.permitted = false; break;
         case 1: SET_POS(s.target, STAT_DEAD); break;
-        case 2: s.target->runtime_id = allocate_character_runtime_id(); break;
+        case 2: forget_live_character(s.target); s.target->runtime_id = allocate_character_runtime_id(); break;
         case 3: s.source->obj_uid = 777; break;
         case 4: s.source->loc.wearing = s.target; break;
         }
@@ -569,7 +571,7 @@ static void test_targeted_staff_stop() {
     other->only.pc = &s.actor_pc;
     other->in_room = 0;
     SET_POS(other, STAT_NORMAL + POS_STANDING);
-    other->next = character_list; character_list = other;
+    character_list_add(other);
     auto *other_source = new obj_data{};
     other_source->obj_uid = 101;
     other_source->loc_p = LOC_WORN; other_source->loc.wearing = other;
