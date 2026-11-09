@@ -58,7 +58,7 @@ class AnsiString : public std::wstring
 	void set(const char *txt, std::vector<size_t> *source_offsets);
 	AnsiString() {}
 	AnsiString(const char *txt) { set(txt); }
-	void ansi(char *out) const;
+	void ansi(char *out, size_t capacity = MAX_STRING_LENGTH) const;
 	void plain(char *out) const;
 	void term(char *out, int lastbit) const;
 	void colorize(int attr);

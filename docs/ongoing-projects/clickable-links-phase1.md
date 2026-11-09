@@ -28,8 +28,8 @@ No database migration or help-content rewrite is expected.
 - Repository: `LuminariMUD/Duris`.
 - Base: `origin/master` at `91f40a01fe` when this worktree was created.
 - First PR branch: `branch/clickable-links-phase1`.
-- Current implementation branch: `branch/clickable-links-help`, stacked on
-  `branch/clickable-links-mxp` (then output and the first PR branch).
+- Current implementation branch: `branch/clickable-links-urls`, stacked on
+  `branch/clickable-links-help` (then MXP, output and the first PR branch).
 - Worktree: `/home/aiwithapex/projects/duris-worktrees/clickable-links-phase1`.
 - Plan: `docs/ongoing-projects/clickable-links-phase1.md` in that worktree.
 - Deliver focused, reviewable commits and PRs as each chunk is verified. Stack
@@ -524,6 +524,69 @@ its complete destination; detecting a fresh URL from each delivered fragment
 would incorrectly shorten the target. Do not join unrelated sends to infer one.
 Help links now reach the real native output path; web URLs and browser links are
 still incomplete. No production operation has occurred.
+
+### Chunk 5: shared URL recognition and frozen destinations
+
+Implemented on `branch/clickable-links-urls`:
+
+- `output_links_with_urls()` uses shared lexical rules in `net/url_text.h` to
+  recognize HTTP/HTTPS in visible Unicode text. It handles color changes,
+  case-insensitive schemes, query/fragment text, dollar normalization, trailing
+  punctuation and balanced delimiters. Explicit help spans take priority.
+- `AnsiString` preserves URL parameter ampersands such as `&name=`, `&n=` and
+  bare `&no-cache` flags that previously collided with color resets. Source
+  offset maps remain correct. Normal color behavior outside URLs and existing
+  literal-ampersand escaping are retained. The permanent MXP contract documents
+  the deterministic lexical rules and ambiguous bare reset spelling.
+- Output-only queue entry points now use `write_output()` to prepare a complete
+  original send before coalescing. All production direct output writes in
+  `comm.c` / `prompt.c` and `SEND_TO_Q` are adopted; input writes keep the existing
+  queue API. The actual queue/transport is unchanged.
+- `OutputContext::links_prepared` distinguishes new messages from frozen
+  help chunks/pager replay. Already clipped or rejected destinations are never
+  inferred again from fragments. Authored output preserves this provenance
+  while resolving profiles. There is no cross-message URL accumulator or ID
+  registry and no client-side regex or command inference.
+- Literal URL ampersands are canonically escaped when slices need protection;
+  ordinary output that needs no escaping keeps its bytes. Original text remains
+  the logging source. News's existing bounded-page admission checks the actual
+  canonical bytes so successful display still acknowledges the news.
+- Two larger boundary cases required repairs: help chunks now map link bounds
+  from the full page's source offsets rather than reparsing a partial URL;
+  `AnsiString::ansi()` accepts the actual destination capacity so canonical
+  escaping can exceed one queue block inside the existing command accumulator.
+  Queue blocks still keep their normal limit, and help still emits bounded
+  chunks. The canonicalizer's input is bounded below 64 KiB, with an allocated
+  worst-case output bound; it does not silently truncate a larger canonical form.
+- MXP percent-encodes non-ASCII UTF-8 URL target bytes before legacy CP437
+  conversion. Targets survive while labels retain the existing terminal encoding.
+
+Executable coverage includes exact target values, color changes within schemes,
+Unicode/dollars, invalid schemes/empty authority, query and bare-flag ampersands,
+balanced punctuation, no nested help links, legacy output, unrelated coalesced
+sends, real announcements/help/news, oversized-target rejection, help pages above
+64 KiB with URLs crossing chunks, canonical expansion above one queue block,
+pager refresh and complete targets on every page, logging and authored-context
+provenance. The Telnet harness also checks an actual CP437 write with a Unicode
+URL destination. Shared output-only boundary stubs preserve existing focused
+fixtures; the integration tests link the real scanner and output loop.
+
+Evidence is under `bin/tests/phase1-urls-{output,asan,build,prompts,websocket,gmcp}.log`
+and `bin/tests/phase1-urls-benchmark.csv`. The normal integration and focused ANSI,
+style, cache, pager, news, latency, terminal-mode, shutdown, editor, numeric-input,
+Telnet and WebSocket/GMCP runtime checks pass. Final ASan/UBSan integration,
+`make -C src -j8` and `./scripts/format.sh --check` passed. The existing benchmark
+passed: native URI rendering with two preserve-styled links measured about 3.13
+microseconds CPU/message, versus 1.01 for its explicit plain baseline (12,800
+messages / 64 recipients). Static styling plus native links measured 5.90.
+Ordinary output with no URI retains its allocation counts. These are local
+fixture measurements, not live capacity. Commit hooks remain required at commit.
+
+Remaining: negotiate the browser presentation capability, attach the same
+semantic links to existing text/chat envelopes, implement and verify DurisWeb,
+then perform native-client and original-socket hotboot journeys. No live-client
+click, production operation or deployment has been performed. The goal remains
+in progress even though help and URL producers now reach native MXP delivery.
 
 ## Scope review
 

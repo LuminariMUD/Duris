@@ -1,5 +1,7 @@
 #include "net/output_links.h"
 #include "core/prototypes.h"
+#include "net/url_text.h"
+#include "net/unicode.h"
 #include <algorithm>
 #include <cstring>
 
@@ -22,8 +24,10 @@ bool valid_output_links(std::span<const OutputLink> links, size_t bytes)
 		}
 		else if (link.kind == OutputLinkKind::Url)
 		{
-			if (link.target.size() > 2048 || (!link.target.starts_with("http://") &&
-							  !link.target.starts_with("https://")))
+			const size_t scheme =
+				output_url_scheme_length(std::string_view(link.target), 0);
+			if (link.target.size() > 2048 || !scheme || link.target.size() == scheme ||
+			    link.target.find_first_of("/?#", scheme) == scheme)
 				return false;
 		}
 		else
@@ -105,6 +109,152 @@ OutputLinks rebase_output_links(const char *source, const char *frozen,
 	return result;
 }
 
+static void fold_output_dollars(AnsiString &text, std::vector<size_t> *positions,
+				std::vector<size_t> *offsets)
+{
+	// The wire converter needs original-to-visible positions; URL producers
+	// instead compact the original source offsets. Both use the same folding.
+	if (positions)
+		positions->resize(text.size() + 1);
+	const size_t source_end = offsets ? offsets->back() : 0;
+	size_t out = 0;
+	for (size_t i = 0; i < text.size(); ++i)
+	{
+		if (positions)
+			(*positions)[i] = out;
+		if (offsets)
+			(*offsets)[out] = (*offsets)[i];
+		const bool pair = text.ch(i) == '$' && i + 1 < text.size() &&
+				  text[i] == text[i + 1];
+		text[out++] = text[i];
+		if (pair)
+		{
+			++i;
+			if (positions)
+				(*positions)[i] = out - 1;
+		}
+	}
+	if (positions)
+		(*positions)[text.size()] = out;
+	if (offsets)
+	{
+		offsets->resize(out + 1);
+		offsets->back() = source_end;
+	}
+	text.resize(out);
+}
+
+bool canonical_output_markup(const char *markup, std::string &frozen)
+{
+	if (strlen(markup) >= MAX_STRING_LENGTH)
+		return false;
+	const AnsiString visible(markup);
+	// Input is bounded; canonical literal-& escapes can exceed a single queue
+	// block while still fitting the existing command/pager accumulator.
+	std::string buffer(visible.size() * 8 + 12, '\0');
+	visible.ansi(buffer.data(), buffer.size());
+	buffer.resize(strlen(buffer.c_str()));
+	if (AnsiString(buffer.c_str()) != visible)
+		return false;
+	frozen = std::move(buffer);
+	return true;
+}
+
+OutputLinks output_links_with_urls(const char *markup, std::span<const OutputLink> explicit_links,
+				   std::string *frozen)
+{
+	if (frozen)
+		frozen->clear();
+	const size_t length = strlen(markup);
+	if (!valid_output_links(explicit_links, length))
+		explicit_links = {};
+	OutputLinks result(explicit_links.begin(), explicit_links.end());
+	// The overwhelming majority of output has neither a scheme nor slashes.
+	// Preserve that path without allocating per-character maps.
+	if (!strchr(markup, ':') || !strchr(markup, '/') || strchr(markup, '\x1b'))
+		return result;
+	AnsiString text;
+	std::vector<size_t> offsets;
+	text.set(markup, &offsets);
+	offsets.push_back(length);
+	fold_output_dollars(text, nullptr, &offsets);
+	bool freeze_needed = false;
+	auto source_offset = [&](size_t visible) { return offsets[visible]; };
+	for (size_t begin = 0; begin < text.size();)
+	{
+		const auto scheme = output_url_scheme_length(std::wstring_view(text), begin);
+		if (!scheme || (begin && !output_url_boundary(text.ch(begin - 1))))
+		{
+			++begin;
+			continue;
+		}
+		size_t end = begin + scheme;
+		int parentheses = 0, brackets = 0, braces = 0;
+		while (end < text.size() && !output_url_delimiter(text.ch(end)))
+		{
+			const auto c = text.ch(end++);
+			if (c == '&' && !freeze_needed)
+			{
+				const auto at = source_offset(end - 1);
+				freeze_needed = markup[at + 1] && strchr("nN+-=", markup[at + 1]);
+			}
+			parentheses += (c == '(') - (c == ')');
+			brackets += (c == '[') - (c == ']');
+			braces += (c == '{') - (c == '}');
+		}
+		const size_t next = end;
+		while (end > begin + scheme)
+		{
+			const auto c = text.ch(end - 1);
+			if (c == '.' || c == ',' || c == ';' || c == ':' || c == '!')
+				--end;
+			else if ((c == ')' && parentheses < 0) || (c == ']' && brackets < 0) ||
+				 (c == '}' && braces < 0))
+			{
+				parentheses += c == ')';
+				brackets += c == ']';
+				braces += c == '}';
+				--end;
+			}
+			else
+				break;
+		}
+		const size_t first_byte = source_offset(begin), last_byte = source_offset(end);
+		const auto next_explicit =
+			std::lower_bound(explicit_links.begin(), explicit_links.end(), first_byte,
+					 [](const OutputLink &link, size_t position)
+					 { return link.end <= position; });
+		if (next_explicit == explicit_links.end() || next_explicit->begin >= last_byte)
+		{
+			string target;
+			for (size_t i = begin; i < end && target.size() <= 2048; ++i)
+			{
+				char bytes[8], *out = bytes;
+				put_utf8(out, text.ch(i));
+				target.append(bytes, out);
+			}
+			const OutputLink link{ first_byte, last_byte, OutputLinkKind::Url,
+					       std::move(target) };
+			const auto insertion =
+				std::lower_bound(result.begin(), result.end(), first_byte,
+						 [](const OutputLink &item, size_t position)
+						 { return item.begin < position; });
+			if (valid_output_links(std::span(&link, 1), length) &&
+			    result.size() < OUTPUT_LINK_MAX_COUNT)
+			{
+				const auto index = insertion - result.begin();
+				result.insert(insertion, link);
+				if (!valid_output_links(result, length))
+					result.erase(result.begin() + index);
+			}
+		}
+		begin = next;
+	}
+	if (frozen && freeze_needed)
+		canonical_output_markup(markup, *frozen);
+	return result;
+}
+
 OutputLinkFrame freeze_output_links(const char *markup, std::span<const OutputLink> links,
 				    bool plain_terminal)
 {
@@ -115,21 +265,8 @@ OutputLinkFrame freeze_output_links(const char *markup, std::span<const OutputLi
 		frame.text.colorize(0);
 	if (!valid_output_links(links, strlen(markup)) || strchr(markup, '\x1b'))
 		links = {};
-	// Match process_output: adjacent equal-attribute dollars collapse after
-	// terminal conversion. Map each source character to the retained character.
-	std::vector<size_t> positions(offsets.size() + 1);
-	size_t out = 0;
-	for (size_t i = 0; i < frame.text.size(); ++i)
-	{
-		positions[i] = out;
-		const bool pair = frame.text.ch(i) == '$' && i + 1 < frame.text.size() &&
-				  frame.text[i] == frame.text[i + 1];
-		frame.text[out++] = frame.text[i];
-		if (pair)
-			positions[++i] = out - 1;
-	}
-	positions[offsets.size()] = out;
-	frame.text.resize(out);
+	std::vector<size_t> positions;
+	fold_output_dollars(frame.text, &positions, nullptr);
 	for (const auto &link : links)
 	{
 		const size_t first = std::lower_bound(offsets.begin(), offsets.end(), link.begin) -
@@ -141,6 +278,22 @@ OutputLinkFrame freeze_output_links(const char *markup, std::span<const OutputLi
 			frame.links.push_back({ begin, end, link.kind, link.target });
 	}
 	return frame;
+}
+
+void write_output(const char *text, txt_q *queue)
+{
+	if (!text || !queue || strlen(text) >= MAX_STRING_LENGTH)
+	{
+		write_to_q(text, queue, 1);
+		return;
+	}
+	std::string frozen;
+	auto links = output_links_with_urls(text, {}, &frozen);
+	if (frozen.empty() || frozen.size() >= MAX_STRING_LENGTH)
+		write_linked_output(text, queue, links);
+	else
+		write_linked_output(frozen.c_str(), queue,
+				    rebase_output_links(text, frozen.c_str(), links));
 }
 
 void write_linked_output(const char *text, txt_q *queue, std::span<const OutputLink> links)

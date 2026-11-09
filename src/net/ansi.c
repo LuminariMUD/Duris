@@ -14,6 +14,7 @@
 
 #include <string.h>
 #include "net/ansi.h"
+#include "net/url_text.h"
 #include "net/unicode.h"
 
 #if 0
@@ -153,9 +154,12 @@ void AnsiString::set(const char *txt, std::vector<size_t> *source_offsets)
 	const char *source = txt;
 
 	int attr = 0, a, b;
+	bool in_url = false;
+	bool url_query = false;
 
 	while (*txt)
 	{
+		const size_t previous_size = size();
 		if (txt[0] == '\r')
 			txt++;
 		else if (txt[0] == '\n')
@@ -173,6 +177,10 @@ void AnsiString::set(const char *txt, std::vector<size_t> *source_offsets)
 			push_back(get_utf8(txt) | attr);
 		}
 		else
+		{
+			if (in_url && (txt == source || txt[-1] != '&') &&
+			    output_url_parameter(txt, url_query))
+				goto bad_ansi;
 			switch (txt[1])
 			{
 			case 'n':
@@ -208,12 +216,39 @@ bad_ansi:
 				push_back('&' | attr);
 				txt++;
 			}
+		}
+		if (size() != previous_size)
+		{
+			const auto c = ch(size() - 1);
+			if (output_url_delimiter(c))
+			{
+				in_url = false;
+				url_query = false;
+			}
+			else if (in_url && (c == '?' || c == '#'))
+				url_query = true;
+			else if (!in_url && c == '/' && size() >= 7)
+				for (size_t length : { size_t{ 7 }, size_t{ 8 } })
+					if (size() >= length &&
+					    output_url_scheme_length(std::wstring_view(*this),
+								     size() - length) == length &&
+					    (size() == length ||
+					     output_url_boundary(ch(size() - length - 1))))
+						in_url = true;
+		}
 	}
 }
 
-void AnsiString::ansi(char *out) const
+void AnsiString::ansi(char *out, size_t capacity) const
 {
-	char *limit = out + MAX_STRING_LENGTH - 11; // ansi 4 + utf8 4 + final &n 2 + null 1
+	if (!capacity)
+		return;
+	if (capacity < 11)
+	{
+		*out = 0;
+		return;
+	}
+	char *limit = out + capacity - 11; // ansi 4 + utf8 4 + final &n 2 + null 1
 
 	int oattr = 0;
 	for (wchar_t c : *this)

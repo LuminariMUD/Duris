@@ -2011,6 +2011,7 @@ void show_string(struct descriptor_data *d, const char *input)
 						       OutputLinks{};
 		OutputContext context;
 		context.links = links;
+		context.links_prepared = true;
 		send_to_char(start, d->character, LOG_NONE, context);
 		free_paging_data(d);
 	}
@@ -2031,6 +2032,7 @@ void show_string(struct descriptor_data *d, const char *input)
 						       OutputLinks{};
 		OutputContext context;
 		context.links = links;
+		context.links_prepared = true;
 		send_to_char(buffer, d->character, LOG_NONE, context);
 		send_to_char("&N", d->character, LOG_NONE);
 		d->showstr_page++;

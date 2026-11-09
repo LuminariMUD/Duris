@@ -94,6 +94,8 @@ static void colorization_benchmark()
 							decorate ? OutputPolicy::Static : OutputPolicy::Preserve);
 						if (mode != "legacy")
 							context.links = link_spans;
+						else
+							context.links_prepared = true; // Explicit plain baseline.
 						send_to_char(link_text.c_str(), ch, LOG_NONE, context);
 					}
 					else if (scenario == "combat")

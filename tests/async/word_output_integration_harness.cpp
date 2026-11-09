@@ -690,6 +690,7 @@ static size_t visible_terminal_bytes(const std::string &markup)
 
 #include "output_links_checks.inc"
 #include "help_output_checks.inc"
+#include "url_output_checks.inc"
 
 int main()
 {
@@ -701,6 +702,7 @@ int main()
 	output_links_matrix();
 	mxp_delivery_matrix();
 	help_output_matrix();
+	url_output_matrix();
 	privacy_toggle_matrix();
 	toggle_matrix();
 	chat_presentation_matrix();

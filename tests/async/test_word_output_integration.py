@@ -22,7 +22,7 @@ for filename, signatures in [
     ("actoth.c", ["static const char *term_name(", "void show_toggles(", "static int plr_tog(", "void do_toggle("]),
     ("comm.c", ["static void note_player_input_activity(P_desc t, const char *input)\n{", "int get_from_q(", "void write_to_q(", "int process_output(", "void escape_act_dollars(", "void delete_doubledollar(",
                 "static void finalize_styled_command(", "void process_with_paging(",
-                "bool send_paged_text(", "void send_to_char_f(P_char ch, const char *fmt, ...)",
+                "bool send_paged_text(", "void send_to_all(", "void send_to_char_f(P_char ch, const char *fmt, ...)",
                 "void send_to_char_f(P_char ch, const OutputContext &context, const char *fmt, ...)",
                 "void send_to_char(const char *messg, P_char ch)",
                 "void send_to_char(const char *messg, P_char ch, const OutputContext &context)",
