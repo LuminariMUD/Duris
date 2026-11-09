@@ -91,7 +91,7 @@ int obj_affect_time(P_obj,obj_affect *) { return 0; }
 int GET_CLASS(P_char,unsigned int) { return 0; }
 void CharWait(P_char ch,int) { assert(IS_ALIVE(ch)); ++waits; }
 bool MakeScrap(P_char,P_obj) { return !refuse_scrap; }
-void writeCorpse(P_obj corpse) { assert(corpse); ++corpse_writes; }
+void writeCorpse(P_obj corpse) { assert(corpse && corpse->type==ITEM_CORPSE); ++corpse_writes; }
 void redis_remove_floor_drop(unsigned long) {}
 void mark_player_dirty_components(int,player_component_mask_t) {}
 void gmcp_char_vitals(P_char) {}
