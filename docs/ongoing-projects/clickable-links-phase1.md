@@ -1,6 +1,6 @@
 # Clickable links: Phase 1 implementation plan
 
-Date: 2026-11-09. Status: planned; no runtime implementation in this commit.
+Date: 2026-11-09. Status: implementation in progress.
 
 ## Outcome and scope
 
@@ -30,7 +30,8 @@ No database migration or help-content rewrite is expected.
 - Branch: `branch/clickable-links-phase1`.
 - Worktree: `/home/aiwithapex/projects/duris-worktrees/clickable-links-phase1`.
 - Plan: `docs/ongoing-projects/clickable-links-phase1.md` in that worktree.
-- The current deliverable is this committed and pushed plan only.
+- Deliver focused, reviewable commits and PRs as each chunk is verified. Stack
+  dependent changes and keep this document current for handoff.
 - Implementation will also need a companion branch/worktree in `durisweb` for
   its player renderer and transport decoder. Create that during implementation,
   after reading that repository's instructions. Keep commits in their owning
@@ -285,8 +286,35 @@ remaining validation item, not a passing result.
 
 Implementation is complete when both feature uses work through the real output
 path, legacy peers remain compatible, and the acceptance cases have evidence.
-Production deployment is a separate operation and is not part of this plan-only
-task.
+Production deployment is a separate operation and is not part of this task.
+
+## Implementation log and handoff
+
+### Chunk 1: help during paging
+
+Implemented the prerequisite in `select_session_input()`: a full `help` command
+at the head of an active playing session's input queue passes through the normal
+playing-queue gates, releases the old page, and uses normal command dispatch.
+Matching uses the existing case-insensitive argument parser. Other pager input,
+abbreviations, editors and non-playing sessions retain their existing behavior.
+No help-handler bypass or new input endpoint was added.
+
+Extended the existing WebSocket/pager executable harness to cover typed and JSON
+help, exact-once dispatch, queue order, case/whitespace, pager cleanup, action /
+charm / creation / playing-queue gates, and editor/non-playing ownership.
+
+Verified on 2026-11-09:
+
+- `python3 tests/async/test_pager_contract.py` passed.
+- `SANITIZE=1 python3 tests/async/test_pager_contract.py` passed (ASan/UBSan).
+- `python3 tests/async/test_casting_input_queue_runtime.py` passed.
+- `./scripts/format.sh --check` passed.
+- `make -C src -j8` passed (MariaDB development build).
+
+The harness executes production admission, queue selection, dispatch and pager
+bodies with controlled world/transaction boundaries; it is not live-client proof.
+Next: prove optional owned link metadata through send/accumulation/queue/pager,
+then add transport serialization. The feature itself is not implemented yet.
 
 ## Scope review
 
