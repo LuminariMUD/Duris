@@ -31,6 +31,7 @@ PRELUDE = r'''
 static room_data rooms[2];
 P_room world = rooms;
 P_char character_list = nullptr;
+void forget_live_character(P_char) {}
 uint64_t character_removal_generation = 0;
 static int cleanup_calls, hook_calls, begin_calls, end_calls, shopkeeper_calls;
 static P_char terminal_departure_override = nullptr, dummy_override = nullptr;

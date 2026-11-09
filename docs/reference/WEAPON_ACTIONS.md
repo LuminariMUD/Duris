@@ -115,25 +115,9 @@ busy suppression, cancellation, partial bundles, pure/mixed/sparse/random spells
 and defensive random-equipment parity. The real mana arithmetic is used at the
 debit boundary; worker, repository, and game-bridge persistence tests live in #292.
 
-This live journey used the removed flat-file backend and has not been converted to MariaDB yet; see #870.
-When it ran, it did this:
-
-It booted isolated flat-file authorities and a miniature world, creates real
-accounts/characters over Telnet, equips an NPC with a synthetic magic-missile
-weapon, and exercises actual combat, spell damage, warning output, and flee.
-The fixture uses the ordinary `value[7]=1` selection rate; it adds no production
-debug endpoint or replacement combat implementation. It uses increased health
-properties for the synthetic NPC/player and a normal starter mace, because the
-server recalculates NPC hit points after loading raw area dice. Its three cases are legacy,
-enabled completion, and enabled successful reaction. This is a packed-weapon
-combat pilot; Avernus's bespoke drain parity is separately exercised by the
-sanitizer callback test.
-
-On 2026-09-13, the initial live run measured 2.002 seconds from warning to damage
-and a 0.250-second response from warning to successful room exit. The fleeing
-player observed the fizzle and no proc damage. The legacy case emitted its spell
-without a windup warning. These are single-run disposable observations, not
-network latency guarantees or a production balance study.
+The [live combat journey](../../tests/async/run_weapon_actions_journey.py) is being
+converted to MariaDB under [#870](https://github.com/LuminariMUD/Duris/issues/870);
+its reproduction commands will be updated after runtime qualification.
 
 The deterministic harness additionally drives 200 already-selected Avernus procs
 at four per second through a two-second windup and reports completed/suppressed

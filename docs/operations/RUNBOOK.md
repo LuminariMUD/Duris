@@ -929,7 +929,9 @@ the exact bounded top ten describe that window, not process lifetime. Check
 with debug profiling off. They distinguish playing, nanny, pager, editor, SSL,
 and descriptor maintenance. `unattributed_sweep_us` covers work outside the
 explicit scopes, including gates and dequeue. Playing labels use canonical
-command names or `unknown`; arguments and nanny/editor input are excluded.
+command names or `unknown`; arguments and nanny/editor input are excluded,
+except that `get` and `take` also report sanitized `args` and `bulk_items`, the
+number of items a `get all` selected.
 Reports retain at most eight slow operations and throttle output to one report
 per four pulses, carrying suppression counts and the worst suppressed operation
 into the next due report. A small event bucket does not explain a large command
@@ -1598,14 +1600,23 @@ availability, random equipment). Property/config changes take effect on
 restart without recompilation; check the owning subsystem docs before
 editing.
 
-One property is a live balance switch worth knowing about:
-`artifact.wars.modifier` scales the race-war penalty applied by
-`event_artifact_wars` -- each of a violating player's artifacts loses
-`modifier x punish_level` of its remaining life, clamped to the whole of it.
-The code default is `0.0` (forced drop only), but `lib/duris.properties` ships
-`artifact.wars.modifier=0.500`, so a server using that file halves the
-offender's artifact timers on a first-level violation. Set it to `0` to disable
-the timer penalty.
+`artifact.wars.modifier=0.000` is the shipped setting and matches the code
+default: artifact hoarding causes forced drops without timer loss or damage.
+A player may hold one major artifact, one unique and one ioun. Holding two or
+more of any one type triggers the periodic `event_artifact_wars_sql` check,
+which drops every artifact the player wears or carries, including other types.
+Even a brief ownership overlap can be caught; the sweep interval is not a
+personal grace period. The scope of which artifacts drop is unchanged by this
+timer-policy fix ([issue #861](https://github.com/LuminariMUD/Duris/issues/861)).
+
+Keep this modifier at zero for the intended drop-only rule. A positive override
+still cuts every artifact timer on the violating holder by
+`modifier x punish_level` of its remaining life, clamped to the whole of it;
+the level is the sum of the excess counts above one per type. For example,
+`0.500` halves each timer when the holder has two artifacts of one type.
+Existing installations must also apply the zero setting to their deployed
+properties and reload or restart; changing the repository does not change a
+running server's in-memory setting.
 
 ### Scheduled roaming NPCs
 
