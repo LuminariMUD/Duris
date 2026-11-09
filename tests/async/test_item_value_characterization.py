@@ -20,6 +20,7 @@ HARNESS = r'''
 #include "core/utils.h"
 #include "item/objmisc.h"
 #include "magic/spells.h"
+#include "item/item_value.h"
 #include <cassert>
 #include <climits>
 #include <cmath>
@@ -36,7 +37,7 @@ int get_mincircle(int spell);
 int get_ival_from_proc(obj_proc_type proc);
 static index_data indexes[1]{};
 P_index obj_index = indexes;
-const stat_data stat_factor[LAST_RACE + 1]{};
+extern const stat_data stat_factor[LAST_RACE + 1] = {{}, {80,100,120,130,150,90,110,170,105,100}};
 
 // A valuation must not draw from the game RNG or invoke a native callback.
 int number(int, int) { assert(false); return 0; }
@@ -190,6 +191,21 @@ static void proc_policy()
     std::puts("proc policy: real pricing, first-match precedence, fallback, sentinel and routing gap");
 }
 
+static void resolved_racial_context()
+{
+    auto object = item();
+    object.affected[0] = {APPLY_HIT, 10};
+    object.affected[3] = {APPLY_STR_RACE, 1};
+    item_value_breakdown detail;
+    assert(itemvalue(&object, &detail) == 39);
+    assert(detail.base == 39 && detail.multiplier == 1 && detail.score == 39);
+    object.affected[3].location = APPLY_AGI_RACE;
+    assert(itemvalue(&object, &detail) == 119);
+    object.affected[3].modifier = -128;
+    assert(itemvalue(&object, &detail) == 129); // Preserve invalid-race diagnostic/credit policy.
+    assert(itemvalue(nullptr, &detail) == 0 && detail.score == 0);
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 2)
@@ -202,7 +218,7 @@ int main(int argc, char **argv)
         return 0;
     }
     assert(itemvalue(nullptr) == 0);
-    circles(); packed_rounding(); applies(); proc_policy();
+    circles(); packed_rounding(); applies(); proc_policy(); resolved_racial_context();
     auto object = packed(32);
     const auto original = object;
     const auto index = indexes[0];
@@ -210,6 +226,51 @@ int main(int argc, char **argv)
     assert(std::memcmp(&object, &original, sizeof(object)) == 0);
     assert(std::memcmp(&indexes[0], &index, sizeof(index)) == 0);
     std::puts("repeated evaluation leaves object/index inputs unchanged and draws no RNG");
+}
+'''
+
+PURE = r'''
+#include "item/item_value.h"
+#include <cassert>
+#include <cstring>
+
+int main()
+{
+    item_value_input input;
+    item_value_context context;
+    item_value_breakdown detail;
+    input.type = ITEM_WORN;
+    input.wear_flags = ITEM_TAKE;
+    input.affected[3] = {APPLY_HIT, 10};
+    assert(evaluate_item_value(input, context, &detail) == 29);
+    assert(detail.base == 29 && detail.multiplier == 1 && detail.unrounded == 29);
+    assert(!detail.floored && !detail.utility_override && detail.score == 29);
+    context.native_proc_credit = 7;
+    context.racial_credits[0] = 50;
+    assert(evaluate_item_value(input, context, &detail) == 86);
+    assert(detail.unrounded == detail.base * detail.multiplier && detail.base == 86);
+    input.extra_flags = ITEM_TWOHANDS;
+    assert(evaluate_item_value(input, context, &detail) == 68);
+    assert(detail.multiplier == .8 && detail.score == static_cast<int>(detail.unrounded));
+    input.type = ITEM_KEY;
+    assert(evaluate_item_value(input, context, &detail) == 1 && detail.utility_override);
+    input = {}; context = {};
+    assert(evaluate_item_value(input, context, &detail) == 1 && detail.floored);
+    assert(detail.unrounded == 0 && detail.base == 0);
+    input.type = ITEM_WORN; input.wear_flags = ITEM_TAKE | ITEM_WIELD;
+    input.value[5] = 33032; input.value[6] = 60; input.value[7] = 30;
+    assert(item_value_has_packed_proc(input));
+    // There are deliberately no engine globals in this executable. All external
+    // context is explicit, and changing it changes exactly the resolved credits.
+    assert(evaluate_item_value(input, context, &detail) == 1);
+    context.spell_circles[0] = 1; context.spell_circles[1] = 2;
+    assert(evaluate_item_value(input, context, &detail) == 18);
+    const auto original_input = input;
+    const auto original_context = context;
+    for (int i = 0; i < 100; ++i)
+        assert(evaluate_item_value(input, context) == detail.score);
+    assert(std::memcmp(&input, &original_input, sizeof(input)) == 0);
+    assert(std::memcmp(&context, &original_context, sizeof(context)) == 0);
 }
 '''
 
@@ -223,7 +284,7 @@ def main():
     production = "\n".join((
         extract_function("utility.c", "int flag2idx(int flag)\n{"),
         extract_function("tradeskill.c", "int get_mincircle(int spell)\n{"),
-        proc, extract_function("tradeskill.c", "int itemvalue(P_obj obj)\n{")))
+        proc))
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ival-characterization-", dir=build) as tmp:
@@ -233,11 +294,26 @@ def main():
             "g++", "-std=c++20", "-g", "-O1", "-D_PFILE_", "-Isrc",
             "-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all",
             "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
-            str(source), rel("skills.c"), str(HARNESS_STUBS), "-o", str(binary),
+            str(source), rel("skills.c"), str(HARNESS_STUBS), "src/item/item_value.c",
+            "src/item/item_value_runtime.c", "-o", str(binary),
         ], cwd=ROOT, check=True)
         env = {**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
                "UBSAN_OPTIONS": "halt_on_error=1"}
         subprocess.run([str(binary)], check=True, env=env)
+        pure_source = Path(tmp) / "pure.cpp"
+        pure_source.write_text(PURE)
+        # Both consumers link the numeric module without any engine service or
+        # harness stubs. The editor's _DE_ build must stay usable too.
+        for mode, defines in (("server", []), ("editor", ["-D_DE_", "-D__UNIX__"])):
+            pure_binary = Path(tmp) / f"pure-{mode}"
+            subprocess.run([
+                "g++", "-std=c++20", "-g", "-O1", "-Isrc", *defines,
+                "-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all",
+                "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
+                str(pure_source), "src/item/item_value.c", "-o", str(pure_binary),
+            ], cwd=ROOT, check=True)
+            subprocess.run([str(pure_binary)], check=True, env=env)
+        print("shared numeric module: isolated server/editor builds, explicit context and breakdown passed")
         # LEGACY F08: expected sanitizer failures are pinned explicitly. Replace
         # these expectations with safe-result/admission checks with the repair.
         for value, diagnostic in (("50000", "signed integer overflow"),
