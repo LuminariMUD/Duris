@@ -1166,6 +1166,42 @@ was performed.
 **Ablation:** bound conversion at the existing integer interfaces. Keep the
 current XP pipeline and its established cap policy; add no reward framework.
 
+### Chunk 17 — honor disabled crafting XP (F08/F10 prerequisite, implemented)
+
+Branch: `branch/ival-zero-crafting-xp`, based on `branch/ival-xp-conversion`.
+
+**Outcome:** a valid zero-XP crafting plan makes no XP request, as documented in
+`lib/crafting.cfg`. Both Craft and Forge use the same private award policy;
+positive requests retain the exact checked planned amount.
+
+**Non-goals:** changing the general XP minimum, item/material behavior, formula,
+configuration format, persistence or deployment.
+
+**Files:** crafting's two award sites and private shared policy, the existing
+native crafting/XP tests and this handoff.
+
+**Proof:** preserve the actual XP API's minimum-one behavior, execute the native
+crafting award policy with zero/positive plans, verify request counts/amounts and
+unchanged plan fields, and run the server build and relevant crafting checks.
+Full command/persistence journeys remain F16.
+
+**Ablation:** centralize this one policy for two real discipline callers in the
+existing crafting module. Add no public API or new reward/persistence layer.
+
+**Validation:** the native regression failed against the extracted unchanged
+award behavior because a zero plan still submitted an XP request. It now passes
+with zero requests for zero plans and one request carrying the exact checked
+amount for positive plans; the plan bytes remain unchanged. The full native XP
+regression explicitly verifies the general `gain_exp(..., 0, EXP_BOON)` minimum
+is still one. Native crafting quantity/XP bounds, crafting module and craft/
+enhance checks pass, as does the server build. Ival formulas and storage inputs
+are unchanged. F16's full command/MariaDB journeys remain required; no database
+or production operation occurred.
+
+**Continuation:** resume strict finite/ranged configuration parsing and remaining
+level/gain/radius/salvage/property bounds from F08. Keep the full project scope
+and F05/F09/F10/F11–F16 work open as recorded above.
+
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization

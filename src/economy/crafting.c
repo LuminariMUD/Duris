@@ -492,6 +492,12 @@ int *crafting_get_player_recipes(P_char ch, int *count)
 	return recipes;
 }
 
+static void crafting_award_experience(P_char ch, const crafting_plan &plan)
+{
+	if (plan.experience > 0)
+		gain_exp(ch, NULL, plan.experience, EXP_BOON);
+}
+
 static void crafting_handle_craft_command(P_char ch, char *argument, int cmd);
 static void crafting_handle_forge_command(P_char ch, char *argument, int cmd);
 
@@ -989,7 +995,7 @@ static void crafting_handle_craft_command(P_char ch, char *argument, int cmd)
 		    "&+L...hands shaking, &+Wyou &+Lraise your head and &+Ysmile&+L, admiring your new $p.&N",
 		    FALSE, ch, tobj, 0, TO_CHAR);
 
-		gain_exp(ch, NULL, plan.experience, EXP_BOON);
+		crafting_award_experience(ch, plan);
 		extract_obj(matLowest);
 		extract_obj(matHighest);
 		// Save the character! 1 -> in game.
@@ -1559,7 +1565,7 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 		    "&+L...after shedding plenty of &+Wsweat&+L, you &+Lstep back, admiring your new $p.&N",
 		    FALSE, ch, obj, 0, TO_CHAR);
 
-		gain_exp(ch, NULL, plan.experience, EXP_BOON);
+		crafting_award_experience(ch, plan);
 	}
 	else
 	{
