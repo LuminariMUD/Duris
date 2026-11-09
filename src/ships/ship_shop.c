@@ -2108,7 +2108,7 @@ static bool ship_crate_order_cost(const ShipSlot &slot, int type, int quantity, 
 	if (total > INT_MAX)
 		return false;
 	// Preserve the existing float discount rounding, but validate before casting.
-	const double discount = static_cast<float>(total) * bonus;
+	const float discount = static_cast<float>(total) * bonus;
 	if (!isfinite(discount) || discount < 0 || discount >= total)
 		return false;
 	*cost = static_cast<int>(total) - static_cast<int>(discount);
