@@ -37,8 +37,12 @@ def run(binary, output, areas=None):
             environment.update(CRITICAL_COMMAND_JOURNAL_DIR=str(critical), DURIS_TLS_PORT=str(tls),
                                DURIS_WEBSOCKET_PORT=str(websocket))
 
-            def catalog():
-                stock = {'shopkeepers': sql('SELECT shop_id,mob_vnum,room_vnum FROM shopkeepers ORDER BY shop_id')}
+            def catalog(shop_ids=None):
+                # Random world resets can create an additional keeper on a later
+                # boot. Compare every original shop, including all of its stock.
+                where = ' WHERE s.shop_id IN (' + shop_ids + ')' if shop_ids else ''
+                owners = ' AND owner_id IN (SELECT shop_id+1 FROM shopkeepers s' + where + ')' if shop_ids else ''
+                stock = {'shopkeepers': sql('SELECT shop_id,mob_vnum,room_vnum FROM shopkeepers s' + where + ' ORDER BY shop_id')}
                 # Compare all payload columns using durable shop/item identities.
                 # The writer replaces SQL rows on restore, so row IDs and write
                 # timestamps are not stock identities or content.
@@ -46,25 +50,27 @@ def run(binary, output, areas=None):
                         ('shopkeeper_items', 'JOIN shopkeepers s ON s.id=i.shopkeeper_id '
                          'LEFT JOIN shopkeeper_items p ON p.id=i.container_id',
                          's.shop_id,COALESCE(p.obj_uid,0)', {'id', 'shopkeeper_id', 'container_id', 'created_at'}),
-                        ('shopkeeper_item_affects', 'JOIN shopkeeper_items p ON p.id=i.item_id',
+                        ('shopkeeper_item_affects', 'JOIN shopkeeper_items p ON p.id=i.item_id '
+                         'JOIN shopkeepers s ON s.id=p.shopkeeper_id',
                          'p.obj_uid', {'id', 'item_id'}),
-                        ('shopkeeper_item_extra_descr', 'JOIN shopkeeper_items p ON p.id=i.item_id',
+                        ('shopkeeper_item_extra_descr', 'JOIN shopkeeper_items p ON p.id=i.item_id '
+                         'JOIN shopkeepers s ON s.id=p.shopkeeper_id',
                          'p.obj_uid', {'id', 'item_id'})):
                     columns = sql("SELECT column_name FROM information_schema.columns WHERE table_schema=DATABASE() "
                                   "AND table_name='" + table + "' ORDER BY ordinal_position").splitlines()
                     payload = ','.join('i.`' + column + '`' for column in columns if column not in excluded)
                     assert payload, table
-                    stock[table] = sorted(sql('SELECT ' + identity + ',' + payload + ' FROM ' + table + ' i ' + joins).splitlines())
+                    stock[table] = sorted(sql('SELECT ' + identity + ',' + payload + ' FROM ' + table + ' i ' + joins + where).splitlines())
                 stock['custody'] = sql('SELECT item_uid,root_item_uid,COALESCE(parent_item_uid,0),owner_id,'
-                                       'owner_context_id,vnum,state FROM item_current_owner WHERE owner_type=9 ORDER BY item_uid')
+                                       'owner_context_id,vnum,state FROM item_current_owner WHERE owner_type=9' + owners + ' ORDER BY item_uid')
                 revisions = dict(tuple(map(int, row.split('\t'))) for row in sql(
-                    'SELECT owner_id,revision FROM item_owner_revision WHERE owner_type=9').splitlines())
+                    'SELECT owner_id,revision FROM item_owner_revision WHERE owner_type=9' + owners).splitlines())
                 # NPCs can cast buffs (e.g. biofeedback) during the first game
                 # pulse. Their live affects are not immutable shop stock.
                 assert stock['shopkeepers'] and stock['shopkeeper_items'] and revisions, 'fresh shops have no persisted stock'
                 return stock, revisions
 
-            baseline, previous_revisions = None, None
+            baseline, previous_revisions, shop_ids = None, None, None
             try:
                 for iteration in range(2):
                     offset = log.stat().st_size if log.exists() else 0
@@ -81,10 +87,12 @@ def run(binary, output, areas=None):
                             process.terminate()
                             process.wait(timeout=45)
                         assert process.returncode == 0, 'full-world boot/shutdown failed'
-                    stock, revisions = catalog()
+                    stock, revisions = catalog(shop_ids)
+                    shop_ids = ','.join(row.split('\t')[0] for row in stock['shopkeepers'].splitlines())
                     digest = hashlib.sha256(json.dumps(stock, sort_keys=True).encode()).hexdigest()
                     evidence['boots'].append({'iteration': iteration, 'catalog_sha256': digest,
                                               'shops': len(stock['shopkeepers'].splitlines()),
+                                              'total_shops': int(sql('SELECT COUNT(*) FROM shopkeepers')),
                                               'items': len(stock['shopkeeper_items']), 'revisions': revisions})
                     if baseline is not None:
                         changes = {}

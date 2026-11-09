@@ -351,7 +351,12 @@ This is an estimate, not a time limit or permission to omit required proof.
 - Passed: `tests/async/with_disposable_mariadb.sh python3 tests/async/run_shop_bootstrap_journey.py --server bin/server/dms_new --areas bin/tests/issue-870/world/areas --output bin/tests/issue-870/shop-bootstrap.json`.
   Evidence: that JSON plus `.log` and `shop-bootstrap-run.log`. Both full-world
   boots passed: 553 shops, 295 retained items, unchanged payloads/custody and
-  non-regressing owner revisions. SQL rewrites replace row IDs and advance
+  non-regressing owner revisions. A later replay exposed a random world reset
+  creating an additional keeper; the comparison now follows all original shop
+  IDs and permits newly spawned shops, recording both retained and total counts.
+  Its final runtime qualification is pending. Failure evidence is retained as
+  `bin/tests/issue-870/new-keeper-failure-shop-bootstrap*`.
+  SQL rewrites replace row IDs and advance
   revisions legitimately; NPCs may cast buffs during a game pulse, so their
   live character affects are not treated as immutable stock. Item affects and
   extra descriptions remain compared in full.
@@ -364,7 +369,9 @@ This is an estimate, not a time limit or permission to omit required proof.
 
 ### Current work / next action
 
-- News, onboarding and death-projection runners have uncommitted removal of
+- Launch/shop PR: [#888](https://github.com/LuminariMUD/Duris/pull/888), based on #887.
+- News, onboarding and death-projection code is committed as `c2fdd28eb` on
+  `branch/issue-870-login-journeys` (not yet pushed/PR). It removes
   unreachable inspector branches. News now seeds its initial synthetic edition
   in SQL rather than an ignored file. Full existing scenarios are running under
   disposable MariaDB; do not mark them complete before checking their reports.
