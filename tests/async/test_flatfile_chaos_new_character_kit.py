@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
+import argparse
+import json
 import os
 from functools import cache
 import pathlib
 import re
 import signal
-import struct
 import subprocess
 import sys
 import tempfile
@@ -21,8 +22,8 @@ from test_flatfile_combat_journey import (
     PASSWORD,
     MudClient,
     available_ports,
-    build_flatfile_server,
     generate_certificate,
+    mariadb_authority,
     make_fixture,
     reconnect_character,
     require,
@@ -73,59 +74,23 @@ def wearable_fixture(class_name: str) -> tuple[int, str, str]:
     return vnum, keyword, description
 
 
-def read_item_ownership(state_root: pathlib.Path) -> dict[int, list[dict[str, int]]]:
-    """Read the isolated flatfile ownership catalog grouped by object VNUM."""
-    data = (state_root / "domains/item_ownership").read_bytes()
-    header_size = 8 + 4 + 4 + 8 + 32
-    require(data[:8] == b"DUROWN\0\0", "flatfile item ownership magic changed")
-    version, payload_size, revision = struct.unpack_from("<IIQ", data, 8)
-    require(version == 4 and revision > 0, "flatfile item ownership header is invalid")
-    require(payload_size == len(data) - header_size, "flatfile item ownership size is invalid")
-    payload = data[header_size:]
-    # Version 4 adds collector_catalog_changed only to operation rows. Owner
-    # and item layouts are unchanged; this reader stops before that ledger.
-    owner_count, item_count, _ = struct.unpack_from("<III", payload)
-    offset = struct.calcsize("<III") + owner_count * struct.calcsize("<BQQQ")
-    item_format = "<QQQBQQQiB"
-    item_size = struct.calcsize(item_format)
-    require(offset + item_count * item_size <= len(payload), "flatfile item ownership rows are truncated")
+def read_item_ownership(sql) -> dict[int, list[dict[str, int]]]:
+    """Read the item ownership rows of saved player items, grouped by object VNUM."""
+    rows = sql("SELECT i.vnum,c.item_uid,c.root_item_uid,IFNULL(c.parent_item_uid,0),c.owner_type,"
+               "c.owner_id,c.owner_context_id,c.item_revision,c.state FROM item_current_owner c "
+               "JOIN player_items i ON i.obj_uid=c.item_uid")
+    fields = ("item_uid", "root_item_uid", "parent_item_uid", "owner_type", "owner_id",
+              "owner_context_id", "item_revision", "state")
     by_vnum: dict[int, list[dict[str, int]]] = {}
-    for _ in range(item_count):
-        (
-            item_uid,
-            root_item_uid,
-            parent_item_uid,
-            owner_type,
-            owner_id,
-            owner_context_id,
-            item_revision,
-            vnum,
-            state,
-        ) = struct.unpack_from(item_format, payload, offset)
-        offset += item_size
-        require(offset + 4 <= len(payload), "flatfile coin payload length is truncated")
-        coin_size, = struct.unpack_from("<I", payload, offset)
-        offset += 4
-        require(offset + coin_size <= len(payload), "flatfile coin payload is truncated")
-        offset += coin_size
-        by_vnum.setdefault(vnum, []).append(
-            {
-                "item_uid": item_uid,
-                "root_item_uid": root_item_uid,
-                "parent_item_uid": parent_item_uid,
-                "owner_type": owner_type,
-                "owner_id": owner_id,
-                "owner_context_id": owner_context_id,
-                "item_revision": item_revision,
-                "state": state,
-            }
-        )
+    for line in rows.splitlines():
+        vnum, *values = line.split("\t")
+        by_vnum.setdefault(int(vnum), []).append(dict(zip(fields, map(int, values))))
     return by_vnum
 
 
-def one_owned_item(state_root: pathlib.Path, vnum: int) -> dict[str, int]:
+def one_owned_item(sql, vnum: int) -> dict[str, int]:
     """Return the sole authoritative ownership row for an expected fixture item."""
-    matches = read_item_ownership(state_root).get(vnum, [])
+    matches = read_item_ownership(sql).get(vnum, [])
     require(len(matches) == 1, f"expected exactly one ownership row for VNUM {vnum}")
     return matches[0]
 
@@ -136,10 +101,10 @@ def expected_utilities(class_name: str) -> dict[int, int]:
             73: 3 if class_name == "Thief" else 0}
 
 
-def assert_kit_ownership(state_root: pathlib.Path, class_name: str) -> dict[int, list[dict[str, int]]]:
+def assert_kit_ownership(sql, class_name: str) -> dict[int, list[dict[str, int]]]:
     """Assert direct wearables and support-only bag contents at grant completion."""
-    ownership = read_item_ownership(state_root)
-    bag = one_owned_item(state_root, STARTER_BAG_VNUM)
+    ownership = read_item_ownership(sql)
+    bag = one_owned_item(sql, STARTER_BAG_VNUM)
     # Human Sorcerer, standalone Thief and unspecialized Dragoon have no dual wield.
     # Monk profiles omit weapon slots entirely; Warrior has dual wield at level 1.
     equipment = {vnum for slot, vnum in kit_entries(class_name)
@@ -181,10 +146,10 @@ def assert_kit_ownership(state_root: pathlib.Path, class_name: str) -> dict[int,
     return ownership
 
 
-def assert_utility_durability(state_root: pathlib.Path, class_name: str,
+def assert_utility_durability(sql, class_name: str,
                              original: dict[int, list[dict[str, int]]]) -> None:
     """Relog must retain each exact utility UID and quantity, without replay grants."""
-    reloaded = read_item_ownership(state_root)
+    reloaded = read_item_ownership(sql)
     for vnum, count in expected_utilities(class_name).items():
         before = original.get(vnum, [])
         after = reloaded.get(vnum, [])
@@ -198,63 +163,30 @@ def assert_utility_durability(state_root: pathlib.Path, class_name: str,
                 f"{class_name}: utility {vnum} ownership changed on restart")
 
 
-def build_snapshot_inspector(run_root: pathlib.Path) -> pathlib.Path:
-    """Compile a read-only inspector using the production snapshot file decoder."""
-    source, binary = run_root / "kit_snapshot.cpp", run_root / "kit_snapshot"
-    source.write_text(r'''
-#include "core/defines.h"
-#include <algorithm>
-#include <cassert>
-#include <cstdlib>
-#include <iostream>
-int main(int argc, char **argv) {
-    assert(argc == 3);
-    player_snapshot snapshot;
-    std::string error;
-    if (flatfile_player_snapshot_read(argv[1], 1, &snapshot, &error) != flatfile_player_load_result::ok) {
-        std::cerr << "synthetic kit snapshot decode failed: " << error << '\n';
-        return 1;
-    }
-    const int globe_vnum = std::atoi(argv[2]);
-    bool globe = globe_vnum == 0;
-    assert(!snapshot.items.empty());
-    for (const auto &item : snapshot.items) {
-        if (item.extra_flags & (ITEM_TRANSIENT | ITEM_NODROP | ITEM_INVISIBLE | ITEM_SECRET |
-                               ITEM_NOSHOW | ITEM_BURIED | ITEM_NORENT)) {
-            std::cerr << "unsafe persisted starter flags vnum=" << item.vnum << '\n';
-            return 1;
-        }
-        assert(!(item.extra2_flags & ITEM2_CRUMBLELOOT));
-        for (const auto &affect : item.affects) assert(affect[0] != APPLY_CURSE);
-        if (item.vnum == globe_vnum && (item.bitvectors[1] & AFF2_GLOBE)) globe = true;
-        for (const auto &description : item.extra_descriptions) {
-            if (!description.spellbook) continue;
-            assert(description.keyword == "SPELLBOOK" && description.description.empty());
-            auto spell_ids = description.spell_ids;
-            std::sort(spell_ids.begin(), spell_ids.end());
-            assert(std::adjacent_find(spell_ids.begin(), spell_ids.end()) == spell_ids.end());
-            std::cout << "SPELLBOOK " << item.object_uid << ':';
-            for (int spell : spell_ids) std::cout << ' ' << spell;
-            std::cout << '\n';
-        }
-    }
-    assert(globe);
-    std::cout << "persisted kit flags, curse removal and globe passed\n";
-}
-''')
-    subprocess.run(["g++", "-std=c++20", "-Isrc", str(source), "src/flatfile/flatfile_store.c",
-                    "src/player/player_snapshot_codec.c", "-lcrypto", "-o", str(binary)],
-                   cwd=ROOT, check=True)
-    return binary
-
-
-def assert_saved_kit(inspector: pathlib.Path, state_root: pathlib.Path, class_name: str) -> tuple[str, ...]:
+def assert_saved_kit(sql, class_name: str) -> tuple[str, ...]:
     """Read freshly saved instances, never prototype flags or reconstructed values."""
-    globe_vnum = next(vnum for slot, vnum in kit_entries(class_name) if slot == 3)
-    result = subprocess.run([str(inspector), str(state_root),
-                             str(globe_vnum if class_name != "Sorcerer" else 0)],
-                            check=True, capture_output=True, text=True)
-    books = tuple(sorted(line for line in result.stdout.splitlines() if line.startswith("SPELLBOOK ")))
+    globe_vnum = next(vnum for slot, vnum in kit_entries(class_name) if slot == 3) \
+        if class_name != "Sorcerer" else 0
+    unsafe = 1 << 1 | 1 << 2 | 1 << 5 | 1 << 7 | 1 << 12 | 1 << 19 | 1 << 23
+    rows = sql("SELECT id,obj_uid,vnum,extra_flags,extra2_flags,bitvector2 FROM player_items WHERE pid=1")
+    require(bool(rows), "synthetic kit snapshot has no saved items")
+    globe = globe_vnum == 0
+    books = []
+    for item_id, uid, vnum, extra, extra2, bitvector2 in (line.split("\t") for line in rows.splitlines()):
+        require(not int(extra) & unsafe, f"unsafe persisted starter flags vnum={vnum}")
+        require(not int(extra2) & 1 << 11, f"crumble-loot starter item vnum={vnum}")
+        require(sql(f"SELECT COUNT(*) FROM player_item_affects WHERE item_id={item_id} AND location=51") == "0",
+                f"cursed persisted starter item vnum={vnum}")
+        if int(vnum) == globe_vnum and bitvector2 != "NULL" and int(bitvector2) & 1 << 11:
+            globe = True
+        spellbook = sql(f"SELECT description FROM player_item_extra_descr WHERE item_id={item_id} "
+                        "AND keyword='SPELLBOOK'")
+        if spellbook:
+            spells = sorted(json.loads(spellbook))
+            require(len(set(spells)) == len(spells), f"duplicate spells in {spellbook}")
+            books.append(f"SPELLBOOK {uid}: " + " ".join(map(str, spells)))
+    require(globe, f"{class_name} kit lost its saved globe")
+    books = tuple(sorted(books))
     if class_name == "Sorcerer":
         require(len(books) == 1 and len(books[0].split(":", 1)[1].split()) > 0,
                 "Sorcerer snapshot lost its populated native spellbook")
@@ -550,16 +482,13 @@ def inspect_chaos_material_pouch(client: MudClient, retrieve: bool = True) -> No
 def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> None:
     """Verify Chaos starter ownership and equipment across an isolated restart."""
     wearable_vnum, wearable_keyword, wearable_description = wearable_fixture(class_name)
-    with tempfile.TemporaryDirectory(prefix="duris-chaos-kit-state-") as state_tmp:
+    with mariadb_authority() as (authority, sql):
         with tempfile.TemporaryDirectory(prefix="duris-chaos-kit-run-") as run_tmp:
-            state_root = pathlib.Path(state_tmp)
             run_root = pathlib.Path(run_tmp)
-            state_root.chmod(0o700)
             (run_root / "logs/log").mkdir(parents=True)
             (run_root / "logs/log/.gitignore").write_text("*\n!.gitignore\n")
             make_fixture(run_root)
             install_chaos_objects(run_root, class_name)
-            inspector = build_snapshot_inspector(run_root)
             generate_certificate(run_root)
             # Reproduce a CI timestamp containing the placeholder's digits. Log
             # metadata must not be confused with an authoritative object VNUM.
@@ -572,16 +501,10 @@ def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> 
             plain_port, tls_port, websocket_port = available_ports()
             output_path = run_root / "server.out"
             environment = {
-                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-                "ENVIRONMENT": "local",
-                "PERSISTENCE_MODE": "flatfile-primary",
-                "FLATFILE_STATE_DIR": str(state_root),
+                **authority,
                 "CRITICAL_COMMAND_JOURNAL_DIR": str(journal_root / "critical"),
-                "LISTEN_ADDRESS": "127.0.0.1",
                 "DURIS_TLS_PORT": str(tls_port),
-                "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
                 "DURIS_WEBSOCKET_PORT": str(websocket_port),
-                "REDIS": "FALSE",
                 "CHAOS_MUD": "TRUE",
                 "CREATION_ALL_CLASSES": "TRUE",
                 "CHAOS_TEST_COMMANDS": "TRUE",
@@ -589,8 +512,6 @@ def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> 
                 "CHAOS_STARTER_BONUSES": "TRUE",
                 "CHAOS_STARTER_MATERIALS": "TRUE",
             }
-            if runtime_library_path := os.environ.get("LD_LIBRARY_PATH"):
-                environment["LD_LIBRARY_PATH"] = runtime_library_path
 
             with output_path.open("w", encoding="utf-8") as output:
                 process = subprocess.Popen(
@@ -644,8 +565,8 @@ def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> 
                         "denied Chaos level command changed the character level:\n" + score,
                     )
 
-                    initial_authority = assert_kit_ownership(state_root, class_name)
-                    wearable_before_wear = one_owned_item(state_root, wearable_vnum)
+                    initial_authority = assert_kit_ownership(sql, class_name)
+                    wearable_before_wear = one_owned_item(sql, wearable_vnum)
                     client.send(f"wear {wearable_keyword}")
                     client.expect("Pos: standing >", timeout=30)
                     client.send("equipment")
@@ -703,7 +624,7 @@ def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> 
                     )
                     client.send("save")
                     client.expect(f"Saving {CHARACTER}.", timeout=120)
-                    saved_spellbooks = assert_saved_kit(inspector, state_root, class_name)
+                    saved_spellbooks = assert_saved_kit(sql, class_name)
 
                     process.send_signal(signal.SIGTERM)
                     process.wait(timeout=120)
@@ -733,7 +654,7 @@ def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> 
                         and "CHAOS starter granted " in logs,
                         "CHAOS kit logged an incomplete or unusable grant:\n" + logs,
                     )
-                    require(1252 not in read_item_ownership(state_root),
+                    require(1252 not in read_item_ownership(sql),
                             "placeholder VNUM reached the runtime ownership catalog")
 
                     if client is not None:
@@ -769,10 +690,10 @@ def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> 
                                 time.sleep(0.1)
                             require(
                                 "Entering game loop." in reload_boot,
-                                "flat-file reload server did not boot:\n" + reload_boot[-8000:],
+                                "reload server did not boot:\n" + reload_boot[-8000:],
                             )
                             reload_client = reconnect_character(reload_plain_port)
-                            assert_utility_durability(state_root, class_name, initial_authority)
+                            assert_utility_durability(sql, class_name, initial_authority)
                             reload_client.send("get pouch bottomless")
                             reload_client.expect("You get", timeout=30)
                             reload_client.expect("Pos: standing >", timeout=30)
@@ -798,9 +719,7 @@ def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> 
                                 "worn starter wearable rematerialized in the bag:\n"
                                 + reload_bag,
                             )
-                            wearable_after_reload = one_owned_item(
-                                state_root, wearable_vnum
-                            )
+                            wearable_after_reload = one_owned_item(sql, wearable_vnum)
                             require(
                                 wearable_after_reload["item_uid"]
                                 == wearable_before_wear["item_uid"]
@@ -814,7 +733,7 @@ def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> 
                             )
                             reload_client.send("save")
                             reload_client.expect(f"Saving {CHARACTER}.", timeout=120)
-                            reloaded_spellbooks = assert_saved_kit(inspector, state_root, class_name)
+                            reloaded_spellbooks = assert_saved_kit(sql, class_name)
                             require(reloaded_spellbooks == saved_spellbooks,
                                     f"{class_name}: spellbook UIDs or spell IDs changed across reload")
                             reload_client.send("quit")
@@ -832,14 +751,14 @@ def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> 
                                     reload_process.wait(timeout=5)
                         require(
                             reload_process.returncode == 0,
-                            "flat-file reload server shutdown failed",
+                            "reload server shutdown failed",
                         )
                         reload_output.flush()
                         reload_boot = reload_output_path.read_text(errors="replace")
                         require(
                             "limit_exceeded" not in reload_boot
                             and "component_failure" not in reload_boot,
-                            "flat-file reload rejected the Chaos material inventory snapshot:\n" + reload_boot[-8000:],
+                            "reload rejected the Chaos material inventory snapshot:\n" + reload_boot[-8000:],
                         )
                         reload_logs = runtime_logs(run_root)
                         require(
@@ -869,11 +788,12 @@ def run_chaos_kit_journey(binary: pathlib.Path, class_name: str = "Warrior") -> 
 
 
 if __name__ == "__main__":
-    with tempfile.TemporaryDirectory(prefix=f"flatfile-combat-{os.getpid()}-") as build_tmp:
-        binary = build_flatfile_server(pathlib.Path(build_tmp))
-        selected_classes = sys.argv[1:] or JOURNEY_CLASSES
-        require(all(name in JOURNEY_CLASSES for name in selected_classes), "unknown journey class")
-        for class_name in selected_classes:
-            run_chaos_kit_journey(binary, class_name)
-            print(f"flat-file CHAOS {class_name} kit create/wear/save/restart passed")
-    print("flat-file CHAOS new-character bag and generated class kit journey passed")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=pathlib.Path, required=True)
+    parser.add_argument("classes", nargs="*", default=JOURNEY_CLASSES)
+    args = parser.parse_args()
+    binary = args.server.resolve()
+    for class_name in args.classes or JOURNEY_CLASSES:
+        run_chaos_kit_journey(binary, class_name)
+        print(f"CHAOS {class_name} kit create/wear/save/restart passed")
+    print("CHAOS new-character bag and generated class kit journey passed")

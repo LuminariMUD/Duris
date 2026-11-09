@@ -303,7 +303,7 @@ def test_epic_boon_publication() -> None:
                         'src/combat/combat_outcome_command.c', 'src/guild/artifact_guild_command.c', 'src/combat/frag_cap.c', 'src/combat/frag_cap_repository.c', 'src/combat/frag_cap_config.c', 'src/flatfile/flatfile_store.c',
                         'src/persistence/critical_command.c', str(HARNESS_STUBS),
                         '-Wl,--gc-sections', '-Wl,--wrap=getrandom', '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True)
-        subprocess.run([str(binary), str(Path(directory) / 'state')], check=True, timeout=30)
+        subprocess.run([str(binary)], check=True, timeout=30)
 
 
 test_epic_boon_publication()

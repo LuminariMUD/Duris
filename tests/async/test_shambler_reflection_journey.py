@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Real Reflection/Mirror Image -> Shambler commands in a disposable flat-file world.
+"""Real Reflection/Mirror Image -> Shambler commands in a disposable MariaDB world.
 
 The two spell-route casters start as Illusionists and are changed to Scourges
 after creating their images. This tests both real command routes without adding
 a playable class combination. Racial cases use mortal Gnome/Kobold Scourges.
 """
 
+import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
-import sys
 import tempfile
 import time
 
@@ -23,77 +22,36 @@ REPORT = ROOT / "bin/qualification/issue420/gameplay-report.json"
 NAMES = ("Gnomirror", "Kobmirror", "Spellmirror", "Mirrormage")
 PROMPTS = ("Pos: standing >", "<>")
 
-FIXTURE = r'''
-#include "flatfile/flatfile_store.h"
-#include "core/structs.h"
-#include "magic/spells.h"
-#include <cassert>
-#include <string>
-#include <vector>
+HEADER = (ROOT / "src/magic/spells.h").read_text()
 
-int main(int argc, char **argv) {
-    assert(argc == 2);
-    const std::string root = argv[1];
-    int found = 0;
-    for (int pid = 1; pid <= 64; ++pid) {
-        player_snapshot s; std::string error, name;
-        if (flatfile_player_snapshot_read(root, pid, &s, &error) != flatfile_player_load_result::ok)
-            continue;
-        for (const auto &field : s.status_strings)
-            if (field.field == player_status_string_field::name)
-                name = field.value;
-        if (name != "Gnomirror" && name != "Kobmirror" &&
-            name != "Spellmirror" && name != "Mirrormage")
-            continue;
-        ++found;
-        const bool mage = name == "Spellmirror" || name == "Mirrormage";
-        auto set = [&](player_status_field key, int value) {
-            for (auto &field : s.status_integers)
-                if (field.field == key) {
-                    field.signed_value = field.unsigned_value = value;
-                    return;
-                }
-            assert(false);
-        };
-        set(player_status_field::class_primary, mage ? CLASS_ILLUSIONIST : CLASS_BLIGHTER);
-        set(player_status_field::class_secondary, 0);
-        set(player_status_field::specialization, SPEC_SCOURGE);
-        set(player_status_field::race, name == "Kobmirror" ? RACE_KOBOLD : RACE_GNOME);
-        set(player_status_field::level, 56);
-        set(player_status_field::highest_level, 56);
-        set(player_status_field::played_time, 200000);
-        set(player_status_field::base_hit, 10000);
-        set(player_status_field::hit_difference, 0);
-        set(player_status_field::base_mana, 1000);
-        set(player_status_field::mana, 1000);
-        set(player_status_field::screen_length, 100);
-        s.room_vnum = 22800;
-        s.affects.clear();
-        s.skills.clear();
-        s.undead_slots.clear();
-        for (int circle = 1; circle <= MAX_CIRCLE; ++circle)
-            s.undead_slots.push_back({circle, 50, 0});
-        for (int spell : {SPELL_SHAMBLER, SPELL_REFLECTION, SPELL_MIRROR_IMAGE,
-                          SPELL_TITAN, SPELL_DISPLACEMENT}) {
-            s.skills.push_back({spell, 100, 100});
-            if (mage && spell != SPELL_SHAMBLER && spell != SPELL_DISPLACEMENT)
-                for (int copy = 0; copy < 8; ++copy) {
-                    player_affect_snapshot af{};
-                    af.type = TAG_MEMORIZE; af.modifier = spell; af.duration = -1;
-                    af.flags = MEMTYPE_FULL; af.level = 56;
-                    s.affects.push_back(af);
-                }
-        }
-        s.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
-        std::vector<uint8_t> bytes;
-        assert(flatfile_player_snapshot_encode_file(&s, &bytes));
-        using namespace flatfile_player_snapshot_file;
-        assert(flatfile_atomic_write(player_directory(root), player_filename(pid), bytes, &error));
-    }
-    assert(found == 4);
-}
-'''
 
+def spell_id(name):
+    return int(re.search(r"^#define " + name + r" (\d+)", HEADER, re.M)[1])
+
+
+def seed_mirrors(sql):
+    """Level-56 Blighters and Illusionists with the spells under test and full undead slots."""
+    memorize = spell_id("TAG_MEMORIZE")
+    spells = [spell_id("SPELL_" + name) for name in
+              ("SHAMBLER", "REFLECTION", "MIRROR_IMAGE", "TITAN", "DISPLACEMENT")]
+    remembered = {spell_id("SPELL_REFLECTION"), spell_id("SPELL_MIRROR_IMAGE"), spell_id("SPELL_TITAN")}
+    for name in NAMES:
+        mage = name in ("Spellmirror", "Mirrormage")
+        sql(f"UPDATE player_data SET m_class={1 << (22 if mage else 23)},secondary_class=0,"
+            f"spec=2,race={32 if name == 'Kobmirror' else 8},level=56,highest_level=56,"
+            "played_time=200000,base_hit=10000,hit_diff=0,base_mana=1000,mana=1000,"
+            f"screen_length=100,last_room=22800 WHERE name='{name}'")
+        pid = sql(f"SELECT pid FROM player_data WHERE name='{name}'")
+        statements = [f"DELETE FROM player_skills WHERE pid={pid}", f"DELETE FROM player_affects WHERE pid={pid}",
+                      f"DELETE FROM player_undead_slots WHERE pid={pid}"]
+        statements += [f"INSERT INTO player_undead_slots(pid,circle,slots) VALUES({pid},{circle},50)"
+                       for circle in range(1, 13)]
+        for spell in spells:
+            statements.append(f"INSERT INTO player_skills(pid,skill_id,learned,taught) VALUES({pid},{spell},100,100)")
+            if mage and spell in remembered:
+                statements += [f"INSERT INTO player_affects(pid,type,duration,flags,modifier,level) "
+                               f"VALUES({pid},{memorize},-1,16,{spell},56)"] * 8
+        sql(";".join(statements))
 
 def command(client, text, receipt, timeout=30):
     """Wait for this command's response, then its prompt, ignoring earlier prompts."""
@@ -225,35 +183,20 @@ def run(binary):
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.unlink(missing_ok=True)
     result = {"binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), "cases": []}
-    with tempfile.TemporaryDirectory(prefix="shambler-journey-", dir=ROOT / "bin/tests") as temporary:
+    with tempfile.TemporaryDirectory(prefix="shambler-journey-", dir=ROOT / "bin/tests") as temporary, \
+            journey.mariadb_authority() as (authority, sql):
         root = Path(temporary)
-        runtime, state = root / "runtime", root / "state"
+        runtime = root / "runtime"
         runtime.mkdir()
-        state.mkdir(mode=0o700)
-        (state / "domains").mkdir(mode=0o700)
         configure(runtime)
-        inspector = root / "inspector"
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(inspector)], cwd=ROOT, check=True)
-        subprocess.run([str(inspector), str(state), "seed-combat"], check=True)
-        cpp, fixture = root / "fixture.cpp", root / "fixture"
-        cpp.write_text(FIXTURE)
-        subprocess.run(["g++", "-std=c++20", "-Isrc", str(cpp),
-                        "src/player/player_snapshot_codec.c",
-                        "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(fixture)],
-                       cwd=ROOT, check=True)
         (runtime / "journals/critical").mkdir(parents=True, mode=0o700)
         port, tls, websocket = journey.available_ports()
         environment = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ENVIRONMENT": "local",
-            "PERSISTENCE_MODE": "flatfile-primary", "FLATFILE_STATE_DIR": str(state),
+            **authority,
             "CRITICAL_COMMAND_JOURNAL_DIR": str(runtime / "journals/critical"),
-            "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls),
-            "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_WEBSOCKET_PORT": str(websocket), "REDIS": "FALSE", "CHAOS_MUD": "FALSE",
+            "DURIS_TLS_PORT": str(tls), "DURIS_WEBSOCKET_PORT": str(websocket),
         }
-        if os.environ.get("LD_LIBRARY_PATH"):
-            environment["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+        journey.import_help(runtime, environment)
         output_path = runtime / "server.out"
         process = log_stream = staff = player = None
 
@@ -296,8 +239,8 @@ def run(binary):
                 player.close()
                 player = None
             stop()
-            journey.make_overlord(state, journey.CHARACTER)
-            subprocess.run([str(fixture), str(state)], check=True)
+            journey.make_overlord(sql, journey.CHARACTER)
+            seed_mirrors(sql)
             start()
             staff = journey.reconnect_character(port, account=journey.CHARACTER)
             staff.expect_any(PROMPTS)
@@ -405,6 +348,6 @@ def run(binary):
 
 if __name__ == "__main__":
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="shambler-build-", dir=ROOT / "bin/tests") as build:
-        binary = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else journey.build_flatfile_server(Path(build))
-        run(binary)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=Path, required=True)
+    run(parser.parse_args().server.resolve())

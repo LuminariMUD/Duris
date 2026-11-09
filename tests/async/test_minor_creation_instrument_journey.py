@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Real mortal Minor Creation -> pickup -> belt commands in disposable state."""
+"""Real mortal Minor Creation -> pickup -> belt commands on disposable MariaDB."""
 
+import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
-import sys
 import tempfile
 import time
 
@@ -20,64 +19,23 @@ INSTRUMENTS = (("lyre", 1241), ("horn", 1242), ("drum", 1243),
                ("mandolin", 1244), ("harp", 1245), ("flute", 1246))
 REPORT = ROOT / "bin/qualification/issue453/gameplay-report.json"
 
-FIXTURE = r'''
-#include "flatfile/flatfile_store.h"
-#include "core/structs.h"
-#include "magic/spells.h"
-#include <cassert>
-#include <string>
-#include <vector>
+HEADER = (ROOT / "src/magic/spells.h").read_text()
 
-int main(int argc, char **argv) {
-    assert(argc == 2);
-    const std::string root = argv[1];
-    for (int pid = 1; pid <= 64; ++pid) {
-        player_snapshot s; std::string error;
-        if (flatfile_player_snapshot_read(root, pid, &s, &error) != flatfile_player_load_result::ok)
-            continue;
-        bool named = false;
-        for (const auto &field : s.status_strings)
-            named |= field.field == player_status_string_field::name && field.value == "Lyricist";
-        if (!named) continue;
-        auto set = [&](player_status_field key, int value) {
-            for (auto &field : s.status_integers)
-                if (field.field == key) {
-                    field.signed_value = field.unsigned_value = value;
-                    return;
-                }
-            assert(false);
-        };
-        set(player_status_field::class_primary, CLASS_BARD);
-        set(player_status_field::class_secondary, 0);
-        set(player_status_field::specialization, 0);
-        set(player_status_field::level, 51);
-        set(player_status_field::highest_level, 51);
-        set(player_status_field::played_time, 200000);
-        set(player_status_field::base_hit, 10000);
-        set(player_status_field::hit_difference, 0);
-        set(player_status_field::base_mana, 1000);
-        set(player_status_field::mana, 1000);
-        set(player_status_field::screen_length, 100);
-        s.room_vnum = 22800;
-        s.affects.clear();
-        s.skills = {{SPELL_MINOR_CREATION, 100, 100}};
-        for (int copy = 0; copy < 20; ++copy) {
-            player_affect_snapshot af{};
-            af.type = TAG_MEMORIZE; af.modifier = SPELL_MINOR_CREATION; af.duration = -1;
-            af.flags = MEMTYPE_FULL; af.level = 51;
-            s.affects.push_back(af);
-        }
-        s.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
-        std::vector<uint8_t> bytes;
-        assert(flatfile_player_snapshot_encode_file(&s, &bytes));
-        using namespace flatfile_player_snapshot_file;
-        assert(flatfile_atomic_write(player_directory(root), player_filename(pid), bytes, &error));
-        return 0;
-    }
-    assert(false);
-}
-'''
 
+def spell_id(name):
+    return int(re.search(r"^#define " + name + r" (\d+)", HEADER, re.M)[1])
+
+
+def seed_bard(sql):
+    """A level-51 Bard with Minor Creation fully memorized, in the arena."""
+    memorize, spell = spell_id("TAG_MEMORIZE"), spell_id("SPELL_MINOR_CREATION")
+    sql(f"UPDATE player_data SET m_class={1 << 15},secondary_class=0,spec=0,level=51,highest_level=51,"
+        f"played_time=200000,base_hit=10000,hit_diff=0,base_mana=1000,mana=1000,screen_length=100,"
+        f"last_room=22800 WHERE name='{NAME}'")
+    pid = sql(f"SELECT pid FROM player_data WHERE name='{NAME}'")
+    sql(f"DELETE FROM player_skills WHERE pid={pid}; DELETE FROM player_affects WHERE pid={pid};"
+        f"INSERT INTO player_skills(pid,skill_id,learned,taught) VALUES({pid},{spell},100,100);"
+        + f"INSERT INTO player_affects(pid,type,duration,flags,modifier,level) VALUES({pid},{memorize},-1,16,{spell},51);" * 20)
 
 def configure(runtime):
     journey.make_fixture(runtime)
@@ -115,35 +73,19 @@ def run(binary):
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.unlink(missing_ok=True)
     result = {"binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), "instruments": []}
-    with tempfile.TemporaryDirectory(prefix="minor-creation-journey-", dir=ROOT / "bin/tests") as temporary:
+    with tempfile.TemporaryDirectory(prefix="minor-creation-journey-", dir=ROOT / "bin/tests") as temporary, \
+            journey.mariadb_authority() as (authority, sql):
         root = Path(temporary)
-        runtime, state = root / "runtime", root / "state"
+        runtime = root / "runtime"
         runtime.mkdir()
-        state.mkdir(mode=0o700)
-        (state / "domains").mkdir(mode=0o700)
         configure(runtime)
-        inspector = root / "inspector"
-        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                        "--build-inspector", str(inspector)], cwd=ROOT, check=True)
-        subprocess.run([str(inspector), str(state), "seed-combat"], check=True)
-        cpp, fixture = root / "fixture.cpp", root / "fixture"
-        cpp.write_text(FIXTURE)
-        subprocess.run(["g++", "-std=c++20", "-Isrc", str(cpp),
-                        "src/player/player_snapshot_codec.c",
-                        "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(fixture)],
-                       cwd=ROOT, check=True)
         (runtime / "journals/critical").mkdir(parents=True, mode=0o700)
         port, tls, websocket = journey.available_ports()
         environment = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ENVIRONMENT": "local",
-            "PERSISTENCE_MODE": "flatfile-primary", "FLATFILE_STATE_DIR": str(state),
+            **authority,
             "CRITICAL_COMMAND_JOURNAL_DIR": str(runtime / "journals/critical"),
-            "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls),
-            "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
-            "DURIS_WEBSOCKET_PORT": str(websocket), "REDIS": "FALSE", "CHAOS_MUD": "FALSE",
+            "DURIS_TLS_PORT": str(tls), "DURIS_WEBSOCKET_PORT": str(websocket),
         }
-        if os.environ.get("LD_LIBRARY_PATH"):
-            environment["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
         output_path = runtime / "server.out"
         process = log_stream = staff = player = None
 
@@ -186,8 +128,8 @@ def run(binary):
                 player.close()
                 player = None
             stop()
-            journey.make_overlord(state, journey.CHARACTER)
-            subprocess.run([str(fixture), str(state)], check=True)
+            journey.make_overlord(sql, journey.CHARACTER)
+            seed_bard(sql)
             start()
             staff = journey.reconnect_character(port, account=journey.CHARACTER)
             staff.expect_any(PROMPTS)
@@ -293,6 +235,6 @@ def run(binary):
 
 if __name__ == "__main__":
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="minor-creation-build-", dir=ROOT / "bin/tests") as build:
-        binary = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else journey.build_flatfile_server(Path(build))
-        run(binary)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=Path, required=True)
+    run(parser.parse_args().server.resolve())

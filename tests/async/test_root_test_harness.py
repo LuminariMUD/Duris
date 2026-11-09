@@ -59,7 +59,6 @@ expected_resource_intensive = {
     "test_artifact_owner_restart_journey.py",
     "test_castle_key_reset_journey.py",
     "test_character_stat_choice_journey.py",
-    "test_coin_denomination_journey.py",
     "test_conjurer_gameplay_journey.py",
     "test_connection_limit_journey.py",
     "test_corpse_trap_restart_journey.py",
@@ -153,20 +152,31 @@ assert runner.MANUAL_ONLY_TEST_NAMES == {
     "test_log_hygiene_journey.py",
     "test_hostname_files_journey.py",
     "test_studioproc_duplicate_record.py",
+    "test_frag_cap_repository.py",
+    "test_flatfile_combat_journey.py",
+    "test_flatfile_collector_intake_journey.py",
+    "test_flatfile_death_restart_journey.py",
+    "test_mob_gold_dial_runtime.py",
+    "test_flatfile_boot_preflight.py",
+    "test_headbutt_feedback_journey.py",
+    "test_assassin_combat_journey.py",
+    "test_conjurer_gameplay_journey.py",
+    "test_shambler_reflection_journey.py",
+    "test_minor_creation_instrument_journey.py",
+    "test_generated_npc_journey.py",
+    "test_flatfile_chaos_new_character_kit.py",
 }
 discovered = {path.name for path in runner.discover_tests(None)}
 assert not (runner.MANUAL_ONLY_TEST_NAMES & discovered)
 assert not (runner.FLATFILE_REMOVAL_DEFERRED_TEST_NAMES & discovered)
 assert {
     "test_player_playtime_capture.py", "test_playtime_checkpoint.py",
-    "test_playtime_flatfile.py",
     "test_discord_bridge_runtime.py", "test_discord_petition_export.py",
 } <= discovered | runner.FLATFILE_REMOVAL_DEFERRED_TEST_NAMES
 sample_tests = [
     Path("test_fast.py"),
     Path("test_assassin_combat_journey.py"),
     Path("test_character_stat_choice_journey.py"),
-    Path("test_coin_denomination_journey.py"),
     Path("test_shambler_reflection_journey.py"),
     Path("test_conjurer_gameplay_journey.py"),
     Path("test_divine_boon_zone_journey.py"),

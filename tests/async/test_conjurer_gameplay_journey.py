@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 """Isolated Conjurer command/resource/help/recovery qualification over real TCP.
 
-Uses synthetic accounts and seeded circle-eligible mortal fixtures. No .env,
-existing game database, live server or player data is used. Native regressions
+Uses synthetic accounts and seeded circle-eligible mortal fixtures on disposable
+MariaDB. No .env, live server or player data is used. Native regressions
 cover deterministic damage/cancellation boundaries; this checks reachability
 through the real parser, command gate, movement and saved state.
 """
+import argparse
 from pathlib import Path
 import json
-import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -22,106 +21,84 @@ import test_flatfile_combat_journey as journey
 ROOT = Path(__file__).resolve().parents[2]
 REPORT = ROOT / 'bin/qualification/issue215/gameplay-report.json'
 
-FIXTURE = r'''
-#include "flatfile/flatfile_store.h"
-#include "player/player_snapshot_codec.h"
+PET_DECODER = r'''
+#include "player/pet_restore_state.h"
 #include "core/structs.h"
 #include "core/utils.h"
 #include "magic/spells.h"
 #include <cassert>
-#include <cstring>
 #include <ctime>
 #include <iostream>
-#include <openssl/sha.h>
-struct profile { const char *name; int cls,spec,level; };
-profile profiles[] = {
-    {"Taverek",CLASS_WARRIOR,0,62},
-    {"Earthor",CLASS_CONJURER,SPEC_EARTH,56},
-    {"Aerilon",CLASS_CONJURER,SPEC_AIR,56},
-    {"Nerilon",CLASS_CONJURER,SPEC_WATER,46},
-    {"Hydrion",CLASS_CONJURER,SPEC_WATER,50},
-    {"Pyrilon",CLASS_CONJURER,SPEC_FIRE,50},
-    {"Psylin",CLASS_PSIONICIST,SPEC_PSYCHEPORTER,51},
-};
-template<class T> void number(std::vector<uint8_t>& out,T value) {
-    for(size_t i=0;i<sizeof(T);++i) out.push_back(static_cast<uint64_t>(value)>>(i*8));
-}
-static bool named(const player_snapshot &s,const char *name) {
-    for(const auto &field:s.status_strings) if(field.field==player_status_string_field::name) return field.value==name;
-    return false;
-}
-static void set(player_snapshot &s,player_status_field key,int64_t value) {
-    for(auto &field:s.status_integers) if(field.field==key) {
-        field.signed_value=value; field.unsigned_value=value; return;
-    }
-    assert(false);
-}
-static void write(const std::string &root,player_snapshot &s) {
-    std::vector<uint8_t> payload,bytes; std::string error;
-    s.encoded_size_bound=PLAYER_SNAPSHOT_MAX_BYTES;
-    assert(player_snapshot_encode(s,&payload)==player_snapshot_codec_result::ok);
-    using namespace flatfile_player_snapshot_file;
-    bytes.insert(bytes.end(),player_magic.begin(),player_magic.end());
-    number(bytes,player_file_version); number<uint32_t>(bytes,payload.size());
-    number(bytes,s.pid); number(bytes,s.revision); number(bytes,s.components);
-    unsigned char digest[SHA256_DIGEST_LENGTH]; SHA256(payload.data(),payload.size(),digest);
-    bytes.insert(bytes.end(),digest,digest+sizeof(digest)); bytes.insert(bytes.end(),payload.begin(),payload.end());
-    assert(flatfile_atomic_write(player_directory(root),player_filename(s.pid),bytes,&error));
-}
-int main(int argc,char **argv) {
-    assert(argc>=3); const std::string root=argv[1],mode=argv[2];
-    int found=0;
-    for(int32_t pid=1;pid<=64;++pid) {
-        player_snapshot s; std::string error;
-        if(flatfile_player_snapshot_read(root,pid,&s,&error)!=flatfile_player_load_result::ok) continue;
-        for(const auto &p:profiles) if(named(s,p.name)) {
-            ++found;
-            if(mode=="seed") {
-                set(s,player_status_field::class_primary,p.cls); set(s,player_status_field::class_secondary,0);
-                set(s,player_status_field::specialization,p.spec); set(s,player_status_field::level,p.level);
-                set(s,player_status_field::highest_level,p.level);
-                set(s,player_status_field::played_time,200000);
-                set(s,player_status_field::base_hit,10000); set(s,player_status_field::hit_difference,p.spec==SPEC_AIR?500:0);
-                set(s,player_status_field::base_mana,1000); set(s,player_status_field::mana,1000);
-                set(s,player_status_field::base_vitality,2000); set(s,player_status_field::vitality,2000);
-                set(s,player_status_field::screen_length,80); set(s,player_status_field::action_flags_2,PLR2_HEAL);
-                s.room_vnum=22800; s.affects.clear(); s.skills.clear();
-                std::vector<int> spells;
-                if(p.cls==CLASS_CONJURER) {
-                    spells={SPELL_DIMENSION_DOOR,SPELL_RELOCATE,SPELL_CONJURE_ELEMENTAL};
-                    if(p.spec==SPEC_EARTH) spells.insert(spells.end(),{SPELL_EARTH_FORM,SPELL_STONE_SKIN,SPELL_EARTHEN_MAUL});
-                    if(p.spec==SPEC_AIR) spells.insert(spells.end(),{SPELL_AIR_FORM,SPELL_ETHEREAL_RECHARGE});
-                    if(p.spec==SPEC_WATER) spells.insert(spells.end(),{SPELL_WATER_FORM,SPELL_WATER_TO_LIFE});
-                    if(p.spec==SPEC_FIRE) spells.insert(spells.end(),{SPELL_FIRE_FORM,SPELL_FIREBALL,SPELL_SOLAR_FLARE,SPELL_CONJURE_GREATER_ELEMENTAL});
-                    for(int spell:spells) for(int copy=0;copy<6;++copy) {
-                        player_affect_snapshot af{}; af.type=TAG_MEMORIZE; af.modifier=spell;
-                        af.duration=-1; af.flags=MEMTYPE_FULL; af.level=p.level; s.affects.push_back(af);
-                    }
-                }
-                write(root,s);
-            } else if(mode=="inspect") {
-                std::cout<<p.name<<" "<<s.room_vnum<<" ";
-                for(const auto &af:s.affects)
-                    if(af.type==SPELL_STONE_SKIN||af.type==SPELL_EARTH_FORM||af.type==SPELL_AIR_FORM||af.type==SPELL_FIRE_FORM||af.type==SPELL_WATER_FORM)
-                        std::cout<<af.type<<":"<<af.modifier<<":"<<af.duration<<",";
-                std::cout<<" pets="<<s.pets.size();
-                if(p.cls==CLASS_CONJURER && p.spec==SPEC_FIRE) {
-                    assert(s.pets.size()==1);
-                    const auto &pet=s.pets.front(); pet_restore_state saved;
-                    assert(pet_restore_state_decode(pet.restore_state,&saved));
-                    assert(pet.mob_vnum==1100 && saved.kind==summoned_pet_kind::conjured_fire_mephit);
-                    assert(!(saved.intrinsic_affects[1]&AFF2_FIRESHIELD));
-                    assert(saved.charm_expires_at>std::time(nullptr) && saved.death_expires_at>std::time(nullptr));
-                    std::cout<<" pet="<<pet.mob_vnum<<":"<<static_cast<int>(saved.kind)<<":"
-                             <<saved.intrinsic_affects[1]<<":"<<saved.death_expires_at<<":"<<saved.name;
-                }
-                std::cout<<"\n";
-            }
-        }
-    }
-    assert(found==7);
+#include <string>
+int main(int argc, char **argv) {
+    assert(argc == 2);
+    std::string encoded;
+    for (const char *hex = argv[1]; *hex; hex += 2)
+        encoded.push_back(static_cast<char>(std::stoi(std::string(hex, 2), nullptr, 16)));
+    pet_restore_state saved;
+    assert(pet_restore_state_decode(encoded, &saved));
+    assert(saved.kind == summoned_pet_kind::conjured_fire_mephit);
+    assert(!(saved.intrinsic_affects[1] & AFF2_FIRESHIELD));
+    assert(saved.charm_expires_at > std::time(nullptr) && saved.death_expires_at > std::time(nullptr));
+    std::cout << static_cast<int>(saved.kind) << ":" << saved.intrinsic_affects[1] << ":"
+              << saved.death_expires_at << ":" << saved.name;
 }
 '''
+
+HEADER = (ROOT / 'src/magic/spells.h').read_text()
+
+
+def spell_id(name):
+    return int(re.search(r'^#define ' + name + r' (\d+)', HEADER, re.M)[1])
+
+
+CONJURER = 1 << 11
+AIR, WATER, FIRE, EARTH = 1, 2, 3, 4
+PROFILES = (('Taverek', 1, 0, 62), ('Earthor', CONJURER, EARTH, 56), ('Aerilon', CONJURER, AIR, 56),
+            ('Nerilon', CONJURER, WATER, 46), ('Hydrion', CONJURER, WATER, 50),
+            ('Pyrilon', CONJURER, FIRE, 50), ('Psylin', 1 << 2, 3, 51))
+FORM_SPELLS = {EARTH: ('EARTH_FORM', 'STONE_SKIN', 'EARTHEN_MAUL'), AIR: ('AIR_FORM', 'ETHEREAL_RECHARGE'),
+               WATER: ('WATER_FORM', 'WATER_TO_LIFE'),
+               FIRE: ('FIRE_FORM', 'FIREBALL', 'SOLAR_FLARE', 'CONJURE_GREATER_ELEMENTAL')}
+
+
+def seed_roster(sql):
+    """Circle-eligible levels and memorized spells for the whole roster, in the arena."""
+    for name, classes, spec, level in PROFILES:
+        pid = sql(f"SELECT pid FROM player_data WHERE name='{name}'")
+        statements = [
+            f"UPDATE player_data SET m_class={classes},secondary_class=0,spec={spec},level={level},"
+            f"highest_level={level},played_time=200000,base_hit=10000,hit_diff={500 if spec == AIR and classes == CONJURER else 0},"
+            f"base_mana=1000,mana=1000,base_vitality=2000,vitality=2000,screen_length=80,act2={1 << 20},"
+            f"last_room=22800 WHERE pid={pid}",
+            f"DELETE FROM player_affects WHERE pid={pid}", f"DELETE FROM player_skills WHERE pid={pid}"]
+        if classes == CONJURER:
+            memorize = spell_id('TAG_MEMORIZE')
+            spells = ('DIMENSION_DOOR', 'RELOCATE', 'CONJURE_ELEMENTAL') + FORM_SPELLS[spec]
+            statements += [f"INSERT INTO player_affects(pid,type,duration,flags,modifier,level) "
+                           f"VALUES({pid},{memorize},-1,16,{spell_id('SPELL_' + spell)},{level})"
+                           for spell in spells for _ in range(6)]
+        sql(';'.join(statements))
+
+
+def saved_conjurers(sql, decoder):
+    """One line per roster member: room, form/skin affects in order, and the fire pet."""
+    forms = ','.join(str(spell_id('SPELL_' + spell)) for spell in
+                     ('STONE_SKIN', 'EARTH_FORM', 'AIR_FORM', 'FIRE_FORM', 'WATER_FORM'))
+    lines = []
+    for name, classes, spec, _ in PROFILES:
+        pid, room = sql(f"SELECT pid,last_room FROM player_data WHERE name='{name}'").split('\t')
+        affects = sql(f"SELECT CONCAT(type,':',modifier,':',duration,',') FROM player_affects "
+                      f"WHERE pid={pid} AND type IN ({forms}) ORDER BY id").replace('\n', '')
+        pets = sql(f"SELECT mob_vnum,HEX(restore_state) FROM player_pets WHERE owner_pid={pid} ORDER BY id")
+        pet_rows = [row.split('\t') for row in pets.splitlines()]
+        line = f"{name} {room} {affects} pets={len(pet_rows)}"
+        if classes == CONJURER and spec == FIRE:
+            assert len(pet_rows) == 1, pets
+            state = subprocess.check_output([str(decoder), pet_rows[0][1]], text=True)
+            line += f" pet={pet_rows[0][0]}:{state}"
+        lines.append(line)
+    return '\n'.join(lines) + '\n'
 
 ROSTER = [('Journeyacct', 'Taverek'), ('Earthacct', 'Earthor'),
           ('Airacct', 'Aerilon'), ('Wateracct', 'Nerilon'),
@@ -173,12 +150,10 @@ def connect(port, index):
 def run(binary):
     checks = []
     REPORT.unlink(missing_ok=True)
-    if not journey.INSPECTOR.exists():
-        subprocess.run(['python3', 'tests/async/test_flatfile_player_repository.py',
-                        '--build-inspector', str(journey.INSPECTOR)], cwd=ROOT, check=True)
-    with tempfile.TemporaryDirectory(prefix='conjurer-gameplay-', dir=ROOT / 'bin/tests') as temporary:
-        root = Path(temporary); state = root / 'state'; runtime = root / 'runtime'
-        state.mkdir(mode=0o700); (state / 'domains').mkdir(mode=0o700); runtime.mkdir()
+    with tempfile.TemporaryDirectory(prefix='conjurer-gameplay-', dir=ROOT / 'bin/tests') as temporary, \
+            journey.mariadb_authority() as (authority, sql):
+        root = Path(temporary); runtime = root / 'runtime'
+        runtime.mkdir()
         journey.make_fixture(runtime); journey.generate_certificate(runtime)
         (runtime / 'help').symlink_to(ROOT / 'help', target_is_directory=True)
         (runtime / 'logs/log').mkdir(parents=True)
@@ -221,20 +196,14 @@ PH 0 0 -1
         spring = re.search(r'(?ms)^#93300\n.*?(?=^#\d+\n)', (ROOT / 'areas/obj/centaur_zone.obj').read_text())[0]
         assert '#93300\n' not in objects.read_text()
         objects.write_text(objects.read_text().replace('$~', spring + '$~'))
-        subprocess.run([str(journey.INSPECTOR), str(state), 'seed-combat'], check=True)
-        cpp, fixture = root / 'fixture.cpp', root / 'fixture'
-        cpp.write_text(FIXTURE)
-        subprocess.run(['g++', '-std=c++20', '-Isrc', str(cpp),
-                        'src/player/player_snapshot_codec.c',
-                        'src/flatfile/flatfile_store.c', 'src/player/pet_restore_state.c',
-                        '-lcrypto', '-o', str(fixture)], cwd=ROOT, check=True)
+        cpp, decoder = root / 'pet_decoder.cpp', root / 'pet_decoder'
+        cpp.write_text(PET_DECODER)
+        subprocess.run(['g++', '-std=c++20', '-Isrc', str(cpp), 'src/player/pet_restore_state.c',
+                        '-o', str(decoder)], cwd=ROOT, check=True)
         port, tls, websocket = journey.available_ports()
-        env = dict(PATH=os.environ.get('PATH', '/usr/bin:/bin'), ENVIRONMENT='local',
-                   PERSISTENCE_MODE='flatfile-primary', FLATFILE_STATE_DIR=str(state),
-                   CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / 'journals/critical'),
-                   LISTEN_ADDRESS='127.0.0.1', DURIS_TLS_PORT=str(tls),
-                   DURIS_WEBSOCKET_PORT=str(websocket), DURIS_WEBSOCKET_LISTEN_ADDRESS='127.0.0.1',
-                   REDIS='FALSE', CHAOS_MUD='FALSE')
+        env = dict(authority, CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / 'journals/critical'),
+                   DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket))
+        journey.import_help(runtime, env)
         clients = []; process = output = None
 
         def stop():
@@ -272,7 +241,7 @@ PH 0 0 -1
                 print('created synthetic fixture ' + name, flush=True)
             with ThreadPoolExecutor(max_workers=len(ROSTER)) as workers:
                 list(workers.map(create, range(len(ROSTER))))
-            stop(); subprocess.run([str(fixture), str(state), 'seed'], check=True); boot()
+            stop(); seed_roster(sql); boot()
             clients.extend(connect(port, index) for index in range(len(ROSTER)))
             staff, earth, air, water, hydro, fire, psyche = clients
             # Keep the observing staff character from becoming the aggro target.
@@ -379,7 +348,7 @@ PH 0 0 -1
             def saved_state():
                 for index, client in enumerate(clients):
                     client.send('save'); client.expect(f'Saving {ROSTER[index][1]}.')
-                return subprocess.check_output([str(fixture), str(state), 'inspect'], text=True)
+                return saved_conjurers(sql, decoder)
 
             state_text = saved_state()
             # Time can reduce affect durations; types, charge order and intrinsic pet state must persist.
@@ -410,7 +379,7 @@ PH 0 0 -1
             checks.append('cold restart/login retains saved form/layer order and finite mephit state')
             print(restarted, flush=True)
             REPORT.parent.mkdir(parents=True, exist_ok=True)
-            REPORT.write_text(json.dumps(dict(backend='flatfile', checks=checks, state=restarted), indent=2))
+            REPORT.write_text(json.dumps(dict(backend='mariadb', checks=checks, state=restarted), indent=2))
             print('Conjurer socket journey passed: ' + str(len(checks)) + ' checks', flush=True)
         except Exception:
             if process:
@@ -424,9 +393,6 @@ PH 0 0 -1
 
 
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        run(Path(sys.argv[1]).resolve())
-    else:
-        (ROOT / 'bin/tests').mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix='conjurer-gameplay-build-', dir=ROOT / 'bin/tests') as build:
-            run(journey.build_flatfile_server(Path(build), real_clock=True))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--server', type=Path, required=True)
+    run(parser.parse_args().server.resolve())

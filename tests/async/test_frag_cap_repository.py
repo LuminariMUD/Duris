@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Native authority/SQL transaction adapter tests; --mysql uses disposable SQL."""
+"""SQL frag cap transaction adapter tests; needs disposable SQL (make test-db)."""
 
 import os
 from pathlib import Path
 import shlex
 import subprocess
-import sys
 import tempfile
 import uuid
 
@@ -13,27 +12,20 @@ from _paths import ROOT
 
 
 def main():
-    use_mysql = "--mysql" in sys.argv
     output = ROOT / "bin/tests"
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="frag-cap-store-", dir=output) as directory:
         binary = str(Path(directory) / "harness")
-        flags = ['-I/usr/include/mysql']
-        libraries = []
-        if use_mysql:
-            flags = shlex.split(subprocess.check_output(["mysql_config", "--cflags"], text=True))
-            libraries = shlex.split(subprocess.check_output(["mysql_config", "--libs"], text=True))
+        flags = shlex.split(subprocess.check_output(["mysql_config", "--cflags"], text=True))
+        libraries = shlex.split(subprocess.check_output(["mysql_config", "--libs"], text=True))
         subprocess.run([
             "g++", "-std=c++20", "-g", "-Og", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
             "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
-            "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST", "-Isrc", *flags,
+            "-Isrc", *flags,
             "tests/async/frag_cap_repository_harness.cpp", "src/combat/frag_cap.c",
             "src/combat/frag_cap_repository.c",
             "src/flatfile/flatfile_store.c", "-lcrypto", "-pthread", *libraries, "-o", binary,
         ], cwd=ROOT, check=True)
-        if not use_mysql:
-            subprocess.run([binary, str(Path(directory) / "state")], cwd=ROOT, check=True)
-            return
         assert os.environ["TEST_DB_HOST"] == "127.0.0.1", "requires disposable loopback SQL"
         database = "frag_cap_" + uuid.uuid4().hex[:12]
         environment = dict(os.environ, ENVIRONMENT="test", DB_HOST="127.0.0.1",

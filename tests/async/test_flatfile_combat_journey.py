@@ -88,6 +88,18 @@ def mariadb_authority():
         sql(f"DROP DATABASE {database}", False)
 
 
+def import_help(runtime: pathlib.Path, environment: dict[str, str]) -> None:
+    """Load the real help catalogue into the disposable schema (a provisioned world has it)."""
+    if not (runtime / "help").exists():
+        (runtime / "help").symlink_to(ROOT / "help", target_is_directory=True)
+    (runtime / "scripts").mkdir()
+    importer = runtime / "scripts/import_help_to_prod.sh"
+    shutil.copy2(ROOT / "scripts/import_help_to_prod.sh", importer)
+    imported = subprocess.run(["bash", str(importer), "--local"], input="yes\n", text=True,
+                              env=environment, capture_output=True, timeout=90)
+    require(imported.returncode == 0, imported.stdout[-2000:] + imported.stderr[-2000:])
+
+
 def available_ports() -> tuple[int, int, int]:
     """Reserve a non-privileged plain/TLS/WebSocket port set.
 
@@ -633,7 +645,8 @@ def verify_npc_loot_and_die(port: int) -> None:
 
 
 def recover_player_corpse(port: int, sql, reset_coins: bool = False) -> None:
-    client = reconnect_character(port, "You rejoin the land of the living")
+    # MariaDB keeps no last-exit reason, so the login after a death prints the normal text.
+    client = reconnect_character(port, "Welcome to Duris")
     try:
         client.send("look")
         client.expect("The corpse of a Human is lying here.", timeout=10)

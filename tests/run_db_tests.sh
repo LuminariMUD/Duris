@@ -64,6 +64,21 @@ locker_grant_journey $DB python3 tests/async/test_mysql_locker_grant_journey.py 
 artifact_owner_restart $DB python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server SERVER_BINARY
 legacy_traps $DB python3 tests/async/test_legacy_trap_journey.py SERVER_BINARY mariadb
 mysql_combat $DB python3 tests/async/test_mysql_combat_journey.py --server SERVER_BINARY
+combat_journey $DB python3 tests/async/test_flatfile_combat_journey.py --server SERVER_BINARY
+collector_intake_journey $DB python3 tests/async/test_flatfile_collector_intake_journey.py --server SERVER_BINARY
+death_restart_journey $DB python3 tests/async/test_flatfile_death_restart_journey.py --server SERVER_BINARY
+mob_gold_dial $DB python3 tests/async/test_mob_gold_dial_runtime.py --server SERVER_BINARY
+boot_preflight $DB python3 tests/async/test_flatfile_boot_preflight.py --server SERVER_BINARY
+headbutt_feedback $DB python3 tests/async/test_headbutt_feedback_journey.py --server SERVER_BINARY
+assassin_combat $DB python3 tests/async/test_assassin_combat_journey.py --server SERVER_BINARY
+conjurer_gameplay $DB python3 tests/async/test_conjurer_gameplay_journey.py --server SERVER_BINARY
+shambler_reflection $DB python3 tests/async/test_shambler_reflection_journey.py --server SERVER_BINARY
+minor_creation_instrument $DB python3 tests/async/test_minor_creation_instrument_journey.py --server SERVER_BINARY
+generated_npc $DB python3 tests/async/test_generated_npc_journey.py --server SERVER_BINARY
+generated_npc_redis $DB python3 tests/async/test_generated_npc_journey.py --server SERVER_BINARY --mode redis
+chaos_new_character_kit $DB python3 tests/async/test_flatfile_chaos_new_character_kit.py --server SERVER_BINARY
+frag_cap_repository $DB python3 tests/async/test_frag_cap_repository.py --mysql
+divine_boon_schema tests/async/run_divine_boon_schema_mysql.sh
 frag_cap $DB python3 tests/async/test_frag_cap_journey.py --backend mariadb --server SERVER_BINARY
 hatred_journey $DB python3 tests/async/run_innate_hatred_journey.py --backend mariadb --server SERVER_BINARY
 death_level_projection $DB python3 tests/async/run_death_level_projection_journey.py --backend mariadb --binary SERVER_BINARY --output bin/tests/db/death-level-projection

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real headbutt dispatch and three-recipient output on a disposable server.
 
-Only synthetic snapshots are prepared offline. Combat, RNG, wards, raw damage,
+Only synthetic SQL character rows are prepared offline. Combat, RNG, wards, raw damage,
 terse filtering and output use the unchanged server implementation.
 """
 from __future__ import annotations
@@ -13,14 +13,12 @@ from pathlib import Path
 import re
 import select
 import subprocess
-import tempfile
 import time
 
 from _paths import ROOT
-from test_account_recovery_journey import IsolatedServer, OLD_PASSWORD, build_flatfile_server, require
+from test_account_recovery_journey import IsolatedServer, OLD_PASSWORD, require
 from test_character_stat_choice_journey import WebSocketClient
 from test_creation_prompt_journey import reboot
-from test_flatfile_combat_journey import OVERLORD_FIXTURE
 
 
 NAMES = ("Headbutter", "Wardtarget", "Wardwitness")
@@ -48,56 +46,28 @@ $~"""
     path.write_text(path.read_text().replace("1299 0 0 6 11 1", "29999 0 0 6 11 1"))
 
 
-def compile_editor(build):
-    """Reuse the maintained snapshot writer; customize only its offline fixture."""
-    source = OVERLORD_FIXTURE.replace("#include <cstdio>", '#include <cstdio>\n#include <ctime>\n#include "core/prototypes.h"\n#include "core/utils.h"\n#include "magic/spells.h"')
-    source = source.replace("argc != 3", "argc != 7")
-    start, end = source.index("        for (auto &field"), source.index("        std::vector<uint8_t> payload")
-    source = source[:start] + r'''
-        const bool observer = !strcmp(argv[2], "Wardwitness");
-        const bool actor = !strcmp(argv[2], "Headbutter");
-        // Normal skill floors would raise a level-56 failure fixture to 40,
-        // and grant double headbutt even when its saved learned value is zero.
-        const int level = atoi(argv[3]) == 4 ? 3 : atoi(argv[4]) ? 56 : 55;
-        for (auto &field : snapshot.status_integers) {
-            using F = player_status_field;
-            auto assign = [&](int value) { field.signed_value = value; field.unsigned_value = value; };
-            if (field.field == F::level || field.field == F::highest_level) assign(observer ? 62 : level);
-            if (field.field == F::class_primary) assign(CLASS_MERCENARY);
-            if (field.field == F::specialization) assign(0);
-            if (field.field == F::base_strength) assign(180);
-            if (field.field == F::base_agility) assign(100);
-            if (field.field == F::base_luck) assign(0);
-            if (field.field == F::base_hit) assign(10000);
-            if (field.field == F::hit_difference) assign(0);
-            if (field.field == F::action_flags) assign(0);
-            if (field.field == F::action_flags_2) assign(atoi(argv[6]) ? PLR2_TERSE : 0);
-            if (field.field == F::wizard_invisibility) assign(0);
-            if (field.field == F::screen_length) assign(200);
-        }
-        snapshot.room_vnum = 22800;
-        snapshot.items.clear(); snapshot.pets.clear(); snapshot.affects.clear(); snapshot.timers.clear();
-        snapshot.skills.clear(); snapshot.introductions.clear();
-        if (actor) {
-            snapshot.skills.push_back({SKILL_HEADBUTT, static_cast<uint8_t>(atoi(argv[3])), 100});
-            snapshot.skills.push_back({SKILL_DOUBLE_HEADBUTT, static_cast<uint8_t>(atoi(argv[4])), 100});
-        }
-        int capacity = atoi(argv[5]);
-        if (capacity) {
-            player_affect_snapshot ward{};
-            ward.type = SPELL_GUARDIAN_WARD; ward.duration = 6000;
-            ward.flags = AFFTYPE_SHORT | AFFTYPE_DAM_WARD; ward.modifier = capacity;
-            snapshot.affects.push_back(ward);
-        }
-        for (int other = 1; other <= 3; ++other)
-            snapshot.introductions.push_back({other - 1, other, static_cast<uint64_t>(time(nullptr))});
-''' + source[end:]
-    cpp, binary = build / "snapshot-fixture.cpp", build / "snapshot-fixture"
-    cpp.write_text(source)
-    subprocess.run(["g++", "-std=c++20", "-Isrc", str(cpp),
-                    "src/player/player_snapshot_codec.c",
-                    "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(binary)], cwd=ROOT, check=True)
-    return binary
+def prepare_character(sql, name, learned, double, capacity, terse):
+    """One synthetic fighter or observer; normal skill floors depend on the level chosen here."""
+    pid = sql(f"SELECT pid FROM player_data WHERE name='{name}'")
+    # Normal skill floors would raise a level-56 failure fixture to 40,
+    # and grant double headbutt even when its saved learned value is zero.
+    level = 62 if name == "Wardwitness" else 3 if learned == 4 else 56 if double else 55
+    statements = [
+        f"UPDATE player_data SET level={level},highest_level={level},m_class={1 << 14},spec=0,base_str=180,"
+        f"base_agi=100,base_luk=0,base_hit=10000,hit_diff=0,act=0,act2={64 if terse else 0},wiz_invis=0,"
+        f"screen_length=200,last_room=22800 WHERE pid={pid}"]
+    statements += [f"DELETE FROM {table} WHERE pid={pid}" for table in
+                   ("player_items", "player_affects", "player_timers", "player_skills", "player_intros")]
+    statements.append(f"DELETE FROM player_pets WHERE owner_pid={pid}")
+    if name == "Headbutter":
+        statements.append(f"INSERT INTO player_skills(pid,skill_id,learned,taught) VALUES({pid},1021,{learned},100),"
+                          f"({pid},1195,{double},100)")
+    if capacity:
+        statements.append(f"INSERT INTO player_affects(pid,type,duration,flags,modifier) "
+                          f"VALUES({pid},674,6000,{1 | 1 << 13},{capacity})")
+    statements += [f"INSERT INTO player_intros(pid,intro_index,intro_pid,intro_time) "
+                   f"VALUES({pid},{other - 1},{other},NOW())" for other in range(1, 4)]
+    sql(";".join(statements))
 
 
 def drain(clients, seconds=.2):
@@ -169,13 +139,13 @@ def stats(client, name):
             "text": value}
 
 
-def attempt(server, editor, mode, terse, double):
+def attempt(server, mode, terse, double):
     capacities = {"Headbutter": 1000 if mode == "backfire" else 0,
                   "Wardtarget": 1000 if mode in ("full", "double") else 8 if mode == "partial" else 0,
                   "Wardwitness": 0}
     for name in NAMES:
-        subprocess.run([str(editor), str(server.state_root), name, "4" if mode == "backfire" else "100",
-                        "100" if double else "0", str(capacities[name]), str(int(terse))], check=True)
+        prepare_character(server.sql, name, 4 if mode == "backfire" else 100,
+                          100 if double else 0, capacities[name], terse)
     reboot(server)
     deadline = time.monotonic() + 60
     while "Entering game loop." not in server.server_output():
@@ -205,7 +175,7 @@ def attempt(server, editor, mode, terse, double):
         server.shutdown()
 
 
-def run(binary, editor, evidence, baseline):
+def run(binary, evidence, baseline):
     records = []
     with IsolatedServer(binary, {"DURIS_WEBSOCKET": "TRUE"}, fixture) as server:
         try:
@@ -214,7 +184,7 @@ def run(binary, editor, evidence, baseline):
                                 ("ordinary", False), ("backfire", True), ("double", True)):
                 accepted = None
                 for _ in range(30):
-                    record = attempt(server, editor, mode, terse, mode == "double")
+                    record = attempt(server, mode, terse, mode == "double")
                     records.append(record)
                     actor = record["output"]["Headbutter"]
                     backfire = (record["after"]["Headbutter"]["ward"] < record["before"]["Headbutter"]["ward"]
@@ -261,16 +231,12 @@ def run(binary, editor, evidence, baseline):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--server", type=Path, help="Explicit fresh qualification binary")
+    parser.add_argument("--server", type=Path, required=True, help="Explicit fresh qualification binary")
     parser.add_argument("--baseline", action="store_true", help="Qualify the pre-fix binary's missing feedback")
     args = parser.parse_args()
     build = ROOT / "bin/qualification/issue505"
     build.mkdir(parents=True, exist_ok=True)
-    binary = args.server.resolve() if args.server else build_flatfile_server(
-        Path(tempfile.mkdtemp(prefix="journey-build-", dir=build)))
-    fixture_build = build / ("baseline-fixture" if args.baseline else "fixture")
-    fixture_build.mkdir(exist_ok=True)
-    run(binary, compile_editor(fixture_build), build / ("baseline-journey.json" if args.baseline else "journey.json"), args.baseline)
+    run(args.server.resolve(), build / ("baseline-journey.json" if args.baseline else "journey.json"), args.baseline)
 
 
 if __name__ == "__main__":
