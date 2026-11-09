@@ -508,6 +508,23 @@ This is an estimate, not a time limit or permission to omit required proof.
   `4f13e85355b8940a950d14e3a4b3e061cf294a43369e68c249b17ce3b44d823c`.
   Full runtime evidence: `bin/tests/issue-870/shop-multi-buy*`; earlier failures
   remain under `shop-unsaved-bag-failure-*` and `shop-retired-sale-expectation-*`.
+- Container preparation follow-up: failure cleanup now releases the batch before
+  notifying its callback, including a target moved during the SQL read. A callback
+  may enqueue successor work; the pump stops using its previous map iterators.
+  Reads completed while the actor is unloaded leave its cache untouched and resume
+  from the subsequent load's current ownership. Query/callback allocation remains
+  inside the existing admission guard. Native ASan/UBSan coverage passed for
+  rejected/thrown read admission, link loss, unloaded resume, moved target,
+  reentrant callback and exactly-once failure delivery. Build and the existing
+  grant/reconciliation, newbie and prompt checks passed after upstream integration.
+- Pwipe matrix: direct, Redis, Redis re-enable and reward-discard modes passed.
+  The matched restore and website modes failed; preserve their failed reports and
+  logs under `bin/tests/issue-870/`. Restore copied a source-bound locker shutdown
+  image into a different private SQL store. Reconcile that image on the original
+  source before freezing the portable backup; do not clear or bypass the guard.
+  Website donation association needs a verified synthetic email: current signup
+  intentionally stores an empty email until verification. Seed that fixture
+  precondition while the MUD is offline; keep mail/providers disabled.
 - Latest code and plan are committed/pushed on the stacked branches. The worktree
   may be on a parent while its evidence is updated; check `git status` before
   editing, then continue from `branch/issue-870-container-grants-fix` for the server repair.

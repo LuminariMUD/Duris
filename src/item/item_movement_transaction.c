@@ -583,6 +583,22 @@ void discard_creation_queue(P_char actor, creation_grant_queue &queue)
 	}
 }
 
+// A callback can submit another queue and invalidate the pump's iterators.
+bool fail_creation_queue(P_char actor, uint32_t pid, creation_grant_queue &queue,
+			 const item_transfer_result &result, unsigned int error_code)
+{
+	const pending_creation_grant business = queue.batch_submission && !queue.requests.empty() ?
+							queue.requests.front() :
+							pending_creation_grant{};
+	discard_creation_queue(actor, queue);
+	finish_creation_queue(pid);
+	if (!business.completion)
+		return false;
+	business.completion(actor, false, result, error_code, business.context.data(),
+			    business.context_size);
+	return true;
+}
+
 bool start_creation_grant(P_char actor, creation_grant_queue &queue, item_movement_reject *reject);
 
 void pump_creation_grants()
@@ -597,10 +613,11 @@ void pump_creation_grants()
 		P_char actor = find_live_player(current->first);
 		if (!actor)
 			continue;
-		if (!queue.bound_command && !creation_grant_request_valid(request))
+		if (queue.parent == creation_grant_queue::parent_preparation::failed ||
+		    (!queue.bound_command && !creation_grant_request_valid(request)))
 		{
-			discard_creation_queue(actor, queue);
-			finish_creation_queue(current->first);
+			if (fail_creation_queue(actor, current->first, queue, {}, EIO))
+				return;
 			continue;
 		}
 		if (creation_grant_conflicts(request))
@@ -610,8 +627,8 @@ void pump_creation_grants()
 		{
 			if (queue.bound_command || reject_is_transient(reject))
 				continue;
-			discard_creation_queue(actor, queue);
-			finish_creation_queue(current->first);
+			if (fail_creation_queue(actor, current->first, queue, {}, EIO))
+				return;
 		}
 	}
 }
@@ -814,11 +831,7 @@ void creation_grant_batch_completion(P_char actor, bool committed,
 			note_creation_grant_publication_failure(actor, queue, actor_pid);
 			return;
 		}
-		discard_creation_queue(actor, queue);
-		finish_creation_queue(actor_pid);
-		if (business.completion)
-			business.completion(actor, false, result, error_code,
-					    business.context.data(), business.context_size);
+		fail_creation_queue(actor, actor_pid, queue, result, error_code);
 		return;
 	}
 
@@ -1121,16 +1134,6 @@ bool start_creation_grant(P_char actor, creation_grant_queue &queue, item_moveme
 {
 	if (queue.parent == creation_grant_queue::parent_preparation::reading)
 		return reject_with(reject, item_movement_reject::pending_conflict);
-	if (queue.parent == creation_grant_queue::parent_preparation::failed)
-	{
-		// Keep failure delivery in the existing queue until an offline actor returns.
-		const uint32_t pid = static_cast<uint32_t>(GET_PID(actor));
-		queue.active = true;
-		creation_grant_batch_completion(actor, false, {}, EIO,
-						reinterpret_cast<const uint8_t *>(&pid),
-						sizeof(pid));
-		return true;
-	}
 	if (queue.starter)
 	{
 		player_revision_snapshot revision{};
@@ -1684,74 +1687,99 @@ static bool queue_creation_batch(P_char actor, P_obj const *objects, size_t coun
 			memcpy(queue.requests.front().context.data(), context, context_size);
 		if (!creation_grants.emplace(actor_pid, std::move(queue)).second)
 			return false;
+		auto found = creation_grants.find(actor_pid);
+		item_ownership_runtime_entry parent{};
+		if (target_container &&
+		    !item_ownership_runtime_lookup(target_container->obj_uid, &parent))
+		{
+			// LOAD and other live creations need not have been checkpointed yet. Save
+			// the carried parent, then read its committed ownership on the same writer
+			// before admitting the child grant. No game-thread query or guessed revision.
+			const int room = actor->in_room == NOWHERE ? NOWHERE :
+								     world[actor->in_room].number;
+			const auto saved = player_save_pipeline_request(
+				actor, PLAYER_COMPONENT_INVENTORY, RENT_CRASH, room);
+			if (saved != player_save_pipeline_result::queued &&
+			    saved != player_save_pipeline_result::coalesced &&
+			    saved != player_save_pipeline_result::unchanged)
+			{
+				creation_grants.erase(found);
+				return false;
+			}
+			const uint64_t container_uid = target_container->obj_uid;
+			const uint64_t first_uid = objects[0]->obj_uid;
+			found->second.parent = creation_grant_queue::parent_preparation::reading;
+			if (!sql_read(
+				    SQL_ITEM_OWNER_SELECT " WHERE current_item.item_uid=" +
+					    std::to_string(container_uid),
+				    [actor_pid, container_uid, first_uid](bool ok,
+									  const sql_rows &rows)
+				    {
+					    auto current = creation_grants.find(actor_pid);
+					    if (current == creation_grants.end() ||
+						current->second.requests.empty() ||
+						current->second.requests.front().item_uid !=
+							first_uid ||
+						current->second.parent !=
+							creation_grant_queue::parent_preparation::
+								reading)
+						    return;
+					    bool matched = false;
+					    if (ok && rows.size() == 1 &&
+						rows[0].fields.size() == 9 && rows[0][8])
+					    {
+						    P_char holder = find_live_player(actor_pid);
+						    P_obj container = find_item(container_uid);
+						    if (!holder)
+						    {
+							    // A later player load supplies its current ownership cache.
+							    matched = true;
+						    }
+						    else if (container &&
+							     OBJ_CARRIED_BY(container, holder))
+						    {
+							    std::array<const char *, 9> fields{};
+							    for (size_t index = 0;
+								 index < fields.size(); ++index)
+								    fields[index] = rows[0][index];
+							    matched =
+								    sql_persistence_item_owner_fields_match(
+									    container_uid, "player",
+									    actor_pid, 0,
+									    fields.data());
+							    item_ownership_runtime_entry ownership{};
+							    matched =
+								    matched &&
+								    item_ownership_runtime_lookup(
+									    container_uid,
+									    &ownership) &&
+								    item_owner_identity_equal(
+									    ownership.owner,
+									    { item_owner_type::player,
+									      actor_pid, 0 }) &&
+								    ownership.state ==
+									    item_custody_state::active;
+						    }
+					    }
+					    current->second.parent =
+						    matched ? creation_grant_queue::
+								      parent_preparation::none :
+							      creation_grant_queue::
+								      parent_preparation::failed;
+				    }))
+			{
+				creation_grants.erase(found);
+				return false;
+			}
+			return true;
+		}
 	}
 	catch (const std::bad_alloc &)
 	{
+		creation_grants.erase(actor_pid);
 		return false;
 	}
 	auto found = creation_grants.find(actor_pid);
-	item_ownership_runtime_entry parent{};
-	if (target_container && !item_ownership_runtime_lookup(target_container->obj_uid, &parent))
-	{
-		// LOAD and other live creations need not have been checkpointed yet. Save
-		// the carried parent, then read its committed ownership on the same writer
-		// before admitting the child grant. No game-thread query or guessed revision.
-		const int room = actor->in_room == NOWHERE ? NOWHERE : world[actor->in_room].number;
-		const auto saved = player_save_pipeline_request(actor, PLAYER_COMPONENT_INVENTORY,
-								RENT_CRASH, room);
-		if (saved != player_save_pipeline_result::queued &&
-		    saved != player_save_pipeline_result::coalesced &&
-		    saved != player_save_pipeline_result::unchanged)
-		{
-			creation_grants.erase(found);
-			return false;
-		}
-		const uint64_t container_uid = target_container->obj_uid;
-		const uint64_t first_uid = objects[0]->obj_uid;
-		found->second.parent = creation_grant_queue::parent_preparation::reading;
-		if (!sql_read(
-			    SQL_ITEM_OWNER_SELECT " WHERE current_item.item_uid=" +
-				    std::to_string(container_uid),
-			    [actor_pid, container_uid, first_uid](bool ok, const sql_rows &rows)
-			    {
-				    auto current = creation_grants.find(actor_pid);
-				    if (current == creation_grants.end() ||
-					current->second.requests.empty() ||
-					current->second.requests.front().item_uid != first_uid ||
-					current->second.parent !=
-						creation_grant_queue::parent_preparation::reading)
-					    return;
-				    bool matched = false;
-				    if (ok && rows.size() == 1 && rows[0].fields.size() == 9 &&
-					rows[0][8])
-				    {
-					    std::array<const char *, 9> fields{};
-					    for (size_t index = 0; index < fields.size(); ++index)
-						    fields[index] = rows[0][index];
-					    matched = sql_persistence_item_owner_fields_match(
-						    container_uid, "player", actor_pid, 0,
-						    fields.data());
-					    item_ownership_runtime_entry ownership{};
-					    matched = matched &&
-						      item_ownership_runtime_lookup(container_uid,
-										    &ownership) &&
-						      item_owner_identity_equal(
-							      ownership.owner,
-							      { item_owner_type::player, actor_pid,
-								0 }) &&
-						      ownership.state == item_custody_state::active;
-				    }
-				    current->second.parent =
-					    matched ?
-						    creation_grant_queue::parent_preparation::none :
-						    creation_grant_queue::parent_preparation::failed;
-			    }))
-		{
-			creation_grants.erase(found);
-			return false;
-		}
-		return true;
-	}
 	item_movement_reject reject = item_movement_reject::none;
 	if (start_creation_grant(actor, found->second, &reject))
 		return true;
