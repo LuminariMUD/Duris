@@ -132,6 +132,19 @@ int main()
       currency_reason_type::wallet_spend,0,critical_source_site::command,
       critical_deadline_class::interactive,completion,nullptr,0));
     assert(last_committed && wallet(&alice.ch)==(std::array<int64_t,4>{0,0,0,0}));
+    // A receipt-owned wallet write is stricter: no intervening live credit or
+    // debit can race its persisted after-image. Publication applies it once.
+    GET_COPPER(&alice.ch)=100;
+    assert(currency_transaction_reserve_atomic_trade(&alice.ch,-80));
+    assert(currency_transaction_wallet_busy(&alice.ch));
+    assert(!currency_transaction_submit_wallet_value(&alice.ch,10,
+      currency_reason_type::wallet_reward,0,critical_source_site::command,
+      critical_deadline_class::interactive,completion,nullptr,0));
+    assert(GET_COPPER(&alice.ch)==100);
+    assert(currency_transaction_publish_trade(&alice.ch,-80));
+    assert(GET_COPPER(&alice.ch)==0 && GET_SILVER(&alice.ch)==2);
+    currency_transaction_release_trade(GET_PID(&alice.ch));
+    assert(!currency_transaction_wallet_busy(&alice.ch));
     // A pending credit also reserves denomination space.
     GET_PLATINUM(&alice.ch)=INT_MAX-1;
     assert(currency_transaction_reserve_trade(&alice.ch,1000));
