@@ -97,6 +97,12 @@ clang tooling to parse this checkout. This is local tool selection, not a source
 or warning-policy exception.
 The commit hooks passed with `CLANG_TIDY=/usr/bin/clang-tidy-18` and
 `CPLUS_INCLUDE_PATH=/usr/include/c++/13:/usr/include/x86_64-linux-gnu/c++/13:/usr/include/c++/13/backward`.
+On this NTFS checkout, the worktree/revision form of `git clang-format --diff`
+can produce only synthetic `100644 -> 100755` mode changes despite
+`core.fileMode=false`. Keep source modes unchanged. Staged formatting checks and
+direct `clang-format --style=file --dry-run --Werror <touched files>` verify the
+actual content; use a native Linux checkout for the final revision-wide wrapper
+check if its mode-only artifact persists.
 
 **Ablation:** this independent part of Stage 4 can land before evaluator changes
 because it removes a dependency that never affects load admission. Updating the
@@ -178,8 +184,177 @@ before database/listener startup; no live environment or player data was used.
 existing caller. No error framework, output transaction, or new report mode is
 needed. The path change removes truncation rather than adding another limit.
 
-Next: continue remaining Stage 1 work and the shared evaluator/context work.
-All four published PRs are open for review; none has been merged or deployed.
+### Chunk 4 — isolate shared arithmetic from runtime context (F11, partial)
+
+Branch: `branch/ival-shared-evaluator`, based on `branch/ival-report-errors`.
+Published: implementation commit `efd8d50ea`, evidence commit `810c9bd72`,
+[PR #884](https://github.com/LuminariMUD/Duris/pull/884) (enhancement label),
+stacked on #879. Ready for review.
+
+**Outcome:** move the existing numeric calculation into `src/item/item_value.c`
+with plain input/context data in `item_value.h`; move circle/proc/racial resolution
+and the compatible `itemvalue(P_obj)` entry point into `item_value_runtime.c`.
+Expose the base, multiplier, unrounded value, floor/utility policy, and score from
+the same calculation. Preserve all legacy arithmetic and coefficients in this
+extraction, including the defects pinned in Chunk 2.
+
+**Non-goals:** arithmetic repairs, new weights, full context initialization,
+editor migration, or full-world delta qualification in this structural slice.
+Those original requirements remain open and will use this shared calculation.
+The legacy circle/proc-price definitions remain in `tradeskill.c` for the
+separate metadata extraction; the new engine adapter resolves them. The current
+breakdown contains scalar totals, not yet per-term/unsupported-input diagnostics.
+
+**Files:** the item valuation module, `src/Makefile`, removal of the numeric implementation
+from `src/economy/tradeskill.c`, and the existing native valuation harnesses.
+
+**Proof:** the extraction matched the native function from commit `7b994069e` on
+25,000 synthetic mixed-input fixtures seeded with `0x4956414c`, with no score
+deltas. The comparison compiled both implementations under ASan/UBSan and checked
+object/index immutability, zero game-RNG use, and breakdown consistency. It is
+structural parity evidence, not the effective-world delta report required for
+formula changes. Controlled circle/native/racial context was shared by both
+implementations.
+
+The existing enhancement, monk tools, authored monk pilot, and characterization
+checks passed with the production numeric module and adapter linked as separate
+translation units.
+The characterization harness now also compiles the numeric module alone in both
+server and `_DE_` editor modes, without engine globals/stubs; it exercises explicit
+context, floor/utility policy, and scalar breakdown consistency. Native racial
+adapter checks cover resolved factors and invalid modifiers. The known F08
+overflow subprocesses still fail as expected; this extraction does not repair
+them. `make -C src -j4`, formatting, and clang-tidy commit checks passed.
+
+**Ablation:** one numeric implementation and a thin engine adapter serve the
+traced runtime/editor/report consumers. Keep current proc pricing and circle
+policy intact; a new rule engine, calculator language, or persistent cache adds
+nothing needed by this extraction.
+
+### Chunk 5 — use shared arithmetic in the editor (F06, partial)
+
+Branch: `branch/ival-editor-values`, based on `branch/ival-editor-formatting`.
+Published: `28ca386e6`, [PR #886](https://github.com/LuminariMUD/Duris/pull/886)
+(bug label), stacked on #885. Ready for review; formatting commit checks passed.
+
+Formatting prerequisite: `64b11e3b7`,
+[PR #885](https://github.com/LuminariMUD/Duris/pull/885) (enhancement label),
+stacked on #884. `menudef.cpp` and `misc/menu.cpp` failed the repository's
+whole-file format check even at baseline `810c9bd72`. This separate PR contains
+only clang-format output from those baseline files, keeping the actual estimate
+UI/editor changes out of the mechanical diff. Both maintained editor builds
+passed after normalization; there is no text or behavior change in #885.
+
+**Outcome:** replace the obsolete editor calculation with a field adapter to the
+shared numeric module. Count all four applies, use the same arithmetic for
+common inputs, label the view/search as estimates, and explain missing native
+proc/racial/specialization context. Correct editor class bounds and remove the
+obsolete commented-out native-price copy.
+
+**Non-goals:** inventing native/racial weights, changing server scores, or claiming
+complete template/context parity. Missing contexts remain visible; complete
+context and normalization must still be reconciled under F07/F11/F12.
+
+**Files:** `areas/de/src/obj/object.cpp`, the GODMODE editor build, its value label,
+and existing server/editor native tool fixtures.
+
+**Proof:** `python3 tests/async/test_monk_glove_tools.py` passed under ASan/UBSan.
+Server/editor fixtures now agree for HP +10 (29), nonweapon hitroll +3 (37), armor
+AC 10 (15), fourth-slot STR +6 (25), protection from living (45), and ordinary 2d6
+weapons (12). Legacy zero-modifier behavior is shared, pending its separate repair.
+The actual editor search executes with presentation/index endpoints controlled:
+its warning is visible and its filter uses the same score as the item view. Real
+editor minimum-circle code covers first/last classes, invalid IDs, and the unused
+sentinel entry. The editor gives no invented racial credit when context is absent.
+
+`make -C areas/de/src -j4`, `make -C areas/de/src -f Makefile.debug -j4`, and
+`make -C src -j4` passed. Physical terminal/menu layout and complete live-context
+parity remain unverified. `./scripts/format.sh --staged --check` passed for changed
+lines and all touched files after the formatting prerequisite above.
+
+**Ablation:** remove the copied formula and unused commented proc map. Reuse the
+existing shared-C wrapper/build pattern, adding no service, import format, or
+second authoritative calculator.
+
+Additional required repair discovered while tracing the editor: its reader has
+no `B5` branch and aborts on that valid server object record; `objectType` and the
+writer also lack bank 5. Repair this in a separate chunk with a native read/write
+round trip before claiming editor input preservation. No authored/player data
+was modified. This extends the original F05/F06/F16 coverage requirement.
+Owning sources are `areas/de/src/obj/{object.h,readobj.cpp,writeobj.cpp}`. The
+reader's unrecognized-extra-data branch rejects `B5`; preserve ordinary records
+and apply/description/trap ordering when adding support, and copy bank 5 into the
+new valuation input without introducing an unreviewed weight.
+
+### Chunk 6 — preserve bank 5 through editor object I/O (implemented)
+
+Branch: `branch/ival-editor-b5-roundtrip`, based on `branch/ival-editor-object-formatting`.
+Formatting prerequisite: `a3b901b18`,
+[PR #889](https://github.com/LuminariMUD/Duris/pull/889) (enhancement label),
+stacked on #886. Only pre-existing formatting drift in the object structure,
+reader, and writer is changed there; both editor builds passed.
+
+**Outcome:** read and write the server's optional `B5` record without losing the
+fifth affect bank or following descriptions/applies/traps, and pass that bank to
+the shared evaluator. Preserve legacy records without `B5`. Reject malformed or
+out-of-range masks rather than narrowing them silently.
+The authored mask and shared input explicitly retain all 64 bits; the legacy
+editor's other bank fields remain unchanged. Clone/equality behavior includes B5.
+
+**Non-goals:** new valuation weights, new editor flag menus, player persistence,
+or a new object-file dialect. This is authored content I/O, not a server storage
+backend; player persistence remains MariaDB only.
+
+**Files:** `areas/de/src/obj/{object.h,readobj.cpp,writeobj.cpp,object.cpp}`, the
+object-save declaration and callers in `fh.h` and `misc/misc.cpp`, and a focused
+native reader/writer regression. Formatting prerequisites remain separate commits.
+
+**Proof:** `python3 tests/async/test_editor_object_roundtrip.py` passed with the
+production reader/writer, clone/comparison code, and real lexical/description/
+keyword helpers under ASan/UBSan. There are 74 valid round trips, including absent
+and zero B5, every mask bit, the full 64-bit mask, leading whitespace, same-line
+and next-line masks, all four applies, descriptions/traps, and following records.
+Malformed, duplicate, overflowing, and overlong masks exit cleanly without
+sanitizer findings. The real editor valuation adapter also forwards the full B5
+mask to a controlled numeric endpoint; this is field-transfer proof, not a new
+valuation weight. Existing `test_monk_glove_tools.py` checks passed with the actual
+shared numeric module.
+
+Native boundary testing found the reader's 512-byte buffer violated the lexical
+helper's documented three-byte reserve. Its allocation now includes that reserve.
+The compiler also flagged a progress-message overflow in the full file writer;
+the pathname itself was assembled into another unchecked fixed buffer. Separate
+commit `8b7438a71` replaces both with strings. The native test executes the full
+writer with a valid nested path longer than 512 bytes and an oversized filename,
+verifying success or a normal open error without buffer overflow.
+
+Independent PR review reproduced a tab/vertical-tab-prefixed negative mask on
+the next line being accepted as unsigned. The reader now normalizes whitespace
+at that boundary before sign validation; positive forms still round-trip.
+Review also reproduced the full save workflow clearing `g_madeChanges` after an
+object write to `/dev/full` failed. The object writer now reports open/write/close
+failure, the full save returns before clearing dirty state, and object-only mode
+retains its retry/discard prompt. The existing native harness executes the real
+`writeFiles()` with other area writers doubled: success clears dirty state;
+open failure and buffered/unbuffered write failures preserve it. Failed output
+may be partial and is reported as such; this does not introduce multi-file atomic
+publication. The additional save-workflow formatting is isolated in `7b3346403`.
+
+Both maintained editor builds and `make -C src -j4` passed. Formatting/clang-tidy
+commit checks passed, and direct whole-file clang-format checks passed for all
+five touched C/C++ files. The revision-wide wrapper check produced only the NTFS
+mode artifact described above, with no text diff. Implementation: `c697d5e7b`;
+the filename repair is the preceding `8b7438a71` commit.
+
+**Ablation:** one stored field and one optional record in the existing parser and
+writer suffice. Reuse the native I/O helpers; no parallel parser, converter,
+framework, or valuation-policy change is needed.
+
+Next: finish editor bank-5 read/write preservation with a native round trip,
+then continue the native binding/context catalog and full-context reporting.
+The shared arithmetic now supplies the server and editor; do not reintroduce a
+copied formula while completing diagnostics and template normalization.
+The published PR stack remains open for review; none has been merged or deployed.
 No formula-changing slice is complete without the delta qualification below.
 
 Concrete context work to resume: `boot_material_rarity_objects()` in
@@ -188,8 +363,9 @@ setup is `assign_spell_pointers()` in `src/net/sparser.c` (calls
 `initialize_skills()`), and racial factors come from `update_stat_data()` in
 `src/world/db.c` after properties load. Native bindings live in
 `assign_objects()` in `src/specs/specs.assign.c`; **do not call that whole
-function in offline mode**: it also writes mobile bindings and calls
-`assign_ship_crew_funcs()`. Reuse/expose the actual object-binding data without
+function in offline mode**: it also writes mobile and room bindings. Additional
+object bindings occur in `assign_rooms()`, which also calls
+`assign_ship_crew_funcs()`. Reuse/expose all actual object-binding data without
 those runtime effects, and reconcile parsed `object_template` fields with
 `convertObj()` before using a read-only view. This is the next missing evidence
 needed for full-context corpus deltas and F07/F11/F12, not a reason to substitute
@@ -803,19 +979,24 @@ partial deliveries and their verification are recorded in the implementation log
   normalization; record formula/context provenance.
 - [ ] Correct editor/config/report claims immediately; resolve the inert `[spell]`
   contract and currency labels without inventing unsupported behavior.
+  Editor view/search estimate semantics are implemented in Chunk 5; config and
+  full report-context work remain pending.
 - [ ] Establish native full-context corpus reporting; fix offline report errors
   and initialization before treating its numbers as authoritative.
   Output errors are repaired in Chunk 3; initialization/parity remains pending.
 
 ### Stage 2 — extract the calculation with behavior preserved
 
-- [ ] Create the item-owned evaluator and thin runtime adapter (F11).
+- [x] Create the item-owned evaluator and thin runtime adapter (F11).
+  Chunk 4 supplies the numeric module/adapter and scalar breakdown. Legacy
+  metadata ownership and detailed diagnostics remain in the following items.
 - [ ] Preserve legacy first-match proc values while replacing duplicate chains
   with explicit metadata; keep repricing and override semantics in later changes.
 - [ ] Add the breakdown and read-only template path; migrate inspection users
   incrementally using normalized template-versus-instance parity fixtures.
-- [ ] Use the shared numeric evaluator in the editor, retaining explicit
-  incomplete-context status where necessary.
+- [x] Use the shared numeric evaluator in the editor, retaining explicit
+  incomplete-context status where necessary. See Chunk 5; input-preservation and
+  full context/normalization qualification remain separate open requirements.
 
 ### Stage 3 — repair correctness in small, measured slices
 
