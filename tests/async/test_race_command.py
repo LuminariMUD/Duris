@@ -229,6 +229,13 @@ int main() {
            std::string::npos);
     assert(goblin.find("    Rogue       : Assassin, Thief, Shadow Archer\n") != std::string::npos);
     setenv("CREATION_ALL_RACES", "TRUE", 1);
+    auto open_roster = run("list");
+    assert(open_roster.find("SPECIAL / LEGACY RACES") != std::string::npos);
+    assert(open_roster.find("DISABLED RACES") == std::string::npos);
+    std::istringstream open_lines(open_roster);
+    for (std::string line; std::getline(open_lines, line);)
+        if (line.rfind("  |", 0) == 0 || line.rfind("  +", 0) == 0)
+            assert(line.size() == 72);
     for (int race = 1; race <= RACE_PLAYER_MAX; ++race) check_classes(race);
     unsetenv("CREATION_ALL_CLASSES");
     assert(run("info lich").find("    Necromancer") != std::string::npos);
@@ -236,13 +243,16 @@ int main() {
     unsetenv("CREATION_ALL_RACES");
     assert(run("info lich").find("descend: necromancer") != std::string::npos);
     std::ofstream("lib/creation_availability.cfg") << "creation.class.warrior.enabled=false\n"
-        "creation.race.gnome.enabled=false\n";
+        "creation.race.gnome.enabled=false\ncreation.race.lich.enabled=false\n";
     boot_creation_availability_config();
     assert(run("info human").find("    Warrior") == std::string::npos);
     assert(run("info gnome").find("Disabled in character creation") != std::string::npos);
     assert(run("list").find("*Gnome") != std::string::npos);
     assert(output.find("&+L*&+RGnome&n") != std::string::npos);
     assert(plain(output).find("* Disabled in character creation.") != std::string::npos);
+    setenv("CREATION_ALL_RACES", "TRUE", 1);
+    assert(run("list").find("*Lich") != std::string::npos);
+    assert(output.find("&+L*" + race_display_name(RACE_LICH)) != std::string::npos);
     puts("PASS: all 37 race profiles/innate routes, numeric racial timing, race-specific specializations, "
          "creation restrictions and overrides, faction colors, ASCII panels and name resolution");
 }

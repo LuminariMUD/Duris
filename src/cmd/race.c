@@ -99,16 +99,27 @@ static void show_race_list(P_char ch)
 		if (columns)
 			send_to_char_f(ch, "%*s%s|&n\n", (3 - columns) * 22, "", side.color);
 	}
-	send_to_char("&+M  +--------------------------------------------------------------------+\n"
-		     "  |                           DISABLED RACES                           |\n"
-		     "  +--------------------------------------------------------------------+&n\n",
-		     ch);
+	const bool restricted_creation = creation_all_races_enabled();
+	const char *restricted_title = restricted_creation ? "SPECIAL / LEGACY RACES" :
+							     "DISABLED RACES";
+	string restricted_banner((66 - strlen(restricted_title)) / 2, ' ');
+	restricted_banner += restricted_title;
+	send_to_char_f(
+		ch,
+		"&+M  +--------------------------------------------------------------------+\n"
+		"  | %s |\n"
+		"  +--------------------------------------------------------------------+&n\n",
+		pad_ansi(restricted_banner.c_str(), 66).c_str());
 	int columns = 0;
 	for (const restricted_race_info *entry = restricted_races; entry->race_id >= 0; ++entry)
 	{
 		if (columns == 0)
 			send_to_char("&+M  |  &n", ch);
-		string name = " " + race_display_name(entry->race_id);
+		const bool individually_disabled = restricted_creation &&
+						   !creation_race_enabled(entry->race_id);
+		disabled_races |= individually_disabled;
+		string name = individually_disabled ? "&+L*" : " ";
+		name += race_display_name(entry->race_id);
 		send_to_char(pad_ansi(name.c_str(), 22).c_str(), ch);
 		// Keep the short undead and legacy rows separate, as in the roster layout.
 		if (++columns == 3 || entry->race_id == RACE_SHADE || entry->race_id == RACE_HARPY)
