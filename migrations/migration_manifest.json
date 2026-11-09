@@ -798,6 +798,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "885d73ea5a0b4ae19f9e85dc6035bdb9edcf43859532e40368b4eb1281750a27",
       "verify_checksum": "9d4d92299da2eef085d0fc2b533d96b73e5037c9bb4b69a2e0b221bdf1d2b80e"
+    },
+    {
+      "id": "0062_player_save_intent",
+      "sequence": 63,
+      "description": "Remember why a character last left the game",
+      "apply": "immutable/0062_player_save_intent.sql",
+      "verify": "immutable/0062_player_save_intent.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "fb3320f91cf4da01aca8cee53f0e74e04aad7a623f7af1e50c1abbd4bc77d008",
+      "verify_checksum": "b9680f834549eb7bd7e21dda7e83f8606d9af867eee2317216b5d23c3a1b6c71"
     }
   ],
   "engine_verifiers": [

@@ -1,5 +1,14 @@
 # Immutable Migration Ledger
 
+## Why a character last left (0062)
+
+`0062_player_save_intent` adds `player_data.save_intent TINYINT UNSIGNED NOT NULL
+DEFAULT 0`. Every committed player save records its `RENT_*` reason there, and login
+reads it into `d->rtype`, so death, camp, inn and crash returns behave as designed.
+Zero means unknown and gives an ordinary login, so existing characters are unaffected
+until their next save. The guarded addition re-runs safely. Apply it before starting
+the new server; the boot contract refuses a database at an older head.
+
 ## Online zone-story state parts (0061)
 
 `run --online-zone-story-parts` accepts only the sealed 62-step manifest ending at

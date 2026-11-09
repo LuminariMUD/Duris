@@ -1649,7 +1649,7 @@ void enter_game(P_desc d)
 			else
 				send_to_char("\r\nYou rejoin the land of the living...\r\n", ch);
 		}
-		else if (d->rtype == 0)
+		else if (d->rtype == 0 || d->rtype == RENT_QUIT)
 		{
 			// The consistent worker snapshot already materialized SQL inventory.
 		}
