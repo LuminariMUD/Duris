@@ -899,3 +899,25 @@ This is an estimate, not a time limit or permission to omit required proof.
   away from heavy compilation. #938 and #948 remain draft; #949 is ready.
 - Current branch `branch/issue-870-mariadb-test-names`, clean and pushed; latest
   PRs have enhancement labels. No production operation, merge or release occurred.
+
+
+### Deep inventory checkpoint repair
+
+- Outcome: replace a valid deep player inventory without exceeding InnoDB's
+  recursive cascade depth; keep existing transaction/claim boundaries, retained
+  components, UID graph and metadata. No schema change, depth reduction or data
+  disposal. Files: `src/player/player_snapshot_repository.c` and the existing
+  `player_save_claim_mysql_harness.cpp`.
+- `apply_items` now nulls parent links only on rows already selected for replacement,
+  inside the same transaction, then deletes/reinserts that payload. Retained row
+  IDs/links/metadata are excluded by the existing validated predicate.
+- `tests/async/run_player_save_claim_mysql.sh` passed with a20-level executable
+  checkpoint regression: initial graph, injected delete failure restoring links/
+  revision, successful replacement with exact UID edges and affects/descriptions,
+  changed payload and empty replacement. Existing ownership/rent/quest rollback,
+  load filtering/affect-slot and large zone-story legs also passed. Log:
+  `bin/tests/issue-870/deep-inventory-claim-run.log`.
+- New regression first used a total affect-row count that included zero slots;
+  corrected it to assert the specific persisted nonzero affect. No behavior was
+  relaxed. Native build and preserved-fixture replay are next. This fix is on
+  `branch/issue-870-deep-inventory-checkpoint` after #949.
