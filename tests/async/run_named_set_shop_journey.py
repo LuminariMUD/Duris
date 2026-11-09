@@ -50,9 +50,15 @@ def command(text, expected=None):
 
 try:
     if uid not in stock():
+        game.make_overlord()
         game.make_overlord(CHARACTER)
         actor = game.boot("named-shop-prepare", account=ACCOUNT, character=CHARACTER)
         command("vis 0")
+        # Edit/clone deliberately leaves a mixed outfit. Establish this sale's
+        # original three-piece baseline through normal equipment commands.
+        command("remove all")
+        for piece in originals:
+            command("wear " + selector(actor, piece))
         save(actor, CHARACTER)
         if not setup:
             setup["slots"] = {row[0]: row[2] for row in game.items(PID) if int(row[0]) in originals}
