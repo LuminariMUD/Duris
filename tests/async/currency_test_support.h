@@ -20,8 +20,7 @@ static std::vector<std::string> order;
 static int dirty = 0;
 static int alerts = 0;
 static P_char invalid_account = nullptr;
-static P_char fixture_auction_pending = nullptr, fixture_collector_pending = nullptr,
-	      fixture_shop_pending = nullptr;
+static P_char fixture_auction_pending = nullptr, fixture_collector_pending = nullptr;
 bool auction_transaction_player_busy(P_char ch)
 {
 	return ch && ch == fixture_auction_pending;
@@ -29,10 +28,6 @@ bool auction_transaction_player_busy(P_char ch)
 bool collector_transaction_player_busy(P_char ch)
 {
 	return ch && ch == fixture_collector_pending;
-}
-bool shop_trade_transaction_player_busy(P_char ch)
-{
-	return ch && ch == fixture_shop_pending;
 }
 
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...)

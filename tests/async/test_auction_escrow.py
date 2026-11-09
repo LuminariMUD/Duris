@@ -55,7 +55,6 @@ static int reserved_chest_racewar;
 bool currency_transaction_chest_busy(P_char ch) { return ch && reserved_chest_pid && GET_PID(ch)==static_cast<int>(reserved_chest_pid); }
 bool currency_transaction_wallet_busy(P_char ch) { return currency_transaction_chest_busy(ch); }
 bool collector_transaction_player_busy(P_char) { return false; }
-bool shop_trade_transaction_player_busy(P_char) { return false; }
 bool player_account(P_char ch, std::string *name) { *name="fixture";return ch && GET_PID(ch)>0; }
 
 bool currency_transaction_submit_wallet_value(P_char ch, int64_t value, currency_reason_type,

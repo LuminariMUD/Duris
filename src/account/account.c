@@ -34,7 +34,6 @@
 #include "item/item_movement_transaction.h"
 #include "item/item_ownership_runtime.h"
 #include "item/locker_identify.h"
-#include "economy/shop_trade_transaction.h"
 #include "core/utils.h"
 #include "core/safe_format.h"
 #include "account/account.h"
@@ -310,7 +309,6 @@ bool prepare_account_reconnect(P_char character, P_desc descriptor)
 	zone_touch_transaction_player_ready(character);
 	locker_identify_replay(character);
 	item_movement_transaction_player_ready(character);
-	shop_trade_transaction_player_ready(character);
 	auction_transaction_player_ready(character);
 	collector_transaction_player_ready(character);
 	collector_service_player_ready(character, false);

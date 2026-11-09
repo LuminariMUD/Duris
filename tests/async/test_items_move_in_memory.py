@@ -43,9 +43,6 @@ print("[PASS] slip, steal, soulbind, key break, storage, load, pouch, weapon dro
 
 AUCTION = (SRC / "auction_houses.c").read_text()
 assert "ownership is still being synchronized" not in AUCTION
-SHOP = (SRC / "shop_trade_runtime.c").read_text()
-assert "const bool player_held = !creates && !shop_owned(action);" in SHOP
-assert "!OBJ_CARRIED_BY(destination, player)" in SHOP
 print("[PASS] auction listings and shop trades start from the object's real holder")
 
 CLAIM = (SRC / "item_claim.h").read_text()

@@ -333,8 +333,6 @@ OBJS =  $(SHIP_OBJS) \
 				 item/item_movement_transaction.o \
 				 item/starter_kit_intent.o \
 				 account/kept_character_recovery.o \
-				 economy/shop_trade_transaction.o \
-				 economy/shop_trade_runtime.o \
 				 economy/shopkeeper_boot.o \
 				 economy/shopkeeper_restock.o \
 				 item/item_transfer_repository.o \
@@ -361,7 +359,6 @@ OBJS =  $(SHIP_OBJS) \
 				 economy/boon_reward_command.o \
 				 economy/boon_reward_repository.o \
 				 economy/boon_reward_transaction.o \
-				 economy/shop_trade_command.o \
 				 world/zone_story_quest_tracking.o \
 				 world/zone_story_quest_catalog.o \
 				 world/zone_story_quest_repository.o \

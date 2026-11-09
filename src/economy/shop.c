@@ -26,8 +26,6 @@
 #include "classes/salchemist.h"
 #include "world/specs.prototypes.h"
 #include "sql/sql.h"
-#include "economy/shop_trade_runtime.h"
-#include "economy/shop_trade_transaction.h"
 #include <cerrno>
 #include <cstdlib>
 #include <new>
@@ -224,12 +222,12 @@ static bool shop_stage_produced(P_char ch, P_obj stock, P_obj destination, int r
 	return prepared;
 }
 
-static void shop_produced_completion(P_char ch, bool committed, const shop_trade_payload &payload)
+static void shop_produced_completion(P_char ch, bool committed, uint64_t first_item_uid)
 {
-	const uint32_t pid = ch ? static_cast<uint32_t>(GET_PID(ch)) : payload.player_pid;
+	const uint32_t pid = static_cast<uint32_t>(GET_PID(ch));
 	auto found = produced_purchase_batches.find(pid);
 	if (found == produced_purchase_batches.end() || found->second.item_uids.empty() ||
-	    found->second.item_uids.front() != payload.selected_item_uid)
+	    found->second.item_uids.front() != first_item_uid)
 		return;
 	produced_purchase_batch batch = std::move(found->second);
 	produced_purchase_batches.erase(found);
@@ -238,7 +236,7 @@ static void shop_produced_completion(P_char ch, bool committed, const shop_trade
 	if (!committed)
 	{
 		// Grant failures settle here after the grant queue relinquishes its objects.
-		if (ch && !payload.multi_root)
+		if (ch)
 			shop_creation_refund(ch, batch);
 		shop_discard_produced(batch);
 		shop_purchase_report(ch, batch, 0);
@@ -264,22 +262,9 @@ static void shop_produced_completion(P_char ch, bool committed, const shop_trade
 				   GET_NAME(ch), coin_stringv(total));
 		do_tell(keeper, message, 0);
 	}
-	P_obj destination = batch.container_item_uid ?
-				    shop_trade_find_object(batch.container_item_uid) :
-				    nullptr;
 	for (uint64_t uid : batch.item_uids)
 	{
 		P_obj object = shop_trade_find_object(uid);
-		if (payload.multi_root && OBJ_NOWHERE(object))
-		{
-			if (!obj_to_char(object, ch))
-				continue;
-			if (destination)
-			{
-				obj_from_char(object);
-				obj_to_obj(object, destination);
-			}
-		}
 		act("$n buys $p.", FALSE, ch, object, 0, TO_ROOM);
 		snprintf(message, sizeof(message), "You now have %s.\r\n",
 			 object->short_description);
@@ -294,9 +279,9 @@ static void shop_creation_grant_completion(P_char ch, bool committed, const item
 {
 	if (!ch || !context || context_size != sizeof(uint64_t))
 		return;
-	shop_trade_payload purchase = {};
-	memcpy(&purchase.selected_item_uid, context, sizeof(uint64_t));
-	shop_produced_completion(ch, committed, purchase);
+	uint64_t first_item_uid = 0;
+	memcpy(&first_item_uid, context, sizeof(first_item_uid));
+	shop_produced_completion(ch, committed, first_item_uid);
 }
 
 static void shop_creation_payment_completion(P_char ch, bool committed,

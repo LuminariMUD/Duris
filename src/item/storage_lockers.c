@@ -71,7 +71,6 @@
 #include "core/files.h"
 #include "item/private_chest_purchase.h"
 #include "item/item_movement_transaction.h"
-#include "economy/shop_trade_transaction.h"
 #include "economy/auction_transaction.h"
 #include "economy/collector_transaction.h"
 #include "player/player_save_pipeline.h"
@@ -2221,7 +2220,6 @@ bool locker_shutdown_capture(std::vector<locker_recovery_entry> *entries,
 			if (IS_NPC(occupant) || GET_PID(occupant) <= 0)
 				continue;
 			if (item_movement_transaction_player_busy(occupant) ||
-			    shop_trade_transaction_player_busy(occupant) ||
 			    auction_transaction_player_busy(occupant) ||
 			    collector_transaction_player_busy(occupant) ||
 			    player_save_pipeline_world_quest_pending(GET_PID(occupant)) ||

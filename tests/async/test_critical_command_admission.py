@@ -148,7 +148,6 @@ with tempfile.TemporaryDirectory(prefix="duris-critical-admission-") as director
 for relative in (
     "src/world/zone_touch_transaction.c",
     "src/world/epic_transaction.c",
-    "src/economy/shop_trade_transaction.c",
     "src/economy/auction_transaction.c",
     "src/economy/boon_reward_transaction.c",
     "src/guild/artifact_guild_transaction.c",

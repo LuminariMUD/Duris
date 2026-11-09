@@ -382,8 +382,7 @@ renaming or relocation, removing now-unused test shims, historical documentation
 cleanup, the `file:flatfile-*` rows in `migrations/data_lifecycle_manifest.json`
 and the validator entries that require them, peripheral tooling cleanup
 (coverage, fuzz, and `scripts/validate_colorization_journey.py`), and full-suite
-qualification, and removing the submitter-less `shop_trade_*` path and its
-no-op hooks. Repair a peripheral tool now if a required first-pass command
+qualification. Repair a peripheral tool now if a required first-pass command
 actually depends on it. Do not weaken MariaDB persistence or recovery to make the
 initial deletion faster.
 
@@ -542,10 +541,9 @@ Also removed because only the deleted paths used them: `divine_trade_flatfile`,
 `artifact_population_flatfile`, `boon_shop_transaction`, `boon_shop_command`,
 `kingdom_restore.h`, the flat boon helpers in `boon.c`, and `item_claim_log_item`.
 
-Left in place on purpose: `shop_trade_transaction`, `shop_trade_runtime`, and
-`shop_trade_command` have no submitter after this change, but seven files call
-their no-op busy/ready/capture hooks and `shop.c` shares the payload type.
-Removing them is ordinary dead-code cleanup, recorded under deferred work.
+`shop_trade_transaction`, `shop_trade_runtime`, and `shop_trade_command` had no
+submitter after this change; they and their no-op hooks are removed on
+`branch/flatfile-removal-shop-trade`.
 
 Proof so far: the server, `pfile`, and `telemetry-state` build at `-Og` under
 `-Werror`, and `run_mysql_bank_restart_journey.py` passes on the new binary.
