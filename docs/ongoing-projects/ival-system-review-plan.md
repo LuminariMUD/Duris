@@ -426,6 +426,50 @@ and incumbent routing must be modeled explicitly; raw fields plus the compiled
 catalog alone do not prove normalized live-score parity. Reconcile this with
 F05/F07/F09/F11/F12 before treating corpus output as authoritative.
 
+### Chunk 8 — read-only normalized template valuation and offline context (in progress)
+
+Branch: `branch/ival-readonly-template-values`, based on `branch/ival-object-binding-catalog`.
+
+**Outcome:** evaluate normalized template fields through the shared calculation,
+without object creation, UID allocation, callbacks, or events. Share the existing
+power-field normalization and proc-library parameter decoding. Initialize spell,
+racial/property, and effective binding metadata for offline reporting, and replace
+report-only live-object reads with the existing template cache. Record provenance
+and fail on missing required context instead of publishing guessed scores.
+
+**Non-goals:** coefficient changes, arithmetic fixes, new proc weights, full game
+boot, database access, or a parallel parser/calculator. Existing legacy scoring
+and explicit no-registration policy remain intact in this context repair.
+
+**Files:** the valuation adapter and normalization owner, proc-library metadata,
+binding owners' data-only setup, property loading, offline object/report boot,
+and native context/parity tests.
+
+**Proof:** native runtime/template score and field parity for stat, native proc,
+packed proc, racial, armor/shield, ignored, and normalization fixtures; real
+decoder/valuation functions; zero inspection UID/event/object-count changes;
+offline CLI context/error/provenance checks and effective-world qualification.
+
+**Ablation:** reuse the template parser/cache, shared numeric evaluator, actual
+decoders, and binding tables. Split metadata loading from runtime startup only
+where the offline caller needs it; add no service, rule engine, input dialect,
+or persistent item-score cache.
+
+#### Constructor repair discovered by native parity qualification
+
+Branch: `branch/ival-proclib-event-ownership`, based on `branch/ival-object-binding-catalog`.
+The real engine comparison found that `instantiate_object_template_impl()` reset
+`obj->nevents`/`nevents_tail` after `proclibObj_add()` had attached a periodic event.
+Extraction then could not cancel it: the hummer reference left one scheduled
+event after its object was freed. Remove this late reset; the constructor's
+initial `memset` already initializes both owner lists before registration.
+
+`python3 tests/async/test_newbie_object_template.py` passed under ASan/UBSan with
+new assertions that both accepted and no-argument libraries retain their event
+owner links. This is an independent lifecycle fix, published before the larger
+read-only feature. The full real-engine comparison remains part of Chunk 8 and
+will verify cancellation with actual library/scheduler/cleanup code.
+
 Next: finish the native binding/context catalog and full-context reporting.
 The shared arithmetic now supplies the server and editor; do not reintroduce a
 copied formula while completing diagnostics and template normalization.
