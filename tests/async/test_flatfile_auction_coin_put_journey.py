@@ -119,12 +119,22 @@ def run(binary, expect_regression):
                     process = subprocess.Popen([str(executable), "-d", str(runtime), str(plain)],
                                                cwd=runtime, env=env, stdout=output,
                                                stderr=subprocess.STDOUT)
-                deadline = time.monotonic() + 180
-                while b"Entering game loop." not in output_path.read_bytes()[offset:]:
-                    journey.require(process.poll() is None and time.monotonic() < deadline,
-                                    "server did not boot:\n" + output_path.read_text(errors="replace")[-8000:])
-                    time.sleep(.1)
-                return process
+                try:
+                    deadline = time.monotonic() + 180
+                    while b"Entering game loop." not in output_path.read_bytes()[offset:]:
+                        journey.require(process.poll() is None and time.monotonic() < deadline,
+                                        "server did not boot:\n" + output_path.read_text(errors="replace")[-8000:])
+                        time.sleep(.1)
+                    return process
+                except BaseException:
+                    if process.poll() is None:
+                        process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=10)
+                    raise
 
             def stop(process):
                 process.send_signal(signal.SIGTERM)
