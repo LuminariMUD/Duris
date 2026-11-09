@@ -89,7 +89,7 @@ def run(binary, backend):
                         'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
                         'level': 56, 'race': 'Human', 'gear': 'creation gear; no boons',
                         'properties': {'rechargeTime': 240,
-                                       'healer.healing.mod': 1.2, 'white_aura': .2},
+                                       'healer.healing.mod': 1.2},
                         'pilot': False, 'caster_agility': 100}
 
             def login(name, account=None):
@@ -154,18 +154,22 @@ def run(binary, backend):
                 assert 'too powerful' in prayed.lower() or 'beyond your comprehension' in prayed.lower(), prayed
                 command(holyman, 'stand')
                 evidence['saved_vital_rejected'] = True
-                aura = command(healer, 'innate aura_of_improved_healing')
-                assert 'radiates from your finger' in aura, aura
-                # Every spec is restored through the real innate command.
+                # Current Clerics do not inherit the Paladin healing aura.
+                for client in players:
+                    assert 'You know no such ability!' in command(client, 'innate aura_of_improved_healing')
+                # Holyman and Zealot retain Protection; Healer retains Spell
+                # Protection. Exercise the current grants through real commands.
                 for other in (players[2], players[3]):
-                    unavailable = command(other, 'innate aura_of_improved_healing')
-                    assert 'radiates from your finger' not in unavailable, unavailable
+                    assert 'radiates from your finger' in command(other, 'innate aura_of_protection')
+                assert 'You know no such ability!' in command(players[3], 'innate aura_of_spell_protection')
+                aura = command(healer, 'innate aura_of_spell_protection')
+                assert 'radiates from your finger' in aura, aura
                 reset = command(staff, 'resetspec Clerica')
                 assert 'They are no longer specialized' in reset, reset
                 for client in players:
-                    assert 'improved healing' not in command(client, 'score').lower()
+                    assert 'spell protection' not in command(client, 'score').lower()
                 command(staff, 'setbit char Clerica spec 2')
-                aura = command(healer, 'innate aura_of_improved_healing')
+                aura = command(healer, 'innate aura_of_spell_protection')
                 assert 'radiates from your finger' in aura, aura
                 evidence['staff_unspec_revokes_aura'] = True
                 print('Aura entitlement and staff cleanup passed', flush=True)
@@ -251,13 +255,13 @@ def run(binary, backend):
                 command(staff, 'drop altar')
                 command(staff, 'setbit char Clerica epics 10')
                 save(healer, NAMES[0])
-                aura = command(healer, 'innate aura_of_improved_healing')
+                aura = command(healer, 'innate aura_of_spell_protection')
                 assert 'radiates from your finger' in aura, aura
                 healer.send('pray altar')
                 healer.expect('Your old habits fall away', timeout=30)
-                after = command(healer, 'innate aura_of_improved_healing')
+                after = command(healer, 'innate aura_of_spell_protection')
                 assert 'radiates from your finger' not in after, after
-                assert 'improved healing' not in command(healer, 'score').lower()
+                assert 'spell protection' not in command(healer, 'score').lower()
                 evidence['ordinary_unspec_revokes_aura'] = True
                 stop()
                 # Shorten only the saved test timers to prove restored expiry
