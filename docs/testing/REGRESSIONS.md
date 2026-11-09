@@ -1753,7 +1753,7 @@ mkdir -p "$fixture/bin/areas"
 ln -s "$PWD/bin/areas/tools" "$fixture/bin/areas/tools"
 (cd "$fixture/areas" && ./m_slow)
 bash tests/async/with_disposable_mariadb.sh \
-  python3 tests/async/test_generated_npc_journey.py --server bin/server/dms_new --mode file --full-world "$fixture/areas"
+  python3 tests/async/test_generated_npc_journey.py --server bin/server/dms_new --full-world "$fixture/areas"
 bash tests/async/with_disposable_mariadb.sh \
   python3 tests/async/test_generated_npc_journey.py --server bin/server/dms_new --mode redis --full-world "$fixture/areas"
 ```
