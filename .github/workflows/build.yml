@@ -26,5 +26,11 @@ jobs:
         sudo apt-get install --yes equivs
         make build-deps-package
         sudo apt-get install --yes ./bin/packages/duris-build-deps_1.0_all.deb
+    - name: check required executables
+      run: |
+        for tool in git python3 dos2unix gawk nc gdb valgrind clang-format redis-server redis-cli \
+                    mysql mysqldump mysql_config mariadb-install-db mariadbd; do
+          command -v "$tool" || { echo "::error::$tool is not installed"; exit 1; }
+        done
     - name: build and test
       run: make test-all -j"$(nproc)" TEST_JOBS="$(nproc)"
