@@ -17,7 +17,3 @@ affected_type *get_ward_from_char(P_char)
 }
 void append_prompt(P_char, char *) {}
 void UpdateScreen(P_char, int) {}
-int process_output(P_desc)
-{
-	return 1;
-}

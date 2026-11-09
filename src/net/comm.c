@@ -87,6 +87,7 @@
 #include "core/lookup_process.h"
 #include "world/map.h"
 #include "net/mccp.h"
+#include "net/mxp.h"
 #include "core/mm.h"
 #include "economy/nexus_stones.h"
 #include "world/outposts.h"
@@ -4399,6 +4400,7 @@ static void greet(P_desc newd)
 
 	advertise_mccp(newd);
 	gmcp_negotiate(newd);
+	mxp_negotiate(newd);
 	/* sga disabled - causes ^? ^M on raw telnet in character mode */
 	/* sga_negotiate(newd); */
 }
@@ -4762,7 +4764,8 @@ int process_output(P_desc t)
 		make_prompt(t);
 
 	/* Cycle thru output queue */
-	while (get_from_q(&t->output, buf))
+	OutputLinks links;
+	while (get_linked_output(&t->output, buf, links))
 	{
 #if 0
     if( PLR_FLAGGED(realChar, PLR_SMARTPROMPT) )
@@ -4773,11 +4776,23 @@ int process_output(P_desc t)
 		{
 			format_to_snoopers(buf, buf2);
 		}
+		const OutputLinks snoop_links = snoop_by_ptr ? snoop_output_links(buf, links) :
+							       OutputLinks{};
 		while (snoop_by_ptr)
 		{
-			write_to_q(buf2, &snoop_by_ptr->snoop_by->desc->output, 1);
+			write_linked_output(buf2, &snoop_by_ptr->snoop_by->desc->output,
+					    snoop_links);
 
 			snoop_by_ptr = snoop_by_ptr->next;
+		}
+		if (!t->websocket && t->mxp_state == MXP_ENABLED)
+		{
+			descbuf += mxp_render_output(buf, links, t->term_type == TERM_GENERIC,
+						     t->character && PLR3_FLAGGED(t->character,
+										  PLR3_UNDERLINE) ?
+							     TL_UNDERLINE :
+							     TL_BLINK);
+			continue;
 		}
 
 		AnsiString abuf(buf);
