@@ -45,7 +45,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-packed-proc-mean`; its initial synchronized commit was
+`origin/branch/ival-apply-composition`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -61,7 +61,8 @@ Current Git status verified 2026-11-09: PRs #876, #877, #878, #879, #884, #885,
 the #919 constructor repair and #927 CTF binding prerequisite are stacked above
 it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-circle-extents`; #946 repairs packed averaging on
-`branch/ival-packed-proc-mean`. Branch/base
+`branch/ival-packed-proc-mean`; #956 supplies canonical apply composition on
+`branch/ival-apply-composition`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -729,6 +730,8 @@ operation was used; complete persistence/command qualification remains F16.
 ### Chunk 11 — canonical apply composition (F03, implemented)
 
 Branch: `branch/ival-apply-composition`, based on `branch/ival-packed-proc-mean`.
+Published: `8c49dfd69`, [PR #956](https://github.com/LuminariMUD/Duris/pull/956)
+(bug label), stacked on #946. Ready for review.
 
 **Outcome:** equivalent stored apply permutations yield identical values and
 breakdowns. Use local indexes sorted by apply kind/modifier/resolved racial
@@ -809,13 +812,14 @@ snapshot codec and SQL field regressions passed; full MariaDB journeys remain
 F16. Characterization, monk tools/pilot, pool filters, quest reward and report-I/O
 checks passed. Full server and both maintained editor builds passed. Legacy F08
 overflow probes remain expected failures. Zero/duplicate semantics remain F04;
-no persisted slots, prices, coefficients or proc-route policies were rewritten.
+no persisted slots, pricing formulas, coefficients or proc-route policies were rewritten.
 
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization
-   entries and F02's premature packed-proc rounding are repaired. Affect order,
-   zero modifiers and duplicate representation still need F03/F04.
+   entries and F02's premature packed-proc rounding are repaired. F03 now composes
+   stored apply permutations canonically; neutral zeros and duplicate semantics
+   remain F04.
 2. **Keep tools truthful.** The editor now uses shared arithmetic with explicit
    context estimates, and the offline material report has normalized context and
    native corpus qualification. Enhancement configuration/enforcement still needs
@@ -1465,6 +1469,7 @@ partial deliveries and their verification are recorded in the implementation log
   Implemented and qualified in Chunks 9/#935 and 10/#946.
 - [ ] Make zero modifiers neutral and multiplier composition order independent
   (F03/F04); address duplicate semantics in its own slice if the delta is broad.
+  F03 is implemented and qualified in Chunk 11/#956. F04 remains pending.
 - [ ] Add finite/overflow checks at evaluator, config, and consumer boundaries
   (F08/F14); never make invalid content economically cheap.
 - [ ] Reconcile executable proc routing and explicit utility policy (F09).
