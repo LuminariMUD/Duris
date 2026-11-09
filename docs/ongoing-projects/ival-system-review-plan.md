@@ -45,7 +45,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-zero-modifiers`; its initial synchronized commit was
+`origin/branch/ival-duplicate-applies`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -63,7 +63,8 @@ it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-circle-extents`; #946 repairs packed averaging on
 `branch/ival-packed-proc-mean`; #956 supplies canonical apply composition on
 `branch/ival-apply-composition`; #959 makes zero modifiers neutral on
-`branch/ival-zero-modifiers`. Branch/base
+`branch/ival-zero-modifiers`; #960 qualifies duplicate apply totals on
+`branch/ival-duplicate-applies`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -879,6 +880,9 @@ abstraction, policy switch, or persistence rewrite is required.
 ### Chunk 13 — value equivalent duplicate applies once (F04, implemented)
 
 Branch: `branch/ival-duplicate-applies`, based on `branch/ival-zero-modifiers`.
+Published: commit `3e88c32f8`, [PR #960](https://github.com/LuminariMUD/Duris/pull/960)
+(bug label), stacked on #959. Ready for review; local and dedicated remote
+worktrees carry the committed implementation/evidence.
 
 **Outcome:** sum additive modifiers per exact apply kind in a widened local total
 before its nonlinear curve and multiplier. Cancellation is neutral; max-stat and
@@ -944,6 +948,13 @@ python3 tests/async/test_item_value_template_runtime.py --numeric-baseline 37f17
 
 **Ablation:** group the existing canonical local index order. No persistent
 normalization, public API, configuration switch or new valuation layer is needed.
+
+**Continuation:** F01–F04 arithmetic repairs are now published. Next address F08
+numeric/input/config/consumer bounds, beginning with the two pinned sanitizer
+failures. Record native world maxima before selecting practical content limits.
+F05/F09 coverage/proc policy, F10 config truthfulness, remaining F11–F15 consumer
+work and real MariaDB journeys in F16 remain required. Use focused branches/PRs;
+do not treat these formula slices as project completion or deploy them here.
 
 ## Main conclusions
 
