@@ -729,7 +729,14 @@ This is an estimate, not a time limit or permission to omit required proof.
   Server termination was normal; no product repair is justified by these failures.
   Evidence: `bin/tests/issue-870/named-set-heavy-return-failure/` and
   `named-set-consent-failure/`. Current retry log:
-  `bin/tests/issue-870/named-set-sequence-portable-witness-run.log`.
+  `bin/tests/issue-870/named-set-sequence-portable-witness-run.log`: pet passed
+  both cold reboots, native give/get return, same origin and final worn reboot
+  with Armor/+5HP. Completed metadata now includes transfer/edit-clone/pet.
+  Shop then exposed a stale prepared-outfit precondition: edit/clone intentionally
+  leaves mixed original/clone slots. Equip the three originals through normal
+  remove/wear before capturing its sale/rebuy slot baseline. Preserve all asserts.
+  That failure is under `named-set-shop-baseline-failure/`; current retry log:
+  `bin/tests/issue-870/named-set-sequence-shop-baseline-run.log`.
   The entry self-enters the disposable wrapper. The retry adds
   `--resume bin/tests/named-set-mariadb-sequence-ununney2`; its metadata explicitly
   records reused cases. Inspect its terminal result
