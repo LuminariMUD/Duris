@@ -782,12 +782,24 @@ This is an estimate, not a time limit or permission to omit required proof.
   Historical reports and execution records retain the command names they tested.
   Earlier evidence in this plan also retains its pre-rename names; current commands
   use the corresponding `test_mariadb_` names and `build_mariadb_server`.
-- All fourteen moved files compile; regression discovery lists905 tests with no
-  retired prefix. Focused root-harness, build-artifact, launcher/preflight/catalog
-  and manifest checks are next, followed by remaining active-doc/legacy-reference
-  audit. Do not mark the overall naming/docs batch qualified before those pass.
+- All moved and changed Python files compile; regression discovery lists905
+  tests with no retired prefix. Focused root-harness, artifact reuse/corruption/
+  isolation/publication, Assassin manifest, launcher, real MariaDB boot-preflight,
+  information-reader and shopkeeper-capture checks passed. Logs:
+  `bin/tests/issue-870/naming-*.log`. Boot preflight's actual command includes
+  `with_disposable_mariadb.sh` and `--server bin/server/dms_new`.
+  Active code/script/workflow scans contain no retired test/build identifiers.
+  Keep historical reports/records and legitimate file/journal/negative-mode names.
+  Active item/weapon/colorization and Discord runbooks give the qualified commands.
 - Named-set retry advanced beyond its original outfit check; the next missing
   fixture precondition is Taverek's staff promotion before `transfer Meranen`.
   Meranen was promoted, but the shared donor remained mortal from transfer proof.
-  Add the donor's offline SQL promotion before boot, retaining all native checks.
-  Current raw failure remains in `named-set-sequence-shop-baseline-run.log`.
+  `9bc9cff2c` adds the donor's offline SQL promotion before boot. Shop then
+  passed real sale, restart, paid repurchase, exact UID/origin/slot and final
+  Armor/+5HP reboot. The resumed sequence now runs the16 wear zones under the
+  canonical imports. Log: `named-set-sequence-shop-staff-run.log`; earlier donor
+  failure is retained under `named-set-shop-staff-failure/`.
+- Assassin preparation is running with four-CPU affinity. Fresh original/cleanse
+  archive verification and relevant constant checks passed; original MariaDB
+  seeded binary built in134.602s. Log `assassin-prepare-run.log`; inspect terminal
+  result and all three manifest entries before runtime qualification.
