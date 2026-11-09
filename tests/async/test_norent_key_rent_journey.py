@@ -307,11 +307,15 @@ def run(binary, backend, inspector, evidence_dir):
                 mortal_with_ticket()
                 before = mortal_revision()
                 command(client, "setbit char " + MORTAL + " timer 16")
-                mortal.expect("pulled into a void", timeout=100)
+                # An autosave can move the revision first, so watch the floor. The next
+                # tick voids the mortal, and the void closes its connection.
+                deadline = time.monotonic() + 100
+                while not on_floor(client, "ticket"):
+                    assert time.monotonic() < deadline, "idle-voided ticket did not land on the floor"
+                    time.sleep(1)
+                wait_mortal_saved(before)
                 mortal.close()
                 mortal = None
-                wait_mortal_saved(before)
-                assert on_floor(client, "ticket"), "idle-voided ticket did not land on the floor"
                 evidence["checks"].append("an idle-voided character's no-rent item falls")
                 command(client, "goto " + str(INN))
 
