@@ -38,7 +38,10 @@ static void chat_presentation_matrix()
 	};
 	char crowded_command[] = "presentation-fixture";
 	process_with_paging(&alice, crowded_command);
-	assert(pager_style_fallback && drain(&da).size() == crowded.size() * 3);
+	const auto crowded_output = drain(&da);
+	char crowded_plain[MAX_STRING_LENGTH];
+	AnsiString(crowded_output.c_str()).plain(crowded_plain);
+	assert(pager_style_fallback && std::string(crowded_plain) == crowded + crowded + crowded);
 	assert(!da.showstr_count);
 	command_action = {};
 	REMOVE_BIT(alice.specials.act, PLR_PAGING_ON);

@@ -1857,6 +1857,8 @@ char *next_page(char *str, struct descriptor_data *d)
 		/* The size - 4, is to keep infobar clean, for those who use */
 		else if (line > MAX(8, (GET_PLYR(d->character)->only.pc->screen_length - 4)))
 			return str;
+		else if (*str == OUTPUT_SEND_BOUNDARY)
+			continue;
 
 		else if (*str == '&' && *(str + 1))
 		{
