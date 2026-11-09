@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
                        (67242, "lich_spine"), (67276, "sword_whirlwinds"),
                        (36884, "kvasir_dagger"), (22962, "hammer_titans"),
                        (32862, "aboleth_pendant"), (3833, "glades_dagger")):
-        assert re.search(rf"obj_index\[real_object0\({vnum}\)\]\.func\.obj\s*=\s*{proc};",
+        assert re.search(rf"OBJECT_BINDING\(\s*{vnum}\s*,\s*{proc}\s*\)",
                          assignments)
     # special() keeps using ch after an object proc returns, so these burns cannot kill.
     object_procs = repo_source("specs.object.c").read_text()

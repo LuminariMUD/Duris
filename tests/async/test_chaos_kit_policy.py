@@ -91,7 +91,7 @@ for item in UTILITY_POLICY:
     assert all(metrics[item["vnum"]]["class_eligible"].values())
 # Actual consuming/arming implementations back these grants; no invented bait,
 # disabled legacy hammer/parchment, or temporary globe potion is used.
-assert "real_object0(73)].func.obj = huntsman_ward" in (ROOT / "src/specs/specs.assign.c").read_text()
+assert "OBJECT_BINDING(73, huntsman_ward)" in (ROOT / "src/specs/specs.assign.c").read_text()
 assert "#define VOBJ_EPIC_LANTAN_TOOLS 400227" in (ROOT / "src/world/vnum.obj.h").read_text()
 assert "vnum_from_inv(ch, crafting_scientific_tools_vnum(), 1)" in (ROOT / "src/item/salvage.c").read_text()
 
