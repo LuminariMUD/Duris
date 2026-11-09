@@ -313,11 +313,39 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 					  context.racial_credits[right]);
 		  });
 	double apply_additions[MAX_OBJ_AFFECT]{};
-	double apply_factors[MAX_OBJ_AFFECT]{};
-	for (int i : order)
+	std::array<double, MAX_OBJ_AFFECT> apply_factors;
+	apply_factors.fill(1);
+	for (size_t first = 0; first < order.size();)
 	{
-		apply_factors[i] = 1;
-		mod = obj->affected[i].modifier;
+		const int i = order[first];
+		const int location = obj->affected[i].location;
+		const bool racial = location >= APPLY_STR_RACE && location <= APPLY_LUCK_RACE;
+		double racial_credit = 0, invalid_racial_credit = 0;
+		bool has_racial_credit = false;
+		mod = 0;
+		// Ordinary stats add live; racial overrides select the greatest stat factor.
+		// Widen the total locally, never consolidate or narrow persisted slots.
+		do
+		{
+			const int slot = order[first++];
+			const int modifier = obj->affected[slot].modifier;
+			if (!racial)
+				mod += modifier;
+			else if (modifier > RACE_NONE && modifier <= LAST_RACE)
+			{
+				if (!has_racial_credit ||
+				    context.racial_credits[slot] > racial_credit)
+					racial_credit = context.racial_credits[slot];
+				has_racial_credit = true;
+			}
+			else if (modifier != 0)
+				invalid_racial_credit += context.racial_credits[slot];
+		} while (first < order.size() && obj->affected[order[first]].location == location);
+		if (racial)
+		{
+			workingvalue += racial_credit + invalid_racial_credit;
+			continue;
+		}
 		if (mod == 0)
 			continue;
 		// dam/hitroll are normal values
@@ -387,7 +415,6 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 			workingvalue += (mod < 4) ? mod : (mod * mod) / 3;
 		}
 
-		workingvalue += context.racial_credits[i];
 		// AC negative is good, not reducing itemvalue for items that make ac worse.
 		if ((obj->affected[i].location == APPLY_AC) && mod != 0)
 		{

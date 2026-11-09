@@ -684,7 +684,7 @@ def main():
                             ("kingdom_config", world / "lib/kingdom.cfg"),
                             ("item_abilities", world / "lib/item_abilities.json")):
             assert provenance[label + "_sha256"] == hashlib.sha256(file.read_bytes()).hexdigest()
-        assert provenance["formula_revision"] == "ival-v5-zero-neutral"
+        assert provenance["formula_revision"] == "ival-v6-apply-totals"
         assert provenance["context"] == "configured-healthy-boot"
         assert provenance["mini_mode"] == "0" and provenance["no_specials"] == "0"
         if args.delta_output:
