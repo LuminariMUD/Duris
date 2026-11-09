@@ -313,6 +313,17 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                 print('Redis copyover consumes a committed cut, refuses a failed checkpoint, '
                       'and retains the world when replacement boot fails', flush=True)
                 return
+            if full_world:
+                # A fresh full catalogue publishes absent artifact identities in
+                # bounded batches. Let it settle before injecting copyover faults.
+                deadline = time.monotonic() + 180
+                while True:
+                    status = command(client, 'world persistence')
+                    if re.search(r'artifact_guild .*dirty_artifacts=0 dirty_guilds=0 .*history_pending=0', status):
+                        break
+                    assert time.monotonic() < deadline, status
+                    time.sleep(.5)
+                print('full-world artifact/guild bootstrap is durable before fault injection', flush=True)
             if compressed: client.enable_compression()
             process.send_signal(signal.SIGUSR1)
             client.expect('Copyover FAILED', timeout=60)
