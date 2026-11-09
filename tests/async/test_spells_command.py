@@ -351,7 +351,8 @@ int main() {
         subprocess.run(["g++", "-std=c++20", '-I/usr/include/mysql', "-Isrc",
                         "-I/usr/include/libxml2", "-ffunction-sections", "-fdata-sections",
                         "-Wl,--gc-sections", str(source), "src/cmd/spells.c", "src/core/common.c",
-                        "src/cmd/wikihelp.c", "src/cmd/help_cache.c",
+                        "src/cmd/wikihelp.c", "src/cmd/help_cache.c", "src/net/output_links.c",
+                        "src/net/ansi.c", "src/net/unicode.c",
                         str(HARNESS_STUBS), "-o", str(binary)], cwd=ROOT, check=True)
         subprocess.run([str(binary)], cwd=directory, check=True)
 

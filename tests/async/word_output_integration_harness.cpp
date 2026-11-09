@@ -253,6 +253,7 @@ P_Alliance Guild::get_alliance()
 {
 	return &privacy_alliance;
 }
+#include "help_output_stubs.inc"
 #include "production_output.inc"
 
 static std::string drain(P_desc d)
@@ -688,6 +689,7 @@ static size_t visible_terminal_bytes(const std::string &markup)
 }
 
 #include "output_links_checks.inc"
+#include "help_output_checks.inc"
 
 int main()
 {
@@ -698,6 +700,7 @@ int main()
 	privacy_delivery_matrix();
 	output_links_matrix();
 	mxp_delivery_matrix();
+	help_output_matrix();
 	privacy_toggle_matrix();
 	toggle_matrix();
 	chat_presentation_matrix();

@@ -28,8 +28,8 @@ No database migration or help-content rewrite is expected.
 - Repository: `LuminariMUD/Duris`.
 - Base: `origin/master` at `91f40a01fe` when this worktree was created.
 - First PR branch: `branch/clickable-links-phase1`.
-- Current implementation branch: `branch/clickable-links-mxp`, stacked on
-  `branch/clickable-links-output` (which is stacked on the first PR branch).
+- Current implementation branch: `branch/clickable-links-help`, stacked on
+  `branch/clickable-links-mxp` (then output and the first PR branch).
 - Worktree: `/home/aiwithapex/projects/duris-worktrees/clickable-links-phase1`.
 - Plan: `docs/ongoing-projects/clickable-links-phase1.md` in that worktree.
 - Deliver focused, reviewable commits and PRs as each chunk is verified. Stack
@@ -466,6 +466,64 @@ the negotiated browser presentation contract and chat URL coverage, implement
 the companion DurisWeb client, then run the remaining live/client journeys.
 This chunk renders explicit metadata correctly but has not yet converted the
 real help/URL producers; ordinary help output is not clickable yet.
+
+### Chunk 4: authored help references and search results
+
+Review: [PR #921](https://github.com/LuminariMUD/Duris/pull/921), implementation
+commit `b34e608ef`, stacked on #917; labels `enhancement`, `documentation`.
+
+Implemented real help producers on `branch/clickable-links-help`:
+
+- Existing `wiki_help(string)` / `wiki_help_single(string)` and prose consumers
+  retain their interfaces. Explicit overloads return the same rendered text and
+  optional owned link spans; only `do_help()` adopts executable help metadata.
+- The authored-help parser converts valid `[[topic]]` references to the existing
+  cyan label with the separate target `help topic`. It removes bold markers as
+  before. Unclosed, empty, nested or unsafe references remain readable literal
+  text. Arbitrary player output does not adopt wiki reference syntax.
+- Search-result titles carry corresponding help targets; redirects, matching,
+  missing topics, dynamic details and attribute-help dispatch reuse existing
+  paths. No database access, cache rewrite, cooldown or new input route was added.
+- The existing search can return 101 titles at up to 256 bytes each. Metadata
+  bounds are now 128 records / 32,768 target bytes so every ordinary result fits,
+  replacing the preliminary 64 / 8,192 bounds recorded in chunks 2–3. Per-record
+  command and URL limits are unchanged. Larger exceptional metadata still loses
+  decoration rather than visible text.
+- Legal cached help pages can exceed a queue block. `do_help()` sends large
+  output in at most 2,048-code-point chunks, using the existing `AnsiString`
+  serializer and source-offset mapping to preserve attributes, UTF-8 and clipped
+  target spans. Equal-attribute escaped-dollar pairs stay in the same block;
+  generic terminals use their attribute-free dollar normalization. The behavior
+  also works with paging disabled. This localized repair avoids changing the
+  general queue API or building a second help-output pipeline.
+- Permanent help authoring/runtime documentation and the MXP bounds are updated.
+
+The extended output integration harness executes actual help lookup/render,
+`do_help()`, styling, queue, pager and output-loop bodies. Its catalog is a
+controlled in-memory boundary and dynamic class-detail generators are excluded
+from ordinary-page cases. It proves valid/malformed references, Unicode targets,
+search and redirects, all 101 maximum-width result targets, legacy fallback,
+large Unicode output, dollar boundaries, attribute dispatch, and frozen paging
+after a catalog edit. It does not yet prove an actual native-client click.
+
+Validation evidence is recorded in `bin/tests/phase1-help-{output,asan,build}.log`
+and `bin/tests/phase1-help-{spells,class}.log`. Normal and ASan/UBSan integration,
+`make -C src -j8` and formatting checks passed. The help-cache, flat-file help
+catalog, reported-latency, pager and native Telnet runtime checks also pass; the
+cold real-help spell/class regressions retain their existing browser facts and
+permissions. Commit-time formatting and tidy passed; the branch is pushed for
+review.
+
+Next: shared HTTP/HTTPS URL recognition (including literal query ampersands and
+color transitions), negotiated browser text/chat presentation, DurisWeb rendering
+and all remaining live/client journeys. In particular, inspect the existing
+Duris markup interpretation of query parameters such as `&name`: URL recognition
+must preserve the actual destination rather than accepting a color-stripped one.
+Derive URL targets before help chunk/pager slicing so a bisected label retains
+its complete destination; detecting a fresh URL from each delivered fragment
+would incorrectly shorten the target. Do not join unrelated sends to infer one.
+Help links now reach the real native output path; web URLs and browser links are
+still incomplete. No production operation has occurred.
 
 ## Scope review
 

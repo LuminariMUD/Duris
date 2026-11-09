@@ -51,7 +51,8 @@ Literal angle brackets and ampersands in labels remain literal text. Labels and
 targets never become raw executable code or HTML. Clicking a command remains a
 client action that submits normal game input through the existing interpreter.
 
-Up to 64 records and 8,192 aggregate target bytes are retained per metadata set.
+Up to 128 records and 32,768 aggregate target bytes are retained per metadata set,
+enough for all 101 help-search results at the catalog's 256-byte title limit.
 Command targets remain under `MAX_INPUT_LENGTH`; URL targets have a 2,048-byte
 limit. Invalid ranges, overlapping records, invalid targets or excess metadata
 leave the text readable without the rejected decoration. If a rendered block's
