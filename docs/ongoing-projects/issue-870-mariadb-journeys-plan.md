@@ -1,6 +1,6 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: implementation in progress; launch/shop, news, death and corpse journeys qualified; onboarding, cache and flight checks running.
+Status: implementation in progress; launch/shop, news, death and corpse journeys qualified; onboarding and the remaining partial-conversion checks running.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
 Branch: `branch/issue-870-mariadb-journeys`.
@@ -103,7 +103,7 @@ Each batch should produce a reviewable commit with its focused runtime proof.
 - [x] Finish `run_death_level_projection_journey.py` and
   `run_corpse_haul_count_cap_journey.py`: retain saved level, account projection,
   item count and wallet checks; remove unreachable inspector fallbacks.
-- [ ] Finish `run_cleric_rebalance_journey.py` and
+- [x] Finish `run_cleric_rebalance_journey.py` and
   `run_innate_aura_keywords_journey.py`: keep SQL seeding and saved-affect expiry,
   specialization, command and keyword checks. Remove unused inspector/state args.
 - [ ] Finish `run_telemetry_player_journey.py`: remove unused state configuration,
@@ -402,6 +402,28 @@ This is an estimate, not a time limit or permission to omit required proof.
   state, saved custody and reconnect passed. The lethal trap also passed
   cancellation, bystander effect, server survival, nested contents/custody
   and spent state across cold restart. Syntax, diff check and hooks passed.
+
+### Cleric and aura journeys
+
+- Code: `6723fd439` plus stale-fixture repair `8dd6a13a7`,
+  `branch/issue-870-cleric-journeys`, based on the cache/flight
+  [PR #892](https://github.com/LuminariMUD/Duris/pull/892).
+- Passed: `tests/async/with_disposable_mariadb.sh python3 tests/async/run_innate_aura_keywords_journey.py --binary bin/server/dms_new --backend mariadb`.
+  All keyword/alias, class/spec/unlock and imported-help assertions passed.
+- Passed after the repair: `tests/async/with_disposable_mariadb.sh python3 tests/async/run_cleric_rebalance_journey.py --binary bin/server/dms_new --output bin/tests/issue-870/cleric.json`.
+  Preserved saved full/pending spell rejection, current aura entitlement and
+  staff/ordinary unspec cleanup, Miracle/Tsunami order and low-HP upgrade,
+  True Seeing unlock, seven protection timers across copyover/cold restart
+  and restored timer expiry. Same ordinary binary hash as above.
+- The first run failed on the removed Cleric healing-aura grant. Current
+  `src/classes/innates.c` grants that aura to Paladins, Protection to Holyman/
+  Zealot, and Spell Protection to Healer/Holyman. The fixture now tests these
+  supported grants and explicitly rejects the old healing grant on Clerics.
+  This is a fixture correction; no gameplay rule changed.
+- Evidence: `bin/tests/issue-870/{cleric-run.log,cleric.json,aura-run.log}`;
+  original failure retained as `cleric-retired-aura-failure.log`. Inspector
+  options, seeding and unused state setup were removed. Existing `Server`'s
+  unused state parameter is passed `None` until its item-batch API cleanup.
 
 ### Current work / next action
 
