@@ -1020,3 +1020,10 @@ This is an estimate, not a time limit or permission to omit required proof.
   runtime results are independently confirmed in their retained `*-run.log`
   files. Existing earlier per-chunk evidence remains versioned proof; final
   integrated native build, full regression and disposable DB gates are pending.
+
+- The wear824 retry reached the timer's last tick and correctly received the
+  second native cooldown response, `almost ready to try another potion`
+  (`actoth.c`4767–4777), rather than the longer-duration refusal. Accept both
+  actual cooldown messages while still requiring expiry and the original
+  `Nothing new seems to happen.` outcome. This is fixture synchronization,
+  not a changed potion policy or discarded assertion.

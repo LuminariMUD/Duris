@@ -184,7 +184,8 @@ try:
             output = client.transcript[offset:].decode(errors="replace")
             if "Nothing new seems to happen." in output:
                 break
-            assert "another potion would do you any good yet" in output, output
+            assert ("another potion would do you any good yet" in output or
+                    "almost ready to try another potion" in output), output
             assert time.monotonic() < deadline, "the potion cooldown never ended"
             time.sleep(5)
         expect_set(pieces)
