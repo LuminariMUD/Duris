@@ -685,9 +685,9 @@ This is an estimate, not a time limit or permission to omit required proof.
   after reload rather than decoding an obsolete snapshot. The old C++ snapshot
   compiler/fixture is removed after confirming it has no other callers.
 - Rollback keeps one copied SQL schema through both binary changes. Dump the
-  stopped source, hash SQL/accounts/journals before/after, import into another
-  disposable schema and rebind only the generated database identifier in views.
-  Assert that no copied view references the original schema. Preserve every
+  stopped source, hash SQL/accounts/journals before/after, import directly into another
+  disposable schema. The maintained bootstrap has no views and the captured dump
+  has no qualified schema identifiers; remove the speculative rebinding machinery. Preserve every
   copied UID/revision/parent/slot and all original gameplay/report assertions.
   The batch retains a private synthetic SQL dump before its authority is removed.
 - The compatibility checkpoint is current native code with only its catalog array
@@ -709,8 +709,16 @@ This is an estimate, not a time limit or permission to omit required proof.
   Artifacts: `bin/tests/named-set-mariadb-sequence-ununney2` (private SQL dump is
   retained on exit). Transfer already passed two-level native give, original UID/
   origin/parent/slot persistence through nested/worn reboots and independent
-  ordinary Armor non-stacking at -90 Armor Points. Edit/clone is in progress.
-  The entry self-enters the disposable wrapper. Inspect its terminal result
+  ordinary Armor non-stacking at -90 Armor Points. Edit/clone also passed renamed
+  originals, five distinct recursive clone UIDs, mixed outfit benefits and reboot.
+  Pet then stopped on a legitimate NULL pet_uid for an empty saved pet. Mirror the
+  native loader's COALESCE(...,0), without inventing a UID. Resume the captured
+  SQL fixture in a fresh disposable schema, checking its dump and binary hashes;
+  preserve existing generated identities and reuse the two unaffected passes.
+  Original failure evidence: `bin/tests/issue-870/named-set-initial-pet-failure/`.
+  The entry self-enters the disposable wrapper. The retry adds
+  `--resume bin/tests/named-set-mariadb-sequence-ununney2`; its metadata explicitly
+  records reused cases. Inspect its terminal result
   and every case before marking batch3 complete; preserve failures and repair
   actual defects without dropping cases. Historical assassin comparison,
   naming/docs and full regression/DB gates still follow. No whole-issue claim.

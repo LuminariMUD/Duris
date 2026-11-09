@@ -52,13 +52,7 @@ for directory in ("logs", "log"):
 journey.generate_certificate(runtime)
 evidence = {"checks": [], "compat_binary_sha256": hashlib.sha256(compat.read_bytes()).hexdigest()}
 with journey.mariadb_authority() as (restored_env, restored_sql):
-    # Views in a dump may qualify their source schema. Rebind only that generated
-    # schema identifier, keeping every copied row, UID and revision intact.
-    copied = source_dump.replace(("`" + os.environ["DB_NAME"] + "`").encode(),
-                                 ("`" + restored_env["DB_NAME"] + "`").encode())
-    restored_sql(copied.decode())
-    assert restored_sql("SELECT COUNT(*) FROM information_schema.views WHERE table_schema=DATABASE() "
-                        "AND LOCATE('`" + os.environ["DB_NAME"] + "`.',VIEW_DEFINITION)>0") == "0"
+    restored_sql(source_dump.decode())
     game = NamedSetGame(runtime=runtime, environment=restored_env)
     current_binary = game.binary
     transcripts = []

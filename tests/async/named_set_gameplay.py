@@ -312,7 +312,7 @@ class NamedSetGame:
     def pets(self, pid=1):
         self.require_player(pid)
         result = []
-        pets = self.sql("SELECT id,pet_uid,mob_vnum,hold_reason FROM player_pets WHERE owner_pid=" +
+        pets = self.sql("SELECT id,COALESCE(pet_uid,0),mob_vnum,hold_reason FROM player_pets WHERE owner_pid=" +
                         str(pid) + " ORDER BY pet_order,id")
         for index, line in enumerate(pets.splitlines()):
             pet_id, uid, vnum, hold = map(int, line.split('\t'))
@@ -347,17 +347,23 @@ def main():
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("compatibility_server", type=Path, help="current MariaDB build with the pinned 115-row catalog")
-    compat = parser.parse_args().compatibility_server.resolve()
+    parser.add_argument("--resume", type=Path, help="resume a stopped attempt's saved SQL fixture")
+    options = parser.parse_args()
+    compat = options.compatibility_server.resolve()
     assert compat.is_file(), compat
     if not os.environ.get("TEST_DB_HOST"):
         wrapper = journey.ROOT / "tests/async/with_disposable_mariadb.sh"
-        os.execv(wrapper, [str(wrapper), sys.executable, str(Path(__file__).resolve()), str(compat)])
-    runtime = Path(tempfile.mkdtemp(prefix="named-set-mariadb-sequence-", dir=journey.ROOT / "bin/tests"))
+        os.execv(wrapper, [str(wrapper), sys.executable, str(Path(__file__).resolve()), str(compat),
+                          *(["--resume", str(options.resume.resolve())] if options.resume else [])])
+    runtime = options.resume.resolve() if options.resume else Path(tempfile.mkdtemp(
+        prefix="named-set-mariadb-sequence-", dir=journey.ROOT / "bin/tests"))
+    assert runtime.is_relative_to((journey.ROOT / "bin/tests").resolve())
     print("Named-set artifacts: " + str(runtime), flush=True)
-    journey.make_fixture(runtime)
-    journey.generate_certificate(runtime)
-    (runtime / "logs/log").mkdir(parents=True)
-    (runtime / "journals/critical").mkdir(parents=True, mode=0o700)
+    if not options.resume:
+        journey.make_fixture(runtime)
+        journey.generate_certificate(runtime)
+        (runtime / "logs/log").mkdir(parents=True)
+        (runtime / "journals/critical").mkdir(parents=True, mode=0o700)
     with journey.mariadb_authority() as (environment, sql):
         environment.update({key: os.environ[key] for key in (
             "TEST_DB_HOST", "TEST_DB_PORT", "TEST_DB_USER", "TEST_DB_PASSWORD")})
@@ -367,15 +373,25 @@ def main():
                     "compat_binary_sha256": hashlib.sha256(compat.read_bytes()).hexdigest(),
                     "completed": []}
         try:
-            game.start("initial-account")
-            client = journey.MudClient(game.port)
-            game.clients.append(client)
-            journey.create_character(client, expected_room=None)
-            save(client)
-            client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
-            game.stop()
-            assert sql("SELECT CONCAT(pid,':',name) FROM player_data") == "1:" + journey.CHARACTER
-            game.make_overlord()
+            if options.resume:
+                previous = json.loads((runtime / "sequence.json").read_text())
+                assert previous["binary_sha256"] == evidence["binary_sha256"]
+                assert previous["compat_binary_sha256"] == evidence["compat_binary_sha256"]
+                frozen = (runtime / "authority.sql").read_bytes()
+                assert hashlib.sha256(frozen).hexdigest() == previous["authority_sha256"]
+                sql(frozen.decode())
+                evidence["completed"] = previous["completed"]
+                evidence["reused"] = list(previous["completed"])
+            else:
+                game.start("initial-account")
+                client = journey.MudClient(game.port)
+                game.clients.append(client)
+                journey.create_character(client, expected_room=None)
+                save(client)
+                client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                game.stop()
+                assert sql("SELECT CONCAT(pid,':',name) FROM player_data") == "1:" + journey.CHARACTER
+                game.make_overlord()
             cases = [
                 ("transfer", "run_named_set_transfer_journey.py", [str(runtime)]),
                 ("edit-clone", "run_named_set_edit_clone_journey.py", []),
@@ -387,6 +403,8 @@ def main():
                 ("report", "run_named_set_report_journey.py", []),
             ]
             for label, script, arguments in cases:
+                if label in evidence["completed"]:
+                    continue
                 print("Named-set case: " + label, flush=True)
                 subprocess.run([sys.executable, str(journey.ROOT / "tests/async" / script), *arguments],
                                cwd=journey.ROOT, env=environment, check=True)
@@ -399,8 +417,10 @@ def main():
             print("Complete named-set SQL sequence passed", flush=True)
         finally:
             game.stop()
-            (runtime / "authority.sql").write_bytes(dump_authority(environment))
+            frozen = dump_authority(environment)
+            (runtime / "authority.sql").write_bytes(frozen)
             (runtime / "authority.sql").chmod(0o600)
+            evidence["authority_sha256"] = hashlib.sha256(frozen).hexdigest()
             (runtime / "sequence.json").write_text(json.dumps(evidence, indent=2))
 
 
