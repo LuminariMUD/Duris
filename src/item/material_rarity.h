@@ -19,8 +19,9 @@
  * Write a read-only, static object-template composition report.  The report
  * counts one contribution for every distinct material ingredient needed by a
  * qualifying template; declared recipe quantities remain available in the
- * per-template CSV for later supply/demand modelling.
+ * per-template CSV for later supply/demand modelling. Returns false on output
+ * creation, write, or close failure; partial files must not be used as a report.
  */
-void write_material_rarity_report(const char *output_dir);
+bool write_material_rarity_report(const char *output_dir);
 
 #endif

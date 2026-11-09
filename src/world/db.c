@@ -1998,8 +1998,7 @@ P_char read_mobile(int nr, int type, bool apply_mob_gold)
 	mob->only.npc->shopkeeper_shop_id = -1;
 
 	/* insert in list */
-	mob->next = character_list;
-	character_list = mob;
+	character_list_add(mob);
 	mob->only.npc->R_num = nr;
 	shopkeeper_mob_created(mob);
 	mob->desc = NULL;
@@ -3157,6 +3156,7 @@ static P_obj instantiate_object_template_impl(const object_template &prototype, 
 		object_list->prev = obj;
 	obj->next = object_list;
 	object_list = obj;
+	remember_live_object(obj);
 	if (!obj_index[nr].keys)
 		obj_index[nr].keys = prototype.name.empty() ? nullptr :
 							      str_dup(prototype.name.c_str());
@@ -3505,7 +3505,7 @@ void reset_zone(int zone, int force_item_repop)
 {
 	const int respawn = get_property("artifact.respawn", 0);
 	int cmd_no, last_cmd = 1, last_mob_load = 0;
-	int temp, ival, configured_shop, replicated_shop;
+	int temp, configured_shop, replicated_shop;
 	P_char mob = NULL, last_mob = NULL, tmp_mob = NULL, last_mob_followable = NULL;
 	P_obj obj, obj_to;
 	char buf[MAX_STRING_LENGTH];
@@ -3594,8 +3594,7 @@ void reset_zone(int zone, int force_item_repop)
 						break;
 					}
 
-					ival = itemvalue(obj);
-					if (!ITEM_LOAD_CHECK(obj, ival, ZCMD.arg4))
+					if (!ITEM_LOAD_CHECK(obj, ZCMD.arg4))
 					{
 						extract_obj(obj);
 						last_cmd = 1;
@@ -3658,8 +3657,7 @@ void reset_zone(int zone, int force_item_repop)
 					break;
 				}
 
-				ival = itemvalue(obj);
-				if (!ITEM_LOAD_CHECK(obj, ival, ZCMD.arg4))
+				if (!ITEM_LOAD_CHECK(obj, ZCMD.arg4))
 				{
 					extract_obj(obj);
 					last_cmd = 1;
@@ -3704,9 +3702,8 @@ void reset_zone(int zone, int force_item_repop)
 						extract_obj(obj);
 						break;
 					}
-					ival = itemvalue(obj);
 					// Load all shopkeeper eq.
-					if (!ITEM_LOAD_CHECK(obj, ival, ZCMD.arg4) &&
+					if (!ITEM_LOAD_CHECK(obj, ZCMD.arg4) &&
 					    (!mob || !IS_SHOPKEEPER(mob)))
 					{
 						extract_obj(obj);
@@ -3840,8 +3837,7 @@ void reset_zone(int zone, int force_item_repop)
 								extract_obj(obj);
 								break;
 							}
-							ival = itemvalue(obj);
-							if (!ITEM_LOAD_CHECK(obj, ival, ZCMD.arg4))
+							if (!ITEM_LOAD_CHECK(obj, ZCMD.arg4))
 							{
 								extract_obj(obj);
 								last_cmd = 1;
@@ -3905,8 +3901,7 @@ void reset_zone(int zone, int force_item_repop)
 						extract_obj(obj);
 						break;
 					}
-					ival = itemvalue(obj);
-					if (!ITEM_LOAD_CHECK(obj, ival, ZCMD.arg4))
+					if (!ITEM_LOAD_CHECK(obj, ZCMD.arg4))
 					{
 						extract_obj(obj);
 						last_cmd = 1;
@@ -3958,9 +3953,8 @@ void reset_zone(int zone, int force_item_repop)
 							extract_obj(obj);
 							break;
 						}
-						ival = itemvalue(obj);
 						// Load all shopkeeper eq.
-						if (!ITEM_LOAD_CHECK(obj, ival, ZCMD.arg4) &&
+						if (!ITEM_LOAD_CHECK(obj, ZCMD.arg4) &&
 						    (!mob || !IS_SHOPKEEPER(mob)))
 						{
 							enhance_on_npc_item_reset_skipped(mob, obj);
@@ -4035,8 +4029,7 @@ void reset_zone(int zone, int force_item_repop)
 							extract_obj(obj);
 							break;
 						}
-						ival = itemvalue(obj);
-						if (!ITEM_LOAD_CHECK(obj, ival, ZCMD.arg4))
+						if (!ITEM_LOAD_CHECK(obj, ZCMD.arg4))
 						{
 							enhance_on_npc_item_reset_skipped(mob, obj);
 							extract_obj(obj);

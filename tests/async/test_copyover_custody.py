@@ -197,6 +197,7 @@ bool obj_to_char(P_obj object, P_char mob) {
  return true;
 }
 void obj_to_char_at_end(P_obj object,P_char mob) { obj_to_char(object,mob); }
+void character_list_add(P_char ch) { ch->next=character_list; character_list=ch; }
 P_obj find_live_object(P_obj expected,uint64_t uid) {
  for(P_obj object=object_list;object;object=object->next) if(object==expected && object->obj_uid==uid) return object;
  return nullptr;

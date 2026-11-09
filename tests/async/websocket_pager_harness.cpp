@@ -98,6 +98,11 @@ uint64_t latency_trace_elapsed_us(uint64_t, uint64_t)
 	return 0;
 }
 void command_latency_record(command_latency_tracker *, const command_latency_event *, uint64_t) {}
+void command_latency_event_set_get_arguments(command_latency_event *, const char *) {}
+size_t command_latency_take_bulk_items()
+{
+	return 0;
+}
 
 #include "production_pager.inc"
 
