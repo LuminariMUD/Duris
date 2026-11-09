@@ -850,3 +850,52 @@ This is an estimate, not a time limit or permission to omit required proof.
   comparison. No aggregate or whole-issue completion is claimed yet.
 - User requested focus/ETA during work; #870 remains the mission. The estimate at
   that point was3–5 additional hours, with final-suite defects the main uncertainty.
+
+
+### Current authoritative state after the live runs
+
+- Both previously active controllers are terminal. Session61334: matrix exit0,
+  revised-scenarios exit1. Session23072: named-set sequence exit1 at wear1350.
+  Do not restart either merely from an old active-session note above.
+- Assassin's complete60 openings passed: original12, cleanse-only12, revised36,
+  all listed levels/races/defenders, with the seeded ordinary-clock binaries.
+  Original/cleanse results remain valid and their sources/binaries are immutable.
+  `assassin-qualified-initial-binaries.json` and
+  `assassin-qualified-initial-results-matrix.json` preserve their exact provenance.
+- Revised scenarios reached real poison and cure, then the new SQL inspector
+  called `spell_id("SONG_DRIFTING")`, whose definition is an expression rather
+  than a numeric literal. Correct this specific poison-range lookup from the
+  actual header; keep the complete FIRST_POISON..LAST_POISON inspection and all
+  cure/coating assertions. Evidence: `assassin-scenarios-run.log`.
+- Named-set completed through wear300 (plus transfer/edit-clone/pet/shop and the
+  earlier zones). Wear1350's native transcript shows all three items removed,
+  but committed SQL kept their slots. This is **not** an inventory-cap failure.
+  Native manual `Saving` is emitted after written-revision acknowledgement
+  (`actoth.c`2037); do not weaken the fixture or merely add sleeps to hide it.
+- Actual writer failures are error1296 with confirmed rollback. A disposable clone
+  of the frozen SQL reproduced the owning operation: tree depth15,1361 item rows;
+  `DELETE FROM player_items WHERE pid=1` fails with InnoDB error193 at
+  `fk_player_item_affects`' ON DELETE CASCADE. Log:
+  `bin/tests/issue-870/named-set-sql-delete-repro.log`. Metadata adds a cascade
+  level beyond the nested item tree. This is a real MariaDB snapshot replacement
+  defect, not permission to reduce the depth or discard previously generated UIDs.
+- Next repair: inspect the existing item-row replacement path in
+  `src/player/player_snapshot_repository.c` (DELETE around824 and shared helper
+  around396), keep its transaction/owner boundary, and avoid recursive parent
+  cascades before replacement. Extend the existing executable player-save database
+  harness for a supported deep tree and associated metadata. Fix it as its own
+  focused PR after #949; format, focused DB tests, native build and review the diff.
+  Investigate whether the observed later status revision can falsely acknowledge
+  a failed inventory write; do not presume a second root cause without proof.
+- Then rebuild the ordinary server and115-row catalog variant against repaired
+  source, preserve previous hashes/reports, resume the frozen named-set fixture
+  without changing UIDs/origins/slots, and finish all remaining zones, rollback,
+  chest and report checks. Inspect any compatibility-binary mismatch guard rather
+  than editing checksum metadata to pretend an old binary was tested anew.
+- Repairing native source invalidates the revised comparison manifest. Reuse
+  immutable original/cleanse evidence, prepare the new revised binary through the
+  existing verified cache, qualify revised matrix/scenarios with true provenance,
+  then run full regression/build and disposable DB aggregates. Keep timing cases
+  away from heavy compilation. #938 and #948 remain draft; #949 is ready.
+- Current branch `branch/issue-870-mariadb-test-names`, clean and pushed; latest
+  PRs have enhancement labels. No production operation, merge or release occurred.
