@@ -46,7 +46,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-zero-crafting-xp`; its initial synchronized commit was
+`origin/branch/ival-crafting-config-bounds`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -69,7 +69,8 @@ it. The metadata/report work is published as #930; the circle repair is #935 on
 admission on `branch/ival-numeric-bounds`; #966 shares checked material quantities
 and plans crafting XP on `branch/ival-material-bounds`; #968 repairs downstream
 XP conversion checkpoints on `branch/ival-xp-conversion`; #969 honors disabled
-crafting XP on `branch/ival-zero-crafting-xp`. Branch/base
+crafting XP on `branch/ival-zero-crafting-xp`; #971 validates crafting config and
+its arithmetic on `branch/ival-crafting-config-bounds`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -1158,9 +1159,9 @@ and inputs do not change, so a new object-score corpus run is not applicable.
 
 **Continuation:** keep F08/configuration and F16 journeys open. Source tracing
 also confirmed `crafting.experience.per.ival=0` is documented to award no XP,
-but Craft/Forge still call `gain_exp(..., 0, EXP_BOON)`, whose existing minimum
-is one. Repair that separately at the crafting callers; do not change the
-general XP minimum to fix a zero crafting rate. Then resume strict configuration
+but Craft/Forge still called `gain_exp(..., 0, EXP_BOON)`, whose existing minimum
+is one. That separate caller repair is implemented in Chunk 17, preserving the
+general XP minimum. Continue with strict configuration
 parsing and the remaining consumer bounds. No database or deployment operation
 was performed.
 
@@ -1209,6 +1210,9 @@ and F05/F09/F10/F11–F16 work open as recorded above.
 ### Chunk 18 — validate crafting config and its arithmetic (F08, implemented)
 
 Branch: `branch/ival-crafting-config-bounds`, based on `branch/ival-zero-crafting-xp`.
+Published: commit `71bb02fe3`, [PR #971](https://github.com/LuminariMUD/Duris/pull/971)
+(bug label), stacked on #969. Ready for review; dedicated local/remote worktrees
+carry the committed implementation and handoff.
 
 **Outcome:** accept complete finite/ranged numeric values for crafting settings,
 retain prior/default values with diagnostics on invalid recognized entries, and
