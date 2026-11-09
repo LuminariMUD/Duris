@@ -844,116 +844,8 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
         sql("DROP DATABASE " + database, False)
 
 
-def flatfile_rejection(binary):
-    """Exercise the unsupported command on a real private flat-file authority."""
-    output = ROOT / "bin/analysis"
-    output.mkdir(parents=True, exist_ok=True)
-    (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    report = {"revision": subprocess.check_output([*GIT, "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-              "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
-              "source_diff_sha256": hashlib.sha256(subprocess.check_output([*GIT, "diff", "HEAD", "--", "src"], cwd=ROOT)).hexdigest(),
-              "backend": "flatfile-primary", "status": "running"}
-    with tempfile.TemporaryDirectory(prefix="pwipe-flatfile-", dir=ROOT / "bin/tests") as temporary:
-        root = Path(temporary)
-        state, runtime = root / "state", root / "runtime"
-        state.mkdir(mode=0o700)
-        (state / "domains").mkdir(mode=0o700)
-        (runtime / "logs/log").mkdir(parents=True)
-        (runtime / "journals/critical").mkdir(parents=True, mode=0o700)
-        journey.make_fixture(runtime)
-        journey.generate_certificate(runtime)
-        sentinel = runtime / "Players/a/keep"
-        sentinel.parent.mkdir(parents=True)
-        sentinel.write_text("preserved legacy state")
-        plain, tls, websocket = journey.available_ports()
-        env = dict(PATH=os.environ.get("PATH", "/usr/bin:/bin"), ENVIRONMENT="local",
-                   PERSISTENCE_MODE="flatfile-primary", FLATFILE_STATE_DIR=str(state),
-                   CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
-                   LISTEN_ADDRESS="127.0.0.1", DURIS_TLS_PORT=str(tls),
-                   DURIS_WEBSOCKET_PORT=str(websocket), DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1",
-                   REDIS="FALSE", CHAOS_MUD="FALSE", TELEMETRY_ENABLED="FALSE",
-                   DURIS_DISCORD_ENABLED="FALSE")
-        if "LD_LIBRARY_PATH" in os.environ:
-            env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
-        process = client = None
-        path = runtime / "server.out"
-        output_file = path.open("w")
-
-        def stop():
-            nonlocal process, client
-            if client:
-                client.close(); client = None
-            if process and process.poll() is None:
-                process.terminate()
-                try: process.wait(timeout=30)
-                except subprocess.TimeoutExpired: process.kill(); process.wait(timeout=10)
-            process = None
-
-        def boot():
-            nonlocal process
-            offset = path.stat().st_size
-            process = subprocess.Popen([str(binary), "--minimal", "-s", str(plain)], cwd=runtime,
-                                       env=env, stdout=output_file, stderr=subprocess.STDOUT)
-            deadline = time.monotonic() + 90
-            while "Entering game loop." not in path.read_text(errors="replace")[offset:]:
-                assert process.poll() is None and time.monotonic() < deadline, "flat-file boot failed"
-                time.sleep(0.1)
-
-        def save():
-            client.send("save"); client.expect("Saving " + STAFF + ".", timeout=30)
-
-        try:
-            boot()
-            client = journey.MudClient(plain)
-            journey.create_character(client, character=STAFF)
-            save()
-            client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
-            stop()
-            journey.make_overlord(state, STAFF)
-            boot()
-            client = journey.reconnect_character(plain, character=STAFF)
-            save()
-            snapshot = state / "players/1.snapshot"
-            before = snapshot.read_bytes()
-            for command in ("shutdown pwipe", "shutdown pwipe confirm yes"):
-                client.send(command); client.expect("Pwipe is unavailable in flatfile-primary mode.")
-                assert process.poll() is None and snapshot.read_bytes() == before
-                assert sentinel.read_text() == "preserved legacy state"
-            client.send("shutdown"); reply = client.expect("Syntax: shutdown")
-            assert "cancelled" not in reply
-            client.send("shutdown reboot 10 retained-countdown-control")
-            client.expect("retained-countdown-control")
-            client.send("shutdown pwipe confirm yes")
-            client.expect("Pwipe is unavailable in flatfile-primary mode.")
-            client.send("shutdown"); reply = client.expect("Syntax: shutdown")
-            assert "Scheduled reboot cancelled" in reply
-            client.send("look"); client.expect("The Regression Arena")
-            save()
-            client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
-            client.close(); client = None
-            client = journey.reconnect_character(plain, character=STAFF)
-            save(); stop(); boot()
-            client = journey.reconnect_character(plain, character=STAFF)
-            client.send("score"); client.expect("Level")
-            save(); stop()
-            assert sentinel.read_text() == "preserved legacy state"
-            logs = path.read_text(errors="replace") + journey.runtime_logs(runtime)
-            assert "Shutdown pwipe called" not in logs
-            report.update(status="passed", assertions="immediate rejection/no wipe countdown/existing reboot preserved/no file mutation/save/logout/reconnect/second boot")
-            print("Real flatfile-primary pwipe rejection, preserved snapshot/files and continued save/reconnect/second boot passed", flush=True)
-        except Exception:
-            report["status"] = "failed"
-            print(path.read_text(errors="replace")[-6000:])
-            if client: print(client.transcript.decode(errors="replace")[-4000:])
-            raise
-        finally:
-            stop(); output_file.close()
-            (output / "pwipe-runtime-flatfile.json").write_text(json.dumps(report, indent=2) + "\n")
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--flatfile-rejection", action="store_true")
     parser.add_argument("--website", type=Path, help="run the normal companion backend against the private Redis/MUD journey")
     parser.add_argument("--discard-rewards", action="store_true", help="qualify pwipe.preserve=false and refused new-character claims")
     parser.add_argument("--redis-reenable", action="store_true", help="wipe with Redis off then re-enable against retained old recovery data (requires --redis)")
@@ -961,14 +853,14 @@ if __name__ == "__main__":
     parser.add_argument("--redis", action="store_true", help="use a disposable Redis process")
     parser.add_argument("binary", nargs="?", default=str(ROOT / "bin/server/dms_new"))
     options = parser.parse_args()
-    if options.restore and (not options.redis or options.flatfile_rejection):
-        parser.error("--restore requires --redis and the direct MariaDB launcher")
-    if options.redis_reenable and (not options.redis or options.restore or options.flatfile_rejection):
-        parser.error("--redis-reenable requires --redis and the direct MariaDB launcher without --restore")
-    if options.discard_rewards and (options.restore or options.flatfile_rejection):
-        parser.error("--discard-rewards requires a MariaDB wipe journey without --restore")
+    if options.restore and not options.redis:
+        parser.error("--restore requires --redis")
+    if options.redis_reenable and (not options.redis or options.restore):
+        parser.error("--redis-reenable requires --redis without --restore")
+    if options.discard_rewards and options.restore:
+        parser.error("--discard-rewards cannot be combined with --restore")
     if options.website:
-        if not options.redis or options.restore or options.redis_reenable or options.flatfile_rejection or options.discard_rewards:
+        if not options.redis or options.restore or options.redis_reenable or options.discard_rewards:
             parser.error("--website requires the direct --redis preserving MariaDB journey")
         options.website = options.website.resolve(strict=True)
         for name in (".env", "backend/.env", "backend/.env.test"):
@@ -978,8 +870,4 @@ if __name__ == "__main__":
             if not (options.website / name).is_file():
                 parser.error("--website requires the built backend and native probe")
     binary = Path(options.binary).resolve(strict=True)
-    if options.flatfile_rejection:
-        assert not options.redis and not options.restore
-        flatfile_rejection(binary)
-    else:
-        run(binary, options.redis, options.restore, options.redis_reenable, options.discard_rewards, options.website)
+    run(binary, options.redis, options.restore, options.redis_reenable, options.discard_rewards, options.website)
