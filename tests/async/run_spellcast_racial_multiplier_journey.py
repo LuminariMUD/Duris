@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """#252: measure the racial spell-pulse factor through the real server.
 
-Each case creates a disposable human MindFlayer in the minimal flat-file world.
+Each case creates a disposable human MindFlayer in the minimal MariaDB world.
 Chaos mode is used only to put the player at level 56 (the mortal cap), which
 makes the first-circle self spell avoid the high-circle abort branch. MindFlayer
 uses the real ``will``/``do_will`` spellcast path and mana, so no spell-slot or
@@ -120,18 +120,10 @@ def configure_fixture(run_root: pathlib.Path, factor: float) -> None:
     properties.write_text(updated)
 
 
-def run_case(binary: pathlib.Path, factor: float, inspector: pathlib.Path) -> float:
-    with tempfile.TemporaryDirectory(prefix=f"duris-252-state-{factor}-") as state_tmp:
+def run_case(binary: pathlib.Path, factor: float) -> float:
+    with journey.mariadb_authority() as (environment, _):
         with tempfile.TemporaryDirectory(prefix=f"duris-252-run-{factor}-") as run_tmp:
-            state_root = pathlib.Path(state_tmp)
             run_root = pathlib.Path(run_tmp)
-            state_root.chmod(0o700)
-            (state_root / "domains").mkdir(mode=0o700)
-            subprocess.run(
-                [str(inspector), str(state_root), "seed-combat"],
-                check=True,
-                timeout=30,
-            )
             configure_fixture(run_root, factor)
             journey.generate_certificate(run_root)
             journal_root = run_root / "journals"
@@ -139,11 +131,9 @@ def run_case(binary: pathlib.Path, factor: float, inspector: pathlib.Path) -> fl
             (journal_root / "critical").mkdir(mode=0o700)
             plain_port, tls_port, websocket_port = journey.available_ports()
             output_path = run_root / "server.out"
-            environment = {
+            environment.update({
                 "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
                 "ENVIRONMENT": "local",
-                "PERSISTENCE_MODE": "flatfile-primary",
-                "FLATFILE_STATE_DIR": str(state_root),
                 "CRITICAL_COMMAND_JOURNAL_DIR": str(journal_root / "critical"),
                 "LISTEN_ADDRESS": "127.0.0.1",
                 "DURIS_TLS_PORT": str(tls_port),
@@ -157,7 +147,7 @@ def run_case(binary: pathlib.Path, factor: float, inspector: pathlib.Path) -> fl
                 # grant in update_skills(), introducing random acceleration.
                 "CHAOS_STARTER_EPIC_SKILLS": "TRUE",
                 "DURIS_NEVENT_TRACE_PLAYER": "1",
-            }
+            })
             if runtime_library_path := os.environ.get("LD_LIBRARY_PATH"):
                 environment["LD_LIBRARY_PATH"] = runtime_library_path
 
@@ -265,21 +255,18 @@ def run_case(binary: pathlib.Path, factor: float, inspector: pathlib.Path) -> fl
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", type=pathlib.Path, required=True,
-                        help="Fresh flat-file binary built from this branch")
+                        help="Fresh MariaDB binary with the ordinary 250 ms clock")
     binary = parser.parse_args().server.resolve()
     require(binary.is_file() and os.access(binary, os.X_OK),
             f"server binary is not executable: {binary}")
     ROOT.joinpath("bin/tests").mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="duris-252-inspector-", dir=ROOT / "bin/tests") as temporary:
-        inspector = pathlib.Path(temporary) / "inspector"
-        timings = {factor: run_case(binary, factor, inspector)
-                   for factor in (0.5, 1.0, 2.0)}
+    timings = {factor: run_case(binary, factor) for factor in (0.5, 1.0, 2.0)}
     require(timings[1.0] > timings[0.5] * 1.35,
             f"All=1.0 was not discriminably slower than All=0.5: {timings}")
     require(timings[2.0] > timings[1.0] * 1.35,
             f"All=2.0 was not discriminably slower than All=1.0: {timings}")
     print(
-        "[PASS] #252 real flat-file will journey: "
+        "[PASS] #252 real MariaDB will journey: "
         + ", ".join(f"All={factor:.1f} {timings[factor]:.3f}s" for factor in timings),
         flush=True,
     )
