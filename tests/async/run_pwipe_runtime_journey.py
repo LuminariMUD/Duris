@@ -345,6 +345,10 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                 sql("UPDATE account_characters SET racewar=0 WHERE pid=" + str(old_pid))
                 sql("UPDATE player_data SET level=60,highest_level=60 WHERE pid=" + str(observer_pid))
                 sql("UPDATE account_characters SET racewar=0 WHERE pid=" + str(observer_pid))
+                if website:
+                    # Signup keeps email empty until verification. Model an existing
+                    # verified donor while offline, with outbound mail still disabled.
+                    sql("UPDATE accounts SET email='" + journey.EMAIL + "' WHERE account_name='" + journey.ACCOUNT + "'")
                 sql("INSERT INTO account_banks(account_name,racewar,bank_platinum) VALUES('" + journey.ACCOUNT + "',1,9)")
                 sql("INSERT INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,opening_gold,opening_platinum) "
                     "SELECT id,0,0,0,9 FROM account_banks")
@@ -352,6 +356,17 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                 (root / "Ships/old-season").write_text("old ship")
                 (root / "Players/Backup/preserve").write_text("archive")
                 if matched_restore:
+                    # Reconcile source-bound locker recovery on its original SQL
+                    # store before freezing a portable backup. Freeze that recovered
+                    # source without generating another machine-bound shutdown image.
+                    boot()
+                    wait_old_world_checkpoint()
+                    assert not (root / "runtime/locker-shutdown/shutdown.image").exists()
+                    assert not (root / "runtime/locker-shutdown/shutdown.pending").exists()
+                    assert os.getpgid(process.pid) == process.pid
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=10)
+                    process = None
                     # All game writers are stopped; this private Redis has no external writers.
                     # Keep supplements outside the immutable SQL generation and bind their hashes.
                     import tarfile
@@ -495,6 +510,7 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                     for key in old_keys + retained_keys:
                         assert redis("SET", key, "fixture") == "OK"
                 if website:
+                    assert sql("SELECT email FROM accounts WHERE account_name='" + journey.ACCOUNT + "'") == journey.EMAIL
                     website_command("setup")
                     website_start()
                     website_probe = website_command("old", background=True)
