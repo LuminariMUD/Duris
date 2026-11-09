@@ -113,9 +113,9 @@ Each batch should produce a reviewable commit with its focused runtime proof.
   Use its local test mode; do not send synthetic events to live analytics.
 - [x] Finish `test_corpse_trap_restart_journey.py`: use SQL item/trap state and
   preserve death, nested contents and restart behavior.
-- [ ] Finish `test_information_cache_journey.py`: remove file publication and
+- [x] Finish `test_information_cache_journey.py`: remove file publication and
   select MariaDB by default; retain cache refresh and concurrent reader checks.
-- [ ] Finish `test_flight_network_journey.py`: use SQL progress, correct the
+- [x] Finish `test_flight_network_journey.py`: use SQL progress, correct the
   default and build invocation, and retain reconnect/interruption/copyover modes.
 - [ ] Finish `test_shop_multi_buy_journey.py`: retain wallet, item identities,
   parentage and cold-restart assertions. Translate any still-relevant delayed
@@ -412,12 +412,35 @@ This is an estimate, not a time limit or permission to omit required proof.
   Check `onboarding-run.log` and the final `completed` field before marking
   #890 ready. It has passed the initial seven guide routes and is continuing
   the real quest/shop/threshold matrices; it is not yet qualified.
-- Cache/flight conversion code is committed as `b53854e6b` on
-  `branch/issue-870-cache-flight-journeys`, not yet pushed/PR. It replaces the
-  file/default paths with the existing MariaDB fixture and shared build helper.
-  Both are running as `tests/async/with_disposable_mariadb.sh python3 tests/async/test_<information_cache|flight_network>_journey.py --server bin/server/dms_new`.
-  Logs: `information-cache-run.log` and `flight-network-run.log` in the task
-  evidence directory. Flight's default run starts its isolated interruption
-  child; check both processes/results before claiming the route matrix passed.
+- Cache/flight: `b53854e6b`, `branch/issue-870-cache-flight-journeys`, based
+  on #891. Both full runs passed:
+  `tests/async/with_disposable_mariadb.sh python3 tests/async/test_information_cache_journey.py --server bin/server/dms_new`;
+  `tests/async/with_disposable_mariadb.sh python3 tests/async/test_flight_network_journey.py --server bin/server/dms_new`.
+  No `--backend` override was needed: the default is now MariaDB.
+  Cache retained its active pager generation, refreshed automatically in 23.592 s,
+  served 36 pre-refresh commands/12 navigation groups and 91 concurrent score
+  samples (median 0.250 s, max 0.265 s). Flight passed all 25 stops, 39 route
+  steps, two occupied/empty-return copyovers, restricted destinations, logout,
+  crash/relogin/EXP, seven named dragon corpses, both NPC attack altitudes,
+  unlink/extraction recovery and live-passenger socket reconnect. Its isolated
+  interruption child exited successfully too. Logs: `information-cache-run.log`
+  and `flight-network-run.log`. An additional explicit `--reconnect-only` run is
+  in progress, logged to `flight-reconnect-run.log`.
+- Later code (not yet qualified): Cleric/aura `6723fd439` and `8dd6a13a7` on
+  `branch/issue-870-cleric-journeys`; telemetry `f2ddec22d` on
+  `branch/issue-870-telemetry-journey`; rent/artifact `04da5426e` on
+  `branch/issue-870-item-custody-journeys`; shop `55927b624` on
+  `branch/issue-870-shop-journey`. The dedicated worktree may be on one of these
+  stacked branches; check `git status` before editing. All code is committed.
+  Their logs are respectively `cleric-run.log`, `aura-run.log`, `telemetry-run.log`,
+  `norent-key-run.log`, `artifact-owner-run.log` and `shop-multi-buy-run.log`.
+  Aura already passed; Cleric exposed a stale retired-aura assertion, preserved
+  as `cleric-retired-aura-failure.log`. Its repaired run uses current Cleric
+  Protection/Spell Protection grants and explicitly rejects the Paladin healing
+  aura. Keep its spell, timer, copyover and unspec checks intact.
+- Telemetry's normal local-receiver run builds its existing instrumented server.
+  Run `--performance` after compilation and other load have settled; do not run
+  `--cloud`. Shop replaces the obsolete file lock with a SQL writer lock and
+  requires quit to unload the actor before releasing the pending sale.
 - Remaining batches above are still required. Aggregate regression/DB gates and
   the other standalone conversions have not been run for this work yet.
