@@ -46,7 +46,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-xp-conversion`; its initial synchronized commit was
+`origin/branch/ival-zero-crafting-xp`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -68,7 +68,8 @@ it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-duplicate-applies`; #964 repairs numeric overflow/unavailable-value
 admission on `branch/ival-numeric-bounds`; #966 shares checked material quantities
 and plans crafting XP on `branch/ival-material-bounds`; #968 repairs downstream
-XP conversion checkpoints on `branch/ival-xp-conversion`. Branch/base
+XP conversion checkpoints on `branch/ival-xp-conversion`; #969 honors disabled
+crafting XP on `branch/ival-zero-crafting-xp`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -1169,6 +1170,9 @@ current XP pipeline and its established cap policy; add no reward framework.
 ### Chunk 17 — honor disabled crafting XP (F08/F10 prerequisite, implemented)
 
 Branch: `branch/ival-zero-crafting-xp`, based on `branch/ival-xp-conversion`.
+Published: commit `8a61b065d`, [PR #969](https://github.com/LuminariMUD/Duris/pull/969)
+(bug label), stacked on #968. Ready for review; both dedicated worktrees carry
+the committed implementation and handoff.
 
 **Outcome:** a valid zero-XP crafting plan makes no XP request, as documented in
 `lib/crafting.cfg`. Both Craft and Forge use the same private award policy;
