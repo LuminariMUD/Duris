@@ -15,6 +15,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
@@ -608,6 +609,12 @@ def main():
     assert not options.scenarios_only or selected == "revised", "scenarios-only requires --variant revised"
     if options.prepare or not MANIFEST.exists():
         prepare_binaries()
+    if not os.environ.get("TEST_DB_HOST"):
+        wrapper = ROOT / "tests/async/with_disposable_mariadb.sh"
+        # Preparation stays outside the disposable DB environment so random
+        # runtime credentials do not change verified compiler-cache keys.
+        arguments = [arg for arg in sys.argv[1:] if arg != "--prepare"]
+        os.execv(wrapper, [str(wrapper), sys.executable, str(Path(__file__).resolve()), *arguments])
     manifest = json.loads(MANIFEST.read_text())
     assert manifest["original"]["src_sha256"] != manifest["cleansed"]["src_sha256"], \
         "original and cleanse-only sources are identical; rerun --prepare"
