@@ -343,6 +343,8 @@ framework, or valuation-policy change is needed.
 ### Chunk 7 — expose compiled object bindings without boot side effects (implemented)
 
 Branch: `branch/ival-object-binding-catalog`, based on `branch/ival-editor-b5-roundtrip`.
+Published: `e723e27bc`, [PR #902](https://github.com/LuminariMUD/Duris/pull/902)
+(enhancement label), stacked on #894. Ready for review.
 
 **Outcome:** make the existing 479 object-stage and 20 room-stage object bindings
 available as immutable metadata. Normal boot applies those same stage-specific
@@ -373,8 +375,7 @@ clang-format --style=file --dry-run --Werror src/specs/specs.assign.c src/specs/
 The authored-world check still covers 1,286 assignments and 12 guild-guard
 placements. Quest validation passed 317 native target/creation/payment cases
 plus history-policy scenarios. These are isolated executable checks, not live
-MUD or database qualification. Formatting/clang-tidy commit checks must finish
-before publication.
+MUD or database qualification. Formatting/clang-tidy commit checks passed.
 
 The native extraction comparison against `a8b6f2311` matched all 499 resulting
 bindings and their lookup sequence across 17 complete/partial-world cases. It
