@@ -59,6 +59,11 @@ def source_digest(root, inputs=("src",)):
     return digest.hexdigest()
 
 
+def creation_helper_path(variant, source):
+    # Historical archives retain their original protocol and module names.
+    return Path(journey.__file__) if variant == "revised" else source / "tests/async/test_flatfile_combat_journey.py"
+
+
 def prepare_binaries():
     """Build three immutable source variants with the shared verified builder."""
     directory = MANIFEST.parent
@@ -160,7 +165,8 @@ def prepare_binaries():
                             source=BASE if name != "revised" else subprocess.check_output(
                                 ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                             src_sha256=source_digest(source), runtime_sha256=runtime_sha, seed=187, seed_fixture_sha256=seed_sha,
-                            backend="mariadb-primary", pulse_usec=250000, schema_source=str(source))
+                            backend="mariadb-primary", pulse_usec=250000, schema_source=str(source),
+                            creator_sha256=hashlib.sha256(creation_helper_path(name, source).read_bytes()).hexdigest())
     result["cleansed"]["patch_sha256"] = hashlib.sha256(patch).hexdigest()
     assert result["original"]["binary_sha256"] != result["cleansed"]["binary_sha256"], \
         "original and cleanse-only binaries are identical"
@@ -420,6 +426,16 @@ def run_revised_scenarios(staff, assassin, victim, sql):
 
 def run_variant(name, binary, skip_matrix=False):
     schema_root = ROOT if name == "revised" else MANIFEST.parent / f"{name}-24a2776f1"
+    create_character = journey.create_character
+    if name != "revised":
+        # BASE keeping a new character enters the MOTD directly. Reuse that
+        # revision's actual creation exchange while keeping current transport/SQL.
+        spec = importlib.util.spec_from_file_location("assassin_creation_" + name,
+                                                    creation_helper_path(name, schema_root))
+        protocol = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(protocol)
+        assert protocol.PASSWORD == journey.PASSWORD
+        create_character = protocol.create_character
     with journey.mariadb_authority(schema_root) as (environment, sql), \
             tempfile.TemporaryDirectory(prefix="assassin-audit-", dir=ROOT / "bin/tests") as temporary:
         runtime = Path(temporary)
@@ -522,7 +538,7 @@ PH 0 0 -1
                 for character, account in ACTORS:
                     client = journey.MudClient(plain)
                     clients.append(client)
-                    journey.create_character(client, account=account, character=character,
+                    create_character(client, account=account, character=character,
                                              email=character.lower() + "@example.invalid")
                     client.send("save")
                     client.expect("Saving " + character + ".")
@@ -628,6 +644,8 @@ def main():
         assert entry.get("runtime_sha256") == runtime_sha, "runtime fixture inputs changed; rerun --prepare"
         assert entry["source"] == BASE or variant == "revised"
         assert entry["backend"] == "mariadb-primary" and entry["pulse_usec"] == 250000
+        source = ROOT if variant == "revised" else MANIFEST.parent / f"{variant}-24a2776f1"
+        assert entry["creator_sha256"] == hashlib.sha256(creation_helper_path(variant, source).read_bytes()).hexdigest()
         assert entry["src_sha256"] == source_digest(ROOT if variant == "revised" else
                                                      MANIFEST.parent / f"{variant}-24a2776f1")
         if variant == "cleansed":

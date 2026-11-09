@@ -189,7 +189,9 @@ try:
         save(client)
         if zone == 13:
             # The set's proc rejects Phantom Armor under ordinary Armor, silently.
-            deadline = time.monotonic() + 180
+            # The retained potion timer lasts three normal ticks; cold boots
+            # restart the tick phase. Wait for native expiry without clearing it.
+            deadline = time.monotonic() + 600
             while True:
                 offset = len(client.transcript)
                 client.send("quaff solution")
