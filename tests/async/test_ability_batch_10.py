@@ -45,6 +45,7 @@ FUNCTIONS += [(MAGIC, f"static int {name}(") for name in """
 FUNCTIONS += [(MAGIC, "std::string banish_facts("), (MAGIC, "std::string doom_blade_facts("),
               (MAGIC, "static float dragoon_spell_cost(P_char ch)\n{"), (MAGIC, "static std::string dragoon_cost_fact("),
               (MAGIC, "std::string dragoon_weapon_facts(")]
+FUNCTIONS += [(MAGIC, "void spell_doom_blade("), (MAGIC, "void spell_holy_blade(")]
 
 HARNESS = r'''
 #include "core/prototypes.h"
@@ -52,6 +53,7 @@ HARNESS = r'''
 #include "magic/spells.h"
 #include "abilities/abilities.h"
 #include "combat/damage.h"
+#include "net/comm.h"
 #include <cassert>
 #include <climits>
 #include <cstdio>
@@ -59,12 +61,29 @@ HARNESS = r'''
 #include <cstring>
 #include <functional>
 #include <string>
+#include <vector>
 
 void randomize(uint64_t seed);
 
 static int devotion;
 int GET_CHAR_SKILL_P(P_char, int) { return devotion; }
 float dam_factor[LAST_DF + 1];
+P_index mob_index;
+
+static bool blade_exists;
+static int loaded_vnum;
+static obj_data loaded_blade;
+static P_char blade_holder;
+static std::vector<std::string> blade_messages;
+P_obj read_object(int vnum, int) {
+    loaded_vnum = vnum;
+    loaded_blade = obj_data{};
+    return blade_exists ? &loaded_blade : nullptr;
+}
+void act(const char *text, int, P_char, P_obj, void *, int) { blade_messages.emplace_back(text); }
+bool obj_to_char(P_obj, P_char ch) { blade_holder = ch; return true; }
+void debug(const char *, ...) {}
+void logit(const char *, const char *, ...) {}
 
 FUNCTIONS
 
@@ -96,6 +115,23 @@ static char_data viewer(uint m_class, int spec, int level) {
     ch.player.level = level;
     ch.points.hit = 200;
     return ch;
+}
+
+// A blade spell makes its own weapon with its own messages, or nothing if the weapon is missing.
+static void check_blade(void (*spell)(int, P_char, char *, int, P_char, P_obj), P_char ch, int type,
+                        int vnum, size_t messages, const char *first, int timer) {
+    for (bool exists : {false, true}) {
+        blade_exists = exists;
+        loaded_vnum = 0;
+        blade_holder = nullptr;
+        blade_messages.clear();
+        spell(60, ch, nullptr, type, ch, nullptr);
+        assert(loaded_vnum == vnum);
+        assert(blade_holder == (exists ? ch : nullptr));
+        assert(blade_messages.size() == (exists ? messages : 0));
+    }
+    assert(loaded_blade.timer[0] == timer);
+    assert(blade_messages[0].find(first) != std::string::npos);
 }
 
 // The text is exactly these lines.
@@ -245,7 +281,8 @@ int main() {
                 "  That other one uses up an extra attack if any are left.\n"
                 "  An NPC target is refused.\n"
                 "  Nothing happens if you already share it or the target already has it.\n"
-                "  It ends when you use a command, or when the target walks 2 rooms away.\n");
+                "  It ends when you use a command, or when the target walks 2 rooms away.\n"
+                "  Any other travel by either of you ends it, even when traveling together.\n");
         assert(essence_of_wolf_attack_cap(9) == 0 && essence_of_wolf_attack_cap(39) == 3 &&
                essence_of_wolf_attack_cap(40) == 4);
     }
@@ -270,6 +307,17 @@ int main() {
                 ("  Chance: 40 / (target's level + 1) at your level and devotion\n"
                  "  Target over 10 levels below you: chance is 95\n" + limits).c_str());
     }
+
+    // The spell alone decides the weapon, whoever casts it and however it is invoked.
+    for (uint m_class : {CLASS_NECROMANCER, CLASS_BLIGHTER, CLASS_THEURGIST, CLASS_WARRIOR})
+        for (uint secondary : {0u, CLASS_NECROMANCER, CLASS_THEURGIST})
+            for (int type : {SPELL_TYPE_SPELL, SPELL_TYPE_POTION, SPELL_TYPE_WAND, SPELL_TYPE_STAFF,
+                             SPELL_TYPE_SCROLL}) {
+                char_data ch = viewer(m_class, 0, 50);
+                ch.player.secondary_class = secondary;
+                check_blade(spell_doom_blade, &ch, type, 352, 2, "plunges", 1800);
+                check_blade(spell_holy_blade, &ch, type, 426, 6, "As you call", 0);
+            }
     return 0;
 }
 '''
@@ -403,9 +451,10 @@ def check_sources():
         assert re.search(rf"case {constant}:\s*return {name}_facts;", registered), constant
         assert f"std::string {name}_facts(char_data *ch);" in header, name
         assert constant not in pending, constant
-    # Holy blade and doom blade share a handler.
+    # Each blade spell has its own handler, so the spell decides the weapon.
     skills = source("classes/skills.c").read_text(encoding="utf-8", errors="replace")
-    assert re.search(r'"holy blade", SPELL_HOLY_BLADE,[^;]*spell_doom_blade\)', skills)
+    assert re.search(r'"doom blade", SPELL_DOOM_BLADE,[^;]*spell_doom_blade\)', skills)
+    assert re.search(r'"holy blade", SPELL_HOLY_BLADE,[^;]*spell_holy_blade\)', skills)
     assert not [name for name in pending if name.startswith("SPELL_")]
 
 

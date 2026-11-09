@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Qualify "innate aura <keyword>" and the aura help through a disposable real server.
 
-Run once per backend. MariaDB needs TEST_DB_HOST/USER/PASSWORD for a disposable
+MariaDB needs TEST_DB_HOST/USER/PASSWORD for a disposable
 loopback database; its fixture imports the maintained help sources.
 """
 from __future__ import annotations
@@ -38,11 +38,7 @@ def run(binary, backend):
         binary = root / 'bin/server/dms'
         (root / 'help').symlink_to(ROOT / 'help', target_is_directory=True)
         with authority(backend, root) as (env, sql):
-            state = Path(env.get('FLATFILE_STATE_DIR', root / 'unused-state'))
-            if not sql:
-                (state / 'domains').mkdir(mode=0o700)
-                subprocess.run([str(journey.INSPECTOR), str(state), 'seed-combat'], check=True)
-            server = Server(binary, root, state, 'aura', env)
+            server = Server(binary, root, None, 'aura', env)
             clients = []
             try:
                 server.start()
@@ -61,10 +57,7 @@ def run(binary, backend):
                     client.close()
                 clients.clear()
                 server.stop()
-                if sql:
-                    sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{journey.CHARACTER}'")
-                else:
-                    journey.make_overlord(state, journey.CHARACTER)
+                sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{journey.CHARACTER}'")
                 server.start()
                 staff = server.client = journey.reconnect_character(server.port)
                 player = journey.reconnect_character(server.port, account=PLAYER, character=PLAYER,
@@ -133,6 +126,6 @@ def run(binary, backend):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
-    parser.add_argument('--backend', choices=('flatfile', 'mariadb'), required=True)
+    parser.add_argument('--backend', choices=("mariadb",), required=True)
     args = parser.parse_args()
     run(args.binary.resolve(), args.backend)

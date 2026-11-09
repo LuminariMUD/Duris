@@ -30,6 +30,10 @@ the ordinary save acknowledgement confirms completion. A failed save admission r
 choice. Changes apply only to future output for that recipient. Resetting one channel leaves all other
 channels intact; resetting all also restores motion-on. Authored colors remain authored in every mode.
 
+The [standalone walkthrough](../../scripts/validate_colorization_journey.py) is being
+converted to MariaDB under [#870](https://github.com/LuminariMUD/Duris/issues/870);
+its reproduction commands will be updated after runtime qualification.
+
 ## Runtime, transport and persistence evidence
 
 The production runtime harness executes actual `say`, `do_tell`, `do_reply`, `do_gcc`, `act`,

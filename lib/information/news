@@ -4,11 +4,126 @@
 &+R                   PWIPE HAPPENED &+YOCT 28TH 1800 UTC!&n
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
 &+W======================================================================&n
-&+WUpdated: November 08, 2026&n
+&+WUpdated: November 09, 2026&n
 
-Welcome back! Monk gloves spark, tougher homelands improve drops,
-bartender rewards widen, and PvP frags pay more epics.
+Welcome back! Keep your songs hidden, put heavier steel in one hand,
+and catch up on combat, travel and recovery fixes.
 Newest first; later updates replace older rules. Longer archive on web.
+
+&+R11/08/26 - 11/09/26&n &+L-&n &+YHidden songs and a firmer grip&n
+&+W----------------------------------------------------------------------&n
+
+&+CSing from the shadows&n
+&+Y-&n Bards can hide after starting Flight or Sleep and stay hidden through
+  later verses. Starting or switching songs still follows its normal
+  reveal rules; combat and song-specific reveals still apply.
+&+Y-&n Flight now aids only eligible allies. Heroism grants its singer and
+  listeners the intended hitroll and damroll while the song continues;
+  the singer's speed bonus no longer depends on listener order.
+&+Y-&n Healing songs no longer remove Silence from a highly trained
+  Disharmonist. Silence remains a way to interrupt singing.
+
+&+CWeapons, targets and walls&n
+&+Y-&n All players with Huge or larger natural bodies can wield a two-handed
+  weapon in one hand, including Wights. Ogres, Firbolgs, Minotaurs and
+  Storm Giants retain this benefit. Weight and training limits still apply;
+  Enlarge, Reduce and Titan Form do not grant it.
+&+Y-&n Whips and flails can improve their one- and two-handed flaying skills
+  in ordinary combat again. Nunchucks use bludgeon proficiency.
+&+Y-&n Join full target keywords with hyphens: &+C'get fire-sword'&n or
+  &+C'kill fire-giant'&n. &+C'get 2.fire-sword'&n selects the second match;
+  &+C'get all.fire-sword'&n takes all matches. Existing hyphenated keywords
+  still work; combined parts must be full words, without empty parts.
+&+Y-&n Combat throws, Squall, Judgement and mounted Lance Charge respect
+  protected closed doors and movement restrictions. Arrival effects that
+  kill or redirect a participant stop the remaining movement safely.
+&+Y-&n Shopkeepers react to the visible target you actually selected for
+  theft or attack, and apply their own shop's restrictions on magic.
+&+Y-&n Watching Wall lasts &+Y7 minutes 30 seconds&n. Each side gets its normal
+  &+Y1-in-3&n viewing attempt after more than &+Y10 seconds&n; hitting the wall
+  gives no extra vision. Read &+C'help watching wall'&n for who triggers it.
+
+&+CArtifacts, ships and returning to play&n
+&+Y-&n Holding two of any artifact type drops every artifact you carry or
+  wear, with &+Yno damage or feeding-time loss&n. You may hold one major,
+  one unique and one ioun; even brief overlaps can trigger the check.
+&+Y-&n Ship cargo and contraband load only after payment succeeds. Invalid
+  quantities or unrepresentable invoices are refused before spending;
+  every ship follows its normal cargo and contraband capacity limits.
+&+Y-&n Jettison commands reject zero, negative or malformed counts. With no
+  count, they still discard all cargo or contraband of the chosen kind.
+&+Y-&n Login remembers whether you died, camped, rented or made another
+  special departure, so the appropriate return behavior can run.
+  The side-switch waiting period also starts at departure after a long
+  session and remains enforced if saving that timestamp is refused.
+&+Y-&n Restoring corpses at startup no longer erases their saved belongings
+  as a side effect of replacing an old corpse. Taking a batch of items
+  from a player corpse now saves its final contents together.
+&+Y-&n Deleting a character requires its full name at the final account-menu
+  warning. Any other answer cancels; capitalization does not matter.
+&+Y-&n Cancelled character loads stay cancelled through completion.
+  Copyover also handles staged-binary replacement and rollback safely.
+
+&+CSpell recovery and bounded effects&n
+&+Y-&n &+C'tupor'&n again shows recovery seconds for each missing spell circle
+  alongside its total, including progress in the current interval.
+  Reading it during recovery no longer repeats the already-recovering line.
+&+Y-&n Low-level Displacement casts expire normally instead of accidentally
+  granting permanent Displacement. Consuming decaying flesh no longer
+  prints stray text. Further spell effects stop when an NPC has died,
+  including Acid Rain, Sandstorm, Apocalypse and affected weapon strikes.
+&+Y-&n Gate requires a named plane and a supported spell, scroll, wand or
+  staff activation. Gate and Call Lightning cannot be drunk or thrown
+  from potions; mixed drinks can still deliver their other valid effects.
+  Unsupported item activations now explain the refusal.
+&+Y-&n Insects summons stay within levels &+Y1-30&n. Domination charm, holy-water
+  healing and damage, vampiric healing, creature rolls and several item
+  effects now obey their stated limits without extra random rerolls.
+&+Y-&n Listen's estimated counts and bartender kill quotas also keep their
+  intended bounds.
+
+&+CMore from the November 8 ability update&n
+&+Y-&n Earthen Rain and Earthen Grasp use the ordinary Elemental Power
+  damage bonus once; their redundant extra scaling has been removed.
+&+Y-&n Shadow Shield now reduces the remaining eligible melee damage by
+  &+Y30% instead of 45%&n, after the flat deduction when more than 10 remains.
+  Arcane Block's reduction roll reaches &+Y40% at skill 100&n. Low-level
+  paladin spell-protection auras cannot increase incoming damage.
+&+Y-&n Pet finishing blows use the owner's level, Luck, side and Hardcore
+  treasure bonuses. Drops remain in the kill's zone, including when the
+  owner is elsewhere; material rewards also use the owner's attributes.
+&+Y-&n Calming consistently stops working in enemy hometowns. Permanent
+  racial Blur survives temporary Blur expiring and ordinary dispelling.
+&+Y-&n Refused Throw Lightning outside combat, underground Invisibility in
+  the wrong terrain, already-active Strength or Enlarge, and an Orc Horde
+  call off the prime plane or on an ocean no longer spend an innate use.
+&+Y-&n Leap follows innate unlocks: Thri-kreen at level &+Y21&n, Harpies and
+  Gargoyles at level &+Y1&n. Bash checks the target's quadruped body when
+  applying size restrictions. Summoned skeleton mounts retain the
+  intended &+Y15 HP per summon factor&n when their health is recalculated.
+&+Y-&n Battlefield Aid lets a successful bandage stabilize a dying target
+  still at zero or negative HP to &+Y1 HP&n; normal bandaging costs apply.
+&+Y-&n Cosmic Vacuum and Supernova's secondary effect use their full
+  &+Y50-80%&n success range, &+Y70%&n at equal levels. Conjured elementals,
+  greater demons and mirror images get their full charm duration before
+  the existing &+Y2-11 real-minute&n death grace; permanent charms remain.
+&+Y-&n A disastrous Ogre Roar applies both penalties to the ogre. Sanguinis
+  Ignis activation uses the defending Dragoon's Power and spell knowledge.
+&+Y-&n Ethereal Form refreshes its caster consistently. Protection appears
+  once in &+C'score'&n. Ability details clarify elemental-shield retaliation,
+  summon lifetimes and the Flame Reaver's two-handed flaying delay.
+
+&+CClearer information and help&n
+&+Y-&n &+C'race innates <race>'&n and &+C'class innates <class>'&n show nonzero
+  passive melee and archery damage modifiers. Specializations use their
+  base class, and multiclass uses the higher class modifier. The bonuses
+  multiply; read &+C'help attack damage modifiers'&n for exceptions.
+&+Y-&n The race roster keeps its racial colors in a clearer layout.
+  &+C'where'&n shows its player headers, sorts correctly and bounds long lists.
+&+Y-&n New help covers &+C'dauntless'&n, &+C'race size'&n, &+C'drow shrug'&n,
+  &+C'max_dex'&n, &+C'attacks'&n, &+C'pantherskin'&n, &+C'tent'&n and &+C'darkfall'&n.
+  Searches for &+C'spell frost magus'&n, &+C'sorc spells'&n, &+C'mix poison'&n,
+  &+C'rapier dirk'&n and &+C'namesets'&n lead to the matching help.
 
 &+R11/07/26 - 11/08/26&n &+L-&n &+YSparks, spoils and sharper skills&n
 &+W----------------------------------------------------------------------&n

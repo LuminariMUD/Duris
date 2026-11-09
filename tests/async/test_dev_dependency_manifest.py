@@ -29,25 +29,17 @@ for package in (
     "valgrind",
     "gdb",
     "clang-format",
+    "libmariadb-dev-compat",
+    "mariadb-client",
+    "mariadb-server",
 ):
     assert re.search(rf"(^|[,|])\s*{re.escape(package)}\s*(?=[,|]|$)", depends), (
         f"{package} is not a direct developer dependency"
     )
 
-# The runtime harnesses call mysql_config directly. Preserve an installed MySQL
-# development family while allowing MariaDB's compatibility package to provide
-# the same command and include layout.
-assert "default-libmysqlclient-dev | libmariadb-dev-compat" in depends, (
-    "missing MySQL/MariaDB development package alternatives"
-)
-
-# Preserve an already-installed database family for the client and server
-# while using the distribution defaults on a fresh host.
-for alternatives in (
-    "default-mysql-client | mariadb-client",
-    "default-mysql-server | mariadb-server",
-):
-    assert alternatives in depends, f"missing database alternatives: {alternatives}"
+# MariaDB is the only supported backend and the isolated fixtures run its own
+# tools, so a MySQL package must not be able to satisfy these dependencies.
+assert "mysql" not in depends, "MySQL packages must not satisfy the database dependencies"
 
 # equivs builds this metapackage; depending on it would not solve bootstrap.
 assert not re.search(r"(^|[,|])\s*equivs\s*(?=[,|]|$)", depends)
@@ -63,6 +55,8 @@ assert workflow.index("sudo apt-get update") < workflow.index("sudo apt-get inst
 assert "make build-deps-package" in workflow
 assert "./bin/packages/duris-build-deps_1.0_all.deb" in workflow
 assert "sudo apt install equivs dos2unix" not in workflow
+# A missing tool must be reported before the expensive build and test phase.
+assert workflow.index("mariadb-install-db") < workflow.index("make test-all")
 
 assert "dos2unix" in (ROOT / "areas/make_lookup").read_text()
 assert "python3" in (ROOT / "docs/guides/TESTING.md").read_text()
