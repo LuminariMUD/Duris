@@ -2,7 +2,7 @@
 
 Status: built and tested. All four stacked pull requests are open for review.
 Date: 2026-11-09.
-Source inspected: `master` at `fa173cbad`, then merged up to `c60ae726a`.
+Source inspected: `master` at `fa173cbad`, then merged up to `ddbcaa90a`.
 
 ## Progress
 
