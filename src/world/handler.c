@@ -50,7 +50,6 @@
 #include "core/mm.h"
 #include "classes/necromancy.h"
 #include "persistence/persistence_checkpoint.h"
-#include "persistence/persistence_mode.h"
 #include "world/world_recovery_pipeline.h"
 #include "ships/ships.h"
 #include "magic/spells.h"

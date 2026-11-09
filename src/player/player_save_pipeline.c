@@ -25,7 +25,6 @@
 #include "economy/collector_death_enrollment.h"
 #include "economy/currency_value.h"
 #include "economy/divine_boon_runtime.h"
-#include "flatfile/flatfile_player_repository.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_repository.h"

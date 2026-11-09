@@ -99,14 +99,6 @@ void dupe_log_item(const char *event, uint64_t item_uid, int32_t vnum,
 	write_line(dupe_log_path, event, item_uid, vnum, "lost_by", lost_by, "held_by", held_by);
 }
 
-void item_claim_log_item(uint64_t item_uid, int32_t vnum, const item_owner_identity &old_owner,
-			 const item_owner_identity &new_owner)
-{
-	std::lock_guard<std::mutex> lock(dupe_log_mutex);
-	write_line(ITEM_CLAIM_LOG_PATH, "claimed", item_uid, vnum, "from", old_owner, "to",
-		   new_owner);
-}
-
 void dupe_log_set_path_for_tests(const char *path)
 {
 	std::lock_guard<std::mutex> lock(dupe_log_mutex);

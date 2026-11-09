@@ -18,7 +18,6 @@
 
 #include "combat/frag_cap_config.h"
 #include "combat/frag_cap_repository.h"
-#include "persistence/persistence_mode.h"
 #include "core/config.h"
 #include "core/defines.h"
 #include "persistence/persistence_observability.h"
@@ -1098,30 +1097,13 @@ maintenance_result maintenance_repository_execute(const maintenance_request &req
 	    !before_deadline(request))
 		return failure(request, maintenance_outcome::permanent_failure, EINVAL);
 	// Trophy totals are owned by player checkpoints. Retain the retired job ID
-	// as a no-op, without acquiring a database connection on either backend.
+	// as a no-op, without acquiring a database connection.
 	if (request.job_id == maintenance_job_id::zone_trophy)
 		return failure(request, maintenance_outcome::complete, 0);
 	if (request.job_id == maintenance_job_id::web_status)
 		return execute_web_status(request);
 	if (request.job_id == maintenance_job_id::address_retention)
 		expire_log_files();
-	if (request.job_id == maintenance_job_id::level_cap &&
-	    persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		if (request.value_count != 1 || request.values[0] <= 0 ||
-		    request.values[0] > INT64_MAX / 1000000)
-			return failure(request, maintenance_outcome::permanent_failure, EINVAL);
-		const char *root = persistence_mode_flatfile_root();
-		const auto result = frag_cap_flatfile_tick(
-			root ? root : "", request.values[0] * 1000000, frag_cap_config_policy());
-		return failure(request,
-			       result == frag_cap_store_result::ok ?
-				       maintenance_outcome::complete :
-			       result == frag_cap_store_result::io_error ?
-				       maintenance_outcome::retryable_failure :
-				       maintenance_outcome::permanent_failure,
-			       result == frag_cap_store_result::ok ? 0 : EIO);
-	}
 	MYSQL *connection = sql_pool_acquire();
 	if (!connection)
 		return failure(request, maintenance_outcome::retryable_failure, EAGAIN);

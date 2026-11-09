@@ -64,7 +64,6 @@
 #include "economy/collector_transaction.h"
 #include "economy/boon_reward_transaction.h"
 #include "core/files.h"
-#include "flatfile/flatfile_identity_adapter.h"
 #include "net/gmcp.h"
 #include "guild/guildhall.h"
 #include "world/hardcore_config.h"

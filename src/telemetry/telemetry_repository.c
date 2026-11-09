@@ -15,7 +15,6 @@
 #include "telemetry/telemetry_repository.h"
 #include "telemetry/telemetry_failure.h"
 #include "telemetry/telemetry_schema_private.h"
-#include "persistence/persistence_mode.h"
 #include "sql/sql_telemetry_connection.h"
 
 #include <algorithm>
@@ -1253,8 +1252,7 @@ telemetry_repository_outcome telemetry_repository_init(telemetry_repository_conf
 		health.backend = config.backend;
 		health.state = telemetry_health_state::starting;
 	}
-	const bool disabled = config.backend == telemetry_storage_backend::flatfile_disabled ||
-			      persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY;
+	const bool disabled = config.backend == telemetry_storage_backend::flatfile_disabled;
 	if (disabled)
 	{
 		std::lock_guard<std::mutex> lock(health_mutex);

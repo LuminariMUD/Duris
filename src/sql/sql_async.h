@@ -30,8 +30,7 @@
  * the persistence writer as an `sql` job, in capture order with the saves around it.
  * Each job runs in one transaction. A read is queued the same way, so it sees every
  * write queued before it; its rows come back to the game thread on a later pulse
- * (sql_async_pulse()). Without a database (the flat-file backend) nothing is queued
- * and the calls return false.
+ * (sql_async_pulse()).
  *
  * During boot the writer is not running yet. Until sql_async_boot_done() a write is
  * applied before its call returns, on the game thread's connection, and returns false

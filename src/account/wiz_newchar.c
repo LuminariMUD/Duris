@@ -374,8 +374,7 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	// The first snapshot owns the durable membership. Flat-file baseline
-	// acknowledgment may already have published its in-memory entry.
+	// The first snapshot owns the durable membership.
 	if (!account_publish_kept_character(
 		    ch->desc->account, account_kept_character_projection(newch), GET_NAME(newch)))
 		logit(LOG_DEBUG, "wiz_newchar: committed account cache requires reload pid=%d",

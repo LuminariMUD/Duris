@@ -20,7 +20,6 @@
 #include "world/epic.h"
 #include "persistence/persistence_checkpoint.h"
 #include "guild/artifact_guild_transaction.h"
-#include "persistence/persistence_mode.h"
 #include "redis/redis_report_cache.h"
 #include "economy/divine_boon_delivery.h"
 #include "guild/artifact_guild_state.h"
@@ -111,12 +110,10 @@ bool zone_touch_transaction_busy(uint64_t stone_uid, uint32_t zone_number)
 
 bool zone_touch_transaction_submit(const zone_touch_payload &payload)
 {
-	// Flatfile has no atomic world/zone repository; never queue partial rewards there.
 	// Completed receipts await reconnect; they no longer occupy transaction slots.
 	const auto in_flight = std::count_if(pending.begin(), pending.end(), [](const auto &item)
 					     { return !item.second.committed; });
 	if (payload.group_size > ZONE_TOUCH_MAX_PARTICIPANTS ||
-	    (!persistence_mode_requires_mysql() && !payload.prepared_delivery) ||
 	    static_cast<size_t>(in_flight) >= ZONE_TOUCH_PENDING_MAX ||
 	    (payload.stone_uid &&
 	     zone_touch_transaction_busy(payload.stone_uid, payload.zone_number)))

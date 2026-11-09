@@ -26,7 +26,6 @@
 #include "classes/salchemist.h"
 #include "world/specs.prototypes.h"
 #include "sql/sql.h"
-#include "persistence/persistence_mode.h"
 #include "economy/shop_trade_runtime.h"
 #include "economy/shop_trade_transaction.h"
 #include <cerrno>
@@ -135,9 +134,6 @@ static int64_t shop_wallet_value(P_char ch)
 	       1000LL * GET_PLATINUM(ch);
 }
 
-static void shop_trade_completion(P_char ch, bool committed, const shop_trade_result &result,
-				  unsigned int error_code, const shop_trade_payload &payload);
-
 static void shop_purchase_report(P_char ch, const produced_purchase_batch &batch, int delivered)
 {
 	if (!ch || batch.requested <= 1)
@@ -241,8 +237,7 @@ static void shop_produced_completion(P_char ch, bool committed, const shop_trade
 		ch->desc->prompt_mode = TRUE;
 	if (!committed)
 	{
-		// Flat-file payment was never charged. Grant failures settle here after
-		// the grant queue relinquishes its objects.
+		// Grant failures settle here after the grant queue relinquishes its objects.
 		if (ch && !payload.multi_root)
 			shop_creation_refund(ch, batch);
 		shop_discard_produced(batch);
@@ -317,72 +312,6 @@ static void shop_creation_payment_completion(P_char ch, bool committed,
 		found->second.debited = committed;
 }
 
-static bool shop_produced_prepare(P_char ch, const shop_trade_payload &payload,
-				  const shop_trade_result &result)
-{
-	auto found = produced_purchase_batches.find(payload.player_pid);
-	if (found == produced_purchase_batches.end())
-		return false;
-	const produced_purchase_batch &batch = found->second;
-	P_obj destination = batch.container_item_uid ?
-				    shop_trade_find_object(batch.container_item_uid) :
-				    nullptr;
-	if (batch.container_item_uid && (!destination || !OBJ_CARRIED_BY(destination, ch) ||
-					 GET_ITEM_TYPE(destination) != ITEM_CONTAINER))
-		return false;
-	std::vector<P_obj> roots;
-	try
-	{
-		roots.reserve(batch.item_uids.size());
-		bool detached = true, published = true;
-		for (uint64_t uid : batch.item_uids)
-		{
-			P_obj object = shop_trade_find_object(uid);
-			roots.push_back(object);
-			detached = detached && object && OBJ_NOWHERE(object);
-			published = published && object &&
-				    (destination ? OBJ_INSIDE_OBJ(object, destination) :
-						   OBJ_CARRIED_BY(object, ch));
-		}
-		if ((!detached && !published) ||
-		    !shop_trade_runtime_batch_matches_payload(roots.data(), roots.size(), payload))
-		{
-			item_transfer_payload transfer = {};
-			transfer.from_owner = { item_owner_type::system, 0, 0 };
-			transfer.to_owner = { item_owner_type::player, payload.player_pid, 0 };
-			transfer.reason = item_transfer_reason::creation;
-			transfer.multi_root = true;
-			transfer.item_count = payload.item_count;
-			transfer.item_blob_size = payload.item_blob_size;
-			std::copy_n(payload.item_blob.begin(), payload.item_blob_size,
-				    transfer.item_blob.begin());
-			for (size_t index = 0; index < payload.item_count; ++index)
-			{
-				const auto &item = payload.items[index];
-				transfer.items[index] = { item.item_uid,
-							  item.root_item_uid,
-							  item.parent_item_uid,
-							  item.expected_item_revision,
-							  item.vnum,
-							  item.expected_state };
-			}
-			item_transfer_result created = {};
-			created.root_item_uid = item_transfer_result_root(transfer);
-			created.item_count = result.item_count;
-			created.from_owner_revision = result.counterparty_owner_revision;
-			created.to_owner_revision = result.player_owner_revision;
-			roots.clear();
-			if (!item_creation_grant_reconstruct(transfer, created, &roots))
-				return false;
-		}
-		return true;
-	}
-	catch (const std::bad_alloc &)
-	{
-		return false;
-	}
-}
-
 static bool shop_begin_produced(P_char ch, P_char keeper, P_obj stock, P_obj destination,
 				uint32_t shop_id, int requested, int64_t price)
 {
@@ -420,39 +349,26 @@ static bool shop_begin_produced(P_char ch, P_char keeper, P_obj stock, P_obj des
 	produced_purchase_batch &pending = produced_purchase_batches.at(pid);
 	const int64_t total = pending.price * static_cast<int64_t>(roots.size());
 	bool submitted = false;
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+	const uint64_t first_uid = pending.item_uids.front();
+	if (total == 0 ||
+	    (currency_transaction_submit_wallet_value(
+		     ch, -total, currency_reason_type::wallet_spend, shop_id,
+		     critical_source_site::command, critical_deadline_class::interactive,
+		     shop_creation_payment_completion, &first_uid, sizeof(first_uid)) &&
+	     pending.debited))
 	{
-		shop_trade_payload payload = {};
-		submitted = shop_trade_runtime_build_produced_batch(ch, roots.data(), roots.size(),
-								    stock, destination, shop_id,
-								    total, &payload) ==
-				    shop_trade_payload_build_result::ok &&
-			    shop_trade_transaction_submit(ch, payload, shop_trade_completion,
-							  shop_produced_prepare);
-	}
-	else
-	{
-		const uint64_t first_uid = pending.item_uids.front();
-		if (total == 0 ||
-		    (currency_transaction_submit_wallet_value(
-			     ch, -total, currency_reason_type::wallet_spend, shop_id,
-			     critical_source_site::command, critical_deadline_class::interactive,
-			     shop_creation_payment_completion, &first_uid, sizeof(first_uid)) &&
-		     pending.debited))
+		if (total > 0)
 		{
-			if (total > 0)
-			{
-				ADD_MONEY(keeper, total);
-				pending.keeper_credited = true;
-				writeShopKeeper(keeper, static_cast<int>(shop_id));
-			}
-			submitted = item_creation_grant_submit_batch_to_player(
-				ch, roots.data(), roots.size(), ch, destination,
-				shop_creation_grant_completion, &first_uid, sizeof(first_uid));
+			ADD_MONEY(keeper, total);
+			pending.keeper_credited = true;
+			writeShopKeeper(keeper, static_cast<int>(shop_id));
 		}
-		if (!submitted)
-			shop_creation_refund(ch, pending);
+		submitted = item_creation_grant_submit_batch_to_player(
+			ch, roots.data(), roots.size(), ch, destination,
+			shop_creation_grant_completion, &first_uid, sizeof(first_uid));
 	}
+	if (!submitted)
+		shop_creation_refund(ch, pending);
 	if (!submitted)
 	{
 		shop_discard_produced(pending);
@@ -462,173 +378,6 @@ static bool shop_begin_produced(P_char ch, P_char keeper, P_obj stock, P_obj des
 	}
 	send_to_char("Your purchase is being processed.\r\n", ch);
 	return true;
-}
-
-static bool shop_trade_submit_invalid_cleanup(P_char ch, P_char keeper, P_obj object,
-					      uint32_t shop_id)
-{
-	if (!ch || !keeper || !object || !OBJ_CARRIED_BY(object, keeper))
-		return false;
-	shop_trade_payload payload = {};
-	return shop_trade_runtime_build_payload(ch, object, NULL, NULL, shop_id,
-						shop_trade_action::discard_invalid, 0,
-						&payload) == shop_trade_payload_build_result::ok &&
-	       shop_trade_transaction_submit(ch, payload, shop_trade_completion);
-}
-
-static bool shop_trade_route_invalid_cleanup(P_char ch, P_char keeper, P_obj object,
-					     uint32_t shop_id)
-{
-	if (persistence_mode_get() != PERSISTENCE_MODE_FLATFILE_PRIMARY)
-		return false;
-	if (shop_trade_transaction_player_busy(ch))
-		send_to_char("Your previous shop trade is still being processed.\r\n", ch);
-	else if (shop_trade_submit_invalid_cleanup(ch, keeper, object, shop_id))
-		send_to_char("The shopkeeper is removing invalid stock.\r\n", ch);
-	else
-		send_to_char("The invalid stock could not be removed safely.\r\n", ch);
-	return true;
-}
-
-static void shop_trade_completion(P_char ch, bool committed, const shop_trade_result &result,
-				  unsigned int error_code, const shop_trade_payload &payload)
-{
-	// Durable delivery owns the absent actor's copies even if optional cache
-	// publication failed. Leaving those bodies live would duplicate them on load.
-	if (!ch && result.shop_revision && result.item_count)
-		committed = true;
-	if (payload.multi_root)
-	{
-		shop_produced_completion(ch, committed, payload);
-		return;
-	}
-	P_obj object = shop_trade_find_object(payload.selected_item_uid);
-	P_char keeper = shop_trade_find_keeper(payload.shop_id);
-	P_obj destination = payload.target_parent_item_uid ?
-				    shop_trade_find_object(payload.target_parent_item_uid) :
-				    NULL;
-	const bool produced = payload.action == shop_trade_action::buy_produced;
-	const bool buying = payload.action == shop_trade_action::buy_existing || produced;
-	const bool selling = payload.action == shop_trade_action::sell_store ||
-			     payload.action == shop_trade_action::sell_destroy;
-	const bool cleanup = payload.action == shop_trade_action::discard_invalid;
-	const bool correct_location = object &&
-				      (payload.action != shop_trade_action::sell_store || keeper) &&
-				      ((produced && keeper && OBJ_NOWHERE(object) &&
-					(!payload.target_parent_item_uid || !ch ||
-					 (destination && OBJ_CARRIED_BY(destination, ch) &&
-					  GET_ITEM_TYPE(destination) == ITEM_CONTAINER))) ||
-				       (!produced && buying && keeper && OBJ_CARRIED(object) &&
-					object->loc.carrying == keeper) ||
-				       (cleanup && keeper && OBJ_CARRIED_BY(object, keeper)) ||
-				       (selling && OBJ_NOWHERE(object)));
-	const bool exact_object = correct_location &&
-				  shop_trade_runtime_object_matches_payload(object, payload);
-	if (!committed || !exact_object)
-	{
-		const bool durable_commit = committed ||
-					    (result.shop_revision && result.item_count);
-		if (durable_commit)
-		{
-			statuslog(
-				56,
-				"&+RALERT&n: committed shop trade could not publish live object [%llu] at shop [%u]",
-				static_cast<unsigned long long>(payload.selected_item_uid),
-				payload.shop_id);
-			persistence_alert(AVATAR, "shop_trade", "redacted", "none", "none",
-					  "live_publish_failed", NULL);
-		}
-		else if (produced && object && OBJ_NOWHERE(object) &&
-			 shop_trade_runtime_object_matches_payload(object, payload))
-			extract_obj(object, FALSE);
-		if (!ch)
-			return;
-		if (!durable_commit && error_code == ENOSPC)
-			send_to_char("You don't have enough money for that purchase.\r\n", ch);
-		else if (!durable_commit && error_code == ESTALE)
-			send_to_char("That shop trade changed before it could complete.\r\n", ch);
-		else if (!durable_commit)
-			send_to_char("The shop could not complete that trade.\r\n", ch);
-		return;
-	}
-
-	char message[MAX_STRING_LENGTH];
-	if (cleanup)
-	{
-		wizlog(56, "(%s) shopkeeper durably destroyed invalid stock (%s %d).",
-		       GET_NAME(keeper), object->short_description, OBJ_VNUM(object));
-		extract_obj(object, TRUE);
-		send_to_char("The shopkeeper removed invalid stock; please try again.\r\n", ch);
-		return;
-	}
-	if (buying)
-	{
-		if (ch)
-			act("$n buys $p.", FALSE, ch, object, 0, TO_ROOM);
-		if (keeper)
-		{
-			if (ch)
-			{
-				checked_substitute(message, MAX_STRING_LENGTH,
-						   shop_index[payload.shop_id].message_buy,
-						   GET_NAME(ch), coin_stringv(payload.price));
-				do_tell(keeper, message, 0);
-			}
-			ADD_MONEY(keeper, payload.price);
-		}
-		if (!produced)
-			obj_from_char(object);
-		if (!ch)
-		{
-			extract_obj(object, FALSE); // the committed delivery owns this UID
-			return;
-		}
-		SET_BIT(object->extra2_flags, ITEM2_STOREITEM);
-		if (!obj_to_char(object, ch))
-			return;
-		if (payload.target_parent_item_uid)
-		{
-			obj_from_char(object);
-			obj_to_obj(object, destination);
-		}
-		snprintf(message, MAX_STRING_LENGTH, "You now have %s.\r\n",
-			 object->short_description);
-		send_to_char(message, ch);
-		return;
-	}
-
-	if (ch)
-	{
-		act("$n sells $p.", FALSE, ch, object, 0, TO_ROOM);
-		sql_shop_sell(ch, object, payload.price);
-	}
-	if (keeper)
-	{
-		if (ch)
-		{
-			checked_substitute(message, MAX_STRING_LENGTH,
-					   shop_index[payload.shop_id].message_sell, GET_NAME(ch),
-					   coin_stringv(payload.price));
-			do_tell(keeper, message, 0);
-		}
-		SUB_MONEY(keeper, payload.price, 0);
-	}
-	if (ch)
-	{
-		snprintf(message, MAX_STRING_LENGTH, "The shopkeeper gives you %s.\r\n",
-			 coin_stringv(payload.price));
-		send_to_char(message, ch);
-	}
-	// The sale took the item out of the seller's inventory when it was submitted.
-	if (payload.action == shop_trade_action::sell_destroy)
-		extract_obj(object, TRUE);
-	else
-	{
-		obj_to_char(object, keeper);
-		snprintf(message, MAX_STRING_LENGTH, "The shopkeeper now has %s.\r\n",
-			 object->short_description);
-		send_to_char(message, ch);
-	}
 }
 
 void push(struct stack_data *stack, int pushval)
@@ -920,15 +669,8 @@ P_obj get_purchase_obj(P_char ch, char *arg, P_char keeper, int shop_nr, int msg
 			}
 			return NULL;
 		}
-		if ((IS_ARTIFACT(obj) || isname("encrust", obj->name)) &&
-		    shop_trade_route_invalid_cleanup(ch, keeper, obj,
-						     static_cast<uint32_t>(shop_nr)))
-			return NULL;
 		if (obj->cost <= 0)
 		{
-			if (shop_trade_route_invalid_cleanup(ch, keeper, obj,
-							     static_cast<uint32_t>(shop_nr)))
-				return NULL;
 			extract_obj(obj, TRUE); // Shopkeeper with cost 0 arti?
 			obj = NULL;
 		}
@@ -1031,12 +773,6 @@ void shopping_buy(char *arg, P_char ch, P_char keeper, int shop_nr)
 	{
 		return;
 	}
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY &&
-	    shop_trade_transaction_player_busy(ch))
-	{
-		send_to_char("Your previous shop trade is still being processed.\r\n", ch);
-		return;
-	}
 
 	arg = one_argument(arg, argm);
 	if (!(*argm))
@@ -1057,10 +793,6 @@ void shopping_buy(char *arg, P_char ch, P_char keeper, int shop_nr)
 			{
 				if (IS_ARTIFACT(temp1) || isname("encrust", temp1->name))
 				{
-					if (shop_trade_route_invalid_cleanup(
-						    ch, keeper, temp1,
-						    static_cast<uint32_t>(shop_nr)))
-						return;
 					wizlog(56, "(%s) shopkeeper just destroyed (%s).",
 					       GET_NAME(keeper), (temp1->short_description));
 					extract_obj(temp1, TRUE); // Bye arti.
@@ -1090,15 +822,9 @@ void shopping_buy(char *arg, P_char ch, P_char keeper, int shop_nr)
 		checked_substitute(Gbuf1, MAX_STRING_LENGTH, shop_index[shop_nr].no_such_item1,
 				   GET_NAME(ch));
 		do_tell(keeper, Gbuf1, 0);
-		if (shop_trade_route_invalid_cleanup(ch, keeper, temp1,
-						     static_cast<uint32_t>(shop_nr)))
-			return;
 		extract_obj(temp1, TRUE); // Arti with no cost?
 		return;
 	}
-	if ((IS_ARTIFACT(temp1) || isname("encrust", temp1->name)) &&
-	    shop_trade_route_invalid_cleanup(ch, keeper, temp1, static_cast<uint32_t>(shop_nr)))
-		return;
 
 	cost_factor = (float)cha_app[STAT_INDEX(MAX(100, GET_C_CHA(ch)))].modifier;
 	if (GET_RACE(ch) != GET_RACE(keeper))
@@ -1165,8 +891,7 @@ void shopping_buy(char *arg, P_char ch, P_char keeper, int shop_nr)
 
 	if ((shop_wallet_value(ch) < sale) && !IS_TRUSTED(ch))
 	{
-		if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY ||
-		    produced_purchase)
+		if (produced_purchase)
 		{
 			checked_substitute(Gbuf1, MAX_STRING_LENGTH,
 					   shop_index[shop_nr].missing_cash2, GET_NAME(ch));
@@ -1191,22 +916,6 @@ void shopping_buy(char *arg, P_char ch, P_char keeper, int shop_nr)
 			send_to_char(
 				"The shop could not begin that purchase; nothing was charged.\r\n",
 				ch);
-		return;
-	}
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		shop_trade_payload payload = {};
-		if (shop_trade_runtime_build_payload(ch, temp1, nullptr, nullptr, shop_nr,
-						     shop_trade_action::buy_existing,
-						     IS_TRUSTED(ch) ? 0 : sale, &payload) !=
-			    shop_trade_payload_build_result::ok ||
-		    !shop_trade_transaction_submit(ch, payload, shop_trade_completion))
-		{
-			send_to_char("The shop transaction service is busy. Please try again.\r\n",
-				     ch);
-			return;
-		}
-		send_to_char("Your purchase is being processed.\r\n", ch);
 		return;
 	}
 	if (!IS_TRUSTED(ch))
@@ -1256,12 +965,6 @@ void shopping_sell(char *arg, P_char ch, P_char keeper, int shop_nr)
 
 	if (!(is_ok(keeper, ch, shop_nr)))
 		return;
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY &&
-	    shop_trade_transaction_player_busy(ch))
-	{
-		send_to_char("Your previous shop trade is still being processed.\r\n", ch);
-		return;
-	}
 
 	one_argument(arg, argm);
 
@@ -1360,25 +1063,6 @@ void shopping_sell(char *arg, P_char ch, P_char keeper, int shop_nr)
 			Gbuf1, MAX_STRING_LENGTH,
 			"The shopkeeper says 'This item is rather common, you won't get as much for it.'\r\n");
 		send_to_char(Gbuf1, ch);
-	}
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		const shop_trade_action action = (get_obj_in_list(argm, keeper->carrying) ||
-						  GET_ITEM_TYPE(temp1) == ITEM_TRASH) ?
-							 shop_trade_action::sell_destroy :
-							 shop_trade_action::sell_store;
-		shop_trade_payload payload = {};
-		if (shop_trade_runtime_build_payload(ch, temp1, NULL, NULL, shop_nr, action, sale,
-						     &payload) !=
-			    shop_trade_payload_build_result::ok ||
-		    !shop_trade_transaction_submit(ch, payload, shop_trade_completion))
-		{
-			send_to_char("The shop transaction service is busy. Please try again.\r\n",
-				     ch);
-			return;
-		}
-		send_to_char("Your sale is being processed.\r\n", ch);
-		return;
 	}
 
 	act("$n sells $p.", FALSE, ch, temp1, 0, TO_ROOM);
@@ -1571,15 +1255,9 @@ void shopping_peruse(char *arg, P_char ch, P_char keeper, int shop_nr)
 		checked_substitute(Gbuf1, MAX_STRING_LENGTH, shop_index[shop_nr].no_such_item1,
 				   GET_NAME(ch));
 		do_tell(keeper, Gbuf1, 0);
-		if (shop_trade_route_invalid_cleanup(ch, keeper, temp1,
-						     static_cast<uint32_t>(shop_nr)))
-			return;
 		extract_obj(temp1, TRUE); // Arti with no cost?
 		return;
 	}
-	if ((IS_ARTIFACT(temp1) || isname("encrust", temp1->name)) &&
-	    shop_trade_route_invalid_cleanup(ch, keeper, temp1, static_cast<uint32_t>(shop_nr)))
-		return;
 
 	sale = (int)get_property("shops.peruse.cost", 1000.000);
 
@@ -1676,9 +1354,6 @@ void shopping_list(char * /*arg*/, P_char ch, P_char keeper, int shop_nr)
 			next_obj = obj1->next_content;
 			if (IS_ARTIFACT(obj1) || isname("encrust", obj1->name))
 			{
-				if (shop_trade_route_invalid_cleanup(
-					    ch, keeper, obj1, static_cast<uint32_t>(shop_nr)))
-					return;
 				wizlog(56, "(%s) shopkeeper just destroyed (%s %d).",
 				       GET_NAME(keeper), obj1->short_description, OBJ_VNUM(obj1));
 				extract_obj(obj1, TRUE); // Bye arti.

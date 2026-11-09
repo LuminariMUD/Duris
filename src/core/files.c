@@ -25,12 +25,6 @@
 #include "guild/assocs.h"
 #include "core/config.h"
 #include "persistence/deferred_save_policy.h"
-#include "flatfile/flatfile_character_delete.h"
-#include "flatfile/flatfile_corpse_restore.h"
-#include "flatfile/flatfile_item_repository.h"
-#include "flatfile/flatfile_player_repository.h"
-#include "flatfile/flatfile_player_domain_repository.h"
-#include "flatfile/flatfile_shopkeeper_restore.h"
 #include "item/item_ownership_runtime.h"
 #include "item/encumbrance_policy.h"
 #include "combat/justice.h"
@@ -43,7 +37,6 @@
 #include "player/player_revision_state.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_repository.h"
-#include "persistence/persistence_mode.h"
 #include "world/handler.h"
 #include "world/random.zone.h"
 #ifndef _PFILE_
@@ -1076,35 +1069,8 @@ bool queue_corpse_save(P_obj corpse, bool remove)
 			return false;
 		collector_death_enrollment_for(corpse, &snapshot.collector_death);
 	}
-	persistence_job_write_fn write;
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		const char *root = persistence_mode_flatfile_root();
-		if (!root)
-			return false;
-		flatfile_corpse_record record;
-		record.owner_pid = static_cast<uint32_t>(corpse->value[CORPSE_PID]);
-		record.owner_name = snapshot.player_name;
-		record.save_id = static_cast<uint32_t>(snapshot.save_id);
-		record.room_vnum = snapshot.room_vnum;
-		record.short_description = snapshot.short_description;
-		record.description = snapshot.description;
-		record.keywords = snapshot.keywords;
-		record.weight = snapshot.weight;
-		record.values = snapshot.values;
-		record.items = snapshot.items;
-		for (player_item_snapshot &item : record.items)
-			item.equipment_slot = -1;
-		write = [record, remove, death = snapshot.collector_death,
-			 path = std::string(root)]()
-		{
-			std::string error;
-			return flatfile_corpse_snapshot_apply(path, record, remove, death, &error);
-		};
-	}
-	else
-		write = [snapshot]()
-		{ return corpse_snapshot_repository_apply_from_pool(snapshot); };
+	persistence_job_write_fn write = [snapshot]()
+	{ return corpse_snapshot_repository_apply_from_pool(snapshot); };
 	const size_t bytes =
 		sizeof(snapshot) + snapshot.items.size() * sizeof(player_item_snapshot);
 	const player_save_submit_result submitted = persistence_writer_submit(
@@ -1533,17 +1499,6 @@ void PurgeCorpseFile(P_obj corpse)
 		logit(LOG_DEBUG, "item not a corpse in PurgeCorpseFile");
 		return;
 	}
-#ifndef _PFILE_
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		if (!skip_corpse_save && corpse->value[CORPSE_SAVEID] &&
-		    !queue_corpse_save(corpse, true))
-			persistence_alert(AVATAR, "corpse", "flatfile_remove", "none", "none",
-					  "queue_failed", "save_id=%d",
-					  corpse->value[CORPSE_SAVEID]);
-		return;
-	}
-#endif
 
 	snprintf(Gbuf2, MAX_STRING_LENGTH, "%s%d", corpse->action_description,
 		 corpse->value[CORPSE_SAVEID]);
@@ -3586,18 +3541,6 @@ int restoreItemsOnly(P_char ch, int /*flatrate*/)
 
 void restoreCorpses(void)
 {
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		std::string error;
-		const char *root = persistence_mode_flatfile_root();
-		const auto restored = flatfile_corpse_restore_catalog(root ? root : "", &error);
-		if (restored != flatfile_corpse_restore_result::ok &&
-		    restored != flatfile_corpse_restore_result::not_found)
-			fatal_boot_error("corpse", "flat-file corpse restore failed: %s",
-					 error.empty() ? "invalid authoritative state" :
-							 error.c_str());
-		return;
-	}
 	if (!sql_load_all_corpses())
 		fatal_boot_error(
 			"corpse",
@@ -3879,32 +3822,11 @@ static bool queue_saved_item_save(P_obj item, const char *item_key, bool remove)
 		snapshot.room_vnum = world[item->loc.room].number;
 		snapshot.owner.id = static_cast<uint64_t>(snapshot.room_vnum);
 	}
-	// A flat-file removal takes the item's graph out of its room's record.
-	if ((!remove || persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY) &&
-	    player_item_snapshot_tree_capture(item, &snapshot.items, nullptr) !=
-		    player_snapshot_capture_result::ok)
+	if (!remove && player_item_snapshot_tree_capture(item, &snapshot.items, nullptr) !=
+			       player_snapshot_capture_result::ok)
 		return false;
-	persistence_job_write_fn write;
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		const char *root = persistence_mode_flatfile_root();
-		if (!root)
-			return false;
-		flatfile_saved_world_item_record record;
-		record.item_key = snapshot.item_key;
-		record.room_vnum = snapshot.room_vnum;
-		record.items = snapshot.items;
-		for (player_item_snapshot &entry : record.items)
-			entry.equipment_slot = -1;
-		write = [record, remove, path = std::string(root)]()
-		{
-			std::string error;
-			return flatfile_saved_item_snapshot_apply(path, record, remove, &error);
-		};
-	}
-	else
-		write = [snapshot]()
-		{ return saved_item_snapshot_repository_apply_from_pool(snapshot); };
+	persistence_job_write_fn write = [snapshot]()
+	{ return saved_item_snapshot_repository_apply_from_pool(snapshot); };
 	const size_t bytes =
 		sizeof(snapshot) + snapshot.items.size() * sizeof(player_item_snapshot);
 	const player_save_submit_result submitted = persistence_writer_submit(
@@ -3962,11 +3884,6 @@ void writeSavedItem(P_obj item)
 
 void restoreSavedItems(void)
 {
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		/* restoreCorpses() has already staged and published the shared room catalog. */
-		return;
-	}
 	sql_restore_saved_items();
 }
 
@@ -3986,8 +3903,6 @@ void PurgeSavedItemFile(P_obj item)
 	if (!queue_saved_item_save(item, Gbuf2, true))
 		persistence_alert(AVATAR, "saved_item", "purge", "none", "none", "queue_failed",
 				  "item_uid=%llu", static_cast<unsigned long long>(item->obj_uid));
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-		return;
 
 	checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "%s/SavedItems/%s", SAVE_DIR, Gbuf2);
 	strcpy(Gbuf2, Gbuf1);
@@ -4036,19 +3951,6 @@ int writeShopKeeper(P_char ch, int shop_nr)
 
 void restore_shopkeepers(void)
 {
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		std::string error;
-		const char *root = persistence_mode_flatfile_root();
-		const auto restored = flatfile_shopkeeper_restore_catalog(
-			root ? root : "", &error, shopkeeper_boot_restock());
-		if (restored != flatfile_shopkeeper_restore_result::ok &&
-		    restored != flatfile_shopkeeper_restore_result::not_found)
-			fatal_boot_error("shopkeeper", "flat-file shopkeeper restore failed: %s",
-					 error.empty() ? "invalid authoritative state" :
-							 error.c_str());
-		return;
-	}
 	if (!sql_restore_shopkeepers(shopkeeper_boot_restock()))
 		fatal_boot_error(
 			"shopkeeper",
@@ -4057,10 +3959,6 @@ void restore_shopkeepers(void)
 
 bool save_dirty_shopkeepers(bool force)
 {
-	// Flat-file trades commit stock/custody atomically in their own journal.
-	// Legacy SQL dirty flags are not an outstanding SQL save in that mode.
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-		return true;
 	return sql_save_dirty_shopkeepers(force);
 }
 

@@ -6,7 +6,7 @@
 
 constexpr size_t ARTIFACT_IDENTITY_MAX_RECORDS = 1048576;
 
-// Stored in artifact_domain_state and the flat-file artifact catalog. Never renumber.
+// Stored in artifact_domain_state. Never renumber.
 enum class artifact_identity_state : uint8_t
 {
 	unresolved = 0,

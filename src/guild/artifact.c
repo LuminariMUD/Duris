@@ -37,12 +37,8 @@
 #include <cmath>
 #include <cerrno>
 #include "core/files.h"
-#include "flatfile/flatfile_artifact_repository.h"
-#include "flatfile/flatfile_identity_repository.h"
-#include "flatfile/flatfile_item_repository.h"
 #include "core/mm.h"
 #include "classes/necromancy.h"
-#include "persistence/persistence_mode.h"
 #include "persistence/dupe_log.h"
 #include "player/player_load_items.h"
 #include "player/player_load_offline.h"

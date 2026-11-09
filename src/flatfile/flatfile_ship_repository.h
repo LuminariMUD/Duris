@@ -15,8 +15,6 @@
 #ifndef DURIS_FLATFILE_SHIP_REPOSITORY_H
 #define DURIS_FLATFILE_SHIP_REPOSITORY_H
 
-#include "flatfile/flatfile_authority_transaction.h"
-
 #include <array>
 #include <cstdint>
 #include <string>
@@ -50,74 +48,5 @@ struct flatfile_ship_crew_record
 	int32_t repair_chief = 0;
 	bool operator==(const flatfile_ship_crew_record &) const = default;
 };
-
-struct flatfile_ship_record
-{
-	uint32_t ship_id = 0;
-	uint32_t owner_pid = 0;
-	std::string owner_name;
-	std::string ship_name;
-	uint8_t ship_class = 0;
-	int32_t frags = 0;
-	int32_t anchor_room = 0;
-	int32_t time_played = 0;
-	int32_t mainsail = 0;
-	int8_t race = 0;
-	int32_t money = 0;
-	uint64_t flags = 0;
-	std::array<int32_t, 4> armor = {};
-	std::array<int32_t, 4> internal = {};
-	flatfile_ship_crew_record crew;
-	std::vector<flatfile_ship_slot_record> slots;
-	uint64_t revision = 0;
-};
-
-enum class flatfile_ship_result
-{
-	ok,
-	not_found,
-	already_exists,
-	unchanged,
-	conflict,
-	invalid,
-	io_error
-};
-
-using flatfile_ship_owner_pid_resolver = bool (*)(const char *owner_name, uint32_t *pid,
-						  std::string *error);
-
-flatfile_ship_result flatfile_ship_establish(const std::string &root,
-					     const std::vector<flatfile_ship_record> &ships,
-					     std::string *error);
-// Boot upgrade: keep legacy-catalog IDs referenced by paid manifests reserved.
-flatfile_ship_result flatfile_ship_reserve_ids(const std::string &root, uint32_t maximum,
-					       std::string *error);
-flatfile_ship_result flatfile_ship_list(const std::string &root,
-					std::vector<flatfile_ship_record> *ships,
-					std::string *error);
-flatfile_ship_result
-flatfile_ship_upsert(const std::string &root, flatfile_ship_record *ship, std::string *error,
-		     const std::vector<flatfile_authority_operation> *after_images = nullptr);
-// Caller owns the authority lock and commits this catalogue after-image with
-// the prepared player, market, account allowance and command receipt.
-flatfile_ship_result flatfile_ship_prepare_trade(
-	const std::string &root, const flatfile_authority_lock &lock, uint32_t ship_id,
-	uint32_t owner_pid, const std::vector<flatfile_ship_slot_record> &before_slots,
-	const flatfile_ship_crew_record &before_crew,
-	const std::vector<flatfile_ship_slot_record> &slots, const flatfile_ship_crew_record &crew,
-	flatfile_authority_operation *operation, std::string *error);
-
-flatfile_ship_result
-flatfile_ship_remove(const std::string &root, uint32_t ship_id, const std::string &expected_owner,
-		     std::string *error,
-		     const std::vector<flatfile_authority_operation> *after_images = nullptr);
-flatfile_ship_result flatfile_ship_import_legacy(const std::string &root,
-						 const std::string &legacy_directory,
-						 flatfile_ship_owner_pid_resolver resolve_owner,
-						 std::string *error);
-flatfile_ship_result
-flatfile_ship_prepare_player_remove(const std::string &root, const flatfile_authority_lock &lock,
-				    uint32_t pid, const std::string &expected_name,
-				    flatfile_authority_operation *operation, std::string *error);
 
 #endif

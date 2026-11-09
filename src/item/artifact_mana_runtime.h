@@ -65,7 +65,6 @@ class artifact_mana_runtime
 	std::unique_ptr<implementation> impl;
 };
 
-std::unique_ptr<artifact_mana_backend> artifact_mana_persistent_backend(bool sql,
-									const std::string &root);
+std::unique_ptr<artifact_mana_backend> artifact_mana_persistent_backend();
 
 #endif

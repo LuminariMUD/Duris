@@ -28,10 +28,5 @@ divine_boon_store_result divine_boon_sql_save(MYSQL *connection, uint64_t expect
 					      const divine_boon_state &state);
 // Pwipe uses its main autocommit connection after all queued writers have drained.
 divine_boon_store_result divine_boon_sql_reset_season(MYSQL *connection, int64_t now);
-divine_boon_store_result divine_boon_flatfile_load(const std::string &root,
-						   divine_boon_state *state);
-divine_boon_store_result divine_boon_flatfile_save(const std::string &root,
-						   uint64_t expected_revision,
-						   const divine_boon_state &state);
 
 #endif

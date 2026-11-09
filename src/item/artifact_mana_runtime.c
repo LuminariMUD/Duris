@@ -55,22 +55,14 @@ struct cached_pool
 
 class persistent_backend final : public artifact_mana_backend
 {
-	const bool sql;
-	const std::string root;
-
     public:
-	persistent_backend(bool mysql, const std::string &directory)
-		: sql(mysql)
-		, root(directory)
-	{
-	}
 	artifact_mana_read read(uint64_t uid, artifact_mana_record &record) override
 	{
-		return artifact_mana_store_read(sql, root, uid, record);
+		return artifact_mana_store_read(uid, record);
 	}
 	bool write(uint64_t expected, const artifact_mana_record &record) override
 	{
-		return artifact_mana_store_write(sql, root, expected, record);
+		return artifact_mana_store_write(expected, record);
 	}
 };
 } // namespace
@@ -317,8 +309,7 @@ void artifact_mana_runtime::stop()
 		impl->worker.join();
 }
 
-std::unique_ptr<artifact_mana_backend> artifact_mana_persistent_backend(bool sql,
-									const std::string &root)
+std::unique_ptr<artifact_mana_backend> artifact_mana_persistent_backend()
 {
-	return std::make_unique<persistent_backend>(sql, root);
+	return std::make_unique<persistent_backend>();
 }

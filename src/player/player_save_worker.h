@@ -62,7 +62,7 @@ enum class persistence_job_kind : uint8_t
 	shopkeeper,
 	// Statements or a read the game thread queued (sql_async.c); each is its own owner.
 	sql,
-	// Complete flat-file artifact/soul captures, on the same ordered writer.
+	// Complete artifact/soul captures, on the same ordered writer.
 	artifact,
 	// Persist a Divine Boon opportunity before exposing its world bonus.
 	divine_boon,

@@ -15,15 +15,7 @@
 #include "cmd/interp.h"
 #include "item/item_uid_allocator.h"
 #include "persistence/critical_command.h"
-#include "flatfile/flatfile_artifact_repository.h"
 #include "flatfile/flatfile_help_catalog.h"
-#include "flatfile/flatfile_ip_activity_repository.h"
-#include "flatfile/flatfile_item_repository.h"
-#include "flatfile/flatfile_offline_message_repository.h"
-#include "flatfile/flatfile_frag_leaderboard_repository.h"
-#include "flatfile/flatfile_shop_trophy_history.h"
-#include "flatfile/flatfile_world_quest_history.h"
-#include "persistence/persistence_mode.h"
 #include "core/utils.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
@@ -79,7 +71,6 @@
 #include "economy/divine_boon_repository.h"
 #include "world/epic.h"
 #include "world/epic_zone_defaults.h"
-#include "flatfile/flatfile_player_domain_repository.h"
 #include "world/graph.h"
 #include "core/mm.h"
 #include "item/objmisc.h"
@@ -121,48 +112,6 @@ static bool sql_trace_enabled(void);
 static bool sql_trace_active(void);
 static void sql_trace_log_drain(MYSQL *conn, const char *phase, bool drained);
 static bool sql_verify_metadata_fingerprint(void);
-
-static int flat_sql_shop_sell(P_char ch, P_obj obj, int value)
-{
-	if (!obj)
-		return 0;
-	const int item = obj->R_num >= 0 ? obj_index[obj->R_num].virtual_number : 0;
-	const int seller = ch && IS_PC(ch) ? GET_PID(ch) : 0;
-	std::string error;
-	if (flatfile_shop_trophy_record(persistence_mode_flatfile_root(), item, value, seller,
-					static_cast<int64_t>(time(nullptr)),
-					&error) != flatfile_shop_trophy_result::ok)
-	{
-		persistence_alert(AVATAR, "shop_trophy", "global", "none", "none", "record",
-				  "flat_write_failed", "item=%d seller=%d error=%s", item, seller,
-				  error.c_str());
-		return -1;
-	}
-	return 1;
-}
-
-static int flat_sql_shop_trophy(P_obj obj)
-{
-	if (!obj)
-		return 0;
-	if (obj->name && strstr(obj->name, "_ore_"))
-		return 0;
-	const int objvir = OBJ_VNUM(obj);
-	if (objvir >= 400000 && objvir < 400202)
-		return 0;
-	const int item = obj->R_num >= 0 ? obj_index[obj->R_num].virtual_number : 0;
-	int count = 0;
-	std::string error;
-	if (flatfile_shop_trophy_count(persistence_mode_flatfile_root(), item,
-				       static_cast<int64_t>(time(nullptr)), &count,
-				       &error) != flatfile_shop_trophy_result::ok)
-	{
-		persistence_alert(AVATAR, "shop_trophy", "global", "none", "none", "count",
-				  "flat_read_failed", "item=%d error=%s", item, error.c_str());
-		return -1;
-	}
-	return count;
-}
 
 struct world_quest_reward_publication
 {
@@ -2995,8 +2944,6 @@ static void sql_load_recent_counts(void)
 
 int sql_shop_sell(P_char ch, P_obj obj, int value)
 {
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-		return flat_sql_shop_sell(ch, obj, value);
 	if (!obj)
 		return 0;
 	int m_virtual = (obj->R_num >= 0) ? obj_index[obj->R_num].virtual_number : 0;
@@ -3013,8 +2960,6 @@ int sql_shop_sell(P_char ch, P_obj obj, int value)
 
 int sql_shop_trophy(P_obj obj)
 {
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-		return flat_sql_shop_trophy(obj);
 	if (!obj)
 		return 0;
 

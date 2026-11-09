@@ -348,8 +348,8 @@ class Guild
 
 	void name_title(P_char member, char *title_info);
 
-	/* Flat-file returns durable success (or unchanged). MariaDB captures an
-	 * ordered snapshot and returns admission; save_pending() observes its commit.
+	/* MariaDB captures an ordered snapshot and returns admission; save_pending()
+	 * observes its commit.
 	 * A failed capture stays dirty and is reported. */
 	bool save();
 
