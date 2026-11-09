@@ -7,7 +7,7 @@ import re
 import subprocess
 import tempfile
 
-from _paths import ROOT, SRC, extract_function
+from _paths import ROOT, SRC, extract_function, HARNESS_STUBS
 
 source = (SRC / "modify.c").read_text()
 start = source.index("void show_string(")
@@ -55,7 +55,9 @@ with tempfile.TemporaryDirectory(prefix="websocket-pager-", dir=build_root) as d
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Og", "-g",
         "-D__NO_MYSQL__", *flags, f"-I{ROOT / 'src'}", f"-I{ROOT / 'src/no_mysql'}",
         f"-I{build}", str(ROOT / "tests/async/websocket_pager_harness.cpp"),
-        "-lcjson", "-o", str(binary),
+        str(ROOT / "src/net/output_links.c"), str(ROOT / "src/net/ansi.c"),
+        str(ROOT / "src/net/unicode.c"),
+        str(HARNESS_STUBS), "-lcjson", "-o", str(binary),
     ], cwd=ROOT, check=True, timeout=120)
     subprocess.run([str(binary)], cwd=ROOT, check=True, timeout=30, env={
         **os.environ,
