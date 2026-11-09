@@ -1,21 +1,20 @@
 # No-rent flag fixes
 
-Status: in progress, shipping as stacked pull requests (no separate issue).
+Status: built and tested. All four stacked pull requests are open for review.
 Date: 2026-11-09.
 Source inspected: `master` at `fa173cbad`, then merged up to `c60ae726a`.
 
 ## Progress
 
-Each row is one pull request, stacked on the one above it. To continue in a new
-session, check out the last branch that exists and pick up the first row not marked
-done.
+Each row is one pull request, stacked on the one above it. Nothing is left to build:
+merge them in order, top row first. Line numbers below are from before this work.
 
 | PR | Sections | Branch | State |
 |---|---|---|---|
 | [#933](https://github.com/LuminariMUD/Duris/pull/933) | 1, 2, 3 and their tests | `branch/norent-flag-fix` | In review |
 | [#937](https://github.com/LuminariMUD/Duris/pull/937) | 4 (lockers) | `branch/norent-flag-fix-lockers` | In review |
-| Next | 5 (seven items, auction refusal) | `branch/norent-flag-fix-items` | Built and tested |
-| Next | 6 (help and docs) | `branch/norent-flag-fix-help` | Not started |
+| [#939](https://github.com/LuminariMUD/Duris/pull/939) | 5 (seven items, auction refusal) | `branch/norent-flag-fix-items` | In review |
+| The last PR | 6 (help and docs) | `branch/norent-flag-fix-help` | In review |
 
 Notes from building so far:
 

@@ -360,23 +360,18 @@ stays, and a row `auction_item_custody`, `artifact_domain_state` or a child row 
 references is kept for the foreign keys
 ([PLAYER_SAVE_PIPELINE.md](../persistence/PLAYER_SAVE_PIPELINE.md)).
 
-An intentional player `RENT_INN` save disposes of materialized `ITEM_KEY` objects
-with `ITEM_NORENT`, including previously owned keys and keys inside containers.
-Capture carries their UIDs to the writer without changing live objects. The claim
-transaction records destroyed custody under `destruction:0:0`, detaches each key's
-root/parent identity and omits it from the player payload. Fresh UIDs get the same
-tombstone. MariaDB commits this with the inventory replacement. The ownership
-audit records the change to destruction; repeating the rent save changes neither
-the tombstone nor its audit. A stale snapshot cannot claim a destroyed UID again.
+An `ITEM_NORENT` item never leaves the game with its owner. Before a `RENT_INN`,
+`RENT_CAMPED` or `RENT_LINKDEAD` terminal save, `persistence_save_character_terminal`
+takes every no-rent item off the character: worn, carried or inside a container.
+Each one lands in the room with a message; one that can't be dropped, or anything in
+a locker room, crumbles. A no-rent container's other contents move to the nearest
+surviving container or to the inventory first.
 
-This exception uses the actual type and flag, not a particular key prototype.
-Other durable NORENT items keep the existing preservation safeguard. Ordinary
-checkpoints, crash/copyover, camp, link-dead departure and other owner domains do
-not acquire this disposal rule. Existing fresh-NORENT-key omission on player
-crash checkpoints remains unchanged; active keys are retained. Explicit quit and
-the trusted camp shortcut already submit `RENT_INN` and share its key lifetime.
-Protected unmaterialized item components remain opaque. Queue/terminal-save
-failure reporting and nonblocking logout behavior are unchanged.
+Other saves still follow the ownership record. A no-rent item with no active record
+is left out of a crash save, checkpoint or copyover, and anything it holds is saved
+at its own level; one with an active record is kept, so a stray flag can't delete a
+real item. Lockers hand no-rent items back when they save, so a locker can't give
+one an ownership record.
 
 `item_ownership_ledger` keeps the transfers that still commit as critical commands
 (creation grants, operator repair and destruction, auctions and the collector). A claim
