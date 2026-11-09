@@ -85,9 +85,20 @@ def reenter_locker(client, items, owner):
                     "the locker came back wrong:\n" + entered)
 
 
+def walk_out(client):
+    """Leave the locker once anything just moved has been saved."""
+    deadline = time.monotonic() + 60
+    while True:
+        client.send("north")
+        matched, _ = client.expect_any(("applying magic locks", "still being secured"), timeout=30)
+        if matched == "applying magic locks":
+            return
+        journey.require(time.monotonic() < deadline, "the locker contents were never saved")
+        time.sleep(1)
+
+
 def leave(client):
-    client.send("north")
-    client.expect("applying magic locks", timeout=30)
+    walk_out(client)
     client.send("save")
     client.expect(f"Saving {journey.CHARACTER}.", timeout=30)
     client.send("quit")
@@ -142,11 +153,9 @@ def run(binary: pathlib.Path) -> None:
             enter_locker(client, 0, "GuIlD.1.LoCkEr")
             client.send("drop mace")
             client.expect("You drop", timeout=10)
-            client.send("north")
-            client.expect("applying magic locks", timeout=30)
+            walk_out(client)
             reenter_locker(client, 1, "guild.1")
-            client.send("north")
-            client.expect("applying magic locks", timeout=30)
+            walk_out(client)
             reenter_locker(client, 1, "guild")
             leave(client)
             stop(process)

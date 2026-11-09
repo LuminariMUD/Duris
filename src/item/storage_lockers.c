@@ -3494,8 +3494,12 @@ static void locker_enter_character(P_char ch, const char *name, locker_entered e
 	}
 	if (!sql_read_for(
 		    ch,
-		    "SELECT account_name, racewar FROM account_characters WHERE LOWER(char_name)=LOWER('" +
-			    escape_str(name) + "') AND blocked=0 AND deleted_at IS NULL LIMIT 1",
+		    /* Trusted characters are stored with ACCT_IMMORTAL (0); their lockers use their real side. */
+		    "SELECT ac.account_name, IF(ac.racewar=0, COALESCE(pd.racewar, 0), ac.racewar) "
+		    "FROM account_characters ac LEFT JOIN player_data pd ON pd.pid=ac.pid "
+		    "WHERE LOWER(ac.char_name)=LOWER('" +
+			    escape_str(name) +
+			    "') AND ac.blocked=0 AND ac.deleted_at IS NULL LIMIT 1",
 		    resolved))
 		send_to_char("The locker could not be opened right now.  Please try later.\r\n",
 			     ch);
