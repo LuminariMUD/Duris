@@ -139,7 +139,8 @@ bool grouped(P_char, P_char) { return in_test_group; }
 double difficulty_multiplier(difficulty_dial dial) {
     return dial == DIFFICULTY_EXP_EARNED ? earned_multiplier : 1.0;
 }
-int check_nexus_bonus(P_char, int xp, int) { return xp; }
+int ordinary_nexus_minimum = 0;
+int check_nexus_bonus(P_char, int xp, int) { return ordinary_nexus_minimum > 0 ? std::max(xp, ordinary_nexus_minimum) : xp; }
 double nexus_percent = 0;
 double check_nexus_bonus_precise(P_char, double xp, int, bool) { return xp * (1 + nexus_percent); }
 divine_boon_state divine_state;
@@ -324,6 +325,7 @@ int main() {
         racial_exp_mods[RACE_HUMAN] = 1.0f;
         earned_multiplier = 1.0;
         rested_tag = 0;
+        ordinary_nexus_minimum = 0;
     };
     auto quest_line = [&](int amount) {
         const std::string line = "&+CQuest EXP:&+G " + std::to_string(amount) + " \r\n";
@@ -610,6 +612,46 @@ int main() {
     assert(gain_exp(&player, nullptr, 100000, EXP_WORLD_QUEST) == 3333);
     assert(player.points.curr_exp == 3333);
     quest_line(3333);
+    // A valid integer request may round above INT_MAX on the legacy float path.
+    for (int kind : {EXP_BOON, EXP_QUEST, EXP_WORLD_QUEST, EXP_RESURRECT}) {
+        reset();
+        assert(gain_exp(&player, nullptr, INT_MAX, kind) == (kind == EXP_RESURRECT ? 100000 : 3333));
+        assert(player.points.curr_exp == (kind == EXP_RESURRECT ? 100000 : 3333));
+    }
+    reset();
+    new_exp_table[21] = 3L * (static_cast<long>(INT_MAX) + 1);
+    assert(gain_exp(&player, nullptr, INT_MAX, EXP_BOON) == 100000);
+    for (int kind : {EXP_BOON, EXP_QUEST, EXP_WORLD_QUEST}) {
+        reset();
+        earned_multiplier = 1e8;
+        assert(gain_exp(&player, nullptr, 100, kind) == 3333);
+        for (double invalid : {std::numeric_limits<double>::infinity(),
+                                -std::numeric_limits<double>::infinity(),
+                                std::numeric_limits<double>::quiet_NaN(), 1e100}) {
+            reset();
+            earned_multiplier = invalid;
+            assert(gain_exp(&player, nullptr, 100, kind) == 0 && player.points.curr_exp == 0 && dirty == 0);
+        }
+    }
+    const auto saved_mob_points = mob.points;
+    for (int kind : {EXP_KILL, EXP_MELEE, EXP_DAMAGE}) {
+        reset();
+        mob.points.base_hit = 1000;
+        mob.points.curr_exp = 1000000;
+        assert(gain_exp(&player, &mob, INT_MAX, kind) == 3333);
+    }
+    reset();
+    ordinary_nexus_minimum = 10;
+    exp_mods[EXPMOD_MELEE] = std::numeric_limits<float>::infinity();
+    assert(gain_exp(&player, &mob, 100, EXP_MELEE) == 0 && player.points.curr_exp == 0);
+    exp_mods[EXPMOD_MELEE] = 1;
+    reset();
+    epic_percent = std::numeric_limits<double>::infinity();
+    assert(gain_exp(&player, &mob, 100, EXP_DAMAGE) == 0 && player.points.curr_exp == 0);
+    epic_percent = 0;
+    mob.points = saved_mob_points;
+    assert(experience_integer(-1.75) == -1 && experience_integer(1.75) == 1);
+    assert(experience_integer(-1e100) == INT_MIN && experience_integer(1e100) == INT_MAX);
     // Zero applied awards: modifiers, integer truncation, global XP limits and safe rooms.
     for (int scenario = 0; scenario < 5; ++scenario) {
         reset();
@@ -1584,6 +1626,7 @@ def main() -> None:
             "static void display_divine_experience(",
             "void display_gain(",
             "int exp_level_percent_modifier(",
+            "static int experience_integer(",
         )
     ]
     functions += [extract_function("limits.c", "static bool divine_experience_active(")]
@@ -1627,18 +1670,19 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="quest-xp-", dir=directory) as temporary:
         program = Path(temporary) / "harness.cpp"
         program.write_text(PRELUDE + "\n" + "\n".join(functions) + CASES, encoding="utf-8")
-        for backend in ("mariadb", "flatfile"):
-            binary = Path(temporary) / backend
-            flags = (["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else
+        # These are native header fixtures, not alternative persistence backends.
+        for fixture in ("mariadb-headers", "isolated-headers"):
+            binary = Path(temporary) / fixture
+            flags = (["-D__NO_MYSQL__", "-Isrc/no_mysql"] if fixture == "isolated-headers" else
                      shlex.split(subprocess.check_output(["mysql_config", "--cflags"], text=True)))
             subprocess.run(shlex.split(os.environ.get("CXX", "g++")) + [
-                "-std=c++20", "-fsanitize=address,undefined,float-cast-overflow", "-fno-omit-frame-pointer",
+                "-std=c++20", "-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer",
                 "-fno-pie", "-no-pie", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-Isrc",
                 *flags, str(program), "src/telemetry/telemetry_progression.c", "src/economy/divine_boon.c",
                 str(source("ansi.c")), str(source("unicode.c")), "-lcrypto", str(HARNESS_STUBS), "-o", str(binary),
             ], cwd=ROOT, check=True)
             subprocess.run([str(binary)], check=True, timeout=10)
-    print("quest XP, trainer combat eligibility and kill-bonus credit passed (mariadb + flatfile)")
+    print("quest XP, trainer combat eligibility and kill-bonus credit passed (MariaDB and isolated header fixtures)")
 
 
 if __name__ == "__main__":
