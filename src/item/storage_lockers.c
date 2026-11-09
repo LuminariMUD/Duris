@@ -3888,8 +3888,7 @@ static P_char load_locker_char(P_char ch, char *esc_locker_name, int bValidateAc
 	}
 
 	// insert in list
-	vict->next = character_list;
-	character_list = vict;
+	character_list_add(vict);
 
 	// saving info for teleport return command
 	vict->specials.was_in_room = vict->in_room;

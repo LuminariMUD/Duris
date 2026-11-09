@@ -77,11 +77,11 @@ admission, terminal failure, replay, and independent rewards queued behind both
 successful and rejected kits.
 
 The independent legacy-policy oracle checks 36,360 selections. The socket
-journey uses real legacy prototypes, private flat-file state, two synthetic
+journey uses real legacy prototypes, a private MariaDB schema, two synthetic
 accounts on distinct loopback addresses, and the production snapshot decoder:
 
 ```sh
-python3 tests/async/test_flatfile_newbie_regrant_journey.py
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_flatfile_newbie_regrant_journey.py --server bin/server/dms_new
 ```
 
 It covers normal and Chaos Warrior/Sorcerer characters, two repeated grants per

@@ -137,13 +137,6 @@ snapshots. Retired and proven-absent evidence remains in memory after legacy
 tracking removal. Staff clear requires proven absence. Complete payload
 classification, canonical selection and admission remain tracked in issue #67.
 
-The equivalent flat-file catalog is version 2, carrying canonical UID/state and
-rejecting one nonzero UID assigned to two vnums. Version 1 remains readable with
-unresolved identity; its next ordinary write emits version 2 without inventing a
-canonical copy. Older binaries refuse version 2 rather than silently dropping
-identity. Preserve an owner-controlled backup before any operational upgrade;
-none is authorized or performed by this storage implementation.
-
 ## External consumers and writers
 
 The server owns gameplay state even when another service presents or
@@ -372,8 +365,7 @@ with `ITEM_NORENT`, including previously owned keys and keys inside containers.
 Capture carries their UIDs to the writer without changing live objects. The claim
 transaction records destroyed custody under `destruction:0:0`, detaches each key's
 root/parent identity and omits it from the player payload. Fresh UIDs get the same
-tombstone. MariaDB commits this with the inventory replacement; flatfile-primary
-commits the catalog and player images in one authority transaction. The ownership
+tombstone. MariaDB commits this with the inventory replacement. The ownership
 audit records the change to destruction; repeating the rent save changes neither
 the tombstone nor its audit. A stale snapshot cannot claim a destroyed UID again.
 

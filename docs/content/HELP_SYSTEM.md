@@ -53,7 +53,7 @@ The `help` command (`do_help`, `src/cmd/actinf.c`) does two things:
 
 ## Reviewing missing searches
 
-Both database-cache and flat-file lookups append zero-result searches to
+Database-cache lookups append zero-result searches to
 `lib/etc/help`; `info` uses the same handler as `help`. A miss means no search
 results, rather than no exact title. Successful partial/multiple matches, empty
 default help, unavailable catalogs and failed redirect rendering do not become
@@ -73,7 +73,7 @@ people. Check existing titles and aliases before deciding whether a query needs
 new prose, a discoverable alias, or no change. Publish any chosen edits through
 the content pipeline below; log entries do not authorize automatic publication.
 
-Capture regression coverage and both-backend command qualification remain tracked
+Capture regression coverage and MariaDB command qualification remain tracked
 in [#575](https://github.com/LuminariMUD/Duris/issues/575).
 
 ## Content pipeline
@@ -115,7 +115,7 @@ docs/lib/information/hints.txt ---------> pages
   quoting whenever you need parentheses in a page title.
 - motd/wizmotd are cached at boot and re-read by the immortal `page` command
   (level 60+, `src/cmd/actcomm.c`). Database news also publishes on the existing
-  one-minute mud-info refresh; flat-file news uses boot and `page`. Its content
+  one-minute mud-info refresh. Its content
   fingerprint drives the per-character `(news)` prompt marker, cleared by opening
   the news with paging enabled. Imported help pages reach players at the next automatic
   refresh, or at once with `page help`; credits, FAQ and wizlist with `page info`
@@ -153,8 +153,8 @@ does not compare against existing database text or create a backup. Review the
 source and back up the destination before publishing. Without `--news-only`,
 even an import without `--clean` overwrites matching information and help content.
 After publishing, database-backed news refreshes on the next successful one-minute
-mud-info read. Plain `page` (no arguments) requests an immediate refresh. Flat-file
-news reloads on plain `page` or restart. `page help` refreshes only help pages.
+mud-info read. Plain `page` (no arguments) requests an immediate refresh.
+`page help` refreshes only help pages.
 
 The in-game `news` command displays at most 50,000 bytes, including its heading,
 color tokens and website footer. It keeps the newest text, ending at a complete
@@ -173,7 +173,7 @@ The unread marker still tracks the full published content, including archive edi
 - In-game topic text lives in `pages`; the import script is the only write
   path (no in-game editor exists - nothing in `src/` inserts into or updates
   `pages`). Update the source files and re-run the import script; editing the
-  database directly would silently diverge from the flat-file sources. See the
+  database directly would silently diverge from the authored source files. See the
   warning above before importing to a shared or remote database.
 - Keep the rules in `lib/information/rules`. The `LAWS RULES` entry in
   `help_index` points there via `help rules`; do not add a duplicate `Rules`

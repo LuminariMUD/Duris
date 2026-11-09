@@ -147,23 +147,3 @@ disconnect/disable. Proxy-injected invalid output tests Node recovery; native
 serialization always emits valid records. No real Discord API is called.
 `SANITIZE=1` also covers this mode with ASan/UBSan. This is a command-boundary
 harness, not a full game boot or copyover journey.
-
-For a real game process, player login, persistence and lifecycle check, run:
-
-```sh
-python3 tests/async/test_discord_game_journey.py \
-  --node-driver /path/to/discord-mud-chat/scripts/testing/duris-game-sink.js
-```
-
-This builds the current flat-file server and fixture inspector under `bin/tests/`
-and boots a disposable minimal world with temporary accounts, saved players,
-TLS certificates, logs and binaries. It does not read `.env`, connect to the
-operator's database, or change a running game. It verifies both commands through
-real gameplay sockets and the actual Node relay with an in-memory Discord sink.
-Cases cover no staff online, echo off, concealed staff, dollar escaping, rejected
-commands, unrelated chat, blocked/forged ingress, saves, reload, bridge disconnect,
-disabled restart, and normal shutdown. A deliberately invalid staged executable
-forces a real failed `execl`; a subsequent valid copyover must preserve the
-original player sockets and let Node reconnect. Native audit entries remain
-required during rollback. This is a full server with a minimal flat-file world,
-not a live Discord or production-database test.

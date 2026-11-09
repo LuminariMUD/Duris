@@ -22,7 +22,7 @@ shown after that worker finishes. These requests reuse the existing admission
 slot and never submit another payment for a finished receipt. When all slots are
 occupied by other players, `stat receipt` reports that the clerk is busy.
 
-Receipts live under `CRITICAL_COMMAND_JOURNAL_DIR/locker-identification/<pid>.receipt` on both backends. The directory is private (0700), files are private (0600), and an exclusive service lock prevents two processes from operating the same receipt store. Files contain a bounded binary command, at most 64 KiB of captured text, and a SHA-256 checksum. Reads reject wrong player IDs, corrupt/truncated data, oversized data, public permissions, symlinks and nonregular files. Initialization failure disables the paid service.
+Receipts live under `CRITICAL_COMMAND_JOURNAL_DIR/locker-identification/<pid>.receipt` alongside MariaDB persistence. The directory is private (0700), files are private (0600), and an exclusive service lock prevents two processes from operating the same receipt store. Files contain a bounded binary command, at most 64 KiB of captured text, and a SHA-256 checksum. Reads reject wrong player IDs, corrupt/truncated data, oversized data, public permissions, symlinks and nonregular files. Initialization failure disables the paid service.
 
 At most 16 requests, each with at most one worker operation, are active at once. Busy explicit callers can retry. Automatic login, reconnect and copyover recovery that finds all slots occupied retains one deferred entry per player ID, then starts when a slot opens. Repeated automatic notifications are deduplicated. Deferred entries contain no character pointers, receipt text or worker futures; each is resolved against the current playing character before admission, and disconnected players are skipped. Each pulse examines at most 16 deferred entries, including disconnected-player cleanup. Shutdown clears deferred notifications; the next login or copyover rediscovers the durable receipt. Failed writes retry at one-second intervals while the owner is online. A failed paid or failed marker keeps retrying after the owner leaves, holding its slot, because the disk still says prepared and recovery would charge again. Disk latency does not block the game pulse; orderly shutdown joins outstanding I/O and therefore can wait for storage. A process crash leaves the last durable prepared or paid state recoverable.
 
@@ -42,14 +42,14 @@ The backup preserves `locker-identification/<pid>.receipt` and its empty
 `.service-lock` under `journal_roots.critical`. Receipt filenames must
 contain a positive signed 32-bit player ID and files must fit the native codec's
 size bound. Existing ownership, permissions and symlink checks still apply. The
-directory is copied after the database or flat-file capture, leaving out the
+directory is copied after the database capture, leaving out the
 writer's temporary files. A prepared receipt that appears or changes during the
 capture rejects the generation, since its charge may be in the snapshot before its
 paid marker is in the receipt; other receipt changes do not. Unexpected files fail
 capture, except the `critical-command.journal` and `critical-command.journal.tmp` an
 older server left beside the store, which are carried unread.
 
-The restore verifier (`qualify_flatfile_restore --receipts`) checks this directory
+The receipts-only restore verifier (`qualify_flatfile_restore --receipts`) checks this directory
 before service boot. It accepts only an empty service lock and receipts that pass the
 production bounded decoder, including checksum, payment validity and matching player
 ID, plus those two retired journal files as regular files. Receipts remain available for the player to claim after recovery on either

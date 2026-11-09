@@ -497,8 +497,7 @@ static void read_player_loaded(P_char ch, P_char vict)
 	vict->only.pc->aggressive = -1;
 
 	/* insert in list */
-	vict->next = character_list;
-	character_list = vict;
+	character_list_add(vict);
 
 	// The load left vict in no room, its saved room in was_in_room.
 	char_to_room(vict, ch->in_room, -2);

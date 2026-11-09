@@ -30,34 +30,11 @@ the ordinary save acknowledgement confirms completion. A failed save admission r
 choice. Changes apply only to future output for that recipient. Resetting one channel leaves all other
 channels intact; resetting all also restores motion-on. Authored colors remain authored in every mode.
 
-The maintained [live walkthrough](../../scripts/validate_colorization_journey.py) boots the real server
-against a temporary flatfile authority, creates two synthetic accounts on separate loopback addresses,
-selects cyan/red chat colors, previews a third color, checks invalid/incomplete input, saves, reconnects,
-and verifies independent terminal/GMCP choices and reset-one/all. It uses a 30-line repeated room and a
-12-line screen to force paging: refresh replays the same frame, new looks move water one position,
-unrelated chat does not consume a room step, foliage drifts coherently, and Static/motion-off stay fixed.
-The completed run passed **65 checks and 15 captured frames**; its
-[synthetic report](../data/colorization/live-journey.json) includes actual ANSI output.
-
-Run from a Linux development checkout with the documented build dependencies:
-
-```sh
-make -C src -j6 PERSISTENCE_BACKEND=flatfile
-python3 tests/async/test_flatfile_player_repository.py --build-inspector bin/tests/color-inspector
-python3 scripts/validate_colorization_journey.py --report bin/colorization-live-journey.json
-```
-
-The script has no existing-server connection option. It creates and removes its own state, certificate,
-accounts and listeners, does not load `.env`, and reports only synthetic checks and rendered frames.
-Guild membership and language/visibility edge cases use the compiled real-command harness below;
-new characters in the live walkthrough are not promoted to fabricate a guild session.
-
 ## Runtime, transport and persistence evidence
 
 The production runtime harness executes actual `say`, `do_tell`, `do_reply`, `do_gcc`, `act`,
 `send_to_char`, queue/pager functions, world emitters, `dam_message`, `make_prompt` and the chat JSON
-serializer. Existing game/database/socket boundaries are controlled in that harness; the separate
-live walkthrough crosses real command dispatch, Telnet negotiation, GMCP and flatfile save/reload.
+serializer. Game/database/socket boundaries are controlled in that harness.
 
 Coverage includes:
 
@@ -73,14 +50,6 @@ Coverage includes:
   editor/pager/confirmation prompts and deferred terminal/WebSocket output ordering.
 - Independent saved preferences, failed/coalesced checkpoints, stale revisions, reset, malformed
   stored fields, old snapshot/journal readers and current normal/death snapshot round trips.
-
-The local full gate completed **506 passing test entries and three outdated source-test failures**.
-The three expectations were corrected for the output-preference SQL field and adopted room-title
-send; all three passed on rerun. Thus all **509 entries** were verified across that run and the focused
-rerun. Subsequent terminal-dollar/snapshot-bound fixes passed the actual runtime harness normally
-and with ASan/UBSan, plus strict MariaDB and flatfile builds. This is not presented as a single clean
-509-entry local run. Each merge also requires its current GitHub build/full suite, quality/flatfile,
-disposable recovery and security checks to pass.
 
 Focused reproduction commands:
 

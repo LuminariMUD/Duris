@@ -21,7 +21,7 @@ in master as `84c2410d3`; the remaining stack is synchronized through master
 - **Files:** the framework file list below, existing focused runtime fixtures,
   monk/builder help; authored object records only in the dependent pilot.
 - **Proof:** sanitizer-backed executable combat/dispatcher/runtime tests, focused
-  lifecycle regressions, both builds and formatting, persistence on both backends,
+  lifecycle regressions, the MariaDB build and formatting, persistence on MariaDB,
   and an isolated gameplay journey. Record actual results here before each PR.
 - **Ablation:** retain the existing dispatcher, packed encoding, continuation and
   item-action adapter. Use the adapter's captured source slot to distinguish
@@ -41,25 +41,12 @@ in master as `84c2410d3`; the remaining stack is synchronized through master
 - Found and fixed an immediate packed-bundle lifetime gap: check the existing
   continuation between effects so participant/source extraction or relocation
   stops the bundle. Existing weapon behavior and spell selection remain covered.
-- Passed: MariaDB and flatfile server builds (`make -C src -j4`, then
-  `make -C src PERSISTENCE_BACKEND=flatfile -j4`); normal editor build; sanitizer
-  weapon-action and sword-action suites; `test_monk_glove_tools.py`;
-  `test_sql_item_instance_fields.py`; attack-continuation and item-proc-guard suites.
-  Staff debug editor build passed in #797's worktree. Compiled outputs are under
-  `bin/`; no production environment or running local stack was touched.
+
 - Also passed: `test_combat_start_lifetime.py`, `test_riposte_lifetime.py`,
   `test_world_recovery_pipeline.py`, and `test_world_recovery_codec.py` (including
   packed values and all three upper extra2 bits). `./scripts/format.sh --check`
   and normal + debug editor builds pass with the final framework sources.
-- Real-game proof passed on **both** backend builds:
-  `python3 tests/async/run_monk_glove_journey.py --flatfile bin/tests/monk-flatfile-server --mariadb bin/tests/monk-sql-server`.
-  The disposable fixture creates an ordinary level-one monk, loads and equips a
-  deterministic test glove, observes actual punches and player proc messages,
-  removes/re-equips it, saves and restarts, then verifies staff inspection,
-  actual weapon hits and non-monk exclusions. Fixture staff use `hit`, because
-  `kill` at OVERLORD is the intentional instant-slay command. Only fixture state
-  is promoted; no real account or DB is used. Both disposable DB and game roots
-  are removed by the journey.
+
 - The sanitizer runtime additionally checks every specialization and secondary
   monk admission through real `monk_superhit()`, one native dispatch per strike,
   fatal base-hit suppression, removal/extraction/relocation cancellation, invalid
@@ -73,7 +60,7 @@ in master as `84c2410d3`; the remaining stack is synchronized through master
   progression/spec/PvE/PvP samples, deterministic live-effect proof and player
   identify visibility. Owned-copy policy is **future copies only** (below).
   The framework PR contains no authored glove changes; the dependent pilot does.
-- Final refreshed proof passed on both backends using `bin/tests/*-server-current`:
+- Final refreshed proof passed on MariaDB using `bin/tests/*-server-current`:
   ordinary Monk punches, removing gloves, save/restart, staff inspection, two
   actual weapon sources, a separate real Warrior's unarmed attacks and returning
   the same saved gloves to the Monk. The fixture uses a bound NPC template for a
@@ -155,27 +142,13 @@ valuations, not a rewrite of the editor's older general valuation rules.
 Reproduce with:
 
 - `python3 tests/async/test_monk_glove_pilot.py`
-- `python3 tests/async/run_monk_glove_pilot.py --binary bin/tests/monk-flatfile-server --output bin/monk-pilot-samples.json`
-- `python3 tests/async/run_monk_glove_pilot.py --binary bin/tests/monk-flatfile-server-current --verify-only --output bin/monk-refresh-pilot-verification.json`
+- `python3 tests/async/run_monk_glove_journey.py --mariadb bin/server/dms_new`
 
 Integration was refreshed through master `15d3a7749` after #797 landed as
-`84c2410d3`. #804 now targets master; #805 is synchronized with it. Both server
+`84c2410d3`. #804 now targets master; #805 is synchronized with it. The MariaDB server
 profiles were rebuilt and focused sanitizer/lifecycle/value/persistence checks
 rerun successfully. The 40-case sample predates that refresh; actual effect and
 identify checks pass on the refreshed binary as well.
-
-Final integration proof passed with both refreshed backend builds:
-`python3 tests/async/run_monk_glove_journey.py --flatfile bin/tests/monk-flatfile-server-current --mariadb bin/tests/monk-sql-server-current`.
-The final fixture is committed in parent `bd3c4e405` and included by the pilot.
-It uses a real Warrior for the non-Monk check, avoiding any change to the staff
-controller's primary class/authority. Both gifts retain the same configured glove.
-The source changes and focused checks are complete. All open PRs are labeled
-`READY` (documentation on #804, enhancement on #805/#809). Review order is
-[#804](https://github.com/LuminariMUD/Duris/pull/804) →
-[#805](https://github.com/LuminariMUD/Duris/pull/805) →
-[#809](https://github.com/LuminariMUD/Duris/pull/809); #797 is already merged.
-Only review/merge remains.
-No production operation was performed by this goal.
 
 ## Recommendation
 
@@ -274,7 +247,7 @@ These are part of a usable feature, not a reason to introduce another framework.
 - **Staff inspection:** at baseline [`stat`'s proc explanation](../../src/cmd/actwiz.c#L2032) lived under `ITEM_WEAPON`. Show the opted-in glove's spell level/chance or native callback and its monk/primary-slot scope as well. Keep the armor stats. The generic [`setbit` fields](../../src/cmd/actset.c#L917) already expose `extra2` and `val5..val7`.
 - **Player inspection:** add a clear “activates on a monk's barehand strikes when worn on the primary hands” description. Preserve existing information access: [`identify`](../../src/magic/magic.c#L14475) reveals packed spell names to level-56+ conjurers; do not silently expose weapon proc details to everyone while adding glove support. Factor only the small shared display code actually needed by both item types.
 - **Encrusting:** `do_encrust` clones armor and worn items into vnum 1251, keeps `extra2_flags`, and overwrites `value[5..7]` with the jewel's spell at 1/30. Left alone, it would replace an opted-in glove's authored proc with a crafter-chosen one, and the copy would fall outside any update of the selected vnums. Refuse to encrust opted-in gloves.
-- **Persistence:** the fields already exist, but template changes are not guaranteed to reach owned copies. [SQL restoration](../../src/sql/sql_player.c#L1055) restores the instance's extra2 flags; [world recovery](../../src/world/world_recovery_pipeline.c#L1493) restores saved values and flags. Prove fresh loading and save/reload on both supported backends. Before enabling production content, explicitly choose and document whether existing copies are updated. If retroactive coverage is intended, prepare a targeted, rerunnable content update for the selected vnums that preserves UIDs, ownership, enhancements, and unrelated flags/values. Do not add a per-hit template overlay or assume reboot alone refreshes old copies.
+- **Persistence:** the fields already exist, but template changes are not guaranteed to reach owned copies. [SQL restoration](../../src/sql/sql_player.c#L1055) restores the instance's extra2 flags; [world recovery](../../src/world/world_recovery_pipeline.c#L1493) restores saved values and flags. Prove fresh loading and save/reload on MariaDB. Before enabling production content, explicitly choose and document whether existing copies are updated. If retroactive coverage is intended, prepare a targeted, rerunnable content update for the selected vnums that preserves UIDs, ownership, enhancements, and unrelated flags/values. Do not add a per-hit template overlay or assume reboot alone refreshes old copies.
 
 ## Small implementation sequence
 
@@ -309,7 +282,7 @@ Extend the existing [weapon-action runtime tests](../../tests/async/test_weapon_
 - Packed chance boundaries, fixed level, offensive/self targets, bundle selection/order, and native fallback work through the existing dispatcher. Malformed new glove data fails closed. Existing weapon parity tests continue to pass.
 - Lethal procs, reflected effects, movement, height changes, actor/target extraction, and glove extraction are exercised under ASan/UBSan. Preserve [continuation](../../tests/async/test_attack_continuation.py), [combat lifetime](../../tests/async/test_combat_start_lifetime.py), and [native event guard](../../tests/async/test_item_proc_guards.py) coverage where touched.
 - With item actions enabled, gloves schedule from `WEAR_HANDS`, cancellation occurs on source/class/flag changes, and busy/suppressed starts do not instant-cast. With them disabled, immediate behavior works. Test both paths even if production currently uses only one.
-- Ivalue increases for the actual packed effect, does not increase for an empty marker, and agrees with the editor for the fixtures. Flag round-trips preserve bits 18 and 19. New and persisted item instances retain the intended configuration on both backends.
+- Ivalue increases for the actual packed effect, does not increase for an empty marker, and agrees with the editor for the fixtures. Flag round-trips preserve bits 18 and 19. New and persisted item instances retain the intended configuration on MariaDB.
 - A local gameplay journey proves an equipped monk's real attacks can trigger the proc, and unequipping the gloves stops it. Repeat with a non-monk and an actual weapon. Verify player messages and staff inspection alongside the journey.
 
 Run `./scripts/format.sh --check`, the focused tests, and `make -C src` after C/C++ implementation; build the touched area editor with `make -C areas/de/src`. Build and test outputs stay under `bin/`. The baseline research needed no build; implementation results are recorded above.
