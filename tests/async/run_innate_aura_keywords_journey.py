@@ -133,6 +133,6 @@ def run(binary, backend):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
-    parser.add_argument('--backend', choices=('flatfile', 'mariadb'), required=True)
+    parser.add_argument('--backend', choices=("mariadb",), required=True)
     args = parser.parse_args()
     run(args.binary.resolve(), args.backend)

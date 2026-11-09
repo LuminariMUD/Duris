@@ -149,7 +149,8 @@ P_char get_linking_char(P_char ch, ush_int) { return ch == mount_fixture ? rider
 void char_from_room(P_char ch) { ch->in_room = NOWHERE; }
 // Departure rules have their own runtime matrix; this harness isolates movement completion.
 static bool leave_walking_group(P_char ch, int, int) { char_from_room(ch); return true; }
-bool char_to_room(P_char ch, int room, int) {
+bool char_to_room(P_char ch, int room, int, bool ordinary_movement) {
+    assert(ordinary_movement);
     if (!placement_ok) return false;
     ch->in_room = room;
     if (carry) {

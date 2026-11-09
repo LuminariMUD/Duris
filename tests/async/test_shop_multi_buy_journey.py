@@ -212,8 +212,6 @@ def run(binary, backend, report):
                 stop()
                 if sql:
                     sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
-                else:
-                    journey.make_overlord(Path(env["FLATFILE_STATE_DIR"]), GOD)
                 boot()
                 god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
                 assert "No room exists" not in command(god, f"goto {ROOM}")

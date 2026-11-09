@@ -466,7 +466,8 @@ std::string essence_of_wolf_facts(P_char /*ch*/)
 	       "  That other one uses up an extra attack if any are left.\n"
 	       "  An NPC target is refused.\n"
 	       "  Nothing happens if you already share it or the target already has it.\n"
-	       "  It ends when you use a command, or when the target walks 2 rooms away.\n";
+	       "  It ends when you use a command, or when the target walks 2 rooms away.\n"
+	       "  Any other travel by either of you ends it, even when traveling together.\n";
 }
 
 void spell_essence_of_the_wolf(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
