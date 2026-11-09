@@ -158,7 +158,10 @@ static void checked_snprintf(char *b,size_t n,const char *f,...) { va_list a; va
 static int scrap_attempts=0;
 static bool refuse_scrap=false;
 static bool MakeScrap(P_char,P_obj) { ++scrap_attempts; return !refuse_scrap; }
-static void writeCorpse(P_obj corpse) { assert(corpse); ++corpse_writes; }
+static void writeCorpse(P_obj corpse) {
+ assert(corpse && objects.count(50) && objects.at(50)==corpse);
+ ++corpse_writes;
+}
 static std::array<int32_t,CURRENCY_DENOMINATION_COUNT> wallet{};
 static bool credit_coins(P_char,const std::array<int32_t,CURRENCY_DENOMINATION_COUNT> &amount) {
  bool any=false;
@@ -231,7 +234,7 @@ int main() {
   start_bulk_get(&actor,floor?nullptr:&corpse,filtered?"dagger":nullptr,true);
   assert(trap_calls==1 && checked_after_trap==(effect?0:count-position-1));
   // The trap's own save, then the batch's save once anything else was taken.
-  assert(corpse_writes==(floor?0:1+(!effect&&count>1)));
+  assert(corpse_writes==(floor || effect==4?0:1+(!effect&&count>1)));
   for(int i=0; i<count; ++i)
    assert(OBJ_CARRIED_BY(&items[i],&actor)==(!effect && i!=position));
   if(effect) assert(output.empty());

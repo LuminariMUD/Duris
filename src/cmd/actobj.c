@@ -486,6 +486,7 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 	int got_p = 0, got_g = 0, got_s = 0, got_c = 0, notall = 0;
 	char Gbuf3[MAX_STRING_LENGTH];
 	P_obj corpse = NULL;
+	const uint64_t source_uid = s_obj ? s_obj->obj_uid : 0;
 	bool slip = FALSE;
 	item_get_rejected = true;
 	if (ch && s_obj && !locker_container_access_allowed(ch, s_obj))
@@ -572,7 +573,7 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 	/* A triggered trap rejects pickup and may already have extracted ch. */
 	if (checkgetput(ch, o_obj))
 	{
-		if (corpse)
+		if (corpse && find_live_object(corpse, source_uid))
 			writeCorpse(corpse);
 		return;
 	}
@@ -1551,7 +1552,8 @@ static bool select_bulk_get_item(P_char actor, P_obj container, P_obj object, co
 	const bool scrap = object->condition <= 0;
 	if (!scrap && checkgetput(actor, object))
 	{
-		if (container && container->type == ITEM_CORPSE &&
+		if (container && find_live_object(container, state.container_uid) &&
+		    container->type == ITEM_CORPSE &&
 		    IS_SET(container->value[CORPSE_FLAGS], PC_CORPSE))
 			writeCorpse(container);
 		state.failed = true;

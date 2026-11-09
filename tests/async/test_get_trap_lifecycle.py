@@ -172,6 +172,23 @@ parts += [extract_function('mobact.c', 'static P_obj find_scavenged_object('),
           'P_obj obj, obj2;\n' + scavenge + '\n' + reschedule + '}']
 parts.append(r'''
 int main() {
+ // A trap can extract the player corpse before the single pickup returns.
+ // Execute real get() with a freed source, so ASan catches any stale save.
+ {
+  pc_only_data pc{}; char_data actor{};
+  actor.only.pc=&pc; actor.runtime_id=1; actor.in_room=1;
+  actor.specials.position=POS_STANDING|STAT_NORMAL; character_list=&actor;
+  P_obj corpse=new obj_data{}; corpse->type=ITEM_CORPSE; corpse->obj_uid=60;
+  corpse->value[CORPSE_FLAGS]=PC_CORPSE;
+  P_obj item=new obj_data{}, next=new obj_data{};
+  item->obj_uid=61; item->condition=1; item->trap_charge=1;
+  item->trap_eff=TRAP_EFF_OBJECT; item->loc_p=LOC_INSIDE; item->loc.inside=corpse;
+  item->next=next; next->next=corpse; object_list=item;
+  trap_effect=5; refuse_audit=false; corpse_writes=0;
+  get(&actor,item,corpse,TRUE);
+  assert(corpse_writes==0 && item_get_rejected);
+  delete item; delete next; object_list=nullptr; character_list=nullptr;
+ }
  // Modes: surviving/lethal/teleport/sleep traps, delivery, crumble, whole/partial/
  // capped coins, bound/no-loot/hitched refusal, and wallet refusal.
  for(bool npc : {false,true}) for(bool container : {false,true}) for(int mode=0; mode<16; ++mode) for(bool batch : {false,true}) {
