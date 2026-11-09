@@ -1353,7 +1353,7 @@ void recover_from_room_ch_loop(P_char k)
 }
 
 // A companion's departure/entry hooks may also remove or redirect this entrant.
-static bool move_riding_companions(P_char ch, int room, int dir)
+static bool move_riding_companions(P_char ch, int room, int dir, bool ordinary_movement)
 {
 	const auto runtime = ch->runtime_id;
 	const auto removals = character_removal_generation;
@@ -1380,7 +1380,7 @@ static bool move_riding_companions(P_char ch, int room, int dir)
 				else if (entrant_live)
 					unlink_char(ch, companion, LNK_RIDING);
 			}
-			char_to_room(companion, room, dir);
+			char_to_room(companion, room, dir, ordinary_movement);
 		}
 		if ((removals != character_removal_generation && !char_in_list(ch)) ||
 		    ch->runtime_id != runtime || !IS_ALIVE(ch) || ch->in_room != room)
@@ -1393,7 +1393,7 @@ static bool move_riding_companions(P_char ch, int room, int dir)
  * place a character in a room.
  */
 // Returns TRUE iff char made it into the room.
-bool char_to_room(P_char ch, int room, int dir)
+bool char_to_room(P_char ch, int room, int dir, bool ordinary_movement)
 {
 	P_char t_ch, k, who;
 	P_desc d;
@@ -1495,6 +1495,16 @@ bool char_to_room(P_char ch, int room, int dir)
 	was_in_arena = IS_ROOM(was_in, ROOM_ARENA) != 0;
 
 	ch->in_room = room;
+
+	// Ordinary movement keeps its existing departure/arrival link check. Every
+	// other relocation ends Essence, even if both partners travel together.
+	// Wait for actual placement: detachment and recovery to the source aren't travel.
+	if (!ordinary_movement && was_in != room)
+	{
+		clear_links(ch, LNK_ESSENCE_OF_WOLF);
+		while (P_char caster = get_linking_char(ch, LNK_ESSENCE_OF_WOLF))
+			unlink_char(caster, ch, LNK_ESSENCE_OF_WOLF);
+	}
 
 	if ((was_in_arena != (IS_ROOM(room, ROOM_ARENA) != 0)) && !IS_TRUSTED(ch))
 	{
@@ -1606,7 +1616,7 @@ bool char_to_room(P_char ch, int room, int dir)
 
 	AddCharToZone(ch);
 
-	if (!move_riding_companions(ch, room, dir))
+	if (!move_riding_companions(ch, room, dir, ordinary_movement))
 		return FALSE;
 
 	/*
@@ -1973,6 +1983,11 @@ bool char_to_room(P_char ch, int room, int dir)
 	}
 
 	return TRUE;
+}
+
+bool char_to_room(P_char ch, int room, int dir)
+{
+	return char_to_room(ch, room, dir, false);
 }
 
 // marks player or pet owner dirty when inventory/equipment changes
