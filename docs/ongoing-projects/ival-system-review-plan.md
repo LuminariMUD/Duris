@@ -181,7 +181,9 @@ needed. The path change removes truncation rather than adding another limit.
 ### Chunk 4 — isolate shared arithmetic from runtime context (F11, partial)
 
 Branch: `branch/ival-shared-evaluator`, based on `branch/ival-report-errors`.
-Implemented in commit `efd8d50ea`; ready for review after publication below.
+Published: implementation commit `efd8d50ea`, evidence commit `810c9bd72`,
+[PR #884](https://github.com/LuminariMUD/Duris/pull/884) (enhancement label),
+stacked on #879. Ready for review.
 
 **Outcome:** move the existing numeric calculation into `src/item/item_value.c`
 with plain input/context data in `item_value.h`; move circle/proc/racial resolution
@@ -209,8 +211,8 @@ formula changes. Controlled circle/native/racial context was shared by both
 implementations.
 
 The existing enhancement, monk tools, authored monk pilot, and characterization
-checks passed with
-the production numeric module and adapter linked as separate translation units.
+checks passed with the production numeric module and adapter linked as separate
+translation units.
 The characterization harness now also compiles the numeric module alone in both
 server and `_DE_` editor modes, without engine globals/stubs; it exercises explicit
 context, floor/utility policy, and scalar breakdown consistency. Native racial
@@ -222,6 +224,59 @@ them. `make -C src -j4`, formatting, and clang-tidy commit checks passed.
 traced runtime/editor/report consumers. Keep current proc pricing and circle
 policy intact; a new rule engine, calculator language, or persistent cache adds
 nothing needed by this extraction.
+
+### Chunk 5 — use shared arithmetic in the editor (F06, partial)
+
+Branch: `branch/ival-editor-values`, based on `branch/ival-editor-formatting`.
+
+Formatting prerequisite: `64b11e3b7`,
+[PR #885](https://github.com/LuminariMUD/Duris/pull/885) (enhancement label),
+stacked on #884. `menudef.cpp` and `misc/menu.cpp` failed the repository's
+whole-file format check even at baseline `810c9bd72`. This separate PR contains
+only clang-format output from those baseline files, keeping the actual estimate
+UI/editor changes out of the mechanical diff. Both maintained editor builds
+passed after normalization; there is no text or behavior change in #885.
+
+**Outcome:** replace the obsolete editor calculation with a field adapter to the
+shared numeric module. Count all four applies, use the same arithmetic for
+common inputs, label the view/search as estimates, and explain missing native
+proc/racial/specialization context. Correct editor class bounds and remove the
+obsolete commented-out native-price copy.
+
+**Non-goals:** inventing native/racial weights, changing server scores, or claiming
+complete template/context parity. Missing contexts remain visible; complete
+context and normalization must still be reconciled under F07/F11/F12.
+
+**Files:** `areas/de/src/obj/object.cpp`, the GODMODE editor build, its value label,
+and existing server/editor native tool fixtures.
+
+**Proof:** `python3 tests/async/test_monk_glove_tools.py` passed under ASan/UBSan.
+Server/editor fixtures now agree for HP +10 (29), nonweapon hitroll +3 (37), armor
+AC 10 (15), fourth-slot STR +6 (25), protection from living (45), and ordinary 2d6
+weapons (12). Legacy zero-modifier behavior is shared, pending its separate repair.
+The actual editor search executes with presentation/index endpoints controlled:
+its warning is visible and its filter uses the same score as the item view. Real
+editor minimum-circle code covers first/last classes, invalid IDs, and the unused
+sentinel entry. The editor gives no invented racial credit when context is absent.
+
+`make -C areas/de/src -j4`, `make -C areas/de/src -f Makefile.debug -j4`, and
+`make -C src -j4` passed. Physical terminal/menu layout and complete live-context
+parity remain unverified. `./scripts/format.sh --staged --check` passed for changed
+lines and all touched files after the formatting prerequisite above.
+
+**Ablation:** remove the copied formula and unused commented proc map. Reuse the
+existing shared-C wrapper/build pattern, adding no service, import format, or
+second authoritative calculator.
+
+Additional required repair discovered while tracing the editor: its reader has
+no `B5` branch and aborts on that valid server object record; `objectType` and the
+writer also lack bank 5. Repair this in a separate chunk with a native read/write
+round trip before claiming editor input preservation. No authored/player data
+was modified. This extends the original F05/F06/F16 coverage requirement.
+Owning sources are `areas/de/src/obj/{object.h,readobj.cpp,writeobj.cpp}`. The
+reader's unrecognized-extra-data branch rejects `B5`; preserve ordinary records
+and apply/description/trap ordering when adding support, and copy bank 5 into the
+new valuation input without introducing an unreviewed weight.
 
 Next: continue remaining Stage 1 work and the shared evaluator/context work.
 The published PR stack remains open for review; none has been merged or deployed.
@@ -849,6 +904,8 @@ partial deliveries and their verification are recorded in the implementation log
   normalization; record formula/context provenance.
 - [ ] Correct editor/config/report claims immediately; resolve the inert `[spell]`
   contract and currency labels without inventing unsupported behavior.
+  Editor view/search estimate semantics are implemented in Chunk 5; config and
+  full report-context work remain pending.
 - [ ] Establish native full-context corpus reporting; fix offline report errors
   and initialization before treating its numbers as authoritative.
   Output errors are repaired in Chunk 3; initialization/parity remains pending.
@@ -862,8 +919,9 @@ partial deliveries and their verification are recorded in the implementation log
   with explicit metadata; keep repricing and override semantics in later changes.
 - [ ] Add the breakdown and read-only template path; migrate inspection users
   incrementally using normalized template-versus-instance parity fixtures.
-- [ ] Use the shared numeric evaluator in the editor, retaining explicit
-  incomplete-context status where necessary.
+- [x] Use the shared numeric evaluator in the editor, retaining explicit
+  incomplete-context status where necessary. See Chunk 5; input-preservation and
+  full context/normalization qualification remain separate open requirements.
 
 ### Stage 3 — repair correctness in small, measured slices
 
