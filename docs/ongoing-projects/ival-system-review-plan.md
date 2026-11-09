@@ -45,7 +45,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-circle-extents`; its initial synchronized commit was
+`origin/branch/ival-packed-proc-mean`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -60,7 +60,8 @@ Current Git status verified 2026-11-09: PRs #876, #877, #878, #879, #884, #885,
 #886, #889, and #894 were merged by external review. PR #902 targets `master`;
 the #919 constructor repair and #927 CTF binding prerequisite are stacked above
 it. The metadata/report work is published as #930; the circle repair is #935 on
-`branch/ival-circle-extents`. Branch/base
+`branch/ival-circle-extents`; #946 repairs packed averaging on
+`branch/ival-packed-proc-mean`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -613,6 +614,8 @@ command journeys remain F16 before rollout. No economic coefficients changed.
 The evidence was generated before commit: `source_revision` deliberately records
 the dirty parent plus formula/binary/input identities, and before/after native
 function hashes identify the compared code. Reproduce with:
+Use Chunk 9's implementation checkout for this historical result; later numeric
+changes intentionally fail its circle-only proof guard.
 
 ```text
 python3 tests/async/test_item_value_template_runtime.py --circle-baseline 071b2bf8bedaed308aa9616225091c59c9acdaa8 --delta-output docs/ongoing-projects/ival-evidence/f01
@@ -630,6 +633,8 @@ keep refusing changed numeric/runtime adapters; do not bypass that proof guard.
 ### Chunk 10 — preserve fractional random-one proc value (F02, implemented)
 
 Branch: `branch/ival-packed-proc-mean`, based on `branch/ival-circle-extents`.
+Published: `e023474a5`, [PR #946](https://github.com/LuminariMUD/Duris/pull/946)
+(bug label), stacked on #935. Ready for review.
 
 **Outcome:** compute the random-one mean and scaled credit in floating point,
 then use the existing single final truncation after every multiplier. Preserve
@@ -724,8 +729,8 @@ operation was used; complete persistence/command qualification remains F16.
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization
-   entries are repaired. Random-one proc averaging still truncates before scaling;
-   affect order and zero modifiers still change scores for equivalent stats.
+   entries and F02's premature packed-proc rounding are repaired. Affect order,
+   zero modifiers and duplicate representation still need F03/F04.
 2. **Keep tools truthful.** The editor now uses shared arithmetic with explicit
    context estimates, and the offline material report has normalized context and
    native corpus qualification. Enhancement configuration/enforcement still needs
@@ -1367,8 +1372,8 @@ partial deliveries and their verification are recorded in the implementation log
 
 ### Stage 3 — repair correctness in small, measured slices
 
-- [ ] Correct minimum-circle bounds and packed averaging (F01/F02).
-  F01 is implemented and qualified in Chunk 9 / #935; F02 remains pending.
+- [x] Correct minimum-circle bounds and packed averaging (F01/F02).
+  Implemented and qualified in Chunks 9/#935 and 10/#946.
 - [ ] Make zero modifiers neutral and multiplier composition order independent
   (F03/F04); address duplicate semantics in its own slice if the delta is broad.
 - [ ] Add finite/overflow checks at evaluator, config, and consumer boundaries
