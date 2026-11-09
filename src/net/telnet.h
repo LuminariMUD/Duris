@@ -354,5 +354,6 @@ extern char *enctype_names[];
 /* MCCP suboptions */
 #define TELOPT_COMPRESS 85
 #define TELOPT_COMPRESS2 86
+#define TELOPT_MXP 91
 
 #endif /* !_TELNET_H_ */

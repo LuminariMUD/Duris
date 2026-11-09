@@ -30,6 +30,16 @@
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+// Output-only fixtures can keep their existing raw-queue capture. Runtime link
+// fixtures link output_links.c, replacing this boundary with the real scanner.
+HARNESS_STUB void write_to_q(const char *, txt_q *, int)
+{
+	std::abort();
+}
+HARNESS_STUB void write_output(const char *text, txt_q *queue)
+{
+	write_to_q(text, queue, 1);
+}
 // Ordinary-effect fixtures have no named equipment. Named-set regressions link
 // the real implementation, which replaces these empty ownership boundaries.
 HARNESS_STUB named_set_ordinary_cast::named_set_ordinary_cast(P_char, P_char, int) {}
