@@ -766,6 +766,68 @@ int main()
 	assert(collision_after_revision.outcome == critical_apply_outcome::terminal_failure &&
 	       collision_after_revision.error_code == EEXIST);
 
+	// A paid creation is one receipt: exact wallet debit and every item UID
+	// commit together, and replay can neither recharge nor remint.
+	execute(connection, "UPDATE player_data SET copper=0,silver=0,gold=0,platinum=100,"
+			    "wallet_revision=0 WHERE pid=4000000001");
+	item_uid_allocator_reset_for_tests();
+	assert(item_uid_allocator_reserve(connection, 12));
+	auto paid_batch = [&](uint64_t revision, int64_t price)
+	{
+		const uint64_t first = item_uid_allocator_next();
+		const uint64_t child = item_uid_allocator_next();
+		const uint64_t other = item_uid_allocator_next();
+		auto purchase = multi_root_creation_payload(first, child, other,
+							    owner_revision(connection, system),
+							    owner_revision(connection, player_one));
+		purchase.reason_id = -price;
+		purchase.paid_creation = true;
+		purchase.paid_wallet_revision = revision;
+		return std::pair{ purchase, first };
+	};
+	const auto [paid, paid_uid] = paid_batch(0, 11);
+	const auto purchase = apply(connection, 242, paid);
+	assert(purchase.outcome == critical_apply_outcome::applied);
+	item_transfer_result paid_result{};
+	assert(item_transfer_command_decode_result(purchase.result_payload.data(),
+						   purchase.result_size, &paid_result));
+	assert(paid_result.root_item_uid == paid_uid && paid_result.corpse_revision == 1);
+	assert(scalar(connection, "SELECT copper+10*silver+100*gold+1000*platinum FROM player_data "
+				  "WHERE pid=4000000001") == 99989);
+	assert(scalar(connection,
+		      ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid BETWEEN " +
+		       std::to_string(paid_uid) + " AND " + std::to_string(paid_uid + 2) +
+		       " AND owner_type=1 AND owner_id=4000000001")
+			      .c_str()) == 3);
+	assert(apply(connection, 242, paid).outcome == critical_apply_outcome::already_applied);
+	assert(scalar(connection, "SELECT copper+10*silver+100*gold+1000*platinum FROM player_data "
+				  "WHERE pid=4000000001") == 99989);
+	const auto [unaffordable, refused_uid] = paid_batch(1, 100000);
+	const auto no_funds = apply(connection, 243, unaffordable);
+	assert(no_funds.outcome == critical_apply_outcome::terminal_failure &&
+	       no_funds.error_code == ENOSPC);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
+				   std::to_string(refused_uid))
+					  .c_str()) == 0);
+	const auto [stale, stale_uid] = paid_batch(0, 11);
+	const auto wrong_revision = apply(connection, 244, stale);
+	assert(wrong_revision.outcome == critical_apply_outcome::terminal_failure &&
+	       wrong_revision.error_code == ESTALE);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
+				   std::to_string(stale_uid))
+					  .c_str()) == 0);
+	execute(connection,
+		"CREATE TRIGGER fail_paid_creation BEFORE UPDATE ON player_data "
+		"FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='injected wallet refusal'");
+	const auto [injected, injected_uid] = paid_batch(1, 11);
+	assert(apply(connection, 245, injected).outcome != critical_apply_outcome::applied);
+	assert(scalar(connection, ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=" +
+				   std::to_string(injected_uid))
+					  .c_str()) == 0);
+	assert(scalar(connection, "SELECT copper+10*silver+100*gold+1000*platinum FROM player_data "
+				  "WHERE pid=4000000001") == 99989);
+	execute(connection, "DROP TRIGGER fail_paid_creation");
+
 	for (uint8_t id = 1; id <= 27; ++id)
 	{
 		const std::string hex = operation_hex(id);
