@@ -98,7 +98,7 @@ int main() {
     auto roster = run("");
     assert(roster == run("list"));
     const auto good = roster.find("GOOD RACES"), evil = roster.find("EVIL RACES");
-    const auto neutral = roster.find("NEUTRAL RACES"), special = roster.find("SPECIAL / LEGACY RACES");
+    const auto neutral = roster.find("NEUTRAL RACES"), special = roster.find("DISABLED RACES");
     assert(good < evil && evil < neutral && neutral < special);
     assert(roster.find("Human", good) < evil);
     assert(roster.find("Drow Elf", evil) < neutral);
@@ -109,6 +109,56 @@ int main() {
     assert(roster.find("Planetbound Illithid", special) != std::string::npos);
     assert(output.find("&+C") != std::string::npos && output.find("&+R") != std::string::npos &&
            output.find("&+Y") != std::string::npos);
+    for (int race = 1; race <= RACE_PLAYER_MAX; ++race) {
+        // Preserve every embedded race-name color, including multicolor names.
+        if (plain(race_names_table[race].ansi) == race_names_table[race].normal)
+            assert(output.find(race_names_table[race].ansi) != std::string::npos);
+    }
+    for (const auto *name : {"&+YMountain Dwarf&n", "&+rDuergar Dwarf&n",
+                             "&+MPlanetbound Illithid&n"})
+        assert(output.find(name) != std::string::npos);
+    for (const auto *heading : {"&+R       D U R I S", "&+W             >====[",
+                                "&+C  +", "&+R  +", "&+Y  +", "&+M  +",
+                                "&+WRace info <race name>&n",
+                                "&+WRace innates <race name>&n"})
+        assert(output.find(heading) != std::string::npos);
+    const std::string expected_roster = R"ROSTER(
+  /====================================================================\
+  |        D U R I S  :  L A N D  O F  B L O O D L U S T               |
+  |              >====[  THE RACEWAR ROSTER  ]====<                    |
+  \====================================================================/
+  +--------------------------------------------------------------------+
+  |                        /\   GOOD RACES   /\                        |
+  +--------------------------------------------------------------------+
+  |   Human                 Barbarian             Grey Elf             |
+  |   Mountain Dwarf        Halfling              Gnome                |
+  |   Centaur               Githzerai             Firbolg              |
+  +--------------------------------------------------------------------+
+  |                        \/   EVIL RACES   \/                        |
+  +--------------------------------------------------------------------+
+  |   Drow Elf              Duergar Dwarf         Ogre                 |
+  |   Troll                 Orc                   Githyanki            |
+  |   Goblin                Kobold                Drider               |
+  +--------------------------------------------------------------------+
+  |                      <>   NEUTRAL RACES   <>                       |
+  |              Choose their racewar side during creation             |
+  +--------------------------------------------------------------------+
+  |   Thri-Kreen            Minotaur              Tiefling             |
+  +--------------------------------------------------------------------+
+  |                           DISABLED RACES                           |
+  +--------------------------------------------------------------------+
+  |   Lich                  Vampire               Death Knight         |
+  |   Wight                 Revenant              Shadow Beast         |
+  |   Phantom               Shade                                      |
+  |   Half-Elf              Wood Elf              Kuo Toa              |
+  |   Orog                  Harpy                                      |
+  |   Illithid              Planetbound Illithid  Storm Giant          |
+  +--------------------------------------------------------------------+
+
+  Race info <race name>     Profile and valid classes
+  Race innates <race name>  Racial abilities and unlock levels
+)ROSTER";
+    assert(roster == expected_roster);
     std::istringstream lines(roster);
     for (std::string line; std::getline(lines, line);) {
         if (line.rfind("  |", 0) == 0 || line.rfind("  +", 0) == 0) {
@@ -191,6 +241,8 @@ int main() {
     assert(run("info human").find("    Warrior") == std::string::npos);
     assert(run("info gnome").find("Disabled in character creation") != std::string::npos);
     assert(run("list").find("*Gnome") != std::string::npos);
+    assert(output.find("&+L*&+RGnome&n") != std::string::npos);
+    assert(plain(output).find("* Disabled in character creation.") != std::string::npos);
     puts("PASS: all 37 race profiles/innate routes, numeric racial timing, race-specific specializations, "
          "creation restrictions and overrides, faction colors, ASCII panels and name resolution");
 }

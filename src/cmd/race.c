@@ -61,16 +61,23 @@ static void show_race_list(P_char ch)
 		{ "evil", " \\/   EVIL RACES   \\/ ", "&+R" },
 		{ "neutral", " <>   NEUTRAL RACES   <> ", "&+Y" },
 	};
+	bool disabled_races = false;
 	for (const auto &side : sides)
 	{
 		string banner((66 - strlen(side.banner)) / 2, ' ');
 		banner += side.banner;
 		send_to_char_f(
 			ch,
-			"\n%s  +--------------------------------------------------------------------+\n"
-			"  | %s |\n"
-			"  +--------------------------------------------------------------------+&n\n",
+			"%s  +--------------------------------------------------------------------+\n"
+			"  | %s |\n",
 			side.color, pad_ansi(banner.c_str(), 66).c_str());
+		if (!strcmp(side.faction, "neutral"))
+			send_to_char(
+				"  |              Choose their racewar side during creation             |\n",
+				ch);
+		send_to_char(
+			"  +--------------------------------------------------------------------+&n\n",
+			ch);
 		int columns = 0;
 		for (const playable_race_info *entry = playable_races; entry->race_id >= 0; ++entry)
 		{
@@ -78,7 +85,9 @@ static void show_race_list(P_char ch)
 				continue;
 			if (columns == 0)
 				send_to_char_f(ch, "%s  |  &n", side.color);
-			string name = creation_race_enabled(entry->race_id) ? " " : "&+L*";
+			bool enabled = creation_race_enabled(entry->race_id);
+			disabled_races |= !enabled;
+			string name = enabled ? " " : "&+L*";
 			name += race_display_name(entry->race_id);
 			send_to_char(pad_ansi(name.c_str(), 22).c_str(), ch);
 			if (++columns == 3)
@@ -89,19 +98,32 @@ static void show_race_list(P_char ch)
 		}
 		if (columns)
 			send_to_char_f(ch, "%*s%s|&n\n", (3 - columns) * 22, "", side.color);
-		send_to_char_f(
-			ch,
-			"%s  +--------------------------------------------------------------------+&n\n",
-			side.color);
 	}
-	send_to_char("\n&+Y  Neutral races choose their racewar side during creation.&n\n"
-		     "  * Disabled in character creation.\n"
-		     "\n&+M  >====[ SPECIAL / LEGACY RACES ]====<&n\n",
+	send_to_char("&+M  +--------------------------------------------------------------------+\n"
+		     "  |                           DISABLED RACES                           |\n"
+		     "  +--------------------------------------------------------------------+&n\n",
 		     ch);
+	int columns = 0;
 	for (const restricted_race_info *entry = restricted_races; entry->race_id >= 0; ++entry)
-		send_to_char_f(ch, "    %s &n- %s\n",
-			       pad_ansi(race_display_name(entry->race_id).c_str(), 22).c_str(),
-			       race_creation_note(entry->race_id));
+	{
+		if (columns == 0)
+			send_to_char("&+M  |  &n", ch);
+		string name = " " + race_display_name(entry->race_id);
+		send_to_char(pad_ansi(name.c_str(), 22).c_str(), ch);
+		// Keep the short undead and legacy rows separate, as in the roster layout.
+		if (++columns == 3 || entry->race_id == RACE_SHADE || entry->race_id == RACE_HARPY)
+		{
+			send_to_char_f(ch, "%*s&+M|&n\n", (3 - columns) * 22, "");
+			columns = 0;
+		}
+	}
+	if (columns)
+		send_to_char_f(ch, "%*s&+M|&n\n", (3 - columns) * 22, "");
+	send_to_char(
+		"&+M  +--------------------------------------------------------------------+&n\n",
+		ch);
+	if (disabled_races)
+		send_to_char("  * Disabled in character creation.\n", ch);
 	send_to_char("\n  &+WRace info <race name>&n     Profile and valid classes\n"
 		     "  &+WRace innates <race name>&n  Racial abilities and unlock levels\n",
 		     ch);
