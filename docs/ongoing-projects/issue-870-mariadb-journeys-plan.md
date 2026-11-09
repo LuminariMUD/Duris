@@ -523,9 +523,8 @@ This is an estimate, not a time limit or permission to omit required proof.
   adjustment, saved properties/restart and 100-row listing), multiplier .5/1/2,
   default 20-cast probe and 20-cast `--budget-usec 2000` probe passed.
   Commands use `tests/async/with_disposable_mariadb.sh python3 tests/async/<runner>`
-  with `--server bin/server/dms_new` for racial/multiplier and the probe's
-  `--binary bin/server/dms_new`. Logs: `racial-pulse-run.log`,
-  `racial-multiplier-run.log`, `cast-timing-default-run.log`, `cast-timing-budget-run.log`.
+  with `--server bin/server/dms_new` for all three runners. Logs: `racial-pulse-run.log`,
+  `spellcast-multiplier-run.log`, `cast-timing-default-run.log`, `cast-timing-budget-run.log`.
 - Pwipe code: `0de5f6bc9` removes the impossible backend mode; `a8e18cb7b`
   separates mode-specific failure artifacts; `112f0dddb` seeds the website's
   verified synthetic donor email. Direct, Redis, Redis re-enable, reward-discard
@@ -550,7 +549,7 @@ This is an estimate, not a time limit or permission to omit required proof.
   verification; seed that verified donor precondition offline. Mail, Discord,
   analytics and real payment services remain disabled. No website source change.
 - Divine refusal: `e7e83d8c3`, `branch/issue-870-divine-refusal-journey`,
-  currently local above the pwipe branch. SQL promotion replaces the embedded C++
+  qualified above the pwipe branch. SQL promotion replaces the embedded C++
   snapshot writer/compiler; preserve the shared drain helper's five consumers.
   `tests/async/with_disposable_mariadb.sh python3 tests/async/run_divine_refusal_journey.py bin/server/dms_new`
   passed both full A/B scenarios: disabled dispatch2/2, enabled dispatch0/2,
@@ -559,7 +558,7 @@ This is an estimate, not a time limit or permission to omit required proof.
   `024e32b9dd95cf654ed9dbcadb937785d444b20967dbd11ce73d845aed3c875e`.
 - Other #880 standalone proof: issue37 zone reset/restart/restart-reset and the
   complete Misty Vale crafting/portals/switches/population/canoe/rod/fishing/reward
-  persistence journey passed. Evidence: `issue37-zone-run.log`,
+  persistence journey passed. Evidence: `issue37-run.log`,
   `misty-vale-run.log` and copied reports under `bin/tests/issue-870/`.
   Their unchanged source was exercised with the recorded 4f13e85355b8… binary.
 - Container follow-up `bbb0aca1b` is pushed on #903 and forwarded through the stack.
@@ -567,6 +566,22 @@ This is an estimate, not a time limit or permission to omit required proof.
   `024e32b9dd95cf654ed9dbcadb937785d444b20967dbd11ce73d845aed3c875e`.
   Latest native ASan/UBSan, creation-batch/reconciliation, newbie and prompt checks
   and `make -C src -j4` passed. Final aggregate gates must qualify this integration.
+- Weapon actions: `2b52eaf2e` uses the shared MariaDB authority and removes the
+  inspector option. `92d835596` applies the existing ten-minute natural-selection
+  deadline to both families: the original 45-second packed window timed out while
+  the player dodged every melee hit (failure log retained). All three packed cases
+  now passed: legacy damage, 2.002s warning-to-hit, and .250s flee with no damage
+  and a fizzle. Avernus's unforced 1/25 selection matrix remains running.
+- Copyover: `d3df89e40` uses one shared MariaDB setup for ordinary and Redis modes,
+  removes the duplicate schema installer, and replaces corrupt-snapshot injection
+  with a real rejecting player-save SQL trigger. The first plain case already
+  passed all failures and successful socket/session recovery. Default MCCP,
+  Redis faults, fresh/full-world and UID10001 modes still require terminal proof.
+- Discord: `a98106d9e` seeds staff in MariaDB. The unchanged bridge sink is at
+  `/home/aiwithapex/projects/discord-mud-chat/scripts/testing/duris-game-sink.js`,
+  clean checkout `70865ecafb0aeb9b9ac71da37696e416d892ce4c`. Its dependencies load
+  using Node26.11.1; the driver uses loopback config and a mocked Discord client,
+  without dotenv or real Discord access. Full runtime qualification is running.
 - Next: finish matched restore, publish the pwipe and divine-refusal chunks with
   appropriate labels, then continue weapon actions/copyover/Discord/colorization,
   named sets and historical assassin comparison, four item journeys, naming/docs,
