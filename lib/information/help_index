@@ -24555,10 +24555,10 @@ See also: energy drain, life leech, decaying flesh
 Area of effect: <self>
 Aggressive:     No
 Cumulative:     No
-Duration:       Short
+Duration:       Until lost or destroyed
 Type of spell:  Summoning 
 
-"Ensis unguis" tears a burning ember-talon blade free from the caster's own forearm, the flesh tearing at a price of blood - a tenth of all remaining life. The blood-soaked weapon smolders in the grip, spitting flameburst, fireball or even sunray at foes as the wielder's mastery of the dragon god deepens. The conjured blade crumbles away after a short time.
+"Ensis unguis" tears a burning ember-talon blade free from the caster's own forearm, the flesh tearing at a price of blood - a tenth of all remaining life. The blood-soaked weapon smolders in the grip, spitting flameburst, fireball or even sunray at foes as the wielder's mastery of the dragon god deepens. The conjured blade lasts until lost or destroyed, and once wielded it will not leave the hand without a remove curse.
 ===========================================================================
 See also: lancea cineralae, draconic apotheosis, edictum cineris
 
@@ -25119,10 +25119,10 @@ See also: thryms icerazor, stormcallers fury, lliendils stormshock
 Area of effect: <self>
 Aggressive:     No
 Cumulative:     Yes
-Duration:       Instantaneous (the conjured lance endures a long while before crumbling)
+Duration:       Until lost or destroyed
 Type of spell:  Summoning 
 
-"Lancea cineralae" wracks its caster with agony as a grotesque growth erupts from the shoulder and is torn free, becoming a burning lance bound to the dragoon's hand. The weapon drinks its maker's level: younger dragoons' lances spit gouts of flame, elders' burst with fireballs, and the mightiest hurl searing rays of sunlight. The gift costs a tenth of the caller's very lifeblood, and the ash-forged spear eventually crumbles to nothing.
+"Lancea cineralae" wracks its caster with agony as a grotesque growth erupts from the shoulder and is torn free, becoming a burning lance bound to the dragoon's hand. The weapon drinks its maker's level: younger dragoons' lances spit gouts of flame, elders' burst with fireballs, and the mightiest hurl searing rays of sunlight. The gift costs a tenth of the caller's very lifeblood. The ash-forged spear lasts until lost or destroyed, and once wielded it will not leave the hand without a remove curse.
 ===========================================================================
 See also: simulacrum anguis, stigmata draconica, edictum cineris
 #
@@ -25626,10 +25626,10 @@ See also: sanctuary, stigmata draconica, judicium fidei
 Area of effect: <self>
 Aggressive:     No
 Cumulative:     Yes
-Duration:       Instantaneous
+Duration:       Until lost or destroyed
 Type of spell:  Conjuration 
 
-"Simulacrum anguis" is a gruesome birth: the caster's entrails burst forth and writhe into a seared serpentine-viscera totem, a serpent-shaped weapon gripped still warm from the body. The horror hungers for flame, spitting bursts of fire at the priest's foes, and at great mastery even calls down rays of searing light. The ordeal drains a portion of the caster's current life, and the conjured relic crumbles to nothing before long.
+"Simulacrum anguis" is a gruesome birth: the caster's entrails burst forth and writhe into a seared serpentine-viscera totem, a serpent-shaped weapon gripped still warm from the body. The horror hungers for flame, spitting bursts of fire at the priest's foes, and at great mastery even calls down rays of searing light. The ordeal drains a portion of the caster's current life. The conjured relic lasts until lost or destroyed, and once wielded it will not leave the hand without a remove curse.
 ===========================================================================
 See also: ensis unguis, lancea cineralae, igneus vitae
 #
