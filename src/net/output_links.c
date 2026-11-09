@@ -17,7 +17,7 @@ bool valid_output_links(std::span<const OutputLink> links, size_t bytes)
 		{
 			if (link.target.size() >= MAX_INPUT_LENGTH ||
 			    !link.target.starts_with("help ") || link.target.size() == 5 ||
-			    link.target.find(';') != std::string::npos)
+			    link.target.find_first_of(";|") != std::string::npos)
 				return false;
 		}
 		else if (link.kind == OutputLinkKind::Url)
@@ -169,4 +169,32 @@ int get_linked_output(txt_q *queue, char *text, OutputLinks &links)
 	if (text && queue && queue->head && queue->head->links)
 		links = std::move(*queue->head->links);
 	return get_from_q(queue, text);
+}
+
+OutputLinks snoop_output_links(const char *markup, std::span<const OutputLink> links)
+{
+	if (links.empty() || !valid_output_links(links, strlen(markup)))
+		return {};
+	OutputLinks result;
+	size_t used = 7, index = 0;
+	for (size_t i = 0; markup[i] && used < MAX_STRING_LENGTH - 9; ++i)
+	{
+		while (index < links.size() && links[index].end <= i)
+			++index;
+		if (index == links.size())
+			break;
+		if (markup[i] == '\r')
+			continue;
+		const auto &link = links[index];
+		if (link.begin <= i)
+		{
+			if (!result.empty() && result.back().end == used &&
+			    result.back().target == link.target && result.back().kind == link.kind)
+				++result.back().end;
+			else if (result.size() < OUTPUT_LINK_MAX_COUNT)
+				result.push_back({ used, used + 1, link.kind, link.target });
+		}
+		used += markup[i] == '\n' && markup[i + 1] ? 8 : 1;
+	}
+	return result;
 }

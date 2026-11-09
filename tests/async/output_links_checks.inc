@@ -16,6 +16,175 @@ static OutputLinkFrame linked_frame(P_desc d)
 	return freeze_output_links(combined.c_str(), combined_links);
 }
 
+// Minimal independent MXP observation: tags count only while the wire is in
+// secure mode. Locked-mode angle brackets are ordinary visible player text.
+static std::pair<std::string, std::vector<std::string>> observe_mxp(const std::string &wire)
+{
+	std::string visible;
+	std::vector<std::string> tags;
+	bool secure = false;
+	for (size_t i = 0; i < wire.size();)
+	{
+		if (wire[i] == '\x1b' && i + 1 < wire.size() && wire[i + 1] == '[')
+		{
+			size_t end = i + 2;
+			while (end < wire.size() &&
+			       ((wire[end] >= '0' && wire[end] <= '9') || wire[end] == ';'))
+				++end;
+			assert(end < wire.size());
+			if (wire[end] == 'z')
+			{
+				assert(wire.substr(i, end - i + 1) == "\x1b[1z" ||
+				       wire.substr(i, end - i + 1) == "\x1b[7z");
+				secure = wire[i + 2] == '1';
+			}
+			else
+				assert(std::string("mCDHJKrsu").find(wire[end]) != std::string::npos);
+			i = end + 1;
+		}
+		else if (secure && wire[i] == '<')
+		{
+			const size_t end = wire.find('>', i);
+			assert(end != std::string::npos);
+			tags.push_back(wire.substr(i + 1, end - i - 1));
+			i = end + 1;
+		}
+		else
+		{
+			assert(!secure); // No label or untrusted text may remain in secure mode.
+			visible += wire[i++];
+		}
+	}
+	assert(!secure);
+	return { visible, tags };
+}
+
+static void mxp_delivery_matrix()
+{
+	char_data player{}, snooper{};
+	pc_only_data pc{}, spc{};
+	descriptor_data d{}, sd{};
+	player.only.pc = &pc;
+	snooper.only.pc = &spc;
+	player.desc = &d;
+	snooper.desc = &sd;
+	d.character = &player;
+	sd.character = &snooper;
+	d.connected = sd.connected = CON_PLAYING;
+	d.term_type = sd.term_type = TERM_ANSI;
+	pc.screen_length = 24;
+	d.mxp_state = MXP_ENABLED;
+	InitScreen(&player);
+	assert(process_output(&d) == 1);
+	const auto infobar = terminal_output[&d];
+	for (const char *control : { "\x1b[2J", "\x1b[0;0H", "\x1b[0;20r", "\x1b[s",
+				      "\x1b[22;13H", "\x1b[u" })
+		assert(infobar.find(control) != std::string::npos);
+	assert(infobar.find("^[[") == std::string::npos);
+	const auto greeting = mxp_render_output("\x1b[50CDuris", {}, false, TL_BLINK);
+	assert(greeting.find("\x1b[50C") != std::string::npos);
+	terminal_output.clear();
+	SET_BIT(player.specials.act, PLR_COMPACT | PLR_SMARTPROMPT);
+	SET_BIT(snooper.specials.act, PLR_COMPACT | PLR_SMARTPROMPT);
+	const std::string message = "😀 $$ &+cweather&n\n&+r<literal> & ok&n\n";
+	const OutputLinks links{ { message.find("weather"), message.find("weather") + 7,
+				   OutputLinkKind::Command, "help weather" },
+				 { message.find("<literal>"), message.size(), OutputLinkKind::Url,
+				   "https://durismud.com/?a=1&b=\"<2>\"" } };
+	OutputContext context;
+	context.links = links;
+	for (bool enabled : { false, true })
+		for (bool snoop_enabled : { false, true })
+		{
+			d.mxp_state = enabled ? MXP_ENABLED : MXP_OFF;
+			sd.mxp_state = snoop_enabled ? MXP_ENABLED : MXP_OFF;
+			snoop_by_data watching{ &snooper, nullptr };
+			d.snoop.snoop_by_list = &watching;
+			terminal_output.clear();
+			send_to_char(message.c_str(), &player, LOG_NONE, context);
+			assert(process_output(&d) == 1);
+			assert(process_output(&sd) == 1);
+			if (enabled)
+			{
+				auto [text, tags] = observe_mxp(terminal_output[&d]);
+				assert(text.find("😀 $ weather\r\n<literal> & ok") !=
+				       std::string::npos);
+				assert(tags.size() == 4 &&
+				       tags[0] == "SEND HREF=\"help weather\"" &&
+				       tags[1] == "/SEND");
+				assert(tags[2] ==
+				       "A HREF=\"https://durismud.com/?a=1&amp;b=&quot;&lt;2&gt;&quot;\"");
+				assert(tags[3] == "/A");
+			}
+			else
+				assert(terminal_output[&d].find("[7z") == std::string::npos &&
+				       terminal_output[&d].find("<SEND") == std::string::npos);
+			if (snoop_enabled)
+			{
+				auto [text, tags] = observe_mxp(terminal_output[&sd]);
+				assert(text.find("% 😀 $ weather\r\n% <literal> & ok") !=
+				       std::string::npos);
+				assert(tags.size() == 4 && tags[0] == "SEND HREF=\"help weather\"");
+			}
+			else
+				assert(terminal_output[&sd].find("[7z") == std::string::npos &&
+				       terminal_output[&sd].find("<SEND") == std::string::npos);
+			d.snoop.snoop_by_list = nullptr;
+		}
+	for (const char *literal :
+	     { "<SEND HREF=\"quit\">literal</SEND>", "\x1b[1z<SEND HREF=\"quit\">literal\x1b[7z",
+				    "\x1b[31mcolored\x1b[m", "\xc2\x9b", "\a\b" })
+	{
+		auto [text, tags] = observe_mxp(mxp_render_output(literal, {}, false, TL_BLINK));
+		assert(tags.empty() && !text.empty());
+	}
+	const std::string multiline = "one\ntwo\nthree";
+	OutputLinks spanning{ { 0, multiline.size(), OutputLinkKind::Command, "help lines" } };
+	auto [plain, balanced] =
+		observe_mxp(mxp_render_output(multiline.c_str(), spanning, false, TL_BLINK));
+	assert(plain == "one\r\ntwo\r\nthree" && balanced.size() == 6);
+	spanning = { { 0, 1, OutputLinkKind::Command, "help " + std::string(900, 'x') } };
+	// Repeated line labels can multiply attribute overhead. A rejected decoration
+	// emits all original characters with no partial tag.
+	std::string dense;
+	for (int i = 0; i < 2000; ++i)
+		dense += "x\n";
+	spanning[0].end = dense.size();
+	auto [fallback, no_tags] =
+		observe_mxp(mxp_render_output(dense.c_str(), spanning, true, TL_BLINK));
+	assert(no_tags.empty() && fallback.size() == 6000);
+	// Send paged output through the actual output loop, then refresh it. The
+	// target and terminal text are frozen, with no open tag left on either page.
+	pc.screen_length = 12;
+	SET_BIT(player.specials.act, PLR_PAGING_ON);
+	d.mxp_state = MXP_ENABLED;
+	const std::string page_text = dense.substr(0, 100);
+	OutputLinks page_link{ { 0, page_text.size(), OutputLinkKind::Command, "help paging" } };
+	OutputContext paged;
+	paged.links = page_link;
+	command_action = [&](P_char recipient) { send_to_char(page_text.c_str(), recipient, LOG_NONE, paged); };
+	char command[] = "mxp-paging";
+	terminal_output.clear();
+	process_with_paging(&player, command);
+	assert(d.showstr_count > 1 && process_output(&d) == 1);
+	const auto first_page = observe_mxp(terminal_output[&d]);
+	assert(!first_page.second.empty() && first_page.second.size() % 2 == 0);
+	terminal_output.clear();
+	show_string(&d, "r");
+	assert(process_output(&d) == 1 && observe_mxp(terminal_output[&d]) == first_page);
+	while (d.showstr_count)
+	{
+		terminal_output.clear();
+		show_string(&d, "");
+		assert(process_output(&d) == 1);
+		const auto page = observe_mxp(terminal_output[&d]);
+		assert(!page.second.empty() && page.second.size() % 2 == 0);
+	}
+	command_action = {};
+	terminal_output.clear();
+	puts("MXP delivery: real output, independent snoopers, locked text, escaping, line balance and size fallback passed");
+}
+
 static void output_links_matrix()
 {
 	char_data ch{};
@@ -59,8 +228,9 @@ static void output_links_matrix()
 	       generic.links[0].end == 2);
 
 	for (const auto &bad : OutputLinks{ { 0, 5, OutputLinkKind::Command, "help a;quit" },
+					    { 0, 5, OutputLinkKind::Command, "help a|quit" },
 					    { 0, 5, OutputLinkKind::Command, "help a\nquit" },
-		     { 0, 5, OutputLinkKind::Command, "help \xc2\x9b" },
+					    { 0, 5, OutputLinkKind::Command, "help \xc2\x9b" },
 					    { 0, 5, OutputLinkKind::Command, "quit" },
 					    { 0, 5, OutputLinkKind::Url, "javascript:alert(1)" },
 					    { 0, 5, OutputLinkKind::Url, "https://a b" },

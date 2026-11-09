@@ -37,7 +37,7 @@ static void colorization_benchmark()
 	cJSON_InitHooks(&hooks);
 	std::cout
 		<< "scenario,mode,recipients,messages,cpu_us_per_message,wall_us_per_message,allocations_per_message,allocated_bytes_per_message,terminal_bytes_per_message,gmcp_bytes_per_message\n";
-	for (const std::string scenario : { "room", "chat", "chat_gmcp", "combat", "links" })
+	for (const std::string scenario : { "room", "chat", "chat_gmcp", "combat", "links", "links_mxp" })
 	{
 		for (const std::string mode : { "legacy", "preserve", "static", "animated" })
 		{
@@ -87,7 +87,7 @@ static void colorization_benchmark()
 									OutputChannel::RoomDescription,
 									OutputPolicy::Animated));
 					}
-					else if (scenario == "links")
+					else if (scenario == "links" || scenario == "links_mxp")
 					{
 						OutputContext context = recipient_output_context(
 							OutputChannel::ChatTell,
@@ -137,16 +137,21 @@ static void colorization_benchmark()
 							.send(LOG_NONE);
 					}
 					char terminal[MAX_STRING_LENGTH];
-					if (scenario == "links")
+					if (scenario == "links" || scenario == "links_mxp")
 					{
 						char markup[MAX_STRING_LENGTH];
 						OutputLinks spans;
 						while (get_linked_output(&descriptors[i].output, markup, spans))
 						{
-							auto frame = freeze_output_links(markup, spans);
-							assert(frame.links.size() == (mode == "legacy" ? 0 : 2));
-							frame.text.term(terminal, TL_BLINK);
-							terminal_bytes += strlen(terminal);
+							if (scenario == "links_mxp")
+								terminal_bytes += mxp_render_output(markup, spans, false, TL_BLINK).size();
+							else
+							{
+								auto frame = freeze_output_links(markup, spans);
+								assert(frame.links.size() == (mode == "legacy" ? 0 : 2));
+								frame.text.term(terminal, TL_BLINK);
+								terminal_bytes += strlen(terminal);
+							}
 						}
 					}
 					else

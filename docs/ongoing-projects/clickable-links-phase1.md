@@ -28,8 +28,8 @@ No database migration or help-content rewrite is expected.
 - Repository: `LuminariMUD/Duris`.
 - Base: `origin/master` at `91f40a01fe` when this worktree was created.
 - First PR branch: `branch/clickable-links-phase1`.
-- Current implementation branch: `branch/clickable-links-output`, stacked on
-  `branch/clickable-links-phase1`.
+- Current implementation branch: `branch/clickable-links-mxp`, stacked on
+  `branch/clickable-links-output` (which is stacked on the first PR branch).
 - Worktree: `/home/aiwithapex/projects/duris-worktrees/clickable-links-phase1`.
 - Plan: `docs/ongoing-projects/clickable-links-phase1.md` in that worktree.
 - Deliver focused, reviewable commits and PRs as each chunk is verified. Stack
@@ -400,6 +400,72 @@ Local evidence is under `bin/tests/phase1-output-{runtime,asan,build}.log`,
 generated artifacts are not committed. No production or database operation was
 performed. Remaining acceptance checks listed above stay open until their
 corresponding implementation exists.
+
+### Chunk 3: MXP transport, snooping and retained state
+
+Review: [PR #917](https://github.com/LuminariMUD/Duris/pull/917), implementation
+commit `f9863457e`, stacked on #913; labels `enhancement`, `documentation`.
+
+Implemented the native transport on `branch/clickable-links-mxp`:
+
+- `net/mxp.*` owns the small negotiation state and native renderer. The greeting
+  requests option 91 with `DO`; refusal tries `WILL` once. Both directions,
+  unsolicited re-enable, repeated replies and disable are handled through the
+  existing fragmented Telnet parser. MXP is independent of GMCP and suppressed
+  on WebSockets.
+- `process_output()` now consumes the owned metadata. Established MXP sessions
+  render `SEND`/`A`; other peers continue through the existing terminal renderer.
+  No new output queue or write transport was added.
+- Generated tags briefly enter secure mode and immediately return to locked mode;
+  literal labels never enter secure mode. Attribute escaping covers quotes,
+  apostrophes and ampersands/angle brackets. Raw non-SGR escape controls are
+  visualized, and remaining C0/C1 controls are defused (newline/tab retained).
+  Command metadata also rejects MXP's `|` menu separator, ensuring one help
+  command rather than a command menu.
+- Links are closed/reopened on every newline and page. Decoration reaching the
+  existing string limit falls back to the ordinary terminal representation.
+  The dollar normalization precedes tags, so literal dollars in targets are not
+  reinterpreted by a subsequent output pass.
+- Snooping maps semantic spans through the existing `%` prefixes and CR removal;
+  each snooper independently renders using its own MXP capability. Metadata
+  remains outside logs and wire tags remain outside the queue/pager storage.
+- Native copyover version 22 appends an enabled flag at byte 808, after the full
+  version 20/21 record. Versions 12–21 retain their original widths and default
+  off. The actual descriptor producer retains only established MXP, and recovery
+  restores it on retained native connections; old/off peers negotiate before
+  emitting tags. No schema migration or live operation was performed.
+- The permanent contract is [docs/network/MXP.md](../network/MXP.md).
+
+Verified on 2026-11-09:
+
+- `python3 tests/async/test_word_output_integration.py` passed, including the
+  actual output loop and sender/snooper capability matrix, escaped targets,
+  locked literal/forged input, balanced line/page output, refresh and size fallback.
+- Its `SANITIZE=1` run passed (ASan/UBSan).
+- `python3 tests/async/test_telnet_output_runtime.py` passed with real parser /
+  negotiation and linked bytes included in partial-write, TLS and MCCP cases.
+- `test_copyover_evidence.py` passed with actual descriptor-producer checks,
+  frozen historical record widths, invalid MXP-state rejection, and versions
+  12–22; `test_telemetry_copyover_format.py` and `test_copyover_custody.py` passed.
+- `test_item_movement_prompt_runtime.py`, `test_pager_contract.py`,
+  `test_telnet_fragmentation_contract.py` and `test_ttype_runtime.py` passed.
+- `make -C src -j8`, `./scripts/format.sh --check` and commit-time tidy passed.
+- The extended output benchmark passed: native rendering of the same message
+  measured approximately 0.93 microseconds CPU/message without links and 2.22
+  with two preserve-styled links (12,800 messages / 64 recipients). Static
+  styling plus native links measured 4.35. This is a local presentation fixture,
+  not live-server capacity evidence.
+
+Evidence: `bin/tests/phase1-mxp-{output,asan,build,copyover,custody}.log` and
+`bin/tests/phase1-mxp-benchmark.csv`. The protocol observer checks wire modes and
+visible text, not actual client behavior. Native-client clicks and an
+original-socket hotboot with links remain open acceptance items.
+
+Next: adopt real help references/search results and shared URL recognition, add
+the negotiated browser presentation contract and chat URL coverage, implement
+the companion DurisWeb client, then run the remaining live/client journeys.
+This chunk renders explicit metadata correctly but has not yet converted the
+real help/URL producers; ordinary help output is not clickable yet.
 
 ## Scope review
 

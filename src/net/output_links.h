@@ -49,3 +49,5 @@ struct txt_q;
 // boundaries copy borrowed metadata on enqueue and move it out before dequeue.
 void write_linked_output(const char *text, txt_q *queue, std::span<const OutputLink> links);
 int get_linked_output(txt_q *queue, char *text, OutputLinks &links);
+// Map the existing cyan snoop prefixes and CR removal without storing wire tags.
+OutputLinks snoop_output_links(const char *markup, std::span<const OutputLink> links);

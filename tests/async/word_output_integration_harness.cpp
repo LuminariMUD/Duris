@@ -9,6 +9,9 @@
 #include "player/news.h"
 #include "net/gmcp.h"
 #include "net/chat_presentation.h"
+#include "net/mxp.h"
+#include "net/websocket.h"
+#include "economy/collector_transaction.h"
 #include "world/specs.prototypes.h"
 #include "cmd/interp.h"
 #include "core/files.h"
@@ -54,6 +57,34 @@ static bool visible = true;
 static P_char hidden_recipient = nullptr;
 static std::vector<std::pair<std::string, int>> logged;
 static std::function<void(P_char)> command_action;
+static std::map<P_desc, std::string> terminal_output;
+void format_to_snoopers(char *, char *);
+int write_to_descriptor(P_desc d, const char *text)
+{
+	terminal_output[d] += text;
+	return 0;
+}
+int write_to_descriptor_binary(P_desc d, const unsigned char *text, size_t length)
+{
+	terminal_output[d].append(reinterpret_cast<const char *>(text), length);
+	return 0;
+}
+int send_ga(P_desc)
+{
+	return 0;
+}
+bool item_creation_grant_blocks_commands(P_char)
+{
+	return false;
+}
+bool item_movement_transaction_player_busy(P_char)
+{
+	return false;
+}
+bool collector_service_player_busy(P_char)
+{
+	return false;
+}
 static player_save_pipeline_result save_result = player_save_pipeline_result::queued;
 static P_char saved_owner;
 static int save_calls;
@@ -666,6 +697,7 @@ int main()
 #endif
 	privacy_delivery_matrix();
 	output_links_matrix();
+	mxp_delivery_matrix();
 	privacy_toggle_matrix();
 	toggle_matrix();
 	chat_presentation_matrix();

@@ -1842,6 +1842,7 @@ struct descriptor_data
 	size_t ws_control_output_len;
 	size_t ws_control_output_offset;
 	int gmcp_enabled;
+	unsigned char mxp_state; // MXP_OFF/SENT_DO/SENT_WILL/ENABLED, independent of GMCP.
 	bool gmcp_initial_state_pending;
 	uint32_t gmcp_supports; // Versioned new streams; legacy packages keep their defaults.
 	uint32_t gmcp_interests;
