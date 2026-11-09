@@ -141,7 +141,7 @@ class BackupReviewRemediationTests(Fixture):
 
     def test_expired_generations_are_pruned_only_after_successful_capture(self):
         now = int(time.time())
-        old = [self.create("flatfile-primary", now - 90 * 86400 + offset)
+        old = [self.create("mariadb-primary", now - 90 * 86400 + offset)
                for offset in (0, 1, 2)]
         retained_size = sum(backup.total_size(path) for path in old[:2])
         self.p["max_bytes"] = retained_size + backup.total_size(self.base / "live") + 512 * 1024
@@ -150,22 +150,22 @@ class BackupReviewRemediationTests(Fixture):
                               (_ for _ in ()).throw(OSError("capture_failed"))
                               if stage == "before_capture" else None), \
              self.assertRaisesRegex(OSError, "capture_failed"):
-            self.create("flatfile-primary")
+            self.create("mariadb-primary")
         self.assertEqual({path: backup.inventory(path) for path in old}, before)
-        newest = self.create("flatfile-primary")
+        newest = self.create("mariadb-primary")
         self.assertTrue(newest.is_dir())
         generations = {path for path, _ in backup.generations(self.p["root"])}
         self.assertIn(newest, generations)
         self.assertNotIn(old[0], generations)
 
     def test_replication_failure_keeps_local_generation_and_status(self):
-        first = self.create("flatfile-primary")
+        first = self.create("mariadb-primary")
         replica = self.base / "replica"
         replica.mkdir(mode=0o700)
         self.p["replica_root"] = replica
         full = OSError(errno.ENOSPC, "No space left on device", str(replica / "private"))
         with mock.patch.object(backup, "replicate", side_effect=full):
-            result = backup.backup(self.p, "flatfile-primary")
+            result = backup.backup(self.p, "mariadb-primary")
         self.assertEqual(result["result"], "replication_pending")
         self.assertEqual(result["replica"], "pending")
         cause = {"code": "operation_failed", "error": "OSError", "detail": "No space left on device"}
@@ -179,7 +179,7 @@ class BackupReviewRemediationTests(Fixture):
         self.assertEqual(len(backup.generations(self.p["root"])), 2)
         with mock.patch.object(backup, "replicate",
                                return_value="transport_and_readback_verified"):
-            retried = backup.backup(self.p, "flatfile-primary")
+            retried = backup.backup(self.p, "mariadb-primary")
         self.assertEqual(retried["result"], "ok")
         self.assertEqual(retried["replica"], "transport_and_readback_verified")
         status = json.loads((self.p["root"] / "status.json").read_text())
@@ -214,18 +214,18 @@ class BackupReviewRemediationTests(Fixture):
         self.p["replica_root"] = replica
         with mock.patch.object(backup, "replicate",
                                side_effect=backup.BackupError("replica_mount_missing")):
-            pending = backup.backup(self.p, "flatfile-primary")
+            pending = backup.backup(self.p, "mariadb-primary")
         generation = self.p["root"] / pending["generation"]
-        (generation / "state/players/42").write_bytes(b"corrupted while the replica was down")
+        (generation / "database.sql.gz").write_bytes(b"corrupted while the replica was down")
         self.p["replica_root"] = None
         with self.assertRaisesRegex(backup.BackupError, "generation_checksum_mismatch"):
-            backup.backup(self.p, "flatfile-primary")
+            backup.backup(self.p, "mariadb-primary")
         status = json.loads((self.p["root"] / "status.json").read_text())
         self.assertEqual((status["generation"], status["result"]),
                          (pending["generation"], "replication_pending"))
 
     def test_replication_stage_is_removed_when_publication_fails(self):
-        source = self.create("flatfile-primary")
+        source = self.create("mariadb-primary")
         replica = self.base / "replica"
         replica.mkdir(mode=0o700)
         value = dict(self.p, replica_root=replica)
@@ -251,7 +251,7 @@ class BackupReviewRemediationTests(Fixture):
                 guarded.write(b"x")
 
     def test_operational_status_waits_for_a_separate_job_lock_holder(self):
-        self.create("flatfile-primary")
+        self.create("mariadb-primary")
         lock_path = self.p["root"] / ".job.lock"
         ready = multiprocessing.Event()
         release = multiprocessing.Event()
