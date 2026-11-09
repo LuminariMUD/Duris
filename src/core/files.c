@@ -3183,7 +3183,7 @@ P_obj read_one_object(char *read_buf)
 		{
 			for (int i = 0; i < 4; i++)
 			{
-				obj->timer[i] = GET_INTE(buf);
+				obj->timer[i] = static_cast<int32_t>(GET_INTE(buf));
 			}
 		}
 
