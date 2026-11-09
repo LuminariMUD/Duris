@@ -84,6 +84,19 @@ bool publish(std::unordered_map<std::string, pending_auction>::iterator found, P
 	// The auction keeps what it charged of the fee or bid the submit took and gives the
 	// rest back, all of it when refused; a money claim brings its money.
 	const int64_t credit = entry.escrow + (committed ? result.wallet_value_delta : 0);
+	if (character && credit > 0)
+	{
+		const uint64_t revision = character->only.pc->wallet_revision;
+		if (!currency_transaction_submit_wallet_value(
+			    character, credit,
+			    committed && result.action == auction_action::claim_money ?
+				    currency_reason_type::auction_pickup :
+				    currency_reason_type::refund,
+			    entry.payload.auction_id, critical_source_site::command,
+			    critical_deadline_class::interactive, nullptr, nullptr, 0) ||
+		    character->only.pc->wallet_revision == revision)
+			return false; // Retain the receipt and held items until its credit applies.
+	}
 	// A held item may have been extracted while the listing was in flight.
 	for (size_t index = 0; index < entry.held.size(); ++index)
 		if (P_obj object = find_live_object(entry.held[index],
@@ -94,14 +107,6 @@ bool publish(std::unordered_map<std::string, pending_auction>::iterator found, P
 			else if (character)
 				obj_to_char(object, character);
 		}
-	if (character && credit > 0)
-		currency_transaction_submit_wallet_value(
-			character, credit,
-			committed && result.action == auction_action::claim_money ?
-				currency_reason_type::auction_pickup :
-				currency_reason_type::refund,
-			entry.payload.auction_id, critical_source_site::command,
-			critical_deadline_class::interactive, nullptr, nullptr, 0);
 	if (committed && result.item_count)
 	{
 		// Settlement advances both owners. Updating only the destination leaves
@@ -214,15 +219,20 @@ bool submit(P_char character, const auction_command_payload &payload,
 	{
 		return false;
 	}
-	if (escrow > 0 &&
-	    !currency_transaction_submit_wallet_value(
-		    character, -escrow,
-		    payload.action == auction_action::list ? currency_reason_type::auction_listing :
-							     currency_reason_type::auction_bid,
-		    payload.auction_id, source, deadline, nullptr, nullptr, 0))
+	if (escrow > 0)
 	{
-		pending.erase(key);
-		return false;
+		const uint64_t revision = character->only.pc->wallet_revision;
+		if (!currency_transaction_submit_wallet_value(
+			    character, -escrow,
+			    payload.action == auction_action::list ?
+				    currency_reason_type::auction_listing :
+				    currency_reason_type::auction_bid,
+			    payload.auction_id, source, deadline, nullptr, nullptr, 0) ||
+		    character->only.pc->wallet_revision == revision)
+		{
+			pending.erase(key);
+			return false;
+		}
 	}
 	for (P_obj object : held)
 		obj_from_char(object);
@@ -232,14 +242,12 @@ bool submit(P_char character, const auction_command_payload &payload,
 		critical_command_coordinator_submit(std::move(command));
 	if (!critical_submit_result_keeps_operation(submitted))
 	{
-		pending.erase(key);
-		for (P_obj object : held)
-			obj_to_char(object, character);
-		if (escrow > 0)
-			currency_transaction_submit_wallet_value(character, escrow,
-								 currency_reason_type::refund,
-								 payload.auction_id, source,
-								 deadline, nullptr, nullptr, 0);
+		auto found = pending.find(key);
+		found->second.completion = nullptr; // Refused admission has no business completion.
+		found->second.completed.outcome = critical_apply_outcome::terminal_failure;
+		found->second.completion_ready = true;
+		// Keep the refund and item if the purse cannot take them yet.
+		publish(found, character);
 		return false;
 	}
 	return true;
@@ -355,6 +363,13 @@ void auction_transaction_outbox_published(unsigned long long outbox_id, bool suc
 
 void auction_transaction_publish_outbox(void)
 {
+	for (auto found = pending.begin(); found != pending.end();)
+	{
+		auto current = found++;
+		if (current->second.completion_ready)
+			if (P_char character = find_player_by_pid(current->second.actor_pid))
+				publish(current, character);
+	}
 	std::vector<std::pair<uint64_t, auction_command_result>> work;
 	{
 		std::lock_guard<std::mutex> lock(outbox_mutex);

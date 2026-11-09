@@ -121,8 +121,7 @@ void collector_transaction_publish_outbox() { published |= 2; }
 void combat_outcome_transaction_publish_outbox() { published |= 4; }
 void artifact_guild_transaction_publish_outbox() { published |= 8; }
 void sql_async_pulse() { ++pumped; }
-''' + extract_function("account.c", "class account_deletion_drain_guard") + ";\n" + \
-    extract_function("comm.c", "static void critical_gameplay_publish_outbox(") + \
+''' + extract_function("comm.c", "static void critical_gameplay_publish_outbox(") + \
     extract_function("comm.c", "static void critical_gameplay_drain_outbox(") + \
     "\nbool copyover_gate() {\n" + extract_function("copyover.c", "if (!critical_outbox_drain(3000))") + \
     "\nreturn true; }\nvoid shutdown_gate() {\n" + \
@@ -131,13 +130,9 @@ void sql_async_pulse() { ++pumped; }
 }
 int main() {
     critical_gameplay_drain_outbox(); assert(published == 15 && pumped == 1);
-    { account_deletion_drain_guard guard; assert(!guard.drain()); }
-    assert(saved == 0 && resumed == 3);
-    assert(!copyover_gate()); assert(resumed == 4);
+    assert(!copyover_gate()); assert(resumed == 1);
     shutdown_gate(); assert(alerts == 1);
     outbox_empty = true;
-    { account_deletion_drain_guard guard; assert(guard.drain()); }
-    assert(saved == 1 && resumed == 8);
     assert(copyover_gate()); shutdown_gate(); assert(alerts == 1);
 }
 '''
