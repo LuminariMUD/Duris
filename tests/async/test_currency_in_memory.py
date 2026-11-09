@@ -261,9 +261,12 @@ int main()
     currency_transaction_release_trade(44);
     ADD_MONEY(&alice.ch, 1000);
     assert(GET_PLATINUM(&alice.ch) == INT_MAX && pickup_credits.size() == 1);
+    assert(SUB_MONEY(&alice.ch, 1, 0) == 0);
+    assert((wallet(&alice.ch) == std::array<int64_t, 4>{9, 9, 9, INT_MAX-1}));
 
     // Refused submission also leaves both balances alone and retains a credit.
-    GET_COPPER(&alice.ch)=100; GET_PLATINUM(&alice.ch)=0;
+    GET_COPPER(&alice.ch)=100; GET_SILVER(&alice.ch)=0;
+    GET_GOLD(&alice.ch)=0; GET_PLATINUM(&alice.ch)=0;
     assert(currency_transaction_reserve_chest(&alice.ch));
     helper_revision = alice.pc.wallet_revision;
     assert(SUB_MONEY(&alice.ch, 1, 0) == -1);

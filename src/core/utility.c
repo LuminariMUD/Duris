@@ -2387,7 +2387,8 @@ int SUB_MONEY(P_char ch, int amount, int mode)
 
 	if (amount <= 0)
 		return -1;
-	if (amount > GET_MONEY(ch))
+	if (amount > GET_COPPER(ch) + 10LL * GET_SILVER(ch) + 100LL * GET_GOLD(ch) +
+			     1000LL * GET_PLATINUM(ch))
 		return -1;
 	if (mode != 0)
 		return -1;
