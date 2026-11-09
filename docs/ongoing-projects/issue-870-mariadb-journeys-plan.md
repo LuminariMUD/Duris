@@ -720,10 +720,16 @@ This is an estimate, not a time limit or permission to omit required proof.
   the SQL dump or sequence metadata (`named-set-resume-rejection.log`).
   The pet retry passed both cold reboots with exact nested UID/origin/slots. Its
   return then hit the normal heavy-item consent guard (`actobj.c`4336): the bag
-  weighs33, and the recipient had not consented to the cat. Seed `consent cat`
-  through the native command before its return; keep the give and all assertions.
-  Server termination was normal; no product repair is justified by this failure.
-  Evidence: `bin/tests/issue-870/named-set-heavy-return-failure/`.
+  weighs33. The consent attempt was invalid: `do_consent` accepts players only.
+  Set only the controlled named witness's weight to1 while offline, in whichever
+  of its two real payload tables currently owns it. Preserve its UID, origin,
+  affects and slots; the native loader recalculates its enclosing bag's weight
+  from the prototype plus contents (`handler.c`178). Keep both cold reboots and
+  the original native give/return assertions. No gameplay rule change.
+  Server termination was normal; no product repair is justified by these failures.
+  Evidence: `bin/tests/issue-870/named-set-heavy-return-failure/` and
+  `named-set-consent-failure/`. Current retry log:
+  `bin/tests/issue-870/named-set-sequence-portable-witness-run.log`.
   The entry self-enters the disposable wrapper. The retry adds
   `--resume bin/tests/named-set-mariadb-sequence-ununney2`; its metadata explicitly
   records reused cases. Inspect its terminal result

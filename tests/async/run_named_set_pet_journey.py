@@ -42,6 +42,11 @@ try:
     for row in game.pets(PID):
         if row[4]:
             prior[str(row[3])] = str(row[4])
+    # Give cannot accept consent to an NPC. Keep this controlled witness
+    # portable while retaining its UID, origin, affects and equipment slots.
+    game.sql("UPDATE player_items SET weight=1 WHERE pid=2 AND obj_uid=" + str(uid))
+    game.sql("UPDATE player_pet_items i JOIN player_pets p ON p.id=i.pet_id "
+             "SET i.weight=1 WHERE p.owner_pid=2 AND i.obj_uid=" + str(uid))
     game.make_overlord(CHARACTER)
     actor = game.boot("named-pet-prepare", account=ACCOUNT, character=CHARACTER)
     # Retain reward satchels created by earlier fixture preparation, freeing
@@ -77,9 +82,6 @@ try:
         )
         if cycle == 0:
             game.stop()
-    # The loaded bag exceeds the normal 25-unit give limit; its recipient must
-    # consent to the pet before the ordinary return command can proceed.
-    command("consent cat")
     command("order cat give backpack " + CHARACTER, "gives you")
     save(actor, CHARACTER)
     assert any(row[0] == bag for row in game.inventory(PID))
