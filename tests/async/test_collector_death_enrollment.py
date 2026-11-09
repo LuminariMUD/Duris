@@ -36,20 +36,15 @@ def main() -> None:
     files = (src / "core/files.c").read_text(encoding="utf-8", errors="replace")
     queue = function_body(files, "bool queue_corpse_save(P_obj corpse, bool remove)")
     assert "collector_death_enrollment_for(corpse, &snapshot.collector_death);" in queue
-    assert "flatfile_corpse_snapshot_apply(path, record, remove, death, &error)" in queue
     pipeline = (src / "player/player_save_pipeline.c").read_text(encoding="utf-8")
     assert "collector_death_enrollment_saved(completion.owner, completion.error_code);" in pipeline
-    # Both writers record the death in the corpse save's own transaction.
+    # The writer records the death in the corpse save's own transaction.
     repository = (src / "player/player_snapshot_repository.c").read_text(encoding="utf-8")
     write_corpse = function_body(repository, "query_result write_corpse(")
     assert write_corpse.index("insert_item_rows(") < write_corpse.index(
         "enroll_collector_death(connection, corpse.collector_death, written,"
     )
     assert "collector_repository_enroll_death(connection, death, eligible, refused)" in repository
-    flat = (src / "flatfile/flatfile_player_repository.c").read_text(encoding="utf-8")
-    assert "flatfile_collector_prepare_death_enrollment(" in function_body(
-        flat, "player_save_apply_result flatfile_corpse_snapshot_apply("
-    )
 
     output = ROOT / "bin" / "tests"
     output.mkdir(parents=True, exist_ok=True)

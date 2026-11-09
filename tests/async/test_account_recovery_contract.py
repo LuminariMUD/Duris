@@ -715,7 +715,7 @@ def test_account_c() -> None:
     check(
         ordered(apply_body, "acct_blocked != 0",
                 "account_recovery_credential_fingerprint(", "CRYPTO_memcmp(", "close_account_sessions_named(",
-                "sql_read_work(", "write_account("),
+                "sql_read_work("),
         "apply checks fence and fingerprint before defining the post-commit reply and submitting storage",
     )
     check("superseded" in apply_body, "apply reports superseded on a fingerprint mismatch (C7)")
@@ -725,10 +725,10 @@ def test_account_c() -> None:
         in flattened,
         "apply raises the 7-argument persistence_alert on a write failure",
     )
-    write_at = apply_body.find("write_account(")
+    write_at = apply_body.find("sql_read_work(")
     check(
         write_at >= 0 and re.search(r"\bacct_name\b", apply_body[write_at:]) is None,
-        "apply never touches acct_name after write_account( (C2 use-after-free)",
+        "apply never touches acct_name after submitting storage (C2 use-after-free)",
     )
     complete = body_of(
         core, r"void\s+complete_code\s*\(",
@@ -911,10 +911,6 @@ def test_build_and_packaging() -> None:
     check(
         ordered(runtime_stage, "libcjson1", "libcurl3t64-gnutls"),
         "Dockerfile runtime stage installs libcurl3t64-gnutls (alphabetical, after libcjson1)",
-    )
-    check(
-        "libcurl4-gnutls-dev" in read_repo(".github/workflows/quality.yml"),
-        "quality.yml's client-free apt list installs libcurl4-gnutls-dev",
     )
 
 

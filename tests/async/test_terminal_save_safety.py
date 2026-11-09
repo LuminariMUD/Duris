@@ -89,22 +89,6 @@ checks["legacy player save retired"] = (
     and "if (!sql_save_player(ch, type, room))" not in files
 )
 
-flat_terminal_start = files.index("#ifdef __NO_MYSQL__\n\tif (!is_locker_char &&",
-                                  files.index("int writeCharacter"))
-flat_terminal = files[
-    flat_terminal_start:files.index("#endif", flat_terminal_start)
-]
-# Only a new player's first save waits, because its domains are read right after.
-checks["flat terminal saves queue except the first baseline"] = all(
-    token in flat_terminal
-    for token in (
-        "if (establishing_baseline)",
-        "player_save_pipeline_terminal",
-        "player_save_pipeline_request(",
-        "return 0;",
-    )
-)
-
 # Ghost extraction shares one fail-closed terminal-save helper across the named
 # and bulk command paths, and extraction remains ordered after that save gate.
 ghost_extract = extract_function("actwiz.c", "static bool extractlink_attempt(P_char ch")

@@ -415,6 +415,12 @@ must stay green after each one.
 |---|---|---|
 | Remove deleted sources, includes, and stubs from harnesses | 165 | Mechanical |
 | Repair harness compile and link failures | 128 | Harnesses compile real client headers; some now use SQL or queue fakes |
+| Repoint source-text contracts | 64 | No MariaDB behavior change found; `test_ship_salvage.py` now checks what a stubbed `sql_save_ship` receives, not a read-back |
+| Journeys already in `make test-db` become manual-only | 51 | 13 tests; they run on MariaDB with `--server` |
+
+The remaining 51 are mostly gameplay journeys that seed and inspect flat-file state.
+Convert them by giving `test_flatfile_combat_journey.py` a MariaDB setup and adding
+each converted journey to `tests/run_db_tests.sh`; `make test-all` has no database.
 
 Still deferred from the compile batch: `divine_boon_repository` and
 `frag_cap_repository` (their default mode is flat-file only), `flatfile_help_catalog`

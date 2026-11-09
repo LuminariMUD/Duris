@@ -13,7 +13,7 @@ from _source_contract import function_bodies
 
 SRC = Path(__file__).resolve().parents[2] / "src"
 text = (SRC / "world/timers.c").read_text()
-mariadb = text[text.index("#else\nvoid set_timer(const char *name)"):]
+mariadb = text
 write = function_bodies(mariadb, r"\bvoid\s+set_timer\s*\(\s*const\s+char\s*\*\s*name\s*,\s*int\s+date\s*\)")[0]
 assert "sql_queue(" in write and not re.search(r"\bqry\s*\(", write), write
 cargo = (SRC / "ships/ship_cargo.c").read_text()

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def main() -> None:
     auction_source = (ROOT / "src/economy/auction_houses.c").read_text()
-    assert auction_source.count("install_auction_house_room_procedures();") == 2
+    assert auction_source.count("install_auction_house_room_procedures();") == 1
     for room_vnum in (16885, 83117, 97756, 17736, 55193, 888, 1200, 69, 420, 132821):
         assert f"real_room0({room_vnum})" not in auction_source
 

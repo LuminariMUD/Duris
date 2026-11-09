@@ -18,13 +18,11 @@ text = (SRC / "account/multiplay_whitelist.c").read_text()
 QUERY = re.compile(r"\b(qry|db_query|mysql_query|mysql_store_result|mysql_real_escape_string)\s*\(")
 for name in ("get_whitelist", "add_to_whitelist", "remove_from_whitelist", "whitelisted_host"):
     body = function_bodies(text, r"\b" + name + r"\s*\([^;{]*\)\s*(?=\{)")[0]
-    mariadb = body[body.index("#else"):] if "#else" in body else body
-    assert not QUERY.search(mariadb), f"{name} queries on the game loop"
+    assert not QUERY.search(body), f"{name} queries on the game loop"
 for name in ("add_to_whitelist", "remove_from_whitelist"):
     body = function_bodies(text, r"\b" + name + r"\s*\([^;{]*\)\s*(?=\{)")[0]
-    mariadb = body[body.index("#else"):]
-    assert "sql_queue(" in mariadb and "escape_str(" in mariadb, name
-    assert mariadb.index("sql_queue(") < mariadb.index("stored_whitelist"), name
+    assert "sql_queue(" in body and "escape_str(" in body, name
+    assert body.index("sql_queue(") < body.index("stored_whitelist"), name
 boot = function_bodies((SRC / "sql/sql.c").read_text(), r"\bint\s+initialize_mysql\s*\(\s*\)")[-1]
 assert "whitelist_load()" in boot
 print("[PASS] the multiplay whitelist is read at boot and kept in memory")

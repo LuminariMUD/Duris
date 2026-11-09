@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Both auction backends withhold artifacts decoded from old ordinary listings."""
+"""Auction claims withhold artifacts decoded from old ordinary listings."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -39,8 +39,7 @@ void persistence_alert(int, const char *, const char *, const char *, const char
 }
 void mark_player_dirty_components(int, player_component_mask_t) { ++dirty; }
 '''
-for name in ('flat_item_claim_completed', 'auction_item_claim_completed'):
-    harness += extract_function('auction_houses.c', 'void ' + name + '(')
+harness += extract_function('auction_houses.c', 'void auction_item_claim_completed(')
 harness += r'''
 int main() {
     char_data actor = {};
@@ -50,18 +49,16 @@ int main() {
     auction_command_result result = {};
     result.item_count = 1;
     result.item_uids[0] = 42;
-    for (auto callback : {flat_item_claim_completed, auction_item_claim_completed}) {
-        for (mode = 0; mode < 3; ++mode) {
-            delivered = extracted = alerts = dirty = 0; output.clear();
-            callback(&actor, false, result, 0, payload);
-            assert(!delivered && !extracted && !alerts && !dirty);
-            callback(&actor, true, result, 0, payload);
-            assert(delivered == (mode == 0) && extracted == (mode == 1));
-            assert(alerts == (mode != 0) && dirty == 1);
-            if (mode == 1) assert(output.find("immortal assistance") != std::string::npos);
-        }
-        callback(nullptr, true, result, 0, payload);
+    for (mode = 0; mode < 3; ++mode) {
+        delivered = extracted = alerts = dirty = 0; output.clear();
+        auction_item_claim_completed(&actor, false, result, 0, payload);
+        assert(!delivered && !extracted && !alerts && !dirty);
+        auction_item_claim_completed(&actor, true, result, 0, payload);
+        assert(delivered == (mode == 0) && extracted == (mode == 1));
+        assert(alerts == (mode != 0) && dirty == 1);
+        if (mode == 1) assert(output.find("immortal assistance") != std::string::npos);
     }
+    auction_item_claim_completed(nullptr, true, result, 0, payload);
 }
 '''
 build = ROOT / 'bin/tests'
@@ -76,4 +73,4 @@ with tempfile.TemporaryDirectory(prefix='auction-artifact-', dir=build) as direc
                     '-o', str(binary)],
                    cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True)
-print('auction artifact claims: both backends passed')
+print('auction artifact claims passed')

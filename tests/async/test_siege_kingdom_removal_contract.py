@@ -248,7 +248,7 @@ class SiegeKingdomRemovalContractTest(unittest.TestCase):
         reset_bodies = function_bodies(
             runtime_sql, r"\bbool\s+sql_pwipe\s*\(int code_verify\)"
         )
-        self.assertEqual(len(reset_bodies), 2)  # Flat-file stub and MariaDB reset.
+        self.assertEqual(len(reset_bodies), 1)
         reset_sql = "\n".join(reset_bodies)
         for table in reset_tables:
             self.assertIn(f'DELETE FROM {table}"', reset_sql)

@@ -55,28 +55,24 @@ int main() {
 }
 '''
 db = (ROOT / "src/world/db.c").read_text()
-selection_start = db.index("if (!copyover_restores_world() || copyover_has_durable_shopkeepers() ||")
+selection_start = db.index("if (!copyover_restores_world() || copyover_has_durable_shopkeepers())")
 selection = db[selection_start:db.index("remember_boot_shopkeepers();", selection_start)]
 setup = r"""
-int copyover_boot=0, backend=0, restored_shops=0;
+int copyover_boot=0, restored_shops=0;
 bool copyover_restores_world() { return copyover_boot != 0; }
-constexpr int PERSISTENCE_MODE_FLATFILE_PRIMARY=1;
-int persistence_mode_get() { return backend; }
 void restore_shopkeepers() { ++restored_shops; }
 void restore_selected_stock() {
 """+selection+r"""
 }
 """
 checks = r"""
-    for(backend=0;backend<2;++backend) {
-        copyover_boot=0; selected=nullptr; restored_shops=0;
-        restore_selected_stock(); assert(restored_shops==1);
-        copyover_boot=1;
-        for(int version=12;version<=COPYOVER_VERSION;++version) {
-            copyover_boot_snapshot snapshot; snapshot.header.version=version; selected=&snapshot;
-            restored_shops=0; restore_selected_stock();
-            assert(restored_shops==(backend==PERSISTENCE_MODE_FLATFILE_PRIMARY || version>=13));
-        }
+    copyover_boot=0; selected=nullptr; restored_shops=0;
+    restore_selected_stock(); assert(restored_shops==1);
+    copyover_boot=1;
+    for(int version=12;version<=COPYOVER_VERSION;++version) {
+        copyover_boot_snapshot snapshot; snapshot.header.version=version; selected=&snapshot;
+        restored_shops=0; restore_selected_stock();
+        assert(restored_shops==(version>=13));
     }
     selected=nullptr;
 """

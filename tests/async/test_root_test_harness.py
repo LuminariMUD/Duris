@@ -118,6 +118,19 @@ assert runner.MANUAL_ONLY_TEST_NAMES == {
     "test_mysql_nexus_journey.py",
     "test_playtime_mysql_repository.py",
     "test_staff_poof_journey.py",
+    "test_artifact_owner_restart_journey.py",
+    "test_corpse_trap_restart_journey.py",
+    "test_divine_boon_zone_journey.py",
+    "test_flight_network_journey.py",
+    "test_frag_cap_journey.py",
+    "test_information_cache_journey.py",
+    "test_kept_character_approval_journey.py",
+    "test_kept_character_competition.py",
+    "test_kept_character_journey.py",
+    "test_kept_character_matrix.py",
+    "test_kept_character_recovery_journey.py",
+    "test_kept_starter_grant_journey.py",
+    "test_legacy_trap_journey.py",
 }
 discovered = {path.name for path in runner.discover_tests(None)}
 assert not (runner.MANUAL_ONLY_TEST_NAMES & discovered)

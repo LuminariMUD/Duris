@@ -47,7 +47,6 @@ assert run.index("locker_recovery_begin();") < run.rindex("critical_command_coor
 assert run.index("locker_recovery_begin();") < run.index("collector_catalog_cache_shutdown();")
 assert COMM.index("if (!locker_recovery_boot())") < COMM.index("reap_unheld_player_items_at_boot();")
 assert COMM.index("if (!locker_recovery_boot())") < COMM.index("!sql_hydrate_item_owner_revisions()")
-assert COMM.index("if (!locker_recovery_boot())") < COMM.index("!hydrate_flatfile_system_item_owner()")
 assert "shutdown_writer_deadline_usec - SHUTDOWN_LOCKER_RECOVERY_USEC" in run
 assert "locker_recovery_begin" not in body(COMM, "bool pwipe_quiesce_writers(void)")
 assert "sql_pool_interrupt_borrowed" in run

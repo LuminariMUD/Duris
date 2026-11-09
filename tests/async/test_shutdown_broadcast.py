@@ -30,7 +30,7 @@ harness = r'''
 command_info cmd_info[CMD_COPYOVER + 1] = {};
 void sql_log(P_char, const char *, const char *, ...);
 static int wipe_calls = 0, restore_calls = 0;
-static bool mysql_required = true, wipe_succeeds = true, crossed = false;
+static bool wipe_succeeds = true, crossed = false;
 bool sql_pwipe(int code) { assert(code == 1723699); ++wipe_calls; return wipe_succeeds; }
 bool sql_pwipe_crossed_boundary() { return crossed; }
 void do_restore(P_char, char *, int) { ++restore_calls; }
@@ -122,7 +122,7 @@ int main()
     auto reset = [&]() {
         shutdownData = {0, -1, TimedShutdownData::NONE, "", ""};
         shutdownflag = _reboot = _copyover = _autoboot = _pwipe = 0;
-        wipe_calls = restore_calls = 0; mysql_required = wipe_succeeds = true; crossed = false;
+        wipe_calls = restore_calls = 0; wipe_succeeds = true; crossed = false;
         ticks.clear(); running_tick = nullptr;
         first.connected = CON_PLAYING; first.character = &issuer; first.original = nullptr;
         descriptor_list = &first; issuer.player.level = OVERLORD; issuer.specials.act = 0;
@@ -218,13 +218,10 @@ int main()
         assert(active_ticks() == 1 && !shutdownflag && !wipe_calls);
         assert(output[&second.output].empty());
     }
-    for (bool backend : {true, false}) {
-        mysql_required = backend;
-        issuer.player.level = backend ? FORGER : OVERLORD;
-        command("shutdown pwipe confirm yes");
-        assert(shutdownData.eShutdownType == retained.eShutdownType && active_ticks() == 1);
-    }
-    mysql_required = true; issuer.player.level = OVERLORD;
+    issuer.player.level = FORGER;
+    command("shutdown pwipe confirm yes");
+    assert(shutdownData.eShutdownType == retained.eShutdownType && active_ticks() == 1);
+    issuer.player.level = OVERLORD;
     command("shutdown pwipe CONFIRM\tYES   ");
     assert(shutdownData.eShutdownType == TimedShutdownData::PWIPE &&
            shutdownData.reboot_time == now + 300 && active_ticks() == 1);
