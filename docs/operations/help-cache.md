@@ -36,10 +36,7 @@ Search retains case-insensitive matching and `%`/`_` wildcards. ASCII help title
 are matched in-process; database-specific accent/collation equivalences are not
 emulated. Redirects support complete multiword titles and fail safely on cycles.
 
-The flat-file build retains its existing startup catalog and local file behavior;
-`page help` reports that it uses the startup catalog. Restart after flat-file
-help changes. Both builds allow normal repeated help/info/rules browsing without
-character recovery. Existing input/output bounds still apply.
+Normal repeated help/info/rules browsing does not require character recovery. Existing input/output bounds still apply.
 
 Validation includes a held-worker test allowing 10,000 simulated other-player
 operations, actual help lookup/render regression bodies, and a MySQL loader
@@ -77,8 +74,7 @@ existing one-minute mud-info refresh, when its queued read completes. Boot,
 automatic refresh, and staff `page` publish the displayed text and its SHA-256
 content identity together. Unchanged content keeps the same identity. Invalid
 content or a failed refresh retains the last good news; a successfully read empty
-value or absent database row clears it. The flat-file build loads news at boot
-and on plain `page`, retaining its previous copy if the file cannot be read.
+value or absent database row clears it.
 Neither prompts nor `news` perform a database query. The publication regression is
 `python3 tests/async/test_news_publication.py`.
 

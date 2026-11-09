@@ -38,25 +38,6 @@ not an upper bound on loss: batching, refused admission, writer retries, or an
 outage can leave older state unwritten. Inspect the writer's oldest age and the
 player's written revision when assessing durability.
 
-## Flat-file shop payments
-
-Shop trades reserve their signed wallet payment in memory without charging early.
-A full pre-trade capture is queued before the item is held and the command is
-submitted. The writer's tail-only replacement rule preserves that ordering.
-The shop command commits the purse, item custody, materialization evidence and
-receipt in one authority transaction, so a crash before completion cannot lose
-the payment or charge twice on replay. The game thread publishes the reserved
-payment once; a refused purchase needs no refund.
-
-Captures made while publication is pending carry the existing trade receipt tag.
-The writer matches the operation, command digest, player and payment before
-settling the capture, preserving unrelated wallet changes. A pending seller's
-held item stays in the capture until that receipt decides whether to retain it
-or reconcile the committed sale. Reservations are per player; an offline actor's
-completed payment releases the load hold so login can read the committed purse.
-Shop receipt catalog version 3 retains the settlement identity and payment;
-version 1 and 2 receipts still replay their original results.
-
 ## Game-thread SQL
 
 Code on the game thread that needs the database does not query it. It queues the SQL on the
@@ -87,7 +68,7 @@ Snapshot schema 9 retains field IDs and reads versions 1, 3, 5, 7 and 8. Version
 before 8 receive an empty discovery mask; no transport recovery or reward journal
 is required. The appended `last_read_news_hash` status string defaults to empty
 for all older versions and records the SHA-256 identity acknowledged by `news`.
-It shares the status checkpoint, SQL player row, and flat-file snapshot. Other
+It shares the status checkpoint and SQL player row. Other
 component saves preserve it. Malformed hash text becomes unread during load;
 structural snapshot corruption still refuses the load. An old binary cannot
 decode newly written schema-9 snapshots.
@@ -105,16 +86,13 @@ character; a bank change is its own `bank` job (see
 An admitted save applies its owner's captured state without a revision-conflict
 refusal. Submission can still be refused at the capacity bound described above.
 In one transaction it writes what its owner holds in memory and
-makes `item_current_owner` agree (`claim_items()` in `src/item/item_claim_repository.c`;
-the flat-file backend does the same in `flatfile_item_repository_prepare_claim()` and
-commits it with the player file):
+makes `item_current_owner` agree (`claim_items()` in `src/item/item_claim_repository.c`):
 
 - an item with no ownership row gets one;
 - a row naming this owner is corrected if the item moved;
 - a row naming anyone else (a player, corpse, locker, room, pet, auction, shopkeeper
   or the collector) is taken, and an `item_owner_audit` row records the item, its
-  vnum, the old owner, the new owner and the time (flat-file: a line in
-  `logs/log/item_claims`). An auction listing, a sale and a collection take their
+  vnum, the old owner, the new owner and the time. An auction listing, a sale and a collection take their
   items out of memory before their command, so a save captured afterwards never
   holds what the economy took;
 - a row that says the item was destroyed is left alone: the item and its contents are
@@ -134,11 +112,7 @@ holder's row until another owner's save claims it. A row whose item then stops e
 again, so each boot deletes them before the writer starts: every active row naming a
 player as the holder of an item that no payload row carries, whoever's it is:
 `player_items`, `player_pet_items`, `locker_items`, `corpse_items` or `saved_items`
-(`reap_unheld_player_items()` in `src/item/item_claim_repository.c`). The flat-file
-backend reads every player file, the locker, corpse and room stores, and what a
-record's player still has to be delivered from a committed transfer, which its next
-load materializes (`flatfile_item_repository_reap_unheld_player_items()`); a file or
-store it cannot read stops the reap. At boot no character is in memory, so such a row
+(`reap_unheld_player_items()` in `src/item/item_claim_repository.c`). At boot no character is in memory, so such a row
 cannot be a held item. A row whose item an older copy still carries stays: a load
 skips a copy whose row names someone else (below), so after a crash that follows a
 hand-over the row is what keeps the giver's copy out, until that holder's next save
@@ -162,10 +136,9 @@ and the owner's next save no longer writes it. What a skipped container holds mo
 a level (to the top of the inventory, the corpse, the locker chest or the room item), so
 one stale row never takes the rest of the graph with it. A root that disagrees with the
 graph is corrected, not refused. The same rule applies to player and pet items
-(`player_load_repository.c`; flat-file: `flatfile_player_repository.c`), and to corpses,
+(`player_load_repository.c`), and to corpses,
 lockers and saved room items through `sql_persistence_item_owner_matches_identity()`.
-The flat-file corpse and room loaders still use their own reconciliation until those
-owners are saved through the writer. A player's row with no payload row of that player
+A player's row with no payload row of that player
 is only counted; the boot reap above deletes it once no payload carries the item. The count is logged on login
 (`missing_payload_rows`) only with `DURIS_PERSISTENCE_TRACE`, as is the save's
 `unowned_object` line for each held item the in-memory ledger has no entry for: under
@@ -260,8 +233,7 @@ Logging out never waits. Camp, rent, quit, death, idle and link-loss cleanup cap
 full save with the terminal intent and room, queue it on the writer like any other, and
 extract the character at once (`persistence_save_character_terminal()` in
 `src/cmd/actoth.c`). A save that cannot be queued is reported; the character still
-leaves. On flat-file only, a new character's first save is written before its domains
-are read back, within five seconds.
+leaves.
 
 Shutdown queues every player's save, shares a 30-second window between the writer
 and locker recovery (reserving the last two seconds for the image), and

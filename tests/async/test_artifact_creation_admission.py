@@ -698,7 +698,7 @@ extract_function("handler.c","void extract_char_after_terminal_save(P_char ch)")
 extract_function("actoth.c","bool persistence_save_character_terminal(P_char ch, int type)")+"\n"+
 extract_function("actoth.c","bool persistence_save_all_characters_terminal(int type)"))
 source=source.replace("// ACTUAL_UNEQUIP",extract_function("handler.c","P_obj unequip_char("))
-source=source.replace("// EXTRACTION",extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)")+"\n"+extract_function("handler.c","P_obj find_live_object(P_obj expected, uint64_t uid)"))
+source=source.replace("// EXTRACTION","static std::unordered_set<P_obj> live_objects;\nvoid remember_live_object(P_obj o) { live_objects.insert(o); }\nvoid forget_live_object(P_obj o) { live_objects.erase(o); }\n"+extract_function("handler.c","void extract_obj(P_obj obj, int gone_for_good)")+"\n"+extract_function("handler.c","P_obj find_live_object(P_obj expected, uint64_t uid)"))
 source=source.replace("// RECOVERY_TREE",extract_function("world_recovery_pipeline.c","P_obj find_object_uid(")+"\n"+extract_function("world_recovery_pipeline.c","struct planned_object")+";\n"+
  extract_function("world_recovery_pipeline.c","void replace_object_text(")+"\n"+
  extract_function("world_recovery_pipeline.c","P_obj materialize_object("))

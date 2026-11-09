@@ -645,8 +645,7 @@ def verify_npc_loot_and_die(port: int) -> None:
 
 
 def recover_player_corpse(port: int, sql, reset_coins: bool = False) -> None:
-    # MariaDB keeps no last-exit reason, so the login after a death prints the normal text.
-    client = reconnect_character(port, "Welcome to Duris")
+    client = reconnect_character(port, "You rejoin the land of the living")
     try:
         client.send("look")
         client.expect("The corpse of a Human is lying here.", timeout=10)

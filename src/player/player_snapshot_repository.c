@@ -1436,9 +1436,11 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 			"SELECT account_name,pid,name,1,NOW(),racewar FROM player_data WHERE pid=" +
 				std::to_string(snapshot.pid));
 	if (query.ok)
-		query = execute(connection, "UPDATE player_data SET save_revision=" +
-						    std::to_string(snapshot.revision) +
-						    " WHERE pid=" + std::to_string(snapshot.pid));
+		query = execute(connection,
+				"UPDATE player_data SET save_revision=" +
+					std::to_string(snapshot.revision) +
+					",save_intent=" + std::to_string(snapshot.save_intent) +
+					" WHERE pid=" + std::to_string(snapshot.pid));
 	if (!query.ok)
 	{
 		player_save_apply_result result = failure(query.error_code);

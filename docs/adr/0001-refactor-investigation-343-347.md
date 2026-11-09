@@ -124,7 +124,7 @@ durability boundary. Test a controlled slow append (for example the existing
 200 ms #341 reproducer) while another session and event loop continue. Report
 submission latency and pulse p50/p95/p99 with workload and queue depth; no production
 latency target has been measured in this investigation. Run disposable MariaDB
-and flatfile authority journeys separately, including ambiguity and restart.
+journeys, including ambiguity and restart.
 
 ## 2. Combat: #344
 
@@ -369,7 +369,7 @@ Keep `test_live_item_movement_contract.py`, `test_item_movement_input_queue.py`,
 terminal-save retention coverage. Add golden error/success/haul text and delayed
 completion tests for source movement, target disappearance, link loss/reconnect,
 duplicate delivery, full buffers and failure after the first batch root. Run
-separate flatfile and disposable MariaDB journeys exercising actual object and
+disposable MariaDB journeys exercising actual object and
 currency lifecycles, not only mocked parsers. Track [#378](https://github.com/LuminariMUD/Duris/issues/378)
 and #376 alongside #256 before changing mixed-haul and coin-facing behavior.
 

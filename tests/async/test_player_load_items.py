@@ -1578,7 +1578,7 @@ assert MATERIALIZE.count("wizlog(OVERLORD") == 1
 assert "alert_refusal_once(result.pid)" in MATERIALIZE
 assert "request.include_items = true" in COPYOVER
 assert "restoreItemsOnly(ch, 0)" not in COPYOVER
-rtype_zero = NANNY[NANNY.index("else if (d->rtype == 0)") :]
+rtype_zero = NANNY[NANNY.index("else if (d->rtype == 0 || d->rtype == RENT_QUIT)") :]
 assert "sql_load_player_items(ch)" not in rtype_zero[:500]
 
 print("linear player-item hydration contracts passed")

@@ -35,7 +35,7 @@ unknown-zone label. These displays perform no zone metadata queries.
   character XP cap, zero/negative awards, PvP, quests, world quests, resurrection,
   and death adjustments do not accumulate.
 - The recipient's room at credit time determines the zone. Observation includes
-  all valid loaded zones on both backends, independently of SQL `zones.trophy_zone`.
+  all valid loaded zones, independently of SQL `zones.trophy_zone`.
   That flag belongs to future enforcement policy; there is no lazy SQL query on
   a cache miss in the XP path.
 
@@ -66,7 +66,7 @@ backlog can save later. No second trophy timer or worker is introduced.
 SQL login now reads all trophy rows for the player in one query, with the same
 bounded load transaction as the other components. The full query budget is 24. Negative totals, invalid zone identifiers, or too many entries
 refuse the load rather than silently truncating saved state. Materialization also
-checks the entry bound, including flatfile loads.
+checks the entry bound.
 The trophy query returns at most 1,025 rows: 1,024 allowed entries plus one to
 detect excess history. This bounds MySQL's result buffer before row validation.
 
@@ -74,8 +74,7 @@ The existing SQL snapshot transaction writes XP and replaces that player's troph
 rows together. It performs one trophy `DELETE` and, for a nonempty collection,
 one batched `INSERT`, without one `SELECT` per zone. An empty component deletes
 old rows. Writing the same save again is harmless; with one writer there is no
-revision fence. Flatfile snapshots use
-the same trophy component and codec.
+revision fence.
 
 Character resets and class changes clear the in-memory collection and mark XP/status
 and trophies dirty instead of deleting SQL rows behind the checkpoint writer.
@@ -97,7 +96,6 @@ python3 tests/async/test_player_revision_state.py
 python3 tests/async/test_player_save_worker.py
 python3 tests/async/test_player_save_pipeline.py
 python3 tests/async/test_player_load_pipeline.py
-python3 tests/async/test_flatfile_player_repository.py
 python3 tests/async/test_maintenance_scheduler.py
 bash tests/async/run_experience_trophy_mysql.sh
 ```

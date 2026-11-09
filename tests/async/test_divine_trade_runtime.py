@@ -15,6 +15,9 @@ with tempfile.TemporaryDirectory(prefix="divine-runtime-",dir=ROOT / "bin/tests"
     losses+="\n"+extract_function("ships/ship_utils.c","double seadog_sale_multiplier(")
     losses+="\n"+extract_function("ships/ship_shop.c","void check_contraband(")
     losses+="\n"+extract_function("ships/ship_npc_ai.c","void NPCShipAI::steal_target_cargo()")
+    losses+="\n"+"\n".join(extract_function("ships/ship_control.c",signature) for signature in
+        ["int jettison_cargo(P_char ch, P_ship ship, char *arg)",
+         "int jettison_contraband(P_char ch, P_ship ship, char *arg)"])
     source.write_text(harness.replace("// SPLIT_FUNCTIONS",split).replace("int main()",losses+"\nint main()",1))
 
     subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-Wno-unused-parameter",
@@ -26,4 +29,4 @@ with tempfile.TemporaryDirectory(prefix="divine-runtime-",dir=ROOT / "bin/tests"
         "src/persistence/critical_command.c","src/player/player_snapshot_codec.c",
         "-Wl,--gc-sections","-lcrypto","-lmysqlclient","-o",str(binary)],cwd=ROOT,check=True)
     subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=60)
-print("PASS: real trade producers preserve memory until commit, fixed 9+1 provenance, ordinary money, rejection, retry, relog, actual loss/clear and salvage")
+print("PASS: real trade producers preserve memory until commit, fixed 9+1 provenance, ordinary money, rejection, retry, relog, checked jettison counts across saved/unsaved/NPC ships, actual loss/clear and salvage")

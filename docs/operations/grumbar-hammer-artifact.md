@@ -27,9 +27,6 @@ SELECT COUNT(*) FROM auction_item_pickups
  WHERE retrieved=0 AND HEX(SUBSTRING(obj_blob_str,7,4))='80000200';
 ```
 
-On flat-file installations, inspect the corresponding auction custody/pickup
-records and saved owners. Do not assume an SQL audit covers flat-file state.
-
 Old auction blobs can inherit today's prototype flags. Both claim completion
 paths now withhold decoded artifacts, raise `artifact_withheld`, and tell the
 claimant to contact an immortal. The committed custody record retains the blob,
