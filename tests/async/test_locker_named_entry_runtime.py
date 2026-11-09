@@ -132,7 +132,7 @@ int main()
     visitor.in_room = 10;
     locker_enter_character(&visitor, "ownerchar", {});
     assert(enters == 0); // Nothing enters until the worker answers.
-    assert(query.find("blocked=0 AND deleted_at IS NULL") != std::string::npos);
+    assert(query.find("ac.blocked=0 AND ac.deleted_at IS NULL") != std::string::npos);
     reply(&visitor, {{{"DifferentAccount", "2"}}});
     assert(enters == 1 && target == "account.differentaccount.2.locker");
     locker_enter_character(&visitor, "legacy", {});
