@@ -42,12 +42,7 @@ int get_property(const char *, int fallback)
     return fallback;
 }
 
-int itemvalue(P_obj)
-{
-    return 1;
-}
-
-bool item_load_check(P_obj, int, int zone_percent)
+bool item_load_check(P_obj, int zone_percent)
 {
     return zone_percent > 0;
 }

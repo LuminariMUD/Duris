@@ -22,24 +22,23 @@ ignored `bin/` paths. Do not create a second tracker or a new test framework.
 
 ## Baseline and dependencies
 
-The worktree starts at `81c969a63d82323f3c4e696bdb1cb6af8a07485c`, the inspected
-head of [#880](https://github.com/LuminariMUD/Duris/pull/880). It includes
-[#873](https://github.com/LuminariMUD/Duris/pull/873) and
-[#874](https://github.com/LuminariMUD/Duris/pull/874). All three PRs were open
-when this plan was written; their existing changes are dependencies, not new
-implementation work for this branch:
+The worktree was created at `81c969a63`, the original inspected #880 head.
+On 2026-11-09, #873 and #874 merged into master; #880 advanced to
+`6f4f1a975`. The baseline branch now merges that updated #880 and master
+`f53e564f8` without rewriting published history. Preserve the item valuation,
+ship, live-entity index and feedback/migration changes authored upstream.
+The final build and suites must qualify this integrated stack.
 
-- #873 records departure/save intent, with migration 0062 and restored login behavior.
-- #874 fixes refused-save departure cooldowns and corpse deletion during boot.
-- #880 removes dead code and some obsolete branches and updates current docs.
+Review dependencies start with [#880](https://github.com/LuminariMUD/Duris/pull/880)
+then [#887](https://github.com/LuminariMUD/Duris/pull/887). #880 adopted
+byte-identical launch-gate and shop-bootstrap repairs from #888, verified with
+`git diff --exit-code` for both files. Retire that duplicate PR and target #890
+at #887; later PRs retain their dependency order.
 
-`origin/master` is `ce0767d30` at implementation start. Merge `4f216b90c`
-incorporates it without rewriting the published stack. Documentation conflicts
-retain the pending #870 journey descriptions and historical item report while
-accepting current MariaDB-only guidance. The baseline reconciliation is a
-separate prerequisite [PR #887](https://github.com/LuminariMUD/Duris/pull/887)
-so conversion PRs show only their own changes. The historical item evidence JSON
-is retained with its report; it does not qualify the current backend.
+Historical qualification notes and binary hashes remain evidence for their
+tested revisions. Historical item delivery evidence is retained explicitly as
+history; active weapon/colorization runbooks point to #870 until their SQL
+commands are qualified. No other worktree or production environment changed.
 
 The [issue's verification comment](https://github.com/LuminariMUD/Duris/issues/870#issuecomment-6737821455)
 reports 899 regression passes but an interrupted DB run with a nexus failure,
@@ -48,14 +47,13 @@ results, not proof for the final branch. The issue's claim that scripts are
 outside the suites is also incomplete: `tests/run_db_tests.sh` already invokes
 several of the listed journeys. Inspect actual runner membership.
 
-Two #880 findings were confirmed in its source and must be resolved either
-upstream or here, without applying the repair twice:
+Two #880 findings were resolved by those adopted SQL checks:
 
 - [Launch gate](https://github.com/LuminariMUD/Duris/pull/880#discussion_r4511763311):
-  its MariaDB branch still indexes `FLATFILE_STATE_DIR` while finding snapshots.
+  removed the `FLATFILE_STATE_DIR` snapshot lookup from the MariaDB path.
 - [Shop bootstrap](https://github.com/LuminariMUD/Duris/pull/880#discussion_r4511763322):
-  it still asserts that the removed shopkeeper catalog file exists. Compare
-  persisted SQL shopkeeper/item rows across boots instead.
+  replaced the removed catalog-file assertion with persisted SQL
+  shopkeeper/item comparisons across boots.
 
 ## Non-goals and ablation decisions
 
