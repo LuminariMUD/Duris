@@ -121,11 +121,12 @@ assert runner.MANUAL_ONLY_TEST_NAMES == {
 }
 discovered = {path.name for path in runner.discover_tests(None)}
 assert not (runner.MANUAL_ONLY_TEST_NAMES & discovered)
+assert not (runner.FLATFILE_REMOVAL_DEFERRED_TEST_NAMES & discovered)
 assert {
     "test_player_playtime_capture.py", "test_playtime_checkpoint.py",
     "test_playtime_flatfile.py",
     "test_discord_bridge_runtime.py", "test_discord_petition_export.py",
-} <= discovered
+} <= discovered | runner.FLATFILE_REMOVAL_DEFERRED_TEST_NAMES
 sample_tests = [
     Path("test_fast.py"),
     Path("test_assassin_combat_journey.py"),
@@ -239,7 +240,7 @@ with tempfile.TemporaryDirectory(prefix="duris-runner-") as scratch:
     assert result.status == "PASS", result.output
 
     # The requested worker limit also applies to journeys that compile helpers.
-    for name in ("test_flatfile_combat_journey.py", "test_pet_restart_journey.py"):
+    for name in ("test_worker_limit_journey.py", "test_second_limit_journey.py"):
         (tests_dir / name).write_text(
             "import fcntl, pathlib, time\n"
             "with pathlib.Path(__file__).with_name('journey.lock').open('w') as lock:\n"

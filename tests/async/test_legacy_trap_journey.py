@@ -83,7 +83,7 @@ def fixture(runtime):
 
 
 def run(binary, backend):
-    assert backend in ("flatfile", "mariadb")
+    assert backend == "mariadb"
     evidence = ROOT / "bin/issue368-evidence" / (backend + "-" + uuid.uuid4().hex[:8])
     evidence.mkdir(parents=True)
     env = dict(PATH=os.environ.get("PATH", "/usr/bin:/bin"), ENVIRONMENT="local",
@@ -119,12 +119,6 @@ def run(binary, backend):
                 for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
                     subprocess.run(["python3", "scripts/migration_runner.py", *arguments],
                                    cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
-            else:
-                subprocess.run([sys.executable, "tests/async/test_flatfile_player_repository.py",
-                                "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True,
-                               stdout=subprocess.DEVNULL)
-                subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
-                env["FLATFILE_STATE_DIR"] = str(state)
             if sql:
                 redis_port = journey.available_ports()[0]
                 redis = subprocess.Popen(["redis-server", "--bind", "127.0.0.1", "--port", str(redis_port),
@@ -193,24 +187,8 @@ def run(binary, backend):
                     client.send("save"); client.expect(f"Saving {name}.", timeout=45)
                     client.send("quit"); client.expect("ACCOUNT MENU", timeout=45)
                 stop()
-                if sql:
-                    sql(f"UPDATE player_data SET level=62,highest_level=62,base_hit=200000 WHERE name='{BUILDER}'")
-                    sql(f"UPDATE player_data SET level=50,highest_level=50,base_hit=200000 WHERE name='{journey.CHARACTER}'")
-                else:
-                    source = journey.OVERLORD_FIXTURE.replace(
-                        "field.signed_value = field.unsigned_value = 62;",
-                        "field.signed_value = field.unsigned_value = !strcasecmp(argv[2], \"Trapbuilder\") ? 62 : 50;\n"
-                        "        for(auto &field : snapshot.status_integers) {\n"
-                        "            if(field.field==player_status_field::base_hit) field.signed_value=field.unsigned_value=200000;\n"
-                        "            if(field.field==player_status_field::hit_difference) field.signed_value=field.unsigned_value=0;\n"
-                        "        }")
-                    cpp, fixture_binary = runtime / "staff.cpp", runtime / "staff"
-                    cpp.write_text(source)
-                    subprocess.run(["g++", "-std=c++20", "-Isrc", str(cpp), "src/player/player_snapshot_codec.c",
-                                    "src/flatfile/flatfile_player_snapshot_file.c", "src/flatfile/flatfile_store.c",
-                                    "-lcrypto", "-o", str(fixture_binary)], cwd=ROOT, check=True)
-                    for name in (BUILDER, journey.CHARACTER):
-                        subprocess.run([str(fixture_binary), str(state), name], check=True)
+                sql(f"UPDATE player_data SET level=62,highest_level=62,base_hit=200000 WHERE name='{BUILDER}'")
+                sql(f"UPDATE player_data SET level=50,highest_level=50,base_hit=200000 WHERE name='{journey.CHARACTER}'")
                 boot()
                 builder, actor = connect(ACCOUNT, BUILDER), connect(journey.ACCOUNT, journey.CHARACTER)
                 command(builder, f"goto {ROOM}")
@@ -375,17 +353,6 @@ def run(binary, backend):
                 home(); invalid=load(INVALID);floor(invalid)
                 command(actor,"get "+invalid)
                 inspect(invalid,(2,17,2,60))
-                if backend == "flatfile":
-                    # Loose Redis world snapshots require a SQL season epoch. Use the
-                    # existing saved-container authority for flat-file floor records.
-                    created=command(builder,"storage new 3084")
-                    assert "now loads here" in created,created
-                    command(builder,"string obj 3084 name storageprobe")
-                    for saved_key in ("probe44160","probe91025","probe142438"):
-                        taken=command(builder,"get "+saved_key)
-                        assert "You get" in taken,(saved_key,taken)
-                        stored=command(builder,"put "+saved_key+" storageprobe")
-                        assert "Ok." in stored,(saved_key,stored)
                 actor.send("save");actor.expect("Saving Taverek.",timeout=45)
                 assert count(14)==caster_count
                 stop();boot()
@@ -396,9 +363,6 @@ def run(binary, backend):
                 inspect("probe91025",(2309,9,3,60))
                 inspect("probe142438",(512,9,0,60))
                 inspect("probe800001",(2,17,2,60))
-                if backend == "flatfile":
-                    command(builder,"get probe142438 storageprobe")
-                    command(builder,"drop probe142438")
                 home()
                 assert "already open" in command(actor,"open probe142438").lower()
                 for vnum, (_, _, final) in TRAPS.items():
@@ -436,8 +400,4 @@ def run(binary, backend):
 if __name__=="__main__":
     if len(sys.argv) in (2,3):
         run(Path(sys.argv[1]).resolve(),sys.argv[2] if len(sys.argv)==3 else "mariadb")
-    elif len(sys.argv)==1:
-        (ROOT/"bin/tests").mkdir(parents=True,exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="legacy-trap-build-",dir=ROOT/"bin/tests") as build:
-            run(journey.build_flatfile_server(Path(build)),"flatfile")
-    else: raise SystemExit("usage: test_legacy_trap_journey.py [SERVER [mariadb|flatfile]]")
+    else: raise SystemExit("usage: test_legacy_trap_journey.py SERVER [mariadb]")

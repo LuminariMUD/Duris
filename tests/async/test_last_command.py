@@ -49,7 +49,6 @@ static void run(std::string arguments) {
 }
 static bool contains(const char *text) { return output.find(text) != std::string::npos; }
 
-#ifndef __NO_MYSQL__
 static void execute(MYSQL *db, const std::string &sql) {
     if (mysql_real_query(db, sql.data(), sql.size())) {
         fprintf(stderr, "%s\n%s\n", mysql_error(db), sql.c_str()); abort();
@@ -136,14 +135,9 @@ static void database_tests() {
     mysql_close(db);
     puts("PASS: SQL time boundaries, UTC, repeated logins, unique accounts, tie ordering, missing identities and all pages");
 }
-#endif
 
 int main(int argc, char **) {
     staff.player.level = AVATAR;
-#ifdef __NO_MYSQL__
-    (void)argc;
-    run("unique 7d page 2"); assert(contains("requires MariaDB") && query.empty());
-#else
     for (const char *bad : {"0h", "1m", "24", "1.5h", "4294967296d", "24h 7d",
                            "page", "page 0", "page -1", "page +1", "page 1x", "page 4294967296",
                            "page 1 page 2", "unique unique", "unique Alice", "Alice unique",
@@ -167,7 +161,6 @@ int main(int argc, char **) {
     staff.player.level = AVATAR;
     admit = false; run(""); assert(contains("unavailable right now")); admit = true;
     if (argc > 1) database_tests();
-#endif
     staff.player.level = 1; run(""); assert(output.empty() && query.empty());
     staff.player.level = AVATAR; staff.specials.act = PLR_MORTAL;
     run(""); assert(output.empty() && query.empty());
@@ -196,25 +189,24 @@ def main():
         directory = Path(temporary)
         source = directory / 'harness.cpp'
         source.write_text(HARNESS)
-        for flat in (False, True):
-            binary = directory / ('flat' if flat else 'sql')
-            flags = ['-D__NO_MYSQL__', '-I', str(ROOT / 'src/no_mysql')] if flat else ['-lmysqlclient']
-            subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-Isrc',
-                            str(source), 'src/cmd/last.c', *flags, '-o', str(binary)],
-                           cwd=ROOT, check=True)
-            subprocess.run([str(binary)], check=True)
-            if args.mysql and not flat:
-                env = dict(os.environ)
-                assert env['TEST_DB_HOST'] in ('127.0.0.1', 'localhost')
-                database = 'last_command_test_' + uuid.uuid4().hex[:12]
-                env.update(TEST_DB_DATABASE=database, MYSQL_PWD=env['TEST_DB_PASSWORD'])
-                client = ['mysql', '--protocol=tcp', '-h', env['TEST_DB_HOST'], '-P', env['TEST_DB_PORT'],
-                          '-u', env['TEST_DB_USER']]
-                subprocess.run(client + ['-e', 'CREATE DATABASE ' + database], env=env, check=True)
-                try:
-                    subprocess.run([str(binary), '--mysql'], env=env, check=True)
-                finally:
-                    subprocess.run(client + ['-e', 'DROP DATABASE ' + database], env=env, check=True)
+        binary = directory / 'sql'
+        flags = ['-lmysqlclient']
+        subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-Isrc',
+                        str(source), 'src/cmd/last.c', *flags, '-o', str(binary)],
+                       cwd=ROOT, check=True)
+        subprocess.run([str(binary)], check=True)
+        if args.mysql:
+            env = dict(os.environ)
+            assert env['TEST_DB_HOST'] in ('127.0.0.1', 'localhost')
+            database = 'last_command_test_' + uuid.uuid4().hex[:12]
+            env.update(TEST_DB_DATABASE=database, MYSQL_PWD=env['TEST_DB_PASSWORD'])
+            client = ['mysql', '--protocol=tcp', '-h', env['TEST_DB_HOST'], '-P', env['TEST_DB_PORT'],
+                      '-u', env['TEST_DB_USER']]
+            subprocess.run(client + ['-e', 'CREATE DATABASE ' + database], env=env, check=True)
+            try:
+                subprocess.run([str(binary), '--mysql'], env=env, check=True)
+            finally:
+                subprocess.run(client + ['-e', 'DROP DATABASE ' + database], env=env, check=True)
 
 
 if __name__ == '__main__':
