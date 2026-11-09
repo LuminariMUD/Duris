@@ -145,7 +145,9 @@ def run_case(binary: Path, enabled: bool, react: bool, family: str = "packed") -
                 drain(client, .3)
                 attacked = time.monotonic()
                 client.send("kill sentinel")
-                deadline=time.monotonic()+(600 if family=='avernus' else 45)
+                # Selection still requires a naturally landed melee hit; dodge can
+                # consume many rounds even for the guaranteed packed selection.
+                deadline=time.monotonic()+600
                 while True:
                     first,output_text=client.expect_any((warning,hit_message,'is dead! R.I.P.',
                         'You stumble, but recover in time!','You stumble in your attack, and jab at',
