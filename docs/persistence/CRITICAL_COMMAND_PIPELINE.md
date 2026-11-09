@@ -6,12 +6,10 @@ categorical source site and deadline, sorted affected entity keys, optional expe
 revisions, and owned payload bytes. It contains no live game pointers, SQL, Redis keys,
 paths, account names, or character names.
 
-In SQL-backed builds, the destination stores command identity and result in an
+The MariaDB destination stores command identity and result in an
 InnoDB inbox, applies the typed domain mutation or history record, and writes its
 outbox record in the same transaction. Outside mini mode, SQL startup requires
-the verified critical-command schema. Flat-file builds select
-`flatfile_critical_command_repository_apply_selected` and do not start the SQL
-outbox worker; each domain still has its own capability and persistence rules.
+the verified critical-command schema.
 Coordinator initialization failure leaves critical gameplay stopped. Critical
 envelopes carry typed payloads; ordinary SQL-backed snapshots can still queue
 owned SQL statements through `sql_async`.
@@ -23,8 +21,6 @@ owned SQL statements through `sql_async`.
 | Item grant, operator repair and destruction | Current owner (`item_current_owner`) and transfer history (`item_ownership_ledger`) | item + owners |
 | Auction | auction, custody and ledger rows | auction + item + players/accounts |
 | Collector | the listing, its item custody and ledger rows | listing + player/account + items |
-| Shop trade (flat-file backend only) | the trade and its item custody | player + shopkeeper + items |
-| Boon shop (flat-file backend only) | the purchase | player |
 | PvP/combat outcome | `pkill_event`, `pkill_info`, `combat_outcome`, frag and epic ledgers, frag leaderboard | all participant players |
 | Artifact/guild | captured reward history only; artifact/guild snapshots save state ([branch status below](#artifact-and-guild-rewards-live-in-memory)) | actor + artifacts + guild |
 | Boon reward | progress and bounded outcomes | player |
@@ -40,14 +36,10 @@ the existing total memory budget. Public equipment/log snapshots are not truncat
 
 Full-group combat results use an 8,192-byte bounded buffer. Outcomes of up to 15
 participants retain their previous 1,536/2,048-byte result encodings, and both
-legacy sizes remain readable. Native player-domain/receipt format 4 admits the
-larger result; formats 1–3 remain readable with their old result bounds. A single
-flat-file authority transaction can carry 82 operations (40 player writes, up to
-40 prepared-delivery writes, the result receipt and delivery index). Its byte
-budget is unchanged. SQL installations require migration
+legacy sizes remain readable. MariaDB requires migration
 `0054_full_group_combat_results`, which widens the critical inbox result column.
-Older binaries cannot read the new large results/native format; do not roll back
-over stores that contain them.
+Older binaries cannot read the new large results; do not roll back over stores
+that contain them.
 
 ## Acceptance and execution
 
@@ -85,7 +77,7 @@ There is no second generic lifecycle framework hidden behind the domain adapters
 
 | State | Owner | Durable evidence and allowed transition |
 | --- | --- | --- |
-| Queued on the writer | Coordinator plus the persistence writer | The operation is reserved in bounded memory and fenced on every key; the writer applies it in capture order through the typed domain adapter. A domain transaction/flat-file authority and its inbox/result are the durable evidence; the coordinator receives an exact revisioned completion. |
+| Queued on the writer | Coordinator plus the persistence writer | The operation is reserved in bounded memory and fenced on every key; the writer applies it in capture order through the typed domain adapter. A MariaDB domain transaction and its inbox/result are the durable evidence; the coordinator receives an exact revisioned completion. |
 | Retried by the writer | Persistence writer | A lost connection, lock wait or ambiguous commit is applied again with the same operation ID before anything queued after it, until it lands. The fence remains. A command whose outcome never becomes known is named at shutdown with what the writer could not write. |
 | Final notification retained | `critical_completion_delivery` plus coordinator pulse | The exact operation ID, outcome, and durable revision remain queued until the simulation-thread consumer supplies capacity. Consumer backpressure cannot cause a final result to be discarded; publication then releases or preserves the appropriate fence. |
 | Snapshot pending and outbox pending | Snapshot and outbox subsystems | Snapshot capture/replay and outbox delivery have their own owners, records, and recovery rules. They do not coalesce critical commands. |
@@ -183,8 +175,8 @@ Every accepted boon ID retains its typed outcome and canonical inbox answer.
 Proven zero-entry SQL results use an eight-byte version-2 receipt (little-endian
 PID, zero uint16 entry count, uint16 version 2), zero expected events and no
 outbox insert. Replay returns the stored answer even if definitions later change.
-Nonempty results and flat-file catalog writers retain the 2,080-byte format;
-readers accept both, including historical inbox/outbox and flat-file receipts.
+Nonempty results retain the 2,080-byte format; readers accept both inbox/outbox
+receipt encodings.
 No old receipt or historical NULL expectation is rewritten.
 
 Operational counts use the existing status indexes on the 250 ms delivery cadence;
@@ -202,9 +194,8 @@ artifact publishers as normal pulses. Auction events remain unacknowledged until
 their asynchronous read's
 game-thread callback has actually published; drains pump completed SQL callbacks
 as well as the publishers. Publication does not bypass durable retry
-backoff; a future retry may truthfully make a bounded drain fail. A SQL build
-without an initialized worker fails closed; the flat-file backend intentionally
-has no SQL outbox and retains its successful absent-worker drain behavior.
+backoff; a future retry may truthfully make a bounded drain fail. A server
+without an initialized worker fails closed.
 
 An accepted auction read returns `publication_pending`: its row remains due,
 without consuming retry attempts or moving `next_attempt_at`. Its completed
@@ -298,12 +289,12 @@ database, `tests/async/run_critical_command_schema_mysql.sh`.
 `epic_transaction_submit()` changes the balance at once and calls its completion before
 returning: committed, or refused with `ENOSPC` when a purchase needs more than the
 balance (`ERANGE` on overflow). The player's save writes epics, frags and old frags, on
-both backends. The command still goes to the one writer as type `epic`, where it only
+MariaDB. The command still goes to the one writer as type `epic`, where it only
 records history: MariaDB adds an `epic_ledger` row whose balance and revision continue
 from the player's last row (or the saved balance when there is none) and advances
 `player_data.epic_revision`, which the rows are keyed on; it never writes the balance.
 Zone trophies, the epic bonus window and the completed-zone reads at login read that
-ledger. Flat-file records the operation only.
+ledger.
 
 A PvP outcome changes the participants' ordinary frags, epics and blood money after its
 intent is durable and the parent is queued, so related saves follow the parent.
@@ -378,16 +369,6 @@ absence remain in memory even after legacy tracking is removed. These storage
 boundaries do not perform complete population classification or universal
 duplicate admission; that work remains in the issue #67 plan.
 
-Flat-file mode hydrates the same artifact/soul maps from the catalog before world
-population. Gameplay getters and mutations use those maps; complete immutable
-captures reach `artifact_catalog` through the existing persistence writer.
-An all-souls reset is one atomic catalog capture. The repository assigns record
-revisions, preserves untouched records, rejects conflicting UIDs across the
-resulting catalog, and makes exact capture replay a no-op. Storage failure leaves
-current gameplay state readable and dirty for retry. Refused admission, including
-a full writer, never performs a synchronous fallback. Flat reports still read
-persisted catalog state and may lag live state.
-
 Positive feeding feedback is `You feel a sense of satisfaction from above.`
 The live artifact/guild award publishes it once even when several artifacts feed;
 guild-only, ineligible, rejected and no-effect awards do not publish it. A valid
@@ -428,8 +409,7 @@ transaction as every guild snapshot, including a member-deletion snapshot.
 captures or transactions retry current values without another debit; an older
 receipt cannot settle a newer capture or a recreated realm. Later realm changes
 remain dirty after an earlier pair succeeds, so copyover flushes them after the
-payment drain and before the writer drain. Flat-file payments retain their shared
-recovery-journal transaction.
+payment drain and before the writer drain.
 
 Domain drains run before coordinator quiescence and again after final copyover
 saves. Failure aborts copyover through the existing resume guard; shutdown reports
@@ -447,14 +427,12 @@ The staff `artifacts reset syncdb` repair keeps current memory if its asynchrono
 result overlaps a later artifact update or an unresolved snapshot failure. Existing
 dirty retries then capture fresh state. The result is processed after staff logout;
 only notification requires the same live staff character.
-Flat-file `syncdb` refuses live reconciliation pending a complete population
-audit: a player-only scan cannot select canonical physical identities across all
-storage domains. The audited repair workflow remains open in issue #67.
+The complete population audit and repair workflow remains tracked in issue #67.
 
 History success and snapshot durability are distinct: either may fail independently.
 A crash may lose unsaved state, and restart loads persisted snapshots without
 re-awarding committed history. This change adds no schema migration, gameplay
-journal or new flat-file reward support; the MySQL capability check remains explicit.
+journal; the MySQL capability check remains explicit.
 
 ## Money lives in memory
 
@@ -463,12 +441,12 @@ variants change the character's wallet, and the bank view of every online charac
 of its account and side, at once, then call their completion before returning:
 committed, or refused with `ENOSPC` when a balance would go below zero. The player's
 save writes the wallet. A bank change is queued on the one writer as a `bank` job
-holding the delta: MariaDB adds it to the `account_banks` row (creating it), flat-file
-to the account's bank domain. The bank job is queued after the player's save when the
+holding the delta: MariaDB adds it to the `account_banks` row (creating it). The
+bank job is queued after the player's save when the
 bank gains and before it when the bank loses, so a crash can lose money but never pay
 it twice. A retried bank job never adds its delta twice either: MariaDB writes it in a
-transaction and reports a commit whose outcome is unknown instead of retrying it, and
-flat-file writes again the bank record it prepared the first time. Shutdown names bank deltas the writer could not write
+transaction and reports a commit whose outcome is unknown instead of retrying it.
+Shutdown names bank deltas the writer could not write
 (`persistence_writer/bank ... deltas=N`).
 
 The economy's commands still run on the writer, but they no longer read or write a
@@ -477,13 +455,11 @@ at submit, with the player's save queued before the command. The completion give
 what the command did not charge: all of it when refused, and the rest of a bid that was
 capped at the buy-now price or only raised the bidder's own bid. A money claim brings
 its money at completion. A refund for a collector buyer who has left is given when they
-return. A flat-file shop purchase pays its price the same way, and a sale is paid when
-it commits.
+return.
 
-Items the economy takes leave memory the same way: a listing's items, a flat-file sale's
-item and a collected antiquity are taken out at submit, before the owner's save. A
-committed command extracts them (a sale hands its item to the shopkeeper); a refused
-one puts them back. So a save captured afterwards never holds them, and saves claim
+Items the economy takes leave memory the same way: a listing's items and a
+collected antiquity are taken out at submit, before the owner's save. A
+committed command extracts them; a refused one puts them back. So a save captured afterwards never holds them, and saves claim
 whatever their owner holds, the economy's records included.
 
 Coins are ordinary items. Get, drop, give and put move the pile and the wallet in

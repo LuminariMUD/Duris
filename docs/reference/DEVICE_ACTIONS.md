@@ -167,15 +167,6 @@ to the common departure/extraction hooks. No raw game pointer survives a call.
   feedback, invalid planes/room restrictions/raidability, cancellation and
   pure/mixed potion consumption under ASan/UBSan. World lookup, allocation,
   movement and damage use controlled doubles; this is not a production journey.
-- `run_device_actions_journey.py --binary bin/server/dms_new`: explicit real
-  Telnet A/B using a disposable flatfile server, synthetic ordinary devices,
-  account creation, production parsing, spell damage, typeahead and abort.
-  Build with `make -C src PERSISTENCE_BACKEND=flatfile` and build the repository
-  inspector as described by the existing flatfile combat journey. The fixture
-  raises combatant health to measure timing; it is not a damage balance study.
-
-The live journey records binary SHA-256 and measurements in an optional JSON
-output. Keep those generated logs under `bin/`; do not commit player/state data.
 Persistent mana is in [ARTIFACT_MANA.md](ARTIFACT_MANA.md), the other artifact families
 in [NATIVE_ARTIFACT_PILOTS.md](NATIVE_ARTIFACT_PILOTS.md), and the rollout in the
 [rollout runbook](../operations/ITEM_ABILITY_ROLLOUT.md). Everything ships disabled.

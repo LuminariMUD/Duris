@@ -306,9 +306,9 @@ table = re.sub(r'(\{ "[^"]+", )(\w+)( \})',
 assert 'ADD_RACIAL_INNATE(INNATE_WEB_SPRAY, RACE_DRIDER, 31);' in innates
 
 production = '#include "abilities/abilities.h"\n' + extract_function('utility.c', 'int dice(int num, int size)') + '\nconst Rolls live_rolls = { dice, number };\n'
+production += '''P_char find_character_by_runtime_id(uint64_t id) { for(P_char c=character_list;c;c=c->next) if(id&&c->runtime_id==id) return c; return nullptr; }\n'''
 production += '\n'.join(extract_function(file, signature) for file, signature in [
     ('utility.c', 'int BOUNDED('),
-    ('character_identity.c', 'P_char find_character_by_runtime_id('),
     ('interp.c', 'void argument_interpreter('), ('interp.c', 'char *one_argument('),
     ('interp.c', 'bool is_abbrev('),
     ('utility.c', 'int strn_cmp('), ('sparser.c', 'char *skip_spaces('),

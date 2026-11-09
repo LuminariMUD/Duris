@@ -68,9 +68,8 @@ disagreement, and nothing ever settled one. On a running server that meant:
 - **A dropped item keeps its last holder's ownership record** until another owner's save
   claims it or the next boot reaps it (see the release entry below). At boot no character
   is in memory, so a player's active record whose item no stored payload carries (no
-  character's or pet's items, no locker, corpse or saved room item, and on flat-file no
-  delivery its player still has pending) is an item nobody holds: both backends delete
-  those records then, before the writer starts. A record whose item an older copy still
+  character's or pet's items, no locker, corpse or saved room item) is an item nobody
+  holds: MariaDB deletes those records then, before the writer starts. A record whose item an older copy still
   carries stays: a load skips a copy whose record names someone else, so after a crash
   that follows a hand-over the record is what keeps the giver's copy out. A record an
   auction's custody row, an `artifact_domain_state` row or another record (its contents)

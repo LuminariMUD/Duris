@@ -1,6 +1,6 @@
 # Class command browser
 
-Status: implemented and locally qualified on MySQL and flat-file backends.
+Status: implemented and locally qualified on MariaDB.
 Date: 2026-11-02
 Delivery: focused class browser using the completed race, skills, and spells browsers.
 
@@ -128,7 +128,7 @@ best stats, or performance rankings from a class name.
   explicitly. Invalid input and missing names show useful examples.
 - Allow reference browsing regardless of the caller's race, level, or current
   class. Personal annotations do not filter the reference catalog.
-- Reuse the existing help catalog on both MySQL and flat-file backends. Honor
+- Reuse the existing help catalog on MariaDB. Honor
   redirects and aliases, and verify that colliding legacy/spec names retrieve
   the intended description.
 - Follow the existing race-description approach for extracting authored prose,
@@ -194,13 +194,13 @@ and paging facilities; keep helpers local unless there is a real shared caller.
   and active/passive markers, without racial grants leaking into the list.
 - [x] Real-dispatcher journeys exercise roster, filtering, profiles, specs,
   innates, skill/spell navigation, colors, and long-output paging for mortals and
-  staff, using disposable authority on both supported persistence backends.
+  staff, using disposable authority on MariaDB.
 - [x] Both maintained help sources document the final interface and agree.
   Relevant existing race, skills, spells, class-help, and help-catalog checks
   still pass for the touched paths.
 - [x] Run `./scripts/format.sh --check`, `make -C src`, focused executable tests,
   and the applicable isolated journeys. Build and qualify affected paths on
-  both MySQL and flat-file backends. Report unrun validation; hosted CI is not
+  MariaDB. Report unrun validation; hosted CI is not
   a completion or merge dependency, and other review requirements still apply.
 
 ## Scope boundaries
@@ -216,42 +216,3 @@ server, and deployment are separate from implementation and require their
 applicable authorization. Before finishing the implementation, reread its diff
 and remove anything not needed for the agreed commands, accurate data/help,
 navigation, or focused proof.
-
-
-## Local qualification (2026-11-02)
-
-All checks passed against isolated local authority; no production server,
-production database, or live help catalog was changed.
-
-- `./scripts/format.sh --check` and `git diff --check`.
-- `make -C src -j6` (MySQL), and `make -C src -j6
-  PERSISTENCE_BACKEND=flatfile
-  DMS_BINARY=/home/aiwithapex/projects/duris/bin/server/dms_class_flatfile`.
-- `python3 tests/async/test_class_command.py`: both backend variants under
-  ASan/UBSan, all class/spec names, exhaustive race filters and overrides,
-  cap-only changes, lost access, spell-circle differences, inherited innates,
-  79-column output, and a real unavailable flat-file help catalog.
-- Existing `test_race_command.py`, `test_skills_command.py`,
-  `test_spells_command.py`, `test_class_helpfiles_contract.py`,
-  `test_help_cache.py`, `test_flatfile_help_catalog.py`,
-  `test_race_helpfiles_complete.py`, and `test_race_innate_help_sync.py`.
-- `python3 tests/async/run_class_command_journey.py --backend flatfile
-  --server bin/server/dms_class_flatfile`, and the `--backend mariadb
-  --server bin/server/dms_new` variant under
-  `tests/async/with_disposable_mariadb.sh`.
-- `run_spells_command_journey.py` with the same backend/server combinations
-  (the MySQL run also used `with_disposable_mariadb.sh`) requalified the
-  prerequisite and navigation destinations.
-
-The class journeys exercise real mortal/staff dispatch, production definitions,
-creation status, denied race permission, skill/spell changes, inherited innates,
-redirected/missing prose, legacy/spec description collisions, help and catalog
-navigation, ANSI colors, 79-column output, and paging for both callers.
-
-The implementation reuses the race display helper and extends its existing
-help-prose extraction for named mechanics sections and redirects. It adds no
-browser framework, schema, configuration layer, or gameplay-rule changes.
-
-Follow-up code review reproduced and fixed parsed-header redirects and empty
-prose/section boundaries. The help-cache regression and both dispatcher journeys
-cover these cases without allowing authored grant tables to replace live facts.

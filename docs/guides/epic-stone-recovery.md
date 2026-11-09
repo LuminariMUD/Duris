@@ -6,7 +6,7 @@ transaction commits participant epic ledgers, the stone claim, and outbox
 receipts together, plus zone history when `record_zone` is set. A terminal
 failure rolls back those writes.
 
-Current source also has prepared delivery for flatfile and Divine-mode awards,
+Current source also has prepared delivery for Divine-mode awards,
 with durable recipient receipts and saved delivery watermarks. See
 [Epic tasks: zone runestones](../reference/EPIC_TASKS.md#zone-runestone) and
 `divine_boon_delivery.c` for that path. The process-local effect limits below
@@ -55,9 +55,7 @@ reconciling the original operation.
   includes artifact intents. Retain a recovery binary compatible with the
   commands/receipts actually written and the current
   migrations, including `0012_epic_stone_claim`.
-- Flatfile accepts prepared zone touches through its player-domain repository.
-  Unprepared flatfile commands are rejected; balance support alone does not
-  establish task-zone catalog availability. See the
+- Task-zone awards require a ready MariaDB catalog. See the
   [epic-task catalog boundary](../reference/EPIC_TASKS.md#task-zone-catalog-and-readiness).
 - This does not reconstruct awards lost by older code.
 
