@@ -108,11 +108,19 @@ def run(server):
                     pid = number("SELECT pid FROM player_data WHERE name='"+journey.CHARACTER+"'")
                     items_before = number(f'SELECT COUNT(*) FROM player_items WHERE pid={pid}')
                     assert items_before > 0
+                    choose_delete()
+                    client.send('YES')
+                    client.expect('Deletion cancelled.')
+                    client.expect('ACCOUNT MENU')
+                    assert number(f'SELECT COUNT(*) FROM player_data WHERE pid={pid}') == 1
+                    assert number(f'SELECT COUNT(*) FROM account_characters WHERE pid={pid} AND deleted_at IS NULL') == 1
+                    assert number(f'SELECT COUNT(*) FROM player_items WHERE pid={pid}') == items_before
+                    print('generic YES cancelled without changing character, mapping or inventory', flush=True)
                     for label, table, action in [('soft-delete', 'account_characters', 'UPDATE'),
                                                   ('late-cleanup', 'player_data', 'DELETE')]:
                         choose_delete()
                         sql(f"CREATE TRIGGER deletion_fixture_refusal BEFORE {action} ON {table} FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic deletion refusal'")
-                        client.send('yes')
+                        client.send(journey.CHARACTER)
                         client.expect('Character deletion did not complete.', timeout=30)
                         client.expect('ACCOUNT MENU')
                         assert b'Character deleted successfully.' not in client.transcript
@@ -136,7 +144,7 @@ def run(server):
                     client.expect('PRESS RETURN'); client.send('')
                     client.expect('ACCOUNT MENU')
                     playing.close()
-                    choose_delete(); client.send('yes')
+                    choose_delete(); client.send(journey.CHARACTER)
                     client.expect('it cannot be deleted now', timeout=30)
                     client.expect('ACCOUNT MENU')
                     assert number(f'SELECT COUNT(*) FROM account_characters WHERE pid={pid} AND deleted_at IS NULL') == 1
@@ -144,7 +152,7 @@ def run(server):
                     client.expect('Reconnecting', timeout=30)
                     client.send('quit'); client.expect('ACCOUNT MENU', timeout=30)
                     print('in-game refusal: a linkdead character was not deleted', flush=True)
-                    choose_delete(); client.send('yes')
+                    choose_delete(); client.send(journey.CHARACTER)
                     client.expect('Character deleted successfully.', timeout=30)
                     client.expect('ACCOUNT MENU')
                     assert number(f'SELECT COUNT(*) FROM player_data WHERE pid={pid}') == 0

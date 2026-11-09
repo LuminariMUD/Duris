@@ -2906,16 +2906,9 @@ void account_delete_char(P_desc d, char *arg)
 		return;
 	}
 
-	// Check if confirming deletion (yes/no)
-	if (!strcasecmp(arg, "y") || !strcasecmp(arg, "yes"))
+	// Only the selected character's full name confirms deletion.
+	if (d->character && !strcasecmp(arg, GET_NAME(d->character)))
 	{
-		if (!d->character)
-		{
-			SEND_TO_Q("\r\n&+ROdd, couldn't delete that char.&n\r\n", d);
-			STATE(d) = CON_DISPLAY_ACCT_MENU;
-			display_account_menu(d, NULL);
-			return;
-		}
 		// One in the game, linkdead or entering it would go on playing, unsaved.
 		if (is_pid_online(GET_PID(d->character), TRUE) ||
 		    account_character_body_held(GET_PID(d->character), d) ||
@@ -2940,7 +2933,7 @@ void account_delete_char(P_desc d, char *arg)
 				 });
 		return;
 	}
-	else if (!strcasecmp(arg, "n") || !strcasecmp(arg, "no"))
+	else if (d->character || !strcasecmp(arg, "n") || !strcasecmp(arg, "no"))
 	{
 		SEND_TO_Q("\r\n&+GDeletion cancelled.&n\r\n", d);
 		release_delete_character(d);
@@ -3058,8 +3051,8 @@ void account_delete_char_loaded(P_desc d)
 		"\r\n&+R!!! FINAL WARNING !!!&n\r\n"
 		"Are you &+RABSOLUTELY SURE&n you want to &+RPERMANENTLY DELETE&n &+W%s&n?\r\n"
 		"This action &+RCANNOT BE UNDONE!&n\r\n\r\n"
-		"Type &+WYES&n to confirm deletion, or &+WNO&n to cancel: ",
-		name_cap);
+		"Type &+W%s&n to confirm deletion, or anything else to cancel: ",
+		name_cap, name_cap);
 	SEND_TO_Q(buf, d);
 	d->character = ch;
 }
