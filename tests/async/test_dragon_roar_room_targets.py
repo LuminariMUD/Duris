@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the real Dragon Roar against room lists that fleeing really rewrites."""
+"""Run the real Dragon Roar, NPC dragon roar and dragonkind axe roar against room lists that fleeing really rewrites."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -7,11 +7,14 @@ from _paths import ROOT, extract_function, source
 
 fixture = r'''
 #include "abilities/abilities.h"
+#include "cmd/interp.h"
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "magic/spells.h"
 #include "net/comm.h"
 #include "net/gmcp.h"
+#include "world/graph.h"
+#include "world/specs.prototypes.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -24,7 +27,13 @@ P_char character_list;
 static room_data rooms[4]{};
 P_room world = rooms;
 const int top_of_world = 3;
-int number(int low, int) { return low; }
+static bool axe_rolls;
+static int axe_chance_rolls;
+int number(int low, int high) {
+    if (!axe_rolls) return low;
+    if (high == 27) return ++axe_chance_rolls == 2 ? 0 : high; // Tail sweep misses, roar hits.
+    return high;
+}
 int dice(int count, int size) { return count * size; }
 const Rolls live_rolls = {dice, number};
 int BOUNDED(int low, int value, int high) { return value < low ? low : value > high ? high : value; }
@@ -38,7 +47,8 @@ static std::map<P_char, std::vector<P_char>> dragged_along;
 static std::set<P_char> fearless;
 static std::function<void(P_char)> during_flee;
 static int flee_room; // Where a flee ends up; 0 means the exits are blocked.
-static P_char hunter, mount;
+static P_char hunter, mount, dragon;
+static char_data axe_opponent{};
 
 static void enter(P_char ch, int room) {
     ch->in_room = room;
@@ -110,6 +120,26 @@ bool notch_skill(P_char ch, int, float) { assert(live.count(ch)); return false; 
 void DelayCommune(P_char ch, int) { assert(live.count(ch)); }
 void set_short_affected_by(P_char ch, int, int) { assert(live.count(ch)); }
 void CharWait(P_char ch, int) { assert(live.count(ch)); }
+bool NewSaves(P_char ch, int, int) { assert(live.count(ch)); return false; }
+bool grouped(P_char a, P_char b) { assert(live.count(a) && live.count(b)); return false; }
+void stop_fighting(P_char ch) { assert(live.count(ch)); ch->specials.fighting = nullptr; }
+void radiate_message_from_room(int, const char *, int, RMFR_FLAGS, int) {}
+P_char get_linked_char(P_char, ush_int) { return nullptr; }
+P_char melee_proc_target(P_obj, P_char, int, char *) { return &axe_opponent; }
+int IS_MORPH(P_char) { return false; }
+// The other attacks in these functions; a roar never reaches them.
+#define NOT_A_ROAR(name) void name(int, P_char, char *, int, P_char, P_obj) { abort(); }
+NOT_A_ROAR(spell_acid_breath) NOT_A_ROAR(spell_biofeedback) NOT_A_ROAR(spell_dragon)
+NOT_A_ROAR(spell_fire_breath) NOT_A_ROAR(spell_fireshield) NOT_A_ROAR(spell_frost_breath)
+NOT_A_ROAR(spell_gas_breath) NOT_A_ROAR(spell_globe) NOT_A_ROAR(spell_vitality)
+void BreathWeapon(P_char, int) { abort(); }
+void StompAttack(P_char) { abort(); }
+void SweepAttack(P_char) { abort(); }
+bool StatSave(P_char, int, int) { abort(); }
+bool damage(P_char, P_char, double, int) { abort(); }
+int char_in_list(P_char) { abort(); }
+bool isname(const char *, const char *) { abort(); }
+void hummer(P_obj) { abort(); }
 ''' + '\n'.join(extract_function(path, signature) for path, signature in [
     ('guild/group.c', 'bool is_in_dragoon_group('),
     ('cmd/actoff.c', 'static int dragoon_power('),
@@ -125,6 +155,8 @@ void CharWait(P_char ch, int) { assert(live.count(ch)); }
     ('cmd/actoff.c', 'static int dragon_roar_flee_threshold('),
     ('cmd/actoff.c', 'static int dragon_roar_flee_level('),
     ('cmd/actoff.c', 'void do_dragon_roar('),
+    ('combat/mobcombat.c', 'bool DragonCombat('),
+    ('specs/specs.underworld.c', 'int dragonkind('),
 ]) + r'''
 using people = std::vector<P_char>;
 
@@ -153,7 +185,7 @@ static void clear_scene() {
     effects.clear(); fled.clear(); dragged_along.clear(); fearless.clear();
     during_flee = nullptr;
     flee_room = 0;
-    hunter = mount = nullptr;
+    hunter = mount = dragon = nullptr;
 }
 
 static void flee_into_occupied_room() {
@@ -290,7 +322,155 @@ static void roarer_dragged_out_still_finishes_the_room() {
     assert(hunter->specials.undead_spell_slots[1] == 2);
     clear_scene();
 }
+
+// An NPC dragon, or a player wielding the dragonkind axe. Targets come first in the room.
+static people roarer_scene(int targets, bool npc) {
+    dragon = person(1);
+    if (npc) {
+        SET_BIT(dragon->specials.act, ACT_ISNPC);
+        dragon->player.race = RACE_DRAGON;
+    }
+    people list(targets);
+    for (int i = targets - 1; i >= 0; --i) list[i] = person(1);
+    return list;
+}
+static void dragon_roar(bool npc) {
+    if (npc) { DragonCombat(dragon, TRUE); return; }
+    static obj_data axe;
+    axe.loc_p = LOC_WORN;
+    axe.loc.wearing = dragon;
+    dragon->equipment[WIELD] = &axe;
+    dragon->specials.fighting = &axe_opponent;
+    axe_rolls = true;
+    axe_chance_rolls = 0;
+    dragonkind(&axe, dragon, 0, nullptr);
+    axe_rolls = false;
+}
+static void remembered_next_leaves_with_fleer(bool npc) {
+    auto targets = roarer_scene(3, npc);
+    auto stranger = person(2);
+    targets[1]->player.level = 10; // A panic flee has no later room check to save it.
+    dragged_along[targets[0]] = {targets[1]};
+    flee_room = 2;
+    dragon_roar(npc); // do_flee rejects anyone forced to flee outside the roar's room.
+    assert(fled == (people{targets[0], targets[2]}));
+    assert(targets[1]->in_room == 2 && stranger->in_room == 2);
+    clear_scene();
+}
+static void panicked_target_is_not_scared_again_elsewhere(bool npc) {
+    auto targets = roarer_scene(2, npc);
+    targets[0]->player.level = 10;
+    flee_room = 2;
+    dragon_roar(npc);
+    assert(fled == (people{targets[0], targets[1]}));
+    clear_scene();
+}
+static void blocked_panic_keeps_its_retry(bool npc) { // Only the NPC roar ever had one.
+    auto targets = roarer_scene(1, npc);
+    targets[0]->player.level = 10;
+    dragon_roar(npc);
+    assert(fled == (npc ? people{targets[0], targets[0]} : people{targets[0]}));
+    clear_scene();
+}
+static void next_target_removed_by_hook(bool npc) {
+    auto targets = roarer_scene(3, npc);
+    during_flee = [&](P_char ch) { if (ch == targets[0]) release(targets[1]); };
+    flee_room = 2;
+    dragon_roar(npc);
+    assert(fled == (people{targets[0], targets[2]}));
+    clear_scene();
+}
+static void next_target_relocated_by_hook(bool npc) {
+    auto targets = roarer_scene(3, npc);
+    during_flee = [&](P_char ch) { if (ch == targets[0]) move(targets[1], 3); };
+    flee_room = 2;
+    dragon_roar(npc);
+    assert(fled == (people{targets[0], targets[2]}) && targets[1]->in_room == 3);
+    clear_scene();
+}
+static void next_target_left_dead_by_hook(bool npc) {
+    auto targets = roarer_scene(3, npc);
+    targets[1]->player.level = 10;
+    during_flee = [&](P_char ch) {
+        if (ch == targets[0]) SET_POS(targets[1], POS_PRONE + STAT_DEAD);
+    };
+    dragon_roar(npc);
+    assert(fled == (people{targets[0], targets[2]}));
+    clear_scene();
+}
+static void fleer_removed_by_hook(bool npc) {
+    for (int level : {50, 10}) { // The panic tier reads the target again after its flee.
+        auto targets = roarer_scene(2, npc);
+        targets[0]->player.level = level;
+        during_flee = [&](P_char ch) { if (ch == targets[0]) release(ch); };
+        dragon_roar(npc);
+        assert(fled.size() == 2 && fled[1] == targets[1]);
+        clear_scene();
+    }
+}
+static void panicked_target_left_dead_by_hook(bool npc) {
+    auto targets = roarer_scene(2, npc);
+    targets[0]->player.level = 10;
+    during_flee = [&](P_char ch) {
+        if (ch == targets[0]) SET_POS(ch, POS_PRONE + STAT_DEAD);
+    };
+    dragon_roar(npc);
+    assert(fled == (people{targets[0], targets[1]}));
+    clear_scene();
+}
+static void roarer_removed_by_hook(bool npc) {
+    for (int level : {50, 10}) {
+        auto targets = roarer_scene(2, npc);
+        targets[0]->player.level = level;
+        during_flee = [&](P_char) { release(dragon); };
+        dragon_roar(npc); // Sanitizers and the boundaries reject any later use of the roarer.
+        assert(fled == people{targets[0]});
+        clear_scene();
+    }
+}
+static void roarer_left_dead_by_hook(bool npc) {
+    auto targets = roarer_scene(2, npc);
+    during_flee = [&](P_char) { SET_POS(dragon, POS_PRONE + STAT_DEAD); };
+    dragon_roar(npc);
+    assert(fled == people{targets[0]});
+    clear_scene();
+}
+static void roarer_dragged_out_still_finishes_room(bool npc) {
+    auto targets = roarer_scene(2, npc);
+    dragged_along[targets[0]] = {dragon};
+    flee_room = 2;
+    dragon_roar(npc);
+    assert(fled == (people{targets[0], targets[1]}));
+    clear_scene();
+}
+static void fleeing_ends_the_fight(bool npc) {
+    auto targets = roarer_scene(1, npc);
+    targets[0]->specials.fighting = dragon;
+    flee_room = 2;
+    dragon_roar(npc);
+    assert(!IS_FIGHTING(targets[0]));
+    clear_scene();
+    targets = roarer_scene(1, npc); // Exits blocked: still in the room, so still fighting.
+    targets[0]->specials.fighting = dragon;
+    dragon_roar(npc);
+    assert(IS_FIGHTING(targets[0]));
+    clear_scene();
+}
 int main() {
+    for (bool npc : {true, false}) {
+        remembered_next_leaves_with_fleer(npc);
+        panicked_target_is_not_scared_again_elsewhere(npc);
+        blocked_panic_keeps_its_retry(npc);
+        next_target_removed_by_hook(npc);
+        next_target_relocated_by_hook(npc);
+        next_target_left_dead_by_hook(npc);
+        fleer_removed_by_hook(npc);
+        panicked_target_left_dead_by_hook(npc);
+        roarer_removed_by_hook(npc);
+        roarer_left_dead_by_hook(npc);
+        roarer_dragged_out_still_finishes_room(npc);
+        fleeing_ends_the_fight(npc);
+    }
     flee_into_occupied_room();
     flee_into_empty_room();
     flee_with_exits_blocked();
