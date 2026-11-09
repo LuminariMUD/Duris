@@ -3,7 +3,7 @@
 Status: conversions and naming are committed/pushed; named-set and Assassin qualification and full regression/database gates remain. Reproduced checkpoint defects are tracked below.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-partial-save-order`. See the latest qualification notes before continuing.
+Review head: `branch/issue-870-completion-qualification`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -250,7 +250,7 @@ from a clean worktree with explicitly provisioned test prerequisites.
   earlier `nexus_journey` failure against current code; if it recurs, diagnose it
   and run the focused reproducer. A focused rerun does not make a failed aggregate
   result disappear. Preserve both results and repair task-blocking failures.
-- [ ] Include runtime proof for #880's already edited standalone journeys
+- [x] Include runtime proof for #880's already edited standalone journeys
   `run_shop_bootstrap_journey.py`, `run_issue37_zone_journey.py` and
   `run_misty_vale_journey.py` if no valid evidence is available for their final code.
 - [ ] Review the final diff with ablation: every edit must support a listed
@@ -987,3 +987,36 @@ This is an estimate, not a time limit or permission to omit required proof.
   invocation correctly refused changed runtime/source inputs after this new
   checkpoint repair. Prepare the current seeded binary, then run those scenarios;
   never edit the old manifest to pretend it executed the new source.
+
+
+### Final qualification integration checkpoint
+
+- [#957](https://github.com/LuminariMUD/Duris/pull/957) is ready, labeled bug,
+  for the separately reproduced partial-payload and false-acknowledgement repair.
+  Head `5e5c76d9e` is pushed. The canonical ordinary binary and115-row catalog
+  were rebuilt after the running prior attempt ended; ordinary hash
+  `60ebf733749c8da6665a1cd1fca94b234d3ad7c5524df4cf968bc40595fc4f99`.
+- Named wear824 passed all six thresholds and reload, but its attempted Vitality
+  potion met the retained native potion cooldown. Preserve that timer and retry
+  only its explicit cooldown refusal until expiry (bounded600s), then require
+  the original Vitality refusal and unchanged set benefit. Prior SQL/evidence
+  are retained under `named-set-vitality-cooldown-failure/`.
+- `named-set-sequence-ordering-repaired-run.log` now resumes the same SQL/UID
+  fixture with explicit binary-change provenance; wear824 then copied rollback,
+  chest and report remain in this invocation. Controller session53879 records
+  a terminal `.exit` file. Do not rebuild its canonical binaries while running.
+- Fresh Assassin preparation verified immutable archives, reused original and
+  cleanse binaries, and built the new revised image in98.819s. Session5420 runs
+  revised matrix then scenarios, with per-phase `.exit` files and logs
+  `assassin-{matrix,scenarios}-ordering-repaired-run.log`. Source/runtime digest
+  guards remain mandatory.
+- Fresh origin/master is `002ad622e`. Independent reviews have merged #880,
+  #887, #890–#893, #895–#897 and #903 with additional paid-creation receipt,
+  native harness, flight fixture and source/test corrections. Integrate those
+  results before final aggregate gates. Keep reviewed changes, current names,
+  this task's deep-graph fix and partial-save fix. A merge preview found just
+  one content conflict, in the shop journey. No GitHub merge is requested here.
+- #880's shop-bootstrap, issue37 reset/restart/reset and complete Misty Vale
+  runtime results are independently confirmed in their retained `*-run.log`
+  files. Existing earlier per-chunk evidence remains versioned proof; final
+  integrated native build, full regression and disposable DB gates are pending.
