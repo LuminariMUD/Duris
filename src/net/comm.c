@@ -4804,7 +4804,7 @@ int process_output(P_desc t)
 										  PLR3_UNDERLINE) ?
 							     TL_UNDERLINE :
 							     TL_BLINK,
-						     !strcasecmp(t->client_name, "Mudlet"));
+						     !strncasecmp(t->client_name, "Mudlet", 6));
 			continue;
 		}
 

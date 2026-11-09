@@ -121,17 +121,20 @@ static void mxp_delivery_matrix()
 		}
 	// Mudlet does not decode attribute entities. Select quoting independently
 	// for each recipient, including a standards-decoding snooper.
-	strlcpy(d.client_name, "Mudlet", sizeof d.client_name);
 	d.mxp_state = sd.mxp_state = MXP_ENABLED;
 	snoop_by_data watching{ &snooper, nullptr };
 	d.snoop.snoop_by_list = &watching;
-	terminal_output.clear();
-	send_to_char(message.c_str(), &player, LOG_NONE, context);
-	assert(process_output(&d) == 1 && process_output(&sd) == 1);
-	assert(observe_mxp(terminal_output[&d]).second[2] ==
-	       "A HREF=\"https://durismud.com/?a=1&b=%22%3C2%3E%22\"");
-	assert(observe_mxp(terminal_output[&sd]).second[2] ==
-	       "A HREF=\"https://durismud.com/?a=1&amp;b=%22%3C2%3E%22\"");
+	for (const char *client : { "Mudlet", "Mudlet-ArjUI" })
+	{
+		strlcpy(d.client_name, client, sizeof d.client_name);
+		terminal_output.clear();
+		send_to_char(message.c_str(), &player, LOG_NONE, context);
+		assert(process_output(&d) == 1 && process_output(&sd) == 1);
+		assert(observe_mxp(terminal_output[&d]).second[2] ==
+		       "A HREF=\"https://durismud.com/?a=1&b=%22%3C2%3E%22\"");
+		assert(observe_mxp(terminal_output[&sd]).second[2] ==
+		       "A HREF=\"https://durismud.com/?a=1&amp;b=%22%3C2%3E%22\"");
+	}
 	d.snoop.snoop_by_list = nullptr;
 	d.client_name[0] = '\0';
 	for (const char *target : { "help O'Brien", "help a\"b", "help a&b" })
