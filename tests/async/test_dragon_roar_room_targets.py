@@ -156,6 +156,7 @@ void hummer(P_obj) { abort(); }
     ('cmd/actoff.c', 'static int dragon_roar_flee_level('),
     ('cmd/actoff.c', 'void do_dragon_roar('),
     ('combat/mobcombat.c', 'bool DragonCombat('),
+    ('cmd/actcomm.c', 'static void dragon_action_roar('),
     ('specs/specs.underworld.c', 'int dragonkind('),
 ]) + r'''
 using people = std::vector<P_char>;
@@ -428,6 +429,13 @@ static void roarer_removed_by_hook(bool npc) {
         clear_scene();
     }
 }
+static void command_roarer_removed_by_hook() {
+    auto targets = roarer_scene(2, true);
+    during_flee = [&](P_char) { release(dragon); };
+    dragon_action_roar(dragon);
+    assert(fled == people{targets[0]});
+    clear_scene();
+}
 static void roarer_left_dead_by_hook(bool npc) {
     auto targets = roarer_scene(2, npc);
     during_flee = [&](P_char) { SET_POS(dragon, POS_PRONE + STAT_DEAD); };
@@ -471,6 +479,7 @@ int main() {
         roarer_dragged_out_still_finishes_room(npc);
         fleeing_ends_the_fight(npc);
     }
+    command_roarer_removed_by_hook();
     flee_into_occupied_room();
     flee_into_empty_room();
     flee_with_exits_blocked();
