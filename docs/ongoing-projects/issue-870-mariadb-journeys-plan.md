@@ -99,7 +99,7 @@ Each batch should produce a reviewable commit with its focused runtime proof.
   SQL checks, and run launch/copyover paths.
 - [x] Repair `run_shop_bootstrap_journey.py` if #880 has not already done so;
   retain stock identities, contents and revision comparisons across cold boots.
-- [ ] Finish `run_news_prompt_journey.py` and
+- [x] Finish `run_news_prompt_journey.py` and
   `run_issue213_onboarding_journey.py`: use SQL for saved news/onboarding state
   and retain the reconnect and command/protocol assertions.
 - [x] Finish `run_death_level_projection_journey.py` and
