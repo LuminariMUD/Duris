@@ -335,11 +335,15 @@ def run(binary, backend, inspector, evidence_dir):
                 mortal_with_ticket()
                 before = mortal_revision()
                 command(client, "setbit char " + MORTAL + " timer 16")
-                mortal.expect("pulled into a void", timeout=100)
+                # An autosave can move the revision first, so watch the floor. The next
+                # tick voids the mortal, and the void closes its connection.
+                deadline = time.monotonic() + 100
+                while not on_floor(client, "ticket"):
+                    assert time.monotonic() < deadline, "idle-voided ticket did not land on the floor"
+                    time.sleep(1)
+                wait_mortal_saved(before)
                 mortal.close()
                 mortal = None
-                wait_mortal_saved(before)
-                assert on_floor(client, "ticket"), "idle-voided ticket did not land on the floor"
                 evidence["checks"].append("an idle-voided character's no-rent item falls")
 
                 command(client, "goto " + str(BANK))
@@ -364,32 +368,24 @@ def run(binary, backend, inspector, evidence_dir):
                 evidence["checks"].append("a locker hands back a no-rent item from a chest")
 
                 enter_locker()
-                text = command(client, "eq chest create vault norent-secret")
-                assert "Private chest 'vault' created" in text, text
-                text = command(client, "open vault")
-                assert "You open the 'vault' chest" in text, text
-                text = command(client, "put ticket vault")
-                assert "Ok." in text, text
+                for line, reply in (("eq chest create vault norent-secret", "Private chest 'vault' created"),
+                                    ("open vault", "You open the 'vault' chest"),
+                                    ("put ticket vault", "Ok.")):
+                    client.send(line)
+                    client.expect(reply, timeout=60)
+                command(client, "score")
                 leave_locker()
                 assert "ticket" in command(client, "inventory").lower(), "private chest ticket was not handed back"
                 assert stored_in_lockers(TICKET) == 0
                 evidence["checks"].append("a locker hands back a no-rent item from an open private chest")
 
                 enter_locker()
-                revision = inspect()["revision"]
-                client.send("camp")
-                text = client.expect("ACCOUNT MENU", timeout=30)
-                assert CRUMBLES in text, text
-                client.close()
-                client = None
-                deadline = time.monotonic() + 60
-                while inspect()["revision"] <= revision or any(row[1] == TICKET for row in inspect()["items"]):
-                    assert time.monotonic() < deadline, "locker camp did not commit"
-                    time.sleep(.1)
-                assert stored_in_lockers(TICKET) == 0, "a no-rent item stayed in the locker"
-                login()
-                assert "ticket" not in command(client, "inventory").lower()
-                evidence["checks"].append("a no-rent item crumbles when its owner leaves from inside a locker")
+                assert "Leave first" in command(client, "camp"), "camp must stay refused inside a locker"
+                leave_locker()
+                evidence["checks"].append("nobody can camp out from inside a locker")
+                command(client, "goto " + str(INN))
+                assert "You drop" in command(client, "drop ticket")
+                assert on_floor(client, "ticket")
 
                 active_uid = grant(KEY, "golden", "golden key", True)
                 save()
