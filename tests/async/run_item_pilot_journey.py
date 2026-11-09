@@ -157,7 +157,7 @@ def run_case(binary,family,enabled,abort):
         try:
             server.start(); client=server.client=journey.MudClient(server.port)
             journey.create_character(client,class_name='c' if family=='tsunami' else 'w')
-            client.send('toggle boon'); client.expect('no longer be affected by boons')
+            client.send('toggle boon'); client.expect('Divine Boons apply automatically.')
             client.send('drop all'); weapon.drain(client,.5)
             name={'tsunami':'trident','ioun':'mirrored','studio':'prism'}[family]
             if family!='studio':

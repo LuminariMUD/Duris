@@ -38,7 +38,7 @@ def run(binary, dual):
             server.start(); client=server.client=journey.MudClient(server.port)
             if dual: journey.create_character(client)
             else: caster.create_mindflayer(client)
-            client.send('toggle boon'); client.expect('no longer be affected by boons')
+            client.send('toggle boon'); client.expect('Divine Boons apply automatically.')
             client.send('drop all'); weapon.drain(client,.7)
             if dual:
                 client.send('look sentinel'); equipment=weapon.drain(client,.6)

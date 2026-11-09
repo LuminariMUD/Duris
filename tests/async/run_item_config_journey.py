@@ -34,7 +34,7 @@ def run(binary):
             server.start(); operator=server.client=journey.reconnect_character(server.port)
             player=journey.MudClient(server.port)
             journey.create_character(player,account='Dorelin',character='Verenal',email='item-config@example.invalid')
-            player.send('toggle boon'); player.expect('no longer be affected by boons')
+            player.send('toggle boon'); player.expect('Divine Boons apply automatically.')
             player.send('drop all'); weapon.drain(player,.8)
             player.send('get prism'); player.expect('You get ')
             deadline=time.monotonic()+15

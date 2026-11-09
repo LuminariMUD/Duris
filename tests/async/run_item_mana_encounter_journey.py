@@ -31,12 +31,12 @@ def run(binary):
         try:
             server.start(); client=server.client=journey.MudClient(server.port)
             journey.create_character(client)
-            client.send('toggle boon'); client.expect('no longer be affected by boons')
+            client.send('toggle boon'); client.expect('Divine Boons apply automatically.')
             client.send('drop all'); weapon.drain(client,.6)
             client.send('get prism'); client.expect('You get ')
             enemy=journey.MudClient(server.port)
             journey.create_character(enemy,account='Dorelin',character='Verenal',email='item-opponent@example.invalid')
-            enemy.send('toggle boon'); enemy.expect('no longer be affected by boons')
+            enemy.send('toggle boon'); enemy.expect('Divine Boons apply automatically.')
             client.send('itemmana prism'); weapon.drain(client,.5)
             deadline=time.monotonic()+50
             while reserve(client)!=10000:
