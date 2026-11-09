@@ -45,7 +45,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-apply-composition`; its initial synchronized commit was
+`origin/branch/ival-zero-modifiers`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -62,7 +62,8 @@ the #919 constructor repair and #927 CTF binding prerequisite are stacked above
 it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-circle-extents`; #946 repairs packed averaging on
 `branch/ival-packed-proc-mean`; #956 supplies canonical apply composition on
-`branch/ival-apply-composition`. Branch/base
+`branch/ival-apply-composition`; #959 makes zero modifiers neutral on
+`branch/ival-zero-modifiers`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -817,6 +818,9 @@ no persisted slots, pricing formulas, coefficients or proc-route policies were r
 ### Chunk 12 — make zero apply modifiers neutral (F04, partial, implemented)
 
 Branch: `branch/ival-zero-modifiers`, based on `branch/ival-apply-composition`.
+Published: commit `2052d5dc7`, [PR #959](https://github.com/LuminariMUD/Duris/pull/959)
+(bug label), stacked on #956. Ready for review; both dedicated worktrees carry
+the committed implementation and evidence.
 
 **Outcome:** a zero stored modifier contributes neither base credit, multiplier
 addition nor multiplier factor. Leave its stored location and slot untouched.
