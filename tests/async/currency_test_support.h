@@ -56,12 +56,6 @@ const char *get_account_name_safe(P_char ch)
 		return "Unknown";
 	return ch && GET_PID(ch) == 45 ? "other_account" : "money_account";
 }
-player_save_apply_result flatfile_bank_delta_apply(const std::string &, const std::string &, int8_t,
-						   const std::array<int64_t, 4> &,
-						   flatfile_authority_operation *, std::string *)
-{
-	return { player_save_apply_outcome::applied, 0, 0 };
-}
 player_save_apply_result bank_delta_repository_apply_from_pool(const bank_delta_snapshot &)
 {
 	return { player_save_apply_outcome::applied, 0, 0 };

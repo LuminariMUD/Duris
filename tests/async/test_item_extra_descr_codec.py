@@ -36,7 +36,7 @@ with tempfile.TemporaryDirectory(prefix="item-extra-descr-codec-") as tmp:
             "-Wall",
             "-Wextra",
             "-Werror",
-            f"-I{SRC}",
+            f"-I{SRC}", "-I/usr/include/mysql",
             str(SRC / "sql/item_extra_descr_codec.c"),
             str(ROOT / "tests/async/item_extra_descr_codec_harness.cpp"),
             "-o",

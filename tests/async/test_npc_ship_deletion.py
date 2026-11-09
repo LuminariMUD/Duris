@@ -132,7 +132,7 @@ const ShipTypeData ship_type_data[MAXSHIPCLASS] = {{ ._hull = 100, ._mxsail = 10
 const ShipArcProperties ship_arc_properties[MAXSHIPCLASS] = {};
 const WeaponData weapon_data[MAXWEAPON] = {{ .max_range = 50, .reload_time = 2, .volley_time = 3 }};
 static int persistence_calls, freed_ships, extracted_objects, extracted_crew, invariant_logs;
-static bool persistence_ok = false, ambiguous_delete=false, deletion_recovered=false;
+static bool persistence_ok = false;
 static std::set<void *> live_ships;
 static std::string output_text;
 struct mm_ds *dead_mob_pool = nullptr, *dead_pconly_pool = nullptr;
@@ -184,12 +184,6 @@ void send_to_char_f(P_char, const char *format, ...) {
 }
 std::string strip_ansi(const char *text) { return text; }
 bool sql_delete_ship(const char *,uint32_t) { ++persistence_calls; return persistence_ok; }
-flatfile_ship_result flatfile_ship_list(const std::string &,std::vector<flatfile_ship_record> *rows,std::string *) {rows->clear();return deletion_recovered ? flatfile_ship_result::ok : flatfile_ship_result::io_error;}
-flatfile_ship_result flatfile_ship_remove(const std::string &, uint32_t, const std::string &, std::string *,const std::vector<flatfile_authority_operation> *) {
-    ++persistence_calls;
-    if (ambiguous_delete) return flatfile_ship_result::io_error;
-    return persistence_ok ? flatfile_ship_result::ok : flatfile_ship_result::invalid;
-}
 
 // Stable deterministic mechanics: production heartbeat changes the timers,
 // sail repair, position and reload state itself.
@@ -586,26 +580,6 @@ static void check_delete(bool ownerless, int db_id = 42) {
 
 int write_ship(P_ship) {abort();}
 unsigned long long ship_save_signature(const P_ship) {abort();}
-static void check_ambiguous_delete() {
-#ifdef __NO_MYSQL__
-    P_ship ship=make_ship(0,2);const auto ref=ship->runtime_ref;
-    ambiguous_delete=true;
-    assert(shipObjHash.erase(ship));delete_ship(ship);
-    assert(find_ship_by_runtime_ref(ref)==ship && IS_SET(ship->flags,TO_DELETE) && ship->save_pending);
-    assert(ship->save_retry_after>0);
-    invalidate_ok=false;ship->save_retry_after=0;flush_pending_ship_saves();
-    assert(find_ship_by_runtime_ref(ref)==ship && IS_SET(ship->flags,TO_DELETE) && ship->save_pending);
-    invalidate_ok=true;ambiguous_delete=false;persistence_ok=false;
-    ship->save_retry_after=0;flush_pending_ship_saves();
-    assert(find_ship_by_runtime_ref(ref)==ship && IS_SET(ship->flags,TO_DELETE) && ship->save_pending);
-    persistence_ok=true;ambiguous_delete=true;
-    deletion_recovered=true;
-    ship->save_retry_after=0;flush_pending_ship_saves();
-    assert(!find_ship_by_runtime_ref(ref));
-    ambiguous_delete=deletion_recovered=false;
-    puts("PASS ambiguous deletion retains/fences its ship until journal recovery confirms removal");
-#endif
-}
 
 static void check_npc_removal(bool purge) {
     P_ship ship = make_ship(NPCSHIP, 2), observer = make_ship(NPCSHIP, 3);
@@ -821,7 +795,6 @@ int main(int argc, char **argv) {
     else if (!strncmp(argv[1], "heartbeat-unload-", 17)) check_heartbeat_unload(atoi(argv[1] + 17));
     else if (!strncmp(argv[1], "deferred-", 9)) check_deferred_unload(atoi(argv[1] + 9));
     else if (!strcmp(argv[1], "persistence")) check_delete(false);
-    else if (!strcmp(argv[1], "ambiguous")) check_ambiguous_delete();
     else if (!strcmp(argv[1], "ownerless")) { check_delete(true); check_delete(true, 0); }
     else if (!strcmp(argv[1], "occupied")) check_occupied_purge();
     else if (!strcmp(argv[1], "references")) check_ai_references();
@@ -837,22 +810,18 @@ with tempfile.TemporaryDirectory(prefix="npc-ship-deletion-", dir=build_root) as
     path = Path(directory)
     failures = []
     (path / "test.cpp").write_text(HARNESS, encoding="utf-8")
-    for backend in ("mysql", "flatfile"):
-        defines = ['-I/usr/include/mysql'] if backend == "flatfile" else ["-I/usr/include/mysql"]
-        binary = path / backend
-        subprocess.run(
-            ["g++", "-std=c++20", "-g", "-Og", "-Isrc", "-I/usr/include/libxml2", *defines,
-             "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
-             str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(binary)],
-            cwd=ROOT, check=True,
-        )
-        for case in ("target-recovery", "target-combat", "busy-delete","busy-effects","sinking", "passenger", "purge", "unload", "persistence", "ownerless",
-                     "occupied", "references", "unloaded", "ambiguous", "heartbeat-unload-0", "heartbeat-unload-1", "heartbeat-unload-2",
-                     "deferred-0", "deferred-1", "deferred-2", "deferred-3", "deferred-4", "deferred-5"):
-            if case=="ambiguous" and backend=="mysql":
-                continue
-            print(f"{backend}: {case}", flush=True)
-            result = subprocess.run([str(binary), case], timeout=30)
-            if result.returncode:
-                failures.append(f"{backend}: {case}")
+    binary = path / "mysql"
+    subprocess.run(
+        ["g++", "-std=c++20", "-g", "-Og", "-Isrc", "-I/usr/include/libxml2", "-I/usr/include/mysql",
+         "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
+         str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(binary)],
+        cwd=ROOT, check=True,
+    )
+    for case in ("target-recovery", "target-combat", "busy-delete","busy-effects","sinking", "passenger", "purge", "unload", "persistence", "ownerless",
+                 "occupied", "references", "unloaded", "heartbeat-unload-0", "heartbeat-unload-1", "heartbeat-unload-2",
+                 "deferred-0", "deferred-1", "deferred-2", "deferred-3", "deferred-4", "deferred-5"):
+        print(case, flush=True)
+        result = subprocess.run([str(binary), case], timeout=30)
+        if result.returncode:
+            failures.append(case)
     assert not failures, f"Failed cases: {', '.join(failures)}"

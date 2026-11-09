@@ -31,7 +31,6 @@ HARNESS = r'''
 static char_data characters[2] = {};
 static pc_only_data pcs[2] = {};
 static bool online[2] = {true,true};
-static bool mysql_available = true;
 static bool magic = true;
 static int effects = 0, zone_publications = 0;
 static critical_submit_result admission = critical_submit_result::accepted;
@@ -157,9 +156,6 @@ int main()
 {
  for(int i=0;i<2;++i) { characters[i].only.pc=&pcs[i]; pcs[i].pid=i+1; pcs[i].epics=100; }
  auto p=payload();
- mysql_available=false;
- assert(!zone_touch_transaction_submit(p));
- mysql_available=true;
  for(auto rejection : {critical_submit_result::overloaded, critical_submit_result::unavailable})
  {
   admission=rejection; assert(!zone_touch_transaction_submit(p));
@@ -212,7 +208,6 @@ int main()
  assert(artifacts.size()==2);
  test_pending_admission_excludes_committed_offline_receipts();
  zone_touch_transaction_reset_for_tests();
- mysql_available=false;
  p.prepared_delivery=true; p.touched_at=150;
  for (size_t i=0; i<p.group_size; ++i) { p.awards[i].base=100; p.awards[i].boon_id=7; }
  assert(zone_touch_transaction_submit(p));
@@ -286,7 +281,6 @@ static int spends = 0, payouts = 0, object_lookups = 0;
 static int64_t spend_delta = 0;
 static epic_level_context spend_context = {};
 static std::string messages;
-static bool sql_authoritative_stone_level = false;
 int sql_level_cap(int) { return 56; }
 int get_property(const char *name, int fallback)
 {
@@ -324,14 +318,6 @@ bool epic_transaction_submit(P_char ch,int64_t delta,epic_reason_type reason,int
 LEVEL_CHECKS = r'''
 int main()
 {
- // Flat-file payout defaults do not contain an epic level: keep the native stone.
- assert(stone_level_for_zone(51, 0)==51);
- assert(stone_level_for_zone(51, 53)==53);
- sql_authoritative_stone_level=true;
- // MariaDB retains the existing authoritative zero/positive metadata policy.
- assert(stone_level_for_zone(51, 0)==0);
- assert(stone_level_for_zone(51, 53)==53);
- sql_authoritative_stone_level=false;
  test_pc pc;
  test_character character;
  character.only.pc=&pc;
@@ -394,7 +380,14 @@ class StoneRuntimeTests(unittest.TestCase):
         code = """#include <vector>
 #include <cassert>
 struct zone_info { int number; int reset_perc; };
-static std::vector<zone_info> flat_zones = {{77,0},{78,9}};
+#define FALSE false
+#define TRUE true
+#define sql_queue(...) ((void)0)
+static std::vector<zone_info> zones = {{77,0},{78,9}};
+static zone_info *zone_row(int number) {
+ for(auto &zone : zones) if(zone.number==number) return &zone;
+ return nullptr;
+}
 """ + extract_function("sql.c", "bool get_zone_info(") + extract_function("sql.c", "void sql_set_zone_reset_perc(") + """
 int main() {
  zone_info row{};
@@ -429,7 +422,6 @@ int main() {
         self.assertIsNotNone(shutil.which("g++"), "Linux g++ is required for the native gameplay regression")
         code = LEVEL_ADAPTERS + "\n".join(
             extract_function("epic.c", signature) for signature in (
-                "static int stone_level_for_zone(int native_level, int configured_level)",
                 "static void epic_stone_level_char_from_level(int stone_level, P_char ch)",
                 "void epic_stone_level_char(P_obj obj, P_char ch)",
                 "void epic_publish_stone_award(P_char ch, const zone_touch_result &result, size_t index)",

@@ -406,6 +406,27 @@ and pick up at the first step not marked done.
 | 4. Launcher, backup, restore, CI, docs | `branch/flatfile-removal-tools` | done |
 | 5. Tests and deferred list | `branch/flatfile-removal-tests` | done |
 
+### Deferred test conversion (branch `branch/flatfile-removal-test-conversion`, #864)
+
+Each batch removes names from `FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`; `make test-all`
+must stay green after each one.
+
+| Batch | Deferred left | Notes |
+|---|---|---|
+| Remove deleted sources, includes, and stubs from harnesses | 165 | Mechanical |
+| Repair harness compile and link failures | 128 | Harnesses compile real client headers; some now use SQL or queue fakes |
+
+Still deferred from the compile batch: `divine_boon_repository` and
+`frag_cap_repository` (their default mode is flat-file only), `flatfile_help_catalog`
+(needs a fake `help_cache` for about 150 assertions), `epic_gain_runtime`, and
+`new_player_bank_hydration` (fixtures rebuilt on the deleted boon and player-domain APIs).
+
+Possible existing server issues found while converting, not caused by this work and
+not changed: `save_account_character_departure` returns before stamping
+`acct_good`/`acct_evil` when `sql_queue` refuses, skipping the side-switch cooldown;
+`PurgeCorpseFile` has no `skip_corpse_save` guard and passes `action_description` to
+`snprintf` without a null check.
+
 ### Step 5 evidence
 
 `tests/run_regression_tests.py` now holds `FLATFILE_REMOVAL_DEFERRED_TEST_NAMES`,

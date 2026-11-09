@@ -90,6 +90,7 @@ size_t sql_async_pulse() {
     }) == player_save_submit_result::accepted);
     return 1;
 }
+bool sql_ship_write_pulse() { return true; }
 ''' + preparation + r'''
 int main() {
     assert(player_save_worker_init([](const player_snapshot &, void *) {
@@ -137,7 +138,7 @@ with tempfile.TemporaryDirectory(prefix="duris-pwipe-writers-") as temporary:
     (path / "test.cpp").write_text(harness)
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Isrc",
                     str(path / "test.cpp"), str(SRC / "player_save_worker.c"),
-                    str(SRC / "persistence_observability.c"), "-pthread", "-o", str(path / "test")],
+                    str(SRC / "persistence_observability.c"), "-lmysqlclient", "-pthread", "-o", str(path / "test")],
                    cwd=ROOT, check=True)
     subprocess.run([str(path / "test")], check=True, timeout=15)
 print("pwipe held shared-writer / callback chain / refusal / abort-resume checks passed")

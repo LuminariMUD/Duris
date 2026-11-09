@@ -18,6 +18,9 @@ HARNESS = r"""
 #include "world/world_recovery_codec.h"
 #include "persistence/copyover.h"
 #include "item/encumbrance_policy.h"
+#include "economy/currency_command.h"
+#include "sql/sql_async.h"
+#include "player/player_load_repository.h"
 #include "item/named_set_origin.h"
 #include "player/player_snapshot.h"
 #include "player/player_load_items.h"
@@ -64,8 +67,20 @@ static size_t removed_wear_links=0;
 static std::map<uint64_t,size_t> removed_wear_links_by_uid;
 static std::vector<uint64_t> removed_floor_uids;
 static std::vector<persistence_job_write_fn> writes;
-static std::vector<std::vector<flatfile_artifact_record>> captures;
 static bool booting=false, writer_admission=true;
+std::string sql_format(const char *, ...) { return {}; }
+// Queued SQL lands on the same fixture writer queue as other persistence jobs.
+static bool queue_statements(std::shared_ptr<sql_write_receipt> receipt) {
+ if(!writer_admission) return false;
+ writes.push_back([receipt] {
+  if(receipt) { receipt->ok=true; receipt->finished=true; }
+  return player_save_apply_result{player_save_apply_outcome::applied,0,0};
+ });
+ return true;
+}
+bool sql_queue_statements_at(persistence_query_site, std::vector<std::string>) { return queue_statements(nullptr); }
+bool sql_queue_statements_at(persistence_query_site, std::vector<std::string>, std::shared_ptr<sql_write_receipt> receipt) { return queue_statements(receipt); }
+player_load_result player_load_repository_execute(MYSQL *, const player_load_request &) { return {}; }
 static player_save_worker_health writer_state={};
 player_save_worker_health player_save_worker_health_copy() { return writer_state; }
 static std::string source_diagnostics;
@@ -81,11 +96,6 @@ bool redis_invalidate_artifact_cache() {
  if(fail_invalidation) { fail_invalidation=false; throw std::bad_alloc(); }
  return true;
 }
-static auto snapshot_result = flatfile_artifact_result::ok;
-flatfile_artifact_result flatfile_artifact_snapshot_apply(const std::string &,
- const std::vector<flatfile_artifact_record> &records,std::string *) {
- captures.push_back(records); return snapshot_result;
-}
 player_save_submit_result persistence_writer_submit(persistence_job_kind kind,uint64_t,size_t,
  persistence_job_write_fn write) {
  assert(kind==persistence_job_kind::artifact);
@@ -95,7 +105,7 @@ player_save_submit_result persistence_writer_submit(persistence_job_kind kind,ui
 }
 void drain() {
  for(auto &write:writes) assert(write().outcome==player_save_apply_outcome::applied);
- writes.clear(); assert(!artifact_save_pulse(false)); captures.clear();
+ writes.clear(); assert(!artifact_save_pulse(false));
 }
 unsigned long long persistence_next_item_uid() { return next_uid++; }
 void *_mm_get(mm_ds *source,const char *,int) { ++source->objs_used; return calloc(1,sizeof(obj_data)); }
@@ -237,7 +247,6 @@ static player_load_result read_fixture;
 bool player_load_request_valid(const player_load_request &request,uint64_t now) {
  return request.request_id && request.pid>0 && request.deadline_usec>now;
 }
-player_load_result flatfile_player_load_repository_execute_selected(const player_load_request &,void *) { return {}; }
 static player_load_result execute_read(const player_load_request &request,void *) {
  std::unique_lock<std::mutex> lock(read_mutex);
  auto result=read_fixture; result.request_id=request.request_id; result.pid=request.pid;
@@ -336,18 +345,6 @@ int main() {
  fail_invalidation=true;
  assert(stage(true) && fail_invalidation); // canonical staging does not need the report cache
  fail_invalidation=false;
- booting=true;
- snapshot_result=flatfile_artifact_result::io_error;
- artifacts_save_boot_population();
- assert(captures.size()==1 && captures.front().size()==2 && artifact_save_pulse(false)==2 && writes.empty());
- captures.clear();
- snapshot_result=flatfile_artifact_result::ok;
- artifacts_save_boot_population();
- assert(captures.size()==1 && captures.front().size()==2 && !artifact_save_pulse(false) && writes.empty());
- captures.clear();
- artifacts_save_boot_population();
- assert(captures.empty());
- booting=false;
  obj_data invalid={}; invalid.R_num=-1; invalid.extra_flags=ITEM_ARTIFACT; invalid.obj_uid=123;
  assert(!artifact_begin_creation(&invalid) && errno==ENODATA && !clone_obj(&invalid));
  artifact_object_extracted(&invalid,true); assert(!artifact_is_canonical(&invalid));
@@ -2032,7 +2029,7 @@ static void *corpse_bulk_get(P_char,uint64_t) { return nullptr; }
 void CharWait(P_char,int) {}
 """+extract_function("actobj.c", "static void\ndo_get_finalize_container_success(")+r"""
 void corpse_bind_cases() {
- artifact_rows.clear(); artifact_binds.clear(); writes.clear(); captures.clear();
+ artifact_rows.clear(); artifact_binds.clear(); writes.clear();
  artifact_rows[900].identity_state=artifact_identity_state::absent;
  artifact_rows.at(900).population_reason=artifact_population_reason::complete;
  char_data owner={}; pc_only_data pc={}; owner.only.pc=&pc; pc.pid=77;
@@ -2040,7 +2037,7 @@ void corpse_bind_cases() {
  owner.player.racewar=1; owner.specials.act=PLR_MORTAL; owner.in_room=0;
  auto *canonical=read_object_for_creation(900,VIRTUAL); assert(canonical); obj_to_char(canonical,&owner);
  auto *alias=read_object(0,REAL); assert(alias); obj_to_char(alias,&owner);
- artifact_save_pulse(true); drain(); writes.clear(); captures.clear();
+ artifact_save_pulse(true); drain(); writes.clear();
  auto &row=artifact_rows.at(900); row.timer=time(nullptr)+60;
  artifact_binds[900]={88,123};
  obj_data corpse={}; corpse.type=ITEM_CORPSE; corpse.value[5]=2;
@@ -2067,7 +2064,7 @@ with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as dire
  subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-Isrc",'-I/usr/include/mysql',"-ffunction-sections","-fdata-sections","-fsanitize=address,undefined",
   "-fno-sanitize-recover=all","-fno-omit-frame-pointer",str(cpp),"src/guild/artifact_population.c",
   "src/item/named_set_origin.c","src/item/random_equipment_tables.c","src/item/item_transfer_command.c","src/item/item_ownership_runtime.c","src/guild/artifact_guild_state.c",
-  "src/guild/artifact_guild_command.c","src/persistence/critical_command.c","src/core/safe_format.c","src/player/player_load_topology.c","src/combat/trap_legacy.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
+  "src/guild/artifact_guild_command.c","src/persistence/critical_command.c","src/core/safe_format.c","src/player/player_load_topology.c","src/combat/trap_legacy.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lmysqlclient","-lcrypto","-pthread",
   "src/player/player_load_pipeline.c","src/persistence/persistence_observability.c",
   "-o",str(binary)],cwd=ROOT,check=True)
  subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=30)

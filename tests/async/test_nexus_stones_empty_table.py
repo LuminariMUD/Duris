@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute real SQL/flat Nexus loading, including empty and failed catalogues."""
+"""Execute real SQL Nexus loading, including empty and failed catalogues."""
 import os
 from pathlib import Path
 import subprocess
@@ -21,20 +21,16 @@ build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="nexus-loader-", dir=build) as temporary:
     directory = Path(temporary)
     path = directory / "nexus_loader.cpp"
-    for backend in ("mysql", "flatfile"):
-        selected = production if backend == "mysql" else production.replace(
-            extract_function("nexus_stones.c", "NexusStoneInfo *nexus_row("), "")
-        path.write_text(fixture.replace("// PRODUCTION_CODE", selected))
-        binary = directory / backend
-        flags = ['-I/usr/include/mysql'] if backend == "flatfile" else ["-I/usr/include/mysql"]
-        subprocess.run([
-            "g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
-            "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-            "-Isrc", "-Isrc/ships", "-I/usr/include/libxml2", *flags,
-            str(path), str(HARNESS_STUBS), "-o", str(binary),
-        ], cwd=ROOT, check=True)
-        subprocess.run([str(binary)], check=True, env={
-            **os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
-            "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1",
-        })
-        print(f"{backend}: real Nexus boot/loader failure cases passed (ASan/UBSan).", flush=True)
+    path.write_text(fixture.replace("// PRODUCTION_CODE", production))
+    binary = directory / "nexus_loader"
+    subprocess.run([
+        "g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
+        "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
+        "-Isrc", "-Isrc/ships", "-I/usr/include/libxml2", "-I/usr/include/mysql",
+        str(path), str(HARNESS_STUBS), "-o", str(binary),
+    ], cwd=ROOT, check=True)
+    subprocess.run([str(binary)], check=True, env={
+        **os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+        "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1",
+    })
+    print("real Nexus boot/loader failure cases passed (ASan/UBSan).", flush=True)

@@ -107,8 +107,6 @@ player_snapshot_capture_result player_item_snapshot_list_capture(
     *bytes = items->size() * sizeof(player_item_snapshot);
     return player_snapshot_capture_result::ok;
 }
-player_save_apply_result flatfile_locker_snapshot_apply(
-    const std::string &, const flatfile_locker_save &, std::string *) { std::abort(); }
 player_save_apply_result locker_snapshot_repository_apply_from_pool(const locker_snapshot &snapshot) {
     std::vector<uint64_t> items;
     for (const auto &item : snapshot.items) items.push_back(item.object_uid);

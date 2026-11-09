@@ -24,6 +24,7 @@ def main(*, sanitize: bool = False) -> None:
             "-pthread",
             "-I",
             str(ROOT / "src"),
+            "-I/usr/include/mysql",
             str(ROOT / "tests/async/telemetry_gameplay_adapters.cc"),
             *[
                 str(ROOT / "src/telemetry" / name)
@@ -44,7 +45,7 @@ def main(*, sanitize: bool = False) -> None:
                     "telemetry_transport.c",
                 )
             ],
-            "-lcrypto", "-lcurl", "-lcjson",
+            "-lmysqlclient", "-lcrypto", "-lcurl", "-lcjson",
             str(HARNESS_STUBS), "-o",
             executable,
         ]

@@ -76,11 +76,6 @@ P_char find_player_by_pid(int pid)
 			return &actors[i];
 	return nullptr;
 }
-flatfile_boon_result flatfile_boon_acknowledge_reward(const std::string &,
-						      const critical_operation_id &, std::string *)
-{
-	std::abort();
-}
 void mark_player_dirty_components(int, player_component_mask_t) {}
 void boon_publish_transaction_result(P_char ch, double, const boon_reward_result &result)
 {

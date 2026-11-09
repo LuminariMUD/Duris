@@ -2,15 +2,13 @@
 """A player corpse's save, removal and boot restore go through the writer and the catalog.
 
 Runs the production writeCorpse(), PurgeCorpseFile() and restoreCorpses() from
-src/core/files.c on the flat-file backend, with the writer's queue and the corpse catalog
-stood in:
+src/core/files.c, with the writer's queue and the corpse loader stood in:
 
 - writeCorpse() queues a save for a corpse on the ground or carried (giving it a save id
   first) and a removal for one that is neither, and reports a job the writer refuses;
-- PurgeCorpseFile() queues the removal, reports a refusal, and queues nothing while the
-  boot restore runs (skip_corpse_save) or for a corpse never saved;
-- restoreCorpses() restores the flat-file catalog, and a failure other than an empty
-  catalog stops the boot.
+- PurgeCorpseFile() queues the removal, reports a refusal, and queues nothing for a corpse
+  never saved;
+- restoreCorpses() loads the saved corpses, and a load failure stops the boot.
 """
 from pathlib import Path
 import subprocess
@@ -25,7 +23,6 @@ HARNESS = r'''
 #include "core/utils.h"
 #include "core/config.h"
 #include "classes/necromancy.h"
-#include "persistence/persistence_mode.h"
 #include <cassert>
 #include <cstdarg>
 #include <cstdio>
@@ -38,8 +35,7 @@ int skip_corpse_save = 0;
 static bool writer_accepts = true;
 static std::vector<std::pair<P_obj, bool>> queued;
 static std::vector<std::string> alerts;
-static flatfile_corpse_restore_result catalog = flatfile_corpse_restore_result::ok;
-static std::string catalog_root;
+static bool corpses_load = true;
 static int fatal = 0;
 
 bool queue_corpse_save(P_obj corpse, bool remove)
@@ -52,12 +48,9 @@ void persistence_alert(int, const char *domain, const char *owner, const char *,
 {
 	alerts.push_back(std::string(domain) + ":" + owner + ":" + action);
 }
-flatfile_corpse_restore_result flatfile_corpse_restore_catalog(const std::string &root,
-							       std::string *error)
+bool sql_load_all_corpses()
 {
-	catalog_root = root;
-	*error = "damaged";
-	return catalog;
+	return corpses_load;
 }
 void fatal_boot_error(const char *component, const char *, ...)
 {
@@ -90,6 +83,7 @@ int main()
 	corpse.type = ITEM_CORPSE;
 	corpse.value[1] = PC_CORPSE;
 	corpse.loc_p = LOC_ROOM;
+	corpse.action_description = const_cast<char *>("corpse-routing-fixture");
 
 	// On the ground: a save id, then a save.
 	writeCorpse(&corpse);
@@ -108,7 +102,6 @@ int main()
 	reset();
 	skip_corpse_save = 1;
 	writeCorpse(&corpse);
-	PurgeCorpseFile(&corpse);
 	assert(queued.empty() && alerts.empty());
 
 	// A purge queues the removal, and reports a refusal.
@@ -118,7 +111,7 @@ int main()
 	reset();
 	writer_accepts = false;
 	PurgeCorpseFile(&corpse);
-	assert(alerts == std::vector<std::string>{ "corpse:flatfile_remove:queue_failed" });
+	assert(alerts == std::vector<std::string>{ "corpse:remove:queue_failed" });
 
 	// A corpse never saved has nothing to remove.
 	reset();
@@ -127,13 +120,10 @@ int main()
 	writeCorpse(&corpse);
 	assert(queued.empty() && alerts.empty());
 
-	// The boot restores the catalog; an empty one is fine, a damaged one stops the boot.
-	restoreCorpses();
-	assert(catalog_root == "/state" && fatal == 0);
-	catalog = flatfile_corpse_restore_result::not_found;
+	// A failed load stops the boot.
 	restoreCorpses();
 	assert(fatal == 0);
-	catalog = flatfile_corpse_restore_result::invalid;
+	corpses_load = false;
 	restoreCorpses();
 	assert(fatal == 1);
 	std::puts("corpse saves, removals and the boot restore route through the writer");

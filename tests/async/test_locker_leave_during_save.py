@@ -64,12 +64,6 @@ player_snapshot_capture_result player_item_snapshot_list_capture(
     *bytes = 0;
     return player_snapshot_capture_result::ok;
 }
-// MariaDB: the flat-file writer is never called.
-player_save_apply_result flatfile_locker_snapshot_apply(const std::string &,
-                                                        const flatfile_locker_save &, std::string *)
-{
-    std::abort();
-}
 player_save_apply_result locker_snapshot_repository_apply_from_pool(const locker_snapshot &locker)
 {
     written.push_back(locker.items.size());

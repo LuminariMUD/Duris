@@ -57,12 +57,12 @@ with tempfile.TemporaryDirectory(dir=ROOT / 'bin') as temp:
     handler.write_text(prefix+bodies+main)
     for name, sources, flags in [
         ('refresh', ['tests/async/refresh_cache_harness.cpp'], []),
-        ('information', ['tests/async/information_cache_harness.cpp','src/cmd/information_cache.c',
-                         'src/flatfile/flatfile_help_catalog.c'], []),
+        ('information', ['tests/async/information_cache_harness.cpp','src/cmd/information_cache.c'],
+         ['-lmysqlclient']),
         ('handlers',[str(handler)], [])]:
         binary = temp / name
-        subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-pthread','-Isrc',
-                        *flags,*sources,'-o',str(binary)],cwd=ROOT,check=True)
+        subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-pthread','-Isrc', '-I/usr/include/mysql',
+                        *sources,*flags,'-o',str(binary)],cwd=ROOT,check=True)
         fixture = temp / 'fixture'
         fixture.mkdir(exist_ok=True)
         subprocess.run([str(binary),str(fixture)],cwd=ROOT,check=True,timeout=30)

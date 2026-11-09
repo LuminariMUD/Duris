@@ -1,7 +1,6 @@
 // Include the actual runtime to drive its writer seam and retry deadline without
 // adding a gameplay clock command or a production-only testing interface.
 #include "combat/frag_cap_runtime.c"
-#include "flatfile/flatfile_store.h"
 
 #include <cassert>
 #include <filesystem>
@@ -9,7 +8,10 @@
 
 namespace
 {
-std::string test_root;
+// The frag_cap row, held in memory behind the SQL repository interface.
+frag_cap_state stored;
+bool row_exists = false;
+frag_cap_store_result load_result = frag_cap_store_result::ok;
 persistence_job_write_fn queued_read;
 bool refuse_read = false;
 std::vector<std::string> announcements;
@@ -17,14 +19,21 @@ constexpr int64_t start = INT64_C(1800000000000000);
 
 void write(const frag_cap_state &state)
 {
-	flatfile_authority_lock lock;
-	assert(lock.acquire(test_root, nullptr));
-	std::vector<flatfile_authority_operation> operations;
-	assert(frag_cap_flatfile_prepare(test_root, lock, state, &operations) ==
-	       frag_cap_store_result::ok);
-	assert(flatfile_authority_transaction_commit_operations(test_root, lock, operations,
-								nullptr) ==
-	       flatfile_authority_transaction_result::ok);
+	stored = state;
+	row_exists = true;
+	load_result = frag_cap_store_result::ok;
+}
+
+void corrupt()
+{
+	load_result = frag_cap_store_result::invalid;
+}
+
+void tick(int64_t now)
+{
+	auto settled = stored;
+	assert(frag_cap_settle(&settled, now));
+	write(settled);
 }
 
 void complete()
@@ -43,6 +52,51 @@ void refresh()
 }
 }
 
+MYSQL *DB = nullptr;
+extern "C"
+{
+	int STDCALL mysql_query(MYSQL *, const char *)
+	{
+		return 0;
+	}
+	unsigned int STDCALL mysql_errno(MYSQL *)
+	{
+		return 0;
+	}
+	MYSQL *sql_pool_acquire(void)
+	{
+		return reinterpret_cast<MYSQL *>(&stored);
+	}
+	MYSQL *sql_pool_replace_connection(MYSQL *connection)
+	{
+		return connection;
+	}
+	void sql_pool_release(MYSQL *) {}
+}
+frag_cap_store_result frag_cap_sql_load(MYSQL *, frag_cap_state *state, bool)
+{
+	if (load_result != frag_cap_store_result::ok)
+		return load_result;
+	if (!row_exists)
+		return frag_cap_store_result::not_found;
+	*state = stored;
+	return frag_cap_store_result::ok;
+}
+frag_cap_store_result frag_cap_sql_save(MYSQL *, const frag_cap_state &state)
+{
+	write(state);
+	return frag_cap_store_result::ok;
+}
+frag_cap_store_result frag_cap_sql_adopt(MYSQL *connection, int legacy_floor, int, int64_t now,
+					 frag_cap_state *state, const frag_cap_policy &policy)
+{
+	const auto loaded = frag_cap_sql_load(connection, state, true);
+	if (loaded != frag_cap_store_result::not_found)
+		return loaded;
+	assert(frag_cap_adopt(state, legacy_floor, 0, now, policy));
+	write(*state);
+	return frag_cap_store_result::ok;
+}
 void logit(const char *, const char *, ...) {}
 void send_to_all(const char *text)
 {
@@ -63,14 +117,8 @@ player_save_submit_result persistence_writer_submit(persistence_job_kind kind, u
 	return player_save_submit_result::accepted;
 }
 
-int main(int argc, char **argv)
+int main()
 {
-	assert(argc == 2);
-	test_root = argv[1];
-	std::filesystem::create_directories(test_root + "/domains");
-	for (const auto &path : { test_root, test_root + "/domains" })
-		std::filesystem::permissions(path, std::filesystem::perms::owner_all,
-					     std::filesystem::perm_options::replace);
 	assert(frag_cap_runtime_boot(start));
 	assert(frag_cap_runtime_state()->level == 31);
 	assert(announcements.empty());
@@ -110,8 +158,7 @@ int main(int argc, char **argv)
 	complete();
 	assert(frag_cap_runtime_status(1, start).find("last confirmed state") == std::string::npos);
 	// A failed observation preserves confirmed credit and reports stale status.
-	assert(flatfile_atomic_write(test_root + "/domains", "frag-cap.state", { 'b', 'a', 'd' },
-				     nullptr));
+	corrupt();
 	refresh();
 	assert(*frag_cap_runtime_state() == confirmed);
 	assert(frag_cap_runtime_status(1, start).find("last confirmed state") != std::string::npos);
@@ -128,8 +175,7 @@ int main(int argc, char **argv)
 	refresh();
 	refresh();
 	assert(announcements.empty()); // Provisional scores never announce a secured winner.
-	assert(frag_cap_flatfile_tick(test_root, start + 72 * FRAG_CAP_HOUR) ==
-	       frag_cap_store_result::ok);
+	tick(start + 72 * FRAG_CAP_HOUR);
 	refresh();
 	refresh();
 	assert(announcements.size() == 1 &&
@@ -138,12 +184,10 @@ int main(int argc, char **argv)
 	       std::string::npos);
 	assert(frag_cap_runtime_status(2, start + 72 * FRAG_CAP_HOUR).find("Your normal cap: 31") !=
 	       std::string::npos);
-	assert(frag_cap_flatfile_tick(test_root, start + 216 * FRAG_CAP_HOUR) ==
-	       frag_cap_store_result::ok);
+	tick(start + 216 * FRAG_CAP_HOUR);
 	assert(frag_cap_runtime_boot(start + 216 * FRAG_CAP_HOUR));
 	assert(frag_cap_runtime_state()->level == 34 && announcements.size() == 1);
-	assert(flatfile_atomic_write(test_root + "/domains", "frag-cap.state", { 'b', 'a', 'd' },
-				     nullptr));
+	corrupt();
 	assert(!frag_cap_runtime_boot(start + 216 * FRAG_CAP_HOUR));
 	std::cout
 		<< "PASS cap publication: coalesced reads, viewer isolation, older revisions, failed reads, boot recovery and one announcement\n";

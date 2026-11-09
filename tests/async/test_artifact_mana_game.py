@@ -13,6 +13,8 @@ HARNESS = r'''
 #include <cstring>
 #include <filesystem>
 #include <limits>
+#include <map>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <time.h>
@@ -21,7 +23,7 @@ HARNESS = r'''
 static uint64_t test_wall = 100, test_mono = 1000;
 static float master = 1, mana_enabled = 1;
 static bool game_thread = true;
-static std::string root, output;
+static std::string output;
 int fake_clock(clockid_t, timespec *result) {
     result->tv_sec = test_mono / 1000; result->tv_nsec = (test_mono % 1000) * 1000000; return 0;
 }
@@ -31,6 +33,25 @@ time_t fake_time(time_t *) { return test_wall; }
 #include "item/artifact_mana.c"
 #undef time
 #undef clock_gettime
+// The worker's store: compare-and-swap with exact-retry recognition, held in memory.
+static std::mutex store_mutex;
+static std::map<uint64_t, artifact_mana_record> store;
+artifact_mana_read artifact_mana_store_read(uint64_t uid, artifact_mana_record &record) {
+    std::lock_guard lock(store_mutex);
+    const auto found = store.find(uid);
+    if (found == store.end()) return artifact_mana_read::missing;
+    record = found->second;
+    return artifact_mana_read::found;
+}
+bool artifact_mana_store_write(uint64_t expected, const artifact_mana_record &record) {
+    std::lock_guard lock(store_mutex);
+    const auto found = store.find(record.uid);
+    if (found == store.end()) return !expected && store.emplace(record.uid, record).second;
+    if (found->second == record) return true;
+    if (found->second.version != expected) return false;
+    found->second = record;
+    return true;
+}
 static std::array<unsigned,static_cast<size_t>(item_action_metric::count)> observed{};
 bool item_actions_telemetry_enabled() { return true; }
 void item_actions_note(item_action_metric metric) { ++observed[static_cast<size_t>(metric)]; }
@@ -51,10 +72,7 @@ P_obj get_obj_in_list_vis(P_char, const char *name, P_obj list, bool) { return s
 P_obj get_object_in_equip_vis(P_char actor, char *name, int *slot) {
     *slot = 0; return std::strcmp(name, "blade") ? nullptr : actor->equipment[0];
 }
-int main(int argc, char **argv) {
-    assert(argc == 2); root = argv[1];
-    std::filesystem::create_directories(root + "/domains");
-    chmod(root.c_str(), 0700); chmod((root + "/domains").c_str(), 0700);
+int main() {
     indexes[0].virtual_number = 900;
     indexes[1].virtual_number = 901;
     obj_data source = {}, duplicate = {};
@@ -131,9 +149,9 @@ with tempfile.TemporaryDirectory(prefix="duris-mana-game-") as directory:
     binary = work / "test"
     subprocess.run([
         os.environ.get("CXX", "g++"), "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g", "-O1",
-        "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-no-pie", "-I", str(ROOT / "src"), "-I", str(ROOT / "src/no_mysql"), str(work / "test.cpp"),
-        *[str(ROOT / "src/item" / f"artifact_mana_{part}.c") for part in ("model", "runtime", "store")],
-        str(ROOT / "src/flatfile/flatfile_store.c"), "-lcrypto", "-pthread", str(HARNESS_STUBS), "-o", str(binary),
+        "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-no-pie", "-I", str(ROOT / "src"), "-I/usr/include/mysql", str(work / "test.cpp"),
+        *[str(ROOT / "src/item" / f"artifact_mana_{part}.c") for part in ("model", "runtime")],
+        "-lmysqlclient", "-lcrypto", "-pthread", str(HARNESS_STUBS), "-o", str(binary),
     ], check=True)
-    subprocess.run([str(binary), str(work / "authority")], check=True, timeout=30)
+    subprocess.run([str(binary)], check=True, timeout=30)
 print("mana bridge UID, owner inspection, conservation, reload and disable/enable checks passed")

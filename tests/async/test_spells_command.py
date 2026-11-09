@@ -306,19 +306,32 @@ def main():
         directory = Path(temporary)
         source = directory / "spells.cpp"
         source.write_text(HARNESS.replace("int main() {", "\n".join(functions) + "\nint main() {"))
-        for backend in ("mariadb", "flatfile"):
-            binary = directory / backend
-            flags = ['-I/usr/include/mysql'] if backend == "flatfile" else []
-            subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
-                            "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
-                            "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-Isrc",
-                            "-I/usr/include/mysql", "-I/usr/include/libxml2", *flags,
-                            str(source), "src/cmd/spells.c", "src/core/common.c", "-o", str(binary)],
-                           cwd=ROOT, check=True)
-            subprocess.run([str(binary)], cwd=directory, check=True)
+        binary = directory / "spells"
+        subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
+                        "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
+                        "-fsanitize=address,undefined", "-fno-sanitize-recover=undefined", "-Isrc",
+                        "-I/usr/include/mysql", "-I/usr/include/libxml2",
+                        str(source), "src/cmd/spells.c", "src/core/common.c", "-o", str(binary)],
+                       cwd=ROOT, check=True)
+        subprocess.run([str(binary)], cwd=directory, check=True)
 
-        # A cold flat-file help failure must leave the real browser facts usable.
+        # A cold help failure must leave the real browser facts usable.
         driver = r'''
+// wikihelp.c links these for race pages; a cold catalog never reaches them.
+int class_table[LAST_RACE + 1][CLASS_COUNT + 1];
+int allowed_secondary_classes[1][5];
+extern const mcname multiclass_names[];
+const mcname multiclass_names[1] = {};
+int get_property(const char *, int fallback) { return fallback; }
+const char *stat_to_string_damage_pulse(float) { return ""; }
+const char *stat_to_string_spell_pulse(float) { return ""; }
+int ansi_strlen(const char *text) { return static_cast<int>(strlen(text)); }
+std::string single_spec_list(int, int) { return ""; }
+std::string list_innates(int, int, int) { return ""; }
+std::string list_spells(int, int) { return ""; }
+std::string list_songs(int, int) { return ""; }
+std::string list_skills(int, int) { return ""; }
+bool is_allowed_race_spec(int, unsigned int, int) { return false; }
 int main() {
     add(SPELL_FIREBALL, "fireball", CLASS_CONJURER, 3);
     char_data ch{}; pc_only_data pc{}; ch.only.pc = &pc;
@@ -326,8 +339,8 @@ int main() {
     ch.player.m_class = CLASS_CONJURER; ch.player.level = 1;
     auto text = run(&ch, "info fireball");
     assert(text.find("Your required Circle: 3") != std::string::npos);
-    assert(text.find("error with the help system") != std::string::npos);
-    puts("PASS: real flat-file help unavailability preserves browser facts and access");
+    assert(text.find("Help is temporarily unavailable") != std::string::npos);
+    puts("PASS: real help unavailability preserves browser facts and access");
 }
 '''
         prelude = HARNESS.split("int main() {", 1)[0]
@@ -338,7 +351,7 @@ int main() {
         subprocess.run(["g++", "-std=c++20", '-I/usr/include/mysql', "-Isrc",
                         "-I/usr/include/libxml2", "-ffunction-sections", "-fdata-sections",
                         "-Wl,--gc-sections", str(source), "src/cmd/spells.c", "src/core/common.c",
-                        "src/cmd/wikihelp.c", "src/flatfile/flatfile_help_catalog.c",
+                        "src/cmd/wikihelp.c", "src/cmd/help_cache.c",
                         str(HARNESS_STUBS), "-o", str(binary)], cwd=ROOT, check=True)
         subprocess.run([str(binary)], cwd=directory, check=True)
 

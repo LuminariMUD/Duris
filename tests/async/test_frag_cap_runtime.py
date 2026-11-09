@@ -13,8 +13,7 @@ with tempfile.TemporaryDirectory(prefix="frag-cap-runtime-", dir=output) as dire
         "g++", "-std=c++20", "-g", "-Og", "-Wall", "-Wextra", "-Werror",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
         "-Isrc", '-I/usr/include/mysql', "tests/async/frag_cap_runtime_harness.cpp",
-        "src/combat/frag_cap.c", "src/combat/frag_cap_repository.c", "src/combat/frag_cap_config.c",
-        "src/flatfile/flatfile_store.c",
+        "src/combat/frag_cap.c", "src/combat/frag_cap_config.c",
         "-lcrypto", "-pthread", "-o", str(binary),
     ], cwd=ROOT, check=True)
-    subprocess.run([str(binary), str(Path(directory) / "state")], check=True)
+    subprocess.run([str(binary)], check=True)

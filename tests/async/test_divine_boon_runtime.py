@@ -16,14 +16,14 @@ with tempfile.TemporaryDirectory(prefix="divine-boon-runtime-", dir=output_root)
         [
             "g++", "-std=c++20", "-g", "-Og", "-Wall", "-Wextra", "-Wpedantic",
             "-Werror", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
-            "-fno-pie", "-no-pie", "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST", "-Isrc", '-I/usr/include/mysql',
+            "-fno-pie", "-no-pie", "-Isrc", '-I/usr/include/mysql',
             "tests/async/divine_boon_runtime_harness.cpp",
-            "src/economy/divine_boon.c", "src/economy/divine_boon_repository.c",
+            "src/economy/divine_boon.c",
             "src/economy/divine_boon_runtime.c", "src/player/player_save_worker.c",
             "src/persistence/persistence_observability.c",
             "src/persistence/maintenance_scheduler.c",
-            str(HARNESS_STUBS), "src/flatfile/flatfile_store.c",
-            "-lcrypto", "-pthread", "-o", binary,
+            str(HARNESS_STUBS),
+            "-lmysqlclient", "-lcrypto", "-pthread", "-o", binary,
         ],
         cwd=ROOT, check=True,
     )
@@ -57,7 +57,6 @@ void sql_pool_release(MYSQL *) {}
 MYSQL *sql_pool_replace_connection(MYSQL *value) { return value; }
 unsigned int mysql_errno(MYSQL *) { return 0; }
 store_result divine_boon_sql_save(MYSQL *, uint64_t, const divine_boon_state &) { return store_result::ok; }
-store_result divine_boon_flatfile_save(const std::string &, uint64_t, const divine_boon_state &) { return store_result::ok; }
 // OPERATION
 // CALLBACK
 int main() {
@@ -65,7 +64,6 @@ int main() {
         std::abort(); return player_save_apply_result{};
     }, nullptr));
     auto operation = std::make_shared<pending_write>();
-    operation->flatfile = false;
     operation->next.revision = 9;
     assert(persistence_writer_submit(persistence_job_kind::divine_boon, 1, 1,
         [operation] { return write_state(operation); }) == player_save_submit_result::accepted);
