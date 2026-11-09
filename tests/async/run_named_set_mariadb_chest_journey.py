@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority
 from named_set_gameplay import (
     enable_items, expect_max_hp, get_from_container, put, save, score, selector,

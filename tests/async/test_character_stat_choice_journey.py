@@ -12,7 +12,7 @@ import time
 from test_account_recovery_journey import IsolatedServer, require, OLD_PASSWORD
 import test_creation_prompt_journey as telnet
 from test_creation_prompt_journey import reboot
-from test_flatfile_combat_journey import make_overlord
+from test_mariadb_combat_journey import make_overlord
 from test_connection_limit_journey import upgrade
 
 

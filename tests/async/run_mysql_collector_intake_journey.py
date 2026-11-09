@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The collector takes an antiquity from a player's corpse, on an isolated MariaDB schema.
 
-The MariaDB side of test_flatfile_collector_intake_journey.py: the death's corpse save
+The MariaDB side of test_mariadb_collector_intake_journey.py: the death's corpse save
 records the death and its candidates, and maintenance collects the banana from the live
 corpse. Set TEST_DB_HOST (loopback), TEST_DB_USER and TEST_DB_PASSWORD; TEST_DB_PORT
 defaults to 3306.
@@ -15,8 +15,8 @@ import tempfile
 import time
 import uuid
 
-import test_flatfile_collector_intake_journey as collector_journey
-import test_flatfile_combat_journey as journey
+import test_mariadb_collector_intake_journey as collector_journey
+import test_mariadb_combat_journey as journey
 
 ROOT = Path(__file__).resolve().parents[2]
 

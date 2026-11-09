@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 from run_world_quest_dual_backend import setup_run_root
 
@@ -268,7 +268,7 @@ def main():
     evidence = ROOT / "bin/qualification/issue419"
     evidence.mkdir(parents=True, exist_ok=True)
     subprocess.run(["make", "world"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
-    binary = args.server.resolve() if args.server else journey.build_flatfile_server(evidence / "journey-build")
+    binary = args.server.resolve() if args.server else journey.build_mariadb_server(evidence / "journey-build")
     run(binary, args.backend, evidence)
 
 

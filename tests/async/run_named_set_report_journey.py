@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from named_set_gameplay import score, save
 from test_flight_network_journey import authority
 

@@ -21,7 +21,7 @@ STATS = ('str', 'dex', 'agi', 'con', 'pow', 'int', 'wis', 'cha', 'kar', 'luk')
 def login_journey(socket, work, server):
     """Use the real account menu, command parser, writer and materialization path."""
     import signal
-    import test_flatfile_combat_journey as journey
+    import test_mariadb_combat_journey as journey
     database = 'stats_login'
     environment = {
         'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'ENVIRONMENT': 'local',

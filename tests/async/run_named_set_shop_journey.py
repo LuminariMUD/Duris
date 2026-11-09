@@ -4,7 +4,7 @@
 import json
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from named_set_gameplay import NamedSetGame, expect_max_hp, save, score, selector
 
 ACCOUNT, CHARACTER, PID = "Namedguest", "Meranen", 2

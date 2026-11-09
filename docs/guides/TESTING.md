@@ -197,7 +197,7 @@ The shared MariaDB journey server runs a 125 ms game pulse instead of 250 ms
 so a journey plays the same game twice as fast. A journey that times the game
 against the wall clock (it sleeps into a pulse window, tests a timeout in seconds,
 or restores a wall-clock deadline that the game turns into pulses at four a second)
-asks for `build_flatfile_server(..., real_clock=True)`, a separate artifact
+asks for `build_mariadb_server(..., real_clock=True)`, a separate artifact
 with the real pulse. `bin/server/dms_new` and every production build keep 250 ms.
 
 The artifact key covers all files under `src/` (including untracked files),
@@ -384,7 +384,7 @@ crash stays fixed.
 
 ## Full-world save diagnostics
 
-`test_flatfile_full_world_boot.py` supports opt-in synthetic failure/recovery
+`test_mariadb_full_world_boot.py` supports opt-in synthetic failure/recovery
 experiments on disposable MariaDB without using the configured database:
 
 | Variable | Effect |

@@ -58,8 +58,8 @@ The action C++ fixtures compile production runtime, scheduler, adapters and rele
 | Empty enrollment, independent UIDs, clone denial, conservation floor, no refill on flags/profile changes | `test_artifact_mana_game.py`, `test_artifact_mana_runtime.py` |
 | Lost ACK, CAS retry, coalesced spends, stale-worker two-second admission bound | Mana runtime/store test |
 | Retained depletion accepted by restore qualifier; corrupt/relabeled authority rejected | `test_artifact_mana_restore.py` |
-| Persistent artifact owner retained during death's unequip-to-inventory step | `test_flatfile_artifact_repository.py` |
-| Native corpse/floor bootstrap; custody/snapshot recovery | `test_flatfile_corpse_restore.py`, `test_flatfile_player_repository.py` |
+| Persistent artifact owner retained during death's unequip-to-inventory step | `test_mariadb_artifact_repository.py` |
+| Native corpse/floor bootstrap; custody/snapshot recovery | `test_mariadb_corpse_restore.py`, `test_mariadb_player_repository.py` |
 
 The mana ledger is independent of player, bag, locker and corpse payloads. Networked bag/death tests cover representative custody transitions; locker behavior is supported by the existing custody repository and UID contract, not a claim of a new networked locker UI scenario. Private DurisStudio UI integration is explicitly handed off to Faemill in #329.
 

@@ -10,7 +10,7 @@ import test_account_recovery_journey as account
 import test_creation_prompt_journey as creation
 from test_character_stat_choice_journey import WebSocketClient
 from test_kept_character_journey import kept_journey_binary, persistence, login, character_choices, websocket_character, websocket_text, saved_character
-from test_flatfile_chaos_new_character_kit import read_item_ownership
+from test_mariadb_chaos_new_character_kit import read_item_ownership
 
 sys.path.insert(0, str(account.ROOT / "scripts"))
 from build_restore_qualifier import build as build_restore_qualifier

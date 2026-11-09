@@ -217,11 +217,11 @@ the existing crash/reconnect cases. No new mana table or persistence layer.
 
 ### 5. Rename supported tests/build helpers and repair active documentation
 
-- [ ] Rename the 14 current `test_flatfile_*.py` files to the corresponding
+- [x] Rename the 14 current `test_flatfile_*.py` files to the corresponding
   `test_mariadb_*.py` names. No destination collisions existed at planning time;
   check again before renaming. Rename `build_flatfile_server` to
   `build_mariadb_server` in both its owner and exposed journey wrapper.
-- [ ] Update imports, runner registrations, artifact tests, source-contract
+- [x] Update imports, runner registrations, artifact tests, source-contract
   references, manifests, scripts and active documentation in the same change.
   Include `tests/run_regression_tests.py`, `tests/run_db_tests.sh`,
   `server_build_artifacts.py` and `test_server_build_artifacts.py` where referenced.
@@ -743,3 +743,25 @@ This is an estimate, not a time limit or permission to omit required proof.
   and every case before marking batch3 complete; preserve failures and repair
   actual defects without dropping cases. Historical assassin comparison,
   naming/docs and full regression/DB gates still follow. No whole-issue claim.
+
+
+### Mechanical naming conversion
+
+- Current review head is `branch/issue-870-mariadb-test-names`, after the Assassin
+  conversion branch. Fourteen MariaDB tests now use `test_mariadb_*.py`; both
+  the artifact builder and public combat-helper wrapper expose only
+  `build_mariadb_server`. Repository-owned imports, registrations, source-contract
+  tests, scripts, active docs, Makefile and backup workflow references are updated.
+- No destination collisions; no alias/shim. Pinned ignored archives are untouched.
+  Historical reports and execution records retain the command names they tested.
+  Earlier evidence in this plan also retains its pre-rename names; current commands
+  use the corresponding `test_mariadb_` names and `build_mariadb_server`.
+- All fourteen moved files compile; regression discovery lists905 tests with no
+  retired prefix. Focused root-harness, build-artifact, launcher/preflight/catalog
+  and manifest checks are next, followed by remaining active-doc/legacy-reference
+  audit. Do not mark the overall naming/docs batch qualified before those pass.
+- Named-set retry advanced beyond its original outfit check; the next missing
+  fixture precondition is Taverek's staff promotion before `transfer Meranen`.
+  Meranen was promoted, but the shared donor remained mortal from transfer proof.
+  Add the donor's offline SQL promotion before boot, retaining all native checks.
+  Current raw failure remains in `named-set-sequence-shop-baseline-run.log`.

@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_character_stat_choice_journey import WebSocketClient
 from test_flight_network_journey import authority, command
 

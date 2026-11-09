@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 from run_world_quest_dual_backend import setup_run_root
 from test_shop_multi_buy_journey import fixture, KEEPER, BAG, TRINKET, SMALL_BAG, RATION

@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 from run_world_quest_dual_backend import setup_run_root
 
@@ -399,7 +399,7 @@ def main():
         if args.server:
             binary = args.server.resolve()
         else:
-            binary = journey.build_flatfile_server(Path(build) / "server")
+            binary = journey.build_mariadb_server(Path(build) / "server")
         run(binary, args.backend, args.report or ROOT / f"bin/qualification/issue454/{args.backend}-journey.json")
 
 
