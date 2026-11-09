@@ -91,6 +91,20 @@ int init_ctf()
 	return 0;
 }
 
+static int bind_ctf_flag(int vnum)
+{
+	const int rnum = real_object(vnum);
+	if (rnum >= 0)
+		obj_index[rnum].func.obj = ctf_flag_proc;
+	return rnum;
+}
+
+void assign_ctf_object_procs()
+{
+	for (int i = 1; ctfdata[i].id; ++i)
+		bind_ctf_flag(ctfdata[i].flag);
+}
+
 int load_ctf()
 {
 	char buff[MAX_STRING_LENGTH];
@@ -100,9 +114,7 @@ int load_ctf()
 
 	for (i = 1; ctfdata[i].id; i++)
 	{
-		obj_index[real_object(ctfdata[i].flag)].func.obj = ctf_flag_proc;
-
-		if ((r_num = real_object(ctfdata[i].flag)) < 0)
+		if ((r_num = bind_ctf_flag(ctfdata[i].flag)) < 0)
 		{
 			debug("CTF Flag # %d has failed to load, continuing.", i);
 			continue;

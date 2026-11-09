@@ -870,7 +870,9 @@ bool auction_offer(P_char ch, char *args)
 		return true;
 	}
 	if (IS_ARTIFACT(object) || IS_SET(object->extra_flags, ITEM_NODROP) ||
-	    IS_SET(object->extra_flags, ITEM_NORENT) || object->condition < 90 || object->contains)
+	    IS_SET(object->extra_flags, ITEM_NORENT) ||
+	    IS_SET(object->extra_flags, ITEM_TRANSIENT) || object->condition < 90 ||
+	    object->contains)
 	{
 		send_to_char("&+WYou can't sell that item.\r\n", ch);
 		return true;
@@ -1346,6 +1348,16 @@ static void auction_pickup_claim(P_char ch, const sql_rows &rows)
 	if (!rows.empty() && rows.front()[0] && !strcmp(rows.front()[0], "money"))
 	{
 		payload.action = auction_action::claim_money;
+		payload.expected_wallet_revision = ch->only.pc->wallet_revision;
+		payload.value = rows.front()[1] ? strtoll(rows.front()[1], nullptr, 10) : 0;
+		if (payload.value <= 0)
+		{
+			send_to_char("Your auction money cannot be collected in one pickup.\r\n",
+				     ch);
+			return;
+		}
+		// The staged unsigned balance may need more than one signed command.
+		payload.value = std::min<int64_t>(payload.value, INT_MAX);
 		if (!auction_transaction_submit(ch, payload, auction_money_claim_completed))
 			send_to_char("The auction house is busy; your money remains staged.\r\n",
 				     ch);
@@ -1410,7 +1422,7 @@ bool auction_pickup(P_char ch, char *args)
 		{
 			if (const unsigned int error_code = sql_select(
 				    connection,
-				    sql_format("SELECT 'money' FROM auction_money_pickups "
+				    sql_format("SELECT 'money',money FROM auction_money_pickups "
 					       "WHERE pid=%d AND money>0 LIMIT 1",
 					       pid),
 				    rows))

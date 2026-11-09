@@ -20,8 +20,8 @@ for retired in ("verify_player_item_custody", "verify_player_death_item_payload"
                 "verify_pet_custody", "PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH",
                 "read_durable_revision"):
     assert retired not in REPOSITORY, retired
-assert REPOSITORY.count("claim_items(connection, owner, items, &claim.outcome, rent_keys)") == 1
-assert "claim_graph(connection, owner, snapshot.items, claims, &written," in REPOSITORY
+assert REPOSITORY.count("claim_items(connection, owner, items, &claim.outcome)") == 1
+assert "claim_graph(connection, owner, snapshot.items, claims, &written)" in REPOSITORY
 assert "claim_graph(connection, owner, pet.items, claims, &written)" in REPOSITORY
 assert "INSERT INTO item_owner_audit" in CLAIM
 assert "replay_fence" not in REPOSITORY

@@ -47,7 +47,13 @@ MASK = sum(1 << (mob - 47015) for mob, _, _ in STOPS)
 @contextmanager
 def authority(backend, runtime):
     with journey.mariadb_authority() as (env, sql):
-        journey.import_help(runtime, env)
+        # The maintained importer reads only the copied fixture sources and explicit test DB.
+        (runtime / 'scripts').mkdir()
+        importer = runtime / 'scripts/import_help_to_prod.sh'
+        shutil.copy2(ROOT / 'scripts/import_help_to_prod.sh', importer)
+        imported = subprocess.run(['bash', str(importer), '--local'], input='yes\n',
+                                  text=True, env=env, capture_output=True, timeout=90)
+        assert imported.returncode == 0, imported.stdout[-4000:] + imported.stderr[-4000:]
         yield env, sql
 
 

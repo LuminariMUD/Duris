@@ -27,7 +27,7 @@ import subprocess
 
 save_slots = source[
     source.index("#define PERSISTENCE_DEFERRED_SAVE_SLOTS"):
-    source.index("bool persistence_save_character_terminal")
+    source.index("static void remove_norent_item(")
 ]
 preamble = r'''
 #include <cassert>
