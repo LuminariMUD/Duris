@@ -658,12 +658,11 @@ struct claimed_graph
 query_result claim_graph(MYSQL *connection, const item_owner_identity &owner,
 			 const std::vector<player_item_snapshot> &items,
 			 std::vector<claimed_graph> *claims,
-			 std::vector<player_item_snapshot> *written, bool rent_keys = false)
+			 std::vector<player_item_snapshot> *written)
 {
 	claimed_graph claim;
 	claim.owner = owner;
-	const unsigned int failed =
-		claim_items(connection, owner, items, &claim.outcome, rent_keys);
+	const unsigned int failed = claim_items(connection, owner, items, &claim.outcome);
 	if (failed)
 		return { false, failed };
 	*written = item_claim_written_items(items, claim.outcome.left_out);
@@ -805,8 +804,7 @@ query_result apply_items(MYSQL *connection, const player_snapshot &snapshot,
 	if (!result.ok)
 		return result;
 	std::vector<player_item_snapshot> written;
-	result = claim_graph(connection, owner, snapshot.items, claims, &written,
-			     snapshot.save_intent == RENT_INN);
+	result = claim_graph(connection, owner, snapshot.items, claims, &written);
 	if (!result.ok)
 		return result;
 	if (snapshot.pending_world_quest.present && !snapshot.pending_world_quest.fallback_only &&
