@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Real launch-gate sockets, copyover, restart and deadline on disposable state.
 
-Run MariaDB under with_disposable_mariadb.sh; flatfile needs its own maintained
-binary. Never reads checkout .env, changes the host clock or touches live data.
+Run under with_disposable_mariadb.sh. Never reads checkout .env, changes the
+host clock or touches live data.
 """
 
 import argparse
@@ -123,7 +123,7 @@ def run(binary, backend):
         plain, tls, ws_port = journey.available_ports()
         config = runtime / "lib/pwipe_launch.cfg"
         log = runtime / "server.out"
-        process, clients, approved_snapshot = None, [], None
+        process, clients = None, []
         with authority(backend, runtime) as (env, sql), log.open("w") as output:
             env.update(DURIS_DEV_PORT=str(plain), DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(ws_port),
                        DURIS_WEBSOCKET="TRUE", CRITICAL_COMMAND_JOURNAL_DIR=str(critical),
@@ -160,20 +160,31 @@ def run(binary, backend):
                 clients.append(client)
                 return client
 
-            def counts():
-                if sql:
-                    return sql("SELECT (SELECT COUNT(*) FROM accounts),(SELECT COUNT(*) FROM player_data),"
-                               "(SELECT COUNT(*) FROM account_characters),(SELECT COUNT(*) FROM player_items)")
-                state = Path(env["FLATFILE_STATE_DIR"])
-                records = {}
-                for directory in ("identities/accounts", "players"):
-                    files = [path for path in (state / directory).rglob("*")
-                             if path.is_file() and not path.name.startswith(".")]
-                    assert len(files) >= 3, "missing seeded account/player authority"
-                    records.update({str(path.relative_to(state)):
-                                    "admitted player keeps saving" if path == approved_snapshot else
-                                    hashlib.sha256(path.read_bytes()).hexdigest()
-                                    for path in files})
+            def persisted_state():
+                # The admitted body may autosave. Refused bodies and every account
+                # must remain unchanged, including child rows, not just row counts.
+                refused = "SELECT pid FROM player_data WHERE name IN ('" + GUEST + "','" + STAFF + "')"
+                records = {"counts": sql(
+                    "SELECT (SELECT COUNT(*) FROM accounts),(SELECT COUNT(*) FROM player_data),"
+                    "(SELECT COUNT(*) FROM account_characters),(SELECT COUNT(*) FROM player_items)")}
+                for table in ("accounts", "account_banks", "account_characters"):
+                    records[table] = sorted(sql("SELECT * FROM " + table).splitlines())
+                tables = sql("SELECT table_name FROM information_schema.columns WHERE table_schema=DATABASE() "
+                             "AND table_name LIKE 'player\\_%' AND column_name='pid'").splitlines()
+                assert "player_data" in tables and "player_items" in tables
+                for table in tables:
+                    records[table] = sorted(sql("SELECT * FROM `" + table + "` WHERE pid IN (" + refused + ")").splitlines())
+                records["player_pets"] = sorted(sql("SELECT * FROM player_pets WHERE owner_pid IN (" + refused + ")").splitlines())
+                for parent, children in (
+                        ("player_items", ("player_item_affects", "player_item_extra_descr")),
+                        ("player_pet_items", ("player_pet_item_affects", "player_pet_item_extra_descr"))):
+                    # Pet items belong to their pet rather than directly to a pid.
+                    owner = ("pid IN (" + refused + ")" if parent == "player_items" else
+                             "pet_id IN (SELECT id FROM player_pets WHERE owner_pid IN (" + refused + "))")
+                    records[parent] = sorted(sql("SELECT * FROM " + parent + " WHERE " + owner).splitlines())
+                    for table in children:
+                        records[table] = sorted(sql("SELECT * FROM " + table + " WHERE item_id IN "
+                                                   "(SELECT id FROM " + parent + " WHERE " + owner + ")").splitlines())
                 return records
 
             try:
@@ -201,15 +212,7 @@ def run(binary, backend):
                     client.send("save")
                     client.expect("Saving " + name + ".")
                 stop()
-                if sql:
-                    sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + STAFF + "'")
-                    # Identify the synthetic admitted body's uncompressed snapshot.
-                    # Its ordinary live saves are allowed; every refused body's bytes
-                    # and every account record must stay unchanged during denials.
-                    snapshots = [path for path in (Path(env["FLATFILE_STATE_DIR"]) / "players").glob("*.snapshot")
-                                 if KEEPER.encode() in path.read_bytes()]
-                    assert len(snapshots) == 1
-                    approved_snapshot = snapshots[0]
+                sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + STAFF + "'")
                 boot()
                 keeper = enter(connect())
                 guest = enter(connect(), PUBLIC, GUEST)
@@ -224,7 +227,7 @@ def run(binary, backend):
                 assert timestamp[:10].encode() in denied and b"ACCOUNT MENU" not in guest.pending
                 who = command(keeper, "who")
                 assert GUEST not in who
-                baseline = counts()
+                baseline = persisted_state()
                 evidence["copyover"] = "approved socket restored; public socket drained and refused before publication"
                 print("PASS: real copyover enforces authoritative account ownership", flush=True)
 
@@ -263,19 +266,18 @@ def run(binary, backend):
                 refused = client.command("register", {"account": "Missingacct", "password": journey.PASSWORD,
                                                        "email": "missing@example.invalid"}, "auth")
                 assert refused["status"] == "failed" and "Reconnect at" in refused["error"]
-                after = counts()
+                after = persisted_state()
                 assert after == baseline, ("refused attempts persisted accounts, bodies or starter items", baseline, after)
-                if sql:
-                    # Even the account-deletion continuation must not replace the
-                    # closed public launch screen after successful authentication.
-                    sql("UPDATE accounts SET blocked=2 WHERE account_name='" + PUBLIC + "'")
-                    try:
-                        client = connect()
-                        login(client, PUBLIC)
-                        drained(client)
-                    finally:
-                        sql("UPDATE accounts SET blocked=0 WHERE account_name='" + PUBLIC + "'")
-                    evidence["deletion_fence"] = "unlisted deletion-fenced account still receives launch denial"
+                # Even the account-deletion continuation must not replace the
+                # closed public launch screen after successful authentication.
+                sql("UPDATE accounts SET blocked=2 WHERE account_name='" + PUBLIC + "'")
+                try:
+                    client = connect()
+                    login(client, PUBLIC)
+                    drained(client)
+                finally:
+                    sql("UPDATE accounts SET blocked=0 WHERE account_name='" + PUBLIC + "'")
+                evidence["deletion_fence"] = "unlisted deletion-fenced account still receives launch denial"
                 evidence["closed_transports"] = "Telnet/TLS ANSI and WS; wrong passwords; unlisted staff; absent allowlisted registration; no new persisted state"
                 print("PASS: closed Telnet/TLS/WS login and registration, unchanged body/item counts", flush=True)
 
