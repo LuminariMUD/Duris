@@ -14,9 +14,8 @@
 
 #include "persistence/persistence_mode.h"
 
-#include <algorithm>
-#include <cstdlib>
-#include <cstring>
+#include <stdlib.h>
+#include <string.h>
 #include <string>
 
 bool persistence_mode_configure(char *error, size_t error_size)
@@ -30,9 +29,8 @@ bool persistence_mode_configure(char *error, size_t error_size)
 		const std::string message =
 			std::string("invalid PERSISTENCE_MODE '") + configured +
 			"'; MariaDB is the only supported backend, use mariadb-primary";
-		const size_t length = std::min(message.size(), error_size - 1);
-		memcpy(error, message.data(), length);
-		error[length] = '\0';
+		const size_t copied = message.copy(error, error_size - 1);
+		error[copied] = '\0';
 	}
 	return false;
 }

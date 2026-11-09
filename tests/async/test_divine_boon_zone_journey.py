@@ -43,7 +43,7 @@ def build_campaign_helper(output):
     sources=['tests/async/divine_boon_campaign_fixture.cpp','src/economy/divine_boon.c',
              'src/economy/divine_boon_repository.c','src/economy/divine_trade.c',
              'src/economy/divine_trade_repository.c',
-             
+
              'src/player/player_snapshot_codec.c',
              'src/combat/frag_cap.c', 'src/combat/frag_cap_repository.c', 'src/combat/frag_cap_config.c', 'src/economy/divine_boon_delivery.c',
              'src/combat/combat_outcome_command.c', 'src/world/zone_touch_command.c',

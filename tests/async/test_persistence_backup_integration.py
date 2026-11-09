@@ -215,16 +215,30 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                 result = backup.backup(self.p, "mariadb-primary")
             generation = self.p["root"] / result["generation"]
             captured = backup.inventory(generation)
+            # Preserve the shared foreign-owned checkout regression on MariaDB:
+            # mapped namespace root cannot traverse this private source directory.
+            checkout = self.base / "private-checkout"
+            checkout.mkdir(mode=0o700)
+            for name in ("areas_mini", "lib"):
+                shutil.copytree(ROOT / name, checkout / name)
+            for name in ("bin/server/dms_new", "scripts/qualify_service_restore.py"):
+                destination = checkout / name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / name, destination)
+            os.chown(checkout, 65534, 65534)
             actual_service_load = restore.service_load
             checked = []
             def check_values_then_boot(candidate, mode, restored_env):
                 self.assertNotEqual(restored_env["DB_SOCKET"], env["DB_SOCKET"])
                 self.assertEqual(sql(restored_env, query), expected)
                 checked.append(mode)
-                actual_service_load(candidate, mode, restored_env)
+                with mock.patch.object(backup, "ROOT", checkout):
+                    actual_service_load(candidate, mode, restored_env)
             with mock.patch.object(restore, "service_load", check_values_then_boot):
                 receipt = restore.restore(self.p, result["generation"], self.ledger())
             self.assertEqual(checked, ["mariadb-primary"])
+            self.assertEqual(checkout.stat().st_uid, 65534)
+            self.assertEqual(checkout.stat().st_mode & 0o777, 0o700)
             self.assertEqual(receipt["result"], "qualified")
             self.assertEqual(sql(env, query), expected)
             self.assertEqual(backup.inventory(generation), captured)
