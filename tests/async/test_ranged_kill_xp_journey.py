@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Real fire -> NPC death -> damage/kill XP, solo and grouped across rooms (#764)."""
 
+import argparse
 import json
-import os
 from pathlib import Path
 import re
 import signal
 import subprocess
-import sys
 import tempfile
 
 import test_starter_arrow_journey as arrows
@@ -50,23 +49,17 @@ def configure(runtime):
 
 
 def run(binary):
-    with tempfile.TemporaryDirectory(prefix="ranged-xp-", dir=ROOT / "bin/tests") as temporary:
-        root = Path(temporary)
-        runtime, state = root / "runtime", root / "state"
-        runtime.mkdir(); state.mkdir(mode=0o700)
+    with tempfile.TemporaryDirectory(prefix="ranged-xp-", dir=ROOT / "bin/tests") as temporary, \
+            journey.mariadb_authority() as (env, _):
+        runtime = Path(temporary) / "runtime"
+        runtime.mkdir()
         configure(runtime)
         journey.generate_certificate(runtime)
         (runtime / "logs/log").mkdir(parents=True)
         (runtime / "journals/critical").mkdir(parents=True, mode=0o700)
         plain, tls, ws = journey.available_ports()
-        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ENVIRONMENT": "local",
-               "PERSISTENCE_MODE": "flatfile-primary", "FLATFILE_STATE_DIR": str(state),
-               "CRITICAL_COMMAND_JOURNAL_DIR": str(runtime / "journals/critical"),
-               "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls),
-               "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_PORT": str(ws),
-               "REDIS": "FALSE", "CHAOS_MUD": "FALSE"}
-        if "LD_LIBRARY_PATH" in os.environ:
-            env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+        env.update(CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
+                   DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(ws))
         log = runtime / "server.out"
         clients = []
         with log.open("w") as output:
@@ -158,9 +151,7 @@ def run(binary):
 
 
 if __name__ == "__main__":
-    build_root = ROOT / "bin/tests"
-    build_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="ranged-xp-build-", dir=build_root) as temporary:
-        build = Path(temporary)
-        binary = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else journey.build_flatfile_server(build)
-        run(binary)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=Path, required=True)
+    (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+    run(parser.parse_args().server.resolve())

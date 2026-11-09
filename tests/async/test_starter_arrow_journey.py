@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """Fresh Ranger/Rogue grants -> real fire, event pulses and gather, in private state."""
 
+import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import signal
 import subprocess
-import sys
 import tempfile
 import time
 
@@ -62,35 +61,16 @@ def synchronization_control():
     print("command synchronization: buffered and arriving prompts passed", flush=True)
 
 
-def build_inspector(root):
-    source, binary = root / "inspect.cpp", root / "inspect"
-    source.write_text(r'''
-#include <cassert>
-#include <cstdio>
-int main(int argc, char **argv) {
-    assert(argc == 2);
-    player_snapshot snapshot; std::string error;
-    assert(flatfile_player_snapshot_read(argv[1], 1, &snapshot, &error) ==
-           flatfile_player_load_result::ok);
-    for (const auto &item : snapshot.items)
-        if ((item.vnum >= 1116 && item.vnum <= 1118) ||
-            item.vnum == 25753 || item.vnum == 25757 || item.vnum == 25758)
-            printf("%llu %d %d %d %d %d %u %d %d\n",
-                   static_cast<unsigned long long>(item.object_uid), item.vnum,
-                   item.condition, item.weight, item.values[3], item.equipment_slot,
-                   item.extra_flags, item.parent_index, item.cost);
-}
-''')
-    subprocess.run(["g++", "-std=c++20", "-Isrc", str(source),
-                    "src/flatfile/flatfile_store.c", "src/player/player_snapshot_codec.c",
-                    "-lcrypto", "-o", str(binary)], cwd=ROOT, check=True)
-    return binary
-
-
-def saved(client, inspector, state):
+def saved(client, sql):
+    """The saved archery kit: uid, vnum, condition, weight, value3, slot, flags, parent, cost."""
     command(client, "save", f"Saving {journey.CHARACTER}.")
-    return [list(map(int, line.split())) for line in subprocess.check_output(
-        [str(inspector), str(state)], text=True).splitlines()]
+    rows = sql("SELECT i.obj_uid,i.vnum,i.item_condition,i.weight,i.value3,i.equip_slot,i.extra_flags,"
+               "COALESCE(parent.obj_uid,0),i.cost FROM player_items i "
+               "JOIN player_data p ON p.pid=i.pid AND p.name='" + journey.CHARACTER + "' "
+               "LEFT JOIN player_items parent ON parent.id=i.container_id "
+               "WHERE i.vnum BETWEEN 1116 AND 1118 OR i.vnum IN (25753,25757,25758) "
+               "ORDER BY i.obj_uid")
+    return [list(map(int, line.split())) for line in rows.splitlines()]
 
 
 def configure(runtime, class_name, profile):
@@ -125,28 +105,23 @@ def configure(runtime, class_name, profile):
                           "\nhitpoints.class.Warrior=5000.000\narchery.diceFactor=12.000\n")
 
 
-def run(binary, inspector, race, class_name="ranger", profile=None):
+def run(binary, race, class_name="ranger", profile=None):
     quiver_vnum, arrow_vnum = (25757, 25758) if profile else (1116, 1117)
-    with tempfile.TemporaryDirectory(prefix="starter-arrow-", dir=ROOT / "bin/tests") as temp:
-        root = Path(temp)
-        runtime, state = root / "runtime", root / "state"
-        runtime.mkdir(); state.mkdir(mode=0o700)
+    with tempfile.TemporaryDirectory(prefix="starter-arrow-", dir=ROOT / "bin/tests") as temp, \
+            journey.mariadb_authority() as (env, sql):
+        runtime = Path(temp) / "runtime"
+        runtime.mkdir()
         (runtime / "logs/log").mkdir(parents=True)
         configure(runtime, class_name, profile)
         journey.generate_certificate(runtime)
         (runtime / "journals/critical").mkdir(parents=True, mode=0o700)
         plain, tls, ws = journey.available_ports()
-        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ENVIRONMENT": "local",
-               "PERSISTENCE_MODE": "flatfile-primary", "FLATFILE_STATE_DIR": str(state),
-               "CRITICAL_COMMAND_JOURNAL_DIR": str(runtime / "journals/critical"),
-               "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls),
-               "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_PORT": str(ws),
-               "REDIS": "FALSE", "CHAOS_MUD": "TRUE" if profile else "FALSE",
-               "CHAOS_EQ_PROFILE": profile or "standard", "CHAOS_STARTER_BONUSES": "FALSE",
-               # These historical races are deliberately available only in this fixture.
-               "CREATION_ALL_RACES": "TRUE", "CREATION_ALL_CLASSES": "TRUE"}
-        if "LD_LIBRARY_PATH" in os.environ:
-            env["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
+        env.update({"CRITICAL_COMMAND_JOURNAL_DIR": str(runtime / "journals/critical"),
+                    "DURIS_TLS_PORT": str(tls), "DURIS_WEBSOCKET_PORT": str(ws),
+                    "CHAOS_MUD": "TRUE" if profile else "FALSE",
+                    "CHAOS_EQ_PROFILE": profile or "standard", "CHAOS_STARTER_BONUSES": "FALSE",
+                    # These historical races are deliberately available only in this fixture.
+                    "CREATION_ALL_RACES": "TRUE", "CREATION_ALL_CLASSES": "TRUE"})
         log = runtime / "server.out"
         with log.open("w") as output:
             process = subprocess.Popen([str(binary), "--minimal", "-s", "-d",
@@ -162,7 +137,7 @@ def run(binary, inspector, race, class_name="ranger", profile=None):
                 if "Cage of Smoke" in location:
                     location = command(client, "east", "The Regression Arena")
                 journey.require("The Regression Arena" in location, "character did not reach the archery range")
-                initial = saved(client, inspector, state)
+                initial = saved(client, sql)
                 arrows = [item for item in initial if item[1] == arrow_vnum]
                 journey.require(len(arrows) == 10, f"fresh {race} {class_name} profile={profile} has no ten-arrow kit: {initial}")
                 journey.require(all(item[2] == 100 and not item[6] & (1 << 19)
@@ -198,7 +173,7 @@ def run(binary, inspector, race, class_name="ranger", profile=None):
                     # Normal kits must demonstrate miss recovery. Chaos also
                     # checks real fire/gather, accepting a successful shot.
                     for attempt in range(1 if profile else 8):
-                        before = saved(client, inspector, state)
+                        before = saved(client, sql)
                         before_arrows = {item[0]: item for item in before if item[1] == arrow_vnum}
                         quiver_before = next(item for item in before if item[1] == quiver_vnum)
                         firing_start = len(client.transcript)
@@ -216,7 +191,7 @@ def run(binary, inspector, race, class_name="ranger", profile=None):
                         floor = command(client, "look", "The Arrow Landing Room" if adjacent
                                         else "The Regression Arena")
                         gather = command(client, "gather", ("You gathered ", "There are no arrows"))
-                        after = saved(client, inspector, state)
+                        after = saved(client, sql)
                         after_arrows = {item[0]: item for item in after if item[1] == arrow_vnum}
                         journey.require(set(after_arrows) <= set(before_arrows), "fire/gather changed missile identities")
                         hits = shot.count("hit strikes ")
@@ -245,7 +220,7 @@ def run(binary, inspector, race, class_name="ranger", profile=None):
                         raise AssertionError("no missed shot observed in eight attempts")
                 # Save, stop, restart and reconnect: no automatic duplicate grant,
                 # and loaded arrows retain their IDs, condition and containment.
-                before_restart = saved(client, inspector, state)
+                before_restart = saved(client, sql)
                 client.send("quit")
                 client.expect("ACCOUNT MENU", timeout=40)
                 client.close(); client = None
@@ -258,7 +233,7 @@ def run(binary, inspector, race, class_name="ranger", profile=None):
                                            stdout=output, stderr=subprocess.STDOUT)
                 client = journey.reconnect_character(plain, expected_room=None)
                 client.expect(PROMPT)
-                journey.require(saved(client, inspector, state) == before_restart,
+                journey.require(saved(client, sql) == before_restart,
                                 "restart/relogin changed the archery kit")
                 result["restart_relogin"] = "passed"
                 print(json.dumps(result), flush=True)
@@ -282,17 +257,15 @@ def run(binary, inspector, race, class_name="ranger", profile=None):
 
 if __name__ == "__main__":
     synchronization_control()
-    build_root = ROOT / "bin/tests"
-    build_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="starter-arrow-build-", dir=build_root) as temp:
-        build = Path(temp)
-        executable = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else journey.build_flatfile_server(build)
-        inspector = build_inspector(build)
-        report = {"binary_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
-                  "cases": [run(executable, inspector, race, role, profile) for race, role, profile in (
-                      ("half-elf", "ranger", None), ("wood-elf", "ranger", None),
-                      ("human", "ranger", None), ("human", "rogue", None),
-                      ("centaur", "ranger", "standard"), ("drider", "rogue", "enhanceable"))]}
-        path = ROOT / "bin/qualification/issue429/gameplay-report.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(report, indent=2) + "\n")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--server", type=Path, required=True)
+    executable = parser.parse_args().server.resolve()
+    (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+    report = {"binary_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+              "cases": [run(executable, race, role, profile) for race, role, profile in (
+                  ("half-elf", "ranger", None), ("wood-elf", "ranger", None),
+                  ("human", "ranger", None), ("human", "rogue", None),
+                  ("centaur", "ranger", "standard"), ("drider", "rogue", "enhanceable"))]}
+    path = ROOT / "bin/qualification/issue429/gameplay-report.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2) + "\n")

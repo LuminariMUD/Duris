@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory() as tmp:
     (root / 'src').mkdir()
     (root / 'src/Makefile').write_text(
         'all:\n\t@mkdir -p $(SERVER_BIN_DIR)\n'
-        '\t@touch $(DMS_BINARY)\n\t@echo -D__NO_MYSQL__ $(MAKEFLAGS)\n')
+        '\t@touch $(DMS_BINARY)\n\t@echo -I/usr/include/mysql $(MAKEFLAGS)\n')
     with patch.object(artifacts, 'ROOT', root), \
          patch.object(artifacts.subprocess, 'check_output', return_value='2\n'):
         binary, output, _ = artifacts.compile_server(root / 'bin', dict(os.environ, MAKEFLAGS=''), None)
@@ -94,7 +94,7 @@ with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
         (directory / "objects").mkdir()
         binary.write_bytes(b"test executable " + str(len(calls)).encode())
         binary.chmod(0o755)
-        return binary, f"g++ -D__NO_MYSQL__ -DOPT_USEC={pulse} ", 0.0
+        return binary, f"g++ -I/usr/include/mysql -DOPT_USEC={pulse} ", 0.0
 
     with (patch.object(artifacts, "ROOT", root),
           patch.object(artifacts, "input_key", side_effect=lambda env, pulse: key),

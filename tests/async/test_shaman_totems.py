@@ -8,9 +8,8 @@ import subprocess
 import tempfile
 import time
 
-import server_build_artifacts
 import test_flatfile_combat_journey as journey
-from test_flight_network_journey import authority, command
+from test_flight_network_journey import command
 
 SHAMAN, ACCOUNT = "Totemcaller", "Totemacct"
 GOD, GOD_ACCOUNT = "Totemwarden", "Totemstaff"
@@ -37,7 +36,7 @@ def run(binary):
         plain, tls, websocket = journey.available_ports()
         log = runtime / "server.out"
 
-        with authority("flatfile", runtime) as (env, _):
+        with journey.mariadb_authority() as (env, sql):
             env.update(CRITICAL_COMMAND_JOURNAL_DIR=str(critical), DURIS_TLS_PORT=str(tls),
                        DURIS_WEBSOCKET_PORT=str(websocket),
                        MAINTENANCE_STATE_FILE=str(runtime / "maintenance.state"))
@@ -73,7 +72,7 @@ def run(binary):
                         client.send("save")
                         client.expect("Saving " + name + ".", timeout=30)
 
-                journey.make_overlord(Path(env["FLATFILE_STATE_DIR"]), GOD)
+                journey.make_overlord(sql, GOD)
                 with ExitStack() as stack:
                     boot(stack)
                     players = []
@@ -145,12 +144,5 @@ def run(binary):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--server", type=Path, help="use an existing flat-file server build")
-    args = parser.parse_args()
-    if args.server:
-        run(args.server.resolve())
-    else:
-        build = journey.ROOT / "bin/tests"
-        build.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(prefix="shaman-totem-build-", dir=build) as temporary:
-            run(server_build_artifacts.build_flatfile_server(Path(temporary)))
+    parser.add_argument("--server", type=Path, required=True)
+    run(parser.parse_args().server.resolve())

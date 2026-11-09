@@ -38,6 +38,28 @@ xargs -P "${TEST_DB_JOBS:-12}" -L 1 bash -c '
     run_one "${args[@]}"
 ' _ <<EOF
 flight_network $DB python3 tests/async/test_flight_network_journey.py --backend mariadb --server SERVER_BINARY
+connection_limit $DB python3 tests/async/test_connection_limit_journey.py --server SERVER_BINARY
+castle_key_reset $DB python3 tests/async/test_castle_key_reset_journey.py --server SERVER_BINARY
+character_stat_choice $DB python3 tests/async/test_character_stat_choice_journey.py --server SERVER_BINARY
+creation_prompt $DB python3 tests/async/test_creation_prompt_journey.py --server SERVER_BINARY
+starter_arrow $DB python3 tests/async/test_starter_arrow_journey.py --server SERVER_BINARY
+gith_monk $DB python3 tests/async/test_gith_monk_journey.py --server SERVER_BINARY
+gmcp_control $DB python3 tests/async/test_gmcp_control_journey.py --server SERVER_BINARY
+game_loop_session $DB python3 tests/async/test_game_loop_session_journey.py --server SERVER_BINARY
+creation_deferred_play $DB python3 tests/async/test_creation_deferred_play_journey.py --backend mariadb --server SERVER_BINARY
+shop_multi_buy $DB python3 tests/async/test_shop_multi_buy_journey.py --backend mariadb --server SERVER_BINARY
+norent_key_rent $DB python3 tests/async/test_norent_key_rent_journey.py --backend mariadb --server SERVER_BINARY
+websocket_session_guard $DB python3 tests/async/test_websocket_session_guard_journey.py --backend mariadb --server SERVER_BINARY
+storage_chest_crash $DB python3 tests/async/test_storage_chest_crash_journey.py --backend mariadb --server SERVER_BINARY
+shaman_totems $DB python3 tests/async/test_shaman_totems.py --server SERVER_BINARY
+hardcore_third_death $DB python3 tests/async/test_flatfile_hardcore_death_journey.py --server SERVER_BINARY
+ranged_kill_xp $DB python3 tests/async/test_ranged_kill_xp_journey.py --server SERVER_BINARY
+account_recovery_journey $DB python3 tests/async/test_account_recovery_journey.py --server SERVER_BINARY
+first_session_currency $DB python3 tests/async/test_flatfile_first_session_currency.py --server SERVER_BINARY
+area_coin_pickup $DB python3 tests/async/test_area_coin_pickup.py --server SERVER_BINARY
+log_hygiene $DB python3 tests/async/test_log_hygiene_journey.py --server SERVER_BINARY
+hostname_files $DB python3 tests/async/test_hostname_files_journey.py --server SERVER_BINARY
+studioproc_duplicate_record $DB python3 tests/async/test_studioproc_duplicate_record.py --server SERVER_BINARY
 locker_grant_journey $DB python3 tests/async/test_mysql_locker_grant_journey.py --server SERVER_BINARY
 artifact_owner_restart $DB python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server SERVER_BINARY
 legacy_traps $DB python3 tests/async/test_legacy_trap_journey.py SERVER_BINARY mariadb

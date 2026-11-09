@@ -3,8 +3,6 @@
 
 import argparse
 import pathlib
-import subprocess
-import tempfile
 from unittest.mock import patch
 
 import test_flatfile_combat_journey as journey
@@ -46,7 +44,7 @@ def command(client, text, expected):
     print(f"{text}: {matched}", flush=True)
 
 
-def verify(client, port, state_root, populated_bank, expect_regression=False):
+def verify(client, port, sql, populated_bank, expect_regression=False):
     # Free starter-kit inventory slots. The target bag holds food and no coins.
     command(client, "drop all", "You drop ")
     command(client, "get testbag", "You get a small leather bag.")
@@ -55,7 +53,7 @@ def verify(client, port, state_root, populated_bank, expect_regression=False):
     command(client, "put banana testbag", "Ok.")
     command(client, "get coins", "There were: 10 platinum coins.")
     command(client, "auction offer saleitem 1", "is now listed as auction")
-    listed = journey.inspect_authority(state_root)
+    listed = journey.inspect_authority(sql)
     journey.require(listed["wallet"] == REMAINING_WALLET,
                     f"unexpected listing fee: {listed}")
 
@@ -63,14 +61,14 @@ def verify(client, port, state_root, populated_bank, expect_regression=False):
     if expect_regression:
         for _ in range(2):
             command(client, "put all.coins testbag", TRANSFER_FAILED)
-            after = journey.inspect_authority(state_root)
+            after = journey.inspect_authority(sql)
             for key in ("wallet", "wallet_revision", "bank", "bank_revision"):
                 journey.require(after[key] == listed[key],
                                 f"failed coin put changed {key}: {after}")
     else:
         command(client, "put all.coins testbag", TRANSFER_SUCCEEDED)
         command(client, "save", f"Saving {journey.CHARACTER}.")
-        journey.require(journey.inspect_authority(state_root)["wallet"] == [0, 0, 0, 0],
+        journey.require(journey.inspect_authority(sql)["wallet"] == [0, 0, 0, 0],
                         "successful coin put did not durably debit the wallet")
         command(client, "get coins testbag", COINS_BACK)
         command(client, "put all.coins testbag", TRANSFER_SUCCEEDED)
@@ -84,7 +82,7 @@ def verify(client, port, state_root, populated_bank, expect_regression=False):
         if not expect_regression:
             command(reloaded, "get coins testbag", COINS_BACK)
             command(reloaded, "save", f"Saving {journey.CHARACTER}.")
-        after = journey.inspect_authority(state_root)
+        after = journey.inspect_authority(sql)
         journey.require(after["wallet"] == REMAINING_WALLET,
                         f"round trip or full reload changed the coin balance: {after}")
         command(reloaded, "put all.coins testbag", TRANSFER_SUCCEEDED)
@@ -94,26 +92,17 @@ def verify(client, port, state_root, populated_bank, expect_regression=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--server", type=pathlib.Path,
-                        help="reuse an already built flat-file server")
+    parser.add_argument("--server", type=pathlib.Path, required=True)
     parser.add_argument("--expect-regression", action="store_true",
                         help="verify the original failure and full-reload workaround")
     args = parser.parse_args()
-    subprocess.run([
-        "python3", "tests/async/test_flatfile_player_repository.py",
-        "--build-inspector", str(journey.INSPECTOR),
-    ], cwd=journey.ROOT, check=True, timeout=180)
-    with tempfile.TemporaryDirectory(prefix="auction-coin-put-",
-                                     dir=journey.ROOT / "bin/tests") as temporary:
-        binary = (args.server.resolve() if args.server else
-                  journey.build_flatfile_server(pathlib.Path(temporary)))
 
-        def verify_session(client, port, state_root, populated_bank):
-            verify(client, port, state_root, populated_bank, args.expect_regression)
+    def verify_session(client, port, sql, populated_bank):
+        verify(client, port, sql, populated_bank, args.expect_regression)
 
-        with patch.object(journey, "make_fixture", make_fixture), \
-                patch.object(first_session, "verify_first_session", verify_session):
-            journey.run_journey(binary, reset_coins=True, first_session_only=True)
+    with patch.object(journey, "make_fixture", make_fixture), \
+            patch.object(first_session, "verify_first_session", verify_session):
+        journey.run_journey(args.server.resolve(), reset_coins=True, first_session_only=True)
     print("Original auction/coin-put regression reproduced." if args.expect_regression else
           "Auction listing, immediate coin put, round trips, and full reload passed.")
 
