@@ -1391,7 +1391,7 @@ static bool leave_walking_group(P_char ch, int destination, int direction)
 	}
 	for (const auto &person : people)
 		if (P_char current = live(person); current && current->in_room == NOWHERE)
-			char_to_room(current, source, -2);
+			char_to_room(current, source, -2, true);
 	for (int i = 0; i < 2; ++i)
 	{
 		P_char first = live(people[i == 0 ? 0 : 2]);
@@ -1872,7 +1872,7 @@ revalidate_movement:
 	{
 		if (!leave_walking_group(ch, new_room, exitnumb))
 			return FALSE;
-		if (!char_to_room(ch, new_room, -2))
+		if (!char_to_room(ch, new_room, -2, true))
 		{
 			return FALSE;
 		}
@@ -2061,7 +2061,7 @@ revalidate_movement:
 			return FALSE;
 	}
 	ch->specials.was_in_room = world[was_in].number;
-	if (!char_to_room(ch, new_room, exitnumb))
+	if (!char_to_room(ch, new_room, exitnumb, true))
 	{
 		return FALSE;
 	}

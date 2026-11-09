@@ -7722,8 +7722,14 @@ void teleport_to(P_char ch, int to_room, int flag)
 	else
 		act("$n slowly fades out of existence.", FALSE, ch, 0, 0, TO_ROOM);
 
+	const uint64_t runtime_id = ch->runtime_id;
 	char_from_room(ch);
-	char_to_room(ch, to_room, 0);
+	if (find_character_by_runtime_id(runtime_id) != ch || !IS_ALIVE(ch) ||
+	    ch->in_room != NOWHERE)
+		return;
+	if (!char_to_room(ch, to_room, 0) || find_character_by_runtime_id(runtime_id) != ch ||
+	    !IS_ALIVE(ch) || ch->in_room != to_room)
+		return;
 
 	/* we'd hate to get stuck in an infinite loop, wouldn't we?  4 isn't currently
 	   used as a flag value */
