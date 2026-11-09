@@ -2,6 +2,7 @@
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "item/item_value.h"
+#include "item/item_value_procs.h"
 #include "world/object_template.h"
 #include "core/proc-libs.h"
 #include "mob/studioproclib.h"
@@ -11,7 +12,6 @@ extern P_index obj_index;
 extern const struct stat_data stat_factor[];
 extern int top_of_objt;
 int get_mincircle(int spell);
-int get_ival_from_proc(obj_proc_type proc);
 
 template <typename Object> static item_value_input item_value_fields(const Object &object)
 {
@@ -100,10 +100,12 @@ static int item_value_with_context(const item_value_input &input, int rnum, cons
 		context.spell_circles[1] = get_mincircle(input.value[5] % 1000000 / 1000);
 		context.spell_circles[2] = get_mincircle(input.value[5] % 1000000000 / 1000000);
 	}
-	if (proc)
-		context.native_proc_credit = get_ival_from_proc(proc);
+	const auto native_proc = item_value_proc(proc);
+	context.native_proc_credit = native_proc.credit;
+	context.native_proc_policy = native_proc.policy;
 	item_value_breakdown detail;
 	const int score = evaluate_item_value(input, context, &detail);
+	detail.native_proc_name = native_proc.name;
 	if (detail.utility_override && !detail.floored && detail.unrounded != 1)
 		debug("Always load obj '%s' %d has stats giving ival %.3lf.", name, vnum,
 		      detail.unrounded);

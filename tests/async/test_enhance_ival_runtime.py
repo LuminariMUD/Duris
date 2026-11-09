@@ -23,6 +23,7 @@ HARNESS = r"""
 
 #include "core/utility.h"
 #include "item/enhance.c"
+#include "item/item_value_procs.h"
 
 static index_data indices[12]{};
 index_data *obj_index = indices;
@@ -71,7 +72,7 @@ int get_mincircle(int spell) {
     assert(spell == 32 || spell == 33);
     return spell == 32 ? 1 : 2;
 }
-int get_ival_from_proc(obj_proc_type) { std::abort(); }
+item_value_proc_entry item_value_proc(obj_proc_type proc) { assert(!proc); return {nullptr, "none", 0, item_value_proc_policy::none}; }
 int number(int low, int high) { ++rolls; return lucky ? low : high; }
 void logit(const char *, const char *format, ...) {
     char buffer[2048]; va_list args; va_start(args, format);

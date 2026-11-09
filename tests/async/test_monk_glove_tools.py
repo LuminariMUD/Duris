@@ -10,6 +10,7 @@ RUNTIME = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "item/objmisc.h"
+#include "item/item_value_procs.h"
 #include <cassert>
 #include <cstdio>
 #include <cmath>
@@ -18,7 +19,7 @@ P_index obj_index = index_data_fixture;
 int top_of_objt = 0;
 extern const stat_data stat_factor[LAST_RACE + 1]{};
 int get_mincircle(int spell) { return spell == 32 ? 1 : 0; }
-int get_ival_from_proc(obj_proc_type) { assert(false); return 0; }
+item_value_proc_entry item_value_proc(obj_proc_type proc) { assert(!proc); return {nullptr, "none", 0, item_value_proc_policy::none}; }
 // FUNCTIONS
 int main() {
     obj_data obj{};

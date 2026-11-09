@@ -4,7 +4,7 @@
 #include "core/config.h"
 #include "core/defines.h"
 
-inline constexpr const char *ITEM_VALUE_FORMULA_REVISION = "ival-v7-numeric-bounds";
+inline constexpr const char *ITEM_VALUE_FORMULA_REVISION = "ival-v8-proc-semantics";
 
 // Numeric inputs only: no object identity, links, callbacks, or mutable state.
 struct item_value_apply
@@ -25,11 +25,20 @@ struct item_value_input
 
 // Resolved by the caller, not by the numeric evaluator. Zero means no credit;
 // callers with incomplete context must identify their output as an estimate.
+enum class item_value_proc_policy
+{
+	none,
+	priced,
+	utility,
+	unclassified
+};
+
 struct item_value_context
 {
 	int spell_circles[3]{};
 	int native_proc_credit = 0;
 	double racial_credits[MAX_OBJ_AFFECT]{};
+	item_value_proc_policy native_proc_policy = item_value_proc_policy::none;
 };
 
 struct item_value_breakdown
@@ -41,6 +50,8 @@ struct item_value_breakdown
 	bool utility_override = false;
 	int score = 0;
 	bool invalid = false;
+	item_value_proc_policy native_proc_policy = item_value_proc_policy::none;
+	const char *native_proc_name = nullptr;
 };
 
 // The power-field part of convertObj(), shared with read-only template views.

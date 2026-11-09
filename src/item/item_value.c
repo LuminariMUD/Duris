@@ -541,6 +541,7 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 	const double unrounded = workingvalue * multiplier;
 	const bool floored = unrounded < 1;
 	const bool utility_override =
+		context.native_proc_policy == item_value_proc_policy::utility ||
 		(!(obj->wear_flags & ITEM_TAKE) && obj->type == ITEM_TELEPORT) ||
 		obj->type == ITEM_KEY || obj->type == ITEM_SWITCH || obj->type == ITEM_VEHICLE ||
 		obj->type == ITEM_SHIP || obj->type == ITEM_STORAGE;
@@ -552,7 +553,10 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 	if (!invalid)
 		score = utility_override || floored ? 1 : static_cast<int>(unrounded);
 	if (breakdown)
+	{
 		*breakdown = { workingvalue,	 multiplier, unrounded, floored,
 			       utility_override, score,	     invalid };
+		breakdown->native_proc_policy = context.native_proc_policy;
+	}
 	return score;
 }

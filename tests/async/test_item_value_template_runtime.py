@@ -25,6 +25,7 @@ HARNESS = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "item/item_value.h"
+#include "item/item_value_procs.h"
 #include "item/objmisc.h"
 #include "world/object_template.h"
 #include "specs/object_bindings.h"
@@ -104,7 +105,6 @@ extern P_room world;
 extern int top_of_world, top_of_zone_table;
 extern zone_data *zone_table;
 extern int enhance_level_gate_multiplier, enhance_stat_platinum_base, enhance_stat_platinum_per_ival;
-int get_ival_from_proc(obj_proc_type);
 
 struct zone_interval { int bottom = 0, top = 0, zone = -1; };
 static std::vector<zone_interval> quest_intervals;
@@ -223,7 +223,7 @@ static void value_delta(const char *cohort, int id, P_obj object) {
             floor_gained += new_floor && !old_floor;
         }
     }
-    std::fprintf(deltas, "%d,%d,%d,%d,%d,%d,%d,%d,%u,%d,%d,%zu,%d", obj_index[object->R_num].func.obj ? get_ival_from_proc(obj_index[object->R_num].func.obj) : 0,
+    std::fprintf(deltas, "%d,%d,%d,%d,%d,%d,%d,%d,%u,%d,%d,%zu,%d", obj_index[object->R_num].func.obj ? item_value_proc(obj_index[object->R_num].func.obj).credit : 0,
                  source_eligible_reward(object), vnum, zone >= 0 ? zone_table[zone].number : -1, floor_lost, floor_gained,
                  count, dense, callbacks, object->value[6], object->value[7], apply_kinds.size(), apply_stages);
     for (const auto &apply : object->affected)
@@ -649,11 +649,34 @@ def main():
             else:
                 assert function == extract_function("tradeskill.c", "int get_mincircle(int spell)\n{"), "numeric comparison requires unchanged circle context"
                 signature = "int get_ival_from_proc(obj_proc_type proc)\n{"
-                assert extract_function(old, signature) == extract_function("tradeskill.c", signature), "comparison requires unchanged native proc prices"
+                old_runtime_flags = []
+                if signature in old.read_text():
+                    # Price policy moved out of tradeskill.c. Execute the exact
+                    # old chain for the old adapter, including its utility sentinel.
+                    declarations = (ROOT / "src/item/item_value_procs.c").read_text().split(
+                        "static const item_value_proc_entry entries[]", 1)[0]
+                    code += "\n" + declarations + "\n" + extract_function(old, signature).replace(
+                        "get_ival_from_proc(", "get_ival_from_proc_before(", 1)
+                    old_runtime_flags += ["-Dget_ival_from_proc=get_ival_from_proc_before"]
+                else:
+                    old_procs = path / "item_value_procs_before.c"
+                    old_procs.write_text(subprocess.check_output(
+                        ["git", "show", f"{revision}:src/item/item_value_procs.c"], cwd=ROOT, text=True))
+                    old_procs_object = path / "item_value_procs_before.o"
+                    subprocess.run(["g++", "-std=c++20", "-g", "-Isrc",
+                        "-Ditem_value_proc=item_value_proc_before",
+                        "-Ditem_value_proc_entries=item_value_proc_entries_before", "-c", str(old_procs),
+                        "-o", str(old_procs_object)], cwd=ROOT, check=True)
+                    objects.append(str(old_procs_object))
+                    old_runtime_flags += ["-Ditem_value_proc=item_value_proc_before"]
                 old_header = subprocess.check_output(["git", "show", f"{revision}:src/item/item_value.h"], cwd=ROOT, text=True)
-                layout = lambda text: [line for line in text.split("struct item_value_breakdown", 1)[0].splitlines()
-                                       if "ITEM_VALUE_FORMULA_REVISION" not in line]
-                assert layout(old_header) == layout((ROOT / "src/item/item_value.h").read_text()), "numeric baseline requires identical input/context ABI"
+                current_header = (ROOT / "src/item/item_value.h").read_text()
+                fields = lambda text, name: re.search(r"struct " + name + r"\n\{(.*?)\n\};", text, re.S).group(1)
+                for name in ("item_value_apply", "item_value_input"):
+                    assert fields(old_header, name) == fields(current_header, name), "comparison requires unchanged stored inputs"
+                # Old sources compile against the current header. Existing context
+                # fields keep their meaning; appended policy fields default safely.
+                assert fields(current_header, "item_value_context").startswith(fields(old_header, "item_value_context")), "comparison requires unchanged baseline context fields"
                 old_header_path = path / "item_value_before.h"
                 old_header_path.write_text(old_header)
                 signature = "template <typename Object> void normalize_item_value_fields("
@@ -661,7 +684,6 @@ def main():
                 old_numeric = path / "item_value_before.c"
                 old_numeric.write_text(subprocess.check_output(["git", "show", f"{revision}:src/item/item_value.c"], cwd=ROOT, text=True))
                 signature = "bool item_value_has_packed_proc("
-                assert extract_function(old_numeric, signature) == extract_function("item_value.c", signature), "numeric comparison requires unchanged proc admission"
                 old_object = path / "item_value_before.o"
                 subprocess.run(["g++", "-std=c++20", "-g", "-Isrc", "-Devaluate_item_value=evaluate_item_value_before",
                                 "-Ditem_value_has_packed_proc=item_value_has_packed_proc_before",
@@ -672,7 +694,9 @@ def main():
                 old_runtime.write_text(subprocess.check_output(["git", "show", f"{revision}:src/item/item_value_runtime.c"], cwd=ROOT, text=True))
                 old_runtime_object = path / "item_value_runtime_before.o"
                 subprocess.run(["g++", "-std=c++20", "-g", "-Isrc", "-Ditemvalue=itemvalue_before",
-                                "-Devaluate_item_value=evaluate_item_value_before", "-c", str(old_runtime),
+                                "-Devaluate_item_value=evaluate_item_value_before",
+                                "-Ditem_value_has_packed_proc=item_value_has_packed_proc_before",
+                                *old_runtime_flags, "-c", str(old_runtime),
                                 "-o", str(old_runtime_object)], cwd=ROOT, check=True)
                 objects.append(str(old_runtime_object))
                 baseline_flags += ["-DNUMERIC_BASELINE=1", "-Wl,--wrap=_Z9itemvalueP8obj_data"]
@@ -744,7 +768,7 @@ def main():
                             ("kingdom_config", world / "lib/kingdom.cfg"),
                             ("item_abilities", world / "lib/item_abilities.json")):
             assert provenance[label + "_sha256"] == hashlib.sha256(file.read_bytes()).hexdigest()
-        assert provenance["formula_revision"] == "ival-v7-numeric-bounds"
+        assert provenance["formula_revision"] == "ival-v8-proc-semantics"
         assert provenance["context"] == "configured-healthy-boot"
         assert provenance["mini_mode"] == "0" and provenance["no_specials"] == "0"
         if args.delta_output:

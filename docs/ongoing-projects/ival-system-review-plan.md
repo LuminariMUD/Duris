@@ -69,6 +69,16 @@ checks passed. Existing results were reused after the plan-only revision.
 
 ## B — finish valuation semantics and explanation (F05/F06/F09/F11)
 
+**In progress:** `branch/ival-semantics`, based on #978. Extracting the 321 unique
+legacy callback mappings into item-owned policy metadata, preserving first-match
+prices and exposing utility/unclassified status. Remaining B acceptance below
+still applies; no new weights are being chosen.
+Native comparison against `c0b82df5e` passes all 321 mappings (90 utilities).
+Characterization, isolated server/editor numeric tests, monk/editor and enhancement
+fixtures plus the server build pass. Packed-route/coverage/breakdown work and the
+batch corpus qualification remain pending; the updated baseline adapter is not
+yet exercised. Do not claim B complete or publish it as review-ready.
+
 **Files:** existing `src/item/item_value*`, the proc chain in
 `src/economy/tradeskill.c`, relevant packed/native dispatch, existing staff/report
 presentation, and their native fixtures. Keep one numeric evaluator.
@@ -180,12 +190,15 @@ by the batch. Codec/source-contract tests alone never prove a persistence journe
 
 Local: `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
 Remote: `duris-staging:/home/staging/duris-worktrees/ival-system-improvements`.
-Latest published implementation: `branch/ival-enhancement-contract`, PR #978,
-based on `branch/ival-focused-delivery-plan` (#977). Step A's prior uncommitted
-patch is now committed. Synchronize committed work to the remote worktree.
+Latest review-ready implementation: `branch/ival-enhancement-contract`, PR #978,
+based on `branch/ival-focused-delivery-plan` (#977). Work continues on
+`branch/ival-semantics` for B. Synchronize committed work to the remote worktree.
 
-Current formula: `ival-v7-numeric-bounds`. Archive/evidence links above preserve
+Published formula: `ival-v7-numeric-bounds`; B's in-progress formula is
+`ival-v8-proc-semantics`. Archive/evidence links above preserve
 baseline revisions and earlier PRs. Read the relevant historical finding when
 needed; do not reload the entire archive or restart the audit. The next
-implementation action is B; start with the existing proc mapping and its native
-characterization fixture, then finish the remaining B acceptance cases.
+implementation action is B's packed dispatch/glove/artifact 21/22 routing, then
+coverage/breakdown and the single batch delta report. `native_artifact_owns()`
+mutates configuration; valuation must use a read-only context instead of calling
+it. Preserve this distinction when matching the weapon dispatch exception.

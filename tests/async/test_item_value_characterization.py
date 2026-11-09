@@ -21,6 +21,7 @@ HARNESS = r'''
 #include "item/objmisc.h"
 #include "magic/spells.h"
 #include "item/item_value.h"
+#include "item/item_value_procs.h"
 #include <cassert>
 #include <climits>
 #include <cmath>
@@ -30,13 +31,13 @@ HARNESS = r'''
 #include <utility>
 #include <algorithm>
 #include <array>
+#include <unordered_set>
 
 extern Skill skills[MAX_AFFECT_TYPES + 1];
 void initialize_skills();
 // Epic skills have no spell-circle registrations; the rest of skills.c runs normally.
 void create_epic_skills() {}
 int get_mincircle(int spell);
-int get_ival_from_proc(obj_proc_type proc);
 static index_data indexes[1]{};
 P_index obj_index = indexes;
 int top_of_objt = 0;
@@ -272,12 +273,18 @@ static void zero_insertion()
 
 static void proc_policy()
 {
-    assert(get_ival_from_proc(treasure_chest) == 200);
-    assert(get_ival_from_proc(artifact_monolith) == 200);
-    assert(get_ival_from_proc(huntsman_ward) == 125);
-    assert(get_ival_from_proc(ravenloft_bell) == 200); // Earlier branches beat the sentinel group.
-    assert(get_ival_from_proc(unclassified_proc) == 100);
-    assert(get_ival_from_proc(teleporting_map_pool) == -100000); // LEGACY F09.
+    assert(item_value_proc(treasure_chest).credit == 200);
+    assert(item_value_proc(artifact_monolith).credit == 200);
+    assert(item_value_proc(huntsman_ward).credit == 125);
+    assert(item_value_proc(ravenloft_bell).credit == 200); // Earlier branches beat the sentinel group.
+    assert(item_value_proc(unclassified_proc).credit == 100);
+    assert(item_value_proc(teleporting_map_pool).policy == item_value_proc_policy::utility);
+    assert(item_value_proc(teleporting_map_pool).credit == 0);
+    assert(item_value_proc(unclassified_proc).policy == item_value_proc_policy::unclassified);
+    assert(item_value_proc(nullptr).policy == item_value_proc_policy::none);
+    std::unordered_set<obj_proc_type> unique;
+    for (const auto &entry : item_value_proc_entries())
+        assert(unique.insert(entry.callback).second);
     auto object = packed(32);
     obj_index[0].func.obj = unclassified_proc;
     assert(itemvalue(&object) == 106); // LEGACY F09: credits both native and packed routes.
@@ -287,7 +294,10 @@ static void proc_policy()
     object.type = ITEM_WEAPON;
     object.value[0] = WEAPON_LONGSWORD;
     object.value[1] = object.value[2] = 400;
-    assert(itemvalue(&object) == 48060000); // LEGACY F09: sentinel is not a utility override.
+    item_value_breakdown utility;
+    assert(itemvalue(&object, &utility) == 1 && utility.utility_override);
+    assert(utility.native_proc_policy == item_value_proc_policy::utility);
+    assert(!strcmp(utility.native_proc_name, "teleporting_map_pool"));
     obj_index[0].func.obj = nullptr;
     object = packed(32000);
     object.type = ITEM_ARMOR;
@@ -537,15 +547,15 @@ int main()
 
 
 def main():
-    proc = extract_function("tradeskill.c", "int get_ival_from_proc(obj_proc_type proc)\n{")
-    callbacks = sorted(set(re.findall(r"\bproc == (\w+)", proc)))
+    proc = (ROOT / "src/item/item_value_procs.c").read_text()
+    callbacks = sorted(set(re.findall(
+        r'\{\s*(\w+),\s*"\w+",\s*\d+,\s*item_value_proc_policy::(?:priced|utility)', proc)))
     identities = "\n".join(
         f"int {name}(P_obj, P_char, int, char *) {{ assert(false); return 0; }}"
         for name in callbacks)
     production = "\n".join((
         extract_function("utility.c", "int flag2idx(int flag)\n{"),
-        extract_function("tradeskill.c", "int get_mincircle(int spell)\n{"),
-        proc))
+        extract_function("tradeskill.c", "int get_mincircle(int spell)\n{")))
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ival-characterization-", dir=build) as tmp:
@@ -557,7 +567,7 @@ def main():
             "-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all",
             "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
             str(source), rel("skills.c"), str(HARNESS_STUBS), "src/item/item_value.c",
-            "src/item/item_value_runtime.c", "-o", str(binary),
+            "src/item/item_value_runtime.c", "src/item/item_value_procs.c", "-o", str(binary),
         ], cwd=ROOT, check=True)
         env = {**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
                "UBSAN_OPTIONS": "halt_on_error=1"}
