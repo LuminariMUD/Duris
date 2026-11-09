@@ -1101,6 +1101,14 @@ report's unscaled quantities remain separate from configured gameplay costs.
 
 **Continuation:** strict config parsing, level/gain/radius bounds, salvage-derived
 config arithmetic, authoring/property conversion and F16 journeys remain open.
+Following the award into `src/world/limits.c` exposed another boundary to repair
+next: `gain_exp_amount<float>()` converts `XP` to `int` after a representability
+guard that applies only to Divine awards. `EXP_BOON` uses the float path; even
+an integer API value near INT_MAX can round beyond int range before the later
+level cap. The same code is present on freshly fetched `origin/master`. Add a
+focused native regression and repair this as its own change before considering
+crafting XP end-to-end qualified; do not merely tighten the caller's product and
+ignore this downstream conversion.
 Do not infer all consumer behavior from score equality: qualifier projections
 hold current rules/configuration fixed; the direct changed-rule tests above
 cover quantity/XP checks. No database, migration or production operation occurred.
