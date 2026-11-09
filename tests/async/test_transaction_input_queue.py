@@ -124,6 +124,7 @@ static void push(struct txt_q *queue, const char *text)
 {
 	struct txt_block *block = (struct txt_block *)malloc(sizeof(struct txt_block));
 	block->text = strdup(text);
+	block->links = nullptr;
 	block->next = NULL;
 	if (queue->head)
 		queue->tail->next = block;

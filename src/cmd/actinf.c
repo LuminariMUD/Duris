@@ -7319,7 +7319,53 @@ void do_help(P_char ch, char *argument, int /*cmd*/)
 {
 	char *attribs;
 	// Catalog reads do not impose a character wait or a browsing cooldown.
-	send_to_char(wiki_help(string(argument)).c_str(), ch);
+	OutputLinks links;
+	const string text = wiki_help(string(argument), &links);
+	OutputContext context;
+	// Leave room for the worst ANSI/UTF-8 expansion of each visible character.
+	constexpr size_t chunk_limit = MAX_STRING_LENGTH / 32;
+	if (text.size() <= chunk_limit)
+	{
+		context.links = links;
+		send_to_char(text.c_str(), ch, context);
+	}
+	else
+	{
+		// Cached pages can exceed a queue block. Bound both markup and terminal
+		// expansion, preserving attributes and code points across every chunk.
+		std::vector<size_t> offsets;
+		AnsiString visible;
+		visible.set(text.c_str(), &offsets);
+		offsets.push_back(text.size());
+		for (size_t begin = 0; begin < visible.size();)
+		{
+			size_t end = std::min(visible.size(), begin + chunk_limit);
+			// Dollar folding happens per output block. Keep an equal-attribute
+			// pair together (generic terminals remove attributes before folding).
+			if (end < visible.size() && visible.ch(end) == '$')
+			{
+				size_t run = end;
+				while (run > begin && visible.ch(run - 1) == '$' &&
+				       ((ch->desc && ch->desc->term_type == TERM_GENERIC) ||
+					visible.attr(run - 1) == visible.attr(end)))
+					--run;
+				if ((end - run) % 2)
+					--end;
+			}
+			AnsiString part;
+			part.assign(visible.begin() + begin, visible.begin() + end);
+			char markup[MAX_STRING_LENGTH];
+			part.ansi(markup);
+			const string source =
+				text.substr(offsets[begin], offsets[end] - offsets[begin]);
+			const auto clipped =
+				slice_output_links(links, offsets[begin], offsets[end]);
+			const auto rebased = rebase_output_links(source.c_str(), markup, clipped);
+			context.links = rebased;
+			send_to_char(markup, ch, context);
+			begin = end;
+		}
+	}
 	send_to_char("\n", ch);
 
 	attribs = attrib_help(argument);
