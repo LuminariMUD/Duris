@@ -1370,6 +1370,57 @@ material-family validity at enhancement targets and skipped-NPC-item fallback
 during the remaining consumer/F16 journeys; do not infer that a positive
 template score proves a valid material family. Full MariaDB journeys remain F16.
 
+### Chunk 21 — validate valuation property inputs (F08, partial)
+
+Branch: `branch/ival-property-bounds`, based on `branch/ival-enhance-config-bounds`.
+
+**Outcome:** require complete finite property values in float storage; validate
+the ten racial-factor families before their signed-short conversion, preserving
+valid float rounding/truncation. Reject invalid file loads and live/glob edits
+before publication or callbacks. Guard the shared integer getter before casting.
+
+**Non-goals:** new stat weights/practical caps, changing ordinary property
+precision, a typed-property framework, config hot-reload redesign, persistence
+or deployment.
+
+**Files:** properties input/getter boundaries, shared scalar float parsing reused
+from random-equipment config, existing native property/reload and valuation
+checks, and this handoff. Keep the stat-data consumer API unchanged.
+
+**Proof:** the native property fixture passes complete/finite/narrowing boundaries
+for all ten factor families, fractional/limit values, integer getter extremes,
+atomic failed reload and glob edit, and existing callbacks/save/revert behavior.
+Both header fixtures use fatal ASan/UBSan/float-cast checks; they are compilation
+fixtures, not alternate persistence backends. A native comparison against
+`138d6b75ac` finds identical stored float bits for all **2,649 shipped keys**;
+partial-value and out-of-range racial-factor probes fail before and pass after.
+The retained hashes and comparison summary are in
+`ival-evidence/f08-properties/summary.json`.
+
+The full native engine and actual offline CLI pass constructor/template parity
+for **19,334 effective templates**. Invalid racial-factor files fail before
+valuation and leave all existing report bytes unchanged. This run does not repeat
+the generated-item delta qualification. The following checks passed:
+
+```text
+python3 tests/async/test_issue263_property_reload.py
+python3 tests/async/test_random_equipment_config_runtime.py
+python3 tests/async/test_random_equipment_config_contract.py
+python3 tests/async/test_crafting_config_contract.py
+python3 tests/async/test_item_value_template_runtime.py
+make -C src -j8
+```
+
+Server boot checks `initialize_properties()` and fails on invalid input; offline
+valuation checks `initialize_property_values()` before building racial data.
+Ordinary float storage, truncation, formula `ival-v7-numeric-bounds`, and property
+consumer APIs are unchanged. Content/admission bounds and real MariaDB command
+journeys remain open under F08/F16; these native tests do not qualify persistence.
+
+**Ablation:** validate the authoritative registry once at publication boundaries,
+instead of adding checks to every racial-credit term. Reuse scalar parsing;
+add no property service, formula or new operational mode.
+
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization

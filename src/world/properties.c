@@ -8,6 +8,7 @@
  *  */
 
 #include "core/prototypes.h"
+#include "core/config_parse.h"
 #include "item/item_actions.h"
 #include "item/weapon_actions.h"
 #include "item/device_actions.h"
@@ -22,6 +23,7 @@
 #include "core/utils.h"
 #include <cerrno>
 #include <climits>
+#include <limits>
 #include <cmath>
 #include <fnmatch.h>
 #include <stdio.h>
@@ -128,11 +130,23 @@ bool durisweb_hook_enabled(const char *hook_id)
 	return get_property(key, 1.0, false) >= 0.5f;
 }
 
-int get_property(const char *key, int default_value, bool fuss)
+int get_property(const char *key, int default_value, bool /*fuss*/)
 {
-	float float_prop = get_property(key, (float)default_value, fuss);
+	const auto *property = static_cast<const struct property *>(
+		bsearch(key, duris_properties, properties_count, sizeof(struct property),
+			key_property_comp));
+	if (!property)
+		return default_value;
+	const float float_prop = property->value;
+	const double integer = std::trunc(static_cast<double>(float_prop));
+	if (!std::isfinite(integer) || integer < INT_MIN || integer > INT_MAX)
+	{
+		wizlog(58, "Integer property %s is unrepresentable; using its default.", key);
+		return default_value;
+	}
+	const int value = static_cast<int>(float_prop);
 
-	if (float_prop != ((float)((int)float_prop)))
+	if (float_prop != static_cast<float>(value))
 	{
 		char buf[500];
 		snprintf(buf, 500,
@@ -141,7 +155,7 @@ int get_property(const char *key, int default_value, bool fuss)
 		wizlog(58, "%s", buf);
 	}
 
-	return (int)float_prop;
+	return value;
 }
 
 void apply_properties()
@@ -198,6 +212,27 @@ static bool parse_mapmob_cap(const char *text, float &value)
 	return static_cast<double>(value) <= INT_MAX;
 }
 
+static bool property_value_supported(const char *key, float value)
+{
+	if (!std::isfinite(value))
+		return false;
+	// Only these stats.* families are narrowed into the racial-factor table.
+	const char *families[] = { "str", "dex", "agi", "con", "pow",
+				   "int", "wis", "cha", "kar", "luc" };
+	for (const char *family : families)
+	{
+		char prefix[16];
+		snprintf(prefix, sizeof(prefix), "stats.%s.", family);
+		if (!strncmp(key, prefix, strlen(prefix)))
+		{
+			const double narrowed = std::trunc(static_cast<double>(value));
+			return narrowed >= std::numeric_limits<sh_int>::min() &&
+			       narrowed <= std::numeric_limits<sh_int>::max();
+		}
+	}
+	return true;
+}
+
 // 1 is a property, 0 a comment/blank line, -1 a malformed property.
 int parse_property(struct property *property, char *buf)
 {
@@ -212,21 +247,29 @@ int parse_property(struct property *property, char *buf)
 	separator = strchr(buf, '=');
 	if (!separator)
 		return 0;
-	if (strcspn(buf, "= \t\r\n") >= sizeof(key))
+	char *key_end = separator;
+	while (key_end > buf && isspace(static_cast<unsigned char>(key_end[-1])))
+		--key_end;
+	const auto key_length = key_end - buf;
+	if (key_length <= 0 || static_cast<size_t>(key_length) >= sizeof(key))
 		return -1;
-	*separator = ' ';
-	int key_end;
-	bool valid = sscanf(buf, "%127s%n", key, &key_end) == 1;
-	if (valid && !strcmp(key, mapmob_cap_key))
-	{
-		const char *tail = buf + key_end;
-		while (tail < separator && isspace((unsigned char)*tail))
-			++tail;
-		valid = tail == separator && parse_mapmob_cap(separator + 1, value);
-	}
-	else if (valid)
-		valid = sscanf(buf + key_end, "%f", &value) == 1;
-	*separator = '=';
+	for (char *part = buf; part < key_end; ++part)
+		if (isspace(static_cast<unsigned char>(*part)))
+			return -1;
+	memcpy(key, buf, key_length);
+	key[key_length] = '\0';
+	char *text = separator + 1;
+	char *end = strchr(text, '#');
+	if (!end)
+		end = text + strlen(text);
+	while (end > text && isspace(static_cast<unsigned char>(end[-1])))
+		--end;
+	const char saved = *end;
+	*end = '\0';
+	const bool valid = (!strcmp(key, mapmob_cap_key) ? parse_mapmob_cap(text, value) :
+							   config_parse_float(text, value)) &&
+			   property_value_supported(key, value);
+	*end = saved;
 	if (!valid)
 		return -1;
 	property->key = (char *)str_dup(key);
@@ -572,9 +615,11 @@ void do_properties(P_char ch, char *args, int /*cmd*/)
 				pattern && fnmatch(pattern, mapmob_cap_key, FNM_CASEFOLD) == 0 &&
 				bsearch(mapmob_cap_key, duris_properties, properties_count,
 					sizeof(struct property), key_property_comp);
-			if (sets_mapmob_cap &&
-			    (!val_string || !parse_mapmob_cap(val_string, new_value) ||
-			     strtok(NULL, " ")))
+			const bool parsed = val_string && !strtok(NULL, " ") &&
+					    (sets_mapmob_cap ?
+						     parse_mapmob_cap(val_string, new_value) :
+						     config_parse_float(val_string, new_value));
+			if (sets_mapmob_cap && !parsed)
 			{
 				send_to_char(
 					"random.mapmob.populationCap requires a nonnegative whole "
@@ -582,9 +627,20 @@ void do_properties(P_char ch, char *args, int /*cmd*/)
 					ch);
 				return;
 			}
-			if (sets_mapmob_cap ||
-			    (val_string && sscanf(val_string, "%f", &new_value) == 1))
+			if (parsed)
 			{
+				// Validate every matched destination before changing any property.
+				for (i = 0; i < properties_count; ++i)
+					if (fnmatch(pattern, duris_properties[i].key,
+						    FNM_CASEFOLD) == 0 &&
+					    !property_value_supported(duris_properties[i].key,
+								      new_value))
+					{
+						send_to_char(
+							"The value cannot be represented by a matched racial stat factor.\r\n",
+							ch);
+						return;
+					}
 				bool success = FALSE;
 				bool hook_changed = FALSE;
 				for (i = 0; i < properties_count; i++)
