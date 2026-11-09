@@ -101,7 +101,6 @@ def run(binary, backend, output_path):
         'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(), 'cases': []}
     graph, guilds = authored_graph(), guild_rooms()
     assert len(guilds) == 27, 'guild catalog includes only active hometown rows'
-    inspector = ROOT / 'bin/qualification/issue213/player-inspector'
     output_path.parent.mkdir(parents=True, exist_ok=True)
     (ROOT / 'bin/tests').mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='issue213-' + backend + '-', dir=ROOT / 'bin/tests') as temporary:
@@ -161,13 +160,10 @@ def run(binary, backend, output_path):
 
             def state(name, resident=True):
                 room, pid = stat(name) if resident else (None, player_ids[name])
-                if sql:
-                    row = list(map(int, sql(f"SELECT hometown,birthplace,orig_birthplace,exp,level,race FROM player_data WHERE pid={pid}").split('\t')))
-                    result = dict(zip(('hometown', 'birthplace', 'original_birthplace', 'experience', 'level', 'race'), row))
-                    result['player_items'] = [{'vnum': int(value)} for value in sql(
-                        f'SELECT vnum FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND state=1').splitlines()]
-                else:
-                    result = json.loads(subprocess.check_output([str(inspector), environment['FLATFILE_STATE_DIR'], 'inspect', str(pid)], text=True))
+                row = list(map(int, sql(f"SELECT hometown,birthplace,orig_birthplace,exp,level,race FROM player_data WHERE pid={pid}").split('\t')))
+                result = dict(zip(('hometown', 'birthplace', 'original_birthplace', 'experience', 'level', 'race'), row))
+                result['player_items'] = [{'vnum': int(value)} for value in sql(
+                    f'SELECT vnum FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND state=1').splitlines()]
                 result['current_room'] = room
                 return result
 
@@ -353,8 +349,7 @@ def run(binary, backend, output_path):
                 with ThreadPoolExecutor(max_workers=8) as workers:
                     list(workers.map(create, enumerate(creations)))
                 stop()
-                if sql:
-                    sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
+                sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
                 boot()
                 god = login(GOD, GOD_ACCOUNT)
                 pupils = {case['name']: login(case['name'], case['account']) for case in CASES}
