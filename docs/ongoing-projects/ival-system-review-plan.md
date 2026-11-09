@@ -46,7 +46,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-duplicate-applies`; its initial synchronized commit was
+`origin/branch/ival-numeric-bounds`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -65,7 +65,8 @@ it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-packed-proc-mean`; #956 supplies canonical apply composition on
 `branch/ival-apply-composition`; #959 makes zero modifiers neutral on
 `branch/ival-zero-modifiers`; #960 qualifies duplicate apply totals on
-`branch/ival-duplicate-applies`. Branch/base
+`branch/ival-duplicate-applies`; #964 repairs numeric overflow/unavailable-value
+admission on `branch/ival-numeric-bounds`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -960,6 +961,9 @@ do not treat these formula slices as project completion or deploy them here.
 ### Chunk 14 — reject unavailable numeric valuations (F08, partial, implemented)
 
 Branch: `branch/ival-numeric-bounds`, based on `branch/ival-duplicate-applies`.
+Published: commit `c9c7f2a50`, [PR #964](https://github.com/LuminariMUD/Duris/pull/964)
+(bug label), stacked on #960. Ready for review; dedicated local/remote checkouts
+carry the committed implementation, evidence and this handoff.
 
 **Outcome:** widen weapon and circle arithmetic before operations, guard finite
 context and output before integer conversion, and return the existing unavailable
@@ -1405,6 +1409,11 @@ unresolved object; do not add repeated global checks to every numeric term.
 extremes; integer-limit dice/values; finite config parsing; oversized quantities
 and XP; no input consumption or rewards after invalid arithmetic. Record actual
 world maxima before choosing practical content limits.
+
+Chunk 14 repairs numeric calculation/conversion and unavailable-score admission,
+including both original sanitizer failures, with unchanged measured corpus scores.
+Config/property conversion, content admission and remaining consumer arithmetic
+are still open; see its continuation record.
 
 ### F09 — P2: replace proc sentinels and price the effects that can execute
 
