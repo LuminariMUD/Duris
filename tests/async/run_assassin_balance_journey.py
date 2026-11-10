@@ -174,6 +174,21 @@ def prepare_binaries():
     MANIFEST.write_text(json.dumps(result, indent=2) + "\n")
 
 
+def poison_range():
+    """The persisted FIRST_POISON..LAST_POISON spell IDs, as the compiler reads spells.h.
+
+    They are macro expressions, which the numeric spell-id reader cannot take.
+    """
+    expanded = subprocess.check_output(
+        ["g++", "-std=c++20", "-E", "-P", "-Isrc", "-x", "c++", "-"], cwd=ROOT, text=True,
+        input='#include "magic/spells.h"\nFIRST_POISON\nLAST_POISON\n').split("\n")
+    values = [line.strip() for line in expanded if line.strip()][-2:]
+    assert len(values) == 2 and all(re.fullmatch(r"[0-9+() ]+", value) for value in values), values
+    first, last = (eval(value, {"__builtins__": {}}) for value in values)
+    assert 0 < first < last, (first, last)
+    return first, last
+
+
 def run_revised_scenarios(staff, assassin, victim, sql):
     """Exercise equal items, a mismatch, poison timing, cure and movement."""
     def set_char(who, field, value):
@@ -207,11 +222,9 @@ def run_revised_scenarios(staff, assassin, victim, sql):
     def inspect():
         victim.send("save")
         victim.expect("Saving Venomtarget.", timeout=30)
-        # Persisted FIRST_POISON..LAST_POISON IDs in spells.h. SONG_DRIFTING
-        # is a macro expression, not an input for the numeric spell-id reader.
-        first = 1536
+        first, last = poison_range()
         return sql("SELECT CONCAT('affect ',pid,' ',type,' ',level,' ',modifier) FROM player_affects "
-                   "WHERE type BETWEEN " + str(first) + " AND " + str(first + 6) + " ORDER BY pid,id;"
+                   "WHERE type BETWEEN " + str(first) + " AND " + str(last) + " ORDER BY pid,id;"
                    "SELECT CONCAT('coating ',pid,' ',value4) FROM player_items WHERE vnum=22810 ORDER BY pid,id")
 
     def give(vnum, keyword, person):
