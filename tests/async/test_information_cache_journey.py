@@ -20,7 +20,7 @@ import tempfile
 import threading
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 ROOT = journey.ROOT
 PAGES = ("credits", "faq", "wizlist")
@@ -208,5 +208,5 @@ if __name__ == "__main__":
         if args.server:
             binary = args.server.resolve()
         else:
-            binary = journey.build_flatfile_server(Path(build))
+            binary = journey.build_mariadb_server(Path(build))
         run(binary, args.backend)
