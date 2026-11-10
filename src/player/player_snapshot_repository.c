@@ -818,11 +818,16 @@ query_result apply_items(MYSQL *connection, const player_snapshot &snapshot,
 			if (!item.object_uid || !retained.count(item.object_uid))
 				return { false, EILSEQ };
 	}
-	// Replace active roots while retained source components keep their original IDs.
-	result = execute(connection,
-			 "DELETE FROM player_items WHERE pid=" + std::to_string(snapshot.pid) +
-				 (retained_ids.empty() ? "" :
-							 " AND id NOT IN (" + retained_ids + ")"));
+	// Detach only replaced rows inside this transaction. A valid nested graph
+	// plus its metadata can exceed InnoDB's recursive DELETE CASCADE limit.
+	// Retained components keep their original IDs, parent links and metadata.
+	const std::string replaced =
+		"pid=" + std::to_string(snapshot.pid) +
+		(retained_ids.empty() ? "" : " AND id NOT IN (" + retained_ids + ")");
+	result = execute(connection, "UPDATE player_items SET container_id=NULL WHERE " + replaced);
+	if (!result.ok)
+		return result;
+	result = execute(connection, "DELETE FROM player_items WHERE " + replaced);
 	if (!result.ok)
 		return result;
 	return insert_item_rows(connection, written, std::to_string(snapshot.pid),
