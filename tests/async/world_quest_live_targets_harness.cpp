@@ -2,6 +2,8 @@
 #include "core/utils.h"
 #include "world/world_quest_policy.h"
 #include "world/world_quest_policy_math.h"
+#include "world/object_template.h"
+#include "item/item_value.h"
 #include "world/map.h"
 #include "world/weather.h"
 #include "combat/justice.h"
@@ -638,19 +640,36 @@ int itemvalue(P_obj object)
 {
 	return object->value[0];
 }
+int itemvalue(const object_template &object, item_value_breakdown *)
+{
+	return object.value[0];
+}
+const object_template *find_object_template(int vnum)
+{
+	static object_template prototypes[6];
+	const int rnum = real_object(vnum);
+	if (rnum < 0 || (mode == "no_reward" && rnum >= 3))
+		return nullptr;
+	auto &object = prototypes[rnum];
+	object = {};
+	object.R_num = rnum;
+	object.type = ITEM_ARMOR;
+	object.wear_flags = ITEM_TAKE;
+	object.name = "fixture reward";
+	object.value[0] = 40 + 10 * (rnum % 3);
+	return &object;
+}
+bool cache_object_template(int vnum)
+{
+	return find_object_template(vnum) != nullptr;
+}
 P_obj read_object(int nr, int type)
 {
 	++object_reads;
-	int rnum = type == VIRTUAL ? real_object(nr) : nr;
-	if (rnum < 0 || (mode == "no_reward" && rnum >= 3))
-		return nullptr;
-	auto object = new obj_data{};
-	object->R_num = rnum;
-	object->type = ITEM_ARMOR;
-	object->wear_flags = ITEM_TAKE;
-	object->name = const_cast<char *>("fixture reward");
-	object->value[0] = 40 + 10 * (rnum % 3);
-	return object;
+	const int rnum = type == VIRTUAL ? real_object(nr) : nr;
+	const auto *prototype = rnum < 0 ? nullptr :
+					   find_object_template(objects[rnum].virtual_number);
+	return prototype ? new obj_data(inspect_object_template(*prototype)) : nullptr;
 }
 void extract_obj(P_obj object, int)
 {
