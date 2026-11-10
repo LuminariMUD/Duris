@@ -40,7 +40,7 @@ travel and access restrictions need separate consideration: a temporary early
 leveling obstacle does not automatically justify a permanent endgame advantage.
 That last point is balance guidance, not a rule quoted from the historical docs.
 
-## 2. Huge player races: Monkey Grip
+## 2. Huge player races: two-handed weapons in one hand
 
 Formalized 2026-11-10 as the level-1 passive **Monkey Grip**
 (`INNATE_MONKEY_GRIP`). All five Huge player races list it in `race innates`;
