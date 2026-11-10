@@ -128,7 +128,11 @@ void finish_completion(const player_save_completion &completion)
 	{
 		if (completion.kind == persistence_job_kind::player)
 		{
-			player_revision_record_written(completion.pid, completion.revision);
+			// A stale capture did not write its components and cannot repair a
+			// previous failed checkpoint merely because its revision was superseded.
+			if (completion.outcome != player_save_apply_outcome::stale_revision)
+				player_revision_record_written(completion.pid, completion.revision,
+							       completion.components);
 			std::lock_guard<std::mutex> lock(pipeline_mutex);
 			auto pending = pending_world_quests.find(completion.pid);
 			if (pending != pending_world_quests.end() &&
@@ -154,6 +158,7 @@ void finish_completion(const player_save_completion &completion)
 				  completion.error_code);
 		return;
 	}
+	player_revision_record_failed(completion.pid, completion.components);
 	// The job is gone. Mark the owner dirty so its next save carries the state again.
 	P_char ch = live_player(completion.pid);
 	const bool remarked = ch &&

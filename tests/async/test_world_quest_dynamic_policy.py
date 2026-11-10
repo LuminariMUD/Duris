@@ -153,7 +153,7 @@ def test_local_quest_helper_is_not_a_general_mortal_teleport() -> None:
     assert "currency_transaction_submit_wallet_value" in CHAOS
 
 
-def test_flatfile_wallet_adjustments_use_backend_neutral_transactions() -> None:
+def test_mariadb_wallet_adjustments_use_backend_neutral_transactions() -> None:
     add_money = extract_function("core/utility.c", "void ADD_MONEY(")
     sub_money = extract_function("core/utility.c", "int SUB_MONEY(")
     for function in (add_money, sub_money):
@@ -252,7 +252,7 @@ if __name__ == "__main__":
         test_mariadb_world_quest_reads_fail_closed,
         test_temporary_mobile_load_failures_are_cleaned,
         test_local_quest_helper_is_not_a_general_mortal_teleport,
-        test_flatfile_wallet_adjustments_use_backend_neutral_transactions,
+        test_mariadb_wallet_adjustments_use_backend_neutral_transactions,
         test_questroom_wallet_adjustment_reports_async_completion_in_all_backends,
         test_zone_average_uses_integer_sum_for_truncation_and_level_boundaries,
         test_dual_backend_creates_build_parent_before_temporary_directory,

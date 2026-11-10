@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Collector corpse intake and atomic buyback across disconnect/restart on disposable SQL.
 
-The MariaDB side of test_flatfile_collector_intake_journey.py: the death's corpse save
+The MariaDB side of test_mariadb_collector_intake_journey.py: the death's corpse save
 records the death and its candidates, then buys the exact collected UID back through the
 real service and restarts. Set TEST_DB_HOST (loopback), TEST_DB_USER and TEST_DB_PASSWORD; TEST_DB_PORT
 defaults to 3306.
@@ -16,8 +16,8 @@ import tempfile
 import time
 import uuid
 
-import test_flatfile_collector_intake_journey as collector_journey
-import test_flatfile_combat_journey as journey
+import test_mariadb_collector_intake_journey as collector_journey
+import test_mariadb_combat_journey as journey
 from run_item_pilot_journey import object_records
 
 ROOT = Path(__file__).resolve().parents[2]

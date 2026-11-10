@@ -148,6 +148,10 @@ pulse settings, or the existing class values. Normal property application
 updates the loaded tables; character recalculation continues to compose the
 combat factor through the existing path.
 
+`race innates <race>` lists every playable race's cap, for example
+`*Max damroll (gear + buffs): 75` for Ogre. It uses the same calculation that
+enforces the cap, so Troll and Centaur show the 58 they currently receive.
+
 Sources: [loading and composition](../../../src/magic/affects.c),
 [racial listing](../../../src/classes/innates.c),
 [class listing](../../../src/cmd/class.c),

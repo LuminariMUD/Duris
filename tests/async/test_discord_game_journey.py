@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 ROOT = journey.ROOT
 PLAYER, STAFF = "Petra", "Eldren"
@@ -317,5 +317,5 @@ if __name__ == "__main__":
         parser.error(f"Node sink driver not found: {driver}")
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="discord-game-build-", dir=ROOT / "bin/tests") as build:
-        binary = args.server.resolve() if args.server else journey.build_flatfile_server(Path(build))
+        binary = args.server.resolve() if args.server else journey.build_mariadb_server(Path(build))
         run(binary, driver)

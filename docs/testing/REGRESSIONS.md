@@ -976,7 +976,7 @@ order/max-speed/aboard-owner code and the tick clamp: a non-owner's bonus is los
 an aboard owner's persists, and a non-Seadog sailor cannot order that owner's
 full maximum. Display's actor selection, innate availability and seller's 10%
 bonus are traced in production source. No sailing mechanic changes.
-`python3 tests/async/test_flatfile_help_catalog.py` and
+`python3 tests/async/test_mariadb_help_catalog.py` and
 `python3 tests/async/test_help_import_live_parser.py` pass. The disposable
 `test_information_cache_journey.py --backend mariadb --server bin/server/dms_new`
 passes corrected Seadog text through actual import/cache/player help alongside
@@ -1457,7 +1457,7 @@ fee leaves the wallet when the listing is submitted, and coins go into the bag a
 
 ```sh
 python3 tests/async/test_auction_ownership_publication.py
-tests/async/with_disposable_mariadb.sh python3 tests/async/test_flatfile_auction_coin_put_journey.py --server bin/server/dms_new
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_mariadb_auction_coin_put_journey.py --server bin/server/dms_new
 ```
 
 The first runs the real publisher with the real ownership runtime and codecs under
@@ -1823,7 +1823,7 @@ journey in which a character of one of these races wears such an item.
 The journey clients strip colour escapes from what the server sends. They stripped each
 socket read on its own, so an escape that the end of a read cut in two survived: the
 generated NPC journey once failed `make test-all` on `Cha:  87[0;1;33m ( 87)` from
-`stat mob`. The shared `MudClient` in `test_flatfile_combat_journey.py`, its copy in
+`stat mob`. The shared `MudClient` in `test_mariadb_combat_journey.py`, its copy in
 `test_account_recovery_journey.py` and the copyover journey's compressed reader now hold
 back a cut-off escape until the next read completes it.
 
@@ -1858,7 +1858,7 @@ it to the last run's PID.
 
 ```sh
 tests/async/with_disposable_mariadb.sh python3 tests/async/run_launcher_stop_journey.py
-python3 tests/async/test_flatfile_launcher.py
+python3 tests/async/test_mariadb_launcher.py
 ```
 
 The journey runs the real launcher with a stand-in server on a disposable MariaDB and
@@ -1966,7 +1966,7 @@ python3 tests/async/test_boot_log_hygiene.py
 tests/async/with_disposable_mariadb.sh python3 tests/async/run_world_restart_journey.py /absolute/path/dms_new taken
 tests/async/with_disposable_mariadb.sh python3 tests/async/run_world_restart_journey.py /absolute/path/dms_new handover
 tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_combat_journey.py --server /absolute/path/dms_new
-tests/async/with_disposable_mariadb.sh python3 tests/async/test_flatfile_combat_journey.py --server bin/server/dms_new
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_mariadb_combat_journey.py --server bin/server/dms_new
 ```
 
 The two claim harnesses hold the rules on fixture rows: a stale leaf and a stale container
@@ -2077,7 +2077,7 @@ regression suite kept the systemd service in a ten-second restart loop with a va
 `bin/server/dms` beside it.
 
 ```sh
-python3 tests/async/test_flatfile_launcher.py
+python3 tests/async/test_mariadb_launcher.py
 python3 tests/async/test_production_service.py
 ```
 
@@ -2173,7 +2173,7 @@ shops (31310, 47061, 47070, 47097, 47116, 59081, 59097 at 1.0, 89091 and 89118 a
 asked for more, so every boot logged nine lines. Their files now ask for 0.8.
 
 ```sh
-tests/async/with_disposable_mariadb.sh python3 tests/async/test_flatfile_full_world_boot.py --server bin/server/dms_new
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_mariadb_full_world_boot.py --server bin/server/dms_new
 ```
 
 The full-world boot fails on any `Old buy/sell` line in its debug log.
@@ -2254,7 +2254,7 @@ one record per target dispatches, and a second bind lost the target's own C proc
 ```sh
 python3 tests/async/test_make_trg.py
 tests/async/with_disposable_mariadb.sh python3 tests/async/test_studioproc_duplicate_record.py --server bin/server/dms_new
-python3 tests/async/test_flatfile_launcher.py
+python3 tests/async/test_mariadb_launcher.py
 python3 tests/async/test_root_test_harness.py
 ```
 
@@ -2461,7 +2461,7 @@ and warnings describe positive base-attack reductions.
 
 `python3 tests/async/test_ability_skills_2.py` checks the live martial-arts facts
 and their 79-column layout. `python3 tests/async/test_class_helpfiles_contract.py`
-checks the mirrored Monk pages; `python3 tests/async/test_flatfile_help_catalog.py`
+checks the mirrored Monk pages; `python3 tests/async/test_mariadb_help_catalog.py`
 loads both maintained help sources through the runtime catalog. Also run
 `python3 scripts/format_help_topics.py`, `python3 tests/async/test_help_layout.py`,
 and `make -C src` after changing these rules. Source-help verification does not

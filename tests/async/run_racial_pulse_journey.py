@@ -23,7 +23,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_race_rebalance import STATS
 from test_racial_pulse import CAST, MELEE
 
