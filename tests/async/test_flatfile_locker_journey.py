@@ -232,7 +232,8 @@ def run(binary: pathlib.Path) -> None:
             client.send("put mace vault")
             client.expect("Ok.", timeout=10)
             copyover_occupied_locker(client, process, sql, inventory, hotboot=True)
-            enter_locker(client, 1)
+            # The entry count covers public storage; inspect private contents below.
+            enter_locker(client, 0)
             client.send("open vault fixture-secret")
             client.expect("You open the 'vault' chest", timeout=30)
             journey.require("mace" in command(client, "look in vault"),
@@ -240,7 +241,7 @@ def run(binary: pathlib.Path) -> None:
             # A newly loaded chest has no in-memory save receipt yet. Its first
             # terminal snapshot must wait for the private destination to commit.
             copyover_occupied_locker(client, process, sql, inventory)
-            enter_locker(client, 1)
+            enter_locker(client, 0)
             client.send("open vault fixture-secret")
             client.expect("You open the 'vault' chest", timeout=30)
             journey.require("mace" in command(client, "look in vault"),
