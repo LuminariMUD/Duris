@@ -252,6 +252,12 @@ class PagesTests(unittest.TestCase):
         self.assertEqual(claymore["item"], "the claymore of Zarthos the vampire hunter")
         self.assertEqual((claymore["old value"], claymore["new value"]), ("338", "111"))
         self.assertEqual(sum(int(row["change"]) > 0 for row in rows), 138)
+        # Stat, level and type filters read these from each row.
+        self.assertEqual((claymore["level"], claymore["stats"]), ("37", "HITROLL +4, DAMROLL +4"))
+        self.assertIn("<option>CON_MAX</option>", html)
+        self.assertIn("<option>Weapon</option>", html)
+        self.assertEqual(html.count('data-level="'), 146)
+        self.assertEqual(sum('"CON_MAX"' in item for item in re.findall(r"data-stats='([^']*)'", html)), 11)
 
 
 if __name__ == "__main__":

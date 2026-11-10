@@ -138,6 +138,29 @@
     gap: 8px;
     border: 0;
   }
+  .ival-field {
+    display: grid;
+    gap: 4px;
+    font: 500 11px/1.4 var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .ival-field :is(select, input) {
+    width: 9.5em;
+    height: 49px;
+    padding: 0 12px;
+    border: 1px solid #65766c;
+    border-radius: 3px;
+    background: var(--surface);
+    color: var(--text);
+    font: 400 13px/1 var(--sans, inherit);
+    letter-spacing: 0;
+  }
+  .ival-field :is(select, input):focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 3px;
+  }
   .ival-status,
   .ival-note {
     font-size: 13px;
@@ -290,7 +313,7 @@
   display: none;
 }
 @media (max-width: 800px) {
-  .ival-content .ival-table :is(th, td):is(:nth-child(2), :nth-child(6)) {
+  .ival-content .ival-table :is(th, td):is(:nth-child(2), :nth-child(7)) {
     display: none;
   }
   .ival-content .meta-zone {

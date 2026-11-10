@@ -100,9 +100,29 @@
         ><input
           type="search"
           id="ival-search"
-          placeholder="Search by item, zone or number"
+          placeholder="Search by item, zone, stat or number"
           autocomplete="off"
       /></label>
+      <label class="ival-field"
+        >Stat<select id="ival-stat">
+          <option value="">Any stat</option>
+          {{STATS}}
+        </select></label
+      >
+      <label class="ival-field"
+        >Your level<input
+          type="number"
+          id="ival-level"
+          min="1"
+          placeholder="Any"
+          inputmode="numeric"
+      /></label>
+      <label class="ival-field"
+        >Type<select id="ival-type">
+          <option value="">Any type</option>
+          {{TYPES}}
+        </select></label
+      >
       <div class="filters" role="group" aria-label="Filter by direction">
         <button type="button" data-direction="all" aria-pressed="true">
           All changes</button
@@ -127,6 +147,7 @@
           <tr>
             <th scope="col" data-sort="name">Item</th>
             <th scope="col" data-sort="zone">Zone</th>
+            <th scope="col" data-sort="level" class="num">Level</th>
             <th scope="col" data-sort="old" class="num">Old</th>
             <th scope="col" data-sort="new" class="num">New</th>
             <th scope="col" data-sort="delta" class="num">Change</th>
@@ -139,7 +160,12 @@
       </table>
     </div>
     <p id="ival-empty" class="ival-status" hidden>
-      No items match. Try a shorter search or show all changes.
+      No items match. Try a shorter search or clear the filters.
+    </p>
+    <p class="ival-note">
+      Level is the character level needed to craft or enhance the item at its
+      new value. Enter your level to see only items you can work on, and pick
+      a stat to rank them by how much of it they give.
     </p>
     <p class="ival-note">
       Staff equipment and hidden creature-only items are left out, since

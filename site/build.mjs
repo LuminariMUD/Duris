@@ -317,6 +317,18 @@ const ivalRows = ivalItems
       a.plainZone.localeCompare(b.plainZone) ||
       a.plainName.localeCompare(b.plainName),
   );
+const statList = (item) =>
+  Object.entries(item.stats)
+    .map(
+      ([stat, amount]) =>
+        `${stat} ${amount > 0 ? "+" : "−"}${Math.abs(amount)}`,
+    )
+    .join(", ");
+const options = (values) =>
+  [...new Set(values)]
+    .sort()
+    .map((value) => `<option>${esc(value)}</option>`)
+    .join("");
 const signed = (delta) =>
   `${delta > 0 ? "▲ +" : "▼ −"}${Math.abs(delta).toLocaleString("en-US")}`;
 await mkdir(path.join(out, "item-values"), { recursive: true });
@@ -326,7 +338,7 @@ await cp(
 );
 await writeFile(
   path.join(out, "item-values/item-value-changes.csv"),
-  `number,item,zone,type,old value,new value,change,reason\n${ivalRows
+  `number,item,zone,type,old value,new value,change,reason,level,stats\n${ivalRows
     .map((item) =>
       [
         item.vnum,
@@ -337,6 +349,8 @@ await writeFile(
         item.new,
         item.delta,
         item.why.join("; "),
+        item.level,
+        statList(item),
       ]
         .map((value) => `"${String(value).replaceAll('"', '""')}"`)
         .join(","),
@@ -351,11 +365,16 @@ const ivalContent = (
   .replaceAll("{{UP}}", ivalRows.filter((item) => item.delta > 0).length)
   .replaceAll("{{DOWN}}", ivalRows.filter((item) => item.delta < 0).length)
   .replace(
+    "{{STATS}}",
+    options(ivalRows.flatMap((item) => Object.keys(item.stats))),
+  )
+  .replace("{{TYPES}}", options(ivalRows.map((item) => item.type)))
+  .replace(
     "{{ROWS}}",
     ivalRows
       .map(
         (item) =>
-          `<tr data-name="${esc(item.plainName.toLowerCase())}" data-zone="${esc(item.plainZone.toLowerCase())}" data-old="${item.old}" data-new="${item.new}" data-delta="${item.delta}" data-search="${esc(`${item.plainName} ${item.plainZone} ${item.vnum} ${item.type}`.toLowerCase())}"><th scope="row">${mudColor(item.name)}<span class="item-meta">#${item.vnum} · ${item.type}<span class="meta-zone"> · ${esc(item.plainZone)}</span></span></th><td class="zone">${mudColor(item.zone)}</td><td class="num old">${item.old.toLocaleString("en-US")}</td><td class="num">${item.new.toLocaleString("en-US")}</td><td class="num delta ${item.delta > 0 ? "up" : "down"}">${signed(item.delta)}</td><td class="why">${item.why.join(", ")}</td></tr>`,
+          `<tr data-name="${esc(item.plainName.toLowerCase())}" data-zone="${esc(item.plainZone.toLowerCase())}" data-old="${item.old}" data-new="${item.new}" data-delta="${item.delta}" data-level="${item.level}" data-type="${item.type}" data-stats='${JSON.stringify(item.stats)}' data-search="${esc(`${item.plainName} ${item.plainZone} ${item.vnum} ${item.type} ${statList(item)}`.toLowerCase())}"><th scope="row">${mudColor(item.name)}<span class="item-meta">#${item.vnum} · ${item.type}<span class="meta-zone"> · ${esc(item.plainZone)}</span></span><span class="item-meta">${statList(item)}</span></th><td class="zone">${mudColor(item.zone)}</td><td class="num">${item.level}</td><td class="num old">${item.old.toLocaleString("en-US")}</td><td class="num">${item.new.toLocaleString("en-US")}</td><td class="num delta ${item.delta > 0 ? "up" : "down"}">${signed(item.delta)}</td><td class="why">${item.why.join(", ")}</td></tr>`,
       )
       .join(""),
   );
