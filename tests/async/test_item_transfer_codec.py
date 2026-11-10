@@ -71,6 +71,36 @@ int main()
 	assert(decoded.reason == item_transfer_reason::creation && !decoded.multi_root);
 	assert(item_owner_identity_equal(decoded.to_owner, grant.to_owner));
 	assert(decoded.item_blob_size == 3 && decoded.item_blob[2] == 0x56);
+	assert(decoded.reason_id == 500 && !decoded.paid_creation);
+	// The legacy version retains its original reason ID. Only a version-8
+	// paid creation may interpret a negative reason ID as a shop debit.
+	item_transfer_payload paid = grant;
+	paid.multi_root = true;
+	paid.selected_item_uid = 0;
+	paid.target_root_item_uid = 0;
+	paid.reason_id = -11;
+	paid.paid_creation = true;
+	paid.paid_wallet_revision = 7;
+	assert(build(&command, paid));
+	assert(command.payload_version == ITEM_TRANSFER_PAID_CREATION_VERSION);
+	assert(item_transfer_command_decode_payload(command, &decoded));
+	assert(decoded.paid_creation && decoded.reason_id == -11 &&
+	       decoded.paid_wallet_revision == 7 && decoded.item_count == 1);
+	auto wrong_version = command;
+	wrong_version.payload_version = ITEM_TRANSFER_PAYLOAD_VERSION;
+	assert(!item_transfer_command_decode_payload(wrong_version, &decoded));
+	auto legacy_negative = paid;
+	legacy_negative.paid_creation = false;
+	assert(build(&command, legacy_negative));
+	assert(item_transfer_command_decode_payload(command, &decoded));
+	assert(!decoded.paid_creation && decoded.reason_id == -11);
+	auto wrong_price = paid;
+	wrong_price.reason_id = 0;
+	assert(!build(&command, wrong_price));
+	wrong_price = paid;
+	wrong_price.to_owner = { item_owner_type::room, 1200, 0 };
+	assert(!build(&command, wrong_price));
+	assert(build(&command, grant));
 	auto truncated = command;
 	truncated.payload.resize(ITEM_TRANSFER_HEADER_BYTES + ITEM_TRANSFER_ENTRY_BYTES);
 	assert(!item_transfer_command_decode_payload(truncated, &decoded));

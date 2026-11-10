@@ -15,11 +15,47 @@
 #include "net/chat_presentation.h"
 #include "net/gmcp.h"
 #include "core/utils.h"
-#include "net/unicode.h"
+#include "net/output_presentation.h"
+#include "core/json_utils.h"
 #include <cjson/cJSON.h>
 #include <cstdlib>
 #include <cstring>
-#include <ctime>
+#include <algorithm>
+
+static void chat_body_presentation(cJSON *root, char_data *recipient, const char *text)
+{
+	if (!gmcp_links_enabled(recipient->desc) || !text || strlen(text) >= MAX_STRING_LENGTH ||
+	    strchr(text, '\x1b'))
+		return;
+	const auto links = output_links_with_urls(text, {});
+	const auto frame = freeze_output_links(text, links);
+	cJSON *body = output_presentation_json(frame, PLR3_FLAGGED(recipient, PLR3_UNDERLINE));
+	if (body && !cJSON_AddItemToObject(root, "bodyPresentation", body))
+		cJSON_Delete(body);
+}
+
+static void send_chat(cJSON *root, char_data *recipient)
+{
+	char *json = cJSON_PrintUnformatted(root);
+	if (json)
+	{
+		gmcp_send(recipient->desc, GMCP_PKG_COMM_CHANNEL, json);
+		std::free(json);
+	}
+	cJSON_Delete(root);
+}
+
+void gmcp_comm_channel_body(char_data *recipient, const char *channel, const char *sender,
+			    const char *text, const char *alignment)
+{
+	if (!GMCP_ENABLED(recipient))
+		return;
+	cJSON *root = json_comm_channel_object(channel, sender, text, alignment);
+	if (!root)
+		return;
+	chat_body_presentation(root, recipient, text);
+	send_chat(root, recipient);
+}
 
 void gmcp_comm_channel_output(char_data *recipient, const OutputChatMessage &chat,
 			      const OutputContext &context, const char *frozen)
@@ -36,88 +72,42 @@ void gmcp_comm_channel_output(char_data *recipient, const OutputChatMessage &cha
 	if (!canonical)
 		return;
 
-	cJSON *root = cJSON_CreateObject();
+	cJSON *root = json_comm_channel_object(chat.channel.c_str(), chat.sender.c_str(),
+					       chat.text.c_str());
 	if (!root)
 		return;
-	cJSON_AddStringToObject(root, "channel", chat.channel.c_str());
-	cJSON_AddStringToObject(root, "sender", chat.sender.c_str());
-	cJSON_AddStringToObject(root, "text", chat.text.c_str());
-	cJSON_AddNumberToObject(root, "timestamp", std::time(nullptr));
+	chat_body_presentation(root, recipient, chat.text.c_str());
 
-	// Existing packets remain usable if an exceptional input exceeds the
-	// presentation budget or contains a raw terminal control sequence.
+	// Retain the existing full terminal snapshot for adopted profile consumers.
 	if (std::strlen(frozen) < MAX_STRING_LENGTH && !std::strchr(frozen, '\x1b') &&
 	    output_message_fits_serializers(frozen))
 	{
-		AnsiString visible(frozen);
-		// process_output collapses adjacent dollars after ANSI serialization.
-		// A color transition separates the bytes, so only equal-attribute pairs
-		// collapse. Apply that same visible normalization before assigning runs.
-		size_t out = 0;
-		for (size_t i = 0; i < visible.size(); ++i)
+		auto frame = freeze_output_links(frozen, context.links);
+		while (!frame.text.empty() && frame.text.ch(frame.text.size() - 1) == '\n')
+			frame.text.pop_back();
+		for (auto &link : frame.links)
+			link.end = std::min(link.end, frame.text.size());
+		if (!gmcp_links_enabled(recipient->desc))
+			frame.links.clear();
+		cJSON *presentation =
+			frame.text.size() <= 16384 ?
+				output_presentation_json(frame,
+							 PLR3_FLAGGED(recipient, PLR3_UNDERLINE)) :
+				nullptr;
+		if (presentation)
 		{
-			visible[out++] = visible[i];
-			if (visible.ch(i) == '$' && i + 1 < visible.size() &&
-			    visible.ch(i + 1) == '$' && visible.attr(i) == visible.attr(i + 1))
-				++i;
-		}
-		visible.resize(out);
-		while (!visible.empty() && (visible.ch(visible.size() - 1) == '\n' ||
-					    visible.ch(visible.size() - 1) == '\r'))
-			visible.pop_back();
-		if (visible.size() <= 16384)
-		{
-			std::string plain;
-			cJSON *runs = cJSON_CreateArray();
-			size_t count = 0;
-			for (size_t start = 0; start < visible.size();)
-			{
-				if (count == 4096)
-				{
-					++count;
-					break;
-				}
-				size_t end = start;
-				const int attr = visible.attr(start);
-				while (end < visible.size() && visible.attr(end) == attr)
-				{
-					char bytes[8];
-					char *out = bytes;
-					put_utf8(out, visible.ch(end++));
-					plain.append(bytes, out);
-				}
-				const int tuple[] = { (int)start, (int)end, GET_FG(attr),
-						      GET_BG(attr) };
-				cJSON_AddItemToArray(runs, cJSON_CreateIntArray(tuple, 4));
-				++count;
-				start = end;
-			}
-			if (count <= 4096)
-			{
-				cJSON *presentation = cJSON_AddObjectToObject(root, "presentation");
-				cJSON_AddNumberToObject(presentation, "version", 1);
-				cJSON_AddNumberToObject(presentation, "channelId",
-							(int)context.channel);
-				cJSON_AddStringToObject(presentation, "channel", canonical);
-				cJSON_AddStringToObject(
-					presentation, "policy",
-					context.policy == OutputPolicy::Preserve ? "preserve" :
-					context.policy == OutputPolicy::Animated ? "animated" :
-										   "static");
-				cJSON_AddStringToObject(presentation, "text", plain.c_str());
-				cJSON_AddBoolToObject(presentation, "underline",
-						      PLR3_FLAGGED(recipient, PLR3_UNDERLINE));
-				cJSON_AddItemToObject(presentation, "runs", runs);
-			}
-			else
-				cJSON_Delete(runs);
+			if (cJSON_AddNumberToObject(presentation, "channelId",
+						    (int)context.channel) &&
+			    cJSON_AddStringToObject(presentation, "channel", canonical) &&
+			    cJSON_AddStringToObject(
+				    presentation, "policy",
+				    context.policy == OutputPolicy::Preserve ? "preserve" :
+				    context.policy == OutputPolicy::Animated ? "animated" :
+									       "static") &&
+			    cJSON_AddItemToObject(root, "presentation", presentation))
+				presentation = nullptr;
+			cJSON_Delete(presentation);
 		}
 	}
-	char *json = cJSON_PrintUnformatted(root);
-	if (json)
-	{
-		gmcp_send(recipient->desc, GMCP_PKG_COMM_CHANNEL, json);
-		std::free(json);
-	}
-	cJSON_Delete(root);
+	send_chat(root, recipient);
 }

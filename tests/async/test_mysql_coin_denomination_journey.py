@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 import uuid
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from run_item_pilot_journey import Server, object_records
 from run_quest_staff_journey import configure as quest_fixture
 from test_starter_arrow_journey import command, PROMPT

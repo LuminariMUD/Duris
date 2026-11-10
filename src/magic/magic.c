@@ -7722,8 +7722,14 @@ void teleport_to(P_char ch, int to_room, int flag)
 	else
 		act("$n slowly fades out of existence.", FALSE, ch, 0, 0, TO_ROOM);
 
+	const uint64_t runtime_id = ch->runtime_id;
 	char_from_room(ch);
-	char_to_room(ch, to_room, 0);
+	if (find_character_by_runtime_id(runtime_id) != ch || !IS_ALIVE(ch) ||
+	    ch->in_room != NOWHERE)
+		return;
+	if (!char_to_room(ch, to_room, 0) || find_character_by_runtime_id(runtime_id) != ch ||
+	    !IS_ALIVE(ch) || ch->in_room != to_room)
+		return;
 
 	/* we'd hate to get stuck in an infinite loop, wouldn't we?  4 isn't currently
 	   used as a flag value */
@@ -27058,48 +27064,49 @@ std::string doom_blade_facts(P_char ch)
 void spell_doom_blade(int /*level*/, P_char ch, char * /*arg*/, int type, P_char /*victim*/,
 		      P_obj /*obj*/)
 {
-	P_obj weapon = NULL;
-
 	debug("doom blade (%d): Cast by: '%s' (%d).", type, J_NAME(ch), GET_ID(ch));
 
-	if (GET_CLASS(ch, CLASS_THEURGIST))
+	P_obj weapon = read_object(352, VIRTUAL);
+	if (!weapon)
 	{
-		weapon = read_object(426, VIRTUAL);
-		if (!weapon)
-		{
-			logit(LOG_DEBUG, "spell_doom_blade(): obj 426 not loadable");
-			return;
-		}
-
-		act("As you call to the &n&+Wh&n&+Yea&n&+Wv&n&+Ye&n&+Wns&n for a weapon to slay the &n&+Lev&n&+ri&n&+Ll&n in the world, an",
-		    TRUE, ch, weapon, 0, TO_CHAR);
-		act("&n&+Yang&n&+We&n&+Yl&n&+Ric&n figure &n&+Lmat&n&+wer&n&+Wia&n&+wli&n&+Lzes&n before you, handing you a &n&+Ygolden&n blade. The",
-		    TRUE, ch, weapon, 0, TO_CHAR);
-		act("figure recites a short &n&+Yprayer&n before &n&+Wva&n&+wni&n&+Ls&n&+whi&n&+Wng&n as fast as it came.",
-		    TRUE, ch, weapon, 0, TO_CHAR);
-
-		act("As $n calls to the &n&+Wh&n&+Yea&n&+Wv&n&+Ye&n&+Wns&n for a weapon to slay the &n&+Lev&n&+ri&n&+Ll&n in the world,",
-		    TRUE, ch, weapon, 0, TO_ROOM);
-		act("An &n&+Yang&n&+We&n&+Yl&n&+Ric&n figure &n&+Lmat&n&+wer&n&+Wia&n&+wli&n&+Lzes&n before you, handing a &n&+Ygolden&n blade to $n.",
-		    TRUE, ch, weapon, 0, TO_ROOM);
-		act("The figure recites a short &n&+Yprayer&n before &n&+Wva&n&+wni&n&+Ls&n&+whi&n&+Wng&n as fast as it came.",
-		    TRUE, ch, weapon, 0, TO_ROOM);
+		logit(LOG_DEBUG, "spell_doom_blade(): obj 352 not loadable");
+		return;
 	}
-	else
+
+	act("$n &+wplunges $s clenched fist into the &+yground&+w and draws forth $p!&n", TRUE, ch,
+	    weapon, 0, TO_ROOM);
+	act("&+wYou plunge your fist into the &+yground&+w and rip out $p!&n", TRUE, ch, weapon, 0,
+	    TO_CHAR);
+	weapon->timer[0] = 1800;
+
+	obj_to_char(weapon, ch);
+}
+
+void spell_holy_blade(int /*level*/, P_char ch, char * /*arg*/, int type, P_char /*victim*/,
+		      P_obj /*obj*/)
+{
+	debug("holy blade (%d): Cast by: '%s' (%d).", type, J_NAME(ch), GET_ID(ch));
+
+	P_obj weapon = read_object(426, VIRTUAL);
+	if (!weapon)
 	{
-		weapon = read_object(352, VIRTUAL);
-		if (!weapon)
-		{
-			logit(LOG_DEBUG, "spell_doom_blade(): obj 352 not loadable");
-			return;
-		}
-
-		act("$n &+wplunges $s clenched fist into the &+yground&+w and draws forth $p!&n",
-		    TRUE, ch, weapon, 0, TO_ROOM);
-		act("&+wYou plunge your fist into the &+yground&+w and rip out $p!&n", TRUE, ch,
-		    weapon, 0, TO_CHAR);
-		weapon->timer[0] = 1800;
+		logit(LOG_DEBUG, "spell_holy_blade(): obj 426 not loadable");
+		return;
 	}
+
+	act("As you call to the &n&+Wh&n&+Yea&n&+Wv&n&+Ye&n&+Wns&n for a weapon to slay the &n&+Lev&n&+ri&n&+Ll&n in the world, an",
+	    TRUE, ch, weapon, 0, TO_CHAR);
+	act("&n&+Yang&n&+We&n&+Yl&n&+Ric&n figure &n&+Lmat&n&+wer&n&+Wia&n&+wli&n&+Lzes&n before you, handing you a &n&+Ygolden&n blade. The",
+	    TRUE, ch, weapon, 0, TO_CHAR);
+	act("figure recites a short &n&+Yprayer&n before &n&+Wva&n&+wni&n&+Ls&n&+whi&n&+Wng&n as fast as it came.",
+	    TRUE, ch, weapon, 0, TO_CHAR);
+
+	act("As $n calls to the &n&+Wh&n&+Yea&n&+Wv&n&+Ye&n&+Wns&n for a weapon to slay the &n&+Lev&n&+ri&n&+Ll&n in the world,",
+	    TRUE, ch, weapon, 0, TO_ROOM);
+	act("An &n&+Yang&n&+We&n&+Yl&n&+Ric&n figure &n&+Lmat&n&+wer&n&+Wia&n&+wli&n&+Lzes&n before you, handing a &n&+Ygolden&n blade to $n.",
+	    TRUE, ch, weapon, 0, TO_ROOM);
+	act("The figure recites a short &n&+Yprayer&n before &n&+Wva&n&+wni&n&+Ls&n&+whi&n&+Wng&n as fast as it came.",
+	    TRUE, ch, weapon, 0, TO_ROOM);
 
 	obj_to_char(weapon, ch);
 }
@@ -29558,7 +29565,6 @@ void spell_ensis_unguis(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, 
 		return;
 	}
 
-	blade->extra_flags |= ITEM_NORENT;
 	blade->bitvector = 0;
 	blade->value[6] = GET_LEVEL(ch);
 
@@ -29611,7 +29617,6 @@ void spell_lancea_cineralae(int /*level*/, P_char ch, char * /*arg*/, int /*type
 		return;
 	}
 
-	blade->extra_flags |= ITEM_NORENT;
 	blade->bitvector = 0;
 	blade->value[6] = GET_LEVEL(ch);
 
@@ -29664,7 +29669,6 @@ void spell_simulacrum_anguis(int /*level*/, P_char ch, char * /*arg*/, int /*typ
 		return;
 	}
 
-	blade->extra_flags |= ITEM_NORENT;
 	blade->bitvector = 0;
 	blade->value[6] = GET_LEVEL(ch);
 

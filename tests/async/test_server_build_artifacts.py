@@ -100,25 +100,25 @@ with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
           patch.object(artifacts, "input_key", side_effect=lambda env, pulse: key),
           patch.object(artifacts, "compile_server", side_effect=compile_server),
           patch.dict(os.environ, {artifacts.CACHE_ENV: str(cache)})):
-        first = artifacts.build_flatfile_server(build_root)
-        assert artifacts.build_flatfile_server(root / "another-fixture") == first
+        first = artifacts.build_mariadb_server(build_root)
+        assert artifacts.build_mariadb_server(root / "another-fixture") == first
         assert len(calls) == 1 and not first.stat().st_mode & 0o222
         assert not build_root.exists(), "reuse must not create runtime state"
 
         key = "changed-source-or-flags"
-        second = artifacts.build_flatfile_server(build_root)
+        second = artifacts.build_mariadb_server(build_root)
         assert second != first and first.is_file() and len(calls) == 2
 
         second.chmod(0o755)
         second.write_bytes(b"corrupt")
         second.chmod(0o555)
-        third = artifacts.build_flatfile_server(build_root)
+        third = artifacts.build_mariadb_server(build_root)
         assert third != second and len(calls) == 3
         assert second.read_bytes() == b"corrupt", "never replace a published inode"
 
         manifest = cache / f"{key}.json"
         manifest.write_text("invalid json")
-        fourth = artifacts.build_flatfile_server(build_root)
+        fourth = artifacts.build_mariadb_server(build_root)
         assert fourth != third and len(calls) == 4
         metadata = json.loads(manifest.read_text())
         metadata["directory"] = "../escape"
@@ -130,7 +130,7 @@ with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
         results = context.Queue()
 
         def concurrent_build():
-            results.put(str(artifacts.build_flatfile_server(build_root)))
+            results.put(str(artifacts.build_mariadb_server(build_root)))
 
         before = set(cache.glob("artifact-*"))
         processes = [context.Process(target=concurrent_build) for _ in range(3)]
@@ -151,7 +151,7 @@ with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
         key = "failed-build"
         with patch.object(artifacts, "compile_server", side_effect=RuntimeError("failed")):
             try:
-                artifacts.build_flatfile_server(build_root)
+                artifacts.build_mariadb_server(build_root)
             except RuntimeError:
                 pass
             else:
@@ -161,7 +161,7 @@ with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
         key = "changed-during-build"
         with patch.object(artifacts, "input_key", side_effect=[key, "new-input"]):
             try:
-                artifacts.build_flatfile_server(build_root)
+                artifacts.build_mariadb_server(build_root)
             except RuntimeError:
                 pass
             else:
@@ -169,11 +169,11 @@ with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
         assert not (cache / f"{key}.json").exists()
 
         with patch.dict(os.environ, {artifacts.CACHE_ENV: "off"}):
-            assert artifacts.build_flatfile_server(build_root).is_file()
+            assert artifacts.build_mariadb_server(build_root).is_file()
 
         with patch.dict(os.environ, {artifacts.CACHE_ENV: str(root / "outside-bin")}):
             try:
-                artifacts.build_flatfile_server(build_root)
+                artifacts.build_mariadb_server(build_root)
             except ValueError:
                 pass
             else:

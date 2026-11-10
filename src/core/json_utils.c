@@ -1074,23 +1074,27 @@ char *json_build_char_affects(struct char_data *ch)
 }
 
 /* build comm.channel gmcp message */
+cJSON *json_comm_channel_object(const char *channel, const char *sender, const char *text,
+				const char *alignment)
+{
+	cJSON *root = cJSON_CreateObject();
+	if (!root || !cJSON_AddStringToObject(root, "channel", channel ? channel : "info") ||
+	    !cJSON_AddStringToObject(root, "sender", sender ? sender : "System") ||
+	    !cJSON_AddStringToObject(root, "text", text ? text : "") ||
+	    (alignment && *alignment && !cJSON_AddStringToObject(root, "alignment", alignment)) ||
+	    !cJSON_AddNumberToObject(root, "timestamp", (double)time(nullptr)))
+	{
+		cJSON_Delete(root);
+		return nullptr;
+	}
+	return root;
+}
+
 char *json_build_comm_channel(const char *channel, const char *sender, const char *text)
 {
-	cJSON *root;
-	char *result;
-	time_t now;
-
-	root = cJSON_CreateObject();
-	cJSON_AddStringToObject(root, "channel", channel ? channel : "info");
-	cJSON_AddStringToObject(root, "sender", sender ? sender : "System");
-	cJSON_AddStringToObject(root, "text", text ? text : "");
-
-	time(&now);
-	cJSON_AddNumberToObject(root, "timestamp", (double)now);
-
-	result = cJSON_PrintUnformatted(root);
+	cJSON *root = json_comm_channel_object(channel, sender, text);
+	char *result = cJSON_PrintUnformatted(root);
 	cJSON_Delete(root);
-
 	return result;
 }
 
@@ -1098,24 +1102,8 @@ char *json_build_comm_channel(const char *channel, const char *sender, const cha
 char *json_build_comm_channel_ex(const char *channel, const char *sender, const char *text,
 				 const char *alignment)
 {
-	cJSON *root;
-	char *result;
-	time_t now;
-
-	root = cJSON_CreateObject();
-	cJSON_AddStringToObject(root, "channel", channel ? channel : "info");
-	cJSON_AddStringToObject(root, "sender", sender ? sender : "System");
-	cJSON_AddStringToObject(root, "text", text ? text : "");
-
-	if (alignment && *alignment)
-	{
-		cJSON_AddStringToObject(root, "alignment", alignment);
-	}
-
-	time(&now);
-	cJSON_AddNumberToObject(root, "timestamp", (double)now);
-
-	result = cJSON_PrintUnformatted(root);
+	cJSON *root = json_comm_channel_object(channel, sender, text, alignment);
+	char *result = cJSON_PrintUnformatted(root);
 	cJSON_Delete(root);
 
 	return result;

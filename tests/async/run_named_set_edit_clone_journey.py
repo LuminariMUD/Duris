@@ -2,7 +2,7 @@
 """Native visible-name editing, recursive cloning, wear and reboot proof."""
 
 import json
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from named_set_gameplay import NamedSetGame, score, save, selector, put, expect_max_hp
 
 ACCOUNT, CHARACTER, PID = "Namedguest", "Meranen", 2
@@ -61,7 +61,7 @@ def expect_names():
 try:
     prior = {row[0]: row[1] for row in game.items() + game.items(PID)}
     assert set(originals) <= {int(row[0]) for row in game.items(PID)}
-    journey.make_overlord(game.state, CHARACTER)
+    game.make_overlord(CHARACTER)
     actor = game.boot("named-edit-clone-prepare", account=ACCOUNT, character=CHARACTER)
     command("vis 0")
     command("remove all")

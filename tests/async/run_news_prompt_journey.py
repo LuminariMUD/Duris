@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real news acknowledgement, reload, reconnect, copyover and restart.
 
-Use --backend flatfile or a disposable TEST_DB_* server for --backend mariadb.
+Use a disposable TEST_DB_* server with --backend mariadb.
 The supplied binary is copied into a private full-world fixture. No checkout
 environment, live server, or real player/account data is used.
 """
@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 from run_world_quest_dual_backend import setup_run_root
 
@@ -28,7 +28,6 @@ GOD, GOD_ACCOUNT = 'Newswarden', 'Newsstaff'
 def run(binary, backend):
     build = ROOT / 'bin/analysis/news'
     build.mkdir(parents=True, exist_ok=True)
-    inspector = build / 'news-inspector'
     with tempfile.TemporaryDirectory(prefix='news-' + backend + '-', dir=ROOT / 'bin/tests') as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)
@@ -38,8 +37,6 @@ def run(binary, backend):
         shutil.copy2(binary, executable)
         with (runtime / 'lib/misc/event_names').open('w') as names:
             subprocess.run([str(ROOT / 'scripts/event_names.sh'), str(executable)], stdout=names, check=True)
-        news_file = runtime / 'lib/information/news'
-        news_file.write_text('NEWS-A\n')
 
         properties = runtime / 'lib/duris.properties'
         properties.write_text(properties.read_text().replace('camp.timer=9.000', 'camp.timer=1.000'))
@@ -95,20 +92,14 @@ def run(binary, backend):
                 client.expect('Saving ' + name + '.', timeout=60)
 
             def stored():
-                if sql:
-                    return sql("SELECT last_read_news_hash FROM player_data WHERE name='" + PLAYER + "'")
-                state = json.loads(subprocess.check_output([str(inspector), env['FLATFILE_STATE_DIR'],
-                                                           'inspect', '1'], text=True))
-                return state['last_read_news_hash']
+                return sql("SELECT last_read_news_hash FROM player_data WHERE name='" + PLAYER + "'")
 
             def publish(version):
                 text = 'NEWS-' + version + '\n'
-                if sql:
-                    sql("UPDATE mud_info SET content=CONVERT(0x" + text.encode().hex() + " USING utf8mb4) WHERE name='news'")
-                else:
-                    news_file.write_text(text)
+                sql("UPDATE mud_info SET content=CONVERT(0x" + text.encode().hex() + " USING utf8mb4) WHERE name='news'")
 
             try:
+                publish('A')
                 boot()
                 for name, account in ((PLAYER, ACCOUNT), (GOD, GOD_ACCOUNT)):
                     client = journey.MudClient(plain)
@@ -124,15 +115,12 @@ def run(binary, backend):
                 save(player)
                 assert stored() == hashlib.sha256(b'NEWS-A\n').hexdigest()
                 stop()
-                if sql:
-                    sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + GOD + "'")
-                    # Distinct neighbors expose shifted SQL domain columns on every reload.
-                    sql("UPDATE player_data SET spells_memmed_extra=31,copper=101,silver=202,"
-                        "gold=303,platinum=404,exp=12345,epics=505,"
-                        "time_unspecced=FROM_UNIXTIME(1000000),frags=606,oldfrags=707 "
-                        "WHERE name='" + PLAYER + "'")
-                else:
-                    journey.make_overlord(Path(env['FLATFILE_STATE_DIR']), GOD)
+                sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + GOD + "'")
+                # Distinct neighbors expose shifted SQL domain columns on every reload.
+                sql("UPDATE player_data SET spells_memmed_extra=31,copper=101,silver=202,"
+                    "gold=303,platinum=404,exp=12345,epics=505,"
+                    "time_unspecced=FROM_UNIXTIME(1000000),frags=606,oldfrags=707 "
+                    "WHERE name='" + PLAYER + "'")
                 boot()
                 player, god = login(), login(GOD, GOD_ACCOUNT)
                 assert '(news)' not in prompt(player) and '(news)' in prompt(god)
@@ -146,10 +134,7 @@ def run(binary, backend):
                 player.expect('Copyover complete!', timeout=180)
                 assert '(news)' not in prompt(player)
                 evidence['restart_reconnect_copyover'] = 'passed'
-                if sql:
-                    sql("UPDATE mud_info SET content=CONVERT(0x4e4557532d5800626164 USING utf8mb4) WHERE name='news'")
-                else:
-                    news_file.write_bytes(b'NEWS-X\0bad')
+                sql("UPDATE mud_info SET content=CONVERT(0x4e4557532d5800626164 USING utf8mb4) WHERE name='news'")
                 god.send('page')
                 refused = god.expect('News reload failed; previous news retained.', timeout=30)
                 refused += god.expect('> ', timeout=30)
@@ -164,21 +149,19 @@ def run(binary, backend):
                 god.send('page')
                 god.expect('Done.', timeout=30)
                 assert '(news)' not in prompt(player), 'unchanged reload marked news unread'
-                if sql:
-                    publish('C')
-                    deadline = time.monotonic() + 90
-                    while '(news)' not in prompt(player):
-                        assert time.monotonic() < deadline, 'periodic SQL refresh did not publish news'
-                        time.sleep(1)
-                    read_news(player, 'C')
-                    evidence['periodic_sql_refresh'] = 'passed'
+                publish('C')
+                deadline = time.monotonic() + 90
+                while '(news)' not in prompt(player):
+                    assert time.monotonic() < deadline, 'periodic SQL refresh did not publish news'
+                    time.sleep(1)
+                read_news(player, 'C')
+                evidence['periodic_sql_refresh'] = 'passed'
                 save(player)
-                final = 'C' if sql else 'B'
+                final = 'C'
                 assert stored() == hashlib.sha256(('NEWS-' + final + '\n').encode()).hexdigest()
-                if sql:
-                    assert sql("SELECT copper,silver,gold,platinum,epics,frags,oldfrags "
-                               "FROM player_data WHERE name='" + PLAYER + "'").strip() == '101\t202\t303\t404\t505\t606\t707'
-                    evidence['domain_balances_after_load_save'] = 'passed'
+                assert sql("SELECT copper,silver,gold,platinum,epics,frags,oldfrags "
+                           "FROM player_data WHERE name='" + PLAYER + "'").strip() == '101\t202\t303\t404\t505\t606\t707'
+                evidence['domain_balances_after_load_save'] = 'passed'
                 stop()
                 boot()
                 player = login()
@@ -198,7 +181,7 @@ def run(binary, backend):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--backend', choices=('mariadb', 'flatfile'), required=True)
+    parser.add_argument('--backend', choices=("mariadb",), required=True)
     parser.add_argument('--server', type=Path, required=True)
     args = parser.parse_args()
     run(args.server.resolve(), args.backend)
