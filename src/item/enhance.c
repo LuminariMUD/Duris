@@ -169,18 +169,6 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	if (IS_SET(source->wear_flags, ITEM_GUILD_INSIGNIA))
 		minval += enhance_guild_insignia_ival_bonus;
 
-	if (!pouch_material && itemvalue(material) < minval)
-	{
-		char source_description[MAX_STRING_LENGTH];
-		snprintf(source_description, MAX_STRING_LENGTH, "%s", source->short_description);
-		checked_snprintf(
-			buf, MAX_STRING_LENGTH,
-			"&+REnhancing %s requires an item with at least an &+Witem value of: %d&n\r\n",
-			source_description, minval);
-		send_to_char(buf, ch);
-		return;
-	}
-
 	/* A replacement cannot exceed its donor or gain more than four iVal.
 	 * Chaos pouches retain their donor-free exception, with the same gain limit. */
 	const int64_t max_result_value =
@@ -191,6 +179,18 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		send_to_char(
 			"The donor must have a higher item value than the item being enhanced.\r\n",
 			ch);
+		return;
+	}
+
+	if (!pouch_material && itemvalue(material) < minval)
+	{
+		char source_description[MAX_STRING_LENGTH];
+		snprintf(source_description, MAX_STRING_LENGTH, "%s", source->short_description);
+		checked_snprintf(
+			buf, MAX_STRING_LENGTH,
+			"&+REnhancing %s requires an item with at least an &+Witem value of: %d&n\r\n",
+			source_description, minval);
+		send_to_char(buf, ch);
 		return;
 	}
 

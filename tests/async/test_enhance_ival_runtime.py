@@ -30,6 +30,7 @@ static std::vector<int> extracted;
 static P_obj result;
 static P_obj active_pouch;
 static bool lucky;
+static int lucky_range;
 static bool refuse_delivery;
 static bool refuse_wallet_submit;
 static bool refuse_wallet_commit;
@@ -58,7 +59,7 @@ void audit_item_removal(const char *cause, const item_removal_location &,
 extern const struct stat_data stat_factor[LAST_RACE + 1] = {};
 int get_mincircle(int) { std::abort(); }
 int get_ival_from_proc(obj_proc_type) { std::abort(); }
-int number(int low, int high) { return lucky ? low : high; }
+int number(int low, int high) { return (lucky || high == lucky_range) ? low : high; }
 void logit(const char *, const char *, ...) {}
 bool chaos_starter_materials_enabled() { return true; }
 P_obj chaos_material_pouch_find(P_char) { return active_pouch; }
@@ -390,7 +391,7 @@ static void test_replacement_bounds()
         {80, 100, 88, false},       // Extreme fallback must not grant +8.
         {120, 120, 121, false},     // Equal donors cannot fund an upgrade.
         {120, 119, 121, false},     // Nor can weaker donors above the old floor.
-        {120, 114, 121, false},     // Retain the configured material floor.
+        {120, 114, 121, false},     // Weak donors must get the actual upgrade requirement.
         {120, 140, 120, false},     // A different template must still improve iVal.
         {120, 140, 119, false},
         {150, 154, 154, true},      // The level gate applies to the source.
@@ -398,7 +399,8 @@ static void test_replacement_bounds()
     };
     for (const auto &test : cases)
         for (bool down_first : {true, false})
-            for (bool force_luck : {false, true})
+            for (int range : {0, enhance_luck_lucky_range, enhance_luck_very_range,
+                              enhance_luck_extreme_range})
             {
                 auto &source = value_fixture(0, test.source);
                 auto &donor = value_fixture(1, test.donor);
@@ -406,7 +408,7 @@ static void test_replacement_bounds()
                 enhance_index_entry entry{};
                 index_entry(entry, OBJ_VNUM(&candidate), test.candidate);
                 enhance_original_cascade_down_first = down_first;
-                lucky = force_luck;
+                lucky_range = range;
                 GET_PLATINUM(&ch) = 20;
                 enhance(&ch, &source, &donor);
                 if (test.succeeds)
@@ -422,11 +424,17 @@ static void test_replacement_bounds()
                     assert(!result && loads.empty() && extracted.empty());
                     assert(charges == 0 && GET_PLATINUM(&ch) == 20);
                     assert(source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
+                    if (test.donor <= test.source)
+                    {
+                        assert(output.find("higher item value") != std::string::npos);
+                        assert(output.find("at least") == std::string::npos);
+                    }
                 }
                 enhance_ival_table[enhance_hash(test.candidate)] = nullptr;
                 clear_attempt();
             }
 
+    lucky_range = 0;
     lucky = false;
     enhance_original_cascade_down_first = true;
     for (int donor_value : {122, 140})
@@ -493,6 +501,72 @@ static void test_replacement_bounds()
     active_pouch = nullptr;
     enhance_original_max_roll = 4;
     lucky = false;
+}
+
+static void test_replacement_donor_fallback()
+{
+    char_data ch{};
+    ch.player.level = 40;
+    ch.curr_stats.Luk = 10;
+    ch.in_room = NOWHERE;
+    auto &source = value_fixture(0, 120);
+    auto &donor = value_fixture(1, 122);
+    auto &valid = value_fixture(2, 122);
+    auto &too_high = value_fixture(3, 124);
+    static char source_name[] = "source";
+    static char donor_name[] = "donor";
+    source.name = source_name;
+    donor.name = donor_name;
+    source.next_content = &donor;
+    ch.carrying = &source;
+    char command[] = "source donor";
+    enhance_index_entry valid_entry{}, high_entry{};
+    index_entry(valid_entry, OBJ_VNUM(&valid), 122);
+    index_entry(high_entry, OBJ_VNUM(&too_high), 124);
+
+    for (bool down_first : {true, false})
+        for (int range : {0, enhance_luck_lucky_range, enhance_luck_very_range,
+                          enhance_luck_extreme_range})
+        {
+            source.loc_p = donor.loc_p = LOC_CARRIED;
+            GET_PLATINUM(&ch) = 20;
+            enhance_original_cascade_down_first = down_first;
+            lucky_range = range;
+            do_enhance(&ch, command, 0);
+            assert(result && OBJ_VNUM(result) == OBJ_VNUM(&valid) && itemvalue(result) == 122);
+            assert((loads == std::vector<int>{OBJ_VNUM(&valid)}));
+            assert(charges == 1 && GET_PLATINUM(&ch) == 10);
+            assert((extracted == std::vector<int>{OBJ_VNUM(&source), OBJ_VNUM(&donor)}));
+            if (range == enhance_luck_extreme_range)
+                assert(output.find("EXTREMELY Lucky") != std::string::npos);
+            else if (range == enhance_luck_very_range)
+                assert(output.find("Very Lucky") != std::string::npos);
+            else if (range == enhance_luck_lucky_range)
+                assert(output.find("&+MLucky") != std::string::npos);
+            else
+                assert(output.find("Lucky") == std::string::npos);
+            clear_attempt();
+        }
+
+    // Keep stricter configured guild donor requirements as well as the new ceiling.
+    lucky_range = 0;
+    enhance_original_cascade_down_first = true;
+    source.loc_p = donor.loc_p = LOC_CARRIED;
+    GET_PLATINUM(&ch) = 20;
+    source.wear_flags |= ITEM_GUILD_INSIGNIA;
+    source.affected[1].modifier = -45; // Base 80 * guild-slot multiplier 1.5 = 120.
+    assert(itemvalue(&source) == 120);
+    const int previous_bonus = enhance_guild_insignia_ival_bonus;
+    enhance_guild_insignia_ival_bonus = 10;
+    do_enhance(&ch, command, 0);
+    assert(!result && loads.empty() && extracted.empty() && charges == 0);
+    assert(GET_PLATINUM(&ch) == 20);
+    assert(source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
+    assert(output.find("item value of: 125") != std::string::npos);
+    enhance_guild_insignia_ival_bonus = previous_bonus;
+    enhance_ival_table[enhance_hash(122)] = nullptr;
+    enhance_ival_table[enhance_hash(124)] = nullptr;
+    clear_attempt();
 }
 
 static void test_essence()
@@ -738,6 +812,7 @@ int main()
     assert(enhance_wear_skip_mask == expected_mask);
     test_replacement();
     test_replacement_bounds();
+    test_replacement_donor_fallback();
     test_essence();
     test_superior();
 }

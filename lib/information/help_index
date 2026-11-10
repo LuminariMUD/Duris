@@ -27595,11 +27595,19 @@ being consumed. This command changes your item; it is not a free preview
 when you already have the required supplies and money.
 
 The two-item form consumes a different donor item to seek a stronger
-replacement. Ordinary donors must have item value at least five below
-the source (guild insignia require at least the source value). Weapons
-need weapon donors or enhancement essences. Ordinary replacement costs
+replacement. Ordinary donors must have higher item value than the source.
+The replacement must gain 1 to 4 item value and cannot exceed the donor's
+value. There is no absolute 99 item-value ceiling; the source still must
+meet your level's item-value limit. For example, a source at 120 with a
+donor at 122 can seek a replacement at 121 or 122. An eligible replacement
+must exist in that range; a stronger donor does not allow a gain above 4.
+Weapons need weapon donors or enhancement essences. Replacement costs
 1 platinum at item value 20 or below, otherwise 10 platinum. Luck affects
 the improvement; not every item has a suitable replacement.
+
+With an eligible Chaos craft pouch, 'enhance <item> pouch' instead seeks
+a replacement 1 to 4 item value above the source without a physical donor.
+The pouch is not consumed. The same cost and source level limit apply.
 
 Essences instead add their named property and are consumed on success.
 Their fees are 1, 20 or 100 platinum by essence value (up to 20, up to 30,

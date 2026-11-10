@@ -102,11 +102,12 @@ material donor:
 The pouch is not consumed and has no donor-value ceiling. A replacement must
 increase the source item's value by at least 1 and at most 4 iVal. There is no
 absolute 99 iVal ceiling. Physical donors instead limit the replacement to
-their own iVal, with the same maximum gain of 4.
-The normal enhancement replacement, cost, level,
-conflicting-affect, and item eligibility rules still apply. The pouch is a
-material source, not a valid enhancement target and not a general-purpose
-donor when it was not the material explicitly requested.
+their own iVal, with the same maximum gain of 4. An eligible replacement
+must exist within the permitted range; the command does not guarantee +4.
+The normal cost, level, conflicting-affect, and item eligibility rules
+still apply. The pouch is a material source, not a valid enhancement target
+and not a general-purpose donor when it was not the material explicitly
+requested.
 
 Newer aggregate enhancement paths also use the pouch only where the command
 asks for its material supply. They do not turn the pouch into an item whose
