@@ -124,6 +124,13 @@ static void news_prompt_matrix()
 	const size_t overhead = output_length - short_news.size();
 	assert(overhead > header.size() + web_link.size());
 	const size_t body_limit = 50000 - overhead;
+	const std::string parameter_news = "Visit https://example.test/?a=1&name=two#part\n";
+	assert(publish_news(parameter_news));
+	const auto parameter_output = read();
+	char parameter_plain[MAX_STRING_LENGTH];
+	AnsiString(parameter_output.c_str()).plain(parameter_plain);
+	assert(std::string(parameter_plain).find(parameter_news) != std::string::npos);
+	assert(!has_unread_news(&actor));
 	for (size_t length : { body_limit - 1, body_limit })
 	{
 		const std::string fitting = std::string(length - 1, 'x') + "\n";

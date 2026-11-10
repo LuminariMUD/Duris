@@ -642,6 +642,19 @@ int main() {
         mob.points.curr_exp = 1000000;
         assert(gain_exp(&player, &mob, INT_MAX, kind) == 3333);
     }
+    { // An oversize share reaches a grouped tank as a bounded award.
+        reset();
+        group_list tank_link{}, attacker_link{};
+        tank_link.ch = &other; tank_link.next = &attacker_link; attacker_link.ch = &player;
+        player.group = other.group = &tank_link;
+        other.player.level = 20; other.player.race = RACE_HUMAN; other.player.racewar = RACEWAR_GOOD;
+        other.points.curr_exp = 0; other.in_room = 0;
+        mob.points.base_hit = 70; mob.points.curr_exp = INT_MAX;
+        mob.specials.fighting = &other; in_test_group = true;
+        assert(gain_exp(&player, &mob, 100, EXP_DAMAGE) == 3333);
+        assert(other.points.curr_exp == 3333);
+        player.group = other.group = nullptr; mob.specials.fighting = nullptr; in_test_group = false;
+    }
     reset();
     ordinary_nexus_minimum = 10;
     exp_mods[EXPMOD_MELEE] = std::numeric_limits<float>::infinity();

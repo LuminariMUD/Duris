@@ -37,6 +37,7 @@
 #include "core/defines.h"
 #include "core/files.h"
 #include "net/gmcp.h"
+#include "net/mxp.h"
 #include "net/mccp.h"
 #include "core/mm.h"
 #include "ships/ships.h"
@@ -48,6 +49,7 @@
 #include "persistence/critical_outbox.h"
 #include "player/player_save_pipeline.h"
 #include "player/player_save_worker.h"
+#include "player/player_snapshot_capture.h"
 #include "player/player_load_items.h"
 #include "player/player_load_materialize.h"
 #include "player/player_load_pets.h"
@@ -107,6 +109,8 @@ static size_t copyover_desc_bytes_for_version(int version)
 		return offsetof(copyover_desc, gmcp_supports);
 	if (version < 20)
 		return offsetof(copyover_desc, account_name);
+	if (version < 22)
+		return offsetof(copyover_desc, mxp_enabled);
 	return sizeof(copyover_desc);
 }
 
@@ -423,7 +427,7 @@ static int write_desc_entry(FILE *fp, P_desc d)
 		entry.room = NOWHERE;
 		if (ch->in_room >= 0 && ch->in_room <= top_of_world)
 		{
-			entry.room = world[ch->in_room].number;
+			entry.room = player_save_room_vnum(ch, world[ch->in_room].number);
 			if (IS_SHIP_ROOM(ch->in_room))
 			{
 				const int cabin = entry.room;
@@ -486,6 +490,7 @@ static int write_desc_entry(FILE *fp, P_desc d)
 	strlcpy(entry.host2, d->host2, sizeof(entry.host2));
 	entry.term_type = d->term_type;
 	entry.gmcp_enabled = d->gmcp_enabled;
+	entry.mxp_enabled = d->mxp_state == MXP_ENABLED;
 	entry.gmcp_supports = d->gmcp_supports;
 	entry.gmcp_interests = d->gmcp_interests;
 	entry.gmcp_session_generation = d->gmcp_session_generation;
@@ -920,6 +925,8 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 		    (!memchr(desc.account_name, 0, sizeof desc.account_name) ||
 		     (desc.ship_id &&
 		      (desc.ship_room_slot < 0 || desc.ship_room_slot >= MAX_SHIP_ROOM))))
+			return false;
+		if (desc.mxp_enabled > 1)
 			return false;
 		if (header.version >= 18)
 		{
@@ -1526,9 +1533,10 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 			return false;
 		}
 	}
-	// Neither handoff serializes descriptorless PCs.
+	// Neither handoff serializes descriptorless PCs. Locker holders have no PID;
+	// their contents are saved by the locker drain, not the player pipeline.
 	for (ch = character_list; ch; ch = ch->next)
-		if (!IS_NPC(ch) && !ch->desc &&
+		if (!IS_NPC(ch) && !ch->desc && GET_PID(ch) > 0 &&
 		    !persistence_save_character_terminal_database_acknowledged(ch, RENT_CRASH))
 		{
 			notify_copyover_failure(
@@ -2153,6 +2161,9 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		strlcpy(d->host2, desc_entry.host2, sizeof(d->host2));
 		d->term_type = desc_entry.term_type;
 		d->gmcp_enabled = desc_entry.gmcp_enabled;
+		d->mxp_state = desc_entry.mxp_enabled ? MXP_ENABLED : MXP_OFF;
+		if (!desc_entry.mxp_enabled)
+			mxp_negotiate(d); // Old records/default-off peers negotiate before tags.
 		d->gmcp_supports = desc_entry.gmcp_supports & GMCP_IMPLEMENTED_SUPPORTS;
 		d->gmcp_interests = desc_entry.gmcp_interests & d->gmcp_supports &
 				    GMCP_INTEREST_STREAMS;

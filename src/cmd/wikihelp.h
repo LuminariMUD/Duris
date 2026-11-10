@@ -15,12 +15,16 @@
 #ifndef __WIKIHELP_H__
 #define __WIKIHELP_H__
 
+#include "net/output_links.h"
+
 #define WIKIHELP_RESULTS_LIMIT 100
 #define CMD_ATTRIB_MAX 1024
 
 string wiki_help(string str);
+string wiki_help(string str, OutputLinks *links);
 string trim(const string &str, const char *sep_chars);
 string wiki_help_single(string str);
+string wiki_help_single(string str, OutputLinks *links);
 string wiki_race_description(string title);
 string wiki_help_prose(string title, string section);
 string wiki_classes(string str);

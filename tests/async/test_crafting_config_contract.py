@@ -99,6 +99,7 @@ int main() {
     assert(item_value_material_quantities(5, .99999999, high, low) && high == 1 && low == 4);
     assert(item_value_material_quantities(5, 1.00000001, high, low) && high == 2 && low == 5);
     assert(item_value_material_quantities(5, .25, high, low) && high == 1 && low == 1);
+    assert(item_value_material_quantities(121, 2.2, high, low) && high == 55 && low == 0);
     score = 0;
     crafting_plan plan{};
     assert(!crafting_build_plan(&object, &plan));

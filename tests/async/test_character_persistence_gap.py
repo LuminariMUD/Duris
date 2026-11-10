@@ -9,7 +9,7 @@ stays here no harness or journey can show:
   1. a death no longer waits on a recovery event, and coin piles load with the other items;
   2. enter_game() bounds a restored room before it indexes the world;
   3. first-entry starter kit preparation follows the level-one checkpoint, and
-     submission waits for its acknowledged revision;
+     submission waits for its written revision (exercised by the native lifecycle test);
   4. a MariaDB character's pid comes from the name index (no journey makes two).
 """
 
@@ -50,18 +50,7 @@ assert (starter.index("if (!item_creation_grant_resume_starter(ch))")
         < starter.index("load_obj_to_newbies(ch)"))
 assert starter.count("load_obj_to_newbies(ch)") == 1
 
-movement = (SRC / "item_movement_transaction.c").read_text()
-grant_defer = section(movement, "bool item_creation_grant_defer(", "\n}\n")
-assert (grant_defer.index("player_revision_snapshot_copy(")
-        < grant_defer.index("queue.baseline = revision.current_revision")
-        < grant_defer.index("creation_grants.emplace("))
-grant_start = section(movement, "bool start_creation_grant(P_char actor, creation_grant_queue &queue, "
-                      "item_movement_reject *reject)\n{", "\n}\n")
-assert (grant_start.index("if (queue.starter)")
-        < grant_start.index("revision.written_revision < queue.baseline")
-        < grant_start.index("item_movement_reject::pending_conflict")
-        < grant_start.index("critical_command_coordinator_submit(command)")
-        < grant_start.index("submit_grant_batch(")), "starter kit submission requires its durable checkpoint"
+# The queued starter revision fence runs in test_newbie_grant_lifecycle.py.
 
 # 4. The pid of a MariaDB character comes from the in-memory name index.
 init_char = section(NANNY, "void init_char(P_char ch)", "\n}\n")

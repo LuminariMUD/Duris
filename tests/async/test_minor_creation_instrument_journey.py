@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_shambler_reflection_journey import PROMPTS, cast, command, staff_command
 
 ROOT = journey.ROOT

@@ -186,9 +186,6 @@ Syntax: > aggr          : Check aggressiveness
         > aggr off      : Turn off aggressiveness
         > aggr 120      : You will only be aggressive to monsters when
                         : your hitpoints >=120
-
-NOTE: Paladins may *not* have this option set to ON, as it goes against all
-their training and principles.
 ===========================================================================
 See also: KILL HIT MURDER
 
@@ -1341,7 +1338,7 @@ bloodlust.
 
 "BATTLE-FORGER" "BATTLE FORGER" (Specialization)
 ===========================================================================
-Battle-Forger is a Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Battle-Forger is an Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -1430,7 +1427,7 @@ A Beastmaster is a multi-class Shaman/Druid.
 
 Notes on Beastmaster:
 Shamans use totems, and memorize spells without spellbooks.
-Druids commune, which is heavilly based on terrain, for both spells
+Druids commune, which is heavily based on terrain, for both spells
 and commune times.
 If you start as a Druid, you will commune all of your spells.
 If you start as a Shaman, you will memorize spells, but you will no longer
@@ -1597,7 +1594,7 @@ See Also: ANTI-PALADIN, WARRIOR, MULTI-CLASS, PRAY
 
 BLACKSMITH (Specialization)
 ===========================================================================
-Blacksmith is a Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Blacksmith is an Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -2175,7 +2172,7 @@ place to camp for the night and then type "camp". You must then wait a
 period of time before you can exit the game. If you leave the room in which 
 you are trying to set up camp or if you fight, camping will automatically
 cancel. Once you fully camp, you will be sent to the main menu, just as 
-when you rent.
+when you rent. Items flagged no rent fall to the floor when you finish.
 
 &+RWarning:&nIf you go link-dead, camping will stop (linkdead rent does 
         *not* reset your homeroom).
@@ -2388,7 +2385,7 @@ CENOBITE (MultiClass)
 A Cenobite is a multi-class Druid/Cleric.
 
 Notes on Cenobite:
-Druids commune, which is heavilly based on terrain, for both spells
+Druids commune, which is heavily based on terrain, for both spells
 and commune times.
 Clerics pray, and require no spellbooks or totems.
 If you start as a Druid, you will commune all your spells.
@@ -3828,7 +3825,7 @@ See also: RELOCATE
 
 "DARK DREAMER"
 ===========================================================================
-Dark Dreamer is a Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Dark Dreamer is an Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -3862,7 +3859,7 @@ Requirements are registration values, not automatic learning or preparation. Bas
 
 "DARK KNIGHT" (Specialization)
 ===========================================================================
-Dark Knight is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Dark Knight is an Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -4121,9 +4118,11 @@ See also: ILLUSIONIST, SKILL_ILLUSIONIST
 #
 DELETE REROLL (General Information)
 ===========================================================================
-Player files can be deleted at the login menu. Once a character is deleted,
-you can NOT get it back. You may have several characters and often times
-people reroll their stats until they end up with stats that please them.
+Delete a character with account-menu option 3. After selecting the
+character, type its full name at the final warning to confirm permanent
+deletion; capitalization does not matter. Any other answer cancels.
+A deleted character cannot be recovered. An online character cannot be
+deleted while it is still in play.
 ===========================================================================
 See also: STATS, CLASSES, RACES, REIMBURSEMENT
 
@@ -4131,7 +4130,7 @@ See also: STATS, CLASSES, RACES, REIMBURSEMENT
 
 "DEMONIC RIDER" (Specialization)
 ===========================================================================
-Demonic Rider is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Demonic Rider is an Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -4652,7 +4651,7 @@ skill.
 Area of effect: <caster>
 Aggressive:     No
 Cumulative:     No
-Duration:       Forever
+Duration:       Until you leave the game
 Type of spell:  Summoning
 
 This spell creates a demonically possessed weapon.  The weapon is only
@@ -5948,7 +5947,7 @@ Syntax:   exp (to see how much experience you currently have)
 
 Whenever you kill a monster or a player, you earn experience points. Once 
 you have earned enough experience, you raise a level in your class. Duris 
-has 56 mortal levels; you can check your progress by typing 'experience'.  
+has 56 mortal levels; you can check your progress by typing 'exp'.  
 The levels after 50 are only received by quaffing a specific potion, found 
 in zones.
 
@@ -6366,7 +6365,7 @@ victim, doing a respectable amount of damage.
 Area of effect: <caster>
 Aggressive:     No
 Cumulative:     No
-Duration:       Forever
+Duration:       Until you leave the game
 Type of spell:  Summoning
 
 This spell summons a blade of pure flame to appear for the Druid to wield.
@@ -6637,7 +6636,7 @@ A Forrestal is a multi-class Ranger/Druid.
 
 Notes on Forrestal:
 Rangers use spellbooks, and memorize spells.
-Druids commune, which is heavilly based on terrain, for both spells
+Druids commune, which is heavily based on terrain, for both spells
 and commune times.
 If you start as a Druid, you will commune all your spells.
 If you start as a Ranger, you will memorize all your spells, and you
@@ -6792,7 +6791,7 @@ chills them to the bone.
 
 "FROST MAGUS"
 ===========================================================================
-Frost Magus is a Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Frost Magus is an Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -10259,8 +10258,9 @@ subterfuge will be punished.
 
 Anything you drop in a locker room will be stored and saved as if you were 
 carrying it on your person and rented. This means items that are transient
-will crumble and items flagged no rent will disappear. Anyone who is on 
-your grant list will be able to access your locker as well. Please see 
+will crumble, and items flagged no rent can't be stored and are handed back
+to you. Anyone who is on your grant list will be able to access your locker
+as well. Please see
 "help grant" for information on giving others access to your locker!
 
 To help with sorting and finding eq stored in a locker the command "equip
@@ -10428,7 +10428,7 @@ See also: SORCERER, NECROMANCER, CONJURER, PSIONICIST, ILLUSIONIST,
 
 MAGICIAN
 ===========================================================================
-Magician is a Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Magician is an Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -13742,6 +13742,7 @@ Syntax:         rent
 This command is for use in a reception or inn, which appear throughout the
 world. "Rent" will store your items and make you leave the game. The next 
 time you enter the game, you'll start out at the inn where you rented.
+Items flagged no rent can't be stored and fall to the floor when you leave.
 ===========================================================================
 See also: INNS, CAMP, QUIT, REIMBURSEMENT, IDLE
 
@@ -19044,20 +19045,14 @@ See also: RACES, RACEWARS, INNATE, INFRAVISION, BODYSLAM
 TROPHY (General Information)
 ===========================================================================
 Syntax:    trophy
+           trophy frags
 
-The trophy list is a feature which lets you gain a general idea of the
-amount of experience (relative to a particular mob) you are gaining  or the 
-mobs you kill. The trophy ensures that you do not gain experience by 
-"sitting on mobs" as the more you kill any particular mob, the less
-experience you will gain for it. If you kill too many of any particular
-mob, you will eventually gain no experience at all for it.
+"Trophy" lists any experience recorded for you in each zone. It is for
+tracking only: killing the same mobs again and again does not reduce the
+experience you gain. Only characters of level 25 and above are tracked,
+and when tracking is turned off it shows your saved totals.
 
-The trophy list will help your decisions by letting you know how many of
-any particular mob you have already killed. If you are in a group, you
-will only gain a portion of that kill added to your trophy. Therefore,
-you will see percentages on your trophy list. Trophy entries will also
-change colors as the amount of experience you get for a kill becomes
-less and less.
+"Trophy frags" lists the players you have fragged and how many times.
 ===========================================================================
 See also: EXPERIENCE
 
@@ -24553,10 +24548,10 @@ See also: energy drain, life leech, decaying flesh
 Area of effect: <self>
 Aggressive:     No
 Cumulative:     No
-Duration:       Short
+Duration:       Until lost or destroyed
 Type of spell:  Summoning 
 
-"Ensis unguis" tears a burning ember-talon blade free from the caster's own forearm, the flesh tearing at a price of blood - a tenth of all remaining life. The blood-soaked weapon smolders in the grip, spitting flameburst, fireball or even sunray at foes as the wielder's mastery of the dragon god deepens. The conjured blade crumbles away after a short time.
+"Ensis unguis" tears a burning ember-talon blade free from the caster's own forearm, the flesh tearing at a price of blood - a tenth of all remaining life. The blood-soaked weapon smolders in the grip, spitting flameburst, fireball or even sunray at foes as the wielder's mastery of the dragon god deepens. The conjured blade lasts until lost or destroyed, and once wielded it will not leave the hand without a remove curse.
 ===========================================================================
 See also: lancea cineralae, draconic apotheosis, edictum cineris
 
@@ -24816,7 +24811,7 @@ Cumulative:     No
 Duration:       Instantaneous
 Type of spell:  Summoning 
 
-"Holy blade" calls upon the heavens for a weapon to slay evil, whereupon an angelic figure materializes before the caster and places a gleaming golden blade in hand before vanishing as swiftly as it came. The conjured weapon is bound to the caster and remains until lost or destroyed.
+"Holy blade" calls upon the heavens for a weapon to slay evil, whereupon an angelic figure materializes before the caster and places a gleaming golden blade in hand before vanishing as swiftly as it came. The conjured weapon is bound to the caster and remains until lost, destroyed or you leave the game.
 ===========================================================================
 See also: doom blade, holy sword, theurgist, thaumaturge
 #
@@ -25117,10 +25112,10 @@ See also: thryms icerazor, stormcallers fury, lliendils stormshock
 Area of effect: <self>
 Aggressive:     No
 Cumulative:     Yes
-Duration:       Instantaneous (the conjured lance endures a long while before crumbling)
+Duration:       Until lost or destroyed
 Type of spell:  Summoning 
 
-"Lancea cineralae" wracks its caster with agony as a grotesque growth erupts from the shoulder and is torn free, becoming a burning lance bound to the dragoon's hand. The weapon drinks its maker's level: younger dragoons' lances spit gouts of flame, elders' burst with fireballs, and the mightiest hurl searing rays of sunlight. The gift costs a tenth of the caller's very lifeblood, and the ash-forged spear eventually crumbles to nothing.
+"Lancea cineralae" wracks its caster with agony as a grotesque growth erupts from the shoulder and is torn free, becoming a burning lance bound to the dragoon's hand. The weapon drinks its maker's level: younger dragoons' lances spit gouts of flame, elders' burst with fireballs, and the mightiest hurl searing rays of sunlight. The gift costs a tenth of the caller's very lifeblood. The ash-forged spear lasts until lost or destroyed, and once wielded it will not leave the hand without a remove curse.
 ===========================================================================
 See also: simulacrum anguis, stigmata draconica, edictum cineris
 #
@@ -25624,10 +25619,10 @@ See also: sanctuary, stigmata draconica, judicium fidei
 Area of effect: <self>
 Aggressive:     No
 Cumulative:     Yes
-Duration:       Instantaneous
+Duration:       Until lost or destroyed
 Type of spell:  Conjuration 
 
-"Simulacrum anguis" is a gruesome birth: the caster's entrails burst forth and writhe into a seared serpentine-viscera totem, a serpent-shaped weapon gripped still warm from the body. The horror hungers for flame, spitting bursts of fire at the priest's foes, and at great mastery even calls down rays of searing light. The ordeal drains a portion of the caster's current life, and the conjured relic crumbles to nothing before long.
+"Simulacrum anguis" is a gruesome birth: the caster's entrails burst forth and writhe into a seared serpentine-viscera totem, a serpent-shaped weapon gripped still warm from the body. The horror hungers for flame, spitting bursts of fire at the priest's foes, and at great mastery even calls down rays of searing light. The ordeal drains a portion of the caster's current life. The conjured relic lasts until lost or destroyed, and once wielded it will not leave the hand without a remove curse.
 ===========================================================================
 See also: ensis unguis, lancea cineralae, igneus vitae
 #
@@ -27673,11 +27668,11 @@ Use 'society' for the guild command menu and 'help society' for syntax.
 'help society examples' gives worked examples. Available actions depend
 on your membership, guild rank and the action's requirements.
 
-Use 'gsay <message>' to speak to your guild. At a bank with locker access,
+Use 'gcc <message>' to speak to your guild. At a bank with locker access,
 'enter locker guild' enters the shared guild locker. Guildhall building
 uses 'construct'; read 'help construct' before spending guild funds.
 Read 'help guild' for guild organization and 'help rules' for play policy.
-See also: SOCIETY, GUILD, GSAY, CONSTRUCT, LOCKERS
+See also: SOCIETY, GUILD, GCC, CONSTRUCT, LOCKERS
 ===========================================================================
 
 #
