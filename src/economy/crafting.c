@@ -128,7 +128,8 @@ static void load_crafting_config(void)
 
 	while (fgets(line, sizeof(line), fp) != NULL)
 	{
-		if (!strchr(line, '\n'))
+		// Judge by length: an embedded NUL must not make a complete line look cut off.
+		if (strlen(line) == sizeof(line) - 1 && line[sizeof(line) - 2] != '\n')
 		{
 			int next = fgetc(fp);
 			if (next != EOF && next != '\n')
@@ -221,6 +222,18 @@ static void load_crafting_config(void)
 				DBL_MAX);
 	}
 	fclose(fp);
+
+	// Recipes are offered up to gate * max level; say so when that plan cannot be represented.
+	const int64_t top_item_value = std::min<int64_t>(static_cast<int64_t>(crafting_level_gate) *
+								 crafting_recipe_max_player_level,
+							 INT_MAX);
+	int high, low;
+	if (top_item_value * crafting_experience_per_item_value > INT_MAX ||
+	    !item_value_material_quantities(static_cast<int>(top_item_value),
+					    crafting_material_quantity_multiplier, high, low))
+		logit(LOG_STATUS,
+		      "WARNING: lib/crafting.cfg experience rate or material multiplier is too large; some recipes up to item value %lld cannot be made.",
+		      static_cast<long long>(top_item_value));
 
 	/* Content references are configurable, but invalid entries must not turn a
 	 * recipe into an unfulfillable or silently free transaction. */

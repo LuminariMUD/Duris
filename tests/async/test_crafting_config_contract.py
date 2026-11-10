@@ -66,6 +66,7 @@ static void config_text(const std::string &text) {
 }
 static void config_cases() {
     load_crafting_config(); // The fixture starts with the actual shipped file.
+    assert(config_diagnostics == 0); // Every shipped line is accepted.
     assert(crafting_level_gate == 3 && crafting_recipe_max_player_level == MAXLVLMORTAL);
     assert(crafting_experience_per_item_value == 1000 && crafting_material_quantity_multiplier == 1);
     assert(crafting_craft_enabled && crafting_forge_enabled && crafting_recipe_display_vnums && crafting_recipe_examine_materials);
@@ -111,6 +112,12 @@ static void config_cases() {
     assert(crafting_experience_per_item_value == 1000 && crafting_level_gate == 4 && config_diagnostics == 1);
     config_text("crafting.experience.per.ival=2000");
     assert(crafting_experience_per_item_value == 2000);
+    config_text("crafting.experience.per.ival=50000000\n"); // Loads, but reachable recipes cannot be planned.
+    assert(crafting_experience_per_item_value == 50000000 && config_diagnostics == 1);
+    config_text("crafting.material.quantity.multiplier=2147483647\n");
+    assert(config_diagnostics == 1);
+    config_text(std::string("crafting.level.gate.multiplier=7\0junk\ncrafting.experience.per.ival=5\n", 69));
+    assert(crafting_level_gate == 7 && crafting_experience_per_item_value == 5 && config_diagnostics == 0);
     config_text("crafting.craft.tool.vnum=999999\n");
     assert(crafting_craft_tool_vnum == VOBJ_CRAFTING_TOOLS && config_diagnostics == 1);
     config_text("crafting.level.gate.multiplier=2147483647\ncrafting.experience.per.ival=0\n"
