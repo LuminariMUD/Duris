@@ -2796,7 +2796,7 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 			{
 				for (i = 0; i < 4; i++)
 				{
-					obj->timer[i] = GET_INTE(buf);
+					obj->timer[i] = static_cast<int32_t>(GET_INTE(buf));
 				}
 			}
 
