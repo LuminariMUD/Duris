@@ -12,12 +12,12 @@ Related: [PR #990](https://github.com/LuminariMUD/Duris/pull/990) (superseded by
 ## Outcome and scope
 
 PR #995 limits one replacement enhancement to a gain of 1 to 4 item value. That
-leaves 53 pool items below item value 99 with no next step, because their wear
+leaves 54 pool items below item value 99 with no next step on current master, because their wear
 slot has nothing 1 to 4 above them. On master those items could only advance
 through a lucky jump of 5 to 8.
 
 This implementation adds 33 new object templates, one per gap, so every one of
-the 53 has a next step again. The templates exist only as enhancement results: they are
+the 54 has a next step again. The templates exist only as enhancement results: they are
 not placed in any room, on any mob, in any shop or in any quest.
 
 Out of scope:
@@ -31,34 +31,42 @@ Out of scope:
 
 ## Verified baseline
 
-Measured on 2026-11-10 by booting the #995 build against the local world,
-dumping `enhance_ival_table` after `load_enhance_index()` (9,083 entries) and
-replaying the #995 search rule over it.
+Re-measured during review on 2026-11-10 against master through #997. Native
+world loading and the same binary/configuration produce 9,085 index entries
+before the new records and 9,118 afterward, across 19,334 and 19,367 templates.
+The baseline world is regenerated from the integrated world with only vnums
+91534–91566 removed; it does not reuse the older implementation snapshot.
 
-- 53 sources at or below 98 have a candidate at +5 to +8 but none at +1 to +4
-  for any of their wear slots.
-- The same 53 result from master's item values and from the stack's, although
-  115 pool templates change value under the stack.
-- 33 templates, each at "stranded item + 4" in one slot, cover all 53. Every
-  one of the 33 has a real item 1 to 4 above it in its own slot, so no filler
-  is itself a dead end.
-- `areas/obj/*.obj` files are concatenated in `areas/AREA` order and the result
-  is strictly ascending by vnum. New records must keep that order.
-- Templates in vnums 1300 to 134000 are also read by two reward systems:
-  faerie bags (`faerie_reward_vnum()` in `src/cmd/actmove.c`) and world-quest
-  zone rewards (`load_reward_profiles()` in `src/world/world_quest_policy.c`).
-  Both skip any object whose keyword list contains `_noquest_`; 420 existing
-  objects already use it.
+- 54 sources below item value 99 have a +5..8 candidate at or below 99 but
+  no +1..4 candidate in any usable slot before this content.
+- The 33 exact planned values restore a +1..4 path for all 54. Every filler
+  also has an existing, non-filler +1..4 successor in its own slot.
+- All original template scores, wear flags, index membership and reward-filter
+  results remain identical between this fresh before/after pair.
+- The original 53-source snapshot excluded #120015, a pair of gnomish
+  eyeglasses. Master's flag correction makes it eligible; #91536 covers its
+  additional 68 → 72 step. #44824 also enters the index, producing the other
+  entry of baseline drift. The original snapshot is retained as history below.
+- World vnums remain unique and ascending. No zone reset, shop or quest
+  references the new vnums.
+- Both native reward filters reject all 33 `_noquest_` records. The accepted
+  Chaos-kit admission and material-rarity-report behavior remain unchanged.
 
-The boot read world files generated from master's area data, which is slightly
-newer than the stack's: master has three description typo fixes and one extra
-flag bit removed from six objects that the stack has not yet taken. Only two of
-the six are inside the enhancement index range (#44824, an oil lamp, and
-#120015, a pair of gnomish eyeglasses); the others are #56, #93, #171 and
-#402054. The stack must absorb those before it
-merges, so the measured world is the one expected to ship. The measurement was
-repeated on the implementation branch: all 33 targets remain correct. Future
-valuation changes still need a fresh measurement, since they can move a target.
+## Review qualification (2026-11-10)
+
+Current scratch evidence is under `bin/qualification/gap-fillers/` in the review
+worktree: `review-baseline/index.csv`, `fillers/index.csv` and
+`review-qualification.json`. `review-qualify.py` checks every exact target,
+normalized slot, current lost source, original row and existing successor.
+The isolated baseline and current world use the same native measurement binary.
+These runners and generated files remain uncommitted, as required by this plan.
+
+The server build, focused record and native enhancement tests, and native
+constructor/template/offline-CLI parity over all 19,367 templates pass.
+The real level-56 MariaDB journey passes 10 → 14 → 17 enhancement, exact
+source/donor UID consumption and the 2,000-copper debit, then preserves the real
+successor through server restart/reconnect. Each of four live boots matches all
+9,118 measured index entries. Evidence: `journey.json` (`complete: true`).
 
 ## Decisions
 
@@ -96,7 +104,7 @@ Values are item values under the stack.
 | ---: | --- | ---: | --- | --- | --- |
 | 91534 | arms | 55 | a pair of squire's sleeves stitched for a knighting | tharnadian sleeves (51) | an armband of knighthood (56) |
 | 91535 | earring | 97 | a blackened stud set with a sapphire chip | a spiked blackened earring (93) | a black sapphire earring (98) |
-| 91536 | eyes | 72 | a jeweled eyepatch stitched from shed python skin | eyes of the zombie lord, a jeweled eyepatch of Boyard (68) | a writhing python eye (74) |
+| 91536 | eyes | 72 | a jeweled eyepatch stitched from shed python skin | eyes of the zombie lord, a jeweled eyepatch of Boyard, gnomish eyeglasses #120015 (68) | a writhing python eye (74) |
 | 91537 | eyes | 78 | a black knight's monocle of smoked glass | a writhing python eye, an eyepatch of Dagon, a black knight's visor (74) | the eyepiece of Kohlinar (79) |
 | 91538 | eyes | 94 | a slit-pupiled lens of black glass | a lizard's eye (90) | the black eyepiece of Menzellon (95) |
 | 91539 | face | 69 | a diver's half-mask of lacquered reed | a mask of Xlorkortor (65) | a crude snorkel pipe (70) |
@@ -149,7 +157,7 @@ For every new record in `areas/obj/wutvr.obj`:
 - At most two `A` apply lines unless the target value cannot be reached with
   two.
 
-## Current handoff (2026-11-10)
+## Original implementation handoff (2026-11-10, before review integration)
 
 - Worktree: `/home/aiwithapex/projects/duris-worktrees/enhance-level-ceiling`;
   clean starting HEAD `8b0de0b85`. The primary checkout has unrelated dirty docs.
