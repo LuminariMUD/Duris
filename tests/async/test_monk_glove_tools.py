@@ -10,14 +10,23 @@ RUNTIME = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "item/objmisc.h"
+#include "item/item_value_procs.h"
 #include <cassert>
 #include <cstdio>
 #include <cmath>
 static index_data index_data_fixture[1]{};
 P_index obj_index = index_data_fixture;
+int top_of_objt = 0;
 extern const stat_data stat_factor[LAST_RACE + 1]{};
 int get_mincircle(int spell) { return spell == 32 ? 1 : 0; }
-int get_ival_from_proc(obj_proc_type) { assert(false); return 0; }
+static obj_proc_type previous_proc;
+obj_proc_type proclib_chain_incumbent(int) { return previous_proc; }
+int proclib_obj_cmd_bridge(P_obj,P_char,int,char*) { assert(false); return 0; }
+bool native_artifact_configured_owner(int) { return false; }
+Skill skills[MAX_AFFECT_TYPES + 1];
+static void fixture_spell(int,P_char,char*,int,P_char,P_obj) { assert(false); }
+static const bool prepared_spells = [] { for (int id : {32,33,37}) skills[id].spell_pointer=fixture_spell; return true; }();
+item_value_proc_entry item_value_proc(obj_proc_type proc) { assert(!proc); return {nullptr, "none", 0, item_value_proc_policy::none}; }
 // FUNCTIONS
 int main() {
     obj_data obj{};
@@ -109,7 +118,7 @@ COMMON = r'''
     obj = {}; obj.type = ITEM_WORN; obj.wear_flags = ITEM_TAKE;
     obj.affected[0].location = APPLY_HIT; obj.affected[0].modifier = 10;
     obj.affected[3].location = APPLY_HITROLL; obj.affected[3].modifier = 0;
-    assert(itemvalue(&obj) == 35); // Shared legacy arithmetic, pending F04 repair.
+    assert(itemvalue(&obj) == 29); // Zero hitroll is neutral in both shared consumers.
 '''
 
 (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
@@ -132,6 +141,7 @@ with tempfile.TemporaryDirectory(prefix="monk-glove-tools-", dir=ROOT / "bin/tes
         path.write_text(code.replace("// FUNCTIONS", functions).replace("// COMMON CASES", common))
         binary = path.with_suffix("")
         command = ["g++", "-std=c++20", "-g", "-O1", "-fsanitize=address,undefined",
+                   "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
                    "-fno-omit-frame-pointer", "-Isrc", "-Iareas/de/src", str(path)]
         command += ["src/item/item_value.c"]
         command += [str(HARNESS_STUBS), "src/item/item_value_runtime.c"] if name == "runtime" else ["-D_DE_", "-D__UNIX__"]

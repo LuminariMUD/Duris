@@ -1247,8 +1247,9 @@ static bool do_get_try_container_item(P_char ch, P_char hood, P_obj s_obj, P_obj
 		return FALSE;
 	}
 
-	// Money is converted to wallet currency without occupying an inventory slot.
-	if (GET_ITEM_TYPE(o_obj) == ITEM_MONEY || IS_CARRYING_N(ch) < CAN_CARRY_N(ch))
+	// Money uses the wallet; salvaged materials retain their item-count exception.
+	if (GET_ITEM_TYPE(o_obj) == ITEM_MONEY || IS_CARRYING_N(ch) < CAN_CARRY_N(ch) ||
+	    (OBJ_VNUM(o_obj) >= LOWEST_MAT_VNUM && OBJ_VNUM(o_obj) <= HIGHEST_MAT_VNUM))
 	{
 		if (((total_carried_weight(ch) + GET_OBJ_WEIGHT(o_obj)) <= CAN_CARRY_W(ch)) ||
 		    local_container)
@@ -1513,7 +1514,8 @@ static bool select_bulk_get_item(P_char actor, P_obj container, P_obj object, co
 	if ((filter && (!object->name || !isname(filter, object->name))) ||
 	    (!container_local && !CAN_SEE_OBJ(actor, object)))
 		return false;
-	const bool material_exception = !container && OBJ_VNUM(object) > LOWEST_MAT_VNUM &&
+	const bool material_exception = (container ? OBJ_VNUM(object) >= LOWEST_MAT_VNUM :
+						     OBJ_VNUM(object) > LOWEST_MAT_VNUM) &&
 					OBJ_VNUM(object) <= HIGHEST_MAT_VNUM;
 	if (carried_count >= CAN_CARRY_N(actor) && !material_exception &&
 	    GET_ITEM_TYPE(object) != ITEM_MONEY)
@@ -1526,7 +1528,7 @@ static bool select_bulk_get_item(P_char actor, P_obj container, P_obj object, co
 			state.count_limit_reported = true;
 		}
 		state.failed = true;
-		// Keep scanning containers for money even when an ordinary item cannot fit.
+		// Keep scanning containers for money and materials when an ordinary item cannot fit.
 		stop = container == NULL;
 		return false;
 	}

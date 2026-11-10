@@ -121,6 +121,7 @@ int item_switch(P_obj obj, P_char, int cmd, char *)
 {
     assert_published(obj); assert(cmd == CMD_SET_PERIODIC); ++periodic_calls; return 1;
 }
+static nevent_data attached_proclib_event{};
 int proclibObj_add(P_obj obj, char *name, char *args)
 {
     assert_published(obj);
@@ -140,6 +141,8 @@ int proclibObj_add(P_obj obj, char *name, char *args)
         ++noarg_proc_calls;
     }
     ++proc_calls; SET_BIT(obj->extra_flags, ITEM_PROCLIB);
+    // Production attaches its periodic event before returning to the constructor.
+    obj->nevents = obj->nevents_tail = &attached_proclib_event;
     obj_index[obj->R_num].func.obj = item_switch;
     return 0; // consumed procedure descriptions are not ordinary extra descriptions
 }
@@ -456,6 +459,8 @@ int main(int argc, char **argv)
     const auto previous_duplicates = duplicate_strings;
     P_obj valid_proc = instantiate_object_template(*find_object_template(107));
     assert(!valid_proc->ex_description && IS_SET(valid_proc->extra_flags, ITEM_PROCLIB));
+    assert(valid_proc->nevents == &attached_proclib_event &&
+           valid_proc->nevents_tail == &attached_proclib_event);
     assert(indexes[7].number == 1 && indexes[7].func.obj == item_switch);
     assert(duplicate_strings == previous_duplicates + 5);
     assert(proc_calls == 3 && periodic_calls == 4 && event_calls == 6);
@@ -467,6 +472,8 @@ int main(int argc, char **argv)
     assert(noarg_template->descriptions[0].description.empty());
     const auto before_noarg_duplicates = duplicate_strings;
     P_obj noarg_proc = instantiate_object_template(*noarg_template);
+    assert(noarg_proc->nevents == &attached_proclib_event &&
+           noarg_proc->nevents_tail == &attached_proclib_event);
     assert(!noarg_proc->ex_description && IS_SET(noarg_proc->extra_flags, ITEM_PROCLIB));
     assert(indexes[8].number == 1 && indexes[8].func.obj == item_switch);
     assert(duplicate_strings == before_noarg_duplicates + 4);

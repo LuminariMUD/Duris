@@ -56,6 +56,8 @@ functions = [
     ('gmcp.c', 'void gmcp_char_affects('),
     ('gmcp.c', 'void gmcp_room_info('),
     ('gmcp.c', 'void gmcp_comm_channel_ex('),
+    ('gmcp.c', 'void gmcp_comm_channel('),
+    ('gmcp.c', 'void gmcp_broadcast_channel('),
     ('gmcp.c', 'void gmcp_char_vitals('),
     ('gmcp.c', 'void gmcp_input_receipt('),
     ('gmcp.c', 'void gmcp_handle_negotiation('),
@@ -125,6 +127,9 @@ with tempfile.TemporaryDirectory(prefix='gui-gmcp-', dir=build) as directory:
     subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
         *sanitizers, '-ffunction-sections', '-fdata-sections', '-Isrc', '-I/usr/include/mysql', f'-I{tmp}',
         str(ROOT/'tests/async/gui_gmcp_contract_harness.cpp'), str(source('json_utils.c')),
+        str(source('chat_presentation.c')), str(source('output_presentation.c')),
+        str(source('output_links.c')), str(source('output_style.c')),
+        str(source('ansi.c')), str(source('unicode.c')),
         str(source('random_equipment_tables.c')), str(source('safe_format.c')), str(HARNESS_STUBS),
         '-Wl,--gc-sections', '-lcjson', '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True, timeout=120)
     result = subprocess.run([str(binary)], cwd=ROOT, check=False, text=True, capture_output=True, timeout=30)

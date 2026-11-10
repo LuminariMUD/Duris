@@ -318,7 +318,7 @@ void proclib_chain_install(int rnum, int (*prev)(P_obj, P_char, int, char *))
 	proclib_chain_top++;
 }
 
-static int (*proclib_chain_prev(int rnum))(P_obj, P_char, int, char *)
+obj_proc_type proclib_chain_incumbent(int rnum)
 {
 	int i;
 
@@ -337,7 +337,7 @@ int proclib_obj_cmd_bridge(P_obj obj, P_char ch, int cmd, char *argument)
 
 	/* the displaced proc keeps its original semantics, including the cmd
 	   values this bridge itself ignores, so chaining cannot regress it */
-	if (obj->R_num >= 0 && (prev = proclib_chain_prev(obj->R_num)) != NULL)
+	if (obj->R_num >= 0 && (prev = proclib_chain_incumbent(obj->R_num)) != NULL)
 	{
 		if (prev(obj, ch, cmd, argument))
 			return TRUE;

@@ -60,6 +60,7 @@ world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_v
 							 int mob_vnum, int type, int needed);
 
 bool world_quest_policy_bootstrap();
+void refresh_world_quest_item_values();
 // Reuse the boot probe for Divine encounter checks, without quest reward rules.
 // Unknown, staff-level, shop and non-combat prototypes return -1.
 int world_quest_policy_combat_level(int mob_rnum);

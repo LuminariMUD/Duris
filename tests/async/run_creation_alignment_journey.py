@@ -16,7 +16,7 @@ import time
 from test_character_stat_choice_journey import WebSocketClient
 from test_flight_network_journey import authority
 from run_world_quest_dual_backend import setup_run_root
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 ROOT = journey.ROOT
 PASSWORD = journey.PASSWORD

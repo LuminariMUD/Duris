@@ -58,4 +58,7 @@ struct object_template
 bool cache_object_template(int vnum);
 const object_template *find_object_template(int vnum);
 P_obj instantiate_object_template(const object_template &prototype);
+// Borrowed stack view for legacy read-only filters. Never link, grant or extract it.
+// Instance state initialized by native callbacks is excluded; score the template adapter.
+obj_data inspect_object_template(const object_template &prototype);
 #endif

@@ -20,7 +20,7 @@ const char *copyover_state_file();
 #define COPYOVER_FILE copyover_state_file()
 #define COPYOVER_MAGIC "COPY"
 #define COPYOVER_PLAYERS_MAGIC "CPYP" // same records, without the live world
-#define COPYOVER_VERSION 21 // CPYP binds the authenticated Redis manifest; reads COPY 12-20
+#define COPYOVER_VERSION 22 // appends MXP state; reads native records 12-21
 
 // copyover file header
 struct copyover_header
@@ -81,6 +81,8 @@ struct copyover_desc
 	alignas(uint64_t) char account_name[64];
 	uint32_t ship_id;
 	int ship_room_slot;
+	// v22 starts after the complete v20/v21 record, including tail padding.
+	alignas(uint64_t) unsigned char mxp_enabled;
 };
 
 // mob state for copyover

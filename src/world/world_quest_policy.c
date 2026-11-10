@@ -23,6 +23,8 @@
 #include "world/world_singletons.h"
 #include "world/world_quest_policy.h"
 #include "world/world_quest_policy_math.h"
+#include "world/object_template.h"
+#include "item/item_value.h"
 
 #include <algorithm>
 #include <array>
@@ -140,6 +142,9 @@ void build_geography()
 				continue;
 			const int to = edge->to_room;
 			const int from_zone = world[room].zone, to_zone = world[to].zone;
+			// Heavens' staff shortcuts do not define geographic attachments.
+			if (zone_table[from_zone].number == 0 || zone_table[to_zone].number == 0)
+				continue;
 			if (!IS_MAP_ROOM(room) && IS_MAP_ROOM(to))
 				quest_geography[from_zone].entrances.push_back(to);
 			else if (IS_MAP_ROOM(room) && !IS_MAP_ROOM(to))
@@ -319,16 +324,6 @@ struct mobile_probe_guard
 	{
 		if (value)
 			extract_char(value);
-	}
-};
-
-struct object_probe_guard
-{
-	P_obj value;
-	~object_probe_guard()
-	{
-		if (value)
-			extract_obj(value, FALSE);
 	}
 };
 
@@ -529,20 +524,36 @@ const quest_routine_source *routine_source(P_char mob)
 
 void load_reward_profiles()
 {
+	for (auto &zone : quest_zones)
+	{
+		zone.rewards.clear();
+		zone.reward_vnums.clear();
+		for (auto &level : zone.reward_vnums_by_level)
+			level.clear();
+		zone.reward_count.fill(0);
+		zone.reward_average.fill(0);
+	}
 	for (int rnum = 0; rnum <= top_of_objt; ++rnum)
 	{
 		const int zone = zone_for_vnum(obj_index[rnum].virtual_number);
 		if (zone < 0)
 			continue;
 
-		object_probe_guard probe{ read_object(obj_index[rnum].virtual_number, VIRTUAL) };
-		if (!probe.value)
+		const int vnum = obj_index[rnum].virtual_number;
+		if (!cache_object_template(vnum))
+		{
+			logit(LOG_STATUS, "world quest: reward template %d unavailable", vnum);
 			continue;
-		if (!source_eligible_reward(probe.value))
+		}
+		const auto *prototype = find_object_template(vnum);
+		auto view = inspect_object_template(*prototype);
+		if (!source_eligible_reward(&view))
 			continue;
 		quest_reward_profile profile;
 		profile.vnum = obj_index[rnum].virtual_number;
-		profile.ivalue = itemvalue(probe.value);
+		profile.ivalue = itemvalue(*prototype);
+		if (profile.ivalue < 1)
+			continue;
 		quest_zones[zone].rewards.push_back(profile);
 		quest_zones[zone].reward_vnums.push_back(profile.vnum);
 	}
@@ -1200,6 +1211,24 @@ bool world_quest_policy_bootstrap()
 	}
 	quest_catalog_building = false;
 	return quest_catalog_ready;
+}
+
+void refresh_world_quest_item_values()
+{
+	if (!quest_catalog_ready)
+		return;
+	quest_catalog_ready = false;
+	try
+	{
+		load_reward_profiles();
+		load_zone_scores();
+		quest_catalog_ready = true;
+	}
+	catch (const std::exception &error)
+	{
+		quest_catalog_failed = true;
+		logit(LOG_STATUS, "World quest rewards disabled until restart: %s", error.what());
+	}
 }
 
 int world_quest_policy_combat_level(int mob_rnum)

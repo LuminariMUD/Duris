@@ -10,6 +10,7 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <float.h>
 #include "net/comm.h"
 #include "world/db.h"
 #include "world/events.h"
@@ -18,19 +19,26 @@
 #include "core/prototypes.h"
 #include "magic/spells.h"
 #include "core/structs.h"
+#include "core/config_parse.h"
 #include "core/utils.h"
+#include "core/utility.h"
 #include "item/enhance.h"
 #include "item/item_removal_audit.h"
 #include "economy/tradeskill.h"
 #include "economy/currency_transaction.h"
 #include "economy/currency_value.h"
 #include "item/objmisc.h"
+#include "item/item_value.h"
+#include "world/object_template.h"
+#include <array>
+#include <algorithm>
+#include <vector>
+#include <new>
 #include "combat/chaos_materials.h"
 
 /* Forward declarations for hash functions used in enhance() and do_enhance() */
 static int enhance_hash(int key);
 static int enhance_stat_hash(int key);
-static bool is_enhance_pool_candidate(P_obj obj);
 static struct enhance_essence_zone_rule *enhance_find_essence_zone_rule(int zone_number);
 extern double enhance_stat_cap_multiplier;
 extern int enhance_stat_platinum_base;
@@ -62,11 +70,14 @@ struct enhance_essence_zone_rule
 static struct enhance_essence_zone_rule enhance_essence_zone_rules[ENHANCE_ESSENCE_MAX_ZONE_RULES];
 static int enhance_essence_zone_rule_count = 0;
 static bool enhancement_system_ready = false;
+// Minimal worlds may omit the index; only a failed rebuild disables commands.
+static bool enhancement_values_available = true;
 
 /* World tables needed to map an object template vnum back to its origin zone. */
 extern P_room world;
 extern struct zone_data *zone_table;
 extern int top_of_zone_table;
+extern int top_of_objt;
 
 static int64_t enhancement_wallet_balance(P_char ch)
 {
@@ -107,10 +118,8 @@ void enhance(P_char ch, P_obj source, P_obj material)
 {
 	char buf[MAX_STRING_LENGTH];
 	P_obj robj;
-	int cost, searchcount, maxsearch, sval;
-	int newval, minval, chluck, wearflags;
-	int cascade_dir, cascade_step, cascade_ival;
-	struct enhance_index_entry *entry;
+	int cost, sval, chluck, wearflags;
+	int64_t maxsearch, newval, minval;
 
 	if (!ch || !source || !material)
 		return;
@@ -133,8 +142,13 @@ void enhance(P_char ch, P_obj source, P_obj material)
 
 	chluck = (GET_C_LUK(ch));
 	sval = itemvalue(source);
-	minval = sval - enhance_material_ival_delta;
-	searchcount = 0;
+	if (sval < 1 || (!pouch_material && itemvalue(material) < 1))
+	{
+		send_to_char("The item's value is unavailable; enhancement was not attempted.\r\n",
+			     ch);
+		return;
+	}
+	minval = static_cast<int64_t>(sval) - enhance_material_ival_delta;
 	maxsearch = enhance_search_max_attempts;
 	// Only search matching wear flags unless none matching, then just search source wear flags.
 	//  We skip ITEM_TAKE 'cause it's not really a wear flag.  We skip ITEM_HOLD, ITEM_ATTACH_BELT, and
@@ -155,12 +169,14 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	}
 
 	// Can enhance up to 3x level, same as forge/craft. --Eikel
-	if (sval > GET_LEVEL(ch) * enhance_level_gate_multiplier)
+	const int64_t level_limit =
+		static_cast<int64_t>(GET_LEVEL(ch)) * enhance_level_gate_multiplier;
+	if (sval > level_limit)
 	{
 		snprintf(
 			buf, MAX_STRING_LENGTH,
-			"This item has ival %d; at your level you can enhance items up to ival %d.\r\n",
-			sval, GET_LEVEL(ch) * enhance_level_gate_multiplier);
+			"This item has ival %d; at your level you can enhance items up to ival %lld.\r\n",
+			sval, static_cast<long long>(level_limit));
 		send_to_char(buf, ch);
 		return;
 	}
@@ -174,8 +190,8 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		snprintf(source_description, MAX_STRING_LENGTH, "%s", source->short_description);
 		checked_snprintf(
 			buf, MAX_STRING_LENGTH,
-			"&+REnhancing %s requires an item with at least an &+Witem value of: %d&n\r\n",
-			source_description, minval);
+			"&+REnhancing %s requires an item with at least an &+Witem value of: %lld&n\r\n",
+			source_description, static_cast<long long>(minval));
 		send_to_char(buf, ch);
 		return;
 	}
@@ -192,115 +208,106 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	if (enhancement_wallet_balance(ch) < cost)
 	{
 		snprintf(buf, MAX_STRING_LENGTH,
-			 "It will require &+W%d platinum&n to &+Benhance&n this item.\r\n",
-			 cost / 1000);
+			 "It will require %s&n to &+Benhance&n this item.\r\n", coin_stringv(cost));
 		send_to_char(buf, ch);
 		return;
 	}
 
 	if (number(1, enhance_luck_extreme_range) < chluck)
 	{
-		newval = sval + enhance_ival_gain_extreme;
+		newval = static_cast<int64_t>(sval) + enhance_ival_gain_extreme;
 		maxsearch *= 4;
 		send_to_char("&+YYou feel &+MEXTREMELY Lucky&+Y!\r\n", ch);
 	}
 	else if (number(1, enhance_luck_very_range) < chluck)
 	{
-		newval = sval + enhance_ival_gain_very;
+		newval = static_cast<int64_t>(sval) + enhance_ival_gain_very;
 		maxsearch *= 3;
 		send_to_char("&+YYou feel &+MVery Lucky&+Y!\r\n", ch);
 	}
 	else if (number(1, enhance_luck_lucky_range) < chluck)
 	{
-		newval = sval + enhance_ival_gain_lucky;
+		newval = static_cast<int64_t>(sval) + enhance_ival_gain_lucky;
 		maxsearch *= 2;
 		send_to_char("&+YYou feel &+MLucky&+Y!\r\n", ch);
 	}
 	else
 	{
-		newval = sval + enhance_ival_gain_normal;
+		newval = static_cast<int64_t>(sval) + enhance_ival_gain_normal;
 	}
 
-	const int64_t max_result_value =
-		static_cast<int64_t>(enhance_ival_cap) + enhance_original_max_roll;
+	/* One replacement gains at most the largest configured luck gain. The level
+	 * gate on the source is the only absolute limit, as it is for forge and craft. */
+	const int max_gain = std::max({ enhance_ival_gain_extreme, enhance_ival_gain_very,
+					enhance_ival_gain_lucky, enhance_ival_gain_normal });
+	const int64_t max_result_value = static_cast<int64_t>(sval) + max_gain;
 	/* Cascade search through the ival hash table.
 	 * Try exact match first, then cascade in the configured direction.
 	 * cascade_down_first=1: try lower ival values first, then higher
 	 * cascade_down_first=0: try higher ival values first, then lower
 	 */
 	robj = NULL;
-	for (cascade_step = 0; cascade_step <= enhance_original_max_roll; cascade_step++)
+	std::vector<const enhance_index_entry *> candidates;
+	try
 	{
-		for (cascade_dir = 0; cascade_dir < 2; cascade_dir++)
-		{
-			if (cascade_step == 0)
+		const int64_t radius = std::min<int64_t>(enhance_original_max_roll, maxsearch);
+		for (const auto *bucket : enhance_ival_table)
+			for (auto *candidate = bucket; candidate; candidate = candidate->next)
+				if (candidate->ival > sval && candidate->ival <= max_result_value &&
+				    std::abs(static_cast<int64_t>(candidate->ival) - newval) <=
+					    radius)
+					candidates.push_back(candidate);
+		// Hash chains already carry the legacy same-score tie order.
+		std::stable_sort(
+			candidates.begin(), candidates.end(),
+			[&](const auto *left, const auto *right)
 			{
-				/* Exact match — only one try */
-				if (cascade_dir > 0)
-					continue;
-				cascade_ival = newval;
-			}
-			else if (enhance_original_cascade_down_first)
-			{
-				/* Down first: try -step, then +step */
-				cascade_ival = (cascade_dir == 0) ? (newval - cascade_step) :
-								    (newval + cascade_step);
-			}
-			else
-			{
-				/* Up first: try +step, then -step */
-				cascade_ival = (cascade_dir == 0) ? (newval + cascade_step) :
-								    (newval - cascade_step);
-			}
-
-			if (cascade_ival <= sval || cascade_ival > max_result_value)
-				continue;
-
-			/* Look up in hash table */
-			for (entry = enhance_ival_table[enhance_hash(cascade_ival)]; entry;
-			     entry = entry->next)
-			{
-				if (entry->ival != cascade_ival)
-					continue;
-
-				/* Check wear flags match */
-				if (!(wearflags & entry->wear_flags))
-					continue;
-
-				/* Check not same vnum */
-				if (entry->vnum == OBJ_VNUM(source))
-					continue;
-
-				/* Found a match — read the object */
-				robj = read_object(entry->vnum, VIRTUAL);
-				if (!robj)
-					continue;
-				if ((wearflags & robj->wear_flags) &&
-				    is_enhance_pool_candidate(robj))
-				{
-					const int candidate_value = itemvalue(robj);
-					if (candidate_value > sval &&
-					    candidate_value <= max_result_value)
-						break;
-				}
-				extract_obj(robj);
-				robj = NULL;
-			}
-
-			if (robj)
-				break;
-		}
-		if (robj)
+				const auto a = std::abs(static_cast<int64_t>(left->ival) - newval);
+				const auto b = std::abs(static_cast<int64_t>(right->ival) - newval);
+				if (a != b)
+					return a < b;
+				return enhance_original_cascade_down_first ?
+					       left->ival < right->ival :
+					       left->ival > right->ival;
+			});
+	}
+	catch (const std::bad_alloc &)
+	{
+		send_to_char("The enhancement search could not be prepared.\r\n", ch);
+		return;
+	}
+	robj = nullptr;
+	for (const auto *candidate : candidates)
+	{
+		if (!(wearflags & candidate->wear_flags) || candidate->vnum == OBJ_VNUM(source))
+			continue;
+		const auto *prototype = find_object_template(candidate->vnum);
+		if (!prototype)
+			continue;
+		auto view = inspect_object_template(*prototype);
+		const int value = itemvalue(*prototype);
+		if (!(wearflags & view.wear_flags) || !is_enhance_pool_candidate(&view) ||
+		    value <= sval || value > max_result_value)
+			continue;
+		// Only a selected grant attempt enters the object lifecycle.
+		robj = read_object(candidate->vnum, VIRTUAL);
+		if (!robj)
+			continue;
+		const int live_value = itemvalue(robj);
+		if ((wearflags & robj->wear_flags) && is_enhance_pool_candidate(robj) &&
+		    live_value > sval && live_value <= max_result_value)
 			break;
-		searchcount++;
-		if (searchcount > maxsearch)
-			break;
+		extract_obj(robj);
+		robj = nullptr;
 	}
 
 	if (!robj)
 	{
-		act("&+GThe &+ritem gods&+G could not find a higher-value replacement for your &n$p&+G.&n",
-		    FALSE, ch, source, 0, TO_CHAR);
+		snprintf(
+			buf, MAX_STRING_LENGTH,
+			"&+GThe &+ritem gods&+G have no eligible replacement worth 1 to %d more than your &n$p&+G for its slot.&n",
+			max_gain);
+		act(buf, FALSE, ch, source, 0, TO_CHAR);
 		return;
 	}
 
@@ -407,14 +414,14 @@ static const struct
 /* Return an item's unmodified prototype value for one APPLY location. */
 static int enhance_base_modifier(P_obj item, int apply_loc)
 {
-	P_obj base;
+	const object_template *base;
 	int i;
 	int modifier = 0;
 
 	if (!item || apply_loc == APPLY_NONE)
 		return 0;
 
-	base = read_object(OBJ_VNUM(item), VIRTUAL);
+	base = find_object_template(OBJ_VNUM(item));
 	if (!base)
 		return 0;
 
@@ -426,19 +433,17 @@ static int enhance_base_modifier(P_obj item, int apply_loc)
 			break;
 		}
 	}
-	extract_obj(base);
 	return modifier;
 }
 
 /* Format a raw-material object name without retaining a temporary game object. */
 static void enhance_material_name(int vnum, char *buf, size_t size)
 {
-	P_obj material = read_object(vnum, VIRTUAL);
+	const auto *material = find_object_template(vnum);
 
 	if (material)
 	{
-		snprintf(buf, size, "%s", material->short_description);
-		extract_obj(material);
+		snprintf(buf, size, "%s", material->short_description.c_str());
 	}
 	else
 		snprintf(buf, size, "raw material [%d]", vnum);
@@ -447,10 +452,11 @@ static void enhance_material_name(int vnum, char *buf, size_t size)
 static int enhance_entry_modifier(const struct enhance_index_entry *entry, int apply_loc)
 {
 	int i;
+	int total = 0;
 	for (i = 0; i < MAX_OBJ_AFFECT; i++)
 		if (entry->apply_loc[i] == apply_loc)
-			return entry->apply_mod[i];
-	return 0;
+			total += entry->apply_mod[i];
+	return total;
 }
 
 /* Cap the configured prototype multiplier at the largest stored modifier. */
@@ -458,6 +464,8 @@ static int enhance_stat_cap(int base_modifier)
 {
 	if (base_modifier <= 0)
 		return 0;
+	if (enhance_stat_cap_multiplier >= SCHAR_MAX)
+		return SCHAR_MAX;
 	const double cap = base_modifier * enhance_stat_cap_multiplier;
 	return cap >= SCHAR_MAX ? SCHAR_MAX : static_cast<int>(cap);
 }
@@ -555,7 +563,15 @@ static int superior_stat_remaining_steps(P_obj item, int apply_loc, int current,
 
 	for (next = current + 1; next <= cap; next++)
 	{
-		if (!find_stat_enhance_target(item, apply_loc, next))
+		int target_total = 0;
+		const int step = next - current;
+		for (const auto &apply : item->affected)
+			if (apply.location == apply_loc)
+				target_total += apply.modifier +
+						(apply.modifier > 0 && apply.modifier < cap ?
+							 std::min(step, cap - apply.modifier) :
+							 0);
+		if (!find_stat_enhance_target(item, apply_loc, target_total))
 			break;
 		steps++;
 	}
@@ -570,6 +586,8 @@ static bool build_superior_enhancement_plan(P_obj item, struct superior_enhancem
 	obj_data proposed = *item;
 
 	memset(plan, 0, sizeof(*plan));
+	if (source_value < 1)
+		return FALSE;
 	for (i = 0; i < MAX_OBJ_AFFECT; i++)
 	{
 		int base;
@@ -578,7 +596,7 @@ static bool build_superior_enhancement_plan(P_obj item, struct superior_enhancem
 		int low_vnum;
 		int high_vnum;
 		struct enhance_index_entry *target;
-		P_obj target_obj;
+		const object_template *target_obj;
 
 		if (item->affected[i].location == APPLY_NONE || item->affected[i].modifier <= 0 ||
 		    !is_superior_stat_apply(item->affected[i].location))
@@ -587,23 +605,23 @@ static bool build_superior_enhancement_plan(P_obj item, struct superior_enhancem
 		cap = enhance_stat_cap(base);
 		if (base <= 0 || item->affected[i].modifier >= cap)
 			continue;
-		target = find_stat_enhance_target(item, item->affected[i].location,
-						  item->affected[i].modifier + 1);
-		if (!target || !(target_obj = read_object(target->vnum, VIRTUAL)))
+		int desired_total = 0;
+		for (const auto &apply : item->affected)
+			if (apply.location == item->affected[i].location)
+				desired_total += apply.modifier +
+						 (apply.modifier > 0 && apply.modifier < cap);
+		target = find_stat_enhance_target(item, item->affected[i].location, desired_total);
+		if (!target || !(target_obj = find_object_template(target->vnum)))
 			continue;
 
-		low_vnum = get_matstart(target_obj);
-		extract_obj(target_obj);
+		low_vnum = material_start_vnum(target_obj->material);
 		high_vnum = low_vnum + 4;
-		const int64_t material_value = static_cast<int64_t>(target->ival) + 4;
-		const double low_count =
-			(material_value % 5) * enhance_stat_material_quantity_multiplier + 0.999999;
-		const double high_count =
-			(material_value / 5) * enhance_stat_material_quantity_multiplier + 0.999999;
-		if (!(low_count >= 0 && low_count < INT_MAX + 1.0) ||
-		    !(high_count >= 0 && high_count < INT_MAX + 1.0) ||
-		    !superior_plan_add_material(plan, low_vnum, static_cast<int>(low_count)) ||
-		    !superior_plan_add_material(plan, high_vnum, static_cast<int>(high_count)))
+		int high_count, low_count;
+		if (!item_value_material_quantities(target->ival,
+						    enhance_stat_material_quantity_multiplier,
+						    high_count, low_count) ||
+		    !superior_plan_add_material(plan, low_vnum, low_count) ||
+		    !superior_plan_add_material(plan, high_vnum, high_count))
 			return FALSE;
 
 		++proposed.affected[i].modifier;
@@ -677,9 +695,8 @@ static bool perform_superior_enhancement(P_char ch, P_obj source, P_obj pouch,
 		return FALSE;
 	if (enhancement_wallet_balance(ch) < cost)
 	{
-		snprintf(buf, sizeof(buf),
-			 "&+yIt will require &+W%d platinum&+y to enhance this item.\r\n",
-			 cost / 1000);
+		snprintf(buf, sizeof(buf), "&+yIt will require %s&+y to enhance this item.\r\n",
+			 coin_stringv(cost));
 		send_to_char(buf, ch);
 		return FALSE;
 	}
@@ -733,6 +750,11 @@ static bool perform_superior_enhancement(P_char ch, P_obj source, P_obj pouch,
 
 void do_enhance(P_char ch, char *argument, int /*cmd*/)
 {
+	if (!enhancement_values_available)
+	{
+		send_to_char("Enhancement is temporarily unavailable.\r\n", ch);
+		return;
+	}
 	P_obj source, material;
 	P_obj pouch;
 	char first[MAX_INPUT_LENGTH];
@@ -792,12 +814,22 @@ void do_enhance(P_char ch, char *argument, int /*cmd*/)
 			    FALSE, ch, source, 0, TO_CHAR);
 			return;
 		}
-		if (itemvalue(source) > GET_LEVEL(ch) * enhance_level_gate_multiplier)
+		const int source_value = itemvalue(source);
+		if (source_value < 1)
+		{
+			send_to_char(
+				"The item's value is unavailable; enhancement was not attempted.\r\n",
+				ch);
+			return;
+		}
+		const int64_t level_limit =
+			static_cast<int64_t>(GET_LEVEL(ch)) * enhance_level_gate_multiplier;
+		if (source_value > level_limit)
 		{
 			snprintf(
 				rest, sizeof(rest),
-				"&+yThis item has ival %d; at your level you can enhance items up to ival %d.\r\n",
-				itemvalue(source), GET_LEVEL(ch) * enhance_level_gate_multiplier);
+				"&+yThis item has ival %d; at your level you can enhance items up to ival %lld.\r\n",
+				source_value, static_cast<long long>(level_limit));
 			send_to_char(rest, ch);
 			return;
 		}
@@ -1039,6 +1071,13 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 	// the floor would make a cheap essence unusable on exactly the good gear
 	// it exists for.  A dead 'minval' local here once implied otherwise.
 	int val = itemvalue(material);
+	const int source_value = itemvalue(source);
+	if (source_value < 1 || val < 1)
+	{
+		send_to_char("The item's value is unavailable; enhancement was not attempted.\r\n",
+			     ch);
+		return;
+	}
 
 	if (val <= 20)
 	{
@@ -1118,14 +1157,14 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 	proposed.affected[2].location = loc;
 	proposed.affected[2].modifier = mod;
 	const int final_value = itemvalue(&proposed);
-	if (final_value <= itemvalue(source))
+	if (final_value <= source_value)
 	{
 		send_to_char("That essence would not improve your item's value.\r\n", ch);
 		return;
 	}
 
 	const bool encrusted = IS_ENCRUSTED(source);
-	P_obj tempobj = encrusted ? nullptr : read_object(OBJ_VNUM(source), VIRTUAL);
+	const auto *tempobj = encrusted ? nullptr : find_object_template(OBJ_VNUM(source));
 	if (!encrusted && !tempobj)
 	{
 		send_to_char("The original item template is unavailable.\r\n", ch);
@@ -1134,11 +1173,7 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 
 	currency_vector debit{};
 	if (!charge_enhancement(ch, cost, debit))
-	{
-		if (tempobj)
-			extract_obj(tempobj);
 		return;
-	}
 	source->affected[2] = proposed.affected[2];
 	SET_BIT(source->extra2_flags, ITEM2_ENHANCED);
 
@@ -1159,14 +1194,12 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 	char tempdesc[MAX_STRING_LENGTH], short_desc[MAX_STRING_LENGTH],
 		keywords[MAX_STRING_LENGTH];
 
-	snprintf(keywords, MAX_STRING_LENGTH, "%s enhanced", tempobj->name);
+	snprintf(keywords, MAX_STRING_LENGTH, "%s enhanced", tempobj->name.c_str());
 
-	snprintf(tempdesc, MAX_STRING_LENGTH, "%s", tempobj->short_description);
+	snprintf(tempdesc, MAX_STRING_LENGTH, "%s", tempobj->short_description.c_str());
 	checked_snprintf(short_desc, MAX_STRING_LENGTH, "%s %s&n", tempdesc, modstring);
 	set_keywords(source, keywords);
 	set_short_description(source, short_desc);
-	extract_obj(tempobj);
-
 	return;
 }
 
@@ -1221,7 +1254,7 @@ void thanksgiving_proc(P_char ch)
 static void enhance_load_essence_drop(P_char ch, P_char killer)
 {
 	int reward = 0;
-	int moblvl = GET_LEVEL(ch);
+	int64_t moblvl = GET_LEVEL(ch);
 
 	if (!enhance_essence_drop_enabled)
 		return;
@@ -1254,8 +1287,9 @@ static void enhance_load_essence_drop(P_char ch, P_char killer)
 		}
 		if (number(1, primary_roll_max) < moblvl)
 		{
-			debug("enhancematload: mob: '%s' (%d) moblvl %d%s", J_NAME(ch),
-			      GET_VNUM(ch), moblvl, IS_ELITE(ch) ? " ELITE." : ".");
+			debug("enhancematload: mob: '%s' (%d) moblvl %lld%s", J_NAME(ch),
+			      GET_VNUM(ch), static_cast<long long>(moblvl),
+			      IS_ELITE(ch) ? " ELITE." : ".");
 			if (number(1, max_roll_max) < moblvl)
 			{
 				switch (number(1, 8))
@@ -1357,7 +1391,6 @@ static void enhance_load_essence_drop(P_char ch, P_char killer)
 		 */
 
 /* ---- Config settings (defaults) ---- */
-int enhance_ival_cap = 95;
 int enhance_material_ival_delta = 5;
 int enhance_guild_insignia_ival_bonus = 5;
 int enhance_cost_low_ival_threshold = 20;
@@ -1613,6 +1646,59 @@ static struct enhance_essence_zone_rule *enhance_find_essence_zone_rule(int zone
 		 *  load_enhance_config() — Parse lib/enhance.cfg for settings and bitvector masks
 		 * =============================================================================
 		 */
+static int enhance_config_int(const char *key, const char *text, int previous, int low, int high)
+{
+	int value;
+	if (!config_parse_int(text, value) || value < low || value > high)
+	{
+		logit(LOG_STATUS, "Invalid enhancement config %s=%s; retaining previous value.",
+		      key, text);
+		return previous;
+	}
+	return value;
+}
+
+static double enhance_config_real(const char *key, const char *text, double previous,
+				  double maximum)
+{
+	double value;
+	if (!config_parse_double(text, value) || value <= 0 || value > maximum)
+	{
+		logit(LOG_STATUS, "Invalid enhancement config %s=%s; retaining previous value.",
+		      key, text);
+		return previous;
+	}
+	return value;
+}
+
+static bool enhance_config_zone_rule(char *text, enhance_essence_zone_rule &rule)
+{
+	int values[4]{};
+	int count = 0;
+	for (char *field = text;;)
+	{
+		if (count == 4)
+			return false;
+		char *colon = strchr(field, ':');
+		if (colon)
+			*colon = '\0';
+		char *end = field + strlen(field);
+		while (end > field && isspace(static_cast<unsigned char>(end[-1])))
+			*--end = '\0';
+		while (isspace(static_cast<unsigned char>(*field)))
+			++field;
+		if ((*field && !config_parse_int(field, values[count])) ||
+		    values[count] < (count ? 0 : 1))
+			return false;
+		++count;
+		if (!colon)
+			break;
+		field = colon + 1;
+	}
+	rule = { values[0], values[1], values[2], values[3] };
+	return true;
+}
+
 void load_enhance_config(void)
 {
 	FILE *fp;
@@ -1620,21 +1706,36 @@ void load_enhance_config(void)
 	char section[64];
 	int section_idx;
 	int i, line_num;
-	char flag_name[128];
 	char *p, *eq, *comma;
-
-	fp = fopen("lib/enhance.cfg", "r");
-	if (!fp)
-	{
-		fprintf(stderr, "WARNING: Cannot open lib/enhance.cfg — using defaults.\n");
-		logit(LOG_STATUS, "WARNING: Cannot open lib/enhance.cfg — using defaults.");
-		return;
-	}
 
 	section[0] = '\0';
 	section_idx = -1;
 	line_num = 0;
-	/* Reloads must not retain stale opt-ins or pool exclusions. */
+	/* Every load starts from compiled defaults, including a missing file. */
+	enhance_material_ival_delta = 5;
+	enhance_guild_insignia_ival_bonus = 5;
+	enhance_cost_low_ival_threshold = 20;
+	enhance_cost_low_amount = 1000;
+	enhance_cost_high_amount = 10000;
+	enhance_search_vnum_min = 1300;
+	enhance_search_vnum_max = 134000;
+	enhance_search_max_attempts = 20000;
+	enhance_wear_skip_mask = ITEM_TAKE | ITEM_HOLD | ITEM_ATTACH_BELT | ITEM_WEAR_BACK;
+	enhance_original_max_roll = 4;
+	enhance_original_cascade_down_first = 1;
+	enhance_level_gate_multiplier = 3;
+	enhance_mod_max_steps = 3;
+	enhance_luck_extreme_range = 1200;
+	enhance_luck_very_range = 800;
+	enhance_luck_lucky_range = 400;
+	enhance_ival_gain_extreme = 4;
+	enhance_ival_gain_very = 3;
+	enhance_ival_gain_lucky = 2;
+	enhance_ival_gain_normal = 1;
+	enhance_stat_cap_multiplier = 1.5;
+	enhance_stat_platinum_base = 1000;
+	enhance_stat_platinum_per_ival = 100;
+	enhance_stat_material_quantity_multiplier = 1.0;
 	enhance_allow_mask = 0;
 	enhance_allow_mask2 = 0;
 	enhance_allow_mask3 = 0;
@@ -1652,9 +1753,37 @@ void load_enhance_config(void)
 	enhance_pool_excluded_zone_count = 0;
 	enhance_pool_excluded_vnum_count = 0;
 
+	fp = fopen("lib/enhance.cfg", "r");
+	if (!fp)
+	{
+		fprintf(stderr, "WARNING: Cannot open lib/enhance.cfg — using defaults.\n");
+		logit(LOG_STATUS, "WARNING: Cannot open lib/enhance.cfg — using defaults.");
+		return;
+	}
+
 	while (fgets(line, sizeof(line), fp))
 	{
 		line_num++;
+		// Judge by length: an embedded NUL must not make a complete line look cut off.
+		if (strlen(line) == sizeof(line) - 1 && line[sizeof(line) - 2] != '\n')
+		{
+			int next = fgetc(fp);
+			if (next != EOF && next != '\n')
+			{
+				while (next != EOF && next != '\n')
+					next = fgetc(fp);
+				logit(LOG_STATUS, "Ignoring overlong enhancement config line %d.",
+				      line_num);
+				continue;
+			}
+		}
+		if (char *comment = strchr(line, '#'))
+			*comment = '\0';
+		p = line;
+		while (*p == ' ' || *p == '\t')
+			++p;
+		if (p != line)
+			memmove(line, p, strlen(p) + 1);
 
 		/* Strip trailing whitespace / newline */
 		p = line + strlen(line);
@@ -1669,6 +1798,14 @@ void load_enhance_config(void)
 		/* Detect section header */
 		if (line[0] == '[')
 		{
+			char *closing = strchr(line, ']');
+			if (!closing || closing[1])
+			{
+				section_idx = -1;
+				logit(LOG_STATUS, "Invalid enhancement section on line %d.",
+				      line_num);
+				continue;
+			}
 			p = line + 1;
 			i = 0;
 			while (*p && *p != ']' && i < (int)sizeof(section) - 1)
@@ -1697,17 +1834,23 @@ void load_enhance_config(void)
 				section_idx = 13;
 			else if (!strcmp(section, "bitvector5"))
 				section_idx = 14;
-			else if (!strcmp(section, "spell"))
-				section_idx = 20;
 			else
+			{
 				section_idx = -1;
+				logit(LOG_STATUS, "Unsupported enhancement section [%s].", section);
+			}
 			continue;
 		}
 
 		/* Parse key = value lines */
 		eq = strchr(line, '=');
 		if (!eq)
+		{
+			if (section_idx >= 0)
+				logit(LOG_STATUS, "Malformed enhancement setting on line %d.",
+				      line_num);
 			continue;
+		}
 
 		*eq = '\0';
 		/* Trim key */
@@ -1715,9 +1858,9 @@ void load_enhance_config(void)
 		while (*p == ' ' || *p == '	')
 			p++;
 		char *key = p;
-		p = eq - 1;
-		while (p > key && (*p == ' ' || *p == '	'))
-			*p-- = '\0';
+		p = eq;
+		while (p > key && (p[-1] == ' ' || p[-1] == '\t'))
+			*--p = '\0';
 
 		/* Trim value */
 		p = eq + 1;
@@ -1727,203 +1870,210 @@ void load_enhance_config(void)
 
 		if (section_idx == 0)
 		{
-			/* [settings] section */
-			int ival = atoi(val);
-
-			if (!strcmp(key, "enhance.ival.cap"))
-				enhance_ival_cap = ival;
-			else if (!strcmp(key, "enhance.material.ival.delta"))
-				enhance_material_ival_delta = ival;
+			if (!strcmp(key, "enhance.material.ival.delta"))
+				enhance_material_ival_delta = enhance_config_int(
+					key, val, enhance_material_ival_delta, INT_MIN, INT_MAX);
 			else if (!strcmp(key, "enhance.guild.insignia.ival.bonus"))
-				enhance_guild_insignia_ival_bonus = ival;
+				enhance_guild_insignia_ival_bonus = enhance_config_int(
+					key, val, enhance_guild_insignia_ival_bonus, INT_MIN,
+					INT_MAX);
 			else if (!strcmp(key, "enhance.cost.low.ival.threshold"))
-				enhance_cost_low_ival_threshold = ival;
+				enhance_cost_low_ival_threshold = enhance_config_int(
+					key, val, enhance_cost_low_ival_threshold, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.cost.low.amount"))
-				enhance_cost_low_amount = ival;
+				enhance_cost_low_amount = enhance_config_int(
+					key, val, enhance_cost_low_amount, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.cost.high.amount"))
-				enhance_cost_high_amount = ival;
+				enhance_cost_high_amount = enhance_config_int(
+					key, val, enhance_cost_high_amount, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.search.vnum.min"))
-				enhance_search_vnum_min = ival;
+				enhance_search_vnum_min = enhance_config_int(
+					key, val, enhance_search_vnum_min, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.search.vnum.max"))
-				enhance_search_vnum_max = ival;
+				enhance_search_vnum_max = enhance_config_int(
+					key, val, enhance_search_vnum_max, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.search.max.attempts"))
-				enhance_search_max_attempts = ival;
+				enhance_search_max_attempts = enhance_config_int(
+					key, val, enhance_search_max_attempts, 1, INT_MAX);
 			else if (!strcmp(key, "enhance.wear.skip.mask"))
-				enhance_wear_skip_mask = ival;
+				enhance_wear_skip_mask = enhance_config_int(
+					key, val, enhance_wear_skip_mask, INT_MIN, INT_MAX);
 			else if (!strcmp(key, "enhance.original.max.roll"))
-				enhance_original_max_roll = ival;
+				enhance_original_max_roll = enhance_config_int(
+					key, val, enhance_original_max_roll, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.original.cascade.down.first"))
-				enhance_original_cascade_down_first = ival;
-			else if (!strcmp(key, "enhance.level.gate.multiplier") && ival > 0)
-				enhance_level_gate_multiplier = ival;
-			else if (!strcmp(key, "enhance.mod.max.steps") && ival > 0)
-				enhance_mod_max_steps = ival;
+				enhance_original_cascade_down_first = enhance_config_int(
+					key, val, enhance_original_cascade_down_first, 0, 1);
+			else if (!strcmp(key, "enhance.level.gate.multiplier"))
+				enhance_level_gate_multiplier = enhance_config_int(
+					key, val, enhance_level_gate_multiplier, 1, INT_MAX);
+			else if (!strcmp(key, "enhance.mod.max.steps"))
+				enhance_mod_max_steps = enhance_config_int(
+					key, val, enhance_mod_max_steps, 1, INT_MAX);
 			else if (!strcmp(key, "enhance.luck.extreme.range"))
-				enhance_luck_extreme_range = ival;
+				enhance_luck_extreme_range = enhance_config_int(
+					key, val, enhance_luck_extreme_range, 1, INT_MAX);
 			else if (!strcmp(key, "enhance.luck.very.range"))
-				enhance_luck_very_range = ival;
+				enhance_luck_very_range = enhance_config_int(
+					key, val, enhance_luck_very_range, 1, INT_MAX);
 			else if (!strcmp(key, "enhance.luck.lucky.range"))
-				enhance_luck_lucky_range = ival;
+				enhance_luck_lucky_range = enhance_config_int(
+					key, val, enhance_luck_lucky_range, 1, INT_MAX);
 			else if (!strcmp(key, "enhance.ival.gain.extreme"))
-				enhance_ival_gain_extreme = ival;
+				enhance_ival_gain_extreme = enhance_config_int(
+					key, val, enhance_ival_gain_extreme, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.ival.gain.very"))
-				enhance_ival_gain_very = ival;
+				enhance_ival_gain_very = enhance_config_int(
+					key, val, enhance_ival_gain_very, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.ival.gain.lucky"))
-				enhance_ival_gain_lucky = ival;
+				enhance_ival_gain_lucky = enhance_config_int(
+					key, val, enhance_ival_gain_lucky, 0, INT_MAX);
 			else if (!strcmp(key, "enhance.ival.gain.normal"))
-				enhance_ival_gain_normal = ival;
-			/* skip unknown settings silently */
+				enhance_ival_gain_normal = enhance_config_int(
+					key, val, enhance_ival_gain_normal, 0, INT_MAX);
+			else
+				logit(LOG_STATUS, "Unknown enhancement setting %s in [%s].", key,
+				      section);
 		}
 		else if (section_idx == 1)
 		{
-			/* [enhance_stat] section: explicit on/off gate for the stat lane. */
 			if (!strcmp(key, "enhance_stat.enabled"))
-				enhance_stat_enabled = atoi(val) ? 1 : 0;
+				enhance_stat_enabled =
+					enhance_config_int(key, val, enhance_stat_enabled, 0, 1);
 			else if (!strcmp(key, "enhance_stat.npc_material_fallback.enabled"))
-				enhance_stat_npc_material_fallback_enabled = atoi(val) ? 1 : 0;
-			else if (!strcmp(key, "enhance_stat.cap.multiplier") &&
-				 strtod(val, NULL) > 0.0)
-				enhance_stat_cap_multiplier = strtod(val, NULL);
-			else if (!strcmp(key, "enhance_stat.platinum.base") && atoi(val) >= 0)
-				enhance_stat_platinum_base = atoi(val);
-			else if (!strcmp(key, "enhance_stat.platinum.per.ival") && atoi(val) >= 0)
-				enhance_stat_platinum_per_ival = atoi(val);
-			else if (!strcmp(key, "enhance_stat.material.quantity.mult") &&
-				 strtod(val, NULL) > 0.0)
-				enhance_stat_material_quantity_multiplier = strtod(val, NULL);
+				enhance_stat_npc_material_fallback_enabled = enhance_config_int(
+					key, val, enhance_stat_npc_material_fallback_enabled, 0, 1);
+			else if (!strcmp(key, "enhance_stat.cap.multiplier"))
+				enhance_stat_cap_multiplier = enhance_config_real(
+					key, val, enhance_stat_cap_multiplier, DBL_MAX);
+			else if (!strcmp(key, "enhance_stat.platinum.base"))
+				enhance_stat_platinum_base = enhance_config_int(
+					key, val, enhance_stat_platinum_base, 0, INT_MAX);
+			else if (!strcmp(key, "enhance_stat.platinum.per.ival"))
+				enhance_stat_platinum_per_ival = enhance_config_int(
+					key, val, enhance_stat_platinum_per_ival, 0, INT_MAX);
+			else if (!strcmp(key, "enhance_stat.material.quantity.mult"))
+				enhance_stat_material_quantity_multiplier = enhance_config_real(
+					key, val, enhance_stat_material_quantity_multiplier,
+					INT_MAX);
+			else
+				logit(LOG_STATUS, "Unknown enhancement setting %s in [%s].", key,
+				      section);
 		}
 		else if (section_idx == 4)
 		{
 			if (!strcmp(key, "enhance.essence_drop.enabled"))
-				enhance_essence_drop_enabled = atoi(val) ? 1 : 0;
-			else if (!strcmp(key, "enhance.essence_drop.primary_roll_max") &&
-				 atoi(val) > 0)
-				enhance_essence_primary_roll_max = atoi(val);
-			else if (!strcmp(key, "enhance.essence_drop.max_roll_max") && atoi(val) > 0)
-				enhance_essence_max_roll_max = atoi(val);
-			else if (!strcmp(key, "enhance.essence_drop.elite_level_multiplier") &&
-				 atoi(val) > 0)
-				enhance_essence_elite_level_multiplier = atoi(val);
-			else if (!strcmp(key, "enhance.essence_drop.minimum_level") &&
-				 atoi(val) >= 1 && atoi(val) <= 100)
-				enhance_essence_minimum_level = atoi(val);
-			else if (!strcmp(key, "enhance.essence_drop.maximum_level") &&
-				 atoi(val) >= 1)
-				enhance_essence_maximum_level = atoi(val);
+				enhance_essence_drop_enabled = enhance_config_int(
+					key, val, enhance_essence_drop_enabled, 0, 1);
+			else if (!strcmp(key, "enhance.essence_drop.primary_roll_max"))
+				enhance_essence_primary_roll_max = enhance_config_int(
+					key, val, enhance_essence_primary_roll_max, 1, INT_MAX);
+			else if (!strcmp(key, "enhance.essence_drop.max_roll_max"))
+				enhance_essence_max_roll_max = enhance_config_int(
+					key, val, enhance_essence_max_roll_max, 1, INT_MAX);
+			else if (!strcmp(key, "enhance.essence_drop.elite_level_multiplier"))
+				enhance_essence_elite_level_multiplier = enhance_config_int(
+					key, val, enhance_essence_elite_level_multiplier, 1,
+					INT_MAX);
+			else if (!strcmp(key, "enhance.essence_drop.minimum_level"))
+				enhance_essence_minimum_level = enhance_config_int(
+					key, val, enhance_essence_minimum_level, 1, 100);
+			else if (!strcmp(key, "enhance.essence_drop.maximum_level"))
+				enhance_essence_maximum_level = enhance_config_int(
+					key, val, enhance_essence_maximum_level, 1, INT_MAX);
+			else
+				logit(LOG_STATUS, "Unknown enhancement setting %s in [%s].", key,
+				      section);
 		}
 		else if (section_idx == 5 && !strcmp(key, "zone"))
 		{
-			/* [essence_drop_zone] — sparse per-zone essence drop overrides.
-					 * Format: zone=<vzone>[:<primary_roll_max>[:<max_roll_max>[:<elite_mult>]]]
-					 * Any numeric field omitted or 0 inherits the global [essence_drop] default.
-					 * Examples:
-					 *   zone=50              (zone 50, all globals)
-					 *   zone=50:2000         (zone 50, primary=2000, rest global)
-					 *   zone=50:2000:3000    (zone 50, primary=2000, max=3000, rest global)
-					 *   zone=50:2000:3000:2  (zone 50, primary=2000, max=3000, elite_mult=2)
-					 */
-			int vzone, pval, mval, eval;
-			char *colon, *rest;
-			vzone = atoi(val);
-			if (vzone <= 0 ||
-			    enhance_essence_zone_rule_count >= ENHANCE_ESSENCE_MAX_ZONE_RULES)
-				continue;
-			pval = mval = eval = 0; /* 0 = inherit global default */
-			rest = val;
-			colon = strchr(rest, ':');
-			if (colon)
-			{
-				pval = atoi(colon + 1);
-				rest = colon + 1;
-				colon = strchr(rest, ':');
-				if (colon)
-				{
-					mval = atoi(colon + 1);
-					rest = colon + 1;
-					colon = strchr(rest, ':');
-					if (colon)
-						eval = atoi(colon + 1);
-				}
-			}
-			enhance_essence_zone_rules[enhance_essence_zone_rule_count].zone_number =
-				vzone;
-			enhance_essence_zone_rules[enhance_essence_zone_rule_count]
-				.primary_roll_max = pval;
-			enhance_essence_zone_rules[enhance_essence_zone_rule_count].max_roll_max =
-				mval;
-			enhance_essence_zone_rules[enhance_essence_zone_rule_count]
-				.elite_level_multiplier = eval;
-			enhance_essence_zone_rule_count++;
+			enhance_essence_zone_rule rule{};
+			if (enhance_essence_zone_rule_count >= ENHANCE_ESSENCE_MAX_ZONE_RULES ||
+			    !enhance_config_zone_rule(val, rule))
+				logit(LOG_STATUS,
+				      "Invalid or excessive enhancement zone rule on line %d.",
+				      line_num);
+			else
+				enhance_essence_zone_rules[enhance_essence_zone_rule_count++] =
+					rule;
 		}
 		else if (section_idx == 2 && !strcmp(key, "zone"))
 		{
-			if (enhance_pool_excluded_zone_count < ENHANCE_MAX_POOL_EXCLUSIONS)
+			int value;
+			if (!config_parse_int(val, value) || value < 0 ||
+			    enhance_pool_excluded_zone_count >= ENHANCE_MAX_POOL_EXCLUSIONS)
+				logit(LOG_STATUS,
+				      "Invalid or excessive enhancement zone exclusion on line %d.",
+				      line_num);
+			else
 				enhance_pool_excluded_zones[enhance_pool_excluded_zone_count++] =
-					atoi(val);
+					value;
 		}
 		else if (section_idx == 3 && !strcmp(key, "vnum"))
 		{
-			if (enhance_pool_excluded_vnum_count < ENHANCE_MAX_POOL_EXCLUSIONS)
+			int value;
+			if (!config_parse_int(val, value) || value < 1 ||
+			    enhance_pool_excluded_vnum_count >= ENHANCE_MAX_POOL_EXCLUSIONS)
+				logit(LOG_STATUS,
+				      "Invalid or excessive enhancement vnum exclusion on line %d.",
+				      line_num);
+			else
 				enhance_pool_excluded_vnums[enhance_pool_excluded_vnum_count++] =
-					atoi(val);
+					value;
 		}
 		else if (section_idx >= 10 && section_idx <= 14)
 		{
-			/* [bitvector] through [bitvector5] sections */
-			/* Format: FLAG_NAME = ival, allowed */
+			/* The first column is reference-only; the second is a strict boolean. */
 			comma = strchr(val, ',');
 			if (!comma)
-				continue;
-
-			*comma = '\0';
-			/* Trim allowed value */
-			p = comma + 1;
-			while (*p == ' ' || *p == '	')
-				p++;
-			int allowed = atoi(p);
-
-			/* Trim flag name from key */
-			strncpy(flag_name, key, sizeof(flag_name) - 1);
-			flag_name[sizeof(flag_name) - 1] = '\0';
-
-			/* Look up flag name */
-			int bit_section = section_idx - 10; /* 0=bitvector, 1=bitvector2, ... */
-			for (i = 0; enhance_flag_lookup[i].name; i++)
 			{
+				logit(LOG_STATUS, "Invalid enhancement flag row %s.", key);
+				continue;
+			}
+			p = comma + 1;
+			while (*p == ' ' || *p == '\t')
+				++p;
+			int allowed;
+			if (!config_parse_int(p, allowed) || allowed < 0 || allowed > 1)
+			{
+				logit(LOG_STATUS, "Invalid enhancement flag permission for %s.",
+				      key);
+				continue;
+			}
+			const int bit_section = section_idx - 10;
+			unsigned long *masks[] = { &enhance_allow_mask, &enhance_allow_mask2,
+						   &enhance_allow_mask3, &enhance_allow_mask4,
+						   &enhance_allow_mask5 };
+			for (i = 0; enhance_flag_lookup[i].name; ++i)
 				if (enhance_flag_lookup[i].section == bit_section &&
-				    !strcmp(flag_name, enhance_flag_lookup[i].name))
+				    !strcmp(key, enhance_flag_lookup[i].name))
 				{
 					if (allowed)
-					{
-						switch (bit_section)
-						{
-						case 0:
-							SET_BIT(enhance_allow_mask,
-								enhance_flag_lookup[i].bit);
-							break;
-						case 1:
-							SET_BIT(enhance_allow_mask2,
-								enhance_flag_lookup[i].bit);
-							break;
-						case 2:
-							SET_BIT(enhance_allow_mask3,
-								enhance_flag_lookup[i].bit);
-							break;
-						case 3:
-							SET_BIT(enhance_allow_mask4,
-								enhance_flag_lookup[i].bit);
-							break;
-						case 4:
-							SET_BIT(enhance_allow_mask5,
-								enhance_flag_lookup[i].bit);
-							break;
-						}
-					}
+						*masks[bit_section] |= enhance_flag_lookup[i].bit;
+					else
+						*masks[bit_section] &= ~enhance_flag_lookup[i].bit;
 					break;
 				}
-			}
+			if (!enhance_flag_lookup[i].name)
+				logit(LOG_STATUS, "Unknown enhancement flag %s in [%s].", key,
+				      section);
 		}
-		/* ignore [enhance_stat] and [spell] sections for now */
+		else if (section_idx >= 0)
+			logit(LOG_STATUS, "Unknown enhancement setting %s in [%s].", key, section);
+	}
+
+	if (enhance_search_vnum_min > enhance_search_vnum_max)
+	{
+		logit(LOG_STATUS, "Invalid enhancement search range; using compiled defaults.");
+		enhance_search_vnum_min = 1300;
+		enhance_search_vnum_max = 134000;
+	}
+	if (enhance_essence_minimum_level > enhance_essence_maximum_level)
+	{
+		logit(LOG_STATUS,
+		      "Invalid enhancement essence level range; using compiled defaults.");
+		enhance_essence_minimum_level = 1;
+		enhance_essence_maximum_level = 1000000;
 	}
 
 	fclose(fp);
@@ -1994,7 +2144,7 @@ static bool is_enhance_pool_banned(P_obj item)
 }
 
 /* Use the same eligibility rules at index build time and when loading a result. */
-static bool is_enhance_pool_candidate(P_obj obj)
+bool is_enhance_pool_candidate(P_obj obj)
 {
 	if (!IS_SET(obj->wear_flags, ITEM_TAKE) ||
 	    IS_SET(obj->extra_flags,
@@ -2013,83 +2163,80 @@ static bool is_enhance_pool_candidate(P_obj obj)
 		 *  load_enhance_index() — Build ival and stat hash tables from vnum range
 		 * =============================================================================
 		 */
-void load_enhance_index(void)
+static std::vector<enhance_index_entry> enhance_index_entries;
+
+bool load_enhance_index(void)
 {
-	int vnum, ival, h, sh, j, count;
-	P_obj obj;
-	struct enhance_index_entry *entry;
-
-	fprintf(stderr, "-- Building enhance index (vnum %d to %d)...\n", enhance_search_vnum_min,
-		enhance_search_vnum_max);
-	logit(LOG_STATUS, "Building enhance index (vnum %d to %d)...", enhance_search_vnum_min,
-	      enhance_search_vnum_max);
-
-	count = 0;
-
-	for (vnum = enhance_search_vnum_min; vnum <= enhance_search_vnum_max; vnum++)
+	std::vector<enhance_index_entry> built;
+	std::array<enhance_index_entry *, ENHANCE_IVAL_TABLE_SIZE> values{};
+	std::array<enhance_index_entry *, ENHANCE_STAT_TABLE_SIZE> stats{};
+	int count = 0;
+	try
 	{
-		obj = read_object(vnum, VIRTUAL);
-		if (!obj)
-			continue;
-
-		if (!is_enhance_pool_candidate(obj))
+		built.reserve((static_cast<size_t>(top_of_objt) + 1) * (MAX_OBJ_AFFECT + 1));
+		for (int rnum = 0; rnum <= top_of_objt; ++rnum)
 		{
-			extract_obj(obj);
-			continue;
-		}
-
-		ival = itemvalue(obj);
-
-		/* Allocate and fill index entry */
-		entry = (struct enhance_index_entry *)malloc(sizeof(struct enhance_index_entry));
-		if (!entry)
-		{
-			extract_obj(obj);
-			continue;
-		}
-
-		entry->vnum = vnum;
-		entry->ival = ival;
-		entry->wear_flags = obj->wear_flags;
-		entry->material = obj->material;
-
-		for (j = 0; j < MAX_OBJ_AFFECT; j++)
-		{
-			entry->apply_loc[j] = obj->affected[j].location;
-			entry->apply_mod[j] = obj->affected[j].modifier;
-		}
-
-		/* Insert into ival hash table */
-		h = enhance_hash(ival);
-		entry->next = enhance_ival_table[h];
-		enhance_ival_table[h] = entry;
-
-		/* Insert into stat hash table (by each apply location that has a modifier) */
-		for (j = 0; j < MAX_OBJ_AFFECT; j++)
-		{
-			if (obj->affected[j].location != APPLY_NONE &&
-			    obj->affected[j].modifier != 0)
+			const int vnum = obj_index[rnum].virtual_number;
+			// Cache every source/material too; runtime inspection never parses files.
+			if (!cache_object_template(vnum))
 			{
-				/* Allocate a separate entry for stat table */
-				struct enhance_index_entry *stat_entry;
-				stat_entry = (struct enhance_index_entry *)malloc(
-					sizeof(struct enhance_index_entry));
-				if (!stat_entry)
-					continue;
-
-				memcpy(stat_entry, entry, sizeof(struct enhance_index_entry));
-				sh = enhance_stat_hash(obj->affected[j].location);
-				stat_entry->next = enhance_stat_table[sh];
-				enhance_stat_table[sh] = stat_entry;
+				logit(LOG_STATUS,
+				      "enhance: template %d unavailable; index not published",
+				      vnum);
+				return false;
 			}
+			if (vnum < enhance_search_vnum_min || vnum > enhance_search_vnum_max)
+				continue;
+			const auto *prototype = find_object_template(vnum);
+			auto view = inspect_object_template(*prototype);
+			if (!is_enhance_pool_candidate(&view))
+				continue;
+			const int value = itemvalue(*prototype);
+			if (value < 1)
+				continue;
+			auto &entry = built.emplace_back();
+			entry.vnum = vnum;
+			entry.ival = value;
+			entry.wear_flags = view.wear_flags;
+			entry.material = view.material;
+			for (int slot = 0; slot < MAX_OBJ_AFFECT; ++slot)
+			{
+				entry.apply_loc[slot] = view.affected[slot].location;
+				entry.apply_mod[slot] = view.affected[slot].modifier;
+			}
+			const int bucket = enhance_hash(value);
+			entry.next = values[bucket];
+			values[bucket] = &entry;
+			for (int slot = 0; slot < MAX_OBJ_AFFECT; ++slot)
+			{
+				const int location = entry.apply_loc[slot];
+				if (location == APPLY_NONE ||
+				    enhance_entry_modifier(&entry, location) == 0)
+					continue;
+				bool duplicate = false;
+				for (int prior = 0; prior < slot; ++prior)
+					duplicate |= entry.apply_loc[prior] == location;
+				if (duplicate)
+					continue;
+				auto &stat = built.emplace_back(entry);
+				const int key = enhance_stat_hash(location);
+				stat.next = stats[key];
+				stats[key] = &stat;
+			}
+			++count;
 		}
-
-		extract_obj(obj);
-		count++;
 	}
-
-	fprintf(stderr, "-- Enhance index built: %d entries indexed\n", count);
-	logit(LOG_STATUS, "Enhance index built: %d entries indexed", count);
+	catch (const std::bad_alloc &)
+	{
+		logit(LOG_STATUS, "enhance: allocation failed; index not published");
+		return false;
+	}
+	enhance_index_entries.swap(built);
+	std::copy(values.begin(), values.end(), enhance_ival_table);
+	std::copy(stats.begin(), stats.end(), enhance_stat_table);
+	logit(LOG_STATUS, "Enhance index built: %d templates, %zu entries", count,
+	      enhance_index_entries.size());
+	return true;
 }
 
 /* Enhancement lifecycle/event boundary. Other gameplay systems call these
@@ -2100,13 +2247,26 @@ bool enhancement_system_is_ready(void)
 	return enhancement_system_ready;
 }
 
+void refresh_enhancement_item_values()
+{
+	if (enhancement_system_ready && !load_enhance_index())
+	{
+		enhancement_system_ready = false;
+		enhancement_values_available = false;
+		logit(LOG_STATUS,
+		      "Enhancement disabled until restart: valuation index rebuild failed");
+	}
+}
+
 void boot_enhancement_system(void)
 {
 	if (enhancement_system_ready)
 		return;
 	load_enhance_config();
-	load_enhance_index();
+	if (!load_enhance_index())
+		fatal_boot_error("enhancement", "Could not build complete enhancement index");
 	enhancement_system_ready = true;
+	enhancement_values_available = true;
 }
 
 void enhance_on_eligible_npc_death(P_char ch, P_char killer)

@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 from run_world_quest_dual_backend import setup_run_root
 
@@ -346,5 +346,5 @@ if __name__ == '__main__':
         if args.server:
             binary = args.server.resolve()
         else:
-            binary = journey.build_flatfile_server(build / 'server')
+            binary = journey.build_mariadb_server(build / 'server')
         run(binary, args.backend, args.conflicts_only)

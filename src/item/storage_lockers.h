@@ -15,6 +15,8 @@
 #include <string.h>
 #include <string>
 #include <memory>
+#include <set>
+#include <map>
 #include <vector>
 #include "item/item_transfer_command.h"
 
@@ -91,6 +93,7 @@ class StorageLocker
 	}
 	uint64_t VisitId(void) const { return m_chLocker ? m_chLocker->runtime_id : 0; }
 	bool PrivateContentsDurable(void);
+	void ReturnNorentItems(void);
 	bool LockerToPFile(void);
 	void PFileToLocker(void);
 	void SortIValues(void);
@@ -101,19 +104,23 @@ class StorageLocker
 	bool SchedulePrivateSave(void);
 	int m_itemCount;
 
-	int GetCurrentChestId(void) { return m_currentChestId; };
-	void SetCurrentChestId(int id, bool manager = false)
+	const std::map<int, bool> &GetOpenChests(void) const { return m_openChests; }
+	void OpenChest(int id, bool manager = false)
 	{
-		m_currentChestId = id;
-		m_currentChestManager = manager;
-	};
-	bool CurrentChestOpenedAsManager(void) const { return m_currentChestManager; }
+		m_openChests[id] = manager;
+		m_chestsOpenedThisVisit.insert(id);
+	}
+	bool CloseChest(int id)
+	{
+		AdvanceChestAccessGeneration();
+		return m_openChests.erase(id) != 0;
+	}
 	uint64_t GetChestAccessGeneration(void) const { return m_chestAccessGeneration; }
+	uint64_t AdvanceChestAccessGeneration(void) { return ++m_chestAccessGeneration; }
 	void InvalidateChestAccess(void)
 	{
-		m_currentChestId = 0;
-		m_currentChestManager = false;
-		++m_chestAccessGeneration;
+		m_openChests.clear();
+		AdvanceChestAccessGeneration();
 	}
 	int GetLockerId(void) { return m_lockerId; };
 	void SetLockerId(int id) { m_lockerId = id; };
@@ -139,8 +146,10 @@ class StorageLocker
 	bool m_userIsOwner;
 	//  int m_itemCount;
 	bool m_bIValue;
-	int m_currentChestId;
-	bool m_currentChestManager;
+	// Each open chest records whether it was authorized as a manager.
+	std::map<int, bool> m_openChests;
+	// Outlives closing the chest, which a departure does before the final save.
+	std::set<int> m_chestsOpenedThisVisit;
 	uint64_t m_chestAccessGeneration;
 	int m_lockerId;
 	int m_publicChestId;

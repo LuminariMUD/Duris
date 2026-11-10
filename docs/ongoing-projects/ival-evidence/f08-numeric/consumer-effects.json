@@ -1,0 +1,101 @@
+{
+  "template": {
+    "changed_scores": 0,
+    "score_delta_range": [
+      0,
+      0
+    ],
+    "salvage_quality_crossings": {
+      "5": 0,
+      "10": 0,
+      "15": 0,
+      "20": 0
+    },
+    "salvage_recipe_roll_100_crossings": 0,
+    "faerie_bag_crossings": {
+      "25": 0,
+      "50": 0,
+      "125": 0
+    },
+    "faerie_bag_high_value_log_crossings": 0,
+    "raw_score_25_50_125_crossings": {
+      "25": 0,
+      "50": 0,
+      "125": 0
+    },
+    "recipe_admission_changes": 0,
+    "craft_mortal_level_requirement_changes": 0,
+    "recipe_material_plan_changes": 0,
+    "recipe_high_units_delta_one_craft_each": 0,
+    "recipe_low_units_delta_one_craft_each": 0,
+    "nominal_recipe_xp_delta_one_craft_each": 0,
+    "enhance_source_mortal_level_requirement_changes": 0,
+    "enhance_mortal_source_donor_floor_shifts": {},
+    "replacement_fee_changes": 0,
+    "nominal_superior_cost_delta_mortal_sources_copper": 0,
+    "enhancement_index_score_bucket_changes": 0,
+    "enhancement_result_cap_crossings": 0,
+    "quest_reward_floor_losses": 0,
+    "quest_reward_floor_gains": 0,
+    "changed_rows_with_unpriced_bank5": 0,
+    "changed_native_proc_credits": [],
+    "changed_dense_callable_packed_rows": 0,
+    "changed_partially_callable_packed_ids": [],
+    "changed_single_apply_kind_ids": [],
+    "changed_without_mixed_apply_stages_ids": []
+  },
+  "generated": {
+    "changed_scores": 0,
+    "score_delta_range": [
+      0,
+      0
+    ],
+    "salvage_quality_crossings": {
+      "5": 0,
+      "10": 0,
+      "15": 0,
+      "20": 0
+    },
+    "salvage_recipe_roll_100_crossings": 0,
+    "faerie_bag_crossings": {
+      "25": 0,
+      "50": 0,
+      "125": 0
+    },
+    "faerie_bag_high_value_log_crossings": 0,
+    "raw_score_25_50_125_crossings": {
+      "25": 0,
+      "50": 0,
+      "125": 0
+    },
+    "recipe_admission_changes": 0,
+    "craft_mortal_level_requirement_changes": 0,
+    "recipe_material_plan_changes": 0,
+    "recipe_high_units_delta_one_craft_each": 0,
+    "recipe_low_units_delta_one_craft_each": 0,
+    "nominal_recipe_xp_delta_one_craft_each": 0,
+    "enhance_source_mortal_level_requirement_changes": 0,
+    "enhance_mortal_source_donor_floor_shifts": {},
+    "replacement_fee_changes": 0,
+    "nominal_superior_cost_delta_mortal_sources_copper": 0,
+    "enhancement_index_score_bucket_changes": 0,
+    "enhancement_result_cap_crossings": 0,
+    "quest_reward_floor_losses": 0,
+    "quest_reward_floor_gains": 0,
+    "changed_rows_with_unpriced_bank5": 0,
+    "changed_native_proc_credits": [],
+    "changed_dense_callable_packed_rows": 0,
+    "changed_partially_callable_packed_ids": [],
+    "changed_single_apply_kind_ids": [],
+    "changed_without_mixed_apply_stages_ids": []
+  },
+  "quest_zone_reward_weight_ratios": {},
+  "interpretation": [
+    "Scores, crafting plans, recipe admission and enhancement candidate eligibility come from native code.",
+    "Enhancement source/price effects require both native salvageability and enhancement admission; random equipment VNUMs fail this command gate.",
+    "XP and superior prices are nominal if the action is otherwise eligible; currency units are copper.",
+    "A source minimum rising from L to H removes levels L..H-1; a donor floor rising from A to B removes donor values A..B-1 if donor scores are fixed.",
+    "Quest weight ratios assume unchanged mob level fit; the CSV uses unit fit. Geographic and zone eligibility remain separate gates.",
+    "Index tie/selection behavior and complete command/persistence journeys remain F13/F16; legacy mechanical coverage remains F05/F09."
+  ]
+}

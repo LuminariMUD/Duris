@@ -501,6 +501,8 @@ static int locker_handle_save_hook(P_char ch, int troom)
 	ch->specials.was_in_room = (exit_room != NOWHERE) ? world[exit_room].number :
 							    world[troom].number;
 
+	locker_return_norent_items(ch);
+
 	// Return artifacts to the player's inventory BEFORE the player save so
 	// they are included in the saved record.  This was originally in the
 	// post-save hook (-81), which meant a crash between saves could lose
@@ -656,12 +658,12 @@ bool locker_container_access_allowed(P_char actor, P_obj container)
 		return false;
 	if (!chest->IsPrivateChest())
 		return true;
+	const auto &opened = locker->GetOpenChests();
+	const auto grant = opened.find(chest->GetChestId());
 	return locker->LockerUserMatches(actor) && actor->desc &&
 	       actor->desc->connected == CON_PLAYING && !locker->ChestWritePending() &&
-	       actor->in_room == locker->GetRealRoom() &&
-	       locker->GetCurrentChestId() == chest->GetChestId() &&
-	       (!locker->CurrentChestOpenedAsManager() ||
-		locker_require_owner(locker, actor, NULL));
+	       actor->in_room == locker->GetRealRoom() && grant != opened.end() &&
+	       (!grant->second || locker_require_owner(locker, actor, NULL));
 }
 
 void locker_invalidate_chest_access(P_char actor)
@@ -761,8 +763,6 @@ StorageLocker::StorageLocker(int rroom, P_char chLocker, P_char chUser)
 	, m_userRuntimeId(chUser ? chUser->runtime_id : 0)
 	, m_userIsOwner(esc_locker_name_matches_player(GET_NAME(chLocker), chUser))
 	, m_bIValue(false)
-	, m_currentChestId(0)
-	, m_currentChestManager(false)
 	, m_chestAccessGeneration(0)
 	, m_lockerId(0)
 	, m_publicChestId(0)
@@ -3629,7 +3629,7 @@ static int create_new_locker(P_char ch, P_char locker, const sql_rows &rows)
 			"  eq chest password <name> <pw|none>\r\n"
 			"  eq log                      - view activity log\r\n"
 			"  open <chest> [password]     - open a chest\r\n"
-			"  close                       - close current chest\r\n";
+			"  close [chest]               - close one or all private chests\r\n";
 		world[realNum].description = str_dup(description);
 
 		strcpy(roomNameBuf, LOCKERS_DOORSIGN);
@@ -3985,9 +3985,78 @@ static int save_locker_char(P_char ch, int bTerminal)
 	return 1;
 }
 
+// Give a detached no-rent item back to the visitor. What can't be carried, like a
+// blood stain, is discarded.
+static void locker_return_norent_item(P_char user, P_obj item)
+{
+	if (!IS_SET(item->wear_flags, ITEM_TAKE))
+	{
+		extract_obj(item);
+		return;
+	}
+	if (obj_to_char(item, user))
+		act("$p is no-rent and cannot stay in a locker, so it returns to you.", FALSE, user,
+		    item, 0, TO_CHAR);
+}
+
+static void locker_return_norent_contents(P_char user, P_obj container)
+{
+	P_obj next;
+	for (P_obj item = container->contains; item; item = next)
+	{
+		next = item->next_content;
+		if (!IS_SET(item->extra_flags, ITEM_NORENT))
+		{
+			locker_return_norent_contents(user, item);
+			continue;
+		}
+		LockerMovementAudit audit(user, container, NULL, item);
+		if (!audit.Ready())
+			continue;
+		obj_from_obj(item);
+		locker_return_norent_item(user, item);
+		audit.Commit();
+	}
+}
+
+// A private chest the visitor hasn't opened keeps what it holds until someone who has.
+void StorageLocker::ReturnNorentItems(void)
+{
+	if (!m_chUser || m_chUser->in_room != m_realRoom)
+		return;
+	for (P_obj object : locker_snapshot_room_contents(m_realRoom))
+	{
+		if (object->type == ITEM_CORPSE)
+			continue;
+		if (LockerChest *chest = FindChestForObject(object))
+		{
+			if (!chest->IsPrivateChest() ||
+			    m_chestsOpenedThisVisit.count(chest->GetChestId()))
+				locker_return_norent_contents(m_chUser, object);
+		}
+		else if (IS_SET(object->extra_flags, ITEM_NORENT))
+		{
+			obj_from_room(object);
+			locker_return_norent_item(m_chUser, object);
+		}
+		else
+			locker_return_norent_contents(m_chUser, object);
+	}
+}
+
+// A visitor's own save runs this first, so that save holds what was handed back.
+void locker_return_norent_items(P_char ch)
+{
+	StorageLocker *pLocker = locker_current(ch);
+	if (pLocker && pLocker->LockerUserMatches(ch))
+		pLocker->ReturnNorentItems();
+}
+
 bool StorageLocker::LockerToPFile(void)
 {
 	bool ok = true;
+
+	ReturnNorentItems();
 
 	// first, save private chest items directly to db with their chest_id
 	int private_chest_count = 0;
@@ -4226,48 +4295,27 @@ bool personal_locker_in_use(const char *char_name)
 
 void StorageLocker::SortIValues(void)
 {
-	P_obj object, rest, pObjList;
-	LockerChest *pChests = m_pChestList;
-	int value;
-
 	if (m_bIValue)
 	{
-		while (pChests)
+		for (auto *chest = m_pChestList; chest; chest = chest->m_pNextInChain)
 		{
-			rest = pChests->m_pChestObject->contains;
-			pChests->m_pChestObject->contains = NULL;
-
-			// While there is more to sort..
-			while (rest)
+			std::vector<std::pair<int, P_obj>> entries;
+			for (auto *object = chest->m_pChestObject->contains; object;
+			     object = object->next_content)
+				entries.emplace_back(itemvalue(object), object);
+			// Legacy insertion places each equal-valued item before earlier ties.
+			std::reverse(entries.begin(), entries.end());
+			std::stable_sort(entries.begin(), entries.end(),
+					 [](const auto &left, const auto &right)
+					 { return left.first < right.first; });
+			P_obj *next = &chest->m_pChestObject->contains;
+			for (const auto &[score, object] : entries)
 			{
-				// Remove one object from the list
-				object = rest;
-				rest = rest->next_content;
-				object->next_content = NULL;
-				value = itemvalue(object);
-
-				// Put into right spot in chest.
-				// If value is smallest, insert to head of list.
-				if (!pChests->m_pChestObject->contains ||
-				    value <= itemvalue(pChests->m_pChestObject->contains))
-				{
-					object->next_content = pChests->m_pChestObject->contains;
-					pChests->m_pChestObject->contains = object;
-				}
-				else
-				{
-					// Walk through the list to find the correct spot.
-					pObjList = pChests->m_pChestObject->contains;
-					while (pObjList->next_content &&
-					       value > itemvalue(pObjList->next_content))
-						pObjList = pObjList->next_content;
-
-					// Insert the object into the list.
-					object->next_content = pObjList->next_content;
-					pObjList->next_content = object;
-				}
+				(void)score;
+				*next = object;
+				next = &object->next_content;
 			}
-			pChests = pChests->m_pNextInChain;
+			*next = nullptr;
 		}
 	}
 	else
@@ -4788,17 +4836,17 @@ static int locker_opencmd(P_char ch, char *arg)
 		send_to_char("That private chest is unavailable.\r\n", ch);
 		return TRUE;
 	}
-	pLocker->InvalidateChestAccess();
-	const uint64_t generation = pLocker->GetChestAccessGeneration();
+	const uint64_t generation = pLocker->AdvanceChestAccessGeneration();
+	const uint64_t visit = pLocker->VisitId();
 	const uint64_t chest_uid = chest ? chest->GetChestObj()->obj_uid : 0;
 	const bool manager = locker_require_owner(pLocker, ch, NULL);
 	const bool is_public = chest_id == pLocker->GetPublicChestId();
-	auto current_request = [locker_id, chest_id, chest_uid, generation,
+	auto current_request = [locker_id, chest_id, chest_uid, generation, visit,
 				name = std::string(arg1)](P_char actor) -> StorageLocker *
 	{
 		StorageLocker *locker = locker_current(actor);
 		if (!locker || !locker->LockerUserMatches(actor) || locker->ChestWritePending() ||
-		    locker->GetLockerId() != locker_id ||
+		    locker->GetLockerId() != locker_id || locker->VisitId() != visit ||
 		    locker->GetChestAccessGeneration() != generation ||
 		    locker_chest_id(locker, name.c_str()) != chest_id)
 			return NULL;
@@ -4833,7 +4881,8 @@ static int locker_opencmd(P_char ch, char *arg)
 				     actor);
 			return;
 		}
-		locker->SetCurrentChestId(is_public ? 0 : chest_id, manager);
+		if (!is_public)
+			locker->OpenChest(chest_id, manager);
 		send_to_char_f(actor, "You open the '%s' chest.\r\n", name.c_str());
 	};
 	if (manager)
@@ -4919,18 +4968,44 @@ static int locker_closecmd(P_char ch, char *arg)
 		return FALSE;
 	char name[MAX_INPUT_LENGTH];
 	one_argument(arg, name);
-	if (name[0] && locker_chest_id(pLocker, name) != pLocker->GetCurrentChestId())
+	PrivateChest *chest = name[0] ? pLocker->FindPrivateChest(name) : NULL;
+	if (name[0] && !chest)
 		return FALSE;
-	const int chest_id = pLocker->GetCurrentChestId();
-	pLocker->InvalidateChestAccess();
-	if (!chest_id)
-		return FALSE;
-	if (!sql_log_chest_activity(pLocker->GetLockerId(), chest_id, GET_NAME(ch),
-				    CHEST_ACTION_CLOSE, NULL))
-		send_to_char("You close the chest, but its activity could not be recorded.\r\n",
-			     ch);
+
+	std::vector<int> closed;
+	if (chest)
+	{
+		if (pLocker->CloseChest(chest->GetChestId()))
+			closed.push_back(chest->GetChestId());
+	}
 	else
-		send_to_char("You close the chest.\r\n", ch);
+	{
+		for (const auto &grant : pLocker->GetOpenChests())
+			closed.push_back(grant.first);
+		pLocker->InvalidateChestAccess();
+	}
+	if (closed.empty())
+	{
+		send_to_char(chest ? "That private chest is already closed.\r\n" :
+				     "No private chests are open.\r\n",
+			     ch);
+		return TRUE;
+	}
+	bool recorded = true;
+	for (int id : closed)
+		if (!sql_log_chest_activity(pLocker->GetLockerId(), id, GET_NAME(ch),
+					    CHEST_ACTION_CLOSE, NULL))
+			recorded = false;
+	if (!recorded)
+		send_to_char(
+			closed.size() == 1 ?
+				"You close the chest, but its activity could not be recorded.\r\n" :
+				"You close the chests, but some activity could not be recorded.\r\n",
+			ch);
+	else
+		send_to_char(closed.size() == 1 ? "You close the chest.\r\n" :
+						  "You close all private chests.\r\n",
+			     ch);
 	return TRUE;
 }
 

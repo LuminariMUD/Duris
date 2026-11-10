@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 from run_world_quest_dual_backend import setup_run_root
 
@@ -185,7 +185,7 @@ def run(binary):
                            "FROM private_chests c JOIN lockers l ON l.id=c.locker_id "
                            "JOIN locker_items i ON i.chest_id=c.id "
                            "LEFT JOIN locker_items parent ON parent.id=i.container_id "
-                           f"WHERE l.locker_name='{ACCOUNT_LOCKER}' AND c.chest_name='vault' ORDER BY i.obj_uid")
+                           f"WHERE l.locker_name='{ACCOUNT_LOCKER}' AND c.is_public=0 ORDER BY i.obj_uid")
                 return [tuple(map(int, row.split('\t'))) for row in rows.splitlines()]
 
             try:
@@ -286,6 +286,26 @@ def run(binary):
                 manage('eq chest create sixth', 'maximum of 5 private chests')
                 assert funds(OWNER) == five_paid
                 assert sql(f"SELECT COUNT(*) FROM private_chests WHERE locker_id={locker_id} AND is_public=0") == '5'
+                for name in ('vault', 'staging', long_name, 'third', 'fourth'):
+                    act(OWNER, 'open ' + name, "You open the '" + name + "' chest")
+                for name in ('vault', 'staging', long_name, 'third', 'fourth'):
+                    act(OWNER, 'look in ' + name, 'contains:')
+                act(OWNER, 'close', 'You close all private chests')
+                deadline = time.monotonic() + 30
+                while True:
+                    rows = sql(f"SELECT char_name,chest_id,action_type FROM private_chest_log "
+                               f"WHERE locker_id={locker_id} ORDER BY id").splitlines()
+                    if len(rows) == 10:
+                        break
+                    assert time.monotonic() < deadline, rows
+                    time.sleep(.1)
+                opened_ids = [int(row.split('\t')[1]) for row in rows[:5]]
+                assert len(set(opened_ids)) == 5
+                assert [row.split('\t')[0::2] for row in rows] == [[OWNER, '1']] * 5 + [[OWNER, '2']] * 5, rows
+                assert [int(row.split('\t')[1]) for row in rows[5:]] == sorted(opened_ids), rows
+                for name in ('vault', 'staging', long_name, 'third', 'fourth'):
+                    act(OWNER, 'look in ' + name, 'must open that private chest first')
+                check('all five created chests stay open independently; bare close revokes all five')
                 for name in (long_name, 'third', 'fourth'):
                     manage('eq chest delete ' + name, "Chest '" + name + "' deleted")
                 assert funds(OWNER) == five_paid
@@ -362,6 +382,17 @@ def run(binary):
                 act(VISITOR, 'eq log', 'Sort your own locker')
                 act(VISITOR, 'open vault wrong-secret', 'Wrong password')
                 act(VISITOR, 'open vault fixture-secret', "You open the 'vault' chest")
+                act(VISITOR, 'open staging', "You open the 'staging' chest")
+                act(VISITOR, 'open vault wrong-secret', 'Wrong password')
+                act(VISITOR, 'look in vault', 'contains:')
+                act(VISITOR, 'look in staging', 'contains:')
+                act(VISITOR, 'close vault', 'You close the chest')
+                act(VISITOR, 'look in vault', 'must open that private chest first')
+                act(VISITOR, 'look in staging', 'contains:')
+                act(VISITOR, 'close vault', 'already closed')
+                act(VISITOR, 'open vault fixture-secret', "You open the 'vault' chest")
+                act(VISITOR, 'close staging', 'You close the chest')
+                check('guest retains protected and password-free grants; failed reopen and named close are independent')
                 act(VISITOR, 'put mace vault', 'Ok.')
                 assert 'mace' in act(VISITOR, 'look in vault', 'contains:')
                 command(clients[VISITOR], 'close door')
@@ -463,7 +494,7 @@ def run(binary):
                 assert 'pid=0 intent=5' not in file_log
                 check('real idle disconnect preserves both locker UIDs, owner identity and re-entry')
 
-                # Exercise ordinary nested bags, both EMPTY directions, two-step private
+                # Exercise ordinary nested bags, both EMPTY directions, direct private
                 # transfer and partial coins before leaving a filled private graph.
                 before_extended = movements()
                 for vnum, word in ((96443, 'bag'), (677, 'mace'), (677, 'mace')):
@@ -477,8 +508,18 @@ def run(binary):
                 act(OWNER, 'put mace vault', 'Ok.')
                 transferred_uid, = carried_maces - inventory_uids(OWNER)
                 act(OWNER, 'empty vault staging', 'could not start')
-                act(OWNER, 'get mace vault', 'You get')
                 act(OWNER, 'open staging', "You open the 'staging' chest")
+                act(OWNER, 'empty vault staging', 'You moved 1 item')
+                act(OWNER, 'close vault', 'You close the chest')
+                act(OWNER, 'empty staging vault', 'could not start')
+                assert 'mace' in act(OWNER, 'look in staging', 'contains:')
+                act(OWNER, 'open vault', "You open the 'vault' chest")
+                act(OWNER, 'close staging', 'You close the chest')
+                act(OWNER, 'empty staging vault', 'could not start')
+                act(OWNER, 'open staging', "You open the 'staging' chest")
+                act(OWNER, 'empty staging vault', 'You moved 1 item')
+                assert 'must open' not in command(clients[OWNER], 'examine vault')
+                act(OWNER, 'get mace vault', 'You get')
                 act(OWNER, 'put mace staging', 'Ok.')
                 act(OWNER, 'get mace staging', 'You get')
                 act(OWNER, 'open vault', "You open the 'vault' chest")
@@ -508,26 +549,34 @@ def run(binary):
                 manage('eq chest delete staging', "Chest 'staging' deleted")
                 assert funds(OWNER) == before_delete
                 manage('eq chest create staging', "Private chest 'staging' created")
-                assert sql(f"SELECT id FROM private_chests WHERE locker_id={locker_id} AND chest_name='staging'") != staging_id
+                new_staging_id = sql(f"SELECT id FROM private_chests WHERE locker_id={locker_id} AND chest_name='staging'")
+                assert new_staging_id != staging_id
+                act(OWNER, 'open staging', "You open the 'staging' chest")
+                act(OWNER, 'open vault', "You open the 'vault' chest")
+                act(OWNER, 'put mace staging', 'Ok.')
+                staging_uid, = carried_maces - {child_uid}
                 history = act(OWNER, 'eq log', 'Recent locker activity:')
                 assert 'deleted chest #' + staging_id in history, history
                 leave(OWNER)
                 extended = movements()[len(before_extended):]
-                assert len(extended) == 14, extended
-                expected_first = [(chest_id, '3'), (chest_id, '4'), (staging_id, '3'), (staging_id, '4')]
-                assert [(row[1], row[2]) for row in extended[:4]] == expected_first, extended
-                assert all(row[3].startswith('[uid ' + transferred_uid + '] ') for row in extended[:4]), extended
-                for rows, action in ((extended[4:6], '3'), (extended[6:8], '4')):
+                assert len(extended) == 19, extended
+                expected_first = [(chest_id, '3'), (chest_id, '4'), (staging_id, '3'), (staging_id, '4'),
+                                  (chest_id, '3'), (chest_id, '4'), (staging_id, '3'), (staging_id, '4')]
+                assert [(row[1], row[2]) for row in extended[:8]] == expected_first, extended
+                assert all(row[3].startswith('[uid ' + transferred_uid + '] ') for row in extended[:8]), extended
+                for rows, action in ((extended[8:10], '3'), (extended[10:12], '4')):
                     assert all(row[1:3] == [chest_id, action] for row in rows), rows
                     assert {re.match(r'\[uid (\d+)\] ', row[3])[1] for row in rows} == carried_maces, rows
-                coins = extended[8:13]
+                coins = extended[12:17]
                 assert [row[1:3] for row in coins] == [[chest_id, action] for action in ('3', '3', '4', '3', '4')], coins
                 coin_texts = [re.sub(r'^\[uid \d+\] ', '', re.sub(r'&(?:[+-].|[nN])', '', row[3])) for row in coins]
                 assert coin_texts == ['3c', '1c', '4c', '2c', '2c'], coins
-                assert extended[13][1:3] == [chest_id, '3'] and extended[13][3].startswith('[uid ' + bag_uid + '] '), extended
+                assert extended[17][1:3] == [chest_id, '3'] and extended[17][3].startswith('[uid ' + bag_uid + '] '), extended
+                assert extended[18][1:3] == [new_staging_id, '3'] and extended[18][3].startswith('[uid ' + staging_uid + '] '), extended
                 assert all(row[0] == OWNER for row in extended), extended
                 graph = sorted(((int(chest_id), int(bag_uid), 0, 96443),
-                                (int(chest_id), int(child_uid), int(bag_uid), 677)), key=lambda row: row[1])
+                                (int(chest_id), int(child_uid), int(bag_uid), 677),
+                                (int(new_staging_id), int(staging_uid), 0, 677)), key=lambda row: row[1])
                 assert private_graph() == graph, private_graph()
                 assert sql("SELECT COUNT(*)=COUNT(DISTINCT event_id) FROM private_chest_log "
                            f"WHERE locker_id={locker_id}") == '1'
@@ -541,10 +590,10 @@ def run(binary):
                 assert private_graph() == graph
                 evidence['private_graph_before_restart'] = graph
                 evidence['movement_rows_before_restart'] = movements()
-                check('exact nested/empty/partial-coin rows, no sorting/rejection events, deleted identity and filled private re-entry')
+                check('exact direct private transfers, closed-endpoint rejection, nested/coin rows and filled private re-entry')
 
                 before_restart = contents()
-                assert len(before_restart.splitlines()) == 6, before_restart
+                assert len(before_restart.splitlines()) == 7, before_restart
                 grants = sql("SELECT owner,visitor FROM locker_access ORDER BY owner,visitor")
                 evidence['contents_before_restart'] = before_restart
                 evidence['grants_before_restart'] = grants
@@ -562,8 +611,11 @@ def run(binary):
                 enter(OWNER, items=2)
                 denied(OTHER)  # No opposite-side occupant disclosure either.
                 assert private_graph() == graph
+                act(OWNER, 'look in staging', 'must open that private chest first')
                 act(OWNER, 'look in vault', 'must open that private chest first')
+                act(OWNER, 'open staging', "You open the 'staging' chest")
                 act(OWNER, 'open vault', "You open the 'vault' chest")
+                assert 'mace' in act(OWNER, 'look in staging', 'contains:')
                 act(OWNER, 'get bag vault', 'You get')
                 assert 'mace' in act(OWNER, 'look in bag', 'contains:')
                 assert inventory_uids(OWNER, 96443) == {bag_uid}

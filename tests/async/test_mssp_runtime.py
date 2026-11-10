@@ -13,6 +13,7 @@ assert "mssp_advertise" not in COMM
 HARNESS = r'''
 #include "net/mssp.h"
 #include "net/mccp.h"
+#include "net/mxp.h"
 #include "net/gmcp.h"
 #include "net/telnet.h"
 #include "net/ttype.h"
@@ -33,6 +34,7 @@ int compress_start(P_desc, int) { return 0; }
 void gmcp_handle_negotiation(P_desc, int) {}
 void gmcp_handle_input(P_desc, const char *, size_t) {}
 void ttype_handle_negotiation(P_desc, int) {}
+void mxp_handle_negotiation(P_desc, unsigned char) {}
 void ttype_handle_subnegotiation(P_desc, const unsigned char *, int) {}
 
 @TELNET_PARSER@

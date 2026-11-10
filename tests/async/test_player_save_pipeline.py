@@ -60,7 +60,16 @@ HARNESS = r'''
 P_char character_list = nullptr;
 static bool divine_pending = false;
 static bool locker_ready = true;
-bool locker_private_contents_durable(P_char) { return locker_ready; }
+static unsigned locker_wait_calls = 0;
+bool locker_private_contents_durable(P_char)
+{
+    if (locker_wait_calls)
+    {
+        --locker_wait_calls;
+        return false;
+    }
+    return locker_ready;
+}
 void divine_boon_runtime_pulse() {}
 bool divine_boon_runtime_pending() { return divine_pending; }
 static room_data rooms[1]{};
@@ -118,6 +127,7 @@ struct apply_state
     std::vector<std::string> order;
     std::map<int, unsigned int> failures;
     std::map<int, player_snapshot> committed;
+    int stale_pid = 0;
     bool hold = false;
     bool holding = false;
 };
@@ -143,6 +153,8 @@ player_save_apply_result player_snapshot_repository_apply_from_pool(const player
         result.rolled_back = true;
         return result;
     }
+    if (snapshot.pid == state.stale_pid)
+        return {player_save_apply_outcome::stale_revision, snapshot.revision + 1, 0};
     state.committed[snapshot.pid] = snapshot;
     return {player_save_apply_outcome::applied, snapshot.revision, 0};
 }
@@ -262,7 +274,7 @@ int main()
     assert(player_save_pipeline_request(&alice.ch, PLAYER_COMPONENT_AFFECTS, 1, 3001) ==
            player_save_pipeline_result::queued);
     assert(player_save_pipeline_request(&alice.ch, PLAYER_COMPONENT_SKILLS, 1, 3001) ==
-           player_save_pipeline_result::coalesced);
+           player_save_pipeline_result::queued);
     // Equipment and inventory are one item graph.
     assert(player_save_pipeline_mark(42, PLAYER_COMPONENT_INVENTORY));
     assert(player_revision_snapshot_copy(42, &revision));
@@ -283,7 +295,7 @@ int main()
     hold_writer(false);
     assert(persistence_writer_wait_idle(5000));
     // Bob's first save was being written; everything else in capture order.
-    assert((take_order() == std::vector<std::string>{"42:1", "41:8", "44:1", "41:10", "42:2"}));
+    assert((take_order() == std::vector<std::string>{"42:1", "41:8", "44:1", "41:9", "41:10", "42:2"}));
     player_save_pipeline_pulse();
     assert(player_revision_snapshot_copy(41, &revision) && revision.written_revision == 10);
     {
@@ -587,6 +599,20 @@ int main()
     player_save_pipeline_pulse();
     assert(state.committed.count(49) == 1);
 
+    // Copyover must wait for a pending private destination before capturing
+    // the player. A failed destination remains bounded and never saves the source.
+    player terminal_custody(50);
+    assert(player_revision_hydrate(50, 0));
+    locker_ready = false;
+    assert(player_save_pipeline_terminal(&terminal_custody.ch, RENT_CRASH, 3001, 10) ==
+           player_save_terminal_result::timed_out);
+    assert(state.committed.count(50) == 0);
+    locker_ready = true;
+    locker_wait_calls = 3;
+    assert(player_save_pipeline_terminal(&terminal_custody.ch, RENT_CRASH, 3001, 100) ==
+           player_save_terminal_result::database_acknowledged);
+    assert(locker_wait_calls == 0 && state.committed.count(50) == 1);
+
     // Shutdown reports a save that failed after its last pulse: the writer was still on
     // it when the drain ran out, and the interrupt made it fail.
     player_save_pipeline_resume();
@@ -690,6 +716,39 @@ int main()
     assert(player_revision_hydrate(201, committed_revision));
     assert(last_alert.find("ended=1") != std::string::npos);
     player_save_pipeline_reset_for_tests();
+
+    // A later status write cannot acknowledge a failed full manual checkpoint.
+    assert(player_save_pipeline_init());
+    player failed_manual(203);
+    character_list = &failed_manual.ch;
+    assert(player_revision_hydrate(203, 0));
+    state.failures[203] = 1;
+    hold_writer(true);
+    assert(player_save_pipeline_request(&failed_manual.ch, PLAYER_CHECKPOINT_COMPONENT_ALL,
+                                        RENT_CRASH, 3001) == player_save_pipeline_result::queued);
+    wait_until_held();
+    assert(player_save_pipeline_request(&failed_manual.ch, PLAYER_COMPONENT_STATUS,
+                                        RENT_CRASH, 3001) == player_save_pipeline_result::queued);
+    hold_writer(false);
+    assert(persistence_writer_wait_idle(5000));
+    player_save_pipeline_pulse();
+    assert(player_revision_snapshot_copy(203, &revision));
+    assert(revision.written_revision == 0); // Revision 2 persisted only status.
+    assert(revision.unacknowledged_components == PLAYER_CHECKPOINT_COMPONENT_ALL);
+    state.stale_pid = 203;
+    assert(player_save_pipeline_checkpoint_dirty(&failed_manual.ch, RENT_CRASH, 3001) ==
+           player_save_pipeline_result::queued);
+    assert(persistence_writer_wait_idle(5000));
+    player_save_pipeline_pulse();
+    assert(player_revision_snapshot_copy(203, &revision) && revision.written_revision == 0);
+    state.stale_pid = 0;
+    assert(player_save_pipeline_request(&failed_manual.ch, PLAYER_CHECKPOINT_COMPONENT_ALL,
+                                        RENT_CRASH, 3001) == player_save_pipeline_result::queued);
+    assert(persistence_writer_wait_idle(5000));
+    player_save_pipeline_pulse();
+    assert(player_revision_snapshot_copy(203, &revision));
+    assert(revision.written_revision == 4 && !revision.unacknowledged_components);
+    player_save_pipeline_reset_for_tests();
     character_list = nullptr;
     return 0;
 }
@@ -741,6 +800,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-pipeline-", dir=ROOT 
     )
     subprocess.run([str(binary)], check=True, timeout=60)
 print("[PASS] a queued save leaves its owner clean; a newer save replaces the queued one")
+print("[PASS] failed components remain unacknowledged through later partial and stale completions until repaired")
 print("[PASS] a failed write is reported and marks its owner dirty again")
 print("[PASS] ended sessions retire only after pending writes/completions; live dirt and new baselines survive")
 print("[PASS] drain waits for the writer within its bound")

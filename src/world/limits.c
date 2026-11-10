@@ -79,7 +79,8 @@ extern struct race_names race_names_table[];
 extern float racial_exp_mods[LAST_RACE + 1];
 extern float racial_exp_mod_victims[LAST_RACE + 1];
 
-long new_exp_table[TOTALLVLS];
+// One spare zero entry: award caps read the next level, including for MAXLVL.
+long new_exp_table[TOTALLVLS + 1];
 long global_exp_limit;
 float exp_mods[EXPMOD_MAX + 1];
 
@@ -1308,6 +1309,17 @@ static bool divine_experience_active(P_char ch, P_char encounter)
 	return divine_boon_reward_zone_eligible(zone, side);
 }
 
+// Integer checkpoints preserve ordinary truncation while oversized finite awards
+// continue to the existing level/storage caps. Invalid amounts never convert.
+static int experience_integer(double amount)
+{
+	if (!std::isfinite(amount))
+		return 0;
+	return static_cast<int>(std::clamp(amount,
+					   static_cast<double>(std::numeric_limits<int>::min()),
+					   static_cast<double>(std::numeric_limits<int>::max())));
+}
+
 template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, const Amount value,
 						      int type, bool divine, int rested_percent = 0)
 {
@@ -1426,7 +1438,7 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 					gain_exp_amount<double>(tank, victim, tank_share,
 								EXP_TANKING, true);
 				else
-					gain_exp(tank, victim, XP, EXP_TANKING);
+					gain_exp(tank, victim, experience_integer(XP), EXP_TANKING);
 			}
 		}
 
@@ -1441,14 +1453,21 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 		// debug("damage 5 exp gain (%d)", (int)XP);
 		XP = gain_exp_modifiers_race_only(ch, victim, XP, base);
 		// debug("damage 6 exp gain (%d)", (int)XP);
+		if (!std::isfinite(XP))
+			return 0;
 		XP = divine ? check_nexus_bonus_precise(ch, XP, NEXUS_BONUS_EXP) :
-			      check_nexus_bonus(ch, (int)XP, NEXUS_BONUS_EXP);
+			      check_nexus_bonus(ch, experience_integer(XP), NEXUS_BONUS_EXP);
 		// debug("damage 7 exp gain (%d)", (int)XP);
 		if (divine)
 			apply_exp_modifier(XP, base,
 					   1.0 + get_epic_bonus_precise(ch, EPIC_BONUS_EXP));
 		else
-			XP += (int)((float)XP * get_epic_bonus(ch, EPIC_BONUS_EXP));
+		{
+			const float bonus = (float)XP * get_epic_bonus(ch, EPIC_BONUS_EXP);
+			if (!std::isfinite(bonus))
+				return 0;
+			XP += experience_integer(bonus);
+		}
 	}
 	else if (type == EXP_HEALING)
 	{
@@ -1509,8 +1528,10 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 		// debug("healing 7 (%d)", (int)XP);
 		XP = gain_exp_modifiers_race_only(ch, attacker, XP, base);
 		// debug("healing 8 (%d)", (int)XP);
+		if (!std::isfinite(XP))
+			return 0;
 		XP = divine ? check_nexus_bonus_precise(ch, XP, NEXUS_BONUS_EXP) :
-			      check_nexus_bonus(ch, (int)XP, NEXUS_BONUS_EXP);
+			      check_nexus_bonus(ch, experience_integer(XP), NEXUS_BONUS_EXP);
 		// debug("healing 9 (%d)", (int)XP);
 	}
 	else if (type == EXP_TANKING)
@@ -1547,8 +1568,10 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 		// debug("tanking 5 (%d)", (int)XP);
 		XP = gain_exp_modifiers_race_only(ch, victim, XP, base);
 		// debug("tanking 6 (%d)", (int)XP);
+		if (!std::isfinite(XP))
+			return 0;
 		XP = divine ? check_nexus_bonus_precise(ch, XP, NEXUS_BONUS_EXP) :
-			      check_nexus_bonus(ch, (int)XP, NEXUS_BONUS_EXP);
+			      check_nexus_bonus(ch, experience_integer(XP), NEXUS_BONUS_EXP);
 		// debug("tanking 7 (%d)", (int)XP);
 	}
 	else if (type == EXP_MELEE)
@@ -1580,8 +1603,10 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 		// debug("melee 6 exp gain (%d)", (int)XP);
 		XP = gain_exp_modifiers_race_only(ch, victim, XP, base);
 		// debug("melee 7 exp gain (%d)", (int)XP);
+		if (!std::isfinite(XP))
+			return 0;
 		XP = divine ? check_nexus_bonus_precise(ch, XP, NEXUS_BONUS_EXP) :
-			      check_nexus_bonus(ch, (int)XP, NEXUS_BONUS_EXP);
+			      check_nexus_bonus(ch, experience_integer(XP), NEXUS_BONUS_EXP);
 		// debug("melee 8 exp gain (%d)", (int)XP);
 	}
 	else if (type == EXP_DEATH)
@@ -1667,12 +1692,16 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 			// debug("kill 5 exp gain (%d)", (int)XP);
 			XP = gain_exp_modifiers_race_only(ch, victim, XP, base);
 			// debug("kill 6 exp gain (%d)", (int)XP);
-			XP = divine ? check_nexus_bonus_precise(ch, XP, NEXUS_BONUS_EXP) :
-				      check_nexus_bonus(ch, (int)XP, NEXUS_BONUS_EXP);
+			if (!std::isfinite(XP))
+				return 0;
+			XP = divine ?
+				     check_nexus_bonus_precise(ch, XP, NEXUS_BONUS_EXP) :
+				     check_nexus_bonus(ch, experience_integer(XP), NEXUS_BONUS_EXP);
 			// debug("kill 7 exp gain (%d)", (int)XP);
 		}
-		if (divine &&
-		    (!std::isfinite(XP) || XP < 0 || XP > std::numeric_limits<int>::max()))
+		if (!std::isfinite(XP) ||
+		    (divine &&
+		     (XP < 0 || static_cast<double>(XP) > std::numeric_limits<int>::max())))
 			return 0;
 		// Don't log what an Immortal would've gotten.
 		if (GET_LEVEL(ch) < MINLVLIMMORTAL)
@@ -1680,7 +1709,9 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 			logit(LOG_EXP,
 			      "KILL EXP: %s (%d) killed by %s (%d): old exp: %d, new exp: %lld, +exp: %d",
 			      GET_NAME(victim), GET_LEVEL(victim), GET_NAME(ch), GET_LEVEL(ch),
-			      GET_EXP(ch), static_cast<long long>(GET_EXP(ch)) + (int)XP, (int)XP);
+			      GET_EXP(ch),
+			      static_cast<long long>(GET_EXP(ch)) + experience_integer(XP),
+			      experience_integer(XP));
 		}
 
 		if (pvp)
@@ -1704,7 +1735,8 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 			logit(LOG_EXP,
 			      "W-QUEST EXP: %s - level %d: old exp: %d, new exp: %lld, +exp: %d",
 			      GET_NAME(ch), GET_LEVEL(ch), GET_EXP(ch),
-			      static_cast<long long>(GET_EXP(ch)) + (int)XP, (int)XP);
+			      static_cast<long long>(GET_EXP(ch)) + experience_integer(XP),
+			      experience_integer(XP));
 		}
 		// debug("world quest 1 (%d)", (int)XP);
 	}
@@ -1716,7 +1748,8 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 			logit(LOG_EXP,
 			      "QUEST EXP: %s - level %d: old exp: %d, new exp: %lld, +exp: %d",
 			      GET_NAME(ch), GET_LEVEL(ch), GET_EXP(ch),
-			      static_cast<long long>(GET_EXP(ch)) + (int)XP, (int)XP);
+			      static_cast<long long>(GET_EXP(ch)) + experience_integer(XP),
+			      experience_integer(XP));
 		}
 		// debug("quest 1 (%d)", (int)XP);
 	}
@@ -1735,20 +1768,23 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 	// that rounding difference is not part of the displayed Divine contribution.
 	// Feedback alone clamps this comparator through the existing final limits.
 	const bool pre_divine_representable = std::isfinite(XP) && XP >= 0 &&
-					      XP <= std::numeric_limits<int>::max();
-	const int pre_divine_xp = divine && pre_divine_representable ? (int)XP : 0;
+					      static_cast<double>(XP) <=
+						      std::numeric_limits<int>::max();
+	const int pre_divine_xp = divine && pre_divine_representable ? experience_integer(XP) : 0;
 	if (divine)
 		XP += eligible_base;
-	// Reject non-finite or unrepresentable Divine awards before integer conversion.
-	if (divine && (!std::isfinite(XP) || XP < 0 || XP > std::numeric_limits<int>::max()))
+	// All paths reject nonfinite amounts; Divine also retains its strict budget.
+	if (!std::isfinite(XP) ||
+	    (divine && (XP < 0 || static_cast<double>(XP) > std::numeric_limits<int>::max())))
 		return 0;
-	const int computed_xp = (int)XP;
+	const int computed_xp = experience_integer(XP);
 	int XP_final = computed_xp;
 	// debug("check 3 xp (%d)", XP_final);
 	// Resses from Gods may restore more than 1/3 level (ie for liches).
 	if (type != EXP_RESURRECT)
 	{
-		int range = new_exp_table[GET_LEVEL(ch) + 1] / 3;
+		const int range = static_cast<int>(std::clamp<long>(
+			new_exp_table[GET_LEVEL(ch) + 1] / 3, 0, std::numeric_limits<int>::max()));
 		// debug("check 4 xp (%d)", XP_final);
 		XP_final = BOUNDED(-range, XP_final, range);
 		if (XP_final != computed_xp)
@@ -1786,7 +1822,8 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 	int divine_credited_xp = 0;
 	if (divine && credited_xp > 0 && pre_divine_representable)
 	{
-		const int range = new_exp_table[GET_LEVEL(ch) + 1] / 3;
+		const int range = static_cast<int>(std::clamp<long>(
+			new_exp_table[GET_LEVEL(ch) + 1] / 3, 0, std::numeric_limits<int>::max()));
 		const int pre_divine_capped = BOUNDED(-range, pre_divine_xp, range);
 		const std::int64_t ceiling =
 			std::min<std::int64_t>(global_exp_limit, std::numeric_limits<int>::max());
@@ -1867,7 +1904,7 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 	// This is a exp bonus for any exp gotten in zone?
 	if (type != EXP_BOON && type != EXP_DEATH && type != EXP_RESURRECT)
 	{
-		check_boon_completion(ch, victim, (int)XP, BOPT_NONE);
+		check_boon_completion(ch, victim, experience_integer(XP), BOPT_NONE);
 	}
 
 	// Send GMCP update for exp change (exp is in char_vitals)
