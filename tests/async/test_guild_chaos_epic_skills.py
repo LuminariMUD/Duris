@@ -21,13 +21,18 @@ HARNESS = r'''
 #include "classes/paladins.h"
 #include <cassert>
 #include <cstdio>
+#include <initializer_list>
 
 Skill skills[MAX_AFFECT_TYPES + 1];
 static bool chaos = false, curated = false;
 int get_property(const char *, int fallback) { return fallback; }
 bool chaos_mud_enabled(void) { return chaos; }
 bool chaos_starter_epic_skills_enabled(void) { return curated; }
-int GET_LVL_FOR_SKILL(P_char, int skill) { return skill == SKILL_SMITE_EVIL ? 30 : 0; }
+int GET_CLASS(P_char ch, uint cls) { return (ch->player.m_class & cls) != 0; }
+int GET_LVL_FOR_SKILL(P_char ch, int skill) {
+    if (skill == SKILL_RIFF) return ch->player.spec ? 30 : 0;
+    return skill == SKILL_SMITE_EVIL ? 30 : 0;
+}
 int GET_CHAR_SKILL_P(P_char ch, int skill) { return ch->only.pc->skills[skill].learned; }
 static bool smite_scheduled;
 static int smite_starts;
@@ -39,6 +44,7 @@ nevent_schedule_result add_event(event_func func, int, P_char, P_char, P_obj, in
 ClassSkillInfo SKILL_DATA_ALL(P_char, int skill) {
     ClassSkillInfo result{};
     if (skill == SKILL_SMITE_EVIL) result.maxlearn[0] = 100;
+    if (skill == SKILL_RIFF) result.maxlearn[1] = result.maxlearn[2] = result.maxlearn[3] = 100;
     return result;
 }
 
@@ -72,6 +78,20 @@ int main()
     assert(smite_scheduled && smite_starts == 1);
     assert(GET_CHAR_SKILL(&ch, SKILL_SMITE_EVIL) > 0);
     update_skills(&ch); assert(smite_starts == 1);
+    // Riff is retained while unspecialized, including repeated login updates.
+    ch.player.m_class = CLASS_BARD; ch.player.level = 56; ch.player.spec = 1;
+    pc.skills[SKILL_RIFF].learned = 87; pc.skills[SKILL_RIFF].taught = 100;
+    update_skills(&ch);
+    ch.player.spec = 0; update_skills(&ch); update_skills(&ch);
+    assert(pc.skills[SKILL_RIFF].learned == 87 && pc.skills[SKILL_RIFF].taught == 100);
+    for (int spec : {1, 2, 3}) {
+        ch.player.spec = spec; update_skills(&ch);
+        assert(pc.skills[SKILL_RIFF].learned == 87 && pc.skills[SKILL_RIFF].taught == 100);
+    }
+    ch.player.spec = 0; pc.skills[SKILL_RIFF] = {}; update_skills(&ch);
+    assert(pc.skills[SKILL_RIFF].learned == 0 && pc.skills[SKILL_RIFF].taught == 0);
+    ch.player.secondary_class = CLASS_ROGUE; update_skills(&ch);
+    assert(pc.skills[SKILL_RIFF].learned == 0 && pc.skills[SKILL_RIFF].taught == 0);
 	std::puts("CHAOS epic skills: the guild fills them only when the curated grant is off");
 }
 '''

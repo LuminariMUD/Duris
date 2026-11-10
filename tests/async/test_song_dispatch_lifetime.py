@@ -153,6 +153,7 @@ static Crowd crowd() {
     c.bard = make_char(); // Head of the room, so the dispatch sees first, second, third.
     c.bard->player.m_class = CLASS_BARD;
     c.bard->specials.affected_by3 = AFF3_SINGING;
+    c.bard->player.spec = SPEC_MINSTREL;
     return c;
 }
 static void clear_room() {
@@ -196,6 +197,13 @@ int main() {
         dispatch(path, c.bard);
         assert(sung.size() == 3 && aggros == 3);
         if (path == 2) assert(rests == 1 && waits == 1);
+        clear_room();
+    }
+    // A retained Riff rating cannot be used before respecializing.
+    {
+        Crowd c = crowd(); c.bard->player.spec = 0;
+        dispatch(2, c.bard);
+        assert(sung.empty() && !rests && !waits);
         clear_room();
     }
     // Run all dispatch paths with the actual catalog flags for the four songs.
