@@ -21,6 +21,7 @@
 #include "core/structs.h"
 #include "core/config_parse.h"
 #include "core/utils.h"
+#include "core/utility.h"
 #include "item/enhance.h"
 #include "item/item_removal_audit.h"
 #include "economy/tradeskill.h"
@@ -202,8 +203,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	if (enhancement_wallet_balance(ch) < cost)
 	{
 		snprintf(buf, MAX_STRING_LENGTH,
-			 "It will require &+W%d platinum&n to &+Benhance&n this item.\r\n",
-			 cost / 1000);
+			 "It will require %s&n to &+Benhance&n this item.\r\n", coin_stringv(cost));
 		send_to_char(buf, ch);
 		return;
 	}
@@ -690,9 +690,8 @@ static bool perform_superior_enhancement(P_char ch, P_obj source, P_obj pouch,
 		return FALSE;
 	if (enhancement_wallet_balance(ch) < cost)
 	{
-		snprintf(buf, sizeof(buf),
-			 "&+yIt will require &+W%d platinum&+y to enhance this item.\r\n",
-			 cost / 1000);
+		snprintf(buf, sizeof(buf), "&+yIt will require %s&+y to enhance this item.\r\n",
+			 coin_stringv(cost));
 		send_to_char(buf, ch);
 		return FALSE;
 	}
@@ -1833,12 +1832,6 @@ void load_enhance_config(void)
 				section_idx = 13;
 			else if (!strcmp(section, "bitvector5"))
 				section_idx = 14;
-			else if (!strcmp(section, "spell"))
-			{
-				section_idx = 20;
-				logit(LOG_STATUS,
-				      "Enhancement [spell] section is unsupported and is not enforced.");
-			}
 			else
 			{
 				section_idx = -1;
@@ -2066,7 +2059,7 @@ void load_enhance_config(void)
 				logit(LOG_STATUS, "Unknown enhancement flag %s in [%s].", key,
 				      section);
 		}
-		else if (section_idx >= 0 && section_idx != 20)
+		else if (section_idx >= 0)
 			logit(LOG_STATUS, "Unknown enhancement setting %s in [%s].", key, section);
 	}
 

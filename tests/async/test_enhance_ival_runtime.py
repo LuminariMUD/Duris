@@ -21,6 +21,7 @@ HARNESS = r"""
 #include <fstream>
 #include <filesystem>
 
+#include "core/utility.h"
 #include "item/enhance.c"
 
 static index_data indices[12]{};
@@ -297,6 +298,33 @@ static void test_replacement()
     index_entry(low_entry, 83277, 87);
     index_entry(equal_entry, 90000, 88);
     index_entry(high_entry, 83202, 91);
+    const int threshold = enhance_cost_low_ival_threshold;
+    const int low_cost = enhance_cost_low_amount, high_cost = enhance_cost_high_amount;
+    for (bool cheap : {true, false}) {
+        const int fee = cheap ? 123 : 1123;
+        enhance_cost_low_ival_threshold = cheap ? 88 : threshold;
+        enhance_cost_low_amount = enhance_cost_high_amount = fee;
+        GET_PLATINUM(&ch) = GET_GOLD(&ch) = GET_SILVER(&ch) = GET_COPPER(&ch) = 0;
+        source.loc_p = donor.loc_p = LOC_CARRIED;
+        const int before_rolls = rolls;
+        enhance(&ch, &source, &donor);
+        const char *coins = cheap ? "1 &+Ygold&N, 2 silver, and 3 &+ycopper&N" :
+            "1 &+Wplatinum&N, 1 &+Ygold&N, 2 silver, and 3 &+ycopper&N";
+        assert(output.find(coins) != std::string::npos);
+        assert(charges == 0 && GET_MONEY(&ch) == 0 && rolls == before_rolls);
+        assert(loads.empty() && extracted.empty() && !result);
+        assert(source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
+        clear_attempt();
+        GET_PLATINUM(&ch) = 20;
+        enhance(&ch, &source, &donor);
+        assert(result && OBJ_VNUM(result) == 83202);
+        assert(charges == 1 && GET_MONEY(&ch) == 20000 - fee);
+        clear_attempt();
+    }
+    enhance_cost_low_ival_threshold = threshold;
+    enhance_cost_low_amount = low_cost;
+    enhance_cost_high_amount = high_cost;
+    GET_GOLD(&ch) = GET_SILVER(&ch) = GET_COPPER(&ch) = 0;
     for (bool down_first : {true, false})
         for (bool force_luck : {false, true})
         {
@@ -607,6 +635,10 @@ static void test_superior(superior_case probe = superior_case::ordinary)
     GET_PLATINUM(&ch) = 0;
     do_enhance(&ch, command, 0);
     assert(output.find("It will require") != std::string::npos);
+    const int expected_fee = 1000 + original_value * per_ival;
+    assert(output.find(coin_stringv(expected_fee)) != std::string::npos);
+    if (probe == superior_case::ordinary)
+        assert(output.find("2 &+Wplatinum&N, and 2 &+Ygold&N") != std::string::npos);
     assert(charges == 0 && materials == initial_materials && item.affected[0].modifier == 2);
     clear_attempt();
 
@@ -697,8 +729,7 @@ static void test_config()
     restore_config();
     auto shipped = compiled; shipped[21] = 1;
     assert(config_integers() == shipped && enhance_stat_cap_multiplier == 1.5 && enhance_stat_material_quantity_multiplier == 1);
-    assert(config_logged("not enforced"));
-    assert(!config_logged("Unknown") && !config_logged("Ignoring")); // Every shipped row is recognized.
+    assert(config_logs.size() == 1); // Shipped policy has only the successful-load record.
     assert(enhance_allow_mask == 0x3f01ab7e && enhance_allow_mask2 == 0x804b8df && enhance_allow_mask3 == 0xa3e67fe0);
     assert(enhance_allow_mask4 == 0x2737b430 && enhance_allow_mask5 == 0xf4fffff);
     config_file(std::string("[settings]\n# note") + '\0' + "hidden\nenhance.cost.low.amount=7\n");
@@ -725,6 +756,20 @@ static void test_config()
     assert(enhance_stat_cap_multiplier == 2.25 && enhance_stat_material_quantity_multiplier == .5);
     assert(config_logs.size() == 1); // Only the successful-load record.
     assert(enhance_allow_mask && enhance_allow_mask2 && enhance_allow_mask3 && enhance_allow_mask4 && enhance_allow_mask5);
+    obj_data allowed{};
+    allowed.bitvector = AFF_HASTE; allowed.bitvector2 = AFF2_GLOBE;
+    allowed.bitvector3 = AFF3_REDUCE; allowed.bitvector4 = AFF4_NOFEAR;
+    allowed.bitvector5 = AFF5_PROT_UNDEAD;
+    assert(!is_enhance_banned(&allowed));
+    for (int bank = 0; bank < 5; ++bank) {
+        auto blocked = allowed;
+        if (bank == 0) blocked.bitvector |= AFF_FARSEE;
+        if (bank == 1) blocked.bitvector2 |= AFF2_FIRESHIELD;
+        if (bank == 2) blocked.bitvector3 |= AFF3_ABSORBING;
+        if (bank == 3) blocked.bitvector4 |= AFF4_VAMPIRE_FORM;
+        if (bank == 4) blocked.bitvector5 |= AFF5_SHADE_MOVEMENT;
+        assert(is_enhance_banned(&blocked));
+    }
     assert(enhance_essence_zone_rule_count == 1 && enhance_pool_excluded_zone_count == 1 && enhance_pool_excluded_vnum_count == 1);
     std::filesystem::remove("lib/enhance.cfg"); config_logs.clear(); load_enhance_config();
     assert(config_integers() == compiled && enhance_stat_cap_multiplier == cap_default && enhance_stat_material_quantity_multiplier == quantity_default);
@@ -748,6 +793,9 @@ static void test_config()
     assert(enhance_ival_cap == 95 && enhance_cost_low_amount == 7 && config_logged("overlong"));
     config_file("[settings] trailing\nenhance.ival.cap=7\n[unknown]\nenhance.ival.cap=8\n");
     assert(enhance_ival_cap == 95 && config_logged("Invalid enhancement section") && config_logged("Unsupported enhancement section"));
+    config_file("[spell]\nSPELL_SHADOW_SHIELD=0,0\nenhance.ival.cap=7\n"
+        "[settings]\nenhance.ival.cap=23\n");
+    assert(enhance_ival_cap == 23 && config_logged("Unsupported enhancement section [spell]"));
     config_file("[settings]\nenhance.search.vnum.min=20\nenhance.search.vnum.max=10\n"
         "[essence_drop]\nenhance.essence_drop.minimum_level=90\nenhance.essence_drop.maximum_level=80\n");
     assert(enhance_search_vnum_min == 1300 && enhance_search_vnum_max == 134000);
@@ -879,6 +927,7 @@ def main():
         cpp.write_text(
             HARNESS + "\n" + extract_function("tradeskill.c", "int material_start_vnum(int objmat)")
             + "\nint get_matstart(P_obj obj)\n" + get_matstart
+            + "\n" + extract_function("utility.c", "char *coin_stringv(int amount, int padfront)")
         )
         subprocess.run(
             [
