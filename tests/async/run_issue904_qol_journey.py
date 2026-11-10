@@ -179,7 +179,7 @@ def run(binary):
                 assert "You have not learned to mix poison" in command(ether, "skills info mixpoison")
                 passed("I2: real skill-info dispatch shows eligible poison ingredients and effects")
                 for vnum, keyword in ((102, "vial"), (827, "strange"), (825, "blood"),
-                                      (822, "mandrake"), (801, "mangrove"),
+                                      (822, "root"), (801, "mangrove"),
                                       (817, "purple"), (818, "pink")):
                     assert "You have created" in command(staff, f"load obj {vnum}")
                     text = command(staff, f"give {keyword} {ROGUE}")
