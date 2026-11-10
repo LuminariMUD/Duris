@@ -15,7 +15,7 @@ import tempfile
 import time
 import uuid
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 import run_weapon_actions_journey as weapon
 from run_item_pilot_journey import Server, set_properties, configure, object_records
 from run_world_quest_dual_backend import prepare_mariadb

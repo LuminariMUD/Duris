@@ -15,7 +15,7 @@ import sys
 import tempfile
 import time
 
-from test_flatfile_combat_journey import (
+from test_mariadb_combat_journey import (
     ACCOUNT,
     CHARACTER,
     EMAIL,

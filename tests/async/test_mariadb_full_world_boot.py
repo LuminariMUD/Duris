@@ -23,7 +23,7 @@ import json
 import os
 from contextlib import contextmanager
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 import pathlib
 import shutil
 import signal
@@ -34,7 +34,7 @@ import time
 
 from test_flight_network_journey import authority
 
-from test_flatfile_combat_journey import (
+from test_mariadb_combat_journey import (
     CHARACTER,
     MudClient,
     available_ports,

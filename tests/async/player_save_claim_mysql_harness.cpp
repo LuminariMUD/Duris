@@ -1143,6 +1143,78 @@ int main()
 		"a colliding reward UID stole another owner's item or recorded history");
 	std::cout << "[PASS] quest reward custody, history, rollback, replay and UID collision\n";
 
+	// Snapshot nesting supports more levels than InnoDB's cascading delete.
+	// Replacement must not recursively delete the old tree through its parents.
+	execute(test_connection,
+		"INSERT INTO player_data(pid,name,account_name) VALUES(90001,'DeepInventory','claim_probe')");
+	player_snapshot deep{};
+	deep.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+	deep.pid = 90001;
+	deep.revision = 1;
+	deep.components = PLAYER_COMPONENT_INVENTORY;
+	deep.room_vnum = 3001;
+	deep.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
+	constexpr int depth = 20;
+	for (int index = 0; index < depth; ++index)
+	{
+		auto nested = item(17000000 + index, 4917, index - 1);
+		nested.type = ITEM_CONTAINER;
+		nested.affects[0] = { APPLY_HITROLL, 1 };
+		nested.extra_descriptions.push_back({ "depth-note", "preserved", false, {} });
+		deep.items.push_back(std::move(nested));
+	}
+	require(player_snapshot_repository_apply(test_connection, deep).outcome ==
+			player_save_apply_outcome::applied,
+		"initial deep inventory checkpoint");
+	const std::string original_links =
+		scalar(test_connection,
+		       "SELECT GROUP_CONCAT(CONCAT(id,':',COALESCE(container_id,0)) ORDER BY id) "
+		       "FROM player_items WHERE pid=90001");
+	deep.revision = 2;
+	deep.items.back().cost = 27;
+	execute(test_connection,
+		"CREATE TRIGGER reject_deep_delete BEFORE DELETE ON player_items FOR EACH ROW "
+		"BEGIN IF OLD.pid=90001 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='deep replacement rollback'; END IF; END");
+	const auto failed_deep = player_snapshot_repository_apply(test_connection, deep);
+	execute(test_connection, "DROP TRIGGER reject_deep_delete");
+	require(failed_deep.outcome == player_save_apply_outcome::terminal_failure &&
+			failed_deep.rolled_back &&
+			scalar(test_connection,
+			       "SELECT GROUP_CONCAT(CONCAT(id,':',COALESCE(container_id,0)) ORDER BY id) "
+			       "FROM player_items WHERE pid=90001") == original_links &&
+			scalar(test_connection,
+			       "SELECT save_revision FROM player_data WHERE pid=90001") == "1",
+		"failed replacement did not roll back detached parent links and revision");
+	require(player_snapshot_repository_apply(test_connection, deep).outcome ==
+			player_save_apply_outcome::applied,
+		"deep inventory replacement checkpoint");
+	require(scalar(test_connection,
+		       "SELECT COUNT(*) FROM player_items WHERE pid=90001 AND obj_uid BETWEEN 17000000 AND 17000019") ==
+				"20" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM player_items child JOIN player_items parent ON child.container_id=parent.id "
+			       "WHERE child.pid=90001 AND child.obj_uid=parent.obj_uid+1") ==
+				"19" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM player_item_affects a JOIN player_items i ON i.id=a.item_id WHERE i.pid=90001 AND a.location=18 AND a.modifier=1") ==
+				"20" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM player_item_extra_descr e JOIN player_items i ON i.id=e.item_id "
+			       "WHERE i.pid=90001 AND e.keyword='depth-note' AND e.description='preserved'") ==
+				"20" &&
+			scalar(test_connection,
+			       "SELECT cost FROM player_items WHERE obj_uid=17000019") == "27",
+		"deep replacement lost UID graph, metadata or updated payload");
+	deep.revision = 3;
+	deep.items.clear();
+	require(player_snapshot_repository_apply(test_connection, deep).outcome ==
+				player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM player_items WHERE pid=90001") == "0",
+		"empty checkpoint did not remove the deep inventory graph");
+	std::cout
+		<< "[PASS] deep inventory replacement, metadata and rollback within supported nesting\n";
+
 	mysql_close(test_connection);
 	mysql_library_end();
 	std::cout << "player save claim MariaDB leg passed\n";

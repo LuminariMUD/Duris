@@ -2401,6 +2401,7 @@ bool persistence_save_character_terminal(P_char ch, int type)
 	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !GET_NAME(ch))
 		return false;
 
+	locker_return_norent_items(ch);
 	if (type == RENT_INN || type == RENT_CAMPED || type == RENT_LINKDEAD)
 		remove_norent_items(ch);
 
@@ -2437,6 +2438,7 @@ bool persistence_save_character_terminal_database_acknowledged(P_char ch, int ty
 {
 	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !GET_NAME(ch))
 		return false;
+	locker_return_norent_items(ch);
 	const int room = calculate_save_room(ch, type, ch->in_room);
 	if (player_save_pipeline_terminal(ch, type, room, 5000) !=
 	    player_save_terminal_result::database_acknowledged)
@@ -4811,6 +4813,13 @@ void do_quaff(P_char ch, char *argument, int /*cmd*/)
 		act("You cannot quaff this potion.", FALSE, ch, 0, 0, TO_CHAR);
 		return;
 	}
+
+	for (i = 1; i < 4; ++i)
+		if (bottle->value[i] == SPELL_VITALITY && affected_by_spell(ch, SPELL_VITALITY))
+		{
+			send_to_char("You are already affected by vitality!\r\n", ch);
+			return;
+		}
 
 	if (affected_by_spell(ch, TAG_POTION_TIMER))
 	{

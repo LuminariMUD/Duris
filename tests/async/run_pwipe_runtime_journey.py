@@ -21,7 +21,7 @@ import time
 import uuid
 import urllib.request
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from run_pwipe_launch_gate_journey import launch_config, login as launch_login, drained as launch_drained
 
 ROOT = Path(__file__).resolve().parents[2]

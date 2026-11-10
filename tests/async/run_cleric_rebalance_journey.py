@@ -13,7 +13,7 @@ import tempfile
 import time
 from pathlib import Path
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority
 from run_paladin_balance_journey import command, configure, hp
 from run_item_pilot_journey import Server, object_records, native_template

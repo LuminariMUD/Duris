@@ -24,7 +24,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from test_flatfile_combat_journey import MudClient, reconnect_character, create_character
+from test_mariadb_combat_journey import MudClient, reconnect_character, create_character
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]

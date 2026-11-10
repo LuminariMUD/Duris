@@ -932,6 +932,11 @@ static void lose_level_impl(P_char ch, std::uint64_t threshold_xp,
 		ch->points.base_hit = MAX(1, (ch->points.base_hit - 3));
 		ch->points.base_mana = MAX(0, (ch->points.base_mana - 3));
 	}
+	else
+	{
+		// Undo advance_level_impl's flat +1 so re-earning a level cannot add HP.
+		ch->points.base_hit = MAX(1, ch->points.base_hit - 1);
+	}
 
 	const int previous_level = GET_LEVEL(ch);
 	ch->player.level = MAX(1, ch->player.level - 1);

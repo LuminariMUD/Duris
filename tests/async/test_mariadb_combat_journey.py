@@ -47,12 +47,14 @@ _reserved_ports: set[int] = set()
 
 
 @contextlib.contextmanager
-def mariadb_authority():
+def mariadb_authority(source_root=None):
     """A freshly migrated schema on the with_disposable_mariadb.sh server.
 
+    source_root optionally pins a historical bootstrap and migration contract.
     Yields (env, sql): env is the base server environment for that schema, and
     sql(statement, selected=True) runs a statement and returns its stripped output.
     """
+    schema_root = pathlib.Path(source_root) if source_root is not None else ROOT
     host = os.environ["TEST_DB_HOST"]
     require(host in ("127.0.0.1", "localhost"), "use a disposable loopback database")
     database = "journey_" + uuid.uuid4().hex[:12]
@@ -77,9 +79,9 @@ def mariadb_authority():
 
     sql(f"CREATE DATABASE {database} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", False)
     try:
-        sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
+        sql((schema_root / "migrations/bootstrap_multithread_safe.sql").read_text())
         for step in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
-            subprocess.run(["python3", "scripts/migration_runner.py", *step], cwd=ROOT, env=env,
+            subprocess.run(["python3", "scripts/migration_runner.py", *step], cwd=schema_root, env=env,
                            check=True, capture_output=True)
         # Published news, as a provisioned world has; the prompt's "(news)" marker depends on it.
         sql("INSERT INTO mud_info(name,content) VALUES('news','Journey news.')")
@@ -689,9 +691,9 @@ def verify_recovered_loot(port: int) -> None:
         client.close()
 
 
-def build_flatfile_server(build_root: pathlib.Path, *, real_clock: bool = False) -> pathlib.Path:
+def build_mariadb_server(build_root: pathlib.Path, *, real_clock: bool = False) -> pathlib.Path:
     """Acquire the shared artifact while retaining journey-owned runtime state."""
-    return server_build_artifacts.build_flatfile_server(build_root, real_clock=real_clock)
+    return server_build_artifacts.build_mariadb_server(build_root, real_clock=real_clock)
 
 
 def run_journey(binary: pathlib.Path, reset_coins: bool = False,
@@ -760,7 +762,7 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                     client = MudClient(plain_port)
                     create_character(client)
                     if first_session_only:
-                        from test_flatfile_first_session_currency import verify_first_session
+                        from test_mariadb_first_session_currency import verify_first_session
                         verify_first_session(client, plain_port, sql, populated_bank)
                         return
                     if not boons_enabled:
