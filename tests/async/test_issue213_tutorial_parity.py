@@ -289,8 +289,14 @@ def main():
                     assert len(re.findall(rf"(?m)^#{ident}(?:~|[^0-9])", contents)) == 1
             else:
                 actual = (AREAS / kind / f"{copy}.{kind}").read_text()
+                if source == "newbie" and kind == "obj":
+                    # Enhancement-only additions have their own prototype checks;
+                    # preserve exact parity for every copied tutorial object.
+                    copied_ids = set(MAPS[source][kind].values())
+                    assert set(records(actual)) == copied_ids | set(range(91534, 91567))
+                    actual = "".join(records(actual, copied_ids).values())
             assert len(records(original)) == count
-            assert len(records(actual)) == count
+            assert len(records(actual)) == count, (source, copy, kind, len(records(actual)), count)
             assert actual == expected_copy(source, kind), f"{copy}.{kind} differs beyond the explicit copy mapping"
             allocated = set(MAPS[source][kind].values())
             for path in (AREAS / kind).glob(f"*.{kind}"):
