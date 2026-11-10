@@ -81,6 +81,7 @@ bool publish(std::unordered_map<std::string, pending_auction>::iterator found, P
 	const bool receipt =
 		entry.payload.action == auction_action::list ||
 		entry.payload.action == auction_action::bid ||
+		entry.payload.action == auction_action::claim_item ||
 		(entry.payload.action == auction_action::claim_money && entry.payload.value > 0);
 	if (receipt && !character)
 		for (P_char current = character_list; current; current = current->next)
@@ -103,13 +104,17 @@ bool publish(std::unordered_map<std::string, pending_auction>::iterator found, P
 		const int64_t requested =
 			entry.payload.action == auction_action::list ? -entry.payload.listing_fee :
 			entry.payload.action == auction_action::bid  ? -entry.payload.value :
-								       entry.payload.value;
+			entry.payload.action == auction_action::claim_item ? 0 :
+									     entry.payload.value;
 		if (durable_commit &&
 		    (!decoded || result.action != entry.payload.action ||
 		     (entry.payload.action == auction_action::bid ?
 			      (delta < requested || delta > 0) :
 			      delta != requested) ||
 		     result.wallet_revision != entry.payload.expected_wallet_revision + 1))
+			return false;
+		if (committed && character && entry.payload.action == auction_action::claim_item &&
+		    !auction_publish_item_claim(character, result, entry.payload))
 			return false;
 		if (committed && character && !currency_transaction_publish_trade(character, delta))
 			return false;
@@ -171,6 +176,8 @@ bool publish(std::unordered_map<std::string, pending_auction>::iterator found, P
 				return false;
 			}
 	}
+	if (!committed && character && entry.payload.action == auction_action::claim_item)
+		send_to_char("Your auction items remain available for pickup.\r\n", character);
 	if (entry.completion)
 		entry.completion(character, committed, decoded ? result : auction_command_result{},
 				 entry.completed.error_code, entry.payload);
@@ -204,10 +211,12 @@ bool submit(P_char character, const auction_command_payload &payload,
 		return false;
 	const bool receipt = payload.action == auction_action::list ||
 			     payload.action == auction_action::bid ||
+			     payload.action == auction_action::claim_item ||
 			     (payload.action == auction_action::claim_money && payload.value > 0);
 	const int64_t payment = payload.action == auction_action::list ? -payload.listing_fee :
 				payload.action == auction_action::bid  ? -payload.value :
-									 payload.value;
+				payload.action == auction_action::claim_item ? 0 :
+									       payload.value;
 	player_pending_trade_snapshot claim = {};
 	if (receipt)
 	{
@@ -315,7 +324,8 @@ void auction_transaction_handle_completions(const critical_completion *completio
 					   find_player_by_pid(found->second.actor_pid) :
 					   nullptr;
 		if (!found->second.actor_pid || character ||
-		    (found->second.payload.action == auction_action::list ||
+		    (found->second.payload.action == auction_action::claim_item ||
+		     found->second.payload.action == auction_action::list ||
 		     found->second.payload.action == auction_action::bid ||
 		     (found->second.payload.action == auction_action::claim_money &&
 		      found->second.payload.value > 0)))
@@ -406,7 +416,8 @@ void auction_transaction_publish_outbox(void)
 		{
 			P_char character = find_player_by_pid(current->second.actor_pid);
 			if (character ||
-			    (current->second.payload.action == auction_action::list ||
+			    (current->second.payload.action == auction_action::claim_item ||
+			     current->second.payload.action == auction_action::list ||
 			     current->second.payload.action == auction_action::bid ||
 			     (current->second.payload.action == auction_action::claim_money &&
 			      current->second.payload.value > 0)))
@@ -441,6 +452,7 @@ void auction_transaction_reset_for_tests(void)
 		static_cast<void>(operation);
 		if (entry.payload.action == auction_action::list ||
 		    entry.payload.action == auction_action::bid ||
+		    entry.payload.action == auction_action::claim_item ||
 		    (entry.payload.action == auction_action::claim_money &&
 		     entry.payload.value > 0))
 		{

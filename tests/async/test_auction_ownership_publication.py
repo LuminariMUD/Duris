@@ -42,6 +42,8 @@ bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_t
     critical_source_site, critical_deadline_class, currency_completion_fn, const void *,
     size_t) { return true; }
 bool obj_to_char(P_obj, P_char) { return true; }
+bool auction_publish_item_claim(P_char,const auction_command_result &,const auction_command_payload &) { return true; }
+void send_to_char(const char *,P_char) {}
 P_char character_list = nullptr;
 bool currency_transaction_publish_trade(P_char, int64_t) { return true; }
 void currency_transaction_release_trade(uint32_t) {}
