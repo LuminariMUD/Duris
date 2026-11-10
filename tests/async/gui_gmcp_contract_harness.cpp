@@ -3,6 +3,7 @@
 #include "core/utils.h"
 #include "core/json_utils.h"
 #include "net/gmcp.h"
+#include "net/chat_presentation.h"
 #include "net/comm.h"
 #include "item/item_actions.h"
 #include "item/encumbrance_policy.h"
@@ -534,6 +535,84 @@ static void flush()
 {
 	gmcp_flush_dirty_ship_contacts();
 	gmcp_flush_dirty_ship_info();
+}
+
+static void links_contract(P_char actor)
+{
+	const auto previous = actor->desc;
+	const auto previous_list = descriptor_list;
+	for (bool websocket : { false, true })
+	{
+		descriptor_data d{};
+		d.character = actor;
+		d.connected = CON_PLAYING;
+		d.websocket = websocket;
+		d.gmcp_enabled = 1;
+		actor->desc = &d;
+		descriptor_list = &d;
+		wire.erase(&d);
+		ws_wire.erase(&d);
+		packages.erase(&d);
+		auto control = [&](const std::string &request)
+		{
+			control_clock_us += 1000000;
+			gmcp_handle_input(&d, request.data(), request.size());
+		};
+		control("Core.Supports.Set [\"Duris.Capabilities 1\",\"Duris.Links 2\"]");
+		assert(!gmcp_links_enabled(&d));
+		control("Core.Supports.Add [\"Duris.Links 1\"]");
+		assert(gmcp_links_enabled(&d));
+		control("Duris.Subscribe [\"Duris.Links 1\"]");
+		assert(!d.gmcp_interests);
+		gmcp_flush_capabilities(&d);
+		auto capabilities = payload(&d, "Duris.Capabilities");
+		assert(capabilities.find("\"Duris.Links\":1") != std::string::npos &&
+		       capabilities.find("\"supported\":[\"Duris.Links\"]") != std::string::npos &&
+		       capabilities.find("\"active\":[]") != std::string::npos);
+		const char *text = "[[help]] https://example.test/?x=1&name=two";
+		for (int channel : { 0, 1, 2 })
+		{
+			const auto before = packages[&d].size();
+			if (channel == 0)
+				gmcp_comm_channel(actor, "fcc", "Tester", text);
+			else if (channel == 1)
+				gmcp_comm_channel_ex(actor, "nchat", "Tester", text, "good");
+			else
+				gmcp_broadcast_channel("info", "System", text, nullptr);
+			assert(packages[&d].size() == before + 1);
+			cJSON *root = cJSON_Parse(payload(&d, "Comm.Channel").c_str());
+			assert(root && std::string(cJSON_GetStringValue(
+					       cJSON_GetObjectItem(root, "text"))) == text);
+			auto *body = cJSON_GetObjectItem(root, "bodyPresentation");
+			auto *links = cJSON_GetObjectItem(body, "links");
+			assert(cJSON_GetArraySize(links) == 1 &&
+			       std::string(cJSON_GetStringValue(cJSON_GetObjectItem(
+				       cJSON_GetArrayItem(links, 0), "kind"))) == "url");
+			if (channel == 1)
+				assert(cJSON_GetObjectItem(root, "alignment"));
+			cJSON_Delete(root);
+		}
+		control("Core.Supports.Remove [\"Duris.Links 1\"]");
+		assert(!gmcp_links_enabled(&d));
+		gmcp_comm_channel(actor, "fcc", "Tester", text);
+		cJSON *legacy = cJSON_Parse(payload(&d, "Comm.Channel").c_str());
+		assert(legacy && !cJSON_GetObjectItem(legacy, "bodyPresentation"));
+		cJSON_Delete(legacy);
+		control("Core.Supports.Set [\"Duris.Capabilities 1\",\"Duris.Time 1\",\"Duris.Session 1\",\"Duris.Combat 1\",\"Char.Items 1\",\"Char.SpellPreparation 1\",\"Duris.Links 1\"]");
+		gmcp_flush_capabilities(&d);
+		assert(!d.gmcp_control_pending &&
+		       payload(&d, "Duris.Capabilities").find("Duris.Links") != std::string::npos);
+		control("Duris.Subscribe [\"Duris.Time 1\",\"Duris.Combat 1\",\"Char.Items 1\",\"Char.SpellPreparation 1\",\"Duris.Links 1\"]");
+		gmcp_flush_capabilities(&d);
+		assert(!d.gmcp_control_pending && d.gmcp_interests == GMCP_INTEREST_STREAMS);
+		SET_BIT(actor->specials.act3, PLR3_NOGMCP);
+		assert(!gmcp_links_enabled(&d));
+		REMOVE_BIT(actor->specials.act3, PLR3_NOGMCP);
+		d.gmcp_enabled = 0;
+		assert(!gmcp_links_enabled(&d));
+	}
+	actor->desc = previous;
+	descriptor_list = previous_list;
 }
 
 static void control_time_contract(P_char actor)
@@ -2705,6 +2784,7 @@ int main()
 	wire.clear();
 	gmcp_send_room_map(&a, "hidden");
 	assert(wire.empty());
+	links_contract(&a);
 	control_time_contract(&a);
 	session_contract(&a, false);
 	session_contract(&a, true);
