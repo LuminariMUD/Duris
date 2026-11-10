@@ -107,7 +107,7 @@ int wield_item_size(P_char ch, P_obj obj)
 	// Player hand cost uses base size, not Enlarge/Reduce or the NPC giant list.
 	if (!(IS_SET(obj->extra_flags, ITEM_TWOHANDS) ||
 	      (obj->type == ITEM_WEAPON && obj->value[0] == WEAPON_2HANDSWORD)) ||
-	    (obj->type == ITEM_WEAPON && (IS_PC(ch) ? GET_SIZE(ch) >= SIZE_HUGE : IS_GIANT(ch))))
+	    (obj->type == ITEM_WEAPON && (has_monkey_grip(ch) || (IS_NPC(ch) && IS_GIANT(ch)))))
 	{
 		return 1;
 	}

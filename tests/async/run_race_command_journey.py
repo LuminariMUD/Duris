@@ -67,13 +67,16 @@ def run(binary, backend):
                         break
                     assert time.monotonic() < deadline, human
                     time.sleep(.1)
-                classes = human.split("Valid classes (current character creation rules)", 1)[1]
+                classes = human.split("Valid classes : Specializations", 1)[1]
                 classes = classes.split("Racial stat factors", 1)[0]
                 assert "Warrior" in classes and "Paladin" in classes
                 assert "Anti-Paladin" not in classes and "Dragoon" not in classes
                 assert "Warrior     : Swordsman, Guardian, Swashbuckler" in classes
                 assert "100% is the baseline" in human
                 barbarian = command(client, "race info barbarian")
+                assert "Valid classes : Specializations\r\n" in barbarian
+                assert "Abilities: race innates Barbarian\r\n" in barbarian
+                assert "More lore and racial traits:" not in barbarian
                 assert "Combat speed : 18.250 pulses\r\n" in barbarian
                 assert "Spell speed  : 1.220x casting time\r\n" in barbarian
                 tiefling = command(client, "race info tiefling")
@@ -92,12 +95,35 @@ def run(binary, backend):
                 assert "Grey Elf" in command(client, "race info GrEy ElF")
                 assert "Mountain Dwarf" in command(client, "race info mountaindwarf")
                 drow = command(client, "race info drow elf")
-                classes = drow.split("Valid classes (current character creation rules)", 1)[1]
+                classes = drow.split("Valid classes : Specializations", 1)[1]
                 classes = classes.split("Racial stat factors", 1)[0]
                 assert "Necromancer" in classes and "    Paladin" not in classes
                 innates = command(client, "race innates gnome")
                 assert "reflection" in innates and "obtained at level 31" in innates
                 assert "Designates passive ability" in innates
+                barbarian_innates = command(client, "race innates barbarian")
+                assert "RACIAL INNATES ]====<\r\n  Race size: large\r\n\r\n" in barbarian_innates
+                assert "\r\n\r\n'*' Designates passive ability.\r\n" in barbarian_innates
+                assert "  Use innate info <ability/innate name> for details\r\n" in barbarian_innates
+                assert "Use help <ability name>" not in barbarian_innates
+                assert "*Melee and archery damage: +15% (passive)\r\n" in barbarian_innates
+                for race in ("troll", "centaur", "drider", "revenant", "death knight"):
+                    racial_innates = command(client, "race innates " + race)
+                    assert "Race size: large\r\n" in racial_innates
+                    assert "*Melee and archery damage: +15% (passive)\r\n" in racial_innates
+                for race in ("human", "gnome", "ogre", "firbolg", "minotaur"):
+                    assert "Melee and archery damage:" not in command(client, "race innates " + race)
+                for race in ("ogre", "firbolg", "minotaur", "storm giant", "wight"):
+                    huge_innates = command(client, "race innates " + race)
+                    assert "Race size: huge\r\n" in huge_innates
+                    assert "*monkey grip\r\n" in huge_innates
+                assert "monkey grip" not in barbarian_innates
+                monkey_grip_info = command(client, "innate info monkey grip")
+                assert "monkey grip : INNATE INFO" in monkey_grip_info
+                assert "Type: Always active" in monkey_grip_info
+                assert "Not available to your race, class or specialization." in monkey_grip_info
+                assert "two-handed weapons cost 1 hand instead of 2" in monkey_grip_info
+                assert "normal two-handed weapon damage is retained" in monkey_grip_info
                 dwarf = command(client, "race innates mountain dwarf")
                 assert "*infravision" in dwarf
                 assert "Matching races: Githyanki, Githzerai" in command(client, "race info gith")

@@ -557,7 +557,9 @@ as the global melee offset +1 versus +2 and Two Daggers -3 versus -1.
 
 **Gameplay:** the original inactive-setting confusion is addressed. Operators can
 still compare durations using the wrong “round” or infer compensation that a
-neutral racial multiplier does not provide.
+neutral racial multiplier does not provide. Since 2026-11-10, the six Large
+player races have a separate +15% output factor, shown in `race innates`;
+NPCs do not receive that player-only bonus.
 An absent property can silently select a different balance from the checked-in
 configuration. Different fallback values are not inherently wrong, but need
 to be explicit in reproducible comparisons.
