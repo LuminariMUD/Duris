@@ -131,7 +131,7 @@ most qualification work is checking their boundaries after the new transition.
   Its creation view closes only when that connection state changes. This is a
   required companion change, not merely a compatibility check.
 
-The existing [durable Keep and resumable first-entry plan](plan.md) describes
+The existing [durable Keep and resumable first-entry plan](issue-612-kept-character-resume-plan.md) describes
 the underlying persistence work. This plan builds on the inspected code and
 does not replace that work or rely on historical PR status as deployment proof.
 
