@@ -809,12 +809,19 @@ def main():
         expected = {int(vnum): int(score) for vnum, score in
                     csv.reader((world / "reference-scores.csv").open())}
         reported = {}
+        with (output / "material-rarity-summary.csv").open() as file:
+            headings = next(csv.reader(file))
+            assert "total_material_units" in headings and "share_percent" in headings
+        exclusion_reasons = set()
         for name in ("recipes", "exclusions"):
             with (output / f"material-rarity-{name}.csv").open() as file:
                 for row in csv.DictReader(file):
                     vnum, score = int(row["template_vnum"]), int(row["itemvalue"])
                     assert score == expected[vnum], (vnum, score, expected[vnum])
                     reported[vnum] = score
+                    if name == "exclusions":
+                        exclusion_reasons.add(row["reason"])
+        assert "unmapped-material-family" in exclusion_reasons
         assert reported == expected
         with (output / "item-values.csv").open() as file:
             valuations = list(csv.DictReader(file))

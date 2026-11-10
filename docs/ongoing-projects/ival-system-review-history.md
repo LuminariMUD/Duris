@@ -1693,6 +1693,9 @@ report, even though order independence itself is an objective requirement.
 **Acceptance:** all permutations of mixed AC/max-stat/hit/damage/pulse slots
 produce the same value; indexed persistence preserves inputs; ordinary single
 category items remain unchanged unless another approved fix applies.
+Review correction (#956): canonical-order summation can move a single-category
+item by exactly 1, up or down, through float rounding at an integer boundary. No
+shipped template or sampled generated item is affected.
 
 Implemented in Chunk 11 with deterministic addition-before-factor stages,
 10,080 permutation cases, unchanged input/snapshot regressions and measured

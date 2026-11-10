@@ -41,6 +41,8 @@ int build_obj_info_text(P_obj obj, char *buf, size_t bufsize);
 // True is admission; auction_transaction_outbox_published acknowledges the callback.
 bool auction_publish_committed_event(const struct auction_command_result &result,
 				     unsigned long long outbox_id);
+bool auction_publish_item_claim(P_char character, const struct auction_command_result &result,
+				const struct auction_command_payload &payload);
 
 bool auction_offer(P_char ch, char *arg);
 bool auction_list(P_char ch, char *arg);
