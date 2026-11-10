@@ -5716,6 +5716,17 @@ void execute_wear(P_char ch, P_obj obj_object, int position, int keyword, bool s
 		perform_wear(ch, obj_object, keyword);
 	obj_from_char(obj_object);
 	equip_char(ch, obj_object, position, !showit);
+	if (showit && IS_PC(ch) && GET_CLASS(ch, CLASS_MONK) &&
+	    ch->equipment[position] == obj_object &&
+	    (position == WIELD || position == SECONDARY_WEAPON || position == HOLD ||
+	     position == WEAR_SHIELD || position == WEAR_LIGHT))
+	{
+		send_to_char(
+			"Your occupied hands limit Martial Arts to one base attack per round.\r\n",
+			ch);
+		if (position != WEAR_LIGHT)
+			send_to_char("This also disables your monk bare-hand damage dice.\r\n", ch);
+	}
 }
 
 /*
@@ -7560,6 +7571,7 @@ void do_search(P_char ch, char *argument, int /*cmd*/)
 	 */
 	if (!*name)
 	{
+		bool discovered_exit = false;
 		for (door = 0; (door < NUM_EXITS) && (!found_something || IS_TRUSTED(ch)); door++)
 		{
 			if (EXIT(ch, door) && IS_SET(EXIT(ch, door)->exit_info, EX_SECRET) &&
@@ -7573,9 +7585,14 @@ void do_search(P_char ch, char *argument, int /*cmd*/)
 					    TO_ROOM);
 					found_something = TRUE;
 					REMOVE_BIT(EXIT(ch, door)->exit_info, EX_SECRET);
+					discovered_exit = true;
 				}
 			}
 		}
+		if (discovered_exit)
+			for (P_char viewer = world[ch->in_room].people; viewer;
+			     viewer = viewer->next_in_room)
+				gmcp_room_info(viewer);
 		/*
 		 * new bit, give them chance to find hiding thieves/mobs
 		 */

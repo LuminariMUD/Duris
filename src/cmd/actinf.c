@@ -3206,6 +3206,9 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 
 	case 24: // looking 'inside' something - so we can show a room w/o the map
 
+		if (cmd == CMD_LOOK && room_no == ch->in_room &&
+		    (keyword_no == 8 || keyword_no == 9))
+			gmcp_room_info(ch);
 		switch (keyword_no)
 		{
 		case 8: /* look COMMAND, with NULL args, brief is forced */

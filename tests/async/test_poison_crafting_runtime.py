@@ -25,6 +25,8 @@ PRELUDE = r'''
 #include "world/vnum.obj.h"
 #include "item/objmisc.h"
 #include "classes/salchemist.h"
+#include "world/object_template.h"
+#include "abilities/abilities.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -92,6 +94,16 @@ int get_id_for(P_obj obj) { return OBJ_VNUM(obj); }
 
 
 SUPPORT = r'''
+const object_template *find_object_template(int vnum) {
+    if (!vnum || vnum == fail_vnum) return nullptr;
+    static std::map<int, object_template> templates;
+    auto &obj = templates[vnum];
+    obj.short_description = vial_prototypes.count(vnum) ?
+        vial_prototypes.at(vnum).description : "ingredient" + std::to_string(vnum);
+    return &obj;
+}
+std::string fact(const std::string &label, const std::string &text) { return label + ": " + text + "\n"; }
+std::string seconds(int pulses) { return std::to_string(pulses); }
 P_obj read_object(int vnum, int) {
     if (!vnum || vnum == fail_vnum) return nullptr;
     auto *obj = new obj_data{}; live_objects.insert(obj);
@@ -141,8 +153,9 @@ def production():
         ("interp.c", "void argument_interpreter("),
         ("salchemist.c", "bool collect_required_objects("),
         ("salchemist.c", "P_obj get_vial("),
-        ("salchemist.c", "char *print_poison_ingredients("),
+        ("salchemist.c", "std::string print_poison_ingredients("),
         ("salchemist.c", "static int mixpoison_lag("),
+        ("salchemist.c", "std::string mixpoison_facts("),
         ("salchemist.c", "void do_mixpoison("),
         ("actobj.c", "void do_apply_poison("),
     ])
@@ -187,8 +200,18 @@ static void boundaries() {
         for (int skill : {entry.skill-1, entry.skill, entry.skill+1}) {
             if (skill > 100) continue;
             reset(level, skill); inputs(*recipe); int before = count(&crafter);
-            mix("list");
             bool eligible = level >= entry.level && skill >= entry.skill;
+            const int before_waits = waits, before_extracted = extracted;
+            output = mixpoison_facts(&crafter);
+            assert(waits == before_waits && extracted == before_extracted && count(&crafter) == before);
+            assert((output.find(vial_prototypes.at(recipe->vnum).description) != std::string::npos) == eligible);
+            if (eligible) {
+                assert(output.find(recipe->effect) != std::string::npos);
+                for (int ingredient : recipe->ingredients) if (ingredient)
+                    assert(output.find("ingredient" + std::to_string(ingredient)) != std::string::npos);
+                assert(output.find("Apply Poison") != std::string::npos);
+            }
+            output.clear(); mix("list");
             assert((output.find(vial_prototypes.at(recipe->vnum).description) != std::string::npos) == eligible);
             assert(count(&crafter) == before);
             output.clear(); mix();

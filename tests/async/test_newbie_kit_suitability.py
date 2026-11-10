@@ -159,6 +159,15 @@ int main() {
             for (int alignment : {-1000, 0, 1000}) {
                 ch.specials.alignment = alignment;
                 const auto kit = prepare_legacy_newbie_plan(&ch);
+                if (cls[1] == CLASS_ETHERMANCER) {
+                    assert(count(kit, 256) == 1);
+                    obj_data dagger{};
+                    dagger.type = prototypes.at(256).type;
+                    std::copy(std::begin(prototypes.at(256).value), std::end(prototypes.at(256).value), dagger.value);
+                    assert(dagger.type == ITEM_WEAPON && dagger.value[1] == 1 && dagger.value[2] == 4);
+                    assert(required_weapon_skill(&dagger) == SKILL_1H_PIERCING);
+                    assert(can_char_use_item(&ch, &dagger));
+                }
                 int containers = 0;
                 for (const auto &item : kit) {
                     const auto *obj = find_object_template(item.item.vnum);

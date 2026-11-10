@@ -39,6 +39,7 @@
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "world/vnum.obj.h"
+#include "world/object_template.h"
 #include "world/weather.h"
 #include "combat/chaos_materials.h"
 
@@ -271,6 +272,7 @@ struct poison
 	int skill_required;
 	int ingredients[MAX_INGREDIENTS + 1];
 	int vnum;
+	const char *effect;
 };
 
 struct poison poison_data[] = {
@@ -279,39 +281,46 @@ struct poison poison_data[] = {
 	  100,
 	  { VOBJ_FORAGE_STRANGE_STONE, VOBJ_FORAGE_DRAGON_BLOOD, VOBJ_FORAGE_MANDRAKE,
 	    VOBJ_FORAGE_MANGROVE_ROOT, VOBJ_FORAGE_PURPLE_MUSHROOMS, VOBJ_FORAGE_PINK_MUSHROOMS },
-	  VOBJ_POISON_VIAL_MADNESS },
+	  VOBJ_POISON_VIAL_MADNESS,
+	  "Causes recurring short berserk episodes." },
 	{ POISON_SLOWNESS,
 	  41,
 	  70,
 	  { VOBJ_FORAGE_FAERIE_DUST, VOBJ_FORAGE_MANDRAKE, VOBJ_FORAGE_DRAGON_BLOOD,
 	    VOBJ_FORAGE_BLUE_MUSHROOMS },
-	  VOBJ_POISON_VIAL_SLOWNESS },
+	  VOBJ_POISON_VIAL_SLOWNESS,
+	  "Slows the victim for one minute." },
 	{ POISON_MOVELEAK,
 	  36,
 	  50,
 	  { VOBJ_FORAGE_WIREGRASS, VOBJ_FORAGE_GREEN_MUSHROOMS, VOBJ_FORAGE_TREEROOT_MOSS },
-	  VOBJ_POISON_VIAL_MOVELEAK },
+	  VOBJ_POISON_VIAL_MOVELEAK,
+	  "Periodically drains vitality." },
 	{ POISON_HEART_TOXIN,
 	  46,
 	  80,
 	  { VOBJ_FORAGE_NIGHTSHADE, VOBJ_FORAGE_MANDRAKE, VOBJ_FORAGE_DRAGON_BLOOD,
 	    VOBJ_FORAGE_FAERIE_DUST },
-	  VOBJ_POISON_VIAL_HEART_TOXIN },
+	  VOBJ_POISON_VIAL_HEART_TOXIN,
+	  "Deals delayed damage that can kill." },
 	{ POISON_NEUROTOXIN,
 	  46,
 	  80,
 	  { VOBJ_FORAGE_MANGROVE_ROOT, VOBJ_FORAGE_MANDRAKE, VOBJ_FORAGE_CRABAPPLES },
-	  VOBJ_POISON_VIAL_NEUROTOXIN },
+	  VOBJ_POISON_VIAL_NEUROTOXIN,
+	  "Causes recurring muscle spasms that delay actions." },
 	{ POISON_WEAKNESS,
 	  30,
 	  1,
 	  { VOBJ_FORAGE_STRANGE_STONE, VOBJ_FORAGE_LICHEN, VOBJ_FORAGE_BLUEBERRIES },
-	  VOBJ_POISON_VIAL_WEAKNESS },
+	  VOBJ_POISON_VIAL_WEAKNESS,
+	  "Temporarily reduces Strength." },
 	{ POISON_LIFELEAK,
 	  30,
 	  1,
 	  { VOBJ_FORAGE_FOREST_TOADSTOOL, VOBJ_FORAGE_RASPBERRIES },
-	  VOBJ_POISON_VIAL_LIFELEAK },
+	  VOBJ_POISON_VIAL_LIFELEAK,
+	  "Periodically drains hitpoints, without reducing them below 1." },
 	{}
 };
 
@@ -689,26 +698,19 @@ P_obj get_vial(P_char ch)
 	return NULL;
 }
 
-char *print_poison_ingredients(int ingredients[])
+std::string print_poison_ingredients(const int ingredients[])
 {
-	static char buffer[MAX_STRING_LENGTH];
-
-	memset(buffer, 0, sizeof(buffer));
-	for (int i = 0; i < MAX_INGREDIENTS; i++)
+	std::string result;
+	for (int i = 0; i < MAX_INGREDIENTS && ingredients[i]; ++i)
 	{
-		P_obj ingredient = read_object(ingredients[i], VIRTUAL);
+		const auto *ingredient = find_object_template(ingredients[i]);
 		if (!ingredient)
 			continue;
-
-		if (buffer[0])
-		{
-			strcat(buffer, ", ");
-		}
-		strcat(buffer, ingredient->short_description);
-		extract_obj(ingredient);
+		if (!result.empty())
+			result += ", ";
+		result += ingredient->short_description;
 	}
-
-	return buffer;
+	return result;
 }
 
 static int mixpoison_lag()
@@ -729,10 +731,25 @@ std::string mixpoison_facts(P_char ch)
 		    rating >= poison_data[i].skill_required)
 			known++;
 	}
-	return fact("Poisons your level and rating can mix",
-		    std::to_string(known) + " of " + std::to_string(all)) +
-	       fact("Your lag", seconds(mixpoison_lag())) +
-	       "  It takes a poison vial and the ingredients. Type mixpoison list for them.\n";
+	std::string result = fact("Poisons your level and rating can mix",
+				  std::to_string(known) + " of " + std::to_string(all)) +
+			     fact("Your lag", seconds(mixpoison_lag())) +
+			     "  Mixing takes a poison vial and the listed ingredients.\n"
+			     "  Using a prepared poison requires Apply Poison, not Mixpoison.\n";
+	for (const auto &recipe : poison_data)
+	{
+		if (!recipe.poison_type)
+			break;
+		if (GET_LEVEL(ch) < recipe.level_required || rating < recipe.skill_required)
+			continue;
+		const auto *vial = find_object_template(recipe.vnum);
+		if (!vial)
+			continue;
+		result += "\n  " + vial->short_description + "&n\n";
+		result += fact("Ingredients", print_poison_ingredients(recipe.ingredients));
+		result += fact("Effect", recipe.effect);
+	}
+	return result;
 }
 
 void do_mixpoison(P_char ch, char *argument, int /*cmd*/)
@@ -768,7 +785,8 @@ void do_mixpoison(P_char ch, char *argument, int /*cmd*/)
 					continue;
 				snprintf(buffer, MAX_STRING_LENGTH, " %-40s - %s\r\n",
 					 poison_vial->short_description,
-					 print_poison_ingredients(poison_data[i].ingredients));
+					 print_poison_ingredients(poison_data[i].ingredients)
+						 .c_str());
 				extract_obj(poison_vial);
 				send_to_char(buffer, ch);
 			}
