@@ -177,7 +177,9 @@ def run(binary, backend, evidence_dir):
                 process.send_signal(signal.SIGUSR1)
                 result, output_text = client.expect_any(
                     ("Copyover complete!", "Copyover FAILED", "Copyover cancelled"), timeout=180)
-                assert result == "Copyover complete!", output_text + journey.runtime_logs(runtime)
+                if result != "Copyover complete!":
+                    status = command(client, "world persistence", timeout=30)
+                    raise AssertionError(output_text + status + journey.runtime_logs(runtime))
 
             def enter_locker():
                 deadline = time.monotonic() + 90
