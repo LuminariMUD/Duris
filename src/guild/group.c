@@ -1019,11 +1019,14 @@ bool group_remove_member(P_char ch)
 
 	if (affected_by_spell(ch, SONG_SHADOW_PIPER))
 		affect_from_char(ch, SONG_SHADOW_PIPER);
+	if (affected_by_spell(ch, SONG_NIMBLENESS))
+		affect_from_char(ch, SONG_NIMBLENESS);
 	for (auto *link = ch->linked, *next = link; link; link = next)
 	{
 		next = link->next_linked;
 		if (link->type == LNK_SONG && link->affect &&
-		    link->affect->type == SONG_SHADOW_PIPER)
+		    (link->affect->type == SONG_SHADOW_PIPER ||
+		     link->affect->type == SONG_NIMBLENESS))
 			affect_remove(link->linking, link->affect);
 	}
 

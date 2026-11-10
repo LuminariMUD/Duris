@@ -765,7 +765,7 @@ void removeArtiData(char *name);
 #define SINGING(ch) (IS_ALIVE(ch) && IS_AFFECTED3(ch, AFF3_SINGING))
 
 bool player_bard(P_char ch, int spec, int level);
-void check_shadow_piper_rooms(P_char ch, bool followers_may_move);
+void check_bard_song_rooms(P_char ch, bool followers_may_move);
 P_obj has_instrument(P_char, int song);
 void do_play(P_char, char *, int);
 void stop_singing(P_char);

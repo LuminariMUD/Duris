@@ -4509,6 +4509,14 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 			return DAM_NONEDEAD;
 		}
 	}
+	if (dam > 0 && ch != victim && affected_by_spell(victim, SONG_NIMBLENESS) &&
+	    number(1, 1000) <= song_nimbleness_spell_threshold())
+	{
+		send_to_char("You dance clear of the harmful magic with the Minstrel's tune!\r\n",
+			     victim);
+		act("$N dances clear of your harmful magic.", FALSE, ch, 0, victim, TO_CHAR);
+		return DAM_NONEDEAD;
+	}
 	// globes check
 	if (ch != victim)
 	{
@@ -9306,6 +9314,11 @@ std::string dodge_facts(P_char ch)
 		low += dodge_specialist_bonus();
 		high += dodge_specialist_bonus();
 	}
+	if (affected_by_spell(ch, SONG_NIMBLENESS))
+	{
+		low += song_nimbleness_melee_bonus();
+		high += song_nimbleness_melee_bonus();
+	}
 	std::string text =
 		"  Your rating doesn't matter: dodging uses your agility.\n" +
 		fact("Your agility score", std::to_string(dodge_agility_score(ch))) +
@@ -9431,6 +9444,9 @@ int dodgeSucceed(P_char char_dodger, P_char attacker, P_obj wpn)
 
 	if (IS_STUNNED(attacker))
 		percent = (int)(percent * 1.10);
+
+	if (affected_by_spell(char_dodger, SONG_NIMBLENESS))
+		percent += song_nimbleness_melee_bonus();
 
 	bool dragoon_dodge = false;
 

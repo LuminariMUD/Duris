@@ -85,6 +85,7 @@ void bard_peace(int, P_char, P_char, int);
 void bard_calm(int, P_char, P_char, int);
 void bard_heroism(int, P_char, P_char, int);
 void bard_shadow_piper(int, P_char, P_char, int);
+void bard_nimbleness(int, P_char, P_char, int);
 void bard_cowardice(int, P_char, P_char, int);
 void bard_chaos(int, P_char, P_char, int);
 void bard_storms(int, P_char, P_char, int);
@@ -96,7 +97,6 @@ void bard_harmony(int, P_char, P_char, int);
 void bard_drifting(int, P_char, P_char, int);
 void bard_dissonance(int, P_char, P_char, int);
 
-// SONG_MINDSHIELD is reserved for the Minstrel defensive song.
 struct song_description
 {
 	const char *name;
@@ -122,6 +122,7 @@ struct song_description
 	  { "harmony", bard_harmony, INSTRUMENT_FLUTE, SONG_HARMONY, 0 },
 	  { "healing", bard_healing, INSTRUMENT_LYRE, SONG_HEALING, SONG_ALLIES },
 	  { "heroism", bard_heroism, INSTRUMENT_DRUMS, SONG_HEROISM, SONG_ALLIES },
+	  { "nimbleness", bard_nimbleness, INSTRUMENT_MANDOLIN, SONG_NIMBLENESS, SONG_ALLIES },
 	  { "peace", bard_peace, INSTRUMENT_HARP, SONG_PEACE, 0 },
 	  { "protection", bard_protection, INSTRUMENT_HORN, SONG_PROTECTION, SONG_ALLIES },
 	  { "revelation", bard_revelation, INSTRUMENT_MANDOLIN, SONG_REVELATION, SONG_ALLIES },
@@ -558,6 +559,11 @@ static int bard_save_cap()
 	return 4;
 }
 
+static int song_charming_save_bonus()
+{
+	return 10;
+}
+
 bool bard_saves(P_char ch, P_char victim, int song)
 {
 	int smod;
@@ -589,6 +595,8 @@ bool bard_saves(P_char ch, P_char victim, int song)
 	smod = (int)MIN((bard_song_level(ch, song) - GET_LEVEL(victim)) / 2, bard_save_cap());
 	// Can uncomment this if you wanna test.
 	// debug( "smod(final): %d", smod );
+	if (song == SONG_CHARMING && player_bard(ch, SPEC_MINSTREL, 0))
+		smod += song_charming_save_bonus();
 	return NewSaves(victim, SAVING_SPELL, smod);
 	// return NewSaves(victim, SAVING_SPELL, (((bard_song_level(ch, song) + GET_LEVEL(ch)) / 2) - GET_LEVEL(victim)) / 7);
 }
@@ -805,7 +813,8 @@ std::string instrument_horn_facts(P_char ch)
 
 std::string song_drifting_facts(P_char ch)
 {
-	return fact("Chance each verse", chance_under(GET_CHAR_SKILL(ch, SONG_DRIFTING), 1, 300)) +
+	return "  Only player singers can drift; NPC singers cannot move a group.\n" +
+	       fact("Chance each verse", chance_under(GET_CHAR_SKILL(ch, SONG_DRIFTING), 1, 300)) +
 	       "  On a success it casts group teleport at your song level.\n" +
 	       song_common_facts(ch, SONG_DRIFTING);
 }
@@ -814,7 +823,7 @@ void bard_drifting(int level, P_char ch, P_char victim, int /*song*/)
 {
 	int skill = GET_CHAR_SKILL(ch, SONG_DRIFTING);
 
-	if (!IS_ALIVE(ch))
+	if (!IS_ALIVE(ch) || IS_NPC(ch))
 		return;
 
 	if ((skill > number(1, 300)) || IS_TRUSTED(ch))
@@ -823,15 +832,18 @@ void bard_drifting(int level, P_char ch, P_char victim, int /*song*/)
 	}
 }
 
-// What a verse heals the singer, at song level `level`, and what it heals anyone else.
-static int song_healing_amount(P_char ch, int level)
+// Apply the ally share before the Minstrel cap, so it cannot shrink ally healing.
+static int song_healing_amount(P_char ch, int level, bool ally)
 {
-	return GET_C_CHA(ch) / 8 + level / 4 + level / 14;
-}
-
-static int song_healing_ally_amount(int healed)
-{
-	return (healed * 13) / 20;
+	int healed = GET_C_CHA(ch) / 8 + level / 4 + level / 14;
+	const bool minstrel = player_bard(ch, SPEC_MINSTREL, 0);
+	if (minstrel)
+		healed += MAX(0, (GET_LEVEL(ch) - 31) / 5) +
+			  MAX(0, (GET_CHAR_SKILL(ch, SONG_HEALING) - 50) / 10) +
+			  MAX(0, (GET_C_CHA(ch) - 100) / 10);
+	if (ally)
+		healed = healed * 13 / 20;
+	return minstrel ? MIN(45, healed) : healed;
 }
 
 // How far below full hit points a verse stops.
@@ -863,17 +875,22 @@ static int song_healing_disease_rating()
 
 std::string song_healing_facts(P_char ch)
 {
-	const int level = GET_LEVEL(ch), healed = song_healing_amount(ch, level);
-	std::string facts =
-		fact("Each verse heals you at song level " + std::to_string(level),
-		     std::to_string(healed)) +
-		fact("Each verse heals others", std::to_string(song_healing_ally_amount(healed))) +
-		fact("It stops short of full hit points by",
-		     show({ song_healing_cap_gap(lowest_rolls),
-			    song_healing_cap_gap(highest_rolls) })) +
-		fact("Another bard's healing song can't reach them for",
-		     seconds(song_healing_duration())) +
-		song_allies_facts() + "  Healing modifiers on you and the target apply.\n";
+	const int level = GET_LEVEL(ch), healed = song_healing_amount(ch, level, false);
+	std::string facts = fact("Each verse heals you at song level " + std::to_string(level),
+				 std::to_string(healed)) +
+			    fact("Each verse heals others",
+				 std::to_string(song_healing_amount(ch, level, true))) +
+			    fact("It stops short of full hit points by",
+				 show({ song_healing_cap_gap(lowest_rolls),
+					song_healing_cap_gap(highest_rolls) })) +
+			    fact("Another bard's healing song can't reach them for",
+				 seconds(song_healing_duration())) +
+			    song_allies_facts() +
+			    "  Healing modifiers on you and the target apply.\n";
+	if (player_bard(ch, SPEC_MINSTREL, 0))
+		facts +=
+			"  You add (level - 31)/5, (rating - 50)/10 and (Charisma - 100)/10,\n"
+			"  each at least zero, before the 65% ally share. Each target caps at 45.\n";
 	if (GET_SPEC(ch, CLASS_BARD, SPEC_MINSTREL))
 		facts += fact("Rating to also cure poison",
 			      std::to_string(song_healing_poison_rating())) +
@@ -889,16 +906,7 @@ void bard_healing(int level, P_char ch, P_char victim, int /*song*/)
 	struct affected_type af;
 	int healed;
 
-	// 12 hps for 100 cha + 14 hps at level 56 + 4 hps at level 56 = 30 total for bard... * 13 / 20 for others = 19.
-	// For lowest cha, we have 80 * .75 (75 racial con for githyanki is lowest for a bard and 80 is lowest rollable atm).
-	//   80 * .75 = 60 minimum cha without -cha eq / debuff.
-	//   Since healing is 31st lvl, for a 60 cha lvl 31, we get 7 + 7 + 2 = 16.
-	//   So, 16 minimum heal on bard and 16 * 13 / 20 = 10 healing on group.  This is minimum level, min cha.
-	// For maximum cha, we have about 150 (I doubt they'll go higher than this) * 120 (grey elf 120 racial cha is max)
-	//   150 * 1.2 = 180 max cha.  Max mortal level = 56 -> 180 / 8 + 56 / 4 + 56 / 14 = 22 + 14 + 4 = 40 for bard.
-	//   So, 40 max heal for bard and 40 * 13 / 20 = 26 for group members.
-	// I feel this is more than generous for a char that can also group stone / group globe / nuke / etc.
-	healed = song_healing_amount(ch, level);
+	healed = song_healing_amount(ch, level, ch != victim);
 
 	if (!affected_by_spell(victim, SONG_HEALING) ||
 	    (affected_by_spell(victim, SONG_HEALING) &&
@@ -913,15 +921,8 @@ void bard_healing(int level, P_char ch, P_char victim, int /*song*/)
 		{
 			act("&+WYour body feels restored by the power of your soothing song!",
 			    FALSE, ch, 0, victim, TO_CHAR);
-			heal(victim, ch, healed,
-			     GET_MAX_HIT(victim) - song_healing_cap_gap(live_rolls));
 		}
-		else
-		{
-			// 65% for everyone other than the bard.
-			heal(victim, ch, song_healing_ally_amount(healed),
-			     GET_MAX_HIT(victim) - song_healing_cap_gap(live_rolls));
-		}
+		heal(victim, ch, healed, GET_MAX_HIT(victim) - song_healing_cap_gap(live_rolls));
 		update_pos(victim);
 
 		if (GET_SPEC(ch, CLASS_BARD, SPEC_MINSTREL))
@@ -975,6 +976,17 @@ static int song_charming_pet_limit()
 	return 3;
 }
 
+static int song_charming_duration(const Rolls &rolls, P_char ch, P_char victim)
+{
+	int duration = GET_C_INT(victim) ? 1240 / GET_C_INT(victim) : 4;
+	if (player_bard(ch, SPEC_MINSTREL, 0) && IS_HUMANOID(victim))
+	{
+		const int minimum = rolls.number(40, 48);
+		duration = MAX(duration, minimum);
+	}
+	return duration;
+}
+
 std::string song_charming_facts(P_char ch)
 {
 	const int highest = GET_LEVEL(ch) - song_charming_level_gap() - 1;
@@ -982,7 +994,12 @@ std::string song_charming_facts(P_char ch)
 			      fact("Highest level you can charm", std::to_string(highest))) +
 	       fact("Most pets", std::to_string(song_charming_pet_limit())) +
 	       "  The target gets a save. Not players, warlocks, illusionists, shopkeepers,\n"
-	       "  conjured pets, followers, or a target with anything that blocks charm.\n";
+	       "  conjured pets, followers, or a target with anything that blocks charm.\n" +
+	       (player_bard(ch, SPEC_MINSTREL, 0) ?
+			fact("Added save difficulty", std::to_string(song_charming_save_bonus())) +
+				"  Humanoids stay charmed for at least 40-48 game hours (50-60 minutes).\n"
+				"  The usual Intelligence-based duration can be longer.\n" :
+			"");
 }
 
 void bard_charm(int /*l*/, P_char ch, P_char victim, int song)
@@ -1081,7 +1098,7 @@ void bard_charm(int /*l*/, P_char ch, P_char victim, int song)
 	if (!victim->following)
 		add_follower(victim, ch);
 
-	setup_pet(victim, ch, GET_C_INT(victim) ? 1240 / GET_C_INT(victim) : 4, 0);
+	setup_pet(victim, ch, song_charming_duration(live_rolls, ch, victim), 0);
 	act("You stand enthralled by $n's charming song...", FALSE, ch, 0, victim, TO_VICT);
 	if (IS_FIGHTING(victim))
 		stop_fighting(victim);
@@ -1640,13 +1657,15 @@ void bard_protection(int l, P_char ch, P_char victim, int song)
 }
 
 // Ordinary walks place the singer before moving followers; check outgoing links afterwards.
-void check_shadow_piper_rooms(P_char ch, bool followers_may_move)
+void check_bard_song_rooms(P_char ch, bool followers_may_move)
 {
 	for (auto *link = ch->linking, *next = link; link; link = next)
 	{
 		next = link->next_linking;
 		if (link->type == LNK_SONG && link->affect &&
-		    link->affect->type == SONG_SHADOW_PIPER && link->linked->in_room != ch->in_room)
+		    (link->affect->type == SONG_SHADOW_PIPER ||
+		     link->affect->type == SONG_NIMBLENESS) &&
+		    link->linked->in_room != ch->in_room)
 			affect_remove(ch, link->affect);
 	}
 	if (followers_may_move)
@@ -1655,10 +1674,47 @@ void check_shadow_piper_rooms(P_char ch, bool followers_may_move)
 	{
 		next = link->next_linked;
 		if (link->type == LNK_SONG && link->affect &&
-		    link->affect->type == SONG_SHADOW_PIPER &&
+		    (link->affect->type == SONG_SHADOW_PIPER ||
+		     link->affect->type == SONG_NIMBLENESS) &&
 		    link->linking->in_room != ch->in_room)
 			affect_remove(link->linking, link->affect);
 	}
+}
+
+int song_nimbleness_melee_bonus()
+{
+	return 5;
+}
+
+int song_nimbleness_spell_threshold()
+{
+	return 35;
+}
+
+std::string song_nimbleness_facts(P_char ch)
+{
+	return fact("Added melee dodge chance", std::to_string(song_nimbleness_melee_bonus()) +
+							" in 101, within the usual dodge rules") +
+	       fact("Chance to avoid damaging spell hits",
+		    std::to_string(song_nimbleness_spell_threshold()) + " in 1000") +
+	       "  A level 56 player Minstrel protects players in the group and room,\n"
+	       "  including the singer. Pets cannot provide or receive this song.\n"
+	       "  It lasts while you sing and listeners stay in the room.\n" +
+	       song_common_facts(ch, SONG_NIMBLENESS);
+}
+
+void bard_nimbleness(int /*level*/, P_char ch, P_char victim, int song)
+{
+	if (!player_bard(ch, SPEC_MINSTREL, 56) || !IS_PC(victim) ||
+	    affected_by_spell(victim, song))
+		return;
+	struct affected_type af
+	{
+	};
+	af.type = song;
+	af.duration = -1; // The song link owns the lifetime.
+	linked_affect_to_char(victim, &af, ch, LNK_SONG);
+	send_to_char("The Minstrel's tune makes your steps light and nimble.\r\n", victim);
 }
 
 std::string song_shadow_piper_facts(P_char ch)
@@ -2386,6 +2442,8 @@ static struct song_text songwords[] = {
 	  "$n plays a song to lift $s spirit off the ground." },
 	{ SONG_PROTECTION, "You sing a song to protect you from the world.",
 	  "$n sings a song to protect $m from the world." },
+	{ SONG_NIMBLENESS, "You play a light-footed tune that dances through the room.",
+	  "$n plays a light-footed tune that sets your feet dancing." },
 	{ SONG_SHADOW_PIPER, "You play a shadowy tune, guiding silent footsteps.",
 	  "$n plays a shadowy tune that guides silent footsteps." },
 	{ SONG_HEROISM, "You sing a song that makes your heart swell with pride.",
@@ -2747,7 +2805,7 @@ void event_bardsong(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 		{
 			act("&+BYou finish your song.", FALSE, ch, 0, 0, TO_CHAR);
 			act("&+B$n finishes $s song.", FALSE, ch, 0, 0, TO_ROOM);
-			if (song == SONG_SHADOW_PIPER)
+			if (song == SONG_SHADOW_PIPER || song == SONG_NIMBLENESS)
 				stop_singing(ch);
 			else
 				affect_remove(ch, af);

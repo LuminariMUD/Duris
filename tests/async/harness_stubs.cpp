@@ -463,14 +463,15 @@ HARNESS_STUB int player_save_room_vnum(P_char, int room_vnum)
 	return room_vnum;
 }
 
-// Unrelated movement fixtures have no Shadow Piper links. Its lifecycle fixture
+// Unrelated movement fixtures have no player-only Bard song links. Their lifecycle fixture
 // supplies the real cleanup and tests both ordinary walks and relocations.
-HARNESS_STUB void check_shadow_piper_rooms(P_char ch, bool)
+HARNESS_STUB void check_bard_song_rooms(P_char ch, bool)
 {
 	for (auto *af = ch->affected; af; af = af->next)
-		if (af->type == SONG_SHADOW_PIPER)
+		if (af->type == SONG_SHADOW_PIPER || af->type == SONG_NIMBLENESS)
 			std::abort();
 	for (auto *link = ch->linked; link; link = link->next_linked)
-		if (link->affect && link->affect->type == SONG_SHADOW_PIPER)
+		if (link->affect && (link->affect->type == SONG_SHADOW_PIPER ||
+				     link->affect->type == SONG_NIMBLENESS))
 			std::abort();
 }

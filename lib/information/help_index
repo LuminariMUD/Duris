@@ -10974,6 +10974,18 @@ None beyond the base-class registrations.
 ==Song changes==
 
 &+W46th Level: &+csong of drifting (cap 100%)&n
+&+W56th Level: &+csong of nimbleness (cap 100%)&n
+
+Player Minstrels add healing from levels above 31, song rating above 50 and
+Charisma above 100. The usual 65% ally share applies before a 45-HP base cap;
+other healing modifiers still apply. Effective healing of other players counts
+toward Salvation, as it does for all Bard healing songs.
+Minstrels make charm saves 10 points harder. Humanoids remain charmed at least
+40-48 game hours (50-60 minutes), or longer at low Intelligence. The highest
+charmable level remains 50 at Bard level 56. Pets cannot sing Drifting.
+Song of Nimbleness uses a mandolin. A level-56 player singer grants players in
+the room and group, including the singer, +5 to melee dodge and a 3.5% chance
+to avoid a damaging spell hit. Pets cannot provide or receive the new song.
 
 ==Innate additions==
 
@@ -16756,16 +16768,13 @@ See also: SONGS, INSTRUMENT, PLAY, BARD, SKILL_BARD
 #
 "SONG OF CHARMING" (Song)
 ===========================================================================
-Area of effect:	Room
-Aggressive:	No
-Cumulative:	N/A
-Duration:	Dependant on proficiency of singer
-Type of song:	Enchantment
-
-"Song of charming" is one of the most powerful songs of the bard and
-attempts to charm all those mobs in the bard's room.
+Song of Charming tries to charm eligible mobs in the room. Player Minstrels
+make saves 10 points harder and keep humanoids charmed for at least 40-48 game
+hours (50-60 minutes). Low Intelligence can give a longer duration. The highest
+charmable level remains 50 at Bard level 56, with the existing exclusions and
+three-pet limit.
 ===========================================================================
-See also: SONGS, INSTRUMENT, PLAY, BARD, SKILL_BARD
+See also: BARD, MINSTREL, INSTRUMENT, PLAY, SONGS
 
 #
 "SONG OF COWARDICE" (Song)
@@ -16829,6 +16838,7 @@ See also: SONGS, INSTRUMENT, PLAY, BARD, SKILL_BARD
 #
 "SONG OF DRIFTING" (Song)
 ===========================================================================
+Only player singers can use Drifting; NPC singers cannot teleport a group.
 Area of effect:	Group
 Aggressive:	No
 Cumulative:	N/A	
@@ -16909,18 +16919,17 @@ See also: INSTRUMENT, "SONG OF DISCORD", "DISPEL EVIL", BARD
 #
 "SONG OF HEALING" (Song)
 ===========================================================================
-Area of effect:	Room
-Aggressive:	No
-Cumulative:	Yes
-Duration:	Instantaneous	
-Type of song:	Healing
-
-This song restores the lifeforce of those in the room, including those not
-in the singer's group. The amount it heals is highly dependent on level and
-skill in the song.
-Higher Charisma increases the healing restored each verse.
+Song of Healing restores the singer and grouped listeners in the room. Each
+verse heals Charisma/8 + song level/4 + song level/14, with a 65% ally share.
+A player Minstrel adds (level-31)/5 + (song rating-50)/10 + (Charisma-100)/10,
+each at least zero, before that share. Each target's base amount caps at 45 HP;
+other healing modifiers still apply. Level 56, rating 100, Charisma 150 gives
+45 HP to the Minstrel and 33 HP to an ally before other modifiers.
+Effective healing of another player counts toward the Salvation achievement;
+self-healing, healing NPCs and overhealing do not. Minstrels can also cure
+poison at song rating 50, disease/plague at 70, and blindness at 90.
 ===========================================================================
-See also: SONGS, INSTRUMENT, PLAY, BARD, SKILL_BARD
+See also: BARD, MINSTREL, INSTRUMENT, PLAY, SONGS, SALVATION
 
 #
 "SONG OF HEROISM" (Song)
@@ -28770,3 +28779,15 @@ Verspin
 Verspin is a town and adventure zone, not a skill or spell. Use 'area' while
 there to inspect the current zone's information, and 'look' to examine your
 surroundings and visible exits.
+
+#
+"SONG OF NIMBLENESS" (Skill)
+===========================================================================
+A level-56 player Minstrel plays this mandolin song to give players in the
+same group and room, including the singer, +5 to melee dodge and a 35 in 1000
+(3.5%) chance to avoid each damaging spell hit. Existing melee dodge conditions
+still apply. Pets cannot sing it successfully or receive its benefits.
+It ends when the song stops/changes or the listener leaves the room.
+===========================================================================
+See also: Minstrel, Bard, Instruments, Play
+#

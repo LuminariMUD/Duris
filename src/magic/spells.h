@@ -1082,7 +1082,7 @@
 
 /* Bard related. Diff names, but still skills */
 #define FIRST_SONG (LAST_INSTRUMENT + 1)
-#define SONG_MINDSHIELD (FIRST_SONG)
+#define SONG_NIMBLENESS (FIRST_SONG)
 #define SONG_CHARMING (FIRST_SONG + 1)
 #define SONG_SLEEP (FIRST_SONG + 2)
 #define SONG_CALMING (FIRST_SONG + 3)
@@ -1103,8 +1103,8 @@
 #define SONG_SHADOW_PIPER (FIRST_SONG + 18)
 #define SONG_DISSONANCE (FIRST_SONG + 19)
 #define SONG_DRIFTING (FIRST_SONG + 20)
-// The unused Mindshield slot stays reserved; poison IDs below must not move.
-#define NUM_SONGS 20
+// Reuse the reserved song slots; saved poison IDs below must not move.
+#define NUM_SONGS 21
 #define LAST_SONG (SONG_DRIFTING)
 
 #define FIRST_POISON (LAST_SONG + 1)

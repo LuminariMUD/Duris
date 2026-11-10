@@ -31,7 +31,7 @@ SHARED = {
     "memorize.c": """devotion_keep_spell_threshold""".split(),
     "new_skills.c": """wornweight MonkAcBonus monk_damage_bonus monk_attack_rolls monk_attack_count monk_attack_roll_limit chant_note heroism_duration heroism_rest heroism_lag heroism_hitroll heroism_damroll heroism_dazzle_level heroism_haste_level heroism_blur_level buddha_palm_rest buddha_palm_failed_lag buddha_palm_lag buddha_palm_targets buddha_palm_damage quivering_palm_rest quivering_palm_failed_lag quivering_palm_lag quivering_palm_damage quivering_palm_anatomy_threshold quivering_palm_anatomy_damage jin_touch_rest jin_touch_failed_lag jin_touch_lag jin_touch_damage jin_touch_rated_damage jin_touch_weaken_rating jin_touch_weaken_duration jin_touch_weaken regenerate_rest regenerate_failed_lag regenerate_lag regenerate_duration regenerate_hit_regen tiger_palm_rest tiger_palm_threshold tiger_palm_duration fist_of_dragon_rest fist_of_dragon_duration""".split(),
     "actoth.c": """rage_failed_lag rage_lag rage_ragelord_lag rage_duration rage_rest""".split(),
-    "bard.c": """song_charming_level_gap song_charming_pet_limit song_sleep_duration song_sleep_resisting_level""".split(),
+    "bard.c": """player_bard song_nimbleness_melee_bonus song_charming_save_bonus song_charming_level_gap song_charming_pet_limit song_sleep_duration song_sleep_resisting_level""".split(),
 }
 
 SKILLS = [line.split() for line in """
@@ -236,6 +236,10 @@ HARNESS = r'''
 void randomize(uint64_t seed);
 
 static std::map<int, int> ratings;
+bool affected_by_spell(P_char ch, int type) {
+    for (auto *af = ch->affected; af; af = af->next) if (af->type == type) return true;
+    return false;
+}
 int GET_CHAR_SKILL_P(P_char, int skill) { auto it = ratings.find(skill); return it == ratings.end() ? 0 : it->second; }
 static std::map<std::string, int> asked;
 static float flame_penalty = -1;
@@ -546,6 +550,9 @@ static void check_pages() {
     HAS(sidestep_facts, "  Chance your mount sidesteps a blow: 20 in 101\n");
     HAS(dodge_facts, "  Your rating doesn't matter: dodging uses your agility.\n  Your agility score: 120\n");
     HAS(dodge_facts, "  Chance to dodge: 10-50 in 101\n");
+    affected_type nimbleness{}; nimbleness.type = SONG_NIMBLENESS; ch.affected = &nimbleness;
+    HAS(dodge_facts, "  Chance to dodge: 15-55 in 101\n");
+    ch.affected = nullptr;
     HAS(shield_block_facts, "  Your score against a monk: 175%\n  Your score against a flaying weapon: 150%\n");
     HAS(shield_block_facts, "  Chance a shield stops a fired arrow: 240 in 1600, a quarter of that in melee\n");
     HAS(improved_shield_combat_facts, "  Chance to slam after a block: 99 in 400\n  Damage: 40-100, before the attacker's defenses\n"

@@ -2292,7 +2292,7 @@ revalidate_movement:
 		 */
 	}
 
-	check_shadow_piper_rooms(ch, false);
+	check_bard_song_rooms(ch, false);
 
 	return (1);
 }
