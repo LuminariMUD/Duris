@@ -50,9 +50,11 @@ replaying the #995 search rule over it.
   objects already use it.
 
 The boot read world files generated from master's area data, which is slightly
-newer than the stack's: master has two description typo fixes and one extra
-flag bit removed from six objects (#35800, #44824, #402054, #29326, #120015,
-#91526) that the stack has not yet taken. The stack must absorb those before it
+newer than the stack's: master has three description typo fixes and one extra
+flag bit removed from six objects that the stack has not yet taken. Only two of
+the six are inside the enhancement index range (#44824, an oil lamp, and
+#120015, a pair of gnomish eyeglasses); the others are #56, #93, #171 and
+#402054. The stack must absorb those before it
 merges, so the measured world is the one expected to ship. The measurement is
 still repeated on the implementation branch (step 1), because each filler must
 land on an exact value and any later value change can move a target.
