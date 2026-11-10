@@ -16,4 +16,4 @@ void mxp_handle_negotiation(descriptor_data *descriptor, unsigned char command);
 // Input is frozen markup, not wire text. Only explicit records become tags;
 // literal text is emitted in locked mode and raw MXP controls are defused.
 std::string mxp_render_output(const char *markup, std::span<const OutputLink> links,
-			      bool plain_terminal, int lastbit);
+			      bool plain_terminal, int lastbit, bool mudlet = false);

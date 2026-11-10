@@ -4804,7 +4804,8 @@ int process_output(P_desc t)
 						     t->character && PLR3_FLAGGED(t->character,
 										  PLR3_UNDERLINE) ?
 							     TL_UNDERLINE :
-							     TL_BLINK);
+							     TL_BLINK,
+						     !strncasecmp(t->client_name, "Mudlet", 6));
 			continue;
 		}
 
