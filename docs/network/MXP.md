@@ -45,7 +45,8 @@ Mudlet retains entities literally inside attributes, so the existing negotiated
 client name selects literal attribute values for it. This decision is local to
 the recipient's serializer, including snoopers, and uses the client name already
 retained by native copyover. It adds no negotiation, registry or saved field.
-Newlines and page boundaries close
+URL targets keep the square brackets of an IPv6 host and percent-encode brackets
+anywhere else. Newlines and page boundaries close
 the current link; the next portion opens the same target independently.
 
 Raw input cannot switch MXP modes: escape controls outside the SGR and existing
