@@ -61,7 +61,9 @@ Nothing else could go: each remaining change maps to one proposal line.
 
 ## Current handoff
 
-- PR 2 worktree: `/home/aiwithapex/projects/duris-issue-707-bard-utility`, branched from PR 1 implementation `d896812fc`. Merge this PR 1 handoff update into that branch before publishing its PR.
+- Review-ready PR 1: [#1002](https://github.com/LuminariMUD/Duris/pull/1002), base `master`, label `enhancement`, pushed implementation `d896812fc` and qualification `08fdae0b5`. No release tag is appropriate before review/deployment.
+
+- PR 2 worktree: `/home/aiwithapex/projects/duris-issue-707-bard-utility`, branched from PR 1 implementation `d896812fc`. Merge this PR 1 handoff update into that branch before publishing its PR. PR 2 code, help, full-slot/Rope Trick sanitizer fixture, command hide-gate matrix and Bard/facts checks pass; disposable MariaDB utility journey is running (`bin/qualification/issue707/utility-journey.log` in that worktree).
 - Started from clean `b0c9e7cae`; merged current master `8a8927eac` before implementation. No existing PR covered this branch.
 - PR 1 outcome: registration changes below and retained Riff proficiency with an explicit unspecialized-use refusal. Non-goals: no base Riff grant or spell-slot changes. Files: skills, guild update, Bard Riff facts/command, both help catalogs, focused regression/journey tests. Proof: real registration/update fixtures, disposable MariaDB command/relogin journey, focused Bard checks and native build.
 - Ablation: the five slices already map directly to proposal requirements; retain them. Use the existing update/command and journey paths, with no saved field, migration, runtime option, release tag or new test runner.
