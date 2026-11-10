@@ -2920,6 +2920,7 @@ std::string riff_facts(P_char ch)
 	       fact("Rest if you can't recall the lines", seconds(riff_failed_rest())) +
 	       fact("Rest after a verse", seconds(riff_rest())) +
 	       fact("Your lag after a verse", seconds(riff_lag())) +
+	       "  Riff requires a Bard specialization. Your trained rating survives a respec.\n"
 	       "  You must be playing a song and can sing a verse of any song you know. It\n"
 	       "  uses that song's level, with the same roll a verse adds. An aggressive verse\n"
 	       "  reaches all but you, your group and gods; any other reaches who its song\n"
@@ -2934,6 +2935,12 @@ void do_riff(P_char ch, char *arg, int /*cmd*/)
 
 	if (!IS_ALIVE(ch))
 		return;
+
+	if (IS_PC(ch) && !IS_SPECIALIZED(ch))
+	{
+		send_to_char("You must specialize as a Bard to riff.\r\n", ch);
+		return;
+	}
 
 	if (affected_by_spell(ch, SKILL_RIFF))
 	{

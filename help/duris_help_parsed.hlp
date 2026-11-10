@@ -2744,6 +2744,9 @@ Bard Skills - Last Edited: 2026-10-18
 The following is a list of all skills and spells available to the Bard class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+Bards can train Hide to 80%; Scoundrels retain their 90% cap.
+Riff is specialization-only; an acquired rating survives respecialization.
+Existing Scoundrels above 75% Trip are capped at their next skill update.
 
 ==Innate abilities==
 
@@ -2769,8 +2772,7 @@ None.
 &+W6th Circle: &+cdispel magic, infravision, lightning bolt, ray of enfeeblement&n
 &+W7th Circle: &+cdimension door, fireball, slowness&n
 &+W8th Circle: &+cbigbys clenched fist&n
-&+W9th Circle: &+cfeeblemind&n
-&+W10th Circle: &+cdetect invisibility&n
+&+W9th Circle: &+cdetect invisibility, feeblemind&n
 &+W11th Circle: &+cfreedom of movement, rope trick&n
 &+W12th Circle: &+cenlarge, sirens song&n
 
@@ -7244,6 +7246,7 @@ These permissions apply to an existing character; they do not enable a forbidden
 
 ==Skill changes==
 
+&+W1st Level: &+cmeditate (cap 100%), quick chant (cap 100%)&n
 &+W30th Level: &+criff (cap 100%)&n
 &+W36th Level: &+cshriek (cap 100%)&n
 
@@ -22724,14 +22727,14 @@ These permissions apply to an existing character; they do not enable a forbidden
 
 ==Skill changes==
 
-&+W1st Level: &+chide (cap 90%)&n
+&+W1st Level: &+chide (cap 90%), sneak (cap 85%)&n
 &+W30th Level: &+c1h piercing (cap 100%), backstab (cap 95%), circle (cap 80%),&n
-    &+cdouble attack (cap 95%), dual wield (cap 70%), riff (cap 100%)&n
-&+W51st Level: &+cdisguise (cap 55%), trip (cap 90%)&n
+    &+cdouble attack (cap 95%), dual wield (cap 80%), riff (cap 100%)&n
+&+W51st Level: &+cdisguise (cap 70%), trip (cap 75%)&n
 
 ==Spell changes==
 
-None beyond the base-class registrations.
+&+W10th Circle: &+cinvisibility&n
 
 ==Innate additions==
 
