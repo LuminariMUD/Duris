@@ -2747,6 +2747,10 @@ Learning, preparation, equipment, and current ability conditions still apply.
 Bards can train Hide to 80%; Scoundrels retain their 90% cap.
 Riff is specialization-only; an acquired rating survives respecialization.
 Existing Scoundrels above 75% Trip are capped at their next skill update.
+Songs use a matching instrument from any equipment slot, including all three
+belt attachments. Instruments must be equipped; carried instruments do not play.
+Scoundrels already singing can change songs with play or wail while hidden.
+Starting or stopping a song still reveals Hide; later verses preserve it.
 
 ==Innate abilities==
 
@@ -14806,7 +14810,7 @@ Instrument
 Instrument - Last Edited: 2018-09-20 22:59:56 by lohrr
 ======================================================
 Instruments are a necessity of a bard and needed to create magical affects.
-The bard must first be holding the appropriate instrument and then type
+Equip the appropriate instrument in any slot (all three belt slots work), then type
 "play <songname>".  The various instruments are as follows:  flute, harp,
 horn, drums, lyre, mandolin.  Unlike spells, the music played by a bard
 is continuous when the bard begins playing and will continue until he/she
@@ -19437,7 +19441,7 @@ Play - Last Edited: 2009-03-15 03:15:21 by Blaize
 =================================================
 Syntax:         play <song_name>
 * Aggressive:     Dependent on song
-To create magical effects, the bard must hold the proper instrument, then
+To create magical effects, equip a matching instrument in any slot, then
 "play" the appropriate song. A magical song will not work without the
 proper instrumental accompaniment. To end a song simply type "play."
 See also:
@@ -22392,9 +22396,11 @@ Myrabolus, socials, commands
 #0
 
 Rope Trick
-Rope Trick - Last Edited: 2007-04-22 22:12:53 by Unknown
+Rope Trick - Last Edited: 2026-11-10
 ========================================================
-''Rope trick'' is a unique spell for the bard-class and allows the bard to conjure a rope and ascend it to disappear. Voila! You can also help your friends by having them consent you and then conjure a rope for them as well. However, you can only conjure a few ropes at a time.
+Rope Trick hides one target per cast, up to five rope-hidden people in a room.
+You and members of your group need no consent and bypass resistance and saves.
+Other targets can consent; otherwise they may resist or save against the spell.
 While staying at the rope, silent and without movement you will remain unseen for anyone passing by.
 Beware though, that an ill-minded foe might be sensing your presence and can easily search you out!
 

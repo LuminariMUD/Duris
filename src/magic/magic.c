@@ -22973,9 +22973,17 @@ static int rope_trick_duration()
 	return 5;
 }
 
+static int rope_trick_limit()
+{
+	return 5;
+}
+
 std::string rope_trick_facts(P_char /*ch*/)
 {
-	return fact("Duration", game_hours(rope_trick_duration()));
+	return fact("Duration", game_hours(rope_trick_duration())) +
+	       fact("Hidden people per room", std::to_string(rope_trick_limit())) +
+	       "  One target per cast. You and your group need no consent and skip saves.\n"
+	       "  Others can consent; otherwise they can resist and save.\n";
 }
 
 void spell_rope_trick(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -22985,10 +22993,10 @@ void spell_rope_trick(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]]
 	int howmany = 0;
 	P_char temp_vict;
 
-	if (ch != victim)
-		if (!is_linked_to(ch, victim, LNK_CONSENT))
-			if (resists_spell(ch, victim))
-				return;
+	const bool willing = ch == victim || grouped(ch, victim) ||
+			     is_linked_to(ch, victim, LNK_CONSENT);
+	if (!willing && resists_spell(ch, victim))
+		return;
 
 	temp_vict = victim;
 
@@ -22998,9 +23006,8 @@ void spell_rope_trick(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]]
 		return;
 	}
 
-	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_ROPE_TRICK);
-	if (!NewSaves(victim, SAVING_SPELL, mod) || (ch == victim) ||
-	    is_linked_to(ch, victim, LNK_CONSENT))
+	if (willing || !NewSaves(victim, SAVING_SPELL,
+				 get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_ROPE_TRICK)))
 	{
 		LOOP_THRU_PEOPLE(temp_vict, ch)
 		{
@@ -23008,7 +23015,7 @@ void spell_rope_trick(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]]
 			    IS_AFFECTED(temp_vict, AFF_HIDE))
 				howmany++;
 		}
-		if (howmany > 2)
+		if (howmany >= rope_trick_limit())
 		{
 			act("&+LYou don't seem to be able to to conjure any more &+yropes&n&+L.&n",
 			    TRUE, ch, 0, victim, TO_CHAR);

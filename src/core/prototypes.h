@@ -764,7 +764,8 @@ void removeArtiData(char *name);
 // bool SINGING(P_char); <-- Turned into macro shown below.
 #define SINGING(ch) (IS_ALIVE(ch) && IS_AFFECTED3(ch, AFF3_SINGING))
 
-P_obj has_instrument(P_char);
+bool player_bard(P_char ch, int spec, int level);
+P_obj has_instrument(P_char, int song);
 void do_play(P_char, char *, int);
 void stop_singing(P_char);
 void do_wail(P_char, char *, int);
