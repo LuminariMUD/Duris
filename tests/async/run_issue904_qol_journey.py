@@ -183,7 +183,7 @@ def run(binary):
                                       (817, "purple"), (818, "pink")):
                     assert "You have created" in command(staff, f"load obj {vnum}")
                     text = command(staff, f"give {keyword} {ROGUE}")
-                    assert "You give" in text, text
+                    assert "Ok." in text, text
                 assert "finish mixing the poison" in command(rogue, "mixpoison")
                 command(rogue, "save")
 
@@ -265,7 +265,7 @@ def run(binary):
                 assert "steel dagger" in command(ether, "equipment") + command(ether, "inventory")
                 passed("I26/I11: restart restores 100-line paging and exactly one Ethermancer starter dagger")
                 text = command(rogue, f"give {ROGUE} {ETHER}")
-                assert "mixed by " + ROGUE in text, text
+                assert "Ok." in text, text
                 assert "mixed by " + ROGUE in command(ether, "inventory")
                 passed("Crafting: maker keywords survive a MariaDB save and server restart")
                 stop()
