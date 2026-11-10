@@ -1,0 +1,73 @@
+{
+  "baseline_revision": "1cda0fe6832d994feeb51911474e0c80c161f63a",
+  "circle_functions_sha256": {
+    "before": "fb7219d48f8ac81378c15a134696deccd58697c4eef0ba529bd4299b45578784",
+    "after": "fb7219d48f8ac81378c15a134696deccd58697c4eef0ba529bd4299b45578784"
+  },
+  "formula_revision": "ival-v3-packed-mean",
+  "comparison": "numeric evaluator",
+  "consumer_settings": {
+    "max_mortal_level": 56,
+    "craft_level_gate": 3,
+    "craft_xp_per_ival": 1000,
+    "enhance_level_gate": 3,
+    "enhance_donor_delta": 5,
+    "enhance_insignia_bonus": 5,
+    "enhance_cap": 95,
+    "enhance_radius": 4,
+    "enhance_low_threshold": 20,
+    "enhance_low_cost_copper": 1000,
+    "enhance_high_cost_copper": 10000,
+    "superior_base_copper": 1000,
+    "superior_per_ival_copper": 100
+  },
+  "consumer_config_sha256": {
+    "crafting.cfg": "6cc0c007a103c3fe87d8308a096900e036b38333daff0b0437882c6b7a70440b",
+    "enhance.cfg": "0ef5adb2b4c13badc09a39ab32fffc1b6af91e374bfae256fca55a7428278589",
+    "random_equipment.cfg": "2e018f35ea3464a4fef20053e7d66c9a456bac46834a29fb6190a127713ce264"
+  },
+  "provenance": {
+    "qualifying_templates": "17551",
+    "excluded_templates": "1783",
+    "ingredient_contributions": "25058",
+    "count_mode": "one-per-required-material",
+    "formula_revision": "ival-v3-packed-mean",
+    "source_revision": "1cda0fe6832d994feeb51911474e0c80c161f63a-dirty",
+    "context": "configured-healthy-boot",
+    "mini_mode": "0",
+    "no_specials": "0",
+    "binary_sha256": "7649d7e155b35c6814cbc9db3da2147c6d7c1468a20d5849e0dfae6a12c2d379",
+    "objects_sha256": "6ab3b8e04e21b4321fed4e91edaad59bf884f2ca2a7998d38ee852c9d5bf7049",
+    "properties_sha256": "d7026a5c348bca13241b0674b35262d969b20ff0dceb1ca6b75d2daadb5175ac",
+    "studio_sha256": "83ee73d82a513766a5c999d4455bea35de75e7f082db700f76fb12149c8405c2",
+    "item_abilities_sha256": "fc66b8b5348ff754022c95b90b2ceac9b766ab7451d5176212d18ed7e4ae9719",
+    "kingdom_config_sha256": "ba7ad50ee68449c0e85500f21ae42de3551112bbadd841c9a7dfc8f2fe4f38e6",
+    "mobiles_sha256": "9edf4176f59797707defd0e0a4bf4f2b19493cb75295d5f9ae4bf5aba623c6eb",
+    "rooms_sha256": "af2c1e6233ed3211f5b69cbaf8318cbff1df675aa047427f1fabe8f00ed8dde2",
+    "zones_sha256": "6d66ed5ec43042e63961525a5fc32b6caa10d0c0299e1d5b2383d2f00aeb048d"
+  },
+  "compared": {
+    "template": 19334,
+    "generated": 8720
+  },
+  "changed": {
+    "template": 19,
+    "generated": 0
+  },
+  "generated_seeds": "seed=1..16; source_level=1,20,40,60,62; every native slot; finder_level=56/luck=160",
+  "score_derived_consumer_effects": {
+    "status": "direct effects recorded in consumer-effects.json",
+    "families": [
+      "salvage quality/breakage",
+      "craft/forge level/recipe/material/XP",
+      "enhancement source/donor/result/price",
+      "quest floors/zone weights",
+      "faerie bag 25/50/125"
+    ],
+    "basis": "Native consumer plans/filters plus their configured score boundaries; see explicit qualification limits"
+  },
+  "evaluator_functions_sha256": {
+    "before": "74df67c332140fc6c2cfbcef3f0beb3d177a94675f7d6ad4add25d0589f3d7a1",
+    "after": "775a80e20cb04890a6149a71f2b7194ad0f9528d22f0a689882f898eda8e8170"
+  }
+}

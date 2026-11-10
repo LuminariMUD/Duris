@@ -92,7 +92,7 @@ def check_output_failures():
         run(good, True, "written to")
         assert all((good / name).is_file() for name in filenames)
         assert "count_mode=one-per-required-material" in (good / filenames[3]).read_text()
-        assert "formula_revision=ival-v2-class-spec-extents" in (good / filenames[3]).read_text()
+        assert "formula_revision=ival-v3-packed-mean" in (good / filenames[3]).read_text()
         bad = subprocess.run([str(binary), str(base / "bad-template")], capture_output=True,
                              text=True, env={**env, "BAD_TEMPLATE": "1"}, cwd=base)
         assert bad.returncode == 1 and "cannot parse object template 123" in bad.stderr

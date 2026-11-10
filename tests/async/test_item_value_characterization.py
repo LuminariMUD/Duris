@@ -105,22 +105,39 @@ static void circles()
 static void packed_rounding()
 {
     auto object = packed(1000000000 + 33032);
-    assert(itemvalue(&object) == 6); // LEGACY F02: arithmetic mean would give 9.
+    assert(itemvalue(&object) == 9);
     object.value[5] = 1000000000 + 34033032;
-    assert(itemvalue(&object) == 12); // LEGACY F02: mean 7/3 would give 14.
+    assert(itemvalue(&object) == 14);
     object.value[5] = 33032;
     assert(itemvalue(&object) == 18); // All-spells mode sums circles.
     object = packed(32);
     assert(itemvalue(&object) == 6);
     object.value[5] += 1000000000;
     assert(itemvalue(&object) == 6); // Single integral random-one contribution agrees.
+    object = packed(32, 33, 11);
+    assert(itemvalue(&object) == 9); // 3 * 33 / 11 is whole; a rounded factor must not make it 8.
     object = packed(1000000032, 25);
     object.wear_flags |= ITEM_WEAR_EYES;
-    assert(itemvalue(&object) == 2); // LEGACY F02: 2.5 * 1.3 should quantize to 3.
+    assert(itemvalue(&object) == 3); // 2.5 * 1.3 quantizes only after the slot multiplier.
+    object = packed(1000000000);
+    assert(itemvalue(&object) == 1); // Empty random-one selection retains the floor.
+    assert(get_mincircle(851) == 0); // The unavailable choice in authored item #59249.
+    object = packed(1000000000 + 33032000 + 851);
+    assert(itemvalue(&object) == 6); // Zero credit stays in the three-choice denominator.
     object = packed(32, 19);
     assert(itemvalue(&object) == 1);
     object.value[6] = 20;
     assert(itemvalue(&object) == 2); // Preserve the historical level-20 policy jump.
+    // Choosing one of one spell must equal casting that one spell, including fractions.
+    for (int level : {1, 19, 20, 25, 60})
+    for (int chance : {1, 30, 45, 60})
+    for (unsigned int slot : {0u, static_cast<unsigned int>(ITEM_WEAR_EYES)}) {
+        object = packed(32, level, chance);
+        object.wear_flags |= slot;
+        const int all = itemvalue(&object);
+        object.value[5] += 1000000000;
+        assert(itemvalue(&object) == all);
+    }
     std::puts("packed: unequal means, fractional final rounding, all/single spell, levels 19/20");
 }
 

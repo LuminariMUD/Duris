@@ -1,4 +1,4 @@
-// Shared numeric item valuation. Coefficients and legacy rounding are preserved.
+// Shared numeric item valuation. Quantization follows all credits and multipliers.
 #include "item/item_value.h"
 #include "item/objmisc.h"
 #include <cmath>
@@ -265,7 +265,8 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 		spells[2] = obj->value[5] % 1000000000 / 1000000;
 
 		// val6 = level * val7 = chance -> 1/30 chance = 1, 1/60 chance = .5, 1/15 chance = 2, etc.
-		mod = ((obj->value[6] > 19) ? obj->value[6] / 10.0 : 1) * (30.0 / obj->value[7]);
+		// Integer numerator, so one division keeps a whole credit whole.
+		const int level_tenths = (obj->value[6] > 19) ? obj->value[6] : 10;
 
 		spellcirclesum = context.spell_circles[0];
 		spellcirclesum += context.spell_circles[1];
@@ -283,12 +284,13 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 				    ((spells[2]) ? 1 : 0);
 			// If there are none?!, set to 1 anyway.
 			numspells = numspells ? numspells : 1;
-			// Compute average circle.
-			workingvalue += (int)(mod * (spellcirclesum / numspells));
+			// Keep the mean and scaled contribution fractional until final quantization.
+			workingvalue += 3.0 * level_tenths * spellcirclesum /
+					(double(obj->value[7]) * numspells);
 		}
 		else
 		{
-			workingvalue += mod * spellcirclesum;
+			workingvalue += 3.0 * level_tenths * spellcirclesum / obj->value[7];
 		}
 	}
 
@@ -462,6 +464,7 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 		obj->type == ITEM_KEY || obj->type == ITEM_SWITCH || obj->type == ITEM_VEHICLE ||
 		obj->type == ITEM_SHIP || obj->type == ITEM_STORAGE;
 	int score = 1;
+	// Quantize once after every base credit and multiplier, truncating toward zero.
 	if (!utility_override)
 		score = floored ? 1 : unrounded;
 	if (breakdown)

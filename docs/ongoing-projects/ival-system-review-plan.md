@@ -45,7 +45,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-circle-extents`; its initial synchronized commit was
+`origin/branch/ival-packed-proc-mean`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -60,7 +60,8 @@ Current Git status verified 2026-11-09: PRs #876, #877, #878, #879, #884, #885,
 #886, #889, and #894 were merged by external review. PR #902 targets `master`;
 the #919 constructor repair and #927 CTF binding prerequisite are stacked above
 it. The metadata/report work is published as #930; the circle repair is #935 on
-`branch/ival-circle-extents`. Branch/base
+`branch/ival-circle-extents`; #946 repairs packed averaging on
+`branch/ival-packed-proc-mean`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -613,6 +614,8 @@ command journeys remain F16 before rollout. No economic coefficients changed.
 The evidence was generated before commit: `source_revision` deliberately records
 the dirty parent plus formula/binary/input identities, and before/after native
 function hashes identify the compared code. Reproduce with:
+Use Chunk 9's implementation checkout for this historical result; later numeric
+changes intentionally fail its circle-only proof guard.
 
 ```text
 python3 tests/async/test_item_value_template_runtime.py --circle-baseline 071b2bf8bedaed308aa9616225091c59c9acdaa8 --delta-output docs/ongoing-projects/ival-evidence/f01
@@ -627,11 +630,107 @@ coverage/classification inventory remains in F05/F09. Next, repair F02 with a
 native old/new numeric-evaluator comparison. The circle-only delta mode must
 keep refusing changed numeric/runtime adapters; do not bypass that proof guard.
 
+### Chunk 10 — preserve fractional random-one proc value (F02, implemented)
+
+Branch: `branch/ival-packed-proc-mean`, based on `branch/ival-circle-extents`.
+Published: `e023474a5`, [PR #946](https://github.com/LuminariMUD/Duris/pull/946)
+(bug label), stacked on #935. Ready for review.
+
+**Outcome:** compute the random-one mean and scaled credit in floating point,
+then use the existing single final truncation after every multiplier. Preserve
+all-spells mode, single-spell integral results, empty-selection floor and the
+level-19/20 policy jump. Formula identity becomes `ival-v3-packed-mean`.
+
+**Non-goals:** coefficients, spell registration policy, apply composition,
+numeric admission/overflow repairs, or deployment.
+
+**Files:** the shared numeric evaluator/revision, existing native regressions
+and qualification harness, plus exposure of the existing enhancement candidate
+predicate/config loader for consumer qualification. Predicate logic is unchanged.
+
+**Proof:** compile the exact prior native numeric evaluator under distinct
+symbols; compare it with the repaired evaluator on identical native inputs and
+context. Reject changed context adapters, proc admission or input ABI. Extend
+the existing corpus/generator qualifier to report real crafting plans and loaded
+enhancement policy, native quest eligibility/floor/weight terms, configured
+prices, and threshold cohorts. No separate authoritative calculator is added.
+
+**Ablation:** one expression fixes the rounding. Reuse the native consumer
+functions and source-extracted policy fragments to measure consequences rather
+than adding runtime options, a new reporting service or a duplicate formula.
+
+**Qualification:** all 19,334 native constructor/template comparisons and the
+actual offline CLI/provenance/error checks passed. The exact prior numeric
+module is compiled from Git under distinct symbols and interposed at the native
+adapter; call counters prove both evaluator paths execute. ABI, context adapter,
+circle and proc-admission guards passed. The 8,720 seeded native generated items
+remain unchanged. **19 indexed templates increase by 1..63 points**, with no
+decreases. Largest changes include #59316 1659 → 1722, #59320 4326 → 4354,
+#44579 3529 → 3542 and #135116 195 → 206.
+
+The [summary](ival-evidence/f02/summary.json),
+[all changed values and native plans](ival-evidence/f02/changed-values.csv),
+[consumer effects](ival-evidence/f02/consumer-effects.json), and
+[quest reward-weight terms](ival-evidence/f02/quest-weight-deltas.csv) include
+formula/binary/world/config/function identities. No circle registrations changed.
+Run from this chunk's implementation checkout to reproduce:
+
+```text
+python3 tests/async/test_item_value_template_runtime.py --numeric-baseline 1cda0fe6832d994feeb51911474e0c80c161f63a --delta-output docs/ongoing-projects/ival-evidence/f02
+```
+
+Direct effects under the recorded configuration:
+
+- No salvage 5/10/15/20 or recipe-autofail-100 crossing; no bag 25/50/125 or
+  over-100 crossing; no recipe-admission or enhancement-result-cap crossing.
+- Three native-admitted recipes change: #31556 adds one low material; #58848
+  adds one high material and removes three low; #83341 adds one low. One craft
+  of each would total +1 high, -1 low and +4,000 nominal base XP. Actual
+  character XP still passes through the existing reward policy.
+- #58848 changes 110 → 112, moving craft/enhance access from level 37 to 38.
+  For fixed ordinary donor scores, source floors move #31556 131 → 132,
+  #58848 105 → 107 and #83341 117 → 118. Nominal superior prices for these
+  otherwise-eligible mortal sources total +400 copper; replacement fees do not
+  change. Full stat-target selection still needs the F13/F16 qualification.
+- Ten enhancement-index score buckets move, but all these candidate values
+  remain above the configured result ceiling 99.
+- Native quest reward-floor membership is unchanged. Reward-weight terms change
+  for zones 583, 588, 590, 712 and 831 across 62 levels each. With fixed mob-level
+  fit their increases range about 0.0025%..0.4841%; geographic/zone eligibility
+  and the final weighted selection remain separate gates.
+- No changed row has bank-5 flags. Native credit remains unchanged: #83605
+  combines the generic-parry credit 135 with its packed proc; other changed rows
+  have native credit zero. F05/F09's complete mechanical/route inventory remains
+  open and no new weights were introduced.
+
+Execution eligibility was checked as well as arithmetic. All changed rows are
+weapons with dense packed slots and positive level/chance fields. Eighteen have
+callbacks for every selection. #59249 encodes `[851, 12, 1]`; ID 851 lies beyond
+`LAST_SPELL`, has no callback and already receives circle/credit zero. The native
+dispatcher still selects that no-effect choice one-third of the time, so the
+arithmetic mean correctly retains three choices. It would be wrong to remove
+the zero-credit choice and increase the other spells' frequency. This legacy
+input is recorded rather than assigned an invented spell or altered probability.
+Native immediate and scheduled dispatch tests passed every choice for dense
+two/three-spell bundles and a bundle with an unavailable callback. Sparse/glove
+and broader proc-route corrections remain F09.
+
+Focused sanitizer tests passed unequal two/three-spell means, fractional slot
+scaling, all/single/empty selection and the preserved level-19/20 jump. The native
+enhancement command fixture now includes a packed source: its value is 21 instead
+of 18, so a level-6 attempt is rejected without money/material mutation. At the
+qualified level its superior charge is 3,100 copper instead of the old nominal
+2,800, with preview/execution, wallet refusal and pouch failure cases passing.
+Monk tools/pilot, pool filters, quest rewards and 317 native quest
+target/creation/payment cases passed. Legacy F08 overflow probes remain expected
+failures, not a claim of numeric safety. No live player inventory or production
+operation was used; complete persistence/command qualification remains F16.
+
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization
-   entries are repaired. Random-one proc averaging still truncates before scaling;
-   affect order and zero modifiers still change scores for equivalent stats.
+   entries and F02's premature packed-proc rounding are repaired. Affect order,
+   zero modifiers and duplicate representation still need F03/F04.
 2. **Keep tools truthful.** The editor now uses shared arithmetic with explicit
    context estimates, and the offline material report has normalized context and
    native corpus qualification. Enhancement configuration/enforcement still needs
@@ -821,6 +920,10 @@ is balancing, not part of this arithmetic repair.
 **Acceptance:** unequal two/three-spell circles, fractional contributions,
 single-spell parity, all-spells mode, and final-score boundary cases. Prove the
 repair against execution eligibility too (F09), not just decoded nonzero IDs.
+
+Implemented and qualified in Chunk 10, including actual dispatch selection and
+the zero-credit/no-effect choice in #59249. Broader F09 route policy and F16
+integration remain separate requirements.
 
 ### F03 — P1: make equivalent affect arrangements produce equal values
 
@@ -1269,8 +1372,8 @@ partial deliveries and their verification are recorded in the implementation log
 
 ### Stage 3 — repair correctness in small, measured slices
 
-- [ ] Correct minimum-circle bounds and packed averaging (F01/F02).
-  F01 is implemented and qualified in Chunk 9 / #935; F02 remains pending.
+- [x] Correct minimum-circle bounds and packed averaging (F01/F02).
+  Implemented and qualified in Chunks 9/#935 and 10/#946.
 - [ ] Make zero modifiers neutral and multiplier composition order independent
   (F03/F04); address duplicate semantics in its own slice if the delta is broad.
 - [ ] Add finite/overflow checks at evaluator, config, and consumer boundaries

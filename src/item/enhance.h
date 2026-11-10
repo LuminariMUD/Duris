@@ -38,6 +38,9 @@ struct enhance_index_result
 
 /* Prototypes */
 bool is_enhance_banned(P_obj item);
+// Shared by index construction, final result loading and offline qualification.
+bool is_enhance_pool_candidate(P_obj item);
+void load_enhance_config(void);
 void enhance(P_char ch, P_obj source, P_obj material);
 void do_enhance(P_char ch, char *argument, int cmd);
 void modenhance(P_char ch, P_obj source, P_obj material);
