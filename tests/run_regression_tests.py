@@ -99,6 +99,10 @@ MANUAL_ONLY_TEST_NAMES = frozenset(
         "test_kept_character_ambiguous_commit.py",
         "test_mysql_playtime_journey.py",
         "test_mysql_coin_denomination_journey.py",
+        # make test-db runs these three on disposable MariaDB with no further arguments.
+        "test_mysql_auction_item_journey.py",
+        "test_mysql_auction_money_journey.py",
+        "test_mysql_smith_payment_journey.py",
         "test_mysql_locker_grant_journey.py",
         "test_mysql_nexus_journey.py",
         "test_playtime_mysql_repository.py",
