@@ -54,6 +54,7 @@ std::function<void(character_delete_result)> deletion_reply;
 
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
 void write_to_q(const char *text, txt_q *, const int) { output += text; }
+void write_output(const char *text, txt_q *queue) { write_to_q(text, queue, 1); }
 void statuslog(int, const char *, ...) {}
 void *__malloc(size_t size, const char *, const char *, int) { return std::malloc(size); }
 char *str_dup(const char *text) { return strdup(text); }
