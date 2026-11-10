@@ -170,7 +170,7 @@ int main() {
             char_data ch{};
             descriptor_data descriptor{};
             char command[] = "look";
-            txt_block queued{command, nullptr};
+            txt_block queued{command, nullptr, nullptr};
             descriptor.input = {&queued, &queued};
             ch.desc = &descriptor;
             spellcast_datatype payload{};

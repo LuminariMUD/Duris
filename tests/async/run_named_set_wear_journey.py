@@ -182,7 +182,9 @@ try:
             client.send("quaff potion")
             score(client)
             output = client.transcript[offset:].decode(errors="replace")
-            if "Nothing new seems to happen." in output:
+            # Neither refusal may replace or stack on the set's grant (#943 adds the second).
+            if ("Nothing new seems to happen." in output or
+                    "You are already affected by vitality!" in output):
                 break
             assert ("another potion would do you any good yet" in output or
                     "almost ready to try another potion" in output), output
