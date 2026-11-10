@@ -127,6 +127,29 @@ corpus and generated-sample runner before publication.
 
 ## C — finish the existing consumers (F12/F13/F15)
 
+**Implemented and qualified:** `branch/ival-consumers`, based on #981; publication
+follows commit checks. Inspection uses borrowed normalized template views; actual
+grants instantiate only selected results. Index publication is atomic, duplicate
+apply locations are indexed once, and tier queries use aggregate totals while
+retaining stored-slot caps. Existing radius/distance and tie preferences remain.
+Bag selection is bounded/uniform over eligible vnums and preserves the source on
+empty/missing/delivery failure. Locker sorting values each object once and retains
+the legacy tie order and chest boundaries. Existing property application refreshes
+both index and quest reward caches; failed rebuilds disable the affected consumer
+until restart. Proc-library instance changes do not reprice sibling templates.
+
+Native qualification against `946573801` preserves all **9,083** indexed vnums,
+hash chains and ties, across **19,334** constructor/template/eligibility comparisons.
+Index transient identities: **16,972 → 0**; new inspection RNG/event/object deltas
+are zero. Warm-cache index time: **916733 → 8611 microseconds**; stat entries:
+**12432 → 12422**. These timings exclude cold template-cache population.
+Evidence: [f12-consumers](ival-evidence/f12-consumers/). Focused sanitizer cases
+cover atomic allocation/template failures, duplicate tiers, bag failures/ranks,
+property journeys and locker empty/single/tied/10000-item lists; the latter uses
+exactly 10000 value calls (~1.7 ms with a controlled score endpoint).
+Quest catalog/republication and enhancement contracts pass. Native CLI parity and
+report checks pass; formula stays v8 and B's generated-sample evidence is reused.
+
 **Files:** enhancement index/planning, world-quest profiles, faerie-bag selection,
 locker sorting, and the specific stale valuation descriptions. Reuse the existing
 normalized `object_template` adapter and boot context.
@@ -202,13 +225,14 @@ by the batch. Codec/source-contract tests alone never prove a persistence journe
 
 Local: `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
 Remote: `duris-staging:/home/staging/duris-worktrees/ival-system-improvements`.
-Latest batch: `branch/ival-semantics` for B (#981), based on `branch/ival-enhancement-contract`
-(#978). Synchronize committed work to the remote worktree. A and B are implemented;
-C and D remain open.
+Latest batch: `branch/ival-consumers` for C, based on `branch/ival-semantics` (#981).
+Synchronize committed work to the remote worktree. A–C are implemented; D remains
+open. Read-only template views deliberately omit native runtime-state initialization;
+eligibility/score parity is qualified, rather than unrelated money/state slots.
 
 Current formula: `ival-v8-proc-semantics`. Archive/evidence links above preserve
 baseline revisions and earlier PRs. Read the relevant historical finding when
 needed; do not reload the entire archive or restart the audit. The next
-implementation action is C: use normalized templates for enhancement indexes,
-planning and quest profiles, bound faerie-bag selection, then finish locker sorting
-and the identified descriptions. Reuse the completed B qualification.
+implementation action is D: use the existing dev/staging MariaDB journey setup,
+carry the shared fixture bundle through actual commands and persistence lifecycles,
+and record final integration/operator evidence. Reuse A–C's completed qualification.

@@ -29,6 +29,11 @@
 #include "economy/currency_value.h"
 #include "item/objmisc.h"
 #include "item/item_value.h"
+#include "world/object_template.h"
+#include <array>
+#include <algorithm>
+#include <vector>
+#include <new>
 #include "combat/chaos_materials.h"
 
 /* Forward declarations for hash functions used in enhance() and do_enhance() */
@@ -70,6 +75,7 @@ static bool enhancement_system_ready = false;
 extern P_room world;
 extern struct zone_data *zone_table;
 extern int top_of_zone_table;
+extern int top_of_objt;
 
 static int64_t enhancement_wallet_balance(P_char ch)
 {
@@ -111,9 +117,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	char buf[MAX_STRING_LENGTH];
 	P_obj robj;
 	int cost, sval, chluck, wearflags;
-	int64_t searchcount, maxsearch, newval, minval, cascade_step, cascade_ival;
-	int cascade_dir;
-	struct enhance_index_entry *entry;
+	int64_t maxsearch, newval, minval;
 
 	if (!ch || !source || !material)
 		return;
@@ -143,7 +147,6 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		return;
 	}
 	minval = static_cast<int64_t>(sval) - enhance_material_ival_delta;
-	searchcount = 0;
 	maxsearch = enhance_search_max_attempts;
 	// Only search matching wear flags unless none matching, then just search source wear flags.
 	//  We skip ITEM_TAKE 'cause it's not really a wear flag.  We skip ITEM_HOLD, ITEM_ATTACH_BELT, and
@@ -239,74 +242,58 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	 * cascade_down_first=0: try higher ival values first, then lower
 	 */
 	robj = NULL;
-	for (cascade_step = 0; cascade_step <= enhance_original_max_roll; cascade_step++)
+	std::vector<const enhance_index_entry *> candidates;
+	try
 	{
-		for (cascade_dir = 0; cascade_dir < 2; cascade_dir++)
-		{
-			if (cascade_step == 0)
+		const int64_t radius = std::min<int64_t>(enhance_original_max_roll, maxsearch);
+		for (const auto *bucket : enhance_ival_table)
+			for (auto *candidate = bucket; candidate; candidate = candidate->next)
+				if (candidate->ival > sval && candidate->ival <= max_result_value &&
+				    std::abs(static_cast<int64_t>(candidate->ival) - newval) <=
+					    radius)
+					candidates.push_back(candidate);
+		// Hash chains already carry the legacy same-score tie order.
+		std::stable_sort(
+			candidates.begin(), candidates.end(),
+			[&](const auto *left, const auto *right)
 			{
-				/* Exact match — only one try */
-				if (cascade_dir > 0)
-					continue;
-				cascade_ival = newval;
-			}
-			else if (enhance_original_cascade_down_first)
-			{
-				/* Down first: try -step, then +step */
-				cascade_ival = (cascade_dir == 0) ? (newval - cascade_step) :
-								    (newval + cascade_step);
-			}
-			else
-			{
-				/* Up first: try +step, then -step */
-				cascade_ival = (cascade_dir == 0) ? (newval + cascade_step) :
-								    (newval - cascade_step);
-			}
-
-			if (cascade_ival <= sval || cascade_ival > max_result_value ||
-			    cascade_ival > INT_MAX)
-				continue;
-
-			/* Look up in hash table */
-			for (entry = enhance_ival_table[enhance_hash(
-				     static_cast<int>(cascade_ival))];
-			     entry; entry = entry->next)
-			{
-				if (entry->ival != cascade_ival)
-					continue;
-
-				/* Check wear flags match */
-				if (!(wearflags & entry->wear_flags))
-					continue;
-
-				/* Check not same vnum */
-				if (entry->vnum == OBJ_VNUM(source))
-					continue;
-
-				/* Found a match — read the object */
-				robj = read_object(entry->vnum, VIRTUAL);
-				if (!robj)
-					continue;
-				if ((wearflags & robj->wear_flags) &&
-				    is_enhance_pool_candidate(robj))
-				{
-					const int candidate_value = itemvalue(robj);
-					if (candidate_value > sval &&
-					    candidate_value <= max_result_value)
-						break;
-				}
-				extract_obj(robj);
-				robj = NULL;
-			}
-
-			if (robj)
-				break;
-		}
-		if (robj)
+				const auto a = std::abs(static_cast<int64_t>(left->ival) - newval);
+				const auto b = std::abs(static_cast<int64_t>(right->ival) - newval);
+				if (a != b)
+					return a < b;
+				return enhance_original_cascade_down_first ?
+					       left->ival < right->ival :
+					       left->ival > right->ival;
+			});
+	}
+	catch (const std::bad_alloc &)
+	{
+		send_to_char("The enhancement search could not be prepared.\r\n", ch);
+		return;
+	}
+	robj = nullptr;
+	for (const auto *candidate : candidates)
+	{
+		if (!(wearflags & candidate->wear_flags) || candidate->vnum == OBJ_VNUM(source))
+			continue;
+		const auto *prototype = find_object_template(candidate->vnum);
+		if (!prototype)
+			continue;
+		auto view = inspect_object_template(*prototype);
+		const int value = itemvalue(*prototype);
+		if (!(wearflags & view.wear_flags) || !is_enhance_pool_candidate(&view) ||
+		    value <= sval || value > max_result_value)
+			continue;
+		// Only a selected grant attempt enters the object lifecycle.
+		robj = read_object(candidate->vnum, VIRTUAL);
+		if (!robj)
+			continue;
+		const int live_value = itemvalue(robj);
+		if ((wearflags & robj->wear_flags) && is_enhance_pool_candidate(robj) &&
+		    live_value > sval && live_value <= max_result_value)
 			break;
-		searchcount++;
-		if (searchcount > maxsearch)
-			break;
+		extract_obj(robj);
+		robj = nullptr;
 	}
 
 	if (!robj)
@@ -419,14 +406,14 @@ static const struct
 /* Return an item's unmodified prototype value for one APPLY location. */
 static int enhance_base_modifier(P_obj item, int apply_loc)
 {
-	P_obj base;
+	const object_template *base;
 	int i;
 	int modifier = 0;
 
 	if (!item || apply_loc == APPLY_NONE)
 		return 0;
 
-	base = read_object(OBJ_VNUM(item), VIRTUAL);
+	base = find_object_template(OBJ_VNUM(item));
 	if (!base)
 		return 0;
 
@@ -438,19 +425,17 @@ static int enhance_base_modifier(P_obj item, int apply_loc)
 			break;
 		}
 	}
-	extract_obj(base);
 	return modifier;
 }
 
 /* Format a raw-material object name without retaining a temporary game object. */
 static void enhance_material_name(int vnum, char *buf, size_t size)
 {
-	P_obj material = read_object(vnum, VIRTUAL);
+	const auto *material = find_object_template(vnum);
 
 	if (material)
 	{
-		snprintf(buf, size, "%s", material->short_description);
-		extract_obj(material);
+		snprintf(buf, size, "%s", material->short_description.c_str());
 	}
 	else
 		snprintf(buf, size, "raw material [%d]", vnum);
@@ -459,10 +444,11 @@ static void enhance_material_name(int vnum, char *buf, size_t size)
 static int enhance_entry_modifier(const struct enhance_index_entry *entry, int apply_loc)
 {
 	int i;
+	int total = 0;
 	for (i = 0; i < MAX_OBJ_AFFECT; i++)
 		if (entry->apply_loc[i] == apply_loc)
-			return entry->apply_mod[i];
-	return 0;
+			total += entry->apply_mod[i];
+	return total;
 }
 
 /* Cap the configured prototype multiplier at the largest stored modifier. */
@@ -569,7 +555,15 @@ static int superior_stat_remaining_steps(P_obj item, int apply_loc, int current,
 
 	for (next = current + 1; next <= cap; next++)
 	{
-		if (!find_stat_enhance_target(item, apply_loc, next))
+		int target_total = 0;
+		const int step = next - current;
+		for (const auto &apply : item->affected)
+			if (apply.location == apply_loc)
+				target_total += apply.modifier +
+						(apply.modifier > 0 && apply.modifier < cap ?
+							 std::min(step, cap - apply.modifier) :
+							 0);
+		if (!find_stat_enhance_target(item, apply_loc, target_total))
 			break;
 		steps++;
 	}
@@ -594,7 +588,7 @@ static bool build_superior_enhancement_plan(P_obj item, struct superior_enhancem
 		int low_vnum;
 		int high_vnum;
 		struct enhance_index_entry *target;
-		P_obj target_obj;
+		const object_template *target_obj;
 
 		if (item->affected[i].location == APPLY_NONE || item->affected[i].modifier <= 0 ||
 		    !is_superior_stat_apply(item->affected[i].location))
@@ -603,13 +597,16 @@ static bool build_superior_enhancement_plan(P_obj item, struct superior_enhancem
 		cap = enhance_stat_cap(base);
 		if (base <= 0 || item->affected[i].modifier >= cap)
 			continue;
-		target = find_stat_enhance_target(item, item->affected[i].location,
-						  item->affected[i].modifier + 1);
-		if (!target || !(target_obj = read_object(target->vnum, VIRTUAL)))
+		int desired_total = 0;
+		for (const auto &apply : item->affected)
+			if (apply.location == item->affected[i].location)
+				desired_total += apply.modifier +
+						 (apply.modifier > 0 && apply.modifier < cap);
+		target = find_stat_enhance_target(item, item->affected[i].location, desired_total);
+		if (!target || !(target_obj = find_object_template(target->vnum)))
 			continue;
 
-		low_vnum = get_matstart(target_obj);
-		extract_obj(target_obj);
+		low_vnum = material_start_vnum(target_obj->material);
 		high_vnum = low_vnum + 4;
 		int high_count, low_count;
 		if (!item_value_material_quantities(target->ival,
@@ -745,6 +742,11 @@ static bool perform_superior_enhancement(P_char ch, P_obj source, P_obj pouch,
 
 void do_enhance(P_char ch, char *argument, int /*cmd*/)
 {
+	if (!enhancement_system_ready)
+	{
+		send_to_char("Enhancement is temporarily unavailable.\r\n", ch);
+		return;
+	}
 	P_obj source, material;
 	P_obj pouch;
 	char first[MAX_INPUT_LENGTH];
@@ -1154,7 +1156,7 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 	}
 
 	const bool encrusted = IS_ENCRUSTED(source);
-	P_obj tempobj = encrusted ? nullptr : read_object(OBJ_VNUM(source), VIRTUAL);
+	const auto *tempobj = encrusted ? nullptr : find_object_template(OBJ_VNUM(source));
 	if (!encrusted && !tempobj)
 	{
 		send_to_char("The original item template is unavailable.\r\n", ch);
@@ -1163,11 +1165,7 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 
 	currency_vector debit{};
 	if (!charge_enhancement(ch, cost, debit))
-	{
-		if (tempobj)
-			extract_obj(tempobj);
 		return;
-	}
 	source->affected[2] = proposed.affected[2];
 	SET_BIT(source->extra2_flags, ITEM2_ENHANCED);
 
@@ -1188,14 +1186,12 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 	char tempdesc[MAX_STRING_LENGTH], short_desc[MAX_STRING_LENGTH],
 		keywords[MAX_STRING_LENGTH];
 
-	snprintf(keywords, MAX_STRING_LENGTH, "%s enhanced", tempobj->name);
+	snprintf(keywords, MAX_STRING_LENGTH, "%s enhanced", tempobj->name.c_str());
 
-	snprintf(tempdesc, MAX_STRING_LENGTH, "%s", tempobj->short_description);
+	snprintf(tempdesc, MAX_STRING_LENGTH, "%s", tempobj->short_description.c_str());
 	checked_snprintf(short_desc, MAX_STRING_LENGTH, "%s %s&n", tempdesc, modstring);
 	set_keywords(source, keywords);
 	set_short_description(source, short_desc);
-	extract_obj(tempobj);
-
 	return;
 }
 
@@ -2163,90 +2159,80 @@ bool is_enhance_pool_candidate(P_obj obj)
 		 *  load_enhance_index() — Build ival and stat hash tables from vnum range
 		 * =============================================================================
 		 */
-void load_enhance_index(void)
+static std::vector<enhance_index_entry> enhance_index_entries;
+
+bool load_enhance_index(void)
 {
-	int vnum, ival, h, sh, j, count;
-	P_obj obj;
-	struct enhance_index_entry *entry;
-
-	fprintf(stderr, "-- Building enhance index (vnum %d to %d)...\n", enhance_search_vnum_min,
-		enhance_search_vnum_max);
-	logit(LOG_STATUS, "Building enhance index (vnum %d to %d)...", enhance_search_vnum_min,
-	      enhance_search_vnum_max);
-
-	count = 0;
-
-	for (int64_t candidate = enhance_search_vnum_min; candidate <= enhance_search_vnum_max;
-	     ++candidate)
+	std::vector<enhance_index_entry> built;
+	std::array<enhance_index_entry *, ENHANCE_IVAL_TABLE_SIZE> values{};
+	std::array<enhance_index_entry *, ENHANCE_STAT_TABLE_SIZE> stats{};
+	int count = 0;
+	try
 	{
-		vnum = static_cast<int>(candidate);
-		obj = read_object(vnum, VIRTUAL);
-		if (!obj)
-			continue;
-
-		if (!is_enhance_pool_candidate(obj))
+		built.reserve((static_cast<size_t>(top_of_objt) + 1) * (MAX_OBJ_AFFECT + 1));
+		for (int rnum = 0; rnum <= top_of_objt; ++rnum)
 		{
-			extract_obj(obj);
-			continue;
-		}
-
-		ival = itemvalue(obj);
-		if (ival < 1)
-		{
-			extract_obj(obj);
-			continue;
-		}
-
-		/* Allocate and fill index entry */
-		entry = (struct enhance_index_entry *)malloc(sizeof(struct enhance_index_entry));
-		if (!entry)
-		{
-			extract_obj(obj);
-			continue;
-		}
-
-		entry->vnum = vnum;
-		entry->ival = ival;
-		entry->wear_flags = obj->wear_flags;
-		entry->material = obj->material;
-
-		for (j = 0; j < MAX_OBJ_AFFECT; j++)
-		{
-			entry->apply_loc[j] = obj->affected[j].location;
-			entry->apply_mod[j] = obj->affected[j].modifier;
-		}
-
-		/* Insert into ival hash table */
-		h = enhance_hash(ival);
-		entry->next = enhance_ival_table[h];
-		enhance_ival_table[h] = entry;
-
-		/* Insert into stat hash table (by each apply location that has a modifier) */
-		for (j = 0; j < MAX_OBJ_AFFECT; j++)
-		{
-			if (obj->affected[j].location != APPLY_NONE &&
-			    obj->affected[j].modifier != 0)
+			const int vnum = obj_index[rnum].virtual_number;
+			// Cache every source/material too; runtime inspection never parses files.
+			if (!cache_object_template(vnum))
 			{
-				/* Allocate a separate entry for stat table */
-				struct enhance_index_entry *stat_entry;
-				stat_entry = (struct enhance_index_entry *)malloc(
-					sizeof(struct enhance_index_entry));
-				if (!stat_entry)
-					continue;
-
-				memcpy(stat_entry, entry, sizeof(struct enhance_index_entry));
-				sh = enhance_stat_hash(obj->affected[j].location);
-				stat_entry->next = enhance_stat_table[sh];
-				enhance_stat_table[sh] = stat_entry;
+				logit(LOG_STATUS,
+				      "enhance: template %d unavailable; index not published",
+				      vnum);
+				return false;
 			}
+			if (vnum < enhance_search_vnum_min || vnum > enhance_search_vnum_max)
+				continue;
+			const auto *prototype = find_object_template(vnum);
+			auto view = inspect_object_template(*prototype);
+			if (!is_enhance_pool_candidate(&view))
+				continue;
+			const int value = itemvalue(*prototype);
+			if (value < 1)
+				continue;
+			auto &entry = built.emplace_back();
+			entry.vnum = vnum;
+			entry.ival = value;
+			entry.wear_flags = view.wear_flags;
+			entry.material = view.material;
+			for (int slot = 0; slot < MAX_OBJ_AFFECT; ++slot)
+			{
+				entry.apply_loc[slot] = view.affected[slot].location;
+				entry.apply_mod[slot] = view.affected[slot].modifier;
+			}
+			const int bucket = enhance_hash(value);
+			entry.next = values[bucket];
+			values[bucket] = &entry;
+			for (int slot = 0; slot < MAX_OBJ_AFFECT; ++slot)
+			{
+				const int location = entry.apply_loc[slot];
+				if (location == APPLY_NONE ||
+				    enhance_entry_modifier(&entry, location) == 0)
+					continue;
+				bool duplicate = false;
+				for (int prior = 0; prior < slot; ++prior)
+					duplicate |= entry.apply_loc[prior] == location;
+				if (duplicate)
+					continue;
+				auto &stat = built.emplace_back(entry);
+				const int key = enhance_stat_hash(location);
+				stat.next = stats[key];
+				stats[key] = &stat;
+			}
+			++count;
 		}
-
-		extract_obj(obj);
-		count++;
 	}
-
-	fprintf(stderr, "-- Enhance index built: %d entries indexed\n", count);
-	logit(LOG_STATUS, "Enhance index built: %d entries indexed", count);
+	catch (const std::bad_alloc &)
+	{
+		logit(LOG_STATUS, "enhance: allocation failed; index not published");
+		return false;
+	}
+	enhance_index_entries.swap(built);
+	std::copy(values.begin(), values.end(), enhance_ival_table);
+	std::copy(stats.begin(), stats.end(), enhance_stat_table);
+	logit(LOG_STATUS, "Enhance index built: %d templates, %zu entries", count,
+	      enhance_index_entries.size());
+	return true;
 }
 
 /* Enhancement lifecycle/event boundary. Other gameplay systems call these
@@ -2257,12 +2243,23 @@ bool enhancement_system_is_ready(void)
 	return enhancement_system_ready;
 }
 
+void refresh_enhancement_item_values()
+{
+	if (enhancement_system_ready && !load_enhance_index())
+	{
+		enhancement_system_ready = false;
+		logit(LOG_STATUS,
+		      "Enhancement disabled until restart: valuation index rebuild failed");
+	}
+}
+
 void boot_enhancement_system(void)
 {
 	if (enhancement_system_ready)
 		return;
 	load_enhance_config();
-	load_enhance_index();
+	if (!load_enhance_index())
+		fatal_boot_error("enhancement", "Could not build complete enhancement index");
 	enhancement_system_ready = true;
 }
 

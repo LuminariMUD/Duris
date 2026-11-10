@@ -412,3 +412,6 @@ __attribute__((weak)) bool kept_character_recovery_owner_pending(const char *)
 {
 	return false;
 }
+
+HARNESS_STUB void refresh_enhancement_item_values() {}
+HARNESS_STUB void refresh_world_quest_item_values() {}

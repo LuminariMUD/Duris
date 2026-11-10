@@ -34,6 +34,47 @@ struct zone_data *zone_table = nullptr;
 int top_of_zone_table = -1;
 
 static obj_data prototypes[12]{};
+static object_template metadata[12];
+static int missing_template_vnum;
+static bool fail_next_allocation;
+extern "C" void *__real__Znwm(size_t);
+extern "C" void *__wrap__Znwm(size_t size) {
+    if(fail_next_allocation) { fail_next_allocation=false; throw std::bad_alloc(); }
+    return __real__Znwm(size);
+}
+const object_template *find_object_template(int vnum) {
+    if(vnum<=0 || vnum==missing_template_vnum) return nullptr;
+    for(size_t slot=0;slot<std::size(prototypes);++slot) if(indices[slot].virtual_number==vnum) {
+        const auto &object=prototypes[slot]; auto &result=metadata[slot];
+        result.R_num=object.R_num;
+        result.type=object.type;
+        result.material=object.material;
+        result.craftsmanship=object.craftsmanship;
+        result.extra_flags=object.extra_flags;
+        result.wear_flags=object.wear_flags;
+        result.extra2_flags=object.extra2_flags;
+        result.anti_flags=object.anti_flags;
+        result.anti2_flags=object.anti2_flags;
+        result.weight=object.weight;
+        result.cost=object.cost;
+        result.condition=object.condition;
+        result.bitvector=object.bitvector;
+        result.bitvector2=object.bitvector2;
+        result.bitvector3=object.bitvector3;
+        result.bitvector4=object.bitvector4;
+        result.bitvector5=object.bitvector5;
+        std::copy(std::begin(object.value),std::end(object.value),std::begin(result.value));
+        std::copy(std::begin(object.affected),std::end(object.affected),std::begin(result.affected));
+        result.name=object.name; result.short_description=object.short_description;
+        return &result;
+    }
+    return nullptr;
+}
+bool cache_object_template(int vnum) { return !vnum || find_object_template(vnum); }
+int strn_cmp(const char *,const char *,unsigned int) { assert(false); return 0; }
+bool valid_object_proclib(const char *,const char *) { assert(false); return false; }
+int item_switch(P_obj,P_char,int,char *) { assert(false); return 0; }
+
 static std::unordered_set<P_obj> temporary;
 static std::vector<int> loads;
 static std::vector<int> extracted;
@@ -364,8 +405,8 @@ static void test_replacement()
     enhance(&ch, &source, &donor);
     assert((removal_causes == std::vector<std::string>{"enhance_replacement", "enhance_donor"}));
     assert(result && OBJ_VNUM(result) == 83202);
-    assert((loads == std::vector<int>{90003, 90004, 90002, 90000, 83277, 83202}));
-    assert((extracted == std::vector<int>{90004, 90002, 90000, 83277, 98963, 90001}));
+    assert((loads == std::vector<int>{83202}));
+    assert((extracted == std::vector<int>{98963, 90001}));
     assert(charges == 1 && GET_PLATINUM(&ch) == 10);
     clear_attempt();
 
@@ -452,12 +493,12 @@ static void test_essence()
     assert(charges == 0 && GET_MONEY(&ch) == 10000);
 
     source = base;
-    unavailable_vnum = OBJ_VNUM(&source);
+    missing_template_vnum = OBJ_VNUM(&source);
     modenhance(&ch, &source, &health);
     assert(source.affected[2].location == APPLY_NONE && source.extra2_flags == 0);
     assert(source.name == base.name && extracted.empty());
     assert(health.loc_p == LOC_CARRIED && charges == 0 && GET_MONEY(&ch) == 10000);
-    unavailable_vnum = 0;
+    missing_template_vnum = 0;
     clear_attempt();
 
     refuse_wallet_commit = true;
@@ -465,7 +506,7 @@ static void test_essence()
     assert(source.affected[2].location == APPLY_NONE && source.extra2_flags == 0);
     assert(source.name == base.name && health.loc_p == LOC_CARRIED);
     assert(charges == 0 && GET_MONEY(&ch) == 10000);
-    assert((extracted == std::vector<int>{90010}));
+    assert(extracted.empty());
     clear_attempt();
     refuse_wallet_commit = false;
 
@@ -473,7 +514,7 @@ static void test_essence()
     assert(source.affected[2].location == APPLY_HIT && source.affected[2].modifier == 3);
     assert(IS_OBJ_STAT2(&source, ITEM2_ENHANCED) && strstr(source.name, "enhanced"));
     assert(health.loc_p == LOC_NOWHERE && charges == 1 && GET_MONEY(&ch) == 9000);
-    assert((extracted == std::vector<int>{400254, 90010}));
+    assert((extracted == std::vector<int>{400254}));
     clear_attempt();
 
     health.loc_p = LOC_CARRIED;
@@ -578,7 +619,11 @@ static void test_superior(superior_case probe = superior_case::ordinary)
         base.affected[3] = {APPLY_STR_MAX, 2};
     }
     if (zero_case) base.affected[2] = {APPLY_HITROLL, 0};
-    if (duplicate_case) base.affected[0].location = APPLY_STR;
+    if (duplicate_case) {
+        base.affected[0].location = APPLY_STR;
+        target.affected[0]={APPLY_STR,3}; target.affected[1]={APPLY_STR,3};
+        str.apply_mod[0]=6; str.ival=wis.ival=itemvalue(&target);
+    }
     item = base;
     const int original_value = itemvalue(&item);
     if (packed_case) assert(original_value == 21); // 18 before F02; all charges use this corrected value.
@@ -851,7 +896,7 @@ static void test_wide_arithmetic()
     assert(enhance_stat_cap(1) == SCHAR_MAX && enhance_stat_cap(127) == SCHAR_MAX);
     enhance_search_vnum_min = enhance_search_vnum_max = INT_MAX;
     load_enhance_index();
-    assert((loads == std::vector<int>{INT_MAX})); clear_attempt();
+    assert(loads.empty()); clear_attempt();
     restore_config();
     room_data rooms[1]{}; zone_data zones[1]{};
     world = rooms; zone_table = zones; top_of_zone_table = 0; zones[0].number = 42;
@@ -900,12 +945,50 @@ static void test_unavailable()
     }
 }
 
+
+static void test_index() {
+    for(int slot=0;slot<12;++slot) {
+        auto &object=fixture(slot,10000+slot,10+slot);
+        object.affected[0]={APPLY_STR,2}; object.affected[1]={APPLY_STR,3};
+        object.affected[2]={APPLY_HIT,1}; object.affected[3]={APPLY_HIT,-1};
+    }
+    prototypes[1].value[0]=prototypes[0].value[0];
+    clear_attempt();
+    enhance_search_vnum_min=10000; enhance_search_vnum_max=10011;
+    assert(load_enhance_index());
+    assert(loads.empty() && extracted.empty() && temporary.empty());
+    int count=0;
+    for(auto *entry:enhance_stat_table) for(;entry;entry=entry->next) {
+        assert(enhance_entry_modifier(entry,APPLY_STR)==5);
+        assert(enhance_entry_modifier(entry,APPLY_HIT)==0); ++count;
+    }
+    assert(count==12); // One semantic STR entry per template, no duplicate/cancelled HP entry.
+    const int score=itemvalue(&prototypes[0]);
+    auto *head=enhance_ival_table[enhance_hash(score)];
+    assert(head->vnum==10001 && head->next->vnum==10000); // Legacy prepend tie order.
+    missing_template_vnum=10003;
+    assert(!load_enhance_index() && enhance_ival_table[enhance_hash(score)]==head);
+    missing_template_vnum=0; fail_next_allocation=true;
+    assert(!load_enhance_index() && enhance_ival_table[enhance_hash(score)]==head);
+    prototypes[0].value[0]=50; enhancement_system_ready=true;
+    refresh_enhancement_item_values(); assert(enhancement_system_is_ready());
+    bool updated=false;
+    for(auto *entry:enhance_ival_table) for(;entry;entry=entry->next)
+        if(entry->vnum==10000) { assert(entry->ival==itemvalue(&prototypes[0])); updated=true; }
+    assert(updated && loads.empty() && extracted.empty());
+    fail_next_allocation=true; refresh_enhancement_item_values();
+    assert(!enhancement_system_is_ready());
+    char_data actor{}; char command[]="fixture"; do_enhance(&actor,command,0);
+    assert(output.find("unavailable")!=std::string::npos && charges==0);
+}
+
 int main()
 {
     const auto expected_mask = ITEM_TAKE | ITEM_HOLD | ITEM_ATTACH_BELT | ITEM_WEAR_BACK;
     assert(enhance_wear_skip_mask == expected_mask);
     test_config();
     assert(enhance_wear_skip_mask == expected_mask);
+    enhancement_system_ready=true;
     test_replacement();
     test_essence();
     test_superior();
@@ -915,6 +998,7 @@ int main()
     test_superior(superior_case::duplicate_applies);
     test_unavailable();
     test_wide_arithmetic();
+    test_index();
 }
 """
 
@@ -928,7 +1012,8 @@ def main():
         cpp = Path(tmp) / "enhance.cpp"
         binary = Path(tmp) / "enhance"
         cpp.write_text(
-            HARNESS + "\n" + extract_function("tradeskill.c", "int material_start_vnum(int objmat)")
+            HARNESS + "\n" + extract_function("db.c", "obj_data inspect_object_template(")
+            + "\n" + extract_function("tradeskill.c", "int material_start_vnum(int objmat)")
             + "\nint get_matstart(P_obj obj)\n" + get_matstart
             + "\n" + extract_function("utility.c", "char *coin_stringv(int amount, int padfront)")
         )
@@ -938,7 +1023,7 @@ def main():
                 "-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all",
                 "-fno-pie", "-no-pie", "-Isrc", str(cpp), str(HARNESS_STUBS),
                 "src/core/safe_format.c", "src/item/salvage.c", "src/item/item_value.c",
-                "src/item/item_value_runtime.c", "-Wl,--gc-sections", "-lbsd", "-o", str(binary),
+                "src/item/item_value_runtime.c", "-Wl,--gc-sections,--wrap=_Znwm", "-lbsd", "-o", str(binary),
             ],
             cwd=ROOT,
             check=True,

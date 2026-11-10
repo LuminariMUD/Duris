@@ -12,6 +12,7 @@
 #include "combat/trap.h"
 #include "core/prototypes.h"
 #include "item/named_sets.h"
+#include "item/item_value.h"
 #include "net/gmcp.h"
 #include "player/news.h"
 #include "player/player_save_pipeline.h"
@@ -3111,6 +3112,34 @@ const object_template *find_object_template(int vnum)
 {
 	const auto found = object_templates.find(vnum);
 	return found == object_templates.end() ? nullptr : &found->second;
+}
+
+obj_data inspect_object_template(const object_template &prototype)
+{
+	obj_data view{};
+	view.R_num = prototype.R_num;
+	view.type = prototype.type;
+	view.material = prototype.material;
+	view.craftsmanship = prototype.craftsmanship;
+	view.extra_flags = prototype.extra_flags;
+	view.wear_flags = prototype.wear_flags;
+	view.extra2_flags = prototype.extra2_flags;
+	view.anti_flags = prototype.anti_flags;
+	view.anti2_flags = prototype.anti2_flags;
+	memcpy(view.value, prototype.value, sizeof(view.value));
+	memcpy(view.affected, prototype.affected, sizeof(view.affected));
+	view.weight = prototype.weight;
+	view.cost = prototype.cost;
+	view.condition = prototype.condition;
+	view.bitvector = prototype.bitvector;
+	view.bitvector2 = prototype.bitvector2;
+	view.bitvector3 = prototype.bitvector3;
+	view.bitvector4 = prototype.bitvector4;
+	view.bitvector5 = prototype.bitvector5;
+	view.name = const_cast<char *>(prototype.name.c_str());
+	view.short_description = const_cast<char *>(prototype.short_description.c_str());
+	normalize_item_value_fields(view);
+	return view;
 }
 
 static void stage_artifact_population()
