@@ -62,6 +62,17 @@ values while changing presentation. Browser checks should cover all report
 levels, gear selection, metric, specialisation and multiclass views, shared URLs,
 cell details, clipboard behavior, mobile scrolling, and a failed snapshot download.
 
+## Item value changes
+
+The item value page (`/item-values/`) lists every authored item players can hold whose item value
+differs after the November 2026 valuation fixes. `site/item-values/data.json` is
+a fixed snapshot taken from the before/after reports in
+`docs/ongoing-projects/ival-evidence/`: item number, in-game name and zone with
+their colour codes, type, old and new value, and the fix responsible. Heaven's staff equipment and items
+flagged no-show (hidden creature-only gear) are left out. The build
+renders the table and a CSV download from it, so the list reads without
+scripting; search, direction filters and column sorting are added in the browser.
+
 ## Build and verify locally
 
 Use Node.js 24 or later and Python 3:

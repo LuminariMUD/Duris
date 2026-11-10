@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""Real server corpse haul at the item-count cap on both persistence backends."""
+"""Real server corpse haul and salvage pickup at the item-count cap on MariaDB."""
 
 from pathlib import Path
-import os
 import signal
 import subprocess
 import sys
 import tempfile
 import time
-import uuid
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -35,6 +33,8 @@ def add_stock(runtime):
     for vnum, name in ((22810, "ruby"), (22811, "sapphire"), (22812, "marker")):
         extra += banana.replace("#15\n", f"#{vnum}\n", 1).replace(
             "banana", name).replace("Banana", name.capitalize())
+    extra += banana.replace("#15\n", "#400025\n", 1).replace(
+        "banana", "salvagepiece").replace("Banana", "Salvagepiece")
     objects_path.write_text(objects.replace("$~", extra + "$~"))
 
     zone_path = runtime / "areas_mini/mini.zon"
@@ -46,7 +46,8 @@ def add_stock(runtime):
         "G 1 22811 1 0 100 0 0 0 * third corpse root\n"
     )
     fillers = "O 0 22812 30 22800 100 0 0 0 * count-cap filler\n" * 20
-    zone_path.write_text(zone.replace(anchor, anchor + extra_resets + fillers))
+    salvage = "O 0 400025 6 22800 100 0 0 0 * salvaged material\n" * 6
+    zone_path.write_text(zone.replace(anchor, anchor + extra_resets + fillers + salvage))
 
     # A random salvage drop on the kill would put a fourth item in the corpse, and the haul
     # with one free slot could take it instead of a root. These values win over the ones
@@ -56,60 +57,15 @@ def add_stock(runtime):
 
 
 def run(binary, backend):
-    assert backend in ("mariadb", "flatfile")
-    database = "haul_cap_" + uuid.uuid4().hex[:12]
-    host = os.environ.get("TEST_DB_HOST", "127.0.0.1")
-    assert host in ("127.0.0.1", "localhost")
-    port = os.environ.get("TEST_DB_PORT", "3307")
-    env = dict(PATH=os.environ.get("PATH", "/usr/bin:/bin"), ENVIRONMENT="local",
-               PERSISTENCE_MODE=backend + "-primary", REDIS="FALSE",
-               CHAOS_MUD="FALSE", LISTEN_ADDRESS="127.0.0.1",
-               DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1")
-    if value := os.environ.get("LD_LIBRARY_PATH"):
-        env["LD_LIBRARY_PATH"] = value
-    state = None
-    state_root = None
-    sql = None
-    if backend == "mariadb":
-        password = os.environ["TEST_DB_PASSWORD"]
-        env.update(DB_HOST=host, DB_PORT=port, DB_NAME=database,
-                   DB_USER=os.environ.get("TEST_DB_USER", "root"), DB_PASSWD=password,
-                   MYSQL_PWD=password, DB_ALLOWED_TARGETS=host + "/" + database,
-                   DB_TLS="FALSE")
-        mysql = ["mysql", "--protocol=tcp", "-h", host, "-P", port,
-                 "-u", env["DB_USER"], "-N", "-B", "--unbuffered"]
-
-        def sql(statement, selected=True):
-            return subprocess.check_output(mysql + ([database] if selected else []),
-                                           input=statement, text=True, env=env).strip()
-
-        sql("CREATE DATABASE " + database, False)
-    else:
-        (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-        state = tempfile.TemporaryDirectory(prefix="haul-cap-state-")
-        state_root = Path(state.name)
-        (state_root / "domains").mkdir(mode=0o700)
-        subprocess.run([str(journey.INSPECTOR), str(state_root), "seed-combat"], check=True)
-        env["FLATFILE_STATE_DIR"] = str(state_root)
-
-    def owner_count(pid):
-        if sql:
+    assert backend == "mariadb"
+    with journey.mariadb_authority() as (env, sql):
+        def owner_count(pid):
             return int(sql(f"SELECT COUNT(*) FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND vnum IN (15,22810,22811) AND state=1"))
-        return sum(item["vnum"] in (15, 22810, 22811)
-                   for item in journey.inspect_authority(state_root)["player_items"])
 
-    def wallet(pid):
-        if sql:
+        def wallet(pid):
             return [int(value) for value in sql(
                 f"SELECT copper,silver,gold,platinum FROM player_data WHERE pid={pid}").split()]
-        return journey.inspect_authority(state_root)["wallet"]
 
-    try:
-        if sql:
-            sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
-            for args in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
-                subprocess.run(["python3", "scripts/migration_runner.py", *args],
-                               cwd=ROOT, env=env, check=True)
         (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="haul-cap-", dir=ROOT / "bin/tests") as temporary:
             runtime = Path(temporary)
@@ -148,11 +104,52 @@ def run(binary, backend):
                 actor.send("drop all")
                 actor.expect("You drop a steel long sword.", timeout=20)
                 drain(actor)
+                actor.send("get bag")
+                actor.expect("You get a small leather bag.", timeout=20)
+                actor.send("get all.salvagepiece")
+                actor.expect("You got 6 items.", timeout=20)
+                actor.send("put all.salvagepiece bag")
+                actor.expect("You put", timeout=20)
+                drain(actor)
                 actor.send("get all.marker")
                 full = actor.expect("You can't carry anything more.", timeout=60) + drain(actor)
                 actor.send("inventory")
                 inventory = actor.expect("Pos: standing >", timeout=20) + drain(actor)
                 assert "marker" in inventory, inventory
+                # Single GET starts at the cap; bulk GET must then work above it.
+                # Repeat with the same bag carried and on the room floor.
+                for carried_bag in (True, False):
+                    if not carried_bag:
+                        actor.send("drop bag")
+                        actor.expect("You drop a small leather bag.", timeout=20)
+                        actor.send("get marker")
+                        actor.expect("You get a marker.", timeout=20)
+                    drain(actor)
+                    actor.send("get salvagepiece bag")
+                    single = actor.expect("You get a salvagepiece", timeout=20) + drain(actor)
+                    assert "can't carry" not in single, single
+                    actor.send("get all.salvagepiece bag")
+                    bulk = actor.expect("You got 5 items.", timeout=20) + drain(actor)
+                    assert "can't carry" not in bulk, bulk
+                    actor.send("save")
+                    actor.expect("Saving Taverek.", timeout=30)
+                    pid = int(sql("SELECT pid FROM player_data WHERE name='Taverek'"))
+                    assert int(sql("SELECT COUNT(*) FROM item_current_owner WHERE "
+                                   f"owner_type=1 AND owner_id={pid} AND state=1 "
+                                   "AND vnum=400025 AND parent_item_uid IS NULL")) == 6
+                    if not carried_bag:
+                        actor.send("drop all.salvagepiece")
+                        actor.expect("You drop 6 salvagepiece(s).", timeout=20)
+                        drain(actor)
+                        actor.send("get salvagepiece")
+                        actor.expect("You get a salvagepiece.", timeout=20)
+                        actor.send("get all.salvagepiece")
+                        floor = actor.expect("You got 5 items.", timeout=20) + drain(actor)
+                        assert "can't carry" not in floor, floor
+                    actor.send("put all.salvagepiece bag")
+                    actor.expect("You put", timeout=20)
+                    drain(actor)
+                print("PASS: capped single/bulk salvage pickup from carried/room bag and floor; six saved material roots", flush=True)
                 actor.send("kill raoul")
                 deadline = time.monotonic() + 45
                 while True:
@@ -176,7 +173,7 @@ def run(binary, backend):
                 assert "3s" in first and "Nothing acquired." not in first, first
                 actor.send("save")
                 actor.expect("Saving Taverek.", timeout=30)
-                pid = int(sql("SELECT pid FROM player_data WHERE name='Taverek'")) if sql else 1
+                pid = int(sql("SELECT pid FROM player_data WHERE name='Taverek'"))
                 assert wallet(pid) == [0, 3, 0, 0]
                 assert owner_count(pid) == 0
                 actor.send("look in corpse")
@@ -247,11 +244,6 @@ def run(binary, backend):
                     process.send_signal(signal.SIGTERM)
                     process.wait(timeout=30)
                 output.close()
-    finally:
-        if sql:
-            sql("DROP DATABASE " + database, False)
-        if state:
-            state.cleanup()
 
 
 if __name__ == "__main__":

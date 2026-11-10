@@ -1276,7 +1276,6 @@ bool publish_initial_character_baseline(P_char ch)
 		find_char_in_list(ch->desc->account->acct_character_list, GET_NAME(ch));
 	if (!membership || membership->pid != GET_PID(ch))
 		return false;
-	REMOVE_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);
 	return true;
 }
 
@@ -1308,11 +1307,9 @@ int writeCharacter(P_char ch, int type, int room)
 	    (world[ch->in_room].funct))
 		room = (*world[ch->in_room].funct)(ch->in_room, ch, (-80), NULL);
 
-	// On MariaDB a terminal save is queued like any other; the caller disposes of the
+	// A terminal save is queued like any other; the caller disposes of the
 	// character (persistence_save_character_terminal() does the same).
-	const bool queued_save = true;
-	if (!is_locker_char && GET_PID(ch) > 0 &&
-	    !IS_SET(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE) && queued_save)
+	if (!is_locker_char && GET_PID(ch) > 0)
 	{
 		room = calculate_save_room(ch, type, room);
 		const player_save_pipeline_result queued = player_save_pipeline_request(
@@ -2799,7 +2796,7 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 			{
 				for (i = 0; i < 4; i++)
 				{
-					obj->timer[i] = GET_INTE(buf);
+					obj->timer[i] = static_cast<int32_t>(GET_INTE(buf));
 				}
 			}
 
@@ -3183,7 +3180,7 @@ P_obj read_one_object(char *read_buf)
 		{
 			for (int i = 0; i < 4; i++)
 			{
-				obj->timer[i] = GET_INTE(buf);
+				obj->timer[i] = static_cast<int32_t>(GET_INTE(buf));
 			}
 		}
 

@@ -19,7 +19,8 @@ Duris.Subscribe ["Duris.Time 1"]
 `Core.Supports.Set` replaces supported modules; `Add` and `Remove` update that
 set. Only exact implemented name/version pairs grant support. Unknown names
 and versions are ignored, so advertising a future schema does not enable it.
-Support means the client can decode a stream. It does not subscribe the client.
+Support means the client can decode a contract. Periodic streams still require
+interest; presentation and connection-control capabilities do not.
 
 `Duris.Subscribe` replaces the desired new streams. It requires support for
 `Duris.Capabilities 1`; only supported, implemented streams become interested.
@@ -53,8 +54,11 @@ re-enable/disable:
 {"version":1,"enabled":true,"features":{"Duris.Capabilities":1,"Duris.Subscribe":1,"Duris.Time":1,"Duris.Session":1,"Duris.Combat":1,"Char.Items":1,"Char.Items.Get":1},"supported":["Duris.Time"],"interested":["Duris.Time"],"active":["Duris.Time"],"control":["Duris.Session"]}
 ```
 
-`features` lists implemented contracts only. `supported` and `interested` list
-new gameplay streams; the control package itself is implicit in this snapshot.
+`features` lists implemented contracts only. `supported` lists new gameplay and
+presentation decoders; `interested` lists periodic stream interest. The control
+package itself is implicit in this snapshot.
+`Duris.Links` also appears in `supported` when its presentation decoder is
+advertised; it is not a periodic stream and never needs `Duris.Subscribe`.
 `enabled` reflects transport negotiation and the character's GMCP preference.
 `active` is the effective gameplay set, also requiring a playing character.
 Before entry it is empty even when interest was already declared. `control`
@@ -74,6 +78,51 @@ connection retains support/interest for DO re-enable and resends current state.
 A newly allocated connection starts with no support or interest. Version-18
 copyover preserves eligible live-socket protocol state as described below.
 These fields have no persistent account/character configuration or heap owner.
+
+## Duris.Links, version 1
+
+Advertise `"Duris.Links 1"` through Core.Supports together with the existing
+capability decoder. Unknown versions do not enable it. Support removal, GMCP
+disable and the player's GMCP opt-out stop these optional fields immediately.
+The feature is reported as `"Duris.Links":1`; it does not appear in `active`
+or `interested`. Existing support bits preserve it on supported native copyover
+without another descriptor-layout change. WebSockets still reconnect normally.
+
+The existing ordered WebSocket text envelope retains `type`, `category` and
+terminal `data`, adding one optional snapshot in the **same** message:
+
+```json
+{"type":"text","category":"info","data":"weather https://example.test/","presentation":{"version":1,"text":"weather https://example.test/","underline":false,"runs":[[0,29,0,0]],"links":[{"start":0,"end":7,"kind":"command","target":"help weather"},{"start":8,"end":29,"kind":"url","target":"https://example.test/"}]}}
+```
+
+`presentation.text` is literal text with LF line endings and terminal dollar
+normalization. Runs use the existing `[start,end,foreground,background]` palette
+format. Link ranges are half-open Unicode **code point** positions into that
+text, independently of byte offsets or JavaScript UTF-16. `kind` is `command`
+or `url`; targets are separate strings. Only authored help produces command
+links, limited to one `help <topic>`; URL recognition uses the shared
+[output-link rules](MXP.md#url-text-recognition). The browser must use escaped
+text nodes and explicit user activation through its normal command sender or
+an HTTP/HTTPS anchor. Rendering a message never executes it.
+
+Snapshots are bounded to 1,048,576 code points, 4,096 contiguous color runs,
+128 non-overlapping links and 32,768 aggregate target bytes. Command targets are
+below 1,024 bytes; URL targets are at most 2,048 bytes. Invalid controls, ranges,
+palette IDs, excessive metadata or allocation failure omit the snapshot while
+retaining ordinary data. Packet size stays inside the existing WebSocket output
+budget. A client validates before storing/rendering and falls back to `data`
+when invalid. The text batch preserves existing output order and one-copy
+delivery; it does not correlate a later GMCP event with scrolling text. Queued
+wire bytes drain before additional text is removed from the source queue.
+
+`Comm.Channel` retains its legacy fields and existing full-line `presentation`
+for adopted recipient profiles. Negotiated full-line snapshots can also contain
+`links`. An optional **`bodyPresentation`** uses the same generic schema for the
+recipient-approved body only, on all existing chat channels. Clients use that
+snapshot inside their normal sender/body layout when the full-line policy is
+`preserve` or a channel has no full-line profile. It cannot produce help-command
+links from arbitrary player text. Language/privacy filtering is not repeated.
+Unknown fields remain ignorable by older clients; no second chat event is sent.
 
 ## Duris.Session, version 1
 
@@ -356,7 +405,7 @@ The booted `tests/async/test_gmcp_control_journey.py` journey covers real Telnet
 and WebSocket dispatch, character entry/return/reconnect, preference changes,
 staff clock mutation and invalid WebSocket module input on disposable state.
 The original-socket copyover journey verifies context/generation continuity
-with and without MCCP, and the native copyover matrix covers versions 12-21.
+with and without MCCP, and the native copyover matrix covers versions 12-22.
 [#498](https://github.com/LuminariMUD/Duris/issues/498)
 retains the client handoff and delivery scope. These focused checks do not establish
 general player capacity or negligible overhead.

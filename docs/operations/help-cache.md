@@ -45,7 +45,7 @@ connection acquisition for repeated reads. This is deterministic pipeline testin
 not a live two-player latency benchmark.
 
 Run `python3 tests/async/test_help_cache.py`,
-`python3 tests/async/test_flatfile_help_catalog.py`, and
+`python3 tests/async/test_mariadb_help_catalog.py`, and
 `python3 tests/async/test_reported_latency_contract.py`.
 For the isolated MySQL harness, use a disposable database named `cache_test`
 with no `pages` table (the harness creates and drops it): compile

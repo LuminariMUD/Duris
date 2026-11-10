@@ -304,6 +304,75 @@ static void clear_attempt()
     output.clear();
 }
 
+static void test_minimal_world_essence_command()
+{
+    assert(!enhancement_system_is_ready()); // Optional index was never booted.
+    char_data ch{};
+    ch.in_room = NOWHERE;
+    GET_PLATINUM(&ch) = 10;
+    auto &source = fixture(0, 90010);
+    source.name = const_cast<char *>("target");
+    source.affected[0] = {APPLY_MANA, 25};
+    auto &essence = fixture(1, 400254);
+    essence.name = const_cast<char *>("essence");
+    source.next_content = &essence;
+    ch.carrying = &source;
+    char command[] = "target essence";
+    do_enhance(&ch, command, 0);
+    assert(source.affected[2].location == APPLY_HIT && source.affected[2].modifier == 3);
+    assert(essence.loc_p == LOC_NOWHERE && charges == 1 && GET_MONEY(&ch) == 9000);
+    assert(loads.empty());
+    clear_attempt();
+}
+
+static void test_donor_floor()
+{
+    for (bool insignia : {false, true}) for (int offset : {-1, 0}) {
+        for (auto &bucket : enhance_ival_table) bucket = nullptr;
+        char_data ch{};
+        ch.player.level = 60;
+        ch.curr_stats.Luk = 10;
+        ch.in_room = NOWHERE;
+        GET_PLATINUM(&ch) = 20;
+        auto &source = fixture(0, 90010);
+        source.affected[0] = {APPLY_MANA, 20};
+        if (insignia) source.wear_flags |= ITEM_GUILD_INSIGNIA;
+        const int source_value = insignia ? 30 : 20;
+        assert(itemvalue(&source) == source_value);
+        const int floor = source_value - enhance_material_ival_delta +
+            (insignia ? enhance_guild_insignia_ival_bonus : 0);
+        auto &donor = fixture(1, 90011);
+        const int donor_value = floor + offset;
+        donor.affected[0] = {APPLY_MANA, static_cast<signed char>(donor_value / 2)};
+        donor.affected[1] = {APPLY_MOVE, static_cast<signed char>(donor_value - donor_value / 2)};
+        assert(itemvalue(&donor) == donor_value);
+        auto &target = fixture(2, 90012);
+        target.affected[0] = {APPLY_MANA, static_cast<signed char>((source_value + 1) / 2)};
+        target.affected[1] = {APPLY_MOVE, static_cast<signed char>(source_value + 1 - (source_value + 1) / 2)};
+        assert(itemvalue(&target) == source_value + 1);
+        enhance_index_entry entry{};
+        index_entry(entry, OBJ_VNUM(&target), source_value + 1);
+        const auto original_source = source, original_donor = donor;
+        const int before_rolls = rolls;
+        enhance(&ch, &source, &donor);
+        if (offset < 0) {
+            assert(output.find("requires an item") != std::string::npos);
+            assert(!std::memcmp(&source, &original_source, sizeof(source)));
+            assert(!std::memcmp(&donor, &original_donor, sizeof(donor)));
+            assert(!result && charges == 0 && GET_MONEY(&ch) == 20000);
+            assert(rolls == before_rolls && loads.empty() && extracted.empty());
+        } else {
+            assert(result && itemvalue(result) == source_value + 1);
+            assert(charges == 1 && GET_MONEY(&ch) ==
+                20000 - (source_value <= enhance_cost_low_ival_threshold ?
+                    enhance_cost_low_amount : enhance_cost_high_amount));
+            assert((extracted == std::vector<int>{90010, 90011}));
+        }
+        clear_attempt();
+    }
+    for (auto &bucket : enhance_ival_table) bucket = nullptr;
+}
+
 static void test_replacement()
 {
     // Normalized records from tezcat.obj (98963) and alatorin.obj (83277, 83202).
@@ -480,6 +549,10 @@ static void test_level_gate_is_the_ceiling()
     ch.player.level = 33;
     ch.curr_stats.Luk = 10;
     ch.in_room = NOWHERE;
+    source.name = const_cast<char *>("upgrade");
+    donor.name = const_cast<char *>("donor");
+    source.next_content = &donor;
+    ch.carrying = &source;
     for (bool force_luck : {false, true})
     {
         lucky = force_luck;
@@ -495,7 +568,8 @@ static void test_level_gate_is_the_ceiling()
         lucky = force_luck;
         GET_PLATINUM(&ch) = 20;
         source.loc_p = donor.loc_p = LOC_CARRIED;
-        enhance(&ch, &source, &donor);
+        char command[] = "upgrade donor";
+        do_enhance(&ch, command, 0);
         assert(result && OBJ_VNUM(result) == 91002 && itemvalue(result) == 102);
         assert((extracted == std::vector<int>{91000, 91001}) && charges == 1);
         clear_attempt();
@@ -509,6 +583,38 @@ static void test_level_gate_is_the_ceiling()
     assert(output.find("up to ival 96") != std::string::npos);
     clear_attempt();
     for (auto &bucket : enhance_ival_table) bucket = nullptr;
+
+    // Above 99, the same bound follows configured gains and the pouch exception.
+    const int previous_gain = enhance_ival_gain_normal;
+    for (int gain : {4, 9}) {
+        enhance_ival_gain_normal = gain;
+        valued(0, 91000, 120);
+        valued(1, 91001, 115);
+        valued(2, 91002, 120 + gain);
+        valued(3, 91003, 121 + gain);
+        enhance_index_entry valid{}, excessive{};
+        index_entry(excessive, 91003, 121 + gain);
+        ch.player.level = 40;
+        GET_PLATINUM(&ch) = 20;
+        enhance(&ch, &source, &donor);
+        assert(!result && loads.empty() && extracted.empty() && charges == 0);
+        assert(GET_MONEY(&ch) == 20000 && source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
+        clear_attempt();
+        index_entry(valid, 91002, 120 + gain);
+        for (bool pouch : {false, true}) {
+            source.loc_p = donor.loc_p = LOC_CARRIED;
+            GET_PLATINUM(&ch) = 20;
+            active_pouch = pouch ? &fixture(6, VOBJ_CHAOS_CRAFT_POUCH) : nullptr;
+            enhance(&ch, &source, pouch ? active_pouch : &donor);
+            assert(result && itemvalue(result) == 120 + gain);
+            assert(charges == 1 && GET_MONEY(&ch) == 10000);
+            assert(extracted == (pouch ? std::vector<int>{91000} : std::vector<int>{91000, 91001}));
+            clear_attempt();
+            active_pouch = nullptr;
+        }
+        for (auto &bucket : enhance_ival_table) bucket = nullptr;
+    }
+    enhance_ival_gain_normal = previous_gain;
 }
 
 static void test_essence()
@@ -561,6 +667,10 @@ static void test_essence()
     missing_template_vnum = 0;
     clear_attempt();
 
+    // An essence below the arbitrary-donor floor still upgrades valuable gear.
+    source.affected[0] = {APPLY_MANA, 25};
+    assert(itemvalue(&source) == 25 &&
+        itemvalue(&health) < itemvalue(&source) - enhance_material_ival_delta);
     refuse_wallet_commit = true;
     modenhance(&ch, &source, &health);
     assert(source.affected[2].location == APPLY_NONE && source.extra2_flags == 0);
@@ -843,6 +953,11 @@ static void test_config()
     auto shipped = compiled; shipped[20] = 1;
     assert(config_integers() == shipped && enhance_stat_cap_multiplier == 1.5 && enhance_stat_material_quantity_multiplier == 1);
     assert(config_logs.size() == 1); // Shipped policy has only the successful-load record.
+    assert(enhance_allow_mask == 0x3f01ab7e && enhance_allow_mask2 == 0x804b8df && enhance_allow_mask3 == 0xa3e67fe0);
+    assert(enhance_allow_mask4 == 0x2737b430 && enhance_allow_mask5 == 0xf4fffff);
+    config_file(std::string("[settings]\n# note") + '\0' + "hidden\nenhance.cost.low.amount=7\n");
+    assert(enhance_cost_low_amount == 7 && !config_logged("overlong")); // A NUL does not hide the next line.
+    restore_config();
     config_file("  [settings] # comment\n"
         "enhance.material.ival.delta=-7\nenhance.guild.insignia.ival.bonus=-3\n"
         "enhance.cost.low.ival.threshold=22\nenhance.cost.low.amount=1001\nenhance.cost.high.amount=10002\n"
@@ -1048,7 +1163,9 @@ int main()
     assert(enhance_wear_skip_mask == expected_mask);
     test_config();
     assert(enhance_wear_skip_mask == expected_mask);
+    test_minimal_world_essence_command();
     enhancement_system_ready=true;
+    test_donor_floor();
     test_replacement();
     test_level_gate_is_the_ceiling();
     test_essence();
