@@ -454,6 +454,8 @@ __attribute__((weak)) bool kept_character_recovery_owner_pending(const char *)
 {
 	return false;
 }
+HARNESS_STUB void refresh_enhancement_item_values() {}
+HARNESS_STUB void refresh_world_quest_item_values() {}
 // A character inside a locker is recorded in the room outside its door; nothing here is in a locker.
 HARNESS_STUB int player_save_room_vnum(P_char, int room_vnum)
 {

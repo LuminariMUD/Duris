@@ -12,6 +12,7 @@
 #include "combat/trap.h"
 #include "core/prototypes.h"
 #include "item/named_sets.h"
+#include "item/item_value.h"
 #include "net/gmcp.h"
 #include "player/news.h"
 #include "player/player_save_pipeline.h"
@@ -3113,6 +3114,34 @@ const object_template *find_object_template(int vnum)
 	return found == object_templates.end() ? nullptr : &found->second;
 }
 
+obj_data inspect_object_template(const object_template &prototype)
+{
+	obj_data view{};
+	view.R_num = prototype.R_num;
+	view.type = prototype.type;
+	view.material = prototype.material;
+	view.craftsmanship = prototype.craftsmanship;
+	view.extra_flags = prototype.extra_flags;
+	view.wear_flags = prototype.wear_flags;
+	view.extra2_flags = prototype.extra2_flags;
+	view.anti_flags = prototype.anti_flags;
+	view.anti2_flags = prototype.anti2_flags;
+	memcpy(view.value, prototype.value, sizeof(view.value));
+	memcpy(view.affected, prototype.affected, sizeof(view.affected));
+	view.weight = prototype.weight;
+	view.cost = prototype.cost;
+	view.condition = prototype.condition;
+	view.bitvector = prototype.bitvector;
+	view.bitvector2 = prototype.bitvector2;
+	view.bitvector3 = prototype.bitvector3;
+	view.bitvector4 = prototype.bitvector4;
+	view.bitvector5 = prototype.bitvector5;
+	view.name = const_cast<char *>(prototype.name.c_str());
+	view.short_description = const_cast<char *>(prototype.short_description.c_str());
+	normalize_item_value_fields(view);
+	return view;
+}
+
 static void stage_artifact_population()
 {
 	try
@@ -3129,10 +3158,6 @@ static void stage_artifact_population()
 		if (!restorable)
 			logit(LOG_ARTIFACT,
 			      "artifact boot: Redis world cannot be restored; identities remain reserved");
-		std::unordered_set<int> saved_artifacts;
-		for (const auto &item : population.items)
-			if (!item.extra_flags_present || (item.extra_flags & ITEM_ARTIFACT))
-				saved_artifacts.insert(item.vnum);
 		std::vector<artifact_population_template> prototypes;
 		prototypes.reserve(static_cast<size_t>(top_of_objt) + 1);
 		for (int index = 0; index <= top_of_objt; ++index)
@@ -3140,11 +3165,9 @@ static void stage_artifact_population()
 			auto prototype = parse_object_template(index);
 			const int vnum = obj_index[index].virtual_number;
 			prototypes.push_back({ vnum, prototype.extra_flags });
-			// Reports and bag accounting need immutable values, never temporary objects.
-			if (prototype.type == ITEM_CONTAINER ||
-			    (prototype.extra_flags & ITEM_ARTIFACT) ||
-			    saved_artifacts.count(vnum) || artifact_tracks_vnum(vnum))
-				object_templates.try_emplace(vnum, std::move(prototype));
+			// Every boot mode needs immutable inspection, including worlds that
+			// intentionally skip enhancement-index initialization.
+			object_templates.try_emplace(vnum, std::move(prototype));
 		}
 		if (!artifacts_stage_population(population.items, prototypes,
 						population.complete && restorable))

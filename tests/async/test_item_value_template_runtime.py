@@ -25,6 +25,7 @@ HARNESS = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "item/item_value.h"
+#include "item/item_value_procs.h"
 #include "item/objmisc.h"
 #include "world/object_template.h"
 #include "specs/object_bindings.h"
@@ -44,6 +45,8 @@ HARNESS = r'''
 #include "item/enhance.h"
 #include "world/world_quest_policy_math.h"
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <map>
 #include <vector>
 #include <cassert>
@@ -72,6 +75,9 @@ extern "C" int __real__Z6numberii(int, int);
 extern "C" int __wrap__Z6numberii(int low, int high) {
     ++rolls; return seeded_rng ? __real__Z6numberii(low, high) : low;
 }
+
+// SOURCE_REWARD_POLICY
+// CONSUMER_BASELINE
 
 #if VALUE_BASELINE
 extern Skill skills[];
@@ -104,7 +110,6 @@ extern P_room world;
 extern int top_of_world, top_of_zone_table;
 extern zone_data *zone_table;
 extern int enhance_level_gate_multiplier, enhance_stat_platinum_base, enhance_stat_platinum_per_ival;
-int get_ival_from_proc(obj_proc_type);
 
 struct zone_interval { int bottom = 0, top = 0, zone = -1; };
 static std::vector<zone_interval> quest_intervals;
@@ -223,7 +228,8 @@ static void value_delta(const char *cohort, int id, P_obj object) {
             floor_gained += new_floor && !old_floor;
         }
     }
-    std::fprintf(deltas, "%d,%d,%d,%d,%d,%d,%d,%d,%u,%d,%d,%zu,%d", obj_index[object->R_num].func.obj ? get_ival_from_proc(obj_index[object->R_num].func.obj) : 0,
+    item_value_breakdown resolved; itemvalue(object, &resolved);
+    std::fprintf(deltas, "%d,%d,%d,%d,%d,%d,%d,%d,%u,%d,%d,%zu,%d", static_cast<int>(resolved.native_base),
                  source_eligible_reward(object), vnum, zone >= 0 ? zone_table[zone].number : -1, floor_lost, floor_gained,
                  count, dense, callbacks, object->value[6], object->value[7], apply_kinds.size(), apply_stages);
     for (const auto &apply : object->affected)
@@ -347,6 +353,44 @@ static void unavailable_salvage()
     std::puts("native salvage command: unavailable score preserves item before rolls/grants");
 }
 
+
+static void qualify_consumer_index() {
+    load_enhance_config();
+    long long old_us=0, old_ids=0; int old_stats=0;
+#if CONSUMER_BASELINE
+    std::array<std::vector<int>,ENHANCE_IVAL_TABLE_SIZE> expected;
+    const auto old_start=std::chrono::steady_clock::now(); const auto before_ids=identities;
+    load_enhance_index_before();
+    old_us=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-old_start).count();
+    old_ids=identities-before_ids;
+    for(int bucket=0;bucket<ENHANCE_IVAL_TABLE_SIZE;++bucket)
+        for(auto *entry=enhance_ival_table[bucket];entry;entry=entry->next) expected[bucket].push_back(entry->vnum);
+    for(auto *entry:enhance_stat_table) for(;entry;entry=entry->next) ++old_stats;
+    for(auto &head:enhance_ival_table) while(head){auto *next=head->next;free(head);head=next;}
+    for(auto &head:enhance_stat_table) while(head){auto *next=head->next;free(head);head=next;}
+#endif
+    const auto ids=identities; const auto random=rolls; const auto events=ne_event_counter; const auto objects=object_list;
+    const auto start=std::chrono::steady_clock::now(); assert(load_enhance_index());
+    const auto elapsed=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count();
+    assert(identities==ids && rolls==random && ne_event_counter==events && object_list==objects);
+    int count=0, stats=0;
+    for(int bucket=0;bucket<ENHANCE_IVAL_TABLE_SIZE;++bucket) {
+        std::vector<int> actual;
+        for(auto *entry=enhance_ival_table[bucket];entry;entry=entry->next) {
+            actual.push_back(entry->vnum); ++count;
+            const auto *prototype=find_object_template(entry->vnum); assert(prototype && entry->ival==itemvalue(*prototype));
+        }
+#if CONSUMER_BASELINE
+        assert(actual==expected[bucket]); // Includes collisions and the incumbent same-score tie order.
+#endif
+    }
+    for(auto *entry:enhance_stat_table) for(;entry;entry=entry->next) ++stats;
+    FILE *metrics=std::fopen("consumer-metrics.json","w"); assert(metrics);
+    std::fprintf(metrics,"{\"templates\":%d,\"index_templates\":%d,\"legacy_index_us\":%lld,\"template_index_us\":%lld,\"legacy_transient_identities\":%lld,\"template_transient_identities\":0,\"template_rng_draws\":0,\"legacy_stat_entries\":%d,\"deduplicated_stat_entries\":%d}\n",top_of_objt+1,count,old_us,(long long)elapsed,old_ids,old_stats,stats);
+    assert(!std::fclose(metrics));
+    std::printf("native consumer index: %d templates, %d stat entries; legacy/new transient identities %lld/0; legacy/new time %lld/%lld us\n",count,stats,old_ids,old_us,(long long)elapsed);
+}
+
 static void parity(object_template &prototype, const char *label)
 {
     std::fprintf(stderr, "checking real engine template parity %s vnum=%d\n", label,
@@ -371,7 +415,17 @@ static void parity(object_template &prototype, const char *label)
     for (size_t i = 0; i < prototype.descriptions.size(); ++i)
         assert(prototype.descriptions[i].keyword == values.descriptions[i].keyword &&
                prototype.descriptions[i].description == values.descriptions[i].description);
+    auto view=inspect_object_template(prototype);
+    assert(!view.obj_uid && !view.nevents && !view.next_content);
     P_obj instance = instantiate_object_template(prototype);
+    assert(is_enhance_pool_candidate(&view)==is_enhance_pool_candidate(instance));
+    assert(source_eligible_reward(&view)==source_eligible_reward(instance));
+    assert(view.type==instance->type && view.wear_flags==instance->wear_flags && view.material==instance->material);
+    // Only inspectable power fields are compared: money/state callbacks may
+    // initialize unrelated value slots that these consumers never read.
+    if (is_enhance_pool_candidate(&view))
+        assert(!std::memcmp(view.affected,instance->affected,sizeof(view.affected)));
+
     assert(instance && identities == ids + 1);
     const int runtime = itemvalue(instance);
     if (runtime != from_template) {
@@ -418,11 +472,11 @@ int main(int argc, char **)
                    "apply0,modifier0,apply1,modifier1,apply2,modifier2,apply3,modifier3,faerie_candidate,weapon_dice_count,weapon_dice_sides\n", deltas);
         FILE *settings = std::fopen("consumer-settings.json", "w"); assert(settings);
         std::fprintf(settings, "{\"max_mortal_level\":%d,\"craft_level_gate\":%d,\"craft_xp_per_ival\":%d,\"enhance_level_gate\":%d,"
-                     "\"enhance_donor_delta\":%d,\"enhance_insignia_bonus\":%d,\"enhance_cap\":%d,\"enhance_radius\":%d,"
+                     "\"enhance_donor_delta\":%d,\"enhance_insignia_bonus\":%d,"
                      "\"enhance_low_threshold\":%d,\"enhance_low_cost_copper\":%d,\"enhance_high_cost_copper\":%d,"
                      "\"superior_base_copper\":%d,\"superior_per_ival_copper\":%d}\n",
                      MAXLVLMORTAL, crafting_level_gate_multiplier(), crafting_experience_per_ival(), enhance_level_gate_multiplier,
-                     enhance_material_ival_delta, enhance_guild_insignia_ival_bonus, enhance_ival_cap, enhance_original_max_roll,
+                     enhance_material_ival_delta, enhance_guild_insignia_ival_bonus,
                      enhance_cost_low_ival_threshold, enhance_cost_low_amount, enhance_cost_high_amount,
                      enhance_stat_platinum_base, enhance_stat_platinum_per_ival);
         assert(!std::fclose(settings));
@@ -442,6 +496,7 @@ int main(int argc, char **)
             auto object = *find_object_template(obj_index[rnum].virtual_number);
             parity(object, "effective-world");
         }
+        qualify_consumer_index();
         std::printf("effective-world native constructor/template parity: %d templates\n", compared);
         assert(!std::fclose(reference_scores));
 #if VALUE_BASELINE
@@ -545,9 +600,6 @@ def consumer_effects(rows, settings, quest_rows):
             "nominal_superior_cost_delta_mortal_sources_copper": sum(
                 r["nominal_superior_cost_copper_after"] - r["nominal_superior_cost_copper_before"] for r in mortal_sources),
             "enhancement_index_score_bucket_changes": sum(r["enhance_index_candidate"] for r in changed),
-            "enhancement_result_cap_crossings": sum(bool(r["enhance_index_candidate"]) and
-                ((r["before"] <= settings["enhance_cap"] + settings["enhance_radius"]) !=
-                 (r["after"] <= settings["enhance_cap"] + settings["enhance_radius"])) for r in changed),
             "quest_reward_floor_losses": sum(r["quest_floor_lost"] for r in changed),
             "quest_reward_floor_gains": sum(r["quest_floor_gained"] for r in changed),
             "changed_rows_with_unpriced_bank5": sum(bool(r["unpriced_bank5"]) for r in changed),
@@ -588,11 +640,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     baseline = parser.add_mutually_exclusive_group()
     baseline.add_argument("--circle-baseline", help="Git revision providing the pre-fix circle lookup")
+    baseline.add_argument("--consumer-baseline", help="Git revision with the transient-object index for native catalog/timing comparison")
     baseline.add_argument("--numeric-baseline", help="Git revision providing the pre-fix numeric evaluator")
     parser.add_argument("--delta-output", type=Path, help="Directory for circle-fix qualification evidence")
     args = parser.parse_args()
     revision = args.circle_baseline or args.numeric_baseline
-    assert bool(revision) == bool(args.delta_output), "provide baseline and delta-output together"
+    assert bool(revision or args.consumer_baseline) == bool(args.delta_output), "provide baseline and delta-output together"
     configuration = ["make", "-s", "--no-print-directory", "-C", "src",
                      "--eval=.PHONY: ivalue-objects ivalue-libs",
                      "--eval=ivalue-objects:;@echo $(DMS_OBJS)",
@@ -605,24 +658,25 @@ def main():
     with tempfile.TemporaryDirectory(prefix="item-value-engine-", dir=build) as tmp:
         path = Path(tmp)
         source, binary = path / "test.cpp", path / "test"
-        code = HARNESS
+        code = HARNESS.replace("// SOURCE_REWARD_POLICY", extract_function("world_quest_policy.c", "bool source_eligible_reward("))
         baseline_flags = []
+        if args.consumer_baseline:
+            old_enhance = path / "enhance-before.c"
+            old_enhance.write_text(subprocess.check_output(["git", "show", f"{args.consumer_baseline}:src/item/enhance.c"], cwd=ROOT, text=True))
+            legacy = "\n".join(extract_function(old_enhance, signature) for signature in
+                ("static int enhance_hash(int key)\n{", "static int enhance_stat_hash(int key)\n{", "void load_enhance_index(void)\n{"))
+            code = code.replace("// CONSUMER_BASELINE", legacy.replace("void load_enhance_index(", "void load_enhance_index_before(", 1))
+            baseline_flags += ["-DCONSUMER_BASELINE=1"]
         if revision:
             policies = (ROOT / "src/world/world_quest_policy.c").read_text()
             native_queries = next(line for line in policies.splitlines() if line.startswith("constexpr int WORLD_QUEST_MAX_ZONE_NUMBER"))
             for signature in ("bool normal_zone(", "bool valid_room_interval(", "int zone_for_vnum(",
-                              "bool source_eligible_reward(", "void build_intervals()"):
+                              "void build_intervals()"):
                 native_queries += "\n" + extract_function("world_quest_policy.c", signature)
             code = code.replace("// QUEST_POLICIES", native_queries)
-            move = (ROOT / "src/cmd/actmove.c").read_text()
-            bag_range = re.search(r"robjint = number\((\d+), (\d+)\);", move)
-            assert bag_range, "update qualification when bag sampling changes"
-            start = move.index("else if (!IS_SET(robj->wear_flags, ITEM_TAKE)", bag_range.start())
-            end = move.index("\n\t\t\t\t\t\t{", start)
-            rejection = move[start + len("else if "):end].strip()
-            code = code.replace("// BAG_POLICY", "static bool qualification_bag_candidate(P_obj robj) {\n"
-                "if (!robj) return false;\nconst int vnum = OBJ_VNUM(robj);\n"
-                f"return vnum >= {bag_range[1]} && vnum <= {bag_range[2]} && !{rejection};\n}}")
+            field_filter = extract_function("actmove.c", "static bool faerie_reward_candidate(")
+            code = code.replace("// BAG_POLICY", field_filter + "\nstatic bool qualification_bag_candidate(P_obj object) {\n"
+                "const int vnum=OBJ_VNUM(object); return vnum>=1300 && vnum<=134000 && faerie_reward_candidate(object) && itemvalue(object)>0;\n}")
             enhance = (ROOT / "src/item/enhance.c").read_text()
             fight = (ROOT / "src/combat/fight.c").read_text()
             start = fight.index("\tconst int spells[3] = { obj->value[5] % 1000")
@@ -649,11 +703,34 @@ def main():
             else:
                 assert function == extract_function("tradeskill.c", "int get_mincircle(int spell)\n{"), "numeric comparison requires unchanged circle context"
                 signature = "int get_ival_from_proc(obj_proc_type proc)\n{"
-                assert extract_function(old, signature) == extract_function("tradeskill.c", signature), "comparison requires unchanged native proc prices"
+                old_runtime_flags = []
+                if signature in old.read_text():
+                    # Price policy moved out of tradeskill.c. Execute the exact
+                    # old chain for the old adapter, including its utility sentinel.
+                    declarations = (ROOT / "src/item/item_value_procs.c").read_text().split(
+                        "static const item_value_proc_entry entries[]", 1)[0]
+                    code += "\n" + declarations + "\n" + extract_function(old, signature).replace(
+                        "get_ival_from_proc(", "get_ival_from_proc_before(", 1)
+                    old_runtime_flags += ["-Dget_ival_from_proc=get_ival_from_proc_before"]
+                else:
+                    old_procs = path / "item_value_procs_before.c"
+                    old_procs.write_text(subprocess.check_output(
+                        ["git", "show", f"{revision}:src/item/item_value_procs.c"], cwd=ROOT, text=True))
+                    old_procs_object = path / "item_value_procs_before.o"
+                    subprocess.run(["g++", "-std=c++20", "-g", "-Isrc",
+                        "-Ditem_value_proc=item_value_proc_before",
+                        "-Ditem_value_proc_entries=item_value_proc_entries_before", "-c", str(old_procs),
+                        "-o", str(old_procs_object)], cwd=ROOT, check=True)
+                    objects.append(str(old_procs_object))
+                    old_runtime_flags += ["-Ditem_value_proc=item_value_proc_before"]
                 old_header = subprocess.check_output(["git", "show", f"{revision}:src/item/item_value.h"], cwd=ROOT, text=True)
-                layout = lambda text: [line for line in text.split("struct item_value_breakdown", 1)[0].splitlines()
-                                       if "ITEM_VALUE_FORMULA_REVISION" not in line]
-                assert layout(old_header) == layout((ROOT / "src/item/item_value.h").read_text()), "numeric baseline requires identical input/context ABI"
+                current_header = (ROOT / "src/item/item_value.h").read_text()
+                fields = lambda text, name: re.search(r"struct " + name + r"\n\{(.*?)\n\};", text, re.S).group(1)
+                for name in ("item_value_apply", "item_value_input"):
+                    assert fields(old_header, name) == fields(current_header, name), "comparison requires unchanged stored inputs"
+                # Old sources compile against the current header. Existing context
+                # fields keep their meaning; appended policy fields default safely.
+                assert fields(current_header, "item_value_context").startswith(fields(old_header, "item_value_context")), "comparison requires unchanged baseline context fields"
                 old_header_path = path / "item_value_before.h"
                 old_header_path.write_text(old_header)
                 signature = "template <typename Object> void normalize_item_value_fields("
@@ -661,18 +738,22 @@ def main():
                 old_numeric = path / "item_value_before.c"
                 old_numeric.write_text(subprocess.check_output(["git", "show", f"{revision}:src/item/item_value.c"], cwd=ROOT, text=True))
                 signature = "bool item_value_has_packed_proc("
-                assert extract_function(old_numeric, signature) == extract_function("item_value.c", signature), "numeric comparison requires unchanged proc admission"
                 old_object = path / "item_value_before.o"
                 subprocess.run(["g++", "-std=c++20", "-g", "-Isrc", "-Devaluate_item_value=evaluate_item_value_before",
                                 "-Ditem_value_has_packed_proc=item_value_has_packed_proc_before",
-                                "-Ditem_value_material_quantities=item_value_material_quantities_before", "-c", str(old_numeric),
+                                "-Ditem_value_material_quantities=item_value_material_quantities_before",
+                                "-Ditem_value_packed_cast_mask=item_value_packed_cast_mask_before",
+                                "-Ditem_value_proc_policy_name=item_value_proc_policy_name_before", "-c", str(old_numeric),
                                 "-o", str(old_object)], cwd=ROOT, check=True)
                 objects.append(str(old_object))
                 old_runtime = path / "item_value_runtime_before.c"
                 old_runtime.write_text(subprocess.check_output(["git", "show", f"{revision}:src/item/item_value_runtime.c"], cwd=ROOT, text=True))
                 old_runtime_object = path / "item_value_runtime_before.o"
                 subprocess.run(["g++", "-std=c++20", "-g", "-Isrc", "-Ditemvalue=itemvalue_before",
-                                "-Devaluate_item_value=evaluate_item_value_before", "-c", str(old_runtime),
+                                "-Devaluate_item_value=evaluate_item_value_before",
+                                "-Ditem_value_has_packed_proc=item_value_has_packed_proc_before",
+                                "-Ditem_value_packed_cast_mask=item_value_packed_cast_mask_before",
+                                *old_runtime_flags, "-c", str(old_runtime),
                                 "-o", str(old_runtime_object)], cwd=ROOT, check=True)
                 objects.append(str(old_runtime_object))
                 baseline_flags += ["-DNUMERIC_BASELINE=1", "-Wl,--wrap=_Z9itemvalueP8obj_data"]
@@ -739,6 +820,15 @@ def main():
                         exclusion_reasons.add(row["reason"])
         assert "unmapped-material-family" in exclusion_reasons
         assert reported == expected
+        with (output / "item-values.csv").open() as file:
+            valuations = list(csv.DictReader(file))
+        assert {int(row["template_vnum"]): int(row["itemvalue"]) for row in valuations} == expected
+        for row in valuations:
+            base = sum(float(row[name]) for name in ("flags_base", "applies_base", "type_base", "packed_base", "native_base"))
+            assert abs(base - float(row["base"])) < 1e-6
+            assert abs(float(row["base"]) * float(row["multiplier"]) - float(row["unrounded"])) < 1e-6
+            assert row["proc_policy"] in ("none", "priced", "utility", "unclassified")
+            assert 0 <= int(row["packed_cast_mask"]) <= 7
         provenance = dict(line.split("=", 1) for line in
                           (output / "material-rarity-README.txt").read_text().splitlines()
                           if "=" in line)
@@ -751,10 +841,16 @@ def main():
                             ("kingdom_config", world / "lib/kingdom.cfg"),
                             ("item_abilities", world / "lib/item_abilities.json")):
             assert provenance[label + "_sha256"] == hashlib.sha256(file.read_bytes()).hexdigest()
-        assert provenance["formula_revision"] == "ival-v7-numeric-bounds"
+        assert provenance["formula_revision"] == "ival-v8-proc-semantics"
         assert provenance["context"] == "configured-healthy-boot"
         assert provenance["mini_mode"] == "0" and provenance["no_specials"] == "0"
-        if args.delta_output:
+        if args.consumer_baseline:
+            args.delta_output.mkdir(parents=True, exist_ok=True)
+            metrics = json.loads((world / "consumer-metrics.json").read_text())
+            metrics.update(baseline_revision=args.consumer_baseline, formula_revision=provenance["formula_revision"],
+                           cache_state="prewarmed by constructor/template parity", provenance=provenance)
+            (args.delta_output / "consumer-metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
+        elif args.delta_output:
             args.delta_output.mkdir(parents=True, exist_ok=True)
             with (world / "value-deltas.csv").open() as file:
                 reader = csv.DictReader(file)
@@ -832,7 +928,16 @@ def main():
             assert result.returncode == 0, result.stderr[-5000:]
             metadata = (target / "material-rarity-README.txt").read_text()
             assert f"mini_mode={mode}\n" in metadata and f"no_specials={specials}\n" in metadata
-        (world / "lib/duris.properties").unlink()
+        properties = world / "lib/duris.properties"
+        valid_properties = properties.read_bytes()
+        report_hashes = {file.name: hashlib.sha256(file.read_bytes()).hexdigest() for file in output.iterdir()}
+        for invalid in ("32768", "nan", "100junk"):
+            properties.write_text(f"stats.str.Human={invalid}\n")
+            result = subprocess.run(command, cwd=world, capture_output=True, text=True, timeout=60)
+            assert result.returncode == 1 and "valuation properties could not be loaded" in result.stderr
+            assert report_hashes == {file.name: hashlib.sha256(file.read_bytes()).hexdigest() for file in output.iterdir()}
+        properties.write_bytes(valid_properties)
+        properties.unlink()
         result = subprocess.run(command, cwd=world, capture_output=True, text=True, timeout=60)
         assert result.returncode == 1 and "valuation properties could not be loaded" in result.stderr
         print("offline CLI: all effective-world scores match real constructors; provenance and missing-context failure passed")

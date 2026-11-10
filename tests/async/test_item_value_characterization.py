@@ -21,6 +21,7 @@ HARNESS = r'''
 #include "item/objmisc.h"
 #include "magic/spells.h"
 #include "item/item_value.h"
+#include "item/item_value_procs.h"
 #include <cassert>
 #include <climits>
 #include <cmath>
@@ -30,13 +31,19 @@ HARNESS = r'''
 #include <utility>
 #include <algorithm>
 #include <array>
+#include <unordered_set>
 
 extern Skill skills[MAX_AFFECT_TYPES + 1];
 void initialize_skills();
 // Epic skills have no spell-circle registrations; the rest of skills.c runs normally.
 void create_epic_skills() {}
 int get_mincircle(int spell);
-int get_ival_from_proc(obj_proc_type proc);
+static bool native_owner;
+static obj_proc_type previous_proc;
+obj_proc_type proclib_chain_incumbent(int) { return previous_proc; }
+int proclib_obj_cmd_bridge(P_obj,P_char,int,char*) { assert(false); return 0; }
+bool native_artifact_configured_owner(int) { return native_owner; }
+static void callable_spell(int,P_char,char*,int,P_char,P_obj) { assert(false); }
 static index_data indexes[1]{};
 P_index obj_index = indexes;
 int top_of_objt = 0;
@@ -69,6 +76,8 @@ static obj_data packed(int spells, int level = 60, int denominator = 30)
 static void circles()
 {
     initialize_skills();
+    skills[SPELL_EARTH_FORM].spell_pointer = callable_spell;
+    skills[SPELL_EARTHEN_TOMB].spell_pointer = callable_spell;
     assert(skills[SPELL_EARTH_FORM].m_class[flag2idx(CLASS_CONJURER)-1].rlevel[SPEC_EARTH] == 10);
     assert(skills[SPELL_EARTHEN_TOMB].m_class[flag2idx(CLASS_CONJURER)-1].rlevel[SPEC_EARTH] == 12);
     assert(get_mincircle(SPELL_EARTH_FORM) == 10);
@@ -101,6 +110,7 @@ static void circles()
     {
         skills[32 + i] = Skill{};
         skills[32 + i].m_class[1].rlevel[0] = i == 2 ? 4 : i + 1;
+        skills[32 + i].spell_pointer = callable_spell;
     }
     std::puts("circles: real earth registrations and first/last class/spec boundaries");
 }
@@ -274,32 +284,131 @@ static void zero_insertion()
 
 static void proc_policy()
 {
-    assert(get_ival_from_proc(treasure_chest) == 200);
-    assert(get_ival_from_proc(artifact_monolith) == 200);
-    assert(get_ival_from_proc(huntsman_ward) == 125);
-    assert(get_ival_from_proc(ravenloft_bell) == 200); // Earlier branches beat the sentinel group.
-    assert(get_ival_from_proc(unclassified_proc) == 100);
-    assert(get_ival_from_proc(teleporting_map_pool) == -100000); // LEGACY F09.
+    assert(item_value_proc(treasure_chest).credit == 200);
+    assert(item_value_proc(artifact_monolith).credit == 200);
+    assert(item_value_proc(huntsman_ward).credit == 125);
+    assert(item_value_proc(ravenloft_bell).credit == 200); // Earlier branches beat the sentinel group.
+    assert(item_value_proc(unclassified_proc).credit == 100);
+    assert(item_value_proc(teleporting_map_pool).policy == item_value_proc_policy::utility);
+    assert(item_value_proc(teleporting_map_pool).credit == 0);
+    assert(item_value_proc(unclassified_proc).policy == item_value_proc_policy::unclassified);
+    assert(item_value_proc(nullptr).policy == item_value_proc_policy::none);
+    std::unordered_set<obj_proc_type> unique;
+    for (const auto &entry : item_value_proc_entries())
+        assert(unique.insert(entry.callback).second);
     auto object = packed(32);
     obj_index[0].func.obj = unclassified_proc;
-    assert(itemvalue(&object) == 106); // LEGACY F09: credits both native and packed routes.
+    item_value_breakdown routes;
+    assert(itemvalue(&object, &routes) == 106);
+    assert(routes.native_melee_suppressed && !routes.context_complete); // Unsplit legacy credit is explicit.
     obj_index[0].func.obj = teleporting_map_pool;
     object = item();
     assert(itemvalue(&object) == 1);
     object.type = ITEM_WEAPON;
     object.value[0] = WEAPON_LONGSWORD;
     object.value[1] = object.value[2] = 400;
-    assert(itemvalue(&object) == 48060000); // LEGACY F09: sentinel is not a utility override.
+    item_value_breakdown utility;
+    assert(itemvalue(&object, &utility) == 1 && utility.utility_override);
+    assert(utility.native_proc_policy == item_value_proc_policy::utility);
+    assert(!strcmp(utility.native_proc_name, "teleporting_map_pool"));
     obj_index[0].func.obj = nullptr;
     object = packed(32000);
     object.type = ITEM_ARMOR;
     object.wear_flags = ITEM_TAKE | ITEM_WEAR_HANDS;
     object.extra2_flags = ITEM2_MONK_PROC;
-    assert(itemvalue(&object) == 6); // LEGACY F09: the dispatcher refuses this gap.
+    assert(itemvalue(&object) == 1); // The dispatcher refuses this gap.
+    object = packed(32000); // Weapons cast a prefix by count, not every occupied slot.
+    assert(itemvalue(&object, &routes) == 1 && routes.packed_cast_mask == 0);
+    object = packed(33032);
+    skills[33].spell_pointer = nullptr;
+    assert(itemvalue(&object, &routes) == 6 && routes.packed_cast_mask == 1);
+    object.type = ITEM_WORN; object.wear_flags = ITEM_TAKE | ITEM_WEAR_HANDS;
+    object.extra2_flags = ITEM2_MONK_PROC;
+    assert(itemvalue(&object, &routes) == 1 && routes.packed_cast_mask == 0);
+    skills[33].spell_pointer = callable_spell;
+    assert(itemvalue(&object) == 18);
+    for (int vnum : {21,22}) {
+        indexes[0].virtual_number = vnum;
+        obj_index[0].func.obj = artifact_stone;
+        object = packed(32);
+        native_owner = true;
+        assert(itemvalue(&object, &routes) == 125 && routes.packed_credit == 0);
+        assert(!routes.native_melee_suppressed && routes.context_complete);
+        native_owner = false;
+        assert(itemvalue(&object, &routes) == 131 && routes.packed_credit == 6);
+        assert(routes.native_melee_suppressed && !routes.context_complete);
+    }
+    obj_index[0].func.obj = nullptr; indexes[0].virtual_number = 0;
+    object=item(); object.affected[0]={APPLY_HIT,10};
+    previous_proc=artifact_stone; obj_index[0].func.obj=proclib_obj_cmd_bridge;
+    assert(itemvalue(&object)==154); // A sibling's instance library cannot reprice this plain object.
+    object.extra_flags |= ITEM_PROCLIB;
+    assert(itemvalue(&object,&routes)==129 && !routes.context_complete);
+    object.extra_flags &= ~ITEM_PROCLIB; previous_proc=nullptr;
+    assert(itemvalue(&object)==29);
+    obj_index[0].func.obj=nullptr;
+
     object = item();
     object.bitvector5 = AFF5_PROT_UNDEAD;
     assert(itemvalue(&object) == 1); // F05: omission, not an approved weight.
-    std::puts("proc policy: real pricing, first-match precedence, fallback, sentinel and routing gap");
+    object=packed(32); object.type=ITEM_WEAPON; object.value[0]=WEAPON_LONGSWORD;
+    obj_index[0].func.obj=zarthos_vampire_slayer;
+    assert(itemvalue(&object,&routes)==6 && routes.native_price_suppressed && routes.native_base==0);
+    object.value[0]=WEAPON_DAGGER;
+    assert(itemvalue(&object,&routes)==121 && !routes.native_price_suppressed && routes.native_base==115);
+    object.type=ITEM_WORN; object.wear_flags=ITEM_TAKE|ITEM_WEAR_HANDS; object.extra2_flags=ITEM2_MONK_PROC;
+    object.value[5]=32000;
+    assert(itemvalue(&object,&routes)==1 && routes.native_price_suppressed);
+    obj_index[0].func.obj=nullptr;
+    std::puts("proc policy: real pricing, first-match precedence, fallback, utility override and executable packed routes");
+}
+
+
+static void coverage_cases()
+{
+    obj_index[0].func.obj = nullptr;
+    auto object=item(); object.affected[0]={APPLY_HIT,10};
+    item_value_breakdown detail;
+    assert(itemvalue(&object,&detail)==29);
+    auto reconcile=[&] {
+        const double terms=detail.flags_base+detail.applies_base+detail.type_base+detail.packed_credit+detail.native_base;
+        assert(std::abs(terms-detail.base)<1e-8);
+        assert(std::abs(detail.base*detail.multiplier-detail.unrounded)<1e-8);
+    };
+    int priced=0;
+    for(int bank=0;bank<5;++bank) for(int bit=0;bit<64;++bit) {
+        object=item(); object.affected[0]={APPLY_HIT,10};
+        const auto flag=1ULL<<bit;
+        if(bank<4 && bit>=static_cast<int>(sizeof(object.bitvector)*8)) continue;
+        if(bank==0) object.bitvector=flag;
+        if(bank==1) object.bitvector2=flag;
+        if(bank==2) object.bitvector3=flag;
+        if(bank==3) object.bitvector4=flag;
+        if(bank==4) object.bitvector5=flag;
+        itemvalue(&object,&detail); reconcile();
+        if(bank==0 && (flag & (static_cast<unsigned long long>(AFF_SLEEP)|AFF_FEAR|AFF_CHARM))) {
+            assert(!detail.unpriced_affects[0] && detail.score==29); continue;
+        }
+        if(!detail.unpriced_affects[bank]) {
+            ++priced; assert(detail.base!=29 || detail.multiplier!=1);
+        } else assert(detail.unpriced_affects[bank]==flag && !detail.context_complete);
+    }
+    assert(priced==67);
+    for(int location=1;location<=SCHAR_MAX;++location) {
+        object=item(); object.affected[0]={APPLY_HIT,10}; object.affected[1]={static_cast<signed char>(location),1};
+        itemvalue(&object,&detail); reconcile();
+        if(!detail.unpriced_apply_slots) assert(detail.base!=29 || detail.multiplier!=1);
+        else assert(detail.unpriced_apply_slots==2 && !detail.context_complete);
+    }
+    object=item(); object.affected[0]={APPLY_KARMA_MAX,5};
+    itemvalue(&object,&detail); assert(detail.unpriced_apply_slots==1);
+    for(int type:{ITEM_SHIELD,ITEM_FIREWEAPON,ITEM_MISSILE}) {
+        object=item(); object.type=type;
+        itemvalue(&object,&detail); assert(detail.unpriced_type && !detail.context_complete);
+    }
+    object=item(); obj_affect dynamic{}; object.affects=&dynamic;
+    itemvalue(&object,&detail); assert(detail.unpriced_dynamic_effects && !detail.context_complete);
+    std::puts("coverage: 67 priced affect bits, five banks, apply families, unpriced types/dynamic effects and reconciled breakdown");
 }
 
 static void resolved_racial_context()
@@ -348,7 +457,7 @@ int main(int argc, char **argv)
     obj_index = nullptr;
     assert(itemvalue(&unresolved, &unavailable) == 0 && unavailable.invalid);
     obj_index = saved_index;
-    circles(); packed_rounding(); applies(); apply_permutations(); zero_insertion(); proc_policy(); resolved_racial_context();
+    circles(); packed_rounding(); applies(); apply_permutations(); zero_insertion(); proc_policy(); coverage_cases(); resolved_racial_context();
     auto object = packed(32);
     const auto original = object;
     const auto index = indexes[0];
@@ -549,15 +658,21 @@ int main()
 
 
 def main():
-    proc = extract_function("tradeskill.c", "int get_ival_from_proc(obj_proc_type proc)\n{")
-    callbacks = sorted(set(re.findall(r"\bproc == (\w+)", proc)))
+    proc = (ROOT / "src/item/item_value_procs.c").read_text()
+    callbacks = sorted(set(re.findall(
+        r'\{\s*(\w+),\s*"\w+",\s*\d+,\s*item_value_proc_policy::(?:priced|utility)', proc)))
+    route_source = re.sub(r'//[^\n]*|/\*.*?\*/', '', (ROOT / "src/specs/specs.object.c").read_text(), flags=re.S)
+    melee_only = re.findall(r'\{\s*(\w+),\s*"\w+",\s*\d+,\s*item_value_proc_policy::priced,\s*true', proc)
+    assert len(melee_only) == 20
+    for name in melee_only:
+        definition = re.search(r'\bint ' + name + r'\s*\([^;{}]*\)\s*\{', route_source)
+        assert definition and re.match(r'\s*P_char\s+(\w+)\s*=\s*melee_proc_target\(obj,\s*ch,\s*cmd,\s*arg\);\s*if\s*\(\s*!\1(?:\s*\|\|[^{};]*)?\)\s*\{\s*return FALSE;\s*\}', route_source[definition.end():]), name
     identities = "\n".join(
         f"int {name}(P_obj, P_char, int, char *) {{ assert(false); return 0; }}"
         for name in callbacks)
     production = "\n".join((
         extract_function("utility.c", "int flag2idx(int flag)\n{"),
-        extract_function("tradeskill.c", "int get_mincircle(int spell)\n{"),
-        proc))
+        extract_function("tradeskill.c", "int get_mincircle(int spell)\n{")))
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ival-characterization-", dir=build) as tmp:
@@ -569,7 +684,7 @@ def main():
             "-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all",
             "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
             str(source), rel("skills.c"), str(HARNESS_STUBS), "src/item/item_value.c",
-            "src/item/item_value_runtime.c", "-o", str(binary),
+            "src/item/item_value_runtime.c", "src/item/item_value_procs.c", "-o", str(binary),
         ], cwd=ROOT, check=True)
         env = {**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
                "UBSAN_OPTIONS": "halt_on_error=1"}

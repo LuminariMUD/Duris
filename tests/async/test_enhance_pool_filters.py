@@ -20,8 +20,8 @@ assert contains(source, 'else if (section_idx == 2 && !strcmp(key, "zone"))')
 assert contains(source, 'else if (section_idx == 3 && !strcmp(key, "vnum"))')
 
 # Pool filtering is additive to affect filtering and happens before an entry is allocated.
-pool_filter = source.index("is_enhance_pool_banned(obj)")
-entry_alloc = source.index("malloc(sizeof(struct enhance_index_entry))", pool_filter)
+pool_filter = source.index("is_enhance_pool_candidate(&view)", source.index("bool load_enhance_index("))
+entry_alloc = source.index("built.emplace_back()", pool_filter)
 assert pool_filter < entry_alloc
 assert contains(source, "is_enhance_banned(item)")
 

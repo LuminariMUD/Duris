@@ -454,6 +454,16 @@ static void necroplasm_cases() {
 int main() {
     nevent_bind_game_thread(); ne_dead_event_pool=&test_pool;
     fake_clock_ns=1000000000ULL; ne_events();
+    for(int vnum:{21,22}) for(bool enabled:{false,true}) {
+        native_scene s(vnum,enabled);
+        const auto before=native_configs;
+        const auto pending_before=item_actions_pending();
+        assert(native_artifact_configured_owner(vnum)==native_artifact_owns(vnum));
+        assert(native_configs==before && item_actions_pending()==pending_before);
+        properties["itemActions.artifact."+std::to_string(vnum)+".enabled"]=2;
+        assert(native_artifact_configured_owner(vnum)); // Invalid opt-in is owned/fail-closed.
+        assert(native_configs==before && item_actions_pending()==pending_before);
+    }
     tsunami_cases(); mirror_cases(); necroplasm_cases();
     std::puts("Native artifacts: Tsunami, ioun and necroplasm parity, mana, terrain, legality, linked forms, cancellation and extraction passed");
 }

@@ -8,6 +8,7 @@
 #include "core/structs.h"
 #include "net/comm.h"
 #include "core/config.h"
+#include "core/config_parse.h"
 #include "world/db.h"
 #include "world/events.h"
 #include "cmd/interp.h"
@@ -21,6 +22,7 @@
 #include "sql/sql_player.h"
 #include <math.h>
 #include <limits.h>
+#include <float.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,6 +66,32 @@ static void crafting_validate_content_vnum(int *configured_vnum, int default_vnu
 	*configured_vnum = default_vnum;
 }
 
+static int crafting_config_int(const char *key, const char *text, int previous, int low, int high)
+{
+	int value;
+	if (!config_parse_int(text, value) || value < low || value > high)
+	{
+		logit(LOG_STATUS, "Invalid crafting config %s=%s; retaining previous value.", key,
+		      text);
+		return previous;
+	}
+	return value;
+}
+
+static double crafting_config_real(const char *key, const char *text, double previous,
+				   bool allow_zero, double maximum)
+{
+	double value;
+	if (!config_parse_double(text, value) || value < 0 || (!allow_zero && value == 0) ||
+	    value > maximum)
+	{
+		logit(LOG_STATUS, "Invalid crafting config %s=%s; retaining previous value.", key,
+		      text);
+		return previous;
+	}
+	return value;
+}
+
 static void load_crafting_config(void)
 {
 	FILE *fp;
@@ -100,6 +128,18 @@ static void load_crafting_config(void)
 
 	while (fgets(line, sizeof(line), fp) != NULL)
 	{
+		// Judge by length: an embedded NUL must not make a complete line look cut off.
+		if (strlen(line) == sizeof(line) - 1 && line[sizeof(line) - 2] != '\n')
+		{
+			int next = fgetc(fp);
+			if (next != EOF && next != '\n')
+			{
+				while (next != EOF && next != '\n')
+					next = fgetc(fp);
+				logit(LOG_STATUS, "Ignoring overlong crafting config line.");
+				continue;
+			}
+		}
 		key = line;
 		while (*key == ' ' || *key == '\t')
 			key++;
@@ -109,9 +149,9 @@ static void load_crafting_config(void)
 		if (equals == NULL)
 			continue;
 		*equals = '\0';
-		end = equals - 1;
-		while (end >= key && (*end == ' ' || *end == '\t'))
-			*end-- = '\0';
+		end = equals;
+		while (end > key && (end[-1] == ' ' || end[-1] == '\t'))
+			*--end = '\0';
 		value = equals + 1;
 		while (*value == ' ' || *value == '\t')
 			value++;
@@ -120,52 +160,80 @@ static void load_crafting_config(void)
 		       (end[-1] == '\n' || end[-1] == '\r' || end[-1] == ' ' || end[-1] == '\t'))
 			*--end = '\0';
 
-		if (!strcmp(key, "crafting.level.gate.multiplier") && atoi(value) > 0)
-			crafting_level_gate = atoi(value);
-		else if (!strcmp(key, "crafting.recipe.max.player.level") && atoi(value) > 0 &&
-			 atoi(value) <= MAXLVLMORTAL)
-			crafting_recipe_max_player_level = atoi(value);
+		if (!strcmp(key, "crafting.level.gate.multiplier"))
+			crafting_level_gate =
+				crafting_config_int(key, value, crafting_level_gate, 1, INT_MAX);
+		else if (!strcmp(key, "crafting.recipe.max.player.level"))
+			crafting_recipe_max_player_level = crafting_config_int(
+				key, value, crafting_recipe_max_player_level, 1, MAXLVLMORTAL);
 		else if (!strcmp(key, "crafting.recipe.examine.materials"))
-			crafting_recipe_examine_materials = atoi(value) ? TRUE : FALSE;
+			crafting_recipe_examine_materials = crafting_config_int(
+				key, value, crafting_recipe_examine_materials, 0, 1);
 		else if (!strcmp(key, "crafting.recipe.display.vnums"))
-			crafting_recipe_display_vnums = atoi(value) ? TRUE : FALSE;
-		else if (!strcmp(key, "crafting.experience.per.ival") && atoi(value) >= 0)
-			crafting_experience_per_item_value = atoi(value);
-		else if (!strcmp(key, "crafting.material.quantity.multiplier") &&
-			 strtod(value, NULL) > 0.0)
-			crafting_material_quantity_multiplier = strtod(value, NULL);
+			crafting_recipe_display_vnums = crafting_config_int(
+				key, value, crafting_recipe_display_vnums, 0, 1);
+		else if (!strcmp(key, "crafting.experience.per.ival"))
+			crafting_experience_per_item_value = crafting_config_int(
+				key, value, crafting_experience_per_item_value, 0, INT_MAX);
+		else if (!strcmp(key, "crafting.material.quantity.multiplier"))
+			crafting_material_quantity_multiplier = crafting_config_real(
+				key, value, crafting_material_quantity_multiplier, false, INT_MAX);
 		else if (!strcmp(key, "crafting.craft.enabled"))
-			crafting_craft_enabled = atoi(value) ? TRUE : FALSE;
+			crafting_craft_enabled =
+				crafting_config_int(key, value, crafting_craft_enabled, 0, 1);
 		else if (!strcmp(key, "crafting.forge.enabled"))
-			crafting_forge_enabled = atoi(value) ? TRUE : FALSE;
-		else if (!strcmp(key, "crafting.craft.essence.vnum") && atoi(value) > 0)
-			crafting_craft_essence_vnum = atoi(value);
-		else if (!strcmp(key, "crafting.craft.tool.vnum") && atoi(value) > 0)
-			crafting_craft_tool_vnum = atoi(value);
-		else if (!strcmp(key, "crafting.forge.essence.vnum") && atoi(value) > 0)
-			crafting_forge_essence_vnum = atoi(value);
-		else if (!strcmp(key, "crafting.forge.tool.vnum") && atoi(value) > 0)
-			crafting_forge_tool_vnum = atoi(value);
-		else if (!strcmp(key, "crafting.salvage.scientific.tools.vnum") && atoi(value) > 0)
-			crafting_scientific_tools_vnum_value = atoi(value);
+			crafting_forge_enabled =
+				crafting_config_int(key, value, crafting_forge_enabled, 0, 1);
+		else if (!strcmp(key, "crafting.craft.essence.vnum"))
+			crafting_craft_essence_vnum = crafting_config_int(
+				key, value, crafting_craft_essence_vnum, 1, INT_MAX);
+		else if (!strcmp(key, "crafting.craft.tool.vnum"))
+			crafting_craft_tool_vnum = crafting_config_int(
+				key, value, crafting_craft_tool_vnum, 1, INT_MAX);
+		else if (!strcmp(key, "crafting.forge.essence.vnum"))
+			crafting_forge_essence_vnum = crafting_config_int(
+				key, value, crafting_forge_essence_vnum, 1, INT_MAX);
+		else if (!strcmp(key, "crafting.forge.tool.vnum"))
+			crafting_forge_tool_vnum = crafting_config_int(
+				key, value, crafting_forge_tool_vnum, 1, INT_MAX);
+		else if (!strcmp(key, "crafting.salvage.scientific.tools.vnum"))
+			crafting_scientific_tools_vnum_value = crafting_config_int(
+				key, value, crafting_scientific_tools_vnum_value, 1, INT_MAX);
 		else if (!strcmp(key, "crafting.salvage.scientific.tools.prevent.breakage"))
-			crafting_scientific_tools_prevent_breakage_value = atoi(value) ? TRUE :
-											 FALSE;
-		else if (!strcmp(key, "crafting.salvage.scientific.tools.recipe.roll.divisor") &&
-			 atoi(value) >= 1)
-			crafting_scientific_tools_recipe_roll_divisor_value = atoi(value);
-		else if (!strcmp(key,
-				 "crafting.salvage.scientific.tools.recipe.player.multiplier") &&
-			 atoi(value) >= 1)
-			crafting_scientific_tools_recipe_player_multiplier_value = atoi(value);
-		else if (!strcmp(key, "crafting.salvage.essence.luck.multiplier") &&
-			 strtod(value, NULL) > 0.0)
-			crafting_salvage_essence_luck_multiplier_value = strtod(value, NULL);
-		else if (!strcmp(key, "crafting.salvage.essence.chance.multiplier") &&
-			 strtod(value, NULL) >= 0.0)
-			crafting_salvage_essence_chance_multiplier_value = strtod(value, NULL);
+			crafting_scientific_tools_prevent_breakage_value = crafting_config_int(
+				key, value, crafting_scientific_tools_prevent_breakage_value, 0, 1);
+		else if (!strcmp(key, "crafting.salvage.scientific.tools.recipe.roll.divisor"))
+			crafting_scientific_tools_recipe_roll_divisor_value = crafting_config_int(
+				key, value, crafting_scientific_tools_recipe_roll_divisor_value, 1,
+				INT_MAX);
+		else if (!strcmp(key, "crafting.salvage.scientific.tools.recipe.player.multiplier"))
+			crafting_scientific_tools_recipe_player_multiplier_value =
+				crafting_config_int(
+					key, value,
+					crafting_scientific_tools_recipe_player_multiplier_value, 1,
+					INT_MAX);
+		else if (!strcmp(key, "crafting.salvage.essence.luck.multiplier"))
+			crafting_salvage_essence_luck_multiplier_value = crafting_config_real(
+				key, value, crafting_salvage_essence_luck_multiplier_value, false,
+				DBL_MAX);
+		else if (!strcmp(key, "crafting.salvage.essence.chance.multiplier"))
+			crafting_salvage_essence_chance_multiplier_value = crafting_config_real(
+				key, value, crafting_salvage_essence_chance_multiplier_value, true,
+				DBL_MAX);
 	}
 	fclose(fp);
+
+	// Recipes are offered up to gate * max level; say so when that plan cannot be represented.
+	const int64_t top_item_value = std::min<int64_t>(static_cast<int64_t>(crafting_level_gate) *
+								 crafting_recipe_max_player_level,
+							 INT_MAX);
+	int high, low;
+	if (top_item_value * crafting_experience_per_item_value > INT_MAX ||
+	    !item_value_material_quantities(static_cast<int>(top_item_value),
+					    crafting_material_quantity_multiplier, high, low))
+		logit(LOG_STATUS,
+		      "WARNING: lib/crafting.cfg experience rate or material multiplier is too large; some recipes up to item value %lld cannot be made.",
+		      static_cast<long long>(top_item_value));
 
 	/* Content references are configurable, but invalid entries must not turn a
 	 * recipe into an unfulfillable or silently free transaction. */
@@ -274,7 +342,8 @@ bool crafting_recipe_target_is_available(P_obj item)
 	    (!crafting_craft_enabled && !crafting_forge_enabled) ||
 	    !crafting_build_plan(item, &plan))
 		return FALSE;
-	return plan.item_value <= crafting_level_gate * crafting_recipe_max_player_level;
+	return plan.item_value <=
+	       static_cast<int64_t>(crafting_level_gate) * crafting_recipe_max_player_level;
 }
 
 void crafting_configure_recipe_scroll(P_obj recipe, P_obj target)
@@ -340,9 +409,9 @@ int crafting_level_gate_multiplier(void)
 }
 
 // The most valuable recipe a character's level can make.
-static int crafting_value_limit(P_char ch)
+static int64_t crafting_value_limit(P_char ch)
 {
-	return GET_LEVEL(ch) * crafting_level_gate_multiplier();
+	return static_cast<int64_t>(GET_LEVEL(ch)) * crafting_level_gate_multiplier();
 }
 
 static std::string crafting_facts(P_char ch, const char *tool)
@@ -489,6 +558,24 @@ int *crafting_get_player_recipes(P_char ch, int *count)
 	return recipes;
 }
 
+static void crafting_award_experience(P_char ch, const crafting_plan &plan)
+{
+	if (plan.experience > 0)
+		gain_exp(ch, NULL, plan.experience, EXP_BOON);
+}
+
+static int crafting_select_recipe(const int *recipes, int count, int choice)
+{
+	if (choice <= 0)
+		return 0;
+	for (int i = 0; i < count; ++i)
+		if (recipes[i] == choice)
+			return choice;
+	if (choice <= count)
+		return recipes[choice - 1] > 0 ? recipes[choice - 1] : 0;
+	return 0;
+}
+
 static void crafting_handle_craft_command(P_char ch, char *argument, int cmd);
 static void crafting_handle_forge_command(P_char ch, char *argument, int cmd);
 
@@ -524,7 +611,7 @@ static void crafting_handle_craft_command(P_char ch, char *argument, int cmd)
 	char short_desc[MAX_STRING_LENGTH];
 	char keywords[MAX_INPUT_LENGTH];
 	char buffer[256];
-	long choice2;
+	int choice2 = 0;
 	int selected = 0;
 	int *recipes;
 	int recipe_count;
@@ -610,20 +697,10 @@ static void crafting_handle_craft_command(P_char ch, char *argument, int cmd)
 		crafting_handle_craft_command(ch, writable_arg(""), cmd);
 		return;
 	}
-	choice2 = atoi(second);
+	config_parse_int(second, choice2);
 
 	// Accept either the stable recipe vnum or the displayed list number.
-	if (choice2)
-	{
-		for (i = 0; i < recipe_count; i++)
-			if (recipes[i] == choice2)
-			{
-				selected = recipes[i];
-				break;
-			}
-		if (selected == 0 && choice2 <= recipe_count)
-			selected = recipes[choice2 - 1];
-	}
+	selected = crafting_select_recipe(recipes, recipe_count, choice2);
 	free(recipes);
 
 	// If they picked a recipe that wasn't in their book...
@@ -802,8 +879,7 @@ static void crafting_handle_craft_command(P_char ch, char *argument, int cmd)
 				snprintf(
 					buf1, sizeof buf1,
 					"You need level %d to craft this recipe (you are level %d).\r\n",
-					(iVal + crafting_level_gate_multiplier() - 1) /
-						crafting_level_gate_multiplier(),
+					1 + (iVal - 1) / crafting_level_gate_multiplier(),
 					GET_LEVEL(ch));
 				send_to_char(buf1, ch);
 			}
@@ -1003,7 +1079,7 @@ static void crafting_handle_craft_command(P_char ch, char *argument, int cmd)
 		    "&+L...hands shaking, &+Wyou &+Lraise your head and &+Ysmile&+L, admiring your new $p.&N",
 		    FALSE, ch, tobj, 0, TO_CHAR);
 
-		gain_exp(ch, NULL, plan.experience, EXP_BOON);
+		crafting_award_experience(ch, plan);
 		extract_obj(matLowest);
 		extract_obj(matHighest);
 		// Save the character! 1 -> in game.
@@ -1152,7 +1228,7 @@ static void crafting_handle_craft_command(P_char ch, char *argument, int cmd)
 /* Modern Forge command implementation, extracted from tradeskill.c. */
 static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/)
 {
-	int skillLevel, objVnum, commandType, iVal, invVnum;
+	int skillLevel, objVnum = 0, commandType, iVal, invVnum;
 	int numHighQuality, numLowQuality, lowQualityMaterialVnum, highQualityMaterialVnum;
 	int invLowMats, invHighMats, invEssences;
 	char buf[256];
@@ -1172,9 +1248,9 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 		return;
 	}
 
-	// load recipes from database
+	// Use the same SQL-first import and eligibility policy as Craft.
 	int recipe_count = 0;
-	int *recipes = sql_get_player_recipes(GET_PID(ch), &recipe_count);
+	int *recipes = crafting_get_player_recipes(ch, &recipe_count);
 	if (!recipes || recipe_count == 0)
 	{
 		send_to_char("You dont know any recipes yet.\r\n", ch);
@@ -1184,7 +1260,7 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 	}
 	rest = one_argument(argument, first);
 	one_argument(rest, second);
-	objVnum = atoi(second);
+	config_parse_int(second, objVnum);
 
 	// If we don't have a first argument.
 	if (!*first)
@@ -1281,24 +1357,11 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 	}
 
 	// Accept either the stable recipe vnum or the displayed list number.
-	bool found = false;
-	for (int i = 0; i < recipe_count; i++)
-	{
-		if (recipes[i] == objVnum)
-		{
-			found = true;
-			break;
-		}
-	}
-	if (!found && objVnum <= recipe_count)
-	{
-		objVnum = recipes[objVnum - 1];
-		found = true;
-	}
+	objVnum = crafting_select_recipe(recipes, recipe_count, objVnum);
 	free(recipes);
 
 	// If we couldn't find the vnum in the recipe book (commandType is irrelevant).
-	if (!found)
+	if (objVnum == 0)
 	{
 		send_to_char("You dont appear to have that &+Wrecipe&n in your list.&n\n", ch);
 		return;
@@ -1425,8 +1488,7 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 				snprintf(
 					buf, sizeof(buf),
 					"You need level %d to forge this recipe (you are level %d).\r\n",
-					(iVal + crafting_level_gate_multiplier() - 1) /
-						crafting_level_gate_multiplier(),
+					1 + (iVal - 1) / crafting_level_gate_multiplier(),
 					GET_LEVEL(ch));
 				send_to_char(buf, ch);
 			}
@@ -1578,7 +1640,7 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 		    "&+L...after shedding plenty of &+Wsweat&+L, you &+Lstep back, admiring your new $p.&N",
 		    FALSE, ch, obj, 0, TO_CHAR);
 
-		gain_exp(ch, NULL, plan.experience, EXP_BOON);
+		crafting_award_experience(ch, plan);
 		if (!do_save_silent(ch, 1))
 			logit(LOG_DEBUG, "Failed to save %s after forging.", GET_NAME(ch));
 	}

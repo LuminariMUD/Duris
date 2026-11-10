@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real server corpse haul at the item-count cap on MariaDB."""
+"""Real server corpse haul and salvage pickup at the item-count cap on MariaDB."""
 
 from pathlib import Path
 import signal
@@ -33,6 +33,8 @@ def add_stock(runtime):
     for vnum, name in ((22810, "ruby"), (22811, "sapphire"), (22812, "marker")):
         extra += banana.replace("#15\n", f"#{vnum}\n", 1).replace(
             "banana", name).replace("Banana", name.capitalize())
+    extra += banana.replace("#15\n", "#400025\n", 1).replace(
+        "banana", "salvagepiece").replace("Banana", "Salvagepiece")
     objects_path.write_text(objects.replace("$~", extra + "$~"))
 
     zone_path = runtime / "areas_mini/mini.zon"
@@ -44,7 +46,8 @@ def add_stock(runtime):
         "G 1 22811 1 0 100 0 0 0 * third corpse root\n"
     )
     fillers = "O 0 22812 30 22800 100 0 0 0 * count-cap filler\n" * 20
-    zone_path.write_text(zone.replace(anchor, anchor + extra_resets + fillers))
+    salvage = "O 0 400025 6 22800 100 0 0 0 * salvaged material\n" * 6
+    zone_path.write_text(zone.replace(anchor, anchor + extra_resets + fillers + salvage))
 
     # A random salvage drop on the kill would put a fourth item in the corpse, and the haul
     # with one free slot could take it instead of a root. These values win over the ones
@@ -101,11 +104,52 @@ def run(binary, backend):
                 actor.send("drop all")
                 actor.expect("You drop a steel long sword.", timeout=20)
                 drain(actor)
+                actor.send("get bag")
+                actor.expect("You get a small leather bag.", timeout=20)
+                actor.send("get all.salvagepiece")
+                actor.expect("You got 6 items.", timeout=20)
+                actor.send("put all.salvagepiece bag")
+                actor.expect("You put", timeout=20)
+                drain(actor)
                 actor.send("get all.marker")
                 full = actor.expect("You can't carry anything more.", timeout=60) + drain(actor)
                 actor.send("inventory")
                 inventory = actor.expect("Pos: standing >", timeout=20) + drain(actor)
                 assert "marker" in inventory, inventory
+                # Single GET starts at the cap; bulk GET must then work above it.
+                # Repeat with the same bag carried and on the room floor.
+                for carried_bag in (True, False):
+                    if not carried_bag:
+                        actor.send("drop bag")
+                        actor.expect("You drop a small leather bag.", timeout=20)
+                        actor.send("get marker")
+                        actor.expect("You get a marker.", timeout=20)
+                    drain(actor)
+                    actor.send("get salvagepiece bag")
+                    single = actor.expect("You get a salvagepiece", timeout=20) + drain(actor)
+                    assert "can't carry" not in single, single
+                    actor.send("get all.salvagepiece bag")
+                    bulk = actor.expect("You got 5 items.", timeout=20) + drain(actor)
+                    assert "can't carry" not in bulk, bulk
+                    actor.send("save")
+                    actor.expect("Saving Taverek.", timeout=30)
+                    pid = int(sql("SELECT pid FROM player_data WHERE name='Taverek'"))
+                    assert int(sql("SELECT COUNT(*) FROM item_current_owner WHERE "
+                                   f"owner_type=1 AND owner_id={pid} AND state=1 "
+                                   "AND vnum=400025 AND parent_item_uid IS NULL")) == 6
+                    if not carried_bag:
+                        actor.send("drop all.salvagepiece")
+                        actor.expect("You drop 6 salvagepiece(s).", timeout=20)
+                        drain(actor)
+                        actor.send("get salvagepiece")
+                        actor.expect("You get a salvagepiece.", timeout=20)
+                        actor.send("get all.salvagepiece")
+                        floor = actor.expect("You got 5 items.", timeout=20) + drain(actor)
+                        assert "can't carry" not in floor, floor
+                    actor.send("put all.salvagepiece bag")
+                    actor.expect("You put", timeout=20)
+                    drain(actor)
+                print("PASS: capped single/bulk salvage pickup from carried/room bag and floor; six saved material roots", flush=True)
                 actor.send("kill raoul")
                 deadline = time.monotonic() + 45
                 while True:

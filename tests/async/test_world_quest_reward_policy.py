@@ -44,7 +44,7 @@ constexpr int TOTALLVLS = 62;
 constexpr int VIRTUAL = 0;
 struct object_data { int ivalue; bool eligible; };
 using P_obj = object_data *;
-struct object_probe_guard { P_obj value; };
+using object_template=object_data;
 struct quest_reward_profile { int vnum = 0; int ivalue = 0; };
 struct quest_zone_profile {
     std::vector<quest_reward_profile> rewards;
@@ -60,12 +60,17 @@ static index_entry obj_index[] = {{100}, {101}, {102}, {103}, {200}};
 static int top_of_objt = 4;
 static std::vector<quest_zone_profile> quest_zones(2);
 static int zone_for_vnum(int vnum) { return vnum / 100 - 1; }
-static P_obj read_object(int vnum, int) { return &objects[vnum >= 200 ? 4 : vnum - 100]; }
+static bool cache_object_template(int) { return true; }
+static const object_template *find_object_template(int vnum) { return &objects[vnum >= 200 ? 4 : vnum - 100]; }
+static object_data inspect_object_template(const object_template &object) { return object; }
+static void logit(const char *,const char *,...) {}
+#define LOG_STATUS "status"
 static bool source_eligible_reward(P_obj obj) { return obj->eligible; }
-static int itemvalue(P_obj obj) { return obj->ivalue; }
+static int itemvalue(const object_template &obj) { return obj.ivalue; }
 """ + extract_function("world/world_quest_policy.c", "void load_reward_profiles(") + r"""
 int main() {
     load_reward_profiles();
+    load_reward_profiles(); // Rebuilds replace old values/counts rather than accumulating them.
     assert((quest_zones[0].reward_vnums == std::vector<int>{100, 101, 102}));
     assert((quest_zones[1].reward_vnums == std::vector<int>{200}));
     // The floor still applies: only the tied 40s satisfy 2 * value >= 61.

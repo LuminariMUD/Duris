@@ -46,6 +46,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         '#include "magic/spells.h"\n#include "world/map.h"\n'
         '#include "world/weather.h"\n#include "combat/justice.h"\n'
         '#include "world/world_quest_policy.h"\n#include "world/difficulty.h"\n#include "world/buildings.h"\n'
+        '#include "world/object_template.h"\n#include "item/item_value.h"\n'
         '#include "persistence/persistence_checkpoint.h"\n'
         '#include "economy/currency_transaction.h"\n#include "sql/sql.h"\n'
         '#include "player/player_save_pipeline.h"\n'
@@ -65,7 +66,8 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         'bool nevent_reschedule_after(nevent_handle, unsigned long long) { std::abort(); }\n'
         'void *__malloc(size_t, const char *, const char *, int) { std::abort(); }\n'
         'char *str_dup(const char *) { std::abort(); }\n'
-        + extract_function("utility.c", "string strip_ansi(") +
+        + extract_function("db.c", "obj_data inspect_object_template(") +
+        '\n' + extract_function("utility.c", "string strip_ansi(") +
         'void event_random_set_proc(P_char, P_char, P_obj, void *);\n'
         'void event_balance_affects(P_char, P_char, P_obj, void *);\n'
         'void event_object_proc(P_char, P_char, P_obj, void *);\n'

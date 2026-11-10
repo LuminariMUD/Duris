@@ -1,0 +1,11 @@
+{
+  "baseline_revision": "138d6b75ac",
+  "properties_file_sha256": "d7026a5c348bca13241b0674b35262d969b20ff0dceb1ca6b75d2daadb5175ac",
+  "compared_property_keys": 2649,
+  "shipped_float_bits_identical": true,
+  "native_sorted_registry_sha256": "034ace950775c65f2159150664e5cd62246310927310f6b724328361a023a89d",
+  "before_regressions_fail_after_pass": [
+    "partial racial-factor text",
+    "unrepresentable signed-short factor"
+  ]
+}
