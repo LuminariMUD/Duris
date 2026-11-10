@@ -136,7 +136,9 @@ void event_bardsong(P_char, P_char, P_obj, void *);
 ]) + r'''
 // Execute the production interpreter's hide gate before a song command.
 static void command_hide_rule(P_char ch, int cmd, const char *args = "") {
-    char *argument = const_cast<char *>(args);
+    std::string input = "  command " + std::string(args);
+    char *argument = input.data();
+    unsigned begin = 2, look_at = 7;
     P_char exec_char = ch;
     COMMAND_HIDE_RULE
 }

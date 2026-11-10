@@ -2284,7 +2284,7 @@ void command_interpreter(P_char ch, char *argument)
 				     (cmd != CMD_READ) && (cmd != CMD_STEAL) && (cmd != CMD_SCAN) &&
 				     IS_SET(exec_char->specials.affected_by, AFF_HIDE)) &&
 				    !((cmd == CMD_PLAY || cmd == CMD_WAIL) &&
-				      *skip_spaces(argument) &&
+				      *skip_spaces(argument + begin + look_at) &&
 				      player_bard(exec_char, SPEC_SCOUNDREL, 30) &&
 				      IS_AFFECTED3(exec_char, AFF3_SINGING)))
 				{
