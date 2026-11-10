@@ -12,6 +12,7 @@ import time
 
 import test_mariadb_combat_journey as journey
 from test_shambler_reflection_journey import PROMPTS, cast, command, staff_command
+from test_flight_network_journey import command as fenced_command
 
 ROOT = journey.ROOT
 NAME = "Lyricist"
@@ -23,19 +24,28 @@ HEADER = (ROOT / "src/magic/spells.h").read_text()
 
 
 def spell_id(name):
-    return int(re.search(r"^#define " + name + r" (\d+)", HEADER, re.M)[1])
+    expression = re.search(r"^#define " + name + r" ([^\n]+)", HEADER, re.M)[1]
+    expression = re.sub(r"\b[A-Z_][A-Z_0-9]*\b", lambda match: str(spell_id(match[0])), expression)
+    assert re.fullmatch(r"[0-9()+ ]+", expression), (name, expression)
+    return int(eval(expression, {"__builtins__": {}}, {}))
 
 
 def seed_bard(sql):
     """A level-51 Bard with Minor Creation fully memorized, in the arena."""
     memorize, spell = spell_id("TAG_MEMORIZE"), spell_id("SPELL_MINOR_CREATION")
-    sql(f"UPDATE player_data SET m_class={1 << 15},secondary_class=0,spec=0,level=51,highest_level=51,"
+    sql(f"UPDATE player_data SET m_class={1 << 15},secondary_class=0,spec=2,level=51,highest_level=51,"
         f"played_time=200000,base_hit=10000,hit_diff=0,base_mana=1000,mana=1000,screen_length=100,"
         f"last_room=22800 WHERE name='{NAME}'")
     pid = sql(f"SELECT pid FROM player_data WHERE name='{NAME}'")
     sql(f"DELETE FROM player_skills WHERE pid={pid}; DELETE FROM player_affects WHERE pid={pid};"
         f"INSERT INTO player_skills(pid,skill_id,learned,taught) VALUES({pid},{spell},100,100);"
         + f"INSERT INTO player_affects(pid,type,duration,flags,modifier,level) VALUES({pid},{memorize},-1,16,{spell},51);" * 20)
+    for key in ("INSTRUMENT_FLUTE", "INSTRUMENT_DRUMS", "SONG_HEROISM", "SONG_HARMONY"):
+        skill = spell_id(key)
+        sql(f"REPLACE INTO player_skills(pid,skill_id,learned,taught) VALUES({pid},{skill},100,100)")
+    sql(f"REPLACE INTO player_skills(pid,skill_id,learned,taught) "
+        f"VALUES({pid},{spell_id('SKILL_HIDE')},90,90)")
+
 
 def configure(runtime):
     journey.make_fixture(runtime)
@@ -165,6 +175,35 @@ def run(binary):
                 inspect(staff, name, vnum, f"equipped by {NAME}")
             eq = equipment(player)
             assert eq.count("<attached to belt>") == 2 and eq.count("<worn on belt buckle>") == 1, eq
+            # A held flute no longer masks drums in the third belt slot.
+            command(player, "hold flute", "You hold")
+            for song in ("harmony", "heroism"):
+                _, text = command(player, "play " + song, "You start playing")
+                assert "won't work" not in text and "how did the song go" not in text, text
+            def hidden():
+                _, text = command(staff, f"stat char {NAME}", "ID numb:")
+                flags = re.search(r"Affected by \(1\):\s*(\d+)", text)
+                return bool(flags and int(flags[1]) & (1 << 20))
+            for _ in range(10):
+                command(player, "hide", "You attempt to hide yourself.")
+                if hidden():
+                    break
+            assert hidden(), "Scoundrel failed to hide in ten attempts"
+            command(player, "wail harmony", "You start playing")
+            assert hidden(), "a singing Scoundrel's song switch revealed Hide"
+            command(player, "play", "You stop your song.")
+            assert not hidden(), "stopping a song should reveal Hide"
+            command(player, "remove flute", "You stop using")
+            # The group path has no consent link, and the target does not act
+            # before staff observes the actual Hide flag and Rope Trick affect.
+            fenced_command(player, "follow " + journey.CHARACTER)
+            staff_command(staff, "group " + NAME)
+            cast(staff, "rope trick", NAME)
+            assert hidden(), "grouped Rope Trick did not hide the nonconsenting target"
+            _, text = command(staff, f"stat char {NAME}", "ID numb:")
+            assert "rope trick" in text.lower(), text
+            result["bard_utility"] = "matching belt/held instruments, hidden switch/stop, grouped Rope Trick"
+            print("PASS: matching equipped instruments, Scoundrel hidden switch/stop, grouped Rope Trick", flush=True)
             command(player, "wear mandolin attach", "Your belt is full.")
             inspect(staff, "mandolin", 1244, f"carried by {NAME}")
             # Removing the waist item also returns all three attachments.

@@ -231,39 +231,6 @@ std::string blindsinging_innate_facts(P_char /*ch*/)
 		    std::to_string(bard_blind_play_rating()));
 }
 
-P_obj has_instrument(P_char ch)
-{
-	int i;
-
-	/*
-	 * okay... a bit of explanation on the OR with CAN_SEE_OBJ... A
-	 * proficient musician is able to play their instruments without
-	 * seeing them.  Note that if they have the instrument skill higher
-	 * then 40, they can always play it in the dark.  Considering how high
-	 * level a person has to be to get a skill to 40... this seems
-	 * reasonable
-	 */
-	if (!IS_ALIVE(ch))
-	{
-		logit(LOG_EXIT, "has_instrument in bard.c called without ch");
-		return NULL;
-	}
-
-	for (i = WIELD; i <= WEAR_ATTACH_BELT_3; i++)
-	{
-		if ((ch->equipment[i] != NULL) && (ch->equipment[i]->type == ITEM_INSTRUMENT) &&
-		    (CAN_SEE_OBJ(ch, ch->equipment[i]) || (IS_ARTIFACT(ch->equipment[i])) ||
-		     (has_innate(ch, INNATE_BLINDSINGING) &&
-		      (GET_CHAR_SKILL(ch, ch->equipment[i]->value[0] + INSTRUMENT_OFFSET) >=
-		       bard_blind_play_rating()))))
-		{
-			return ch->equipment[i];
-		}
-	}
-
-	return NULL;
-}
-
 // Translate from SONG_XXX to INSTRUMENT_YYY where YYY is the instrument needed to play song XXX.
 int bard_get_type(int skill)
 {
@@ -276,6 +243,41 @@ int bard_get_type(int skill)
 	}
 
 	return 0;
+}
+
+bool player_bard(P_char ch, int spec, int level)
+{
+	return IS_PC(ch) && GET_SPEC(ch, CLASS_BARD, spec) && GET_LEVEL(ch) >= level;
+}
+
+P_obj has_instrument(P_char ch, int song)
+{
+	P_obj first = NULL;
+
+	// Blindsinging uses the actual instrument rating; artifacts can be played unseen.
+	if (!IS_ALIVE(ch))
+	{
+		logit(LOG_EXIT, "has_instrument in bard.c called without ch");
+		return NULL;
+	}
+
+	for (int i = 0; i < MAX_WEAR; i++)
+	{
+		if ((ch->equipment[i] != NULL) && (ch->equipment[i]->type == ITEM_INSTRUMENT) &&
+		    (CAN_SEE_OBJ(ch, ch->equipment[i]) || (IS_ARTIFACT(ch->equipment[i])) ||
+		     (has_innate(ch, INNATE_BLINDSINGING) &&
+		      (GET_CHAR_SKILL(ch, ch->equipment[i]->value[0] + INSTRUMENT_OFFSET) >=
+		       bard_blind_play_rating()))))
+		{
+			if (!first)
+				first = ch->equipment[i];
+			if (IS_ARTIFACT(ch->equipment[i]) ||
+			    ch->equipment[i]->value[0] + INSTRUMENT_OFFSET == bard_get_type(song))
+				return ch->equipment[i];
+		}
+	}
+
+	return first;
 }
 
 // The level this class and spec learn a song at.
@@ -364,7 +366,7 @@ int bard_calc_chance(P_char ch, int song)
 
 	// Chance augmented by 1% for each level above the minimum.
 	chance = GET_CHAR_SKILL(ch, song) + GET_LEVEL(ch) - song_level;
-	instrument = has_instrument(ch);
+	instrument = has_instrument(ch, song);
 
 	// No instrument -> no chance.
 	if (!instrument)
@@ -500,7 +502,7 @@ int bard_song_level(P_char ch, int song)
 	//  and a base of level when skill is maxxed.
 	level = ((GET_CHAR_SKILL(ch, song) / 2 + 50.0) * GET_LEVEL(ch)) / 100.0;
 
-	if ((instrument = has_instrument(ch)) == NULL)
+	if ((instrument = has_instrument(ch, song)) == NULL)
 	{
 		// Lose 2/3 of your base if you don't have an instrument.
 		level /= 3;
@@ -763,7 +765,9 @@ static std::string instrument_facts(P_char ch, int instrument)
 			     "% of normal") +
 		"  Any other instrument can't play these songs, and one above your level always\n"
 		"  fumbles. An artifact instrument plays every song and never fumbles, using\n"
-		"  your song rating for its level.\n";
+		"  your song rating for its level.\n"
+		"  Songs choose a matching equipped instrument from any slot, including all\n"
+		"  three belt attachments. Instruments in your inventory do not play.\n";
 	if (has_innate(ch, INNATE_BLINDSINGING))
 		facts += fact("Rating to play it without seeing it",
 			      std::to_string(bard_blind_play_rating()));
@@ -2830,7 +2834,7 @@ void do_play(P_char ch, char *arg, int /*cmd*/)
 
 	stop_singing(ch);
 
-	instrument = has_instrument(ch);
+	instrument = has_instrument(ch, s);
 	// NPCs and Gods do not need instruments, but players do.
 	if (!instrument && !(IS_NPC(ch) || IS_TRUSTED(ch)))
 	{

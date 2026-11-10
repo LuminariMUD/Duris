@@ -2282,7 +2282,11 @@ void command_interpreter(P_char ch, char *argument)
 				if (((cmd != CMD_LOOK) && (cmd != CMD_LISTEN) &&
 				     (cmd != CMD_SNEAK) && (cmd != CMD_GLANCE) &&
 				     (cmd != CMD_READ) && (cmd != CMD_STEAL) && (cmd != CMD_SCAN) &&
-				     IS_SET(exec_char->specials.affected_by, AFF_HIDE)))
+				     IS_SET(exec_char->specials.affected_by, AFF_HIDE)) &&
+				    !((cmd == CMD_PLAY || cmd == CMD_WAIL) &&
+				      *skip_spaces(argument) &&
+				      player_bard(exec_char, SPEC_SCOUNDREL, 30) &&
+				      IS_AFFECTED3(exec_char, AFF3_SINGING)))
 				{
 					// Ambush.. allows one to stay hidden through tackle/backstab/headbutt?
 					if (affected_by_spell(exec_char, SKILL_AMBUSH))
