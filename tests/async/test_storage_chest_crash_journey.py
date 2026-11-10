@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 
 ROOT = journey.ROOT
@@ -182,6 +182,6 @@ if __name__ == "__main__":
     subprocess.run(["make", "world"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="chest-crash-build-", dir=ROOT / "bin/tests") as build:
-        server = args.server.resolve() if args.server else journey.build_flatfile_server(Path(build))
+        server = args.server.resolve() if args.server else journey.build_mariadb_server(Path(build))
         run(server, args.backend)
     print(f"storage chest crash journey passed ({args.backend})")

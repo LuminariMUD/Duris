@@ -800,7 +800,6 @@ void grant_wind_blade(P_char ch)
 		logit(LOG_DEBUG, "spell_wind_blade(): obj 98 not loadable");
 		return;
 	}
-	blade->extra_flags |= ITEM_NORENT;
 	blade->bitvector = 0;
 	/* how about some gay de procs for wind blade? Yeah baby! */
 	if (wind_blade_procs_ice_missile(ch))

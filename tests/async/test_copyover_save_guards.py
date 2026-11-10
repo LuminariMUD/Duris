@@ -114,6 +114,7 @@ HARNESS = r'''
 #include "core/utils.h"
 #include "account/account.h"
 #include "ships/ships.h"
+#include "net/mxp.h"
 #include "persistence/copyover.h"
 #include <cassert>
 #include <cstdlib>
