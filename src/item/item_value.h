@@ -60,6 +60,8 @@ template <typename Object> void normalize_item_value_fields(Object &object)
 }
 
 bool item_value_has_packed_proc(const item_value_input &input);
+// Historical material decomposition, scaled upward. Outputs change only on success.
+bool item_value_material_quantities(int score, double scale, int &high, int &low);
 // Positive scores are usable. Zero means unavailable, including invalid arithmetic.
 int evaluate_item_value(const item_value_input &input, const item_value_context &context,
 			item_value_breakdown *breakdown = nullptr);

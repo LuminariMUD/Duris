@@ -146,6 +146,8 @@ static consumer_snapshot consumer_values(P_obj object, bool before) {
     result.donor_min = static_cast<int64_t>(result.value) - enhance_material_ival_delta +
         ((object->wear_flags & ITEM_GUILD_INSIGNIA) ? enhance_guild_insignia_ival_bonus : 0);
     result.craft_xp = static_cast<int64_t>(result.value) * crafting_experience_per_ival();
+    if (result.craft_plan) assert(result.materials.experience == result.craft_xp);
+    if (result.craft_xp > INT_MAX) assert(!result.craft_plan && !result.recipe_available);
     result.replacement_cost = replacement_cost(result.value);
     result.superior_cost = nominal_superior_cost(result.value);
     return result;
@@ -574,6 +576,7 @@ def consumer_effects(rows, settings, quest_rows):
         "Scores, crafting plans, recipe admission and enhancement candidate eligibility come from native code.",
         "Enhancement source/price effects require both native salvageability and enhancement admission; random equipment VNUMs fail this command gate.",
         "XP and superior prices are nominal if the action is otherwise eligible; currency units are copper.",
+        "Before/after projections hold current consumer rules/configuration fixed; direct rule/configuration changes require separate checks.",
         "A source minimum rising from L to H removes levels L..H-1; a donor floor rising from A to B removes donor values A..B-1 if donor scores are fixed.",
         "Quest weight ratios assume unchanged mob level fit; the CSV uses unit fit. Geographic and zone eligibility remain separate gates.",
         "Index tie/selection behavior and complete command/persistence journeys remain F13/F16; legacy mechanical coverage remains F05/F09.",
@@ -661,7 +664,8 @@ def main():
                 assert extract_function(old_numeric, signature) == extract_function("item_value.c", signature), "numeric comparison requires unchanged proc admission"
                 old_object = path / "item_value_before.o"
                 subprocess.run(["g++", "-std=c++20", "-g", "-Isrc", "-Devaluate_item_value=evaluate_item_value_before",
-                                "-Ditem_value_has_packed_proc=item_value_has_packed_proc_before", "-c", str(old_numeric),
+                                "-Ditem_value_has_packed_proc=item_value_has_packed_proc_before",
+                                "-Ditem_value_material_quantities=item_value_material_quantities_before", "-c", str(old_numeric),
                                 "-o", str(old_object)], cwd=ROOT, check=True)
                 objects.append(str(old_object))
                 old_runtime = path / "item_value_runtime_before.c"
@@ -792,6 +796,9 @@ def main():
                     "score": [min(int(r["after"]) for r in rows if r["cohort"] == kind),
                               max(int(r["after"]) for r in rows if r["cohort"] == kind)],
                     "unavailable_scores": sum(int(r["after"]) < 1 for r in rows if r["cohort"] == kind),
+                    "unrepresentable_craft_xp": sum(int(r["craft_xp_after"]) > 2**31 - 1 for r in rows if r["cohort"] == kind),
+                    "craft_xp_overflow_within_mortal_level_gate": sum(int(r["craft_xp_after"]) > 2**31 - 1 and
+                        int(r["craft_min_level_after"]) <= settings["max_mortal_level"] for r in rows if r["cohort"] == kind),
                     "max_weapon_dice_count": max(int(r["weapon_dice_count"]) for r in rows if r["cohort"] == kind),
                     "max_weapon_dice_sides": max(int(r["weapon_dice_sides"]) for r in rows if r["cohort"] == kind),
                     "apply_modifier": [min(int(r[f"modifier{i}"]) for r in rows if r["cohort"] == kind for i in range(4)),
@@ -802,7 +809,7 @@ def main():
                     "families": ["salvage quality/breakage", "craft/forge level/recipe/material/XP",
                                  "enhancement source/donor/result/price", "quest floors/zone weights",
                                  "faerie bag 25/50/125"],
-                    "basis": "Exact before/after score equality implies no threshold, material, XP, or currency delta"
+                    "basis": "Under fixed current consumer rules/configuration, equal scores imply no score-derived threshold, material, XP or currency delta"
                              if not changed else "Native consumer plans/filters plus their configured score boundaries; see explicit qualification limits",
                 },
             }

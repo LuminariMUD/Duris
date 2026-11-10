@@ -12,6 +12,7 @@
 #include "world/events.h"
 #include "cmd/interp.h"
 #include "item/objmisc.h"
+#include "item/item_value.h"
 #include "magic/spells.h"
 #include "world/vnum.obj.h"
 #include "economy/crafting.h"
@@ -19,6 +20,7 @@
 #include "core/utils.h"
 #include "sql/sql_player.h"
 #include <math.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -226,7 +228,7 @@ bool crafting_build_plan(P_obj item, struct crafting_plan *plan)
 {
 	int item_value;
 	int low_material_vnum;
-	int high_material_count;
+	int high_material_count, low_material_count;
 
 	if (item == NULL || plan == NULL)
 	{
@@ -240,15 +242,18 @@ bool crafting_build_plan(P_obj item, struct crafting_plan *plan)
 		return FALSE;
 	}
 
-	const int64_t material_value = static_cast<int64_t>(item_value) + 4;
-	high_material_count = material_value / 5;
+	const int64_t experience =
+		static_cast<int64_t>(item_value) * crafting_experience_per_ival();
+	if (experience < 0 || experience > INT_MAX ||
+	    !item_value_material_quantities(item_value, crafting_material_quantity_multiplier,
+					    high_material_count, low_material_count))
+		return FALSE;
 	plan->item_value = item_value;
 	plan->low_material_vnum = low_material_vnum;
 	plan->high_material_vnum = low_material_vnum + 4;
-	plan->high_material_count =
-		(int)ceil(high_material_count * crafting_material_quantity_multiplier);
-	plan->low_material_count =
-		(int)ceil((material_value % 5) * crafting_material_quantity_multiplier);
+	plan->high_material_count = high_material_count;
+	plan->low_material_count = low_material_count;
+	plan->experience = static_cast<int>(experience);
 	plan->magical = has_affect(item);
 	return TRUE;
 }
@@ -998,7 +1003,7 @@ static void crafting_handle_craft_command(P_char ch, char *argument, int cmd)
 		    "&+L...hands shaking, &+Wyou &+Lraise your head and &+Ysmile&+L, admiring your new $p.&N",
 		    FALSE, ch, tobj, 0, TO_CHAR);
 
-		gain_exp(ch, NULL, iVal * crafting_experience_per_ival(), EXP_BOON);
+		gain_exp(ch, NULL, plan.experience, EXP_BOON);
 		extract_obj(matLowest);
 		extract_obj(matHighest);
 		// Save the character! 1 -> in game.
@@ -1573,7 +1578,7 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 		    "&+L...after shedding plenty of &+Wsweat&+L, you &+Lstep back, admiring your new $p.&N",
 		    FALSE, ch, obj, 0, TO_CHAR);
 
-		gain_exp(ch, NULL, iVal * crafting_experience_per_ival(), EXP_BOON);
+		gain_exp(ch, NULL, plan.experience, EXP_BOON);
 		if (!do_save_silent(ch, 1))
 			logit(LOG_DEBUG, "Failed to save %s after forging.", GET_NAME(ch));
 	}

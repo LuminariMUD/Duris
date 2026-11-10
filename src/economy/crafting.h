@@ -30,6 +30,7 @@ struct crafting_plan
 	int high_material_vnum;
 	int low_material_count;
 	int high_material_count;
+	int experience;
 	bool magical;
 };
 

@@ -46,7 +46,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-numeric-bounds`; its initial synchronized commit was
+`origin/branch/ival-material-bounds`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -66,7 +66,8 @@ it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-apply-composition`; #959 makes zero modifiers neutral on
 `branch/ival-zero-modifiers`; #960 qualifies duplicate apply totals on
 `branch/ival-duplicate-applies`; #964 repairs numeric overflow/unavailable-value
-admission on `branch/ival-numeric-bounds`. Branch/base
+admission on `branch/ival-numeric-bounds`; #966 shares checked material quantities
+and plans crafting XP on `branch/ival-material-bounds`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -1037,6 +1038,81 @@ F14. Also validate racial stat-property conversion before the `sh_int` casts in
 property input must be rejected before conversion. Real MariaDB journeys remain
 F16; this chunk performs no database, migration or production operation.
 
+### Chunk 15 — share checked material quantities and plan XP (F08/F14, implemented)
+
+Branch: `branch/ival-material-bounds`, based on `branch/ival-numeric-bounds`.
+Published: commit `b62bc76b5`, [PR #966](https://github.com/LuminariMUD/Duris/pull/966)
+(bug label), stacked on #964. Ready for review; both dedicated worktrees carry
+the committed implementation/evidence and updated handoff.
+
+**Outcome:** one pure checked raw/scaled material calculation serves crafting,
+superior enhancement and the static report. Reject nonfinite/nonpositive scales
+and unrepresentable counts before conversion. Compute and validate crafting XP
+in the existing plan before any consume/grant; execution uses the planned value.
+Preserve the historical `score + 4` decomposition and upward quantity rounding.
+
+**Non-goals:** config parser replacement, level/gain/radius bounds, new weights,
+formula changes, report counting-policy changes, persistence or deployment.
+
+**Files:** existing item-value numeric module/header, crafting plan/commands,
+enhancement plan, material report and their existing native tests; this handoff.
+
+**Proof:** exact quantity boundaries, finite/invalid scales, tiny positive scales,
+fractional ceilings and INT_MAX; unchanged outputs on failure; XP overflow refusal
+before economic work; native successful and refused enhancement paths and the production crafting plan,
+full native corpus/report comparison and maintained builds.
+
+**Ablation:** add one scalar helper to the already shared numeric module because
+three real consumers duplicate this arithmetic. No new module or generic checked-
+arithmetic framework is needed. Keep XP in the existing crafting plan.
+
+**Validation:** native production-plan tests under ASan/UBSan and float-cast-
+overflow cover 1/4/5/6/9/10, INT_MAX and adjacent values; invalid/nonfinite/extreme
+scales, tiny positive scales and fractional ceilings within 1e-6 of an integer.
+Failed quantity/XP checks leave output parameters and plans unchanged. At the
+default 1,000 XP per iVal, 2,147,483 gives 2,147,483,000 XP; the next score is
+rejected before a plan is returned. Craft and Forge use that checked plan field
+at their existing XP award sites, after the same plan check that precedes input
+consumption. Full economic command/persistence journeys remain F16.
+
+The native superior command verifies nonpositive/nonfinite/oversized scales
+preserve source, wallet and materials, including duplicate tribute aggregation.
+All existing success/refusal/pouch cases pass. Production report I/O tests pass
+and explicitly verify `quantity_scale=1` and nominal-unscaled composition labels.
+The report retains its template eligibility and ingredient-identity denominator;
+it states that gameplay scales/recipe eligibility and economic scarcity are not
+part of these percentages. Both maintained editor builds and crafting module,
+recipe-persistence and craft/enhance regression contracts pass.
+
+**Measured effects:** native comparison against `c5fbb485cd` covers 19,334
+effective templates and 8,720 generated samples with zero score changes. Numeric
+formula identity stays `ival-v7-numeric-bounds`. Under shipped configuration,
+two templates exceed the XP integer limit, both outside the mortal level gate;
+no admitted mortal recipe is newly excluded. Generated samples have no XP
+overflow. The exact corpus/CLI comparison passed before the final report-label
+text change; current writer tests verify those labels and the final server build
+passed afterward. Evidence is in
+[`ival-evidence/f14-materials/`](ival-evidence/f14-materials/).
+
+The rounding correction is intentional for near-integer nondefault scales:
+score 1 at scale 1.00000001 needs two high units, where the previous enhancement
+epsilon yielded one. Shipped scale 1.0 retains exact existing quantities. The
+report's unscaled quantities remain separate from configured gameplay costs.
+
+**Continuation:** strict config parsing, level/gain/radius bounds, salvage-derived
+config arithmetic, authoring/property conversion and F16 journeys remain open.
+Following the award into `src/world/limits.c` exposed another boundary to repair
+next: `gain_exp_amount<float>()` converts `XP` to `int` after a representability
+guard that applies only to Divine awards. `EXP_BOON` uses the float path; even
+an integer API value near INT_MAX can round beyond int range before the later
+level cap. The same code is present on freshly fetched `origin/master`. Add a
+focused native regression and repair this as its own change before considering
+crafting XP end-to-end qualified; do not merely tighten the caller's product and
+ignore this downstream conversion.
+Do not infer all consumer behavior from score equality: qualifier projections
+hold current rules/configuration fixed; the direct changed-rule tests above
+cover quantity/XP checks. No database, migration or production operation occurred.
+
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization
@@ -1719,7 +1795,8 @@ partial deliveries and their verification are recorded in the implementation log
   work (F15). Preserve unrelated gameplay/RNG behavior.
   Reset/recovery and retired-helper removal is implemented in Chunk 1; locker and
   description work remains pending.
-- [ ] Share material quantity arithmetic and keep report semantics explicit.
+- [x] Share material quantity arithmetic and keep report semantics explicit.
+  Implemented and qualified in Chunk 15; full economic journeys remain F16.
 
 ### Stage 5 — integration qualification and rollout evidence
 
