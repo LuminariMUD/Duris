@@ -816,7 +816,7 @@ void do_mixpoison(P_char ch, char *argument, int /*cmd*/)
 			char gbuf2[MAX_STRING_LENGTH], buffer[MAX_STRING_LENGTH];
 			snprintf(gbuf2, MAX_STRING_LENGTH, "%s %s", GET_NAME(ch),
 				 poison_vial->name);
-			poison_vial->name = str_dup(gbuf2);
+			set_keywords(poison_vial, gbuf2);
 			snprintf(buffer, MAX_STRING_LENGTH, "%s mixed by %s",
 				 poison_vial->short_description, GET_NAME(ch));
 			set_short_description(poison_vial, buffer);
@@ -962,7 +962,7 @@ void do_mix(P_char ch, char *argument, int /*cmd*/)
 				char gbuf2[MAX_STRING_LENGTH], buffer[MAX_STRING_LENGTH];
 				snprintf(gbuf2, MAX_STRING_LENGTH, "%s %s", GET_NAME(ch),
 					 potion->name);
-				potion->name = str_dup(gbuf2);
+				set_keywords(potion, gbuf2);
 				snprintf(buffer, MAX_STRING_LENGTH, "%s mixed by %s",
 					 potion->short_description, GET_NAME(ch));
 				set_short_description(potion, buffer);
