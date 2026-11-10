@@ -196,9 +196,10 @@ and on every other template, and are covered by the qualification run.
   fillers. The re-measure in step 1 is repeatable; the fix is to retune apply
   modifiers. The code alternative noted under scope does not have this cost.
 - **Other template consumers.** The Chaos "enhanceable" equipment profile and
-  the generated Chaos kit catalog are built from the enhancement index. Check
-  whether the 33 can enter a generated kit and, if so, whether that is wanted.
-  The material rarity report will list them; that is expected.
+  the generated Chaos kit catalog are built from the enhancement index, so the
+  33 may appear in generated Chaos kits. The owner accepted this on
+  2026-11-10; no exclusion is needed. The material rarity report will list
+  them; that is expected.
 - **Zone ownership.** The fillers will report zone 915 (Wutvr) as their origin.
   `[pool_exclude_zone]` in `lib/enhance.cfg` is empty today; excluding that zone
   later would remove the fillers from the pool.
