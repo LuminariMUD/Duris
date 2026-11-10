@@ -191,6 +191,14 @@ def run(binary):
             assert hidden(), "Scoundrel failed to hide in ten attempts"
             command(player, "wail harmony", "You start playing")
             assert hidden(), "a singing Scoundrel's song switch revealed Hide"
+            command(player, "play nonexistent", "You don't know that song.")
+            assert not hidden(), "an invalid switch that stops singing must reveal Hide"
+            command(player, "play harmony", "You start playing")
+            for _ in range(10):
+                command(player, "hide", "You attempt to hide yourself.")
+                if hidden():
+                    break
+            assert hidden(), "Scoundrel failed to re-hide"
             command(player, "play", "You stop your song.")
             assert not hidden(), "stopping a song should reveal Hide"
             command(player, "remove flute", "You stop using")

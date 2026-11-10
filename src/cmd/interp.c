@@ -2510,6 +2510,11 @@ void command_interpreter(P_char ch, char *argument)
 				((*cmd_info[cmd].command_pointer)(exec_char,
 								  argument + begin + look_at, cmd));
 
+				// A failed song switch may stop singing; only a continuing song keeps Hide.
+				if ((cmd == CMD_PLAY || cmd == CMD_WAIL) && IS_ALIVE(exec_char) &&
+				    !IS_AFFECTED3(exec_char, AFF3_SINGING))
+					REMOVE_BIT(exec_char->specials.affected_by, AFF_HIDE);
+
 				// If mobs should and can aggro the executor of the above command.
 				if ((cmd_info[cmd].check_aggro) && IS_ALIVE(exec_char) &&
 				    (IS_PC(exec_char) ||

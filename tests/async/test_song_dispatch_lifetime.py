@@ -142,6 +142,9 @@ static void command_hide_rule(P_char ch, int cmd, const char *args = "") {
     P_char exec_char = ch;
     COMMAND_HIDE_RULE
 }
+static void command_song_result(P_char exec_char, int cmd) {
+    COMMAND_SONG_RESULT
+}
 struct Crowd { P_char bard, first, second, third; };
 static Crowd crowd() {
     character_list = nullptr;
@@ -242,6 +245,14 @@ int main() {
                    ((cmd != CMD_PLAY && cmd != CMD_WAIL) || switch_hidden));
             assert(IS_AFFECTED(c.bard, AFF_SNEAK));
             assert(bool(IS_AFFECTED3(c.bard, AFF3_SINGING)) == already_singing);
+            // Unknown songs, missing instruments and fumbled starts can end singing.
+            command_song_result(c.bard, cmd);
+            assert(bool(IS_AFFECTED(c.bard, AFF_HIDE)) ==
+                   ((cmd != CMD_PLAY && cmd != CMD_WAIL) || switch_hidden));
+            REMOVE_BIT(c.bard->specials.affected_by3, AFF3_SINGING);
+            command_song_result(c.bard, cmd);
+            assert(bool(IS_AFFECTED(c.bard, AFF_HIDE)) == (cmd != CMD_PLAY && cmd != CMD_WAIL));
+            assert(IS_AFFECTED(c.bard, AFF_SNEAK));
             clear_room();
         }
     // A Bard who hides after starting Flight/Sleep stays hidden on later beats,
@@ -288,6 +299,10 @@ hide_start = interpreter.index('// Kill hide if applicable')
 hide_end = interpreter.index('if (IS_AFFECTED(exec_char, AFF_MEDITATE))', hide_start)
 assert hide_start < interpreter.index('((*cmd_info[cmd].command_pointer)')
 fixture = fixture.replace('COMMAND_HIDE_RULE', interpreter[hide_start:hide_end])
+result_start = interpreter.index('// A failed song switch may stop singing')
+result_end = interpreter.index('// If mobs should and can aggro', result_start)
+assert result_start > interpreter.index('((*cmd_info[cmd].command_pointer)', hide_start)
+fixture = fixture.replace('COMMAND_SONG_RESULT', interpreter[result_start:result_end])
 for command in ('CMD_PLAY', 'CMD_WAIL'):
     assert contains(source('interp.c').read_text(),
                     f'CMD_Y({command}, STAT_RESTING + POS_SITTING, do_play, 0, TRUE);')
