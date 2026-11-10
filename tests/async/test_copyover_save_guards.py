@@ -24,6 +24,8 @@ while depth:
     depth += (copyover[descriptor_end] == "{") - (copyover[descriptor_end] == "}")
     descriptor_end += 1
 descriptor_capture = copyover[descriptor_start:descriptor_end]
+linkdead_saves = body[body.index("\tfor (ch = character_list;", body.index("// Neither handoff")):
+                      body.index("\t// Preserve custom shop item state")]
 save = body.index("persistence_save_character_terminal")
 flush = body.index("persistence_flush_all_character_saves")
 drain = body.index("player_save_pipeline_drain")
@@ -112,6 +114,7 @@ assert all(checks.values())
 
 HARNESS = r'''
 #include "core/utils.h"
+#include "core/files.h"
 #include "account/account.h"
 #include "ships/ships.h"
 #include "net/mxp.h"
@@ -151,9 +154,50 @@ P_char get_linked_char(P_char ch, ush_int type)
         if (link->type == type) return link->linked;
     return nullptr;
 }
-''' + descriptor_capture + '\n' + extract_function('copyover.c', 'static int copyover_player_room(') + r'''
+static int saved_pid, save_calls;
+static bool save_ok = true, notified;
+P_char character_list;
+bool persistence_save_character_terminal_database_acknowledged(P_char ch, int intent)
+{
+    assert(intent == RENT_CRASH);
+    saved_pid = GET_PID(ch);
+    ++save_calls;
+    return save_ok;
+}
+static void notify_copyover_failure(const char *) { notified = true; }
+static bool save_linkdead_players()
+{
+    P_char ch;
+''' + linkdead_saves + r'''
+    return true;
+}
+''' + extract_function('player_snapshot_capture.c', 'int player_save_room_vnum(') + '\n' + \
+    descriptor_capture + '\n' + extract_function('copyover.c', 'static int copyover_player_room(') + r'''
 int main()
 {
+    {
+        char_data locker = {}, linkdead = {}, connected = {}, npc = {};
+        pc_only_data locker_pc = {}, linkdead_pc = {}, connected_pc = {};
+        locker.only.pc = &locker_pc;
+        linkdead.only.pc = &linkdead_pc;
+        connected.only.pc = &connected_pc;
+        locker.player.name = const_cast<char *>("account.fixture.1.locker");
+        linkdead_pc.pid = 77;
+        connected_pc.pid = 78;
+        descriptor_data descriptor = {};
+        connected.desc = &descriptor;
+        SET_BIT(npc.specials.act, ACT_ISNPC);
+        character_list = &locker;
+        locker.next = &npc;
+        npc.next = &connected;
+        connected.next = &linkdead;
+        assert(save_linkdead_players());
+        assert(save_calls == 1 && saved_pid == 77 && !notified);
+        save_ok = false;
+        assert(!save_linkdead_players());
+        assert(save_calls == 2 && saved_pid == 77 && notified);
+        character_list = nullptr;
+    }
     char_data owner = {}, pet = {}, unrelated = {};
     pc_only_data owner_pc = {};
     npc_only_data pet_npc = {}, unrelated_npc = {};
@@ -225,6 +269,23 @@ int main()
     assert(copyover_player_room(saved, 20, true, &owner) == 1);
     saved.room = 1;
     assert(copyover_player_room(saved, 19, true, &owner) == 1);
+    rooms[2].number = 65201;
+    rooms[2].room_flags = ROOM_LOCKER;
+    room_direction_data door = {};
+    door.to_room = 1;
+    rooms[2].dir_option[0] = &door;
+    owner.in_room = 2;
+    for (bool preserve : {false, true})
+    {
+        copyover_preserve_world = preserve;
+        file = tmpfile();
+        assert(file && write_desc_entry(file, &descriptor));
+        rewind(file);
+        assert(fread(&saved, sizeof(saved), 1, file) == 1);
+        fclose(file);
+        assert(saved.room == 100 && !saved.ship_id);
+        assert(copyover_player_room(saved, 20, preserve, &owner) == 1);
+    }
     puts("Copyover cabin identity survives pool reassignment and falls back ashore");
 }
 '''

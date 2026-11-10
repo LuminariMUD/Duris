@@ -60,7 +60,16 @@ HARNESS = r'''
 P_char character_list = nullptr;
 static bool divine_pending = false;
 static bool locker_ready = true;
-bool locker_private_contents_durable(P_char) { return locker_ready; }
+static unsigned locker_wait_calls = 0;
+bool locker_private_contents_durable(P_char)
+{
+    if (locker_wait_calls)
+    {
+        --locker_wait_calls;
+        return false;
+    }
+    return locker_ready;
+}
 void divine_boon_runtime_pulse() {}
 bool divine_boon_runtime_pending() { return divine_pending; }
 static room_data rooms[1]{};
@@ -586,6 +595,20 @@ int main()
     assert(persistence_writer_wait_idle(5000));
     player_save_pipeline_pulse();
     assert(state.committed.count(49) == 1);
+
+    // Copyover must wait for a pending private destination before capturing
+    // the player. A failed destination remains bounded and never saves the source.
+    player terminal_custody(50);
+    assert(player_revision_hydrate(50, 0));
+    locker_ready = false;
+    assert(player_save_pipeline_terminal(&terminal_custody.ch, RENT_CRASH, 3001, 10) ==
+           player_save_terminal_result::timed_out);
+    assert(state.committed.count(50) == 0);
+    locker_ready = true;
+    locker_wait_calls = 3;
+    assert(player_save_pipeline_terminal(&terminal_custody.ch, RENT_CRASH, 3001, 100) ==
+           player_save_terminal_result::database_acknowledged);
+    assert(locker_wait_calls == 0 && state.committed.count(50) == 1);
 
     // Shutdown reports a save that failed after its last pulse: the writer was still on
     // it when the drain ran out, and the interrupt made it fail.
