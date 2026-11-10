@@ -521,6 +521,12 @@ int race_size(int race);
 */
 #define GET_SIZE(ch) ((ch)->player.size)
 
+// Monkey Grip uses stored player size; temporary growth and NPC giant rules are separate.
+inline bool has_monkey_grip(P_char ch)
+{
+	return IS_PC(ch) && GET_SIZE(ch) >= SIZE_HUGE;
+}
+
 #define GET_HITROLL(ch) ((ch)->points.hitroll)
 
 #define GET_DAMROLL(ch) ((ch)->points.damroll)

@@ -250,7 +250,8 @@ the current Troll factor 1.18 produces a stored cap 58 in the executed fixture.
 
 Follow-up on 2026-11-09: `damage.totalOutput.racial.*` is active with every
 shipped entry reset to **1.000**, including NPC races; absent racial entries also
-use 1.000. This preserves the previous neutral racial output. Class factors are
+use 1.000. On 2026-11-10, `damage.totalOutput.playerRacial.*` adds a separate
+1.150 factor for the six Large player races; NPCs do not receive it. Class factors are
 unchanged, and multiclass PCs use the larger of their two class factors. Racial
 and class factors multiply. Non-neutral factors appear as signed passive entries
 in `race innates` and `class innates`; these apply to ordinary melee (including
