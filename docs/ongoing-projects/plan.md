@@ -1,6 +1,6 @@
 # Issue #707: Bard redesign (base class, Scoundrel, Disharmonist, Minstrel)
 
-Status: implementation in progress, 2026-11-10. PR 1 (caps, circles and Riff) is implemented; its final command/persistence journey is running. PRs 2–5 remain unimplemented.
+Status: implementation in progress, 2026-11-10. PR 1 (caps, circles and Riff) is qualified and ready for review. PR 2 is in progress on `branch/issue-707-bard-utility`; PRs 3–5 remain unimplemented.
 
 - Work item: [Duris #707](https://github.com/LuminariMUD/Duris/issues/707). The scope is "Rani's final proposal — 9 November 2026" at the top of the issue. The earlier proposal below it is history, as the issue says.
 - GitHub Development branch: [branch/issue-707-bard-redesign](https://github.com/LuminariMUD/Duris/tree/branch/issue-707-bard-redesign).
@@ -61,11 +61,12 @@ Nothing else could go: each remaining change maps to one proposal line.
 
 ## Current handoff
 
+- PR 2 worktree: `/home/aiwithapex/projects/duris-issue-707-bard-utility`, branched from PR 1 implementation `d896812fc`. Merge this PR 1 handoff update into that branch before publishing its PR.
 - Started from clean `b0c9e7cae`; merged current master `8a8927eac` before implementation. No existing PR covered this branch.
 - PR 1 outcome: registration changes below and retained Riff proficiency with an explicit unspecialized-use refusal. Non-goals: no base Riff grant or spell-slot changes. Files: skills, guild update, Bard Riff facts/command, both help catalogs, focused regression/journey tests. Proof: real registration/update fixtures, disposable MariaDB command/relogin journey, focused Bard checks and native build.
 - Ablation: the five slices already map directly to proposal requirements; retain them. Use the existing update/command and journey paths, with no saved field, migration, runtime option, release tag or new test runner.
 - PR 1 checks passed: `make -C src -j8`; `./scripts/format.sh --check`; `test_guild_chaos_epic_skills.py`, `test_song_dispositions_runtime.py`, `test_dissonance_runtime.py`, `test_song_dispatch_lifetime.py`, `test_class_helpfiles_contract.py`, `test_ability_skills_3.py`, `test_ability_framework.py`, `test_ability_page_chances.py`, `test_ability_coverage.py`; disposable MariaDB `test_minor_creation_instrument_journey.py --server bin/server/dms_new`. Evidence: `bin/qualification/issue707/{build,instrument-journey,skills-journey}.log` (untracked).
-- PR 1 final pending check: `bash tests/async/with_disposable_mariadb.sh python3 tests/async/run_skills_command_journey.py --server bin/server/dms_new`. Added checks cover all Bard/spec grants and memorized Detect Invisibility plus Riff's saved rating through two unspecialized logins and all three specs. Earlier attempts caught/fixed a misplaced cap edit and the journey assertions' handling of the spell catalog's `Circle 9` headings and `*` specialization markers. No production operations.
+- PR 1 final check passed: `bash tests/async/with_disposable_mariadb.sh python3 tests/async/run_skills_command_journey.py --server bin/server/dms_new`. Added checks cover all Bard/spec grants and memorized Detect Invisibility plus Riff's saved rating through two unspecialized logins and all three specs. The journey passed all new assertions. Earlier attempts caught/fixed a misplaced cap edit and the journey assertions' handling of the spell catalog's `Circle 9` headings and `*` specialization markers. No production operations.
 - The missing worktree `.env` is intentional for validation: use disposable MariaDB authority and isolated servers; do not borrow a running server or its database.
 
 ## Implementation sequence
