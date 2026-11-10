@@ -1,6 +1,7 @@
 # Issue #992: independently open private locker chests
 
-Status: implementation in progress on `branch/issue-992-multiple-open-chests-plan`.
+Status: core implemented and pushed; final MariaDB qualification in progress.
+Review: [PR #997](https://github.com/LuminariMUD/Duris/pull/997), draft, labeled `enhancement`.
 Date: 2026-11-10.
 Issue: [#992](https://github.com/LuminariMUD/Duris/issues/992).
 Source inspected: `master` at `46468abbec508fd26c358535502e62b5590552ab`.
@@ -267,3 +268,19 @@ any feature implementation, merge, or deployment.
   Added two filled private chests to the restart journey and per-chest
   OPEN/CLOSE audit checks. The first running journey predates the final
   test-only fixes; complete the final journey before marking the PR ready.
+
+- No-rent journey completed successfully on disposable MariaDB with the built
+  binary above. `bin/qualification/issue419/mariadb.json` records `passed=true`,
+  including previously opened/closed and never-opened private chest behavior.
+- Current remaining runtime check: final locker journey in session `40874`,
+  log `bin/issue992/mariadb-journey-final.log`. This run includes the corrected
+  singular EMPTY response, exact five OPEN/CLOSE event rows, and two filled
+  private chests through cold restart. After it passes, commit the two journey
+  files and final evidence, push, update #997 and mark it ready for review.
+
+- The final locker run passed actual two-way private EMPTY transfers and exact
+  movement rows, then exposed a fixture limitation: `private_graph()` selected
+  only `vault`. Extend that existing query to all non-public chests so the
+  three-UID/two-chest restart assertion measures its stated scope. The next
+  run is logged in `bin/issue992/mariadb-journey-complete.log`. No production
+  behavior change was needed for either journey fixture correction.
