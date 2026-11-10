@@ -832,7 +832,16 @@ def main():
             assert result.returncode == 0, result.stderr[-5000:]
             metadata = (target / "material-rarity-README.txt").read_text()
             assert f"mini_mode={mode}\n" in metadata and f"no_specials={specials}\n" in metadata
-        (world / "lib/duris.properties").unlink()
+        properties = world / "lib/duris.properties"
+        valid_properties = properties.read_bytes()
+        report_hashes = {file.name: hashlib.sha256(file.read_bytes()).hexdigest() for file in output.iterdir()}
+        for invalid in ("32768", "nan", "100junk"):
+            properties.write_text(f"stats.str.Human={invalid}\n")
+            result = subprocess.run(command, cwd=world, capture_output=True, text=True, timeout=60)
+            assert result.returncode == 1 and "valuation properties could not be loaded" in result.stderr
+            assert report_hashes == {file.name: hashlib.sha256(file.read_bytes()).hexdigest() for file in output.iterdir()}
+        properties.write_bytes(valid_properties)
+        properties.unlink()
         result = subprocess.run(command, cwd=world, capture_output=True, text=True, timeout=60)
         assert result.returncode == 1 and "valuation properties could not be loaded" in result.stderr
         print("offline CLI: all effective-world scores match real constructors; provenance and missing-context failure passed")

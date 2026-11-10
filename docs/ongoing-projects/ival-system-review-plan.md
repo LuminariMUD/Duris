@@ -46,7 +46,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-enhance-config-bounds`; its initial synchronized commit was
+`origin/branch/ival-property-bounds`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -72,7 +72,8 @@ XP conversion checkpoints on `branch/ival-xp-conversion`; #969 honors disabled
 crafting XP on `branch/ival-zero-crafting-xp`; #971 validates crafting config and
 its arithmetic on `branch/ival-crafting-config-bounds`; #972 validates recipe
 selection on `branch/ival-recipe-selection`; #974 validates enhancement config
-and its numeric consumers on `branch/ival-enhance-config-bounds`. Branch/base
+and its numeric consumers on `branch/ival-enhance-config-bounds`; #975 validates
+property input and integer conversion on `branch/ival-property-bounds`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -1369,6 +1370,73 @@ the unsupported spell row must be enforced or removed. Qualify
 material-family validity at enhancement targets and skipped-NPC-item fallback
 during the remaining consumer/F16 journeys; do not infer that a positive
 template score proves a valid material family. Full MariaDB journeys remain F16.
+
+### Chunk 21 — validate valuation property inputs (F08, partial)
+
+Branch: `branch/ival-property-bounds`, based on `branch/ival-enhance-config-bounds`.
+Published: commit `3209eb210`, [PR #975](https://github.com/LuminariMUD/Duris/pull/975)
+(bug label), stacked on #974. This chunk is ready for review.
+
+**Outcome:** require complete finite property values in float storage; validate
+the ten racial-factor families before their signed-short conversion, preserving
+valid float rounding/truncation. Reject invalid file loads and live/glob edits
+before publication or callbacks. Guard the shared integer getter before casting.
+
+**Non-goals:** new stat weights/practical caps, changing ordinary property
+precision, a typed-property framework, config hot-reload redesign, persistence
+or deployment.
+
+**Files:** properties input/getter boundaries, shared scalar float parsing reused
+from random-equipment config, existing native property/reload and valuation
+checks, and this handoff. Keep the stat-data consumer API unchanged.
+
+**Proof:** the native property fixture passes complete/finite/narrowing boundaries
+for all ten factor families, fractional/limit values, integer getter extremes,
+atomic failed reload and glob edit, and existing callbacks/save/revert behavior.
+Both header fixtures use fatal ASan/UBSan/float-cast checks; they are compilation
+fixtures, not alternate persistence backends. A native comparison against
+`138d6b75ac` finds identical stored float bits for all **2,649 shipped keys**;
+partial-value and out-of-range racial-factor probes fail before and pass after.
+The retained hashes and comparison summary are in
+`ival-evidence/f08-properties/summary.json`.
+
+The full native engine and actual offline CLI pass constructor/template parity
+for **19,334 effective templates**. Invalid racial-factor files fail before
+valuation and leave all existing report bytes unchanged. This run does not repeat
+the generated-item delta qualification. The following checks passed:
+
+```text
+python3 tests/async/test_issue263_property_reload.py
+python3 tests/async/test_random_equipment_config_runtime.py
+python3 tests/async/test_random_equipment_config_contract.py
+python3 tests/async/test_crafting_config_contract.py
+python3 tests/async/test_item_value_template_runtime.py
+make -C src -j8
+```
+
+Server boot checks `initialize_properties()` and fails on invalid input; offline
+valuation checks `initialize_property_values()` before building racial data.
+Ordinary float storage, truncation, formula `ival-v7-numeric-bounds`, and property
+consumer APIs are unchanged. Content/admission bounds and real MariaDB command
+journeys remain open under F08/F16; these native tests do not qualify persistence.
+
+**Ablation:** validate the authoritative registry once at publication boundaries,
+instead of adding checks to every racial-credit term. Reuse scalar parsing;
+add no property service, formula or new operational mode.
+
+**Handoff:** continue F10 with exact displayed/debited currency and the inert spell
+section. `get_spell_from_obj()` is real (`src/magic/affects.c`), but the audited
+`spell_shadow_shield()` producer applies to characters through `affect_to_char()`.
+Object-affect restore paths do accept stored types, so distinguish a representation
+from an actual producer/meaning before deciding admission policy. Do not infer a
+missing object-affect API or invent valuation credit.
+
+The material-family audit confirms `material_start_vnum()` defaults to **400205**,
+not zero; `get_matstart()` returns zero only for null objects. Superior target
+loads and NPC fallback both guard null before using it. The previously noted
+possible zero-family defect is not reproduced and does not justify a new guard.
+Material template existence and economic/persistence journeys still need their
+own F14/F16 qualification.
 
 ## Main conclusions
 

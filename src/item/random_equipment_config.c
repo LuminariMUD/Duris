@@ -16,10 +16,7 @@
 #include "item/random_equipment_config.h"
 #include "core/config_parse.h"
 
-#include <errno.h>
-#include <math.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 static const struct random_equipment_config defaults = { 15.0f, 8.0f, 4.0f, 1.0f, 10,	9,   50, -5,
@@ -34,17 +31,6 @@ static void reset_to_defaults(void)
 {
 	active = defaults;
 	config_initialized = true;
-}
-
-static bool parse_float_value(const char *text, float *result)
-{
-	char *end;
-	errno = 0;
-	float value = strtof(text, &end);
-	if (errno || end == text || *end != '\0' || !isfinite(value))
-		return false;
-	*result = value;
-	return true;
 }
 
 static void set_int(const char *key, const char *value, int *field, int low, int high)
@@ -62,7 +48,7 @@ static void set_int(const char *key, const char *value, int *field, int low, int
 static void set_float(const char *key, const char *value, float *field, float low, float high)
 {
 	float parsed;
-	if (!parse_float_value(value, &parsed) || parsed < low || parsed > high)
+	if (!config_parse_float(value, parsed) || parsed < low || parsed > high)
 	{
 		logit(LOG_STATUS, "Invalid random equipment config value %s=%s; retaining default.",
 		      key, value);
