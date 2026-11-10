@@ -205,7 +205,11 @@ def run(binary):
             # The group path has no consent link, and the target does not act
             # before staff observes the actual Hide flag and Rope Trick affect.
             fenced_command(player, "follow " + journey.CHARACTER)
+            fenced_command(player, "consent " + journey.CHARACTER)
             staff_command(staff, "group " + NAME)
+            members = fenced_command(player, "group")
+            assert "Your group consists of" in members and journey.CHARACTER in members and NAME in members, members
+            assert "revoke your consent" in fenced_command(player, "consent")
             cast(staff, "rope trick", NAME)
             assert hidden(), "grouped Rope Trick did not hide the nonconsenting target"
             _, text = command(staff, f"stat char {NAME}", "ID numb:")
