@@ -21,7 +21,7 @@
 #include <array>
 #include <cstdint>
 
-constexpr uint16_t AUCTION_COMMAND_PAYLOAD_VERSION = 1;
+constexpr uint16_t AUCTION_COMMAND_PAYLOAD_VERSION = 2; // Fees and bids share the SQL receipt.
 constexpr size_t AUCTION_COMMAND_MAX_ITEMS = 9;
 constexpr size_t AUCTION_NAME_MAX_BYTES = 32;
 constexpr size_t AUCTION_SHORT_MAX_BYTES = 255;

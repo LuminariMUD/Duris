@@ -84,6 +84,11 @@ bool valid_payload(const auction_command_payload &payload)
 	    (payload.value < 0 || payload.value > INT32_MAX ||
 	     (payload.value > 0 && payload.expected_wallet_revision == UINT64_MAX)))
 		return false;
+	if ((payload.action == auction_action::list &&
+	     (payload.listing_fee < 0 || payload.listing_fee > INT32_MAX)) ||
+	    (payload.action == auction_action::bid &&
+	     (payload.value <= 0 || payload.value > INT32_MAX)))
+		return false;
 	if ((payload.action == auction_action::list ||
 	     payload.action == auction_action::claim_item) &&
 	    !payload.item_count)
@@ -181,7 +186,8 @@ bool auction_command_decode_payload(const critical_command &command,
 				    auction_command_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::auction ||
-	    command.payload_version != AUCTION_COMMAND_PAYLOAD_VERSION)
+	    (command.payload_version != 1 &&
+	     command.payload_version != AUCTION_COMMAND_PAYLOAD_VERSION))
 		return false;
 	*payload = {};
 	const uint8_t *cursor = command.payload.data();
