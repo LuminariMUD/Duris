@@ -236,8 +236,11 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		newval = static_cast<int64_t>(sval) + enhance_ival_gain_normal;
 	}
 
-	const int64_t max_result_value =
-		static_cast<int64_t>(enhance_ival_cap) + enhance_original_max_roll;
+	/* One replacement gains at most the largest configured luck gain. The level
+	 * gate on the source is the only absolute limit, as it is for forge and craft. */
+	const int max_gain = std::max({ enhance_ival_gain_extreme, enhance_ival_gain_very,
+					enhance_ival_gain_lucky, enhance_ival_gain_normal });
+	const int64_t max_result_value = static_cast<int64_t>(sval) + max_gain;
 	/* Cascade search through the ival hash table.
 	 * Try exact match first, then cascade in the configured direction.
 	 * cascade_down_first=1: try lower ival values first, then higher
@@ -300,8 +303,11 @@ void enhance(P_char ch, P_obj source, P_obj material)
 
 	if (!robj)
 	{
-		act("&+GThe &+ritem gods&+G could not find a higher-value replacement for your &n$p&+G.&n",
-		    FALSE, ch, source, 0, TO_CHAR);
+		snprintf(
+			buf, MAX_STRING_LENGTH,
+			"&+GThe &+ritem gods&+G have no eligible replacement worth 1 to %d more than your &n$p&+G for its slot.&n",
+			max_gain);
+		act(buf, FALSE, ch, source, 0, TO_CHAR);
 		return;
 	}
 
@@ -1385,7 +1391,6 @@ static void enhance_load_essence_drop(P_char ch, P_char killer)
 		 */
 
 /* ---- Config settings (defaults) ---- */
-int enhance_ival_cap = 95;
 int enhance_material_ival_delta = 5;
 int enhance_guild_insignia_ival_bonus = 5;
 int enhance_cost_low_ival_threshold = 20;
@@ -1707,7 +1712,6 @@ void load_enhance_config(void)
 	section_idx = -1;
 	line_num = 0;
 	/* Every load starts from compiled defaults, including a missing file. */
-	enhance_ival_cap = 95;
 	enhance_material_ival_delta = 5;
 	enhance_guild_insignia_ival_bonus = 5;
 	enhance_cost_low_ival_threshold = 20;
@@ -1866,10 +1870,7 @@ void load_enhance_config(void)
 
 		if (section_idx == 0)
 		{
-			if (!strcmp(key, "enhance.ival.cap"))
-				enhance_ival_cap =
-					enhance_config_int(key, val, enhance_ival_cap, 0, INT_MAX);
-			else if (!strcmp(key, "enhance.material.ival.delta"))
+			if (!strcmp(key, "enhance.material.ival.delta"))
 				enhance_material_ival_delta = enhance_config_int(
 					key, val, enhance_material_ival_delta, INT_MIN, INT_MAX);
 			else if (!strcmp(key, "enhance.guild.insignia.ival.bonus"))
