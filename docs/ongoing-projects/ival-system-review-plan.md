@@ -22,8 +22,8 @@ separate authorized operation. Flat-file server persistence is unsupported.
 - F01–F04 circle, packed-average, apply-order, zero and duplicate repairs;
   F08 numeric/config/property bounds and unavailable-score admission; F14 shared
   material quantities and checked XP; F15 dead reset/recovery work removal.
-- Published implementation through [#975](https://github.com/LuminariMUD/Duris/pull/975),
-  commit `83c45c569`. Publication does not mean every PR has merged.
+- Published implementation through [#981](https://github.com/LuminariMUD/Duris/pull/981),
+  commit `0f7e12253`. Publication does not mean every PR has merged.
 - Native evidence: 19,334 effective templates; 8,720 seeded generated items in
   formula-delta runs; 2,649 unchanged shipped property values. Results apply to
   their recorded revisions, not automatically to future changes. Durable results
@@ -68,6 +68,28 @@ sanitizer enhancement tests, related contracts, server build and format/tidy
 checks passed. Existing results were reused after the plan-only revision.
 
 ## B — finish valuation semantics and explanation (F05/F06/F09/F11)
+
+**Review-ready:** `527ad4c40` + `0f7e12253`, [PR #981](https://github.com/LuminariMUD/Duris/pull/981)
+(bug label), `branch/ival-semantics`, stacked on #978. The 321 unique mappings retain first-match prices, with
+90 explicit utility policies. Twenty callbacks proven to use the common melee-only
+gate lose inactive credit on packed non-backstab weapons; backstab, periodic and
+invoke routes retain credit. Unsplit legacy native prices are labeled incomplete
+when normal melee is suppressed, rather than assigned invented replacement weights.
+Sparse slots, missing callbacks, invalid gloves and configured artifacts 21/22
+match dispatch; instance proc-library bridges no longer reprice plain siblings.
+Staff output and `item-values.csv` expose terms, checkpoints and unpriced coverage.
+
+Native characterization/67 priced-bit coverage, weapon/artifact/sword/monk and
+enhancement fixtures, report I/O, server and maintained editor builds pass.
+The exact-parent comparison against `c0b82df5e` covers **19,334 templates + 8,720
+generated samples**, with one changed template and no generated changes. Native
+constructor/template and actual CLI parity, provenance, reconciled report rows
+and read-only evaluation pass. Evidence: [f09-procs](ival-evidence/f09-procs/).
+Item **99432: 338 → 111**; minimum level 113 → 37, recipe admission 0 → 1,
+high/low units 68/2 → 23/0, XP 338000 → 111000, nominal superior fee 34800 → 12100
+copper. It crosses the faerie-bag 125 ceiling; zone 994 unit-fit quest weights fall
+about 9.85–10.74%, without quest-floor/count changes. D must exercise this newly
+eligible authored item in its shared command/persistence fixture bundle.
 
 **Files:** existing `src/item/item_value*`, the proc chain in
 `src/economy/tradeskill.c`, relevant packed/native dispatch, existing staff/report
@@ -180,12 +202,13 @@ by the batch. Codec/source-contract tests alone never prove a persistence journe
 
 Local: `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
 Remote: `duris-staging:/home/staging/duris-worktrees/ival-system-improvements`.
-Latest published implementation: `branch/ival-enhancement-contract`, PR #978,
-based on `branch/ival-focused-delivery-plan` (#977). Step A's prior uncommitted
-patch is now committed. Synchronize committed work to the remote worktree.
+Latest batch: `branch/ival-semantics` for B (#981), based on `branch/ival-enhancement-contract`
+(#978). Synchronize committed work to the remote worktree. A and B are implemented;
+C and D remain open.
 
-Current formula: `ival-v7-numeric-bounds`. Archive/evidence links above preserve
+Current formula: `ival-v8-proc-semantics`. Archive/evidence links above preserve
 baseline revisions and earlier PRs. Read the relevant historical finding when
 needed; do not reload the entire archive or restart the audit. The next
-implementation action is B; start with the existing proc mapping and its native
-characterization fixture, then finish the remaining B acceptance cases.
+implementation action is C: use normalized templates for enhancement indexes,
+planning and quest profiles, bound faerie-bag selection, then finish locker sorting
+and the identified descriptions. Reuse the completed B qualification.

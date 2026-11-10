@@ -71,6 +71,7 @@ DOUBLES = r'''
 #include "combat/attack_continuation.c"
 #include "item/weapon_actions.c"
 #include "item/native_artifact_actions.h"
+#include "item/item_value.h"
 #include "world/buildings.h"
 bool native_artifact_owns(int) { return false; }
 #include "item/artifact_mana_model.c"
@@ -219,6 +220,7 @@ struct weapon_scene : scene {
     }
     bool hit(int roll = 0) { choices.push_back(roll); return weapon_proc(source, actor, target); }
     void packed(bool random = false) {
+        source->type=ITEM_WEAPON; source->wear_flags=ITEM_TAKE|ITEM_WIELD;
         obj_index[0].func.obj = nullptr;
         source->value[5] = 3002001 + (random ? 1000000000 : 0);
         source->value[6] = 57; source->value[7] = 25;
@@ -431,6 +433,18 @@ static void monk_gloves() {
     }
 }
 
+static unsigned int valued_packed_mask(P_obj object) {
+    item_value_input input; input.type=object->type; input.wear_flags=object->wear_flags;
+    input.extra2_flags=object->extra2_flags;
+    for(int i=0;i<NUMB_OBJ_VALS;++i) input.value[i]=object->value[i];
+    unsigned int callable=0;
+    for(int packed=object->value[5]%1000000000,i=0;i<3;++i,packed/=1000) {
+        int spell=packed%1000;
+        if(spell>0 && spell<MAX_SKILLS && skills[spell].spell_pointer) callable |= 1u<<i;
+    }
+    return item_value_packed_cast_mask(input,callable);
+}
+
 static void packed_parity() {
     for (bool enabled : {false, true}) {
         weapon_scene s("weapons", enabled); s.packed();
@@ -456,6 +470,7 @@ static void packed_parity() {
     for (bool enabled : {false, true}) for (int choice = 0; choice < 3; ++choice) {
         weapon_scene s("weapons", enabled); s.packed(true);
         skills[1].spell_pointer = nullptr;
+        assert(valued_packed_mask(s.source)==6);
         choices = {0, choice}; assert(weapon_proc(s.source, s.actor, s.target));
         if (enabled) advance();
         assert(effects.size() == (choice ? 1u : 0u));
@@ -468,6 +483,7 @@ static void packed_parity() {
     }
     for (bool enabled : {false, true}) {
         weapon_scene s("weapons", enabled); s.packed(); s.source->value[5] = 3000001;
+        assert(valued_packed_mask(s.source)==1);
         assert(s.hit()); advance();
         assert(effects.size() == 1 && effects[0].id == 1); // Preserve legacy sparse-slot/count quirk.
     }
@@ -718,7 +734,7 @@ with tempfile.TemporaryDirectory(prefix="weapon-actions-", dir=ROOT / "bin/tests
     subprocess.run([
         "g++", "-std=c++20", "-O1", "-g", "-ffunction-sections", "-fdata-sections",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-pthread",
-        "-I" + str(ROOT / "src"), str(source), str(ROOT / "src/persistence/latency_trace.c"),
+        "-I" + str(ROOT / "src"), str(source), str(ROOT / "src/persistence/latency_trace.c"), str(ROOT / "src/item/item_value.c"),
         "-Wl,--gc-sections", str(HARNESS_STUBS), "-o", str(binary),
     ], check=True)
     env = dict(os.environ, ASAN_OPTIONS="detect_leaks=1:halt_on_error=1",

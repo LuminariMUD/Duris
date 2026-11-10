@@ -40,6 +40,25 @@ bool setting(const std::string &prefix, const char *key, int fallback, int low, 
 	out = static_cast<int>(raw);
 	return true;
 }
+
+native_artifact_config configured_native_artifact(int vnum)
+{
+	const std::string prefix = "itemActions.artifact." + std::to_string(vnum) + ".";
+	native_artifact_config next;
+	int enabled = 0;
+	next.valid = setting(prefix, "enabled", 0, 0, 1, enabled) &&
+		     setting(prefix, "manaCost", 0, 0, 10000000, next.cost) &&
+		     setting(prefix, "manaCapacity", 0, 0, 10000000, next.capacity) &&
+		     setting(prefix, "manaRegen", 0, 0, 10000000, next.regeneration) &&
+		     setting(prefix, "passiveFloor", 0, 0, 10000000, next.floor) &&
+		     setting(prefix, "manaRevision", 1, 1, 10000000, next.mana_revision) &&
+		     setting(prefix, "windupPulses", 8, 4, 600, next.windup);
+	next.enabled = enabled == 1;
+	// Disabled defaults need no balance profile. Every enabled power pays.
+	next.valid = next.valid && (!next.enabled || (next.cost > 0 && next.capacity >= next.cost &&
+						      next.floor <= next.capacity));
+	return next;
+}
 }
 
 uint32_t native_artifact_ability(int vnum, int power)
@@ -55,22 +74,8 @@ void update_native_artifact_properties()
 	native_master_enabled = item_actions_enabled();
 	for (int vnum : pilots)
 	{
-		const std::string prefix = "itemActions.artifact." + std::to_string(vnum) + ".";
 		auto &old = native_configs[vnum];
-		native_artifact_config next;
-		int enabled = 0;
-		next.valid = setting(prefix, "enabled", 0, 0, 1, enabled) &&
-			     setting(prefix, "manaCost", 0, 0, 10000000, next.cost) &&
-			     setting(prefix, "manaCapacity", 0, 0, 10000000, next.capacity) &&
-			     setting(prefix, "manaRegen", 0, 0, 10000000, next.regeneration) &&
-			     setting(prefix, "passiveFloor", 0, 0, 10000000, next.floor) &&
-			     setting(prefix, "manaRevision", 1, 1, 10000000, next.mana_revision) &&
-			     setting(prefix, "windupPulses", 8, 4, 600, next.windup);
-		next.enabled = enabled == 1;
-		// Disabled defaults need no balance profile. Every enabled power pays.
-		next.valid = next.valid &&
-			     (!next.enabled || (next.cost > 0 && next.capacity >= next.cost &&
-						next.floor <= next.capacity));
+		auto next = configured_native_artifact(vnum);
 		next.revision = old.revision;
 		if (next != old)
 		{
@@ -93,6 +98,19 @@ bool native_artifact_owns(int vnum)
 		return false;
 	const auto found = native_configs.find(vnum);
 	return found != native_configs.end() && (!found->second.valid || found->second.enabled);
+}
+
+bool native_artifact_configured_owner(int vnum)
+{
+	if (!item_actions_configured_enabled())
+		return false;
+	for (int pilot : pilots)
+		if (pilot == vnum)
+		{
+			const auto settings = configured_native_artifact(vnum);
+			return !settings.valid || settings.enabled;
+		}
+	return false;
 }
 
 native_artifact_config native_artifact_settings(int vnum)

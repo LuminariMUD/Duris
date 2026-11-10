@@ -23,6 +23,7 @@ HARNESS = r"""
 
 #include "core/utility.h"
 #include "item/enhance.c"
+#include "item/item_value_procs.h"
 
 static index_data indices[12]{};
 index_data *obj_index = indices;
@@ -71,7 +72,14 @@ int get_mincircle(int spell) {
     assert(spell == 32 || spell == 33);
     return spell == 32 ? 1 : 2;
 }
-int get_ival_from_proc(obj_proc_type) { std::abort(); }
+static obj_proc_type previous_proc;
+obj_proc_type proclib_chain_incumbent(int) { return previous_proc; }
+int proclib_obj_cmd_bridge(P_obj,P_char,int,char*) { assert(false); return 0; }
+bool native_artifact_configured_owner(int) { return false; }
+Skill skills[MAX_AFFECT_TYPES + 1];
+static void fixture_spell(int,P_char,char*,int,P_char,P_obj) { assert(false); }
+static const bool prepared_spells = [] { for (int id : {32,33,37}) skills[id].spell_pointer=fixture_spell; return true; }();
+item_value_proc_entry item_value_proc(obj_proc_type proc) { assert(!proc); return {nullptr, "none", 0, item_value_proc_policy::none}; }
 int number(int low, int high) { ++rolls; return lucky ? low : high; }
 void logit(const char *, const char *format, ...) {
     char buffer[2048]; va_list args; va_start(args, format);
@@ -253,6 +261,54 @@ static void clear_attempt()
     extracted.clear();
     charges = 0;
     output.clear();
+}
+
+static void test_donor_floor()
+{
+    for (bool insignia : {false, true}) for (int offset : {-1, 0}) {
+        for (auto &bucket : enhance_ival_table) bucket = nullptr;
+        char_data ch{};
+        ch.player.level = 60;
+        ch.curr_stats.Luk = 10;
+        ch.in_room = NOWHERE;
+        GET_PLATINUM(&ch) = 20;
+        auto &source = fixture(0, 90010);
+        source.affected[0] = {APPLY_MANA, 20};
+        if (insignia) source.wear_flags |= ITEM_GUILD_INSIGNIA;
+        const int source_value = insignia ? 30 : 20;
+        assert(itemvalue(&source) == source_value);
+        const int floor = source_value - enhance_material_ival_delta +
+            (insignia ? enhance_guild_insignia_ival_bonus : 0);
+        auto &donor = fixture(1, 90011);
+        const int donor_value = floor + offset;
+        donor.affected[0] = {APPLY_MANA, static_cast<signed char>(donor_value / 2)};
+        donor.affected[1] = {APPLY_MOVE, static_cast<signed char>(donor_value - donor_value / 2)};
+        assert(itemvalue(&donor) == donor_value);
+        auto &target = fixture(2, 90012);
+        target.affected[0] = {APPLY_MANA, static_cast<signed char>((source_value + 1) / 2)};
+        target.affected[1] = {APPLY_MOVE, static_cast<signed char>(source_value + 1 - (source_value + 1) / 2)};
+        assert(itemvalue(&target) == source_value + 1);
+        enhance_index_entry entry{};
+        index_entry(entry, OBJ_VNUM(&target), source_value + 1);
+        const auto original_source = source, original_donor = donor;
+        const int before_rolls = rolls;
+        enhance(&ch, &source, &donor);
+        if (offset < 0) {
+            assert(output.find("requires an item") != std::string::npos);
+            assert(!std::memcmp(&source, &original_source, sizeof(source)));
+            assert(!std::memcmp(&donor, &original_donor, sizeof(donor)));
+            assert(!result && charges == 0 && GET_MONEY(&ch) == 20000);
+            assert(rolls == before_rolls && loads.empty() && extracted.empty());
+        } else {
+            assert(result && itemvalue(result) == source_value + 1);
+            assert(charges == 1 && GET_MONEY(&ch) ==
+                20000 - (source_value <= enhance_cost_low_ival_threshold ?
+                    enhance_cost_low_amount : enhance_cost_high_amount));
+            assert((extracted == std::vector<int>{90010, 90011}));
+        }
+        clear_attempt();
+    }
+    for (auto &bucket : enhance_ival_table) bucket = nullptr;
 }
 
 static void test_replacement()
@@ -452,6 +508,10 @@ static void test_essence()
     unavailable_vnum = 0;
     clear_attempt();
 
+    // An essence below the arbitrary-donor floor still upgrades valuable gear.
+    source.affected[0] = {APPLY_MANA, 25};
+    assert(itemvalue(&source) == 25 &&
+        itemvalue(&health) < itemvalue(&source) - enhance_material_ival_delta);
     refuse_wallet_commit = true;
     modenhance(&ch, &source, &health);
     assert(source.affected[2].location == APPLY_NONE && source.extra2_flags == 0);
@@ -903,6 +963,7 @@ int main()
     assert(enhance_wear_skip_mask == expected_mask);
     test_config();
     assert(enhance_wear_skip_mask == expected_mask);
+    test_donor_floor();
     test_replacement();
     test_essence();
     test_superior();

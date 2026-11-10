@@ -241,7 +241,7 @@ bool write_material_rarity_report(const char *output_dir)
 {
 	char source_name[MAX_STRING_LENGTH], low_name[MAX_STRING_LENGTH],
 		high_name[MAX_STRING_LENGTH];
-	FILE *summary = NULL, *recipes = NULL, *exclusions = NULL, *readme = NULL;
+	FILE *summary = NULL, *recipes = NULL, *exclusions = NULL, *readme = NULL, *values = NULL;
 	material_rarity_tally tally[MATERIAL_RARITY_COUNT];
 	long total_material_units = 0;
 	long qualifying_templates = 0;
@@ -262,7 +262,8 @@ bool write_material_rarity_report(const char *output_dir)
 	if (!(summary = fopen((path + "/material-rarity-summary.csv").c_str(), "w")) ||
 	    !(recipes = fopen((path + "/material-rarity-recipes.csv").c_str(), "w")) ||
 	    !(exclusions = fopen((path + "/material-rarity-exclusions.csv").c_str(), "w")) ||
-	    !(readme = fopen((path + "/material-rarity-README.txt").c_str(), "w")))
+	    !(readme = fopen((path + "/material-rarity-README.txt").c_str(), "w")) ||
+	    !(values = fopen((path + "/item-values.csv").c_str(), "w")))
 	{
 		fprintf(stderr, "material rarity report: cannot open output in %s: %s\n",
 			output_dir, strerror(errno));
@@ -274,6 +275,8 @@ bool write_material_rarity_report(const char *output_dir)
 			fclose(exclusions);
 		if (readme)
 			fclose(readme);
+		if (values)
+			fclose(values);
 		return false;
 	}
 
@@ -281,6 +284,8 @@ bool write_material_rarity_report(const char *output_dir)
 	fprintf(recipes,
 		"template_vnum,itemvalue,material_family,ingredient_vnum,ingredient_role,declared_quantity,contributed_units,template_name,ingredient_name\n");
 	fprintf(exclusions, "template_vnum,material_family,itemvalue,reason,template_name\n");
+	fprintf(values,
+		"template_vnum,itemvalue,base,multiplier,unrounded,flags_base,applies_base,type_base,packed_base,native_base,after_wear,after_flags,after_applies,after_type,proc_policy,proc_name,native_melee_suppressed,packed_cast_mask,coverage_complete,unpriced_b1,unpriced_b2,unpriced_b3,unpriced_b4,unpriced_b5,unpriced_apply_slots,unpriced_type,invalid,floored,utility_override,native_price_suppressed\n");
 
 	for (rnum = 0; rnum <= top_of_objt; ++rnum)
 	{
@@ -296,7 +301,22 @@ bool write_material_rarity_report(const char *output_dir)
 			break;
 		}
 		vnum = obj_index[rnum].virtual_number;
-		ival = itemvalue(*obj);
+		item_value_breakdown detail;
+		ival = itemvalue(*obj, &detail);
+		fprintf(values,
+			"%d,%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%s,%s,%d,%u,%d",
+			vnum, ival, detail.base, detail.multiplier, detail.unrounded,
+			detail.flags_base, detail.applies_base, detail.type_base,
+			detail.packed_credit, detail.native_base, detail.after_wear,
+			detail.after_flags, detail.after_applies, detail.after_type,
+			item_value_proc_policy_name(detail.native_proc_policy),
+			detail.native_proc_name, detail.native_melee_suppressed,
+			detail.packed_cast_mask, detail.context_complete);
+		for (auto bank : detail.unpriced_affects)
+			fprintf(values, ",%llu", bank);
+		fprintf(values, ",%u,%d,%d,%d,%d,%d\n", detail.unpriced_apply_slots,
+			detail.unpriced_type, detail.invalid, detail.floored,
+			detail.utility_override, detail.native_price_suppressed);
 		// The report uses unscaled base quantities and counts ingredient identities.
 		if (!item_value_material_quantities(ival, 1.0, high_quantity, low_quantity))
 		{
@@ -370,6 +390,12 @@ bool write_material_rarity_report(const char *output_dir)
 		"qualifying_templates=%ld\nexcluded_templates=%ld\ningredient_contributions=%ld\n\n",
 		qualifying_templates, excluded_templates, total_material_units);
 	fprintf(readme, "count_mode=one-per-required-material\n");
+	fprintf(readme,
+		"item-values.csv records each template's score, base terms, multiplier checkpoints, proc policy and unpriced inputs.\n"
+		"Unpriced affect bits, applies and base types are unsupported by the legacy formula; no new weights are inferred.\n"
+		"Zero applies are neutral; sleep/fear/charm are temporary state; unweighted wear flags are eligibility-only.\n"
+		"Extra flags supply normalization/eligibility except the existing two-hand factor; the monk marker selects dispatch, not a standalone credit.\n"
+		"Verified melee-only prices are suppressed on packed non-backstab weapons. Other native prices remain legacy aggregates; suppressed melee then marks coverage incomplete because periodic/invoke credit cannot be split without a balance decision.\n");
 	fprintf(readme, "quantity_scale=1\nquantity_scope=nominal-unscaled-composition\n");
 	fprintf(readme,
 		"Each template contributes one to each distinct required material identity.\n");
@@ -382,7 +408,7 @@ bool write_material_rarity_report(const char *output_dir)
 	fprintf(readme, "player stock, replenishment rate, or economic scarcity.\n");
 
 	bool ok = report_provenance(readme) && complete;
-	for (FILE *file : { summary, recipes, exclusions, readme })
+	for (FILE *file : { summary, recipes, exclusions, readme, values })
 	{
 		const bool write_failed = ferror(file);
 		if (fclose(file) != 0 || write_failed)
