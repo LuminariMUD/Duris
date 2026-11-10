@@ -363,7 +363,7 @@ await writeFile(
   path.join(out, "item-values/index.html"),
   layout(
     "Item value changes",
-    `See the ${ivalRows.length} Duris items whose item value changes in the November 2026 update, with old and new values and the reason for each.`,
+    `See the ${ivalRows.length} Duris items whose item value changed in the November 2026 update, with old and new values and the reason for each.`,
     ivalRoute,
     ivalContent,
     false,

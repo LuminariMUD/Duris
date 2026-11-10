@@ -234,11 +234,11 @@ class PagesTests(unittest.TestCase):
         self.assertIn(url, self.pages[OUTPUT / "index.html"].links)
         self.assertIn(f"{url}</loc>", (OUTPUT / "sitemap.xml").read_text())
         items = json.loads((ROOT / "site/item-values/data.json").read_text())
-        self.assertEqual(len(items), 183)
-        self.assertEqual(len({item["vnum"] for item in items}), 183)
+        self.assertEqual(len(items), 146)
+        self.assertEqual(len({item["vnum"] for item in items}), 146)
         html = (OUTPUT / "item-values/index.html").read_text()
         self.assertNotIn("{{", html)
-        self.assertEqual(html.count("<tr data-name="), 183)
+        self.assertEqual(html.count("<tr data-name="), 146)
         text = "".join(self.pages[OUTPUT / "item-values/index.html"].text)
         self.assertNotRegex(text, r"&\+[a-zA-Z]|&[nN]\b")
         # The claymore's colour codes become spans; its values and direction are shown.
@@ -247,11 +247,11 @@ class PagesTests(unittest.TestCase):
         self.assertIn("▼ −227", text)
         with (OUTPUT / "item-values/item-value-changes.csv").open(newline="") as file:
             rows = list(csv.DictReader(file))
-        self.assertEqual(len(rows), 183)
+        self.assertEqual(len(rows), 146)
         claymore = next(row for row in rows if row["number"] == "99432")
         self.assertEqual(claymore["item"], "the claymore of Zarthos the vampire hunter")
         self.assertEqual((claymore["old value"], claymore["new value"]), ("338", "111"))
-        self.assertEqual(sum(int(row["change"]) > 0 for row in rows), 175)
+        self.assertEqual(sum(int(row["change"]) > 0 for row in rows), 138)
 
 
 if __name__ == "__main__":
