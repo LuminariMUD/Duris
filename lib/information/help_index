@@ -27604,7 +27604,10 @@ replacement. Ordinary donors must have item value at least five below
 the source (guild insignia require at least the source value). Weapons
 need weapon donors or enhancement essences. Ordinary replacement costs
 1 platinum at item value 20 or below, otherwise 10 platinum. Luck affects
-the improvement; not every item has a suitable replacement.
+the improvement, which is 1 to 4 item value. The item you enhance must be
+within your level's item-value limit (three per level); there is no other
+ceiling. Not every item has a suitable replacement: one must exist for its
+slot within that range.
 
 Essences instead add their named property and are consumed on success.
 Their fees are 1, 20 or 100 platinum by essence value (up to 20, up to 30,

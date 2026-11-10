@@ -472,11 +472,11 @@ int main(int argc, char **)
                    "apply0,modifier0,apply1,modifier1,apply2,modifier2,apply3,modifier3,faerie_candidate,weapon_dice_count,weapon_dice_sides\n", deltas);
         FILE *settings = std::fopen("consumer-settings.json", "w"); assert(settings);
         std::fprintf(settings, "{\"max_mortal_level\":%d,\"craft_level_gate\":%d,\"craft_xp_per_ival\":%d,\"enhance_level_gate\":%d,"
-                     "\"enhance_donor_delta\":%d,\"enhance_insignia_bonus\":%d,\"enhance_cap\":%d,\"enhance_radius\":%d,"
+                     "\"enhance_donor_delta\":%d,\"enhance_insignia_bonus\":%d,"
                      "\"enhance_low_threshold\":%d,\"enhance_low_cost_copper\":%d,\"enhance_high_cost_copper\":%d,"
                      "\"superior_base_copper\":%d,\"superior_per_ival_copper\":%d}\n",
                      MAXLVLMORTAL, crafting_level_gate_multiplier(), crafting_experience_per_ival(), enhance_level_gate_multiplier,
-                     enhance_material_ival_delta, enhance_guild_insignia_ival_bonus, enhance_ival_cap, enhance_original_max_roll,
+                     enhance_material_ival_delta, enhance_guild_insignia_ival_bonus,
                      enhance_cost_low_ival_threshold, enhance_cost_low_amount, enhance_cost_high_amount,
                      enhance_stat_platinum_base, enhance_stat_platinum_per_ival);
         assert(!std::fclose(settings));
@@ -600,9 +600,6 @@ def consumer_effects(rows, settings, quest_rows):
             "nominal_superior_cost_delta_mortal_sources_copper": sum(
                 r["nominal_superior_cost_copper_after"] - r["nominal_superior_cost_copper_before"] for r in mortal_sources),
             "enhancement_index_score_bucket_changes": sum(r["enhance_index_candidate"] for r in changed),
-            "enhancement_result_cap_crossings": sum(bool(r["enhance_index_candidate"]) and
-                ((r["before"] <= settings["enhance_cap"] + settings["enhance_radius"]) !=
-                 (r["after"] <= settings["enhance_cap"] + settings["enhance_radius"])) for r in changed),
             "quest_reward_floor_losses": sum(r["quest_floor_lost"] for r in changed),
             "quest_reward_floor_gains": sum(r["quest_floor_gained"] for r in changed),
             "changed_rows_with_unpriced_bank5": sum(bool(r["unpriced_bank5"]) for r in changed),
