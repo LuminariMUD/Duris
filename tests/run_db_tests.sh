@@ -99,6 +99,9 @@ epic_training_journey $DB python3 tests/async/test_mysql_epic_training_journey.p
 telemetry_posthog_gameplay python3 tests/async/run_telemetry_player_journey.py --backend mariadb
 world_restart_crash $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY crash
 coin_denominations $DB python3 tests/async/test_mysql_coin_denomination_journey.py --server SERVER_BINARY
+auction_item_journey $DB python3 tests/async/test_mysql_auction_item_journey.py
+auction_money_journey $DB python3 tests/async/test_mysql_auction_money_journey.py
+smith_payment_journey $DB python3 tests/async/test_mysql_smith_payment_journey.py
 critical_command_schema tests/async/run_critical_command_schema_mysql.sh
 corpse_trap_restart $DB python3 tests/async/test_corpse_trap_restart_journey.py SERVER_BINARY mariadb
 playtime $DB python3 tests/async/test_mysql_playtime_journey.py --server SERVER_BINARY
