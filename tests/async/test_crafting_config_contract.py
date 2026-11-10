@@ -21,8 +21,6 @@ assert contains(source, "crafting.experience.per.ival")
 assert "crafting.experience.per.ival=1000" in config_text
 assert "Commands accept either form" in config_text
 assert contains(source, "i + 1, recipes[i]")
-assert contains(source, "selected = recipes[choice2 - 1]")
-assert contains(source, "objVnum = recipes[objVnum - 1]")
 assert contains(source, "crafting.recipe.max.player.level")
 assert contains(source, "crafting.recipe.examine.materials")
 assert "crafting.recipe.max.player.level=56" in config_text
@@ -43,6 +41,7 @@ HARNESS = r'''
 #include <climits>
 #include <limits>
 #include <cstring>
+#include <array>
 static int score;
 static int xp_calls, requested_xp;
 static int config_diagnostics;
@@ -133,6 +132,24 @@ static void config_cases() {
 }
 int main() {
     config_cases();
+    const int recipes[] = {2, 700001, INT_MAX};
+    const auto original_recipes = std::array{2, 700001, INT_MAX};
+    assert(crafting_select_recipe(recipes, 3, 1) == 2);
+    assert(crafting_select_recipe(recipes, 3, 2) == 2); // Stable vnum wins over list number.
+    assert(crafting_select_recipe(recipes, 3, 3) == INT_MAX);
+    assert(crafting_select_recipe(recipes, 3, 700001) == 700001);
+    assert(crafting_select_recipe(recipes, 3, INT_MAX) == INT_MAX);
+    for (int choice : {INT_MIN, -1, 0, 4, 700002}) assert(crafting_select_recipe(recipes, 3, choice) == 0);
+    assert(crafting_select_recipe(recipes, 0, 1) == 0);
+    const int invalid_recipes[] = {0, -1};
+    assert(crafting_select_recipe(invalid_recipes, 2, 1) == 0);
+    assert(crafting_select_recipe(invalid_recipes, 2, 2) == 0);
+    for (const char *text : {"", "1junk", "1.0", "2147483648", "99999999999999999999999"}) {
+        int choice = 0;
+        assert(!config_parse_int(text, choice));
+        assert(crafting_select_recipe(recipes, 3, choice) == 0);
+    }
+    assert(!std::memcmp(recipes, original_recipes.data(), sizeof(recipes)));
     obj_data object{};
     char_data player{};
     struct test_case { int value, high, low; };

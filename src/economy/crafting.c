@@ -564,6 +564,18 @@ static void crafting_award_experience(P_char ch, const crafting_plan &plan)
 		gain_exp(ch, NULL, plan.experience, EXP_BOON);
 }
 
+static int crafting_select_recipe(const int *recipes, int count, int choice)
+{
+	if (choice <= 0)
+		return 0;
+	for (int i = 0; i < count; ++i)
+		if (recipes[i] == choice)
+			return choice;
+	if (choice <= count)
+		return recipes[choice - 1] > 0 ? recipes[choice - 1] : 0;
+	return 0;
+}
+
 static void crafting_handle_craft_command(P_char ch, char *argument, int cmd);
 static void crafting_handle_forge_command(P_char ch, char *argument, int cmd);
 
@@ -599,7 +611,7 @@ static void crafting_handle_craft_command(P_char ch, char *argument, int cmd)
 	char short_desc[MAX_STRING_LENGTH];
 	char keywords[MAX_INPUT_LENGTH];
 	char buffer[256];
-	long choice2;
+	int choice2 = 0;
 	int selected = 0;
 	int *recipes;
 	int recipe_count;
@@ -685,20 +697,10 @@ static void crafting_handle_craft_command(P_char ch, char *argument, int cmd)
 		crafting_handle_craft_command(ch, writable_arg(""), cmd);
 		return;
 	}
-	choice2 = atoi(second);
+	config_parse_int(second, choice2);
 
 	// Accept either the stable recipe vnum or the displayed list number.
-	if (choice2)
-	{
-		for (i = 0; i < recipe_count; i++)
-			if (recipes[i] == choice2)
-			{
-				selected = recipes[i];
-				break;
-			}
-		if (selected == 0 && choice2 <= recipe_count)
-			selected = recipes[choice2 - 1];
-	}
+	selected = crafting_select_recipe(recipes, recipe_count, choice2);
 	free(recipes);
 
 	// If they picked a recipe that wasn't in their book...
@@ -1226,7 +1228,7 @@ static void crafting_handle_craft_command(P_char ch, char *argument, int cmd)
 /* Modern Forge command implementation, extracted from tradeskill.c. */
 static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/)
 {
-	int skillLevel, objVnum, commandType, iVal, invVnum;
+	int skillLevel, objVnum = 0, commandType, iVal, invVnum;
 	int numHighQuality, numLowQuality, lowQualityMaterialVnum, highQualityMaterialVnum;
 	int invLowMats, invHighMats, invEssences;
 	char buf[256];
@@ -1258,7 +1260,7 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 	}
 	rest = one_argument(argument, first);
 	one_argument(rest, second);
-	objVnum = atoi(second);
+	config_parse_int(second, objVnum);
 
 	// If we don't have a first argument.
 	if (!*first)
@@ -1355,24 +1357,11 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 	}
 
 	// Accept either the stable recipe vnum or the displayed list number.
-	bool found = false;
-	for (int i = 0; i < recipe_count; i++)
-	{
-		if (recipes[i] == objVnum)
-		{
-			found = true;
-			break;
-		}
-	}
-	if (!found && objVnum <= recipe_count)
-	{
-		objVnum = recipes[objVnum - 1];
-		found = true;
-	}
+	objVnum = crafting_select_recipe(recipes, recipe_count, objVnum);
 	free(recipes);
 
 	// If we couldn't find the vnum in the recipe book (commandType is irrelevant).
-	if (!found)
+	if (objVnum == 0)
 	{
 		send_to_char("You dont appear to have that &+Wrecipe&n in your list.&n\n", ch);
 		return;
