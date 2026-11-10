@@ -216,6 +216,11 @@ def run(binary):
 
                 monk.socket.sendall(b"\xff\xfd\xc9")
                 command(monk, "look")
+                # Drain negotiation's initial snapshot and any pre-existing dirty-room
+                # broadcast before counting a single explicit command's output.
+                deadline = time.monotonic() + 1
+                while time.monotonic() < deadline:
+                    monk._receive()
                 before = len(monk.raw_transcript)
                 command(monk, "look")
                 rooms = packets(monk, before)
