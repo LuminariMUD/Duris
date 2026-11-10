@@ -60,18 +60,47 @@ void mxp_handle_negotiation(P_desc descriptor, unsigned char command)
 
 namespace
 {
-std::string attribute(const std::string &value, bool url)
+std::string attribute(const std::string &value, bool url, bool mudlet)
 {
-	std::string result;
-	for (unsigned char c : value)
+	// Mudlet keeps attribute entities literally; MUSHclient decodes them.
+	// Choose the recipient's quoting at this wire boundary, never in producers.
+	if (mudlet && !url &&
+	    (value.find_first_of("<>") != std::string::npos ||
+	     value.find("]]") != std::string::npos))
+		return {};
+	// An IPv6 host literal keeps its brackets; they are encoded everywhere else.
+	size_t authority_begin = 0, authority_end = 0;
+	if (url)
 	{
-		// URI targets must survive a legacy terminal's CP437 conversion.
-		if (url && c >= 128)
+		const size_t scheme = value.find("://");
+		if (scheme != std::string::npos)
+		{
+			authority_begin = scheme + 3;
+			authority_end = value.find_first_of("/?#", authority_begin);
+			if (authority_end == std::string::npos)
+				authority_end = value.size();
+		}
+	}
+	std::string result;
+	for (size_t index = 0; index < value.size(); ++index)
+	{
+		const unsigned char c = value[index];
+		const bool host_bracket = (c == '[' || c == ']') && index >= authority_begin &&
+					  index < authority_end;
+		// URI syntax survives attribute quoting, older native clients and CP437.
+		if (url && !host_bracket &&
+		    (c >= 128 || c == '"' || c == '\'' || c == '<' || c == '>' || c == '[' ||
+		     c == ']'))
 		{
 			constexpr char hex[] = "0123456789ABCDEF";
 			result += '%';
 			result += hex[c >> 4];
 			result += hex[c & 15];
+			continue;
+		}
+		if (mudlet)
+		{
+			result += c;
 			continue;
 		}
 		switch (c)
@@ -96,7 +125,14 @@ std::string attribute(const std::string &value, bool url)
 			break;
 		}
 	}
-	return result;
+	char quote = '"';
+	if (mudlet && result.find(quote) != std::string::npos)
+	{
+		quote = '\'';
+		if (result.find(quote) != std::string::npos)
+			return {};
+	}
+	return quote + result + quote;
 }
 
 // Preserve SGR and existing cursor/screen controls, but never let authored ESC[z
@@ -145,7 +181,7 @@ AnsiString literal_controls(const AnsiString &text)
 }
 
 std::string mxp_render_output(const char *markup, std::span<const OutputLink> links,
-			      bool plain_terminal, int lastbit)
+			      bool plain_terminal, int lastbit, bool mudlet)
 {
 	auto frame = freeze_output_links(markup, links, plain_terminal);
 	frame.text = literal_controls(frame.text);
@@ -166,10 +202,16 @@ std::string mxp_render_output(const char *markup, std::span<const OutputLink> li
 	for (const auto &link : frame.links)
 	{
 		emit(position, link.begin);
+		const auto target =
+			attribute(link.target, link.kind == OutputLinkKind::Url, mudlet);
+		if (target.empty())
+		{
+			emit(link.begin, link.end);
+			position = link.end;
+			continue;
+		}
 		const std::string tag = link.kind == OutputLinkKind::Command ? "SEND" : "A";
-		const std::string open = "\x1b[1z<" + tag + " HREF=\"" +
-					 attribute(link.target, link.kind == OutputLinkKind::Url) +
-					 "\">\x1b[7z";
+		const std::string open = "\x1b[1z<" + tag + " HREF=" + target + ">\x1b[7z";
 		const std::string close = "\x1b[1z</" + tag + ">\x1b[7z";
 		position = link.begin;
 		while (position < link.end)

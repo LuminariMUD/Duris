@@ -78,11 +78,17 @@ bool valid_payload(const auction_command_payload &payload)
 {
 	if (payload.action <= auction_action::unknown || payload.action > auction_action::remove ||
 	    payload.item_count > AUCTION_COMMAND_MAX_ITEMS ||
-	    payload.object_blob_size >= payload.object_blob.size())
+	    payload.object_blob_size >= payload.object_blob.size() ||
+	    payload.item_blob_size > payload.item_blob.size())
 		return false;
 	if (payload.action == auction_action::claim_money &&
 	    (payload.value < 0 || payload.value > INT32_MAX ||
 	     (payload.value > 0 && payload.expected_wallet_revision == UINT64_MAX)))
+		return false;
+	if ((payload.action == auction_action::list &&
+	     (payload.listing_fee < 0 || payload.listing_fee > INT32_MAX)) ||
+	    (payload.action == auction_action::bid &&
+	     (payload.value <= 0 || payload.value > INT32_MAX)))
 		return false;
 	if ((payload.action == auction_action::list ||
 	     payload.action == auction_action::claim_item) &&
@@ -168,6 +174,9 @@ bool auction_command_encode_payload(const auction_command_payload &payload,
 		append_le<uint32_t>(encoded, payload.object_blob_size);
 		encoded->insert(encoded->end(), payload.object_blob.begin(),
 				payload.object_blob.begin() + payload.object_blob_size);
+		append_le<uint32_t>(encoded, payload.item_blob_size);
+		encoded->insert(encoded->end(), payload.item_blob.begin(),
+				payload.item_blob.begin() + payload.item_blob_size);
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -181,7 +190,8 @@ bool auction_command_decode_payload(const critical_command &command,
 				    auction_command_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::auction ||
-	    command.payload_version != AUCTION_COMMAND_PAYLOAD_VERSION)
+	    (command.payload_version != 1 && command.payload_version != 2 &&
+	     command.payload_version != AUCTION_COMMAND_PAYLOAD_VERSION))
 		return false;
 	*payload = {};
 	const uint8_t *cursor = command.payload.data();
@@ -215,9 +225,21 @@ bool auction_command_decode_payload(const critical_command &command,
 	    !read_string(&cursor, end, &payload->object_info) ||
 	    !read_le(&cursor, end, &payload->object_blob_size) ||
 	    payload->object_blob_size > payload->object_blob.size() ||
-	    static_cast<size_t>(end - cursor) != payload->object_blob_size)
+	    static_cast<size_t>(end - cursor) < payload->object_blob_size)
 		return false;
 	memcpy(payload->object_blob.data(), cursor, payload->object_blob_size);
+	cursor += payload->object_blob_size;
+	if (command.payload_version >= 3)
+	{
+		if (!read_le(&cursor, end, &payload->item_blob_size) ||
+		    payload->item_blob_size > payload->item_blob.size() ||
+		    static_cast<size_t>(end - cursor) < payload->item_blob_size)
+			return false;
+		memcpy(payload->item_blob.data(), cursor, payload->item_blob_size);
+		cursor += payload->item_blob_size;
+	}
+	if (cursor != end)
+		return false;
 	if (!valid_payload(*payload))
 		return false;
 	critical_command expected = {};
@@ -261,6 +283,8 @@ bool auction_command_encode_result(const auction_command_result &result,
 			append_le<uint64_t>(&bytes, result.item_uids[index]);
 			append_le<uint64_t>(&bytes, result.item_revisions[index]);
 		}
+		for (size_t index = 0; index < result.item_count; ++index)
+			append_le<uint32_t>(&bytes, result.materialized_item_ids[index]);
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -275,7 +299,8 @@ bool auction_command_encode_result(const auction_command_result &result,
 bool auction_command_decode_result(const uint8_t *encoded, size_t size,
 				   auction_command_result *result)
 {
-	if (!encoded || !result || size != AUCTION_RESULT_PAYLOAD_BYTES)
+	// Receipts written before materialized row IDs used the fixed 320-byte frame.
+	if (!encoded || !result || (size != 320 && size != AUCTION_RESULT_PAYLOAD_BYTES))
 		return false;
 	*result = {};
 	const uint8_t *cursor = encoded;
@@ -310,6 +335,10 @@ bool auction_command_decode_result(const uint8_t *encoded, size_t size,
 		if (!read_le(&cursor, end, &result->item_uids[index]) ||
 		    !read_le(&cursor, end, &result->item_revisions[index]))
 			return false;
+	if (size == AUCTION_RESULT_PAYLOAD_BYTES)
+		for (size_t index = 0; index < result->item_count; ++index)
+			if (!read_le(&cursor, end, &result->materialized_item_ids[index]))
+				return false;
 	return result->action > auction_action::unknown && result->action <= auction_action::remove;
 }
 

@@ -1379,6 +1379,9 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 	MYSQL_ROW row = mysql_fetch_row(rows);
 	bool valid = true, committed = false;
 	bool collector_receipt = false;
+	bool auction_receipt = false;
+	bool auction_durable = false;
+	bool auction_item_receipt = false;
 	collector_command_result purchased = {};
 	bool paid_creation = false;
 	item_transfer_result paid_receipt{};
@@ -1390,6 +1393,10 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 			row[1] && row[2] && !strcmp(row[2], "1") && row[3] &&
 			(!strcmp(row[3], "0") || !strcmp(row[3], "1"));
 		collector_receipt = row[1] && !strcmp(row[1], "18");
+		auction_receipt = row[1] && !strcmp(row[1], "7");
+		auction_durable = auction_receipt && row[5] &&
+				  (!strcmp(row[5], "2") || !strcmp(row[5], "3"));
+		auction_item_receipt = auction_receipt && row[5] && !strcmp(row[5], "3");
 		paid_creation = row[1] && !strcmp(row[1], "5");
 		if (paid_creation)
 		{
@@ -1404,10 +1411,8 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 					paid_receipt.corpse_revision == tag.wallet_revision + 1;
 			}
 		}
-		else if (valid && !strcmp(row[1], "7"))
-			// The hash binds the actor, exact claim amount and wallet revision. A new
-			// money claim writes that credit with its inbox receipt atomically.
-			valid = tag.payment > 0 && !tag.has_cargo_effect;
+		else if (valid && auction_receipt)
+			valid = (tag.payment > 0 || auction_durable) && !tag.has_cargo_effect;
 		else if (valid && collector_receipt)
 		{
 			valid = row[5] && !strcmp(row[5], "2") && tag.payment < 0 &&
@@ -1441,7 +1446,110 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 	}
 	mysql_free_result(rows);
 	if (!valid)
-		return { false, static_cast<unsigned int>(collector_receipt ? EBADMSG : EILSEQ) };
+		return { false, static_cast<unsigned int>(
+					collector_receipt || auction_receipt ? EBADMSG : EILSEQ) };
+	if (auction_receipt && committed)
+	{
+		// The hashed receipt binds the command; its ledger supplies the actual bid
+		// delta (an own-bid increment or buy-now clamp can cost less than reserved).
+		query = execute(
+			connection,
+			"SELECT value_delta,event_type,auction_id,item_count FROM auction_ledger WHERE operation_id=UNHEX('" +
+				operation + "') AND actor_pid=" + std::to_string(snapshot->pid));
+		if (!query.ok)
+			return query;
+		rows = mysql_store_result(connection);
+		if (!rows)
+			return { false, mysql_errno(connection) ? mysql_errno(connection) : EIO };
+		row = mysql_fetch_row(rows);
+		char *end = nullptr;
+		errno = 0;
+		const int64_t payment = row && row[0] ? strtoll(row[0], &end, 10) : 0;
+		valid = row && row[0] && end && !*end && !errno && row[1] && row[2] && row[3];
+		const bool listing = valid && !strcmp(row[1], "1");
+		const bool bid = valid && (!strcmp(row[1], "2") || !strcmp(row[1], "3"));
+		const bool item_claim = valid && !strcmp(row[1], "6");
+		const std::string auction = valid ? row[2] : "";
+		const size_t item_count = valid ? strtoul(row[3], nullptr, 10) : 0;
+		valid = valid &&
+			(tag.payment > 0 ?
+				 (!strcmp(row[1], "5") && payment == tag.payment) :
+				 (auction_durable &&
+				  (listing ? payment == tag.payment :
+					     (bid && payment >= tag.payment && payment <= 0) ||
+						     (auction_item_receipt && item_claim &&
+						      tag.payment == 0 && payment == 0))));
+		mysql_free_result(rows);
+		if (!valid)
+			return { false, EBADMSG };
+		snapshot->pending_trade.payment = payment;
+		if (listing && (snapshot->components &
+				(PLAYER_COMPONENT_INVENTORY | PLAYER_COMPONENT_EQUIPMENT)))
+		{
+			query = execute(
+				connection,
+				"SELECT item_uid FROM auction_item_custody WHERE auction_id=" +
+					auction);
+			if (!query.ok)
+				return query;
+			rows = mysql_store_result(connection);
+			if (!rows)
+				return { false,
+					 mysql_errno(connection) ? mysql_errno(connection) : EIO };
+			std::unordered_set<uint64_t> listed;
+			while ((row = mysql_fetch_row(rows)))
+				if (row[0])
+					listed.insert(strtoull(row[0], nullptr, 10));
+			mysql_free_result(rows);
+			if (listed.empty() || listed.size() != item_count)
+				return { false, EBADMSG };
+			// A pre-publication save still carries the listed UIDs. It must never
+			// claim them back from the auction whose receipt just committed.
+			snapshot->items = item_claim_written_items(snapshot->items, listed);
+		}
+		if (item_claim && (snapshot->components &
+				   (PLAYER_COMPONENT_INVENTORY | PLAYER_COMPONENT_EQUIPMENT)))
+		{
+			query = execute(
+				connection,
+				"SELECT pi.id,c.item_uid FROM auction_item_custody c JOIN player_items pi "
+				"ON pi.obj_uid=c.item_uid AND pi.pid=" +
+					std::to_string(snapshot->pid) +
+					" WHERE c.auction_id=" + auction +
+					" AND c.claim_pid=" + std::to_string(snapshot->pid) +
+					" AND c.claim_operation_id=UNHEX('" + operation + "')");
+			if (!query.ok)
+				return query;
+			rows = mysql_store_result(connection);
+			if (!rows)
+				return { false,
+					 mysql_errno(connection) ? mysql_errno(connection) : EIO };
+			size_t retained_count = 0;
+			while ((row = mysql_fetch_row(rows)))
+			{
+				if (!row[0] || !row[1])
+					continue;
+				++retained_count;
+				const uint64_t id = strtoull(row[0], nullptr, 10),
+					       uid = strtoull(row[1], nullptr, 10);
+				if (std::none_of(snapshot->items.begin(), snapshot->items.end(),
+						 [&](const auto &item)
+						 { return item.object_uid == uid; }) &&
+				    std::none_of(snapshot->retained_items.rows.begin(),
+						 snapshot->retained_items.rows.end(),
+						 [&](const auto &item)
+						 { return item.source_row_id == id; }))
+				{
+					snapshot->retained_items.rows.push_back({ id, uid });
+					snapshot->retained_items.bytes +=
+						sizeof(player_retained_item_row);
+				}
+			}
+			mysql_free_result(rows);
+			if (!retained_count || retained_count != item_count)
+				return { false, EBADMSG };
+		}
+	}
 	if (paid_creation && committed)
 	{
 		const auto retained =
