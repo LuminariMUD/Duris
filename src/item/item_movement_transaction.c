@@ -1860,6 +1860,16 @@ static bool queue_creation_batch(P_char actor, P_obj const *objects, size_t coun
 									    item_custody_state::active;
 						    }
 					    }
+					    // A paid grant also needs the committed wallet revision, read after
+					    // the parent so both are current before the grant is admitted.
+					    if (matched && current->second.payment)
+					    {
+						    if (!read_paid_wallet(actor_pid, first_uid))
+							    current->second
+								    .parent = creation_grant_queue::
+								    parent_preparation::failed;
+						    return;
+					    }
 					    current->second.parent =
 						    matched ? creation_grant_queue::
 								      parent_preparation::none :
