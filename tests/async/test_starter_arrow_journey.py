@@ -11,9 +11,9 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
-from test_flatfile_newbie_regrant_journey import install_legacy_objects
-from test_flatfile_chaos_new_character_kit import install_chaos_objects
+import test_mariadb_combat_journey as journey
+from test_mariadb_newbie_regrant_journey import install_legacy_objects
+from test_mariadb_chaos_new_character_kit import install_chaos_objects
 
 ROOT = journey.ROOT
 PROMPT = "Pos: standing >"

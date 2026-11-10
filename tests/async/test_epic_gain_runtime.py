@@ -3,6 +3,7 @@
 
 Restores the deleted quaff regression, now linking the actual synchronous epic
 transaction and exercising awards at every level rather than a removed gate.
+Also checks Vitality potion refusal before consumption or any potion effects.
 """
 from pathlib import Path
 import subprocess
@@ -42,6 +43,7 @@ zone_data *zone_table;
 Skill skills[MAX_SKILLS]{};
 int errand_notch = 500;
 static int consumed, waits, unequips, potion_effects, artifacts, ledger_rows, tasks;
+static int spell_calls, damage_calls, rolls;
 static bool fail_id, potion_timer;
 static critical_submit_result admission;
 static std::string output;
@@ -71,7 +73,7 @@ char *one_argument(const char *text, char *out) {
 }
 P_obj get_obj_in_list_vis(P_char, const char *, P_obj list, bool) { return list; }
 bool isname(const char *a, const char *b) { return !strcmp(a, b); }
-int number(int, int high) { return high; }
+int number(int, int high) { ++rolls; return high; }
 void CharWait(P_char, int) { ++waits; }
 P_obj unequip_char(P_char ch, int slot, bool) {
     ++unequips;
@@ -80,10 +82,15 @@ P_obj unequip_char(P_char ch, int slot, bool) {
     return result;
 }
 void extract_obj(P_obj, int) { ++consumed; }
-int spell_damage(P_char, P_char, double, int, uint, damage_messages *, int *) { return 0; }
+int spell_damage(P_char, P_char, double, int, uint, damage_messages *, int *) { ++damage_calls; return 0; }
 affected_type *affect_to_char(P_char, affected_type *) { ++potion_effects; return nullptr; }
 int char_in_list(const P_char) { return 1; }
-bool affected_by_spell(P_char, int type) { return type == TAG_POTION_TIMER && potion_timer; }
+bool affected_by_spell(P_char ch, int type) {
+    if (type == TAG_POTION_TIMER && potion_timer) return true;
+    for (auto *af = ch->affected; af; af = af->next)
+        if (af->type == type) return true;
+    return false;
+}
 void mark_player_dirty_components(int, player_component_mask_t) {}
 critical_submit_result critical_command_coordinator_submit(critical_command command) {
     epic_command_payload payload{};
@@ -182,6 +189,57 @@ static void check_quaff(int level, bool held, bool epic, int failure, bool fight
         assert(output.find("You have gained") == output.rfind("You have gained"));
     }
 }
+static void potion_spell(int, P_char ch, char *, int type, P_char victim, P_obj) {
+    assert(type == SPELL_TYPE_POTION && ch == victim);
+    ++spell_calls;
+}
+static void check_vitality_quaff(bool held, bool mixed, int slot, bool vitalized, int power) {
+    char_data ch{};
+    obj_data bottle{};
+    index_data index[1]{};
+    room_data room[1]{};
+    affected_type vitality{};
+    obj_index = index;
+    world = room;
+    index[0].virtual_number = 2800;
+    ch.specials.position = STAT_NORMAL;
+    ch.player.level = 56;
+    vitality.type = SPELL_VITALITY;
+    vitality.modifier = 224;
+    vitality.duration = 1;
+    if (vitalized) ch.affected = &vitality;
+    const bool refused = vitalized && slot != 0;
+    // Mixed cases also cover refusal before the combat spill roll.
+    if (refused && mixed) ch.specials.fighting = &ch;
+    bottle.type = ITEM_POTION;
+    bottle.name = const_cast<char *>("potion");
+    bottle.value[0] = power;
+    for (int i = 1; i < 4; ++i) bottle.value[i] = mixed ? SPELL_ARMOR : 0;
+    if (slot) bottle.value[slot] = SPELL_VITALITY;
+    else bottle.value[1] = SPELL_ARMOR;
+    bottle.value[4] = mixed ? 1 : 0;
+    if (held) ch.equipment[HOLD] = &bottle;
+    else ch.carrying = &bottle;
+    skills[SPELL_VITALITY].spell_pointer = skills[SPELL_ARMOR].spell_pointer = potion_spell;
+    potion_timer = false;
+    consumed = waits = unequips = potion_effects = spell_calls = damage_calls = rolls = 0;
+    output.clear();
+    char argument[] = "potion";
+    do_quaff(&ch, argument, 0);
+    assert(vitality.modifier == 224 && vitality.duration == 1);
+    assert(ch.affected == (vitalized ? &vitality : nullptr));
+    if (refused) {
+        assert(output == "You are already affected by vitality!\r\n");
+        assert(consumed == 0 && waits == 0 && unequips == 0 && potion_effects == 0);
+        assert(spell_calls == 0 && damage_calls == 0 && rolls == 0);
+        assert(held ? ch.equipment[HOLD] == &bottle : ch.carrying == &bottle);
+    } else {
+        assert(consumed == 1 && waits == 1 && unequips == (held ? 1 : 0));
+        assert(potion_effects == 1 && spell_calls == (mixed ? 3 : 1));
+        assert(damage_calls == (mixed ? 1 : 0));
+        assert(output.find("already affected") == std::string::npos);
+    }
+}
 static void check_awards_and_score(int level) {
     char_data ch{};
     pc_only_data pc{};
@@ -244,7 +302,13 @@ int main() {
         }
         check_awards_and_score(level);
     }
-    std::puts("Epic awards: quaff success/failure, held/inventory, low-level awards and score passed.");
+    for (bool held : {false, true})
+        for (bool mixed : {false, true})
+            for (int slot : {0, 1, 2, 3})
+                for (bool vitalized : {false, true})
+                    for (int power : {22, 56, 60})
+                        check_vitality_quaff(held, mixed, slot, vitalized, power);
+    std::puts("Epic awards and quaff: success/failure, held/inventory, Vitality refusal and score passed.");
 }
 '''
 

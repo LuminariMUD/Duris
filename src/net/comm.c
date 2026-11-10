@@ -37,6 +37,7 @@
 #include "net/session_input.h"
 #include "net/output_style.h"
 #include "net/chat_presentation.h"
+#include "net/output_presentation.h"
 #include "net/output_profiles.h"
 #include "player/output_preferences.h"
 #include "net/command_latency.h"
@@ -87,6 +88,7 @@
 #include "core/lookup_process.h"
 #include "world/map.h"
 #include "net/mccp.h"
+#include "net/mxp.h"
 #include "core/mm.h"
 #include "economy/nexus_stones.h"
 #include "world/outposts.h"
@@ -559,6 +561,7 @@ P_char executing_ch;
 char command_output[MAX_COMMAND_OUTPUT + PAD_COMMAND_OUTPUT + 1];
 size_t output_length;
 static std::string pager_original;
+static OutputLinks command_links;
 static bool pager_style_fallback = false;
 
 #define MIN_SOCKET_BUFFER_SIZE 20480
@@ -908,6 +911,8 @@ static void finalize_styled_command(P_desc descriptor)
 		{
 			// Individually safe sends can combine into an unsafe page. Check
 			// before replay starts, while the entire original command is available.
+			command_links = rebase_output_links(command_output, pager_original.c_str(),
+							    command_links);
 			strcpy(command_output, pager_original.c_str());
 			output_length = pager_original.size();
 			pager_style_fallback = true;
@@ -927,17 +932,22 @@ void process_with_paging(P_char ch, char *comm)
 	*command_output = '\0';
 	output_length = 0;
 	pager_original.clear();
+	command_links.clear();
 	pager_style_fallback = false;
 	command_interpreter(ch, comm);
 	executing_ch = NULL;
 	if (!ch->desc)
+	{
+		command_links.clear();
 		return;
+	}
 	finalize_styled_command(ch->desc);
 	if (next_page(command_output, ch->desc))
 		// page_string_real(ch->desc, command_output, 1);
-		page_string_real(ch->desc, command_output);
+		page_string_real(ch->desc, command_output, command_links);
 	else
-		SEND_TO_Q(command_output, ch->desc);
+		write_linked_output(command_output, &ch->desc->output, command_links);
+	command_links.clear();
 }
 
 void game_up_message(int port)
@@ -1583,14 +1593,24 @@ static session_input_route select_session_input(P_desc descriptor, P_char charac
 	    (creation_grant_input || (!CAN_ACT(character) && !casting_input) ||
 	     (IS_SET(character->specials.affected_by, AFF_CHARM) && !descriptor->original)))
 		return session_input_route::none;
-	const bool dequeued = casting_input ?
-				      get_casting_cmd_from_q(character, &descriptor->input, input) :
-			      descriptor->connected == CON_PLAYING && !descriptor->showstr_count &&
-					      !descriptor->str ?
-				      get_playing_cmd_from_q(character, &descriptor->input, input) :
-				      get_from_q(&descriptor->input, input);
+	// Help references must remain usable while reading paged help. Only the
+	// head command may replace a page; controls and other type-ahead keep their
+	// existing pager behavior. Use the normal playing queue gates and dispatcher.
+	char command[MAX_INPUT_LENGTH] = {};
+	if (descriptor->showstr_count && descriptor->connected == CON_PLAYING && !descriptor->str &&
+	    descriptor->input.head)
+		one_argument(descriptor->input.head->text, command);
+	const bool paging_help = !strcmp(command, "help");
+	const bool dequeued =
+		casting_input ? get_casting_cmd_from_q(character, &descriptor->input, input) :
+		descriptor->connected == CON_PLAYING &&
+				(!descriptor->showstr_count || paging_help) && !descriptor->str ?
+				get_playing_cmd_from_q(character, &descriptor->input, input) :
+				get_from_q(&descriptor->input, input);
 	if (!dequeued)
 		return session_input_route::none;
+	if (paging_help)
+		free_paging_data(descriptor);
 	if (descriptor->showstr_count)
 		return session_input_route::pager;
 	if (descriptor->str)
@@ -3145,6 +3165,7 @@ int get_from_q(struct txt_q *queue, char *dest)
 		queue->tail = NULL;
 
 	FREE(tmp->text);
+	delete tmp->links;
 	FREE(tmp);
 
 	return (1);
@@ -3276,6 +3297,7 @@ void write_to_q(const char *txt, struct txt_q *queue, const int flag)
 		CREATE(n_new->text, char, txtlen + 1, MEM_TAG_BUFFER);
 
 		strcpy(n_new->text, txt);
+		n_new->links = nullptr;
 
 		n_new->next = NULL;
 		queue->head = queue->tail = n_new;
@@ -3298,6 +3320,7 @@ void write_to_q(const char *txt, struct txt_q *queue, const int flag)
 	CREATE(n_new->text, char, txtlen + 1, MEM_TAG_BUFFER);
 
 	strcpy(n_new->text, txt);
+	n_new->links = nullptr;
 
 	queue->tail->next = n_new;
 	queue->tail = n_new;
@@ -3793,10 +3816,7 @@ void close_socket(struct descriptor_data *d)
 	if (d->descriptor)
 		shutdown(d->descriptor, 2);
 
-	if (d->showstr_head)
-	{
-		FREE(d->showstr_head);
-	}
+	free_paging_data(d);
 #ifdef I_REALLY_WANT_TO_CRASH_THE_GAME
 	if (d->showstr_point)
 	{
@@ -4382,6 +4402,7 @@ static void greet(P_desc newd)
 
 	advertise_mccp(newd);
 	gmcp_negotiate(newd);
+	mxp_negotiate(newd);
 	/* sga disabled - causes ^? ^M on raw telnet in character mode */
 	/* sga_negotiate(newd); */
 }
@@ -4687,6 +4708,11 @@ void clear_logs(P_char ch)
 
 int process_output(P_desc t)
 {
+	// The pulse drains retained WS wire bytes first. Keep text, links and prompt
+	// state queued when a direct caller reaches us while that buffer is blocked.
+	if (t->websocket && (t->ws_output_offset < t->ws_output_len ||
+			     t->ws_control_output_offset < t->ws_control_output_len))
+		return 1;
 	char buf[MAX_STRING_LENGTH];
 	char buf2[MAX_STRING_LENGTH];
 	snoop_by_data *snoop_by_ptr;
@@ -4728,7 +4754,7 @@ int process_output(P_desc t)
 	    (IS_PC(t->character) || IS_MORPH(t->character)) &&
 	    !IS_SET(GET_PLYR(t->character)->specials.act, PLR_COMPACT))
 	{
-		write_to_q("\r\n", &t->output, 1);
+		write_output("\r\n", &t->output);
 	}
 
 	if (text && !defer_prompt && STATE(t) == CON_PLAYING && IS_PC(realChar) &&
@@ -4745,7 +4771,14 @@ int process_output(P_desc t)
 		make_prompt(t);
 
 	/* Cycle thru output queue */
-	while (get_from_q(&t->output, buf))
+	const bool presented = t->websocket && gmcp_links_enabled(t);
+	OutputLinkFrame presentation;
+	if (presented && !descbuf.empty())
+		presentation.text.set(descbuf.c_str());
+	bool presentation_fits = true;
+	size_t target_bytes = 0;
+	OutputLinks links;
+	while (get_linked_output(&t->output, buf, links))
 	{
 #if 0
     if( PLR_FLAGGED(realChar, PLR_SMARTPROMPT) )
@@ -4756,13 +4789,32 @@ int process_output(P_desc t)
 		{
 			format_to_snoopers(buf, buf2);
 		}
+		const OutputLinks snoop_links = snoop_by_ptr ? snoop_output_links(buf, links) :
+							       OutputLinks{};
 		while (snoop_by_ptr)
 		{
-			write_to_q(buf2, &snoop_by_ptr->snoop_by->desc->output, 1);
+			write_linked_output(buf2, &snoop_by_ptr->snoop_by->desc->output,
+					    snoop_links);
 
 			snoop_by_ptr = snoop_by_ptr->next;
 		}
+		if (!t->websocket && t->mxp_state == MXP_ENABLED)
+		{
+			descbuf += mxp_render_output(buf, links, t->term_type == TERM_GENERIC,
+						     t->character && PLR3_FLAGGED(t->character,
+										  PLR3_UNDERLINE) ?
+							     TL_UNDERLINE :
+							     TL_BLINK,
+						     !strncasecmp(t->client_name, "Mudlet", 6));
+			continue;
+		}
 
+		if (presented && presentation_fits && !output_message_fits_serializers(buf))
+			presentation_fits = false;
+		const auto frame =
+			presented && presentation_fits ?
+				freeze_output_links(buf, links, t->term_type == TERM_GENERIC) :
+				OutputLinkFrame{};
 		AnsiString abuf(buf);
 		if (t->term_type == TERM_GENERIC)
 			abuf.colorize(0);
@@ -4772,11 +4824,49 @@ int process_output(P_desc t)
 		delete_doubledollar(buf);
 
 		descbuf += buf;
+		if (presented && presentation_fits)
+		{
+			// Freeze each original block separately: legacy dollar folding and
+			// attributes must not cross unrelated queue-entry boundaries.
+			const size_t offset = presentation.text.size();
+			if (frame.text.size() > OUTPUT_PRESENTATION_MAX_TEXT - offset)
+			{
+				presentation_fits = false;
+				presentation = {};
+			}
+			else
+			{
+				presentation.text.append(frame.text);
+				for (const auto &link : frame.links)
+					if (presentation.links.size() < OUTPUT_LINK_MAX_COUNT &&
+					    link.target.size() <=
+						    OUTPUT_LINK_MAX_TARGET_BYTES - target_bytes)
+					{
+						presentation.links.push_back(
+							{ link.begin + offset, link.end + offset,
+							  link.kind, link.target });
+						target_bytes += link.target.size();
+					}
+			}
+		}
 	}
 
 	{
-		int output_result = write_to_descriptor(t, descbuf.c_str());
-		if (output_result < 0 && !(t->websocket && output_result == WS_OUTPUT_QUEUE_FULL))
+		int output_result;
+		if (presented && !descbuf.empty())
+		{
+			char *json = output_text_json(
+				descbuf.c_str(), presentation_fits ? &presentation : nullptr,
+				t->character && PLR3_FLAGGED(t->character, PLR3_UNDERLINE));
+			if (!json)
+				return -1;
+			output_result = websocket_send_text(t, json);
+			free(json);
+		}
+		else
+			output_result = write_to_descriptor(t, descbuf.c_str());
+		if (output_result < 0 &&
+		    (presented || !(t->websocket && output_result == WS_OUTPUT_QUEUE_FULL)))
 			return (-1);
 	}
 
@@ -4995,9 +5085,9 @@ static void process_line(P_desc t, char *in)
 
 	while (snoop_by_ptr)
 	{
-		write_to_q("&+y%&n ", &snoop_by_ptr->snoop_by->desc->output, 1);
-		write_to_q(out, &snoop_by_ptr->snoop_by->desc->output, 1);
-		write_to_q("\r\n", &snoop_by_ptr->snoop_by->desc->output, 1);
+		write_output("&+y%&n ", &snoop_by_ptr->snoop_by->desc->output);
+		write_output(out, &snoop_by_ptr->snoop_by->desc->output);
+		write_output("\r\n", &snoop_by_ptr->snoop_by->desc->output);
 
 		snoop_by_ptr = snoop_by_ptr->next;
 	}
@@ -5012,14 +5102,25 @@ static void process_line(P_desc t, char *in)
 static char send_to_char_f_buf[MAX_STRING_LENGTH];
 bool send_paged_text(P_char ch, const std::string &text, int log)
 {
+	const size_t before = output_length;
+	const size_t separator = before && !text.empty() ? 1 : 0;
 	if (!ch || !ch->desc || executing_ch != ch || !IS_SET(ch->specials.act, PLR_PAGING_ON) ||
 	    strlen(command_output) != output_length ||
-	    text.size() >= MAX_COMMAND_OUTPUT - output_length)
+	    text.size() >= MAX_COMMAND_OUTPUT - before - separator)
 		return false;
-	const size_t before = output_length;
-	// Preserve authored text so the capacity check describes the bytes accepted.
-	send_to_char(text.c_str(), ch, log, OutputContext{});
-	return output_length == before + text.size();
+	std::string frozen;
+	auto links = output_links_with_urls(text.c_str(), {}, &frozen);
+	const char *message = frozen.empty() ? text.c_str() : frozen.c_str();
+	const size_t bytes = strlen(message);
+	if (bytes >= MAX_COMMAND_OUTPUT - before - separator)
+		return false;
+	if (!frozen.empty())
+		links = rebase_output_links(text.c_str(), message, links);
+	OutputContext context;
+	context.links = links;
+	context.links_prepared = true;
+	send_to_char(message, ch, log, context);
+	return output_length == before + bytes + separator;
 }
 
 void send_to_char_f(P_char ch, const char *fmt, ...)
@@ -5070,15 +5171,20 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 	{
 		const char *original_message = context.original_message ? context.original_message :
 									  messg;
+		const char *link_source = messg;
 		std::string rendered;
 		bool paging = executing_ch == ch && IS_SET(ch->specials.act, PLR_PAGING_ON);
 		if (paging && !output_length)
 		{
 			bWarningAdded = false;
 			pager_original.clear();
+			command_links.clear();
 			pager_style_fallback = false;
 		}
-		size_t capacity = paging ? MAX_COMMAND_OUTPUT - output_length - 1 :
+		const size_t separator = paging && output_length ? 1 : 0;
+		size_t capacity = paging && MAX_COMMAND_OUTPUT - output_length > separator ?
+					  MAX_COMMAND_OUTPUT - output_length - separator - 1 :
+				  paging ? 0 :
 					   MAX_STRING_LENGTH - 1;
 		OutputContext recipient_context = context;
 		if (context.resolve_recipient_preferences)
@@ -5103,24 +5209,53 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 		}
 		else if (context.original_message)
 			messg = original_message;
-		if (paging && !bWarningAdded &&
-		    (!pager_original.empty() || messg != original_message))
+		OutputLinks links = rebase_output_links(link_source, messg, context.links);
+		std::string frozen_url_text, original_url_text;
+		const char *pager_message = original_message;
+		if (!context.links_prepared)
+		{
+			links = output_links_with_urls(messg, links, &frozen_url_text);
+			if (!frozen_url_text.empty() &&
+			    (paging || frozen_url_text.size() < MAX_STRING_LENGTH))
+			{
+				links = rebase_output_links(messg, frozen_url_text.c_str(), links);
+				if (paging && original_message == messg)
+					pager_message = frozen_url_text.c_str();
+				else if (paging && canonical_output_markup(original_message,
+									   original_url_text))
+					pager_message = original_url_text.c_str();
+				messg = frozen_url_text.c_str();
+			}
+		}
+		if (paging && !bWarningAdded && output_length && *messg &&
+		    output_length < MAX_COMMAND_OUTPUT - 1)
+		{
+			command_output[output_length++] = OUTPUT_SEND_BOUNDARY;
+			command_output[output_length] = '\0';
+			if (!pager_original.empty())
+				pager_original.push_back(OUTPUT_SEND_BOUNDARY);
+		}
+		if (paging && !bWarningAdded && (!pager_original.empty() || messg != pager_message))
 		{
 			if (pager_original.empty())
 				pager_original.assign(command_output, output_length);
-			size_t original_length = strlen(original_message);
+			size_t original_length = strlen(pager_message);
 			if (original_length < MAX_COMMAND_OUTPUT - pager_original.size())
 			{
 				// Earlier decoration must not displace later visible output. If
 				// necessary, fall back for the whole accumulated command before paging.
 				if (strlen(messg) >= MAX_COMMAND_OUTPUT - output_length)
 				{
+					command_links = rebase_output_links(command_output,
+									    pager_original.c_str(),
+									    command_links);
 					strcpy(command_output, pager_original.c_str());
 					output_length = pager_original.size();
-					messg = original_message;
+					links = rebase_output_links(messg, pager_message, links);
+					messg = pager_message;
 					pager_style_fallback = true;
 				}
-				pager_original += original_message;
+				pager_original += pager_message;
 			}
 		}
 		if (executing_ch != ch || !IS_SET(ch->specials.act, PLR_PAGING_ON))
@@ -5130,10 +5265,10 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 				char buf[30];
 				snprintf(buf, 30, "&+M@&+W%s&n: ", J_NAME(ch));
 				bSwitched = TRUE;
-				write_to_q(buf, &ch->desc->output, 1);
+				write_output(buf, &ch->desc->output);
 				bSwitched = FALSE;
 			}
-			write_to_q(messg, &ch->desc->output, 1);
+			write_linked_output(messg, &ch->desc->output, links);
 		}
 		else
 		{
@@ -5144,6 +5279,8 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 			{
 				if (len < (MAX_COMMAND_OUTPUT - output_length))
 				{
+					append_output_links(command_links, links, output_length,
+							    output_length + len);
 					strncat(command_output, messg,
 						MAX_COMMAND_OUTPUT - output_length);
 					output_length += len;
@@ -5162,7 +5299,9 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 
 		if (context.chat && (!paging || !bWarningAdded))
 		{
-			if (!styled_frame || pager_style_fallback)
+			recipient_context.links = links;
+			recipient_context.links_prepared = true;
+			if (!styled_frame || (paging && pager_style_fallback))
 				recipient_context.policy = OutputPolicy::Preserve;
 			gmcp_comm_channel_output(ch, *context.chat, recipient_context, messg);
 		}
@@ -5196,7 +5335,7 @@ void send_to_all(const char *messg)
 	if (messg)
 		for (i = descriptor_list; i; i = i->next)
 			if (!i->connected)
-				write_to_q(messg, &i->output, 2);
+				write_output(messg, &i->output);
 }
 
 void send_to_outdoor(const char *messg)
@@ -5208,7 +5347,7 @@ void send_to_outdoor(const char *messg)
 			if (!i->connected && OUTSIDE(i->character))
 				if (IS_TRUSTED(i->character) ||
 				    !IS_ROOM(i->character->in_room, ROOM_SILENT))
-					write_to_q(messg, &i->output, 2);
+					write_output(messg, &i->output);
 }
 
 void send_to_nearby_rooms([[maybe_unused]] int from_room, [[maybe_unused]] const char *messg)
@@ -5223,7 +5362,7 @@ void send_to_nearby_rooms([[maybe_unused]] int from_room, [[maybe_unused]] const
       if (!i->connected && OUTSIDE(i->character))
         if (!IS_ROOM(i->character->in_room, ROOM_SILENT) &&
             (how_close(from_room, i->character->in_room, 10) >= 0))
-          write_to_q(messg, &i->output, 2);
+          write_output(messg, &i->output);
 #endif
 }
 
@@ -5251,7 +5390,7 @@ void send_to_except(const char *messg, P_char ch)
 			if (ch->desc != i && !i->connected)
 				if (IS_TRUSTED(i->character) ||
 				    !IS_ROOM(i->character->in_room, ROOM_SILENT))
-					write_to_q(messg, &i->output, 2);
+					write_output(messg, &i->output);
 }
 
 static char send_to_room_f_buf[MAX_STRING_LENGTH];
@@ -5280,7 +5419,7 @@ void send_to_room(const char *messg, int room)
 			if (i->desc)
 				if (IS_TRUSTED(i) || !IS_ROOM(i->in_room, ROOM_SILENT) ||
 				    i->specials.z_cord == 0)
-					write_to_q(messg, &i->desc->output, 2);
+					write_output(messg, &i->desc->output);
 }
 
 void send_to_room_except(const char *messg, int room, P_char ch)
@@ -5301,9 +5440,9 @@ void send_to_room_except(const char *messg, int room, P_char ch)
 				if (GET_LEVEL(i) >= GET_LEVEL(ch))
 				{
 					snprintf(Gbuf4, MAX_STRING_LENGTH, "R[%s]", GET_NAME(ch));
-					write_to_q(Gbuf4, &i->desc->output, 1);
+					write_output(Gbuf4, &i->desc->output);
 				}
-				write_to_q(messg, &i->desc->output, 2);
+				write_output(messg, &i->desc->output);
 			}
 }
 
@@ -5321,7 +5460,7 @@ void send_to_room_except_two(const char *messg, int room, P_char ch1, P_char ch2
 		for (i = world[room].people; i; i = i->next_in_room)
 			if ((i != ch1) && (i != ch2) && i->desc)
 				if (IS_TRUSTED(i) || !IS_ROOM(i->in_room, ROOM_SILENT))
-					write_to_q(messg, &i->desc->output, 2);
+					write_output(messg, &i->desc->output);
 }
 
 void act_convert(char *buf, const char *str, P_char ch, P_char to, P_obj obj, void *vict_obj,

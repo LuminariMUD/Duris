@@ -128,7 +128,11 @@ void finish_completion(const player_save_completion &completion)
 	{
 		if (completion.kind == persistence_job_kind::player)
 		{
-			player_revision_record_written(completion.pid, completion.revision);
+			// A stale capture did not write its components and cannot repair a
+			// previous failed checkpoint merely because its revision was superseded.
+			if (completion.outcome != player_save_apply_outcome::stale_revision)
+				player_revision_record_written(completion.pid, completion.revision,
+							       completion.components);
 			std::lock_guard<std::mutex> lock(pipeline_mutex);
 			auto pending = pending_world_quests.find(completion.pid);
 			if (pending != pending_world_quests.end() &&
@@ -154,6 +158,7 @@ void finish_completion(const player_save_completion &completion)
 				  completion.error_code);
 		return;
 	}
+	player_revision_record_failed(completion.pid, completion.components);
 	// The job is gone. Mark the owner dirty so its next save carries the state again.
 	P_char ch = live_player(completion.pid);
 	const bool remarked = ch &&
@@ -472,6 +477,8 @@ player_save_terminal_result player_save_pipeline_terminal(P_char ch, int save_in
 {
 	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !timeout_msec)
 		return player_save_terminal_result::invalid;
+	const auto deadline =
+		std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_msec);
 	const int pid = GET_PID(ch);
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
@@ -483,7 +490,22 @@ player_save_terminal_result player_save_pipeline_terminal(P_char ch, int save_in
 	player_revision_t revision = 0;
 	auto components = PLAYER_CHECKPOINT_COMPONENT_ALL & ~ch->only.pc->unloaded_components;
 	if (components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY))
+	{
 		components |= PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY;
+		// Private destination writes must land before the player snapshot can
+		// remove their old inventory rows. They may still be pending at copyover.
+		while (!locker_private_contents_durable(ch))
+		{
+			if (std::chrono::steady_clock::now() >= deadline)
+			{
+				std::lock_guard<std::mutex> lock(pipeline_mutex);
+				++health.terminal_timeouts;
+				return player_save_terminal_result::timed_out;
+			}
+			player_save_pipeline_pulse();
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+	}
 	if (!player_revision_mark(pid, components, &revision))
 		return player_save_terminal_result::unavailable;
 	const auto checkpoint = player_save_pipeline_checkpoint_dirty(ch, save_intent, room_vnum);
@@ -496,8 +518,6 @@ player_save_terminal_result player_save_pipeline_terminal(P_char ch, int save_in
 		      (unsigned long long)persistence_observability_now_usec(), pid,
 		      (unsigned long long)revision, (unsigned)checkpoint, save_intent,
 		      (unsigned long long)timeout_msec);
-	const auto deadline =
-		std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_msec);
 	while (std::chrono::steady_clock::now() < deadline)
 	{
 		player_save_pipeline_pulse();

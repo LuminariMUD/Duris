@@ -106,6 +106,8 @@ char *json_build_combat_update(struct char_data *ch, struct char_data *victim, i
 
 /* build comm.channel gmcp message */
 char *json_build_comm_channel(const char *channel, const char *sender, const char *text);
+cJSON *json_comm_channel_object(const char *channel, const char *sender, const char *text,
+				const char *alignment = nullptr);
 
 /* build comm.channel gmcp message with alignment (for nchat) */
 char *json_build_comm_channel_ex(const char *channel, const char *sender, const char *text,

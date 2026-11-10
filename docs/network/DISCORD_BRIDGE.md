@@ -147,3 +147,21 @@ disconnect/disable. Proxy-injected invalid output tests Node recovery; native
 serialization always emits valid records. No real Discord API is called.
 `SANITIZE=1` also covers this mode with ASan/UBSan. This is a command-boundary
 harness, not a full game boot or copyover journey.
+
+
+## Native game verification
+
+Build the ordinary server and generated world. In the companion
+`discord-mud-chat` checkout, install its locked dependencies with `npm ci` and
+use Node24.18.0 or newer (the #870 qualification used Node26.11.1). From Duris:
+
+```sh
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_discord_game_journey.py \
+  --server bin/server/dms_new \
+  --node-driver /path/to/discord-mud-chat/scripts/testing/duris-game-sink.js
+```
+
+The sink drives the real Node relay over loopback with mocked Discord delivery.
+The 2026-11-09 qualification passed petition/ptell, concealment and exclusions,
+one-way ingress, save/reload, failed and successful copyover on original player
+sockets, relay reconnect, disconnect/disable and native audit deduplication.

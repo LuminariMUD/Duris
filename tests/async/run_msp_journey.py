@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import tempfile
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from run_divine_refusal_journey import drain
 from run_item_pilot_journey import Server
 

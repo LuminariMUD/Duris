@@ -450,6 +450,37 @@ unsigned int artifact_population_read_sql_blob_page(MYSQL *connection,
 			}
 			if (!row[12] || !blob_size)
 				return EINVAL;
+			if (domain == artifact_payload_domain::auction)
+			{
+				// New custody rows hold the whole lot's canonical snapshots. Select
+				// this indexed UID; older rows still use the legacy object frame below.
+				std::vector<player_item_snapshot> decoded;
+				const auto parsed = player_item_snapshot_list_decode(
+					reinterpret_cast<const uint8_t *>(row[12]), lengths[12],
+					&decoded);
+				if (parsed == player_snapshot_codec_result::allocation_failure)
+					return ENOMEM;
+				if (parsed == player_snapshot_codec_result::ok)
+				{
+					const auto selected = std::find_if(
+						decoded.begin(), decoded.end(),
+						[&](const auto &snapshot)
+						{ return snapshot.object_uid == indexed_uid; });
+					if (!indexed_uid ||
+					    decoded.size() > AUCTION_COMMAND_MAX_ITEMS ||
+					    selected == decoded.end() ||
+					    selected->vnum != indexed_vnum ||
+					    selected->parent_index != PLAYER_SNAPSHOT_NO_PARENT ||
+					    selected->equipment_slot != 0)
+						return EINVAL;
+					item.item_uid = selected->object_uid;
+					item.vnum = selected->vnum;
+					item.extra_flags = selected->extra_flags;
+					item.extra_flags_present = true;
+					staged.rows.push_back(item);
+					continue;
+				}
+			}
 			if (domain == artifact_payload_domain::auction ||
 			    domain == artifact_payload_domain::auction_legacy ||
 			    domain == artifact_payload_domain::auction_pickup)

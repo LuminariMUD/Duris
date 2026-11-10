@@ -454,6 +454,36 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 	       page.rows[1].custody.vnum == 901 && page.rows[1].custody.owner_revision == 12);
 	assert(page.rows[2].item_uid == UINT64_MAX && page.rows[2].extra_flags_present);
 	assert(page.rows[1].custody_owner_revision_found);
+	// Canonical lots retain per-UID flags instead of treating every row as the
+	// first legacy template. History/quarantine/custody metadata stays intact.
+	std::vector<player_item_snapshot> lot;
+	for (uint64_t uid : { uint64_t{ 101 }, uint64_t{ 102 }, UINT64_MAX })
+	{
+		player_item_snapshot snapshot = {};
+		snapshot.object_uid = uid;
+		snapshot.vnum = 900;
+		snapshot.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+		snapshot.extra_flags = uid == 102 ? ITEM_ARTIFACT : 0;
+		lot.push_back(snapshot);
+	}
+	std::vector<uint8_t> canonical_lot;
+	assert(player_item_snapshot_list_encode(lot, &canonical_lot) ==
+	       player_snapshot_codec_result::ok);
+	query(connection, "UPDATE auction_item_custody SET obj_blob=" +
+				  hex(canonical_lot.data(), canonical_lot.size()) +
+				  " WHERE auction_id=1");
+	assert(!artifact_population_read_sql_blob_page(connection, artifact_payload_domain::auction,
+						       0, &page));
+	assert(page.rows.size() == 3 && page.rows[0].item_uid == 101 &&
+	       page.rows[0].extra_flags_present && page.rows[0].extra_flags == 0 &&
+	       page.rows[0].source_quarantined);
+	assert(page.rows[1].item_uid == 102 && page.rows[1].extra_flags == ITEM_ARTIFACT &&
+	       page.rows[1].role == artifact_payload_role::history &&
+	       page.rows[1].custody.owner.id == 99);
+	assert(page.rows[2].item_uid == UINT64_MAX && page.rows[2].extra_flags_present &&
+	       !page.rows[2].extra_flags);
+	query(connection,
+	      "UPDATE auction_item_custody SET obj_blob=" + legacy + " WHERE auction_id=1");
 	query(connection, "UPDATE item_owner_revision SET revision=0 WHERE owner_id=99");
 	assert(!artifact_population_read_sql_blob_page(connection, artifact_payload_domain::auction,
 						       0, &page));
@@ -570,7 +600,11 @@ static void blob_checks(MYSQL *connection, const std::string &database)
 	query(connection, "SET autocommit=0");
 	assert(artifact_population_read_sql_payloads(connection, &population) == EBUSY);
 	query(connection, "SET autocommit=1");
-	for (const auto &fault : std::array<std::pair<std::string, std::string>, 15>{ {
+	for (const auto &fault : std::array<std::pair<std::string, std::string>, 16>{ {
+		     { "UPDATE auction_item_custody SET obj_blob=" + modern_blob(888) +
+			       " WHERE item_uid=101",
+		       "UPDATE auction_item_custody SET obj_blob=" + legacy +
+			       " WHERE item_uid=101" },
 		     { "UPDATE auction_item_custody SET obj_blob=X'00' WHERE item_uid=101",
 		       "UPDATE auction_item_custody SET obj_blob=" + legacy +
 			       " WHERE item_uid=101" },
