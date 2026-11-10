@@ -192,7 +192,7 @@ def run(binary, backend):
                     assert "Melee and archery damage: " + expected + " (passive)" in text, text
                 command(god, "properties set damage.totalOutput.racial.Barbarian 1.000")
                 assert "Melee and archery damage" not in command(player, "race innates barbarian")
-                assert "None." in command(player, "race innates storm giant")
+                assert "Max damroll (gear + buffs): 72" in command(player, "race innates storm giant")
                 command(god, "properties set damage.totalOutput.racial.StormGiant 1.100")
                 text = command(player, "race innates storm giant")
                 assert "Melee and archery damage: +10% (passive)" in text and "None." not in text

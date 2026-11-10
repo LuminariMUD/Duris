@@ -28,6 +28,7 @@ static std::string output;
 static int innate_race;
 float combat_by_race[LAST_RACE + 1][3];
 float combat_by_class[CLASS_COUNT + 1][2];
+int damroll_cap = 50;
 char racial_innates[LAST_INNATE + 1][LAST_RACE + 1];
 char class_innates[LAST_INNATE + 2][CLASS_COUNT][5];
 void active(P_char, char *, int) {}
@@ -88,6 +89,7 @@ static void check_classes(int race) {
 int main() {
     for (int race = 1; race <= RACE_PLAYER_MAX; ++race) {
         combat_by_race[race][1] = 1.0f;
+        combat_by_race[race][2] = 1.0f;
         racial_innates[0][race] = 1;
         racial_innates[1][race] = 31;
     }
@@ -180,9 +182,15 @@ int main() {
     assert(innate_race == RACE_PILLITHID);
     for (int race = 1; race <= RACE_PLAYER_MAX; ++race) {
         check_classes(race);
-        run("innates " + std::string(race_names_table[race].normal));
+        const auto innates = run("innates " + std::string(race_names_table[race].normal));
         assert(innate_race == race);
+        assert(innates.find("*Max damroll (gear + buffs): 50\n") != std::string::npos);
     }
+    combat_by_race[RACE_OGRE][2] = 1.5f;
+    assert(run("innates ogre").find("*Max damroll (gear + buffs): 75\n") != std::string::npos);
+    // The listing matches the enforced cap, including its float truncation.
+    combat_by_race[RACE_TROLL][2] = 1.18f;
+    assert(run("innates troll").find("*Max damroll (gear + buffs): 58\n") != std::string::npos);
     // Runtime table changes are displayed without changing innate grants.
     assert(run("innates barbarian").find("Melee and archery damage") == std::string::npos);
     combat_by_race[RACE_BARBARIAN][1] = 1.15f;
@@ -201,7 +209,8 @@ int main() {
     assert(modifier_only.find("+20%") != std::string::npos && modifier_only.find("None.") == std::string::npos);
     assert(modifier_only.find("help attack damage modifiers") != std::string::npos);
     combat_by_race[RACE_SGIANT][1] = 1.0f;
-    assert(run("innates storm giant").find("None.") != std::string::npos);
+    const auto cap_only = run("innates storm giant");
+    assert(cap_only.find("Max damroll") != std::string::npos && cap_only.find("None.") == std::string::npos);
     spell_pulse_data[RACE_BARBARIAN] = 1.22f;
     assert(run("info barbarian").find("    Spell speed  : 1.220x casting time\n") != std::string::npos);
     spell_pulse_data[RACE_ILLITHID] = 0.025f;
