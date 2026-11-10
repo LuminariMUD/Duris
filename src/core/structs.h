@@ -574,6 +574,8 @@ struct spellcast_datatype
 	unsigned char flags;
 	// The tick the scheduled segment is due at; zero until the first one is scheduled.
 	unsigned long long due_tick;
+	// Process-local identity of the cast's wait; a later combat wait has a different sequence.
+	unsigned long long wait_sequence;
 };
 
 struct scribing_data_type

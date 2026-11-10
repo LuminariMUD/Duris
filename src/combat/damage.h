@@ -138,6 +138,8 @@
 #define SPLDAM_NODEFLECT BIT_16
 #define SPLDAM_NOVAMP BIT_17
 #define SPLDAM_SPELL BIT_18
+// Propagates only through the Echo's own reflection/redirection chain.
+#define SPLDAM_ECHO BIT_19
 
 #define RAWDAM_TRANCEVAMP BIT_20
 #define RAWDAM_BTXVAMP BIT_21

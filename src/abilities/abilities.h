@@ -631,6 +631,7 @@ std::string ethereal_grounds_facts(char_data *ch);
 std::string gate_facts(char_data *ch);
 std::string grow_facts(char_data *ch);
 std::string hurricane_facts(char_data *ch);
+int hurricane_damage(const Rolls &rolls, int level);
 std::string life_ward_facts(char_data *ch);
 std::string lightning_curtain_facts(char_data *ch);
 std::string mirage_facts(char_data *ch);

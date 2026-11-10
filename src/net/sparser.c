@@ -1375,9 +1375,27 @@ void StopCasting(P_char ch)
 {
 	abort_item_action(ch);
 	show_abort_casting(ch);
+	disarm_char_nevents(ch, event_abort_spell);
 
 	clear_links(ch, LNK_CAST_ROOM);
 	clear_links(ch, LNK_CAST_WORLD);
+}
+
+// Release only the wait captured when this cast started, preserving later combat lag.
+void interrupt_spellcasting(P_char ch)
+{
+	const P_nevent cast = get_scheduled(ch, event_spellcast);
+	const auto *data = cast ? static_cast<const spellcast_datatype *>(cast->data) : NULL;
+	const unsigned long long wait_sequence = data ? data->wait_sequence : 0;
+	StopCasting(ch);
+	const P_nevent wait = get_scheduled(ch, event_wait);
+	if (wait && wait_sequence && wait->sequence == wait_sequence &&
+	    nevent_cancel(nevent_handle_from_event(wait)) == nevent_cancel_result::canceled &&
+	    !get_scheduled(ch, event_wait))
+	{
+		REMOVE_BIT(ch->specials.act2, PLR2_WAIT);
+		ch->specials.wait_until_pulse = 0;
+	}
 }
 
 // Each segment is due at the tick the one before it was due plus its own length, so a
@@ -1389,6 +1407,11 @@ static bool schedule_spellcast(P_char ch, P_char victim, int segment, spellcast_
 {
 	int delay = 1;
 
+	if (!data->due_tick)
+	{
+		const P_nevent wait = get_scheduled(ch, event_wait);
+		data->wait_sequence = wait ? wait->sequence : 0;
+	}
 	data->due_tick = (data->due_tick ? data->due_tick : ne_event_tick) + segment;
 	if (data->due_tick > ne_event_tick)
 		delay = (int)(data->due_tick - ne_event_tick);
@@ -1401,7 +1424,6 @@ static bool schedule_spellcast(P_char ch, P_char victim, int segment, spellcast_
 		data->arg = NULL;
 	}
 	StopCasting(ch);
-	disarm_char_nevents(ch, event_abort_spell);
 	disarm_char_nevents(ch, event_wait);
 	REMOVE_BIT(ch->specials.act2, PLR2_WAIT);
 	return false;
@@ -3402,6 +3424,7 @@ void event_spellcast(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 	}
 	if (!safe_room_spell_target_allowed(ch, arg->spell, tar_char))
 		return;
+	const uint64_t echo_target_id = tar_char ? tar_char->runtime_id : 0;
 	telemetry_runtime_game_combat_cast_complete(ch);
 	((*skills[arg->spell].spell_pointer)((int)GET_LEVEL(ch), ch, args, SPELL_TYPE_SPELL,
 					     tar_char, tar_obj));
@@ -3414,6 +3437,23 @@ void event_spellcast(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 	if (IS_AGG_SPELL(arg->spell) && is_char_in_room(tar_char, room) &&
 	    is_char_in_room(ch, room))
 	{
+		const uint64_t echo_caster_id = ch->runtime_id;
+		if (bard_spell_echo(ch, arg->spell, args, echo_target_id, room))
+		{
+			if (find_character_by_runtime_id(echo_caster_id) != ch)
+				return;
+			tar_char = find_character_by_runtime_id(echo_target_id);
+			if (!IS_ALIVE(ch))
+				return;
+			if (!IS_ALIVE(tar_char) || !is_char_in_room(ch, room) ||
+			    !is_char_in_room(tar_char, room))
+			{
+				// Skip target procs, but keep the completed cast's normal recovery.
+				CharWait(ch, PULSE_SPELLCAST / 2);
+				return;
+			}
+		}
+
 		// Devotion double cast check..
 		int dev_power;
 		if (devotion_spell_check(arg->spell) && (dev_power = devotion_skill_check(ch)) > 0)

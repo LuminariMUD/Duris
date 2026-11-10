@@ -4418,6 +4418,17 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 	// Just making sure.
 	if (!ch || !victim)
 		return DAM_NONEDEAD;
+	// Nested defensive procs start new spells; reflections retain the incoming flags.
+	static unsigned int depth;
+	const bool initial_hit = depth++ == 0;
+	struct damage_depth_cleanup
+	{
+		unsigned int &value;
+		~damage_depth_cleanup() { --value; }
+	} cleanup{ depth };
+	if (initial_hit && bard_spell_echo_factor() != 1.0)
+		flags |= SPLDAM_ECHO;
+
 	// A target killed earlier in the same effect has already lost its NPC data.
 	if (!IS_ALIVE(victim))
 		return DAM_VICTDEAD;
@@ -4852,7 +4863,8 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 
 	dam = (damProf.baseDamage + BOUNDEDF(-100.0, damProf.addedMod, 100.0)) *
 	      BOUNDEDF(0.05, damProf.increasedMod, 4.0) * BOUNDEDF(0.1, damProf.moreMod, 2.0);
-	dam = MAX(1, dam);
+	// Scale after profile caps, including reflected echoes, so caps cannot absorb it.
+	dam = MAX(1, dam * ((flags & SPLDAM_ECHO) ? bard_spell_echo_factor() : 1.0));
 
 	// Server-wide mob spell dial. It sits outside the modifier profile so the profile's
 	// 2.0 cap on "more" multipliers cannot absorb it.
@@ -4878,7 +4890,8 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 	damage_messages delivery = *messages;
 	delivery.damage_kind = type;
 	delivery.critical_known = false;
-	result = raw_damage(ch, victim, dam, (RAWDAM_DEFAULT ^ flags) | RAWDAM_NOWARD, &delivery,
+	result = raw_damage(ch, victim, dam,
+			    (RAWDAM_DEFAULT ^ (flags & ~SPLDAM_ECHO)) | RAWDAM_NOWARD, &delivery,
 			    damAccumulator);
 
 	if (type == SPLDAM_ACID && !number(0, 3))

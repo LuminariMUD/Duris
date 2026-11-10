@@ -5,7 +5,8 @@ last segment, never sooner, and a cast with no lateness takes exactly its cast t
 The production schedule_spellcast(), event_spellcast() and MobCastSpell() are compiled
 with real game types. The scheduler is a double: add_event() records each segment's
 delay and the driver runs the callback at its due tick plus an injected lateness. No
-server or database is started.
+server or database is started. Completion cases also check recovery and target-dependent
+procs after an Echo kills, removes or moves a participant.
 """
 from pathlib import Path
 import subprocess
@@ -37,7 +38,7 @@ PRELUDE = r'''
 /* The scheduler's tick, which the cast helpers read; the driver moves it. */
 unsigned long long ne_event_tick = 1000;
 
-static room_data rooms[1]{};
+static room_data rooms[2]{};
 P_room world = rooms;
 static index_data indexes[1]{};
 P_index mob_index = indexes, obj_index = indexes;
@@ -51,6 +52,8 @@ static P_char pending_caster, pending_victim;
 static std::vector<int> delays;       // the delay of each segment the cast submitted
 static int commune;                   // the pulses the continuations gave DelayCommune()
 static bool completed;
+static int echo_outcome, recovery_pulses, target_procs;
+static P_char echo_caster, echo_target;
 
 void event_spellcast(P_char, P_char, P_obj, void *);
 void telemetry_runtime_game_combat_cast_attempt(P_char, int) {}
@@ -74,13 +77,34 @@ nevent_schedule_result add_event(event_func fn, int delay, P_char ch, P_char vic
 void DelayCommune(P_char, int delay) { commune += delay; }
 void event_abort_spell(P_char, P_char, P_obj, void *) {}
 void event_wait(P_char, P_char, P_obj, void *) {}
+// Timing cases have no command wait; completion cases exercise post-Echo recovery.
+P_nevent get_scheduled(P_char,event_func_type) { return nullptr; }
+bool bard_spell_echo(P_char ch,int,char *,uint64_t target_id,int) {
+    if (!echo_outcome) return false;
+    assert(ch==echo_caster && target_id==echo_target->runtime_id);
+    if (echo_outcome==1) SET_POS(echo_target,POS_STANDING|STAT_DEAD);
+    if (echo_outcome==2 || echo_outcome==3) {
+        world[0].people=ch; ch->next_in_room=nullptr;
+        if (echo_outcome==3) echo_target->in_room=1;
+    }
+    if (echo_outcome==4) SET_POS(ch,POS_STANDING|STAT_DEAD);
+    if (echo_outcome==6) {
+        world[0].people=echo_target; echo_target->next_in_room=nullptr; ch->in_room=1;
+    }
+    return true;
+}
+P_char find_character_by_runtime_id(uint64_t id) {
+    if (id==echo_caster->runtime_id) return echo_outcome==5?nullptr:echo_caster;
+    assert(id==echo_target->runtime_id); return echo_outcome==2?nullptr:echo_target;
+}
+
 void disarm_char_nevents(P_char, event_func_type) { assert(false && "no scheduling is refused"); }
 void StopCasting(P_char) { assert(false && "the cast was stopped"); }
 bool is_obj_in_list_vis(P_char, P_obj, P_obj) { return true; }
 P_char misfire_check(P_char, P_char target, int) { return target; }
 void perform_chaos_check(P_char, P_char, spellcast_datatype *) {}
 void say_silent_spell(P_char, int) {}
-bool devotion_spell_check(int) { return false; }
+bool devotion_spell_check(int) { ++target_procs; return false; }
 bool check_disruptive_blow(P_char) { return false; }
 bool divine_blessing_check(P_char, P_char, int) { return false; }
 int devotion_skill_check(P_char) { return 0; }
@@ -107,7 +131,7 @@ int GET_CHAR_SKILL_P(P_char, int) { return 0; }
 int GET_CLASS(P_char ch, uint cls) { return ch->player.m_class & cls; }
 int GET_PRIME_CLASS(P_char ch, uint cls) { return GET_CLASS(ch, cls); }
 int GET_SECONDARY_CLASS(P_char, uint) { return 0; }
-void CharWait(P_char, int) {}
+void CharWait(P_char ch, int pulses) { assert(IS_ALIVE(ch)); recovery_pulses += pulses; }
 bool cast_common_generic(P_char, int) { return true; }
 const char *elemental_aura_failure_message(P_char) { return nullptr; }
 void appear(P_char, bool) {}
@@ -247,6 +271,22 @@ int main()
     assert(mob_cast(&mob, 18, {2, 2, 2, 2, 2, 2}) == mob_on_time + 3);
     assert((delays == std::vector<int>{4, 2, 2, 2, 2, 1}));
 
+    skills[SPELL_MAGIC_MISSILE].spell_pointer=self_spell;
+    skills[SPELL_MAGIC_MISSILE].targets=TAR_CHAR_ROOM|TAR_AGGRO;
+    player.runtime_id=1; mob.runtime_id=2; echo_caster=&player; echo_target=&mob;
+    // No Echo, target dead/removed/departed, caster dead/released/departed, surviving Echo.
+    for (int outcome=0;outcome<=7;++outcome) {
+        echo_outcome=outcome; recovery_pulses=target_procs=0;
+        player.in_room=mob.in_room=0;
+        SET_POS(&player,POS_STANDING|STAT_NORMAL); SET_POS(&mob,POS_STANDING|STAT_NORMAL);
+        world[0].people=&player; player.next_in_room=&mob; mob.next_in_room=nullptr;
+        SET_BIT(player.specials.affected_by2,AFF2_CASTING);
+        spellcast_datatype payload{}; payload.spell=SPELL_MAGIC_MISSILE;
+        event_spellcast(&player,&mob,nullptr,&payload);
+        assert(recovery_pulses==((outcome==4 || outcome==5)?0:PULSE_SPELLCAST/2));
+        assert(target_procs==((outcome==0 || outcome==7)?1:0));
+    }
+    puts("PASS Echo target death/removal/departure preserves casting recovery; dead/released casters get no wait");
     puts("Late cast segments shorten the next one; on-time casts take their cast time.");
 }
 '''
