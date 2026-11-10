@@ -1,6 +1,7 @@
 # Enhancement gap fillers: "The Halfway Works"
 
-Status: plan only. Nothing is implemented.
+Status: 33 records implemented and native qualification passed; local gameplay
+qualification remains in progress.
 Date: 2026-11-10.
 Branch: `branch/enhance-gap-fillers`, stacked on
 [PR #995](https://github.com/LuminariMUD/Duris/pull/995) (`branch/enhance-level-ceiling`),
@@ -147,6 +148,41 @@ For every new record in `areas/obj/wutvr.obj`:
 - Material, weight and size copied from the "from" item.
 - At most two `A` apply lines unless the target value cannot be reached with
   two.
+
+## Current handoff (2026-11-10)
+
+- Worktree: `/home/aiwithapex/projects/duris-worktrees/enhance-level-ceiling`;
+  clean starting HEAD `8b0de0b85`. The primary checkout has unrelated dirty docs.
+- Outcome: all 53 lost paths restored by 33 content-only templates. Non-goals
+  remain the existing dead ends and enhancement-code changes.
+- Files: `areas/obj/wutvr.obj`, one focused record test, and this plan.
+- Proof: native index/value/reward filters, whole-world constructor/report parity,
+  enhancement runtime test, world assembly/order, build, and local MariaDB journey.
+- Ablation: reuse `_noquest_` and existing test/boot tools; no new consumer filters,
+  valuation overrides, shared item framework, or reward/placement changes.
+- Re-measured this branch with native world loaders: 9,083 index entries. All
+  33 planned targets still bridge their slots. The old comparison must constrain
+  candidates to value <=99, in addition to the +8 reach; otherwise five old
+  dead ends are incorrectly counted as lost paths. Scratch measurements live in
+  `bin/qualification/gap-fillers/` and are deliberately uncommitted.
+- All 33 records now have colored names, room and unfinished-work extra
+  descriptions, the exact planned values, and two plain applies. Source
+  material/size/weight are preserved; quiver capacity fields are copied from
+  actual source quivers. Shields use the dedicated shield type. The fringed
+  quiver uses HP and a small armor apply to reach 21 with two applies.
+- Native qualification passed: 19,367 assembled templates; 9,116 index entries
+  (+33); all 53 formerly lost paths restored; all 33 fillers have a real +1..4
+  successor; zero fillers admitted by either reward filter. Original template
+  scores/flags are unchanged. Assembled world vnums remain unique and ascending.
+- Passed: `python3 tests/async/test_enhance_gap_fillers.py`,
+  `python3 tests/async/test_enhance_ival_runtime.py` (ASan/UBSan),
+  `python3 tests/async/test_item_value_template_runtime.py` (19,367 native
+  constructor/template/CLI comparisons), `make -C src`, `make -C src all -j6`,
+  and `git diff --check`.
+- Next: commit/push the content chunk, open its labeled PR against
+  `branch/enhance-level-ceiling`, then run the two-step real-server journey
+  against disposable local MariaDB and record the final result here.
+- No deployment or release tag is part of this content PR.
 
 ## Implementation steps
 
