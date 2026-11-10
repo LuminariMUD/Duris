@@ -4,7 +4,7 @@ import re
 import sys
 from pathlib import Path
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from run_world_restart_journey import ROOT, Rig
 
 CRAFTED = 16384

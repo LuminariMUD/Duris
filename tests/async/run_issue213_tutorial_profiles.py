@@ -17,14 +17,14 @@ import tempfile
 
 repo = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(repo / 'tests/async'))
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority
 from run_world_quest_dual_backend import setup_run_root
 import test_issue213_tutorial_parity as fixture
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--server', type=Path, required=True)
-parser.add_argument('--backend', choices=('flatfile', 'mariadb'), default='flatfile')
+parser.add_argument('--backend', choices=("mariadb",), default="mariadb")
 parser.add_argument('--output', type=Path)
 arguments = parser.parse_args()
 binary = arguments.server.resolve()
