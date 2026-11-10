@@ -30,7 +30,13 @@ def run(binary):
         (runtime / "journals/critical").mkdir(parents=True, mode=0o700)
         # A second room makes separation observable without depending on area exits.
         world = runtime / "areas_mini/mini.wld"
-        world.write_text(world.read_text().replace("$~", "#22801\nQuiet Alcove~\nA quiet alcove.\n~\n1 0 0\nS\n$~"))
+        body = world.read_text()
+        at = body.index("#22800\n")
+        arena = body[at:body.index("$~", at)]
+        assert "1 0 0\nS\n" in arena, arena
+        arena = arena.replace("1 0 0\nS\n", "1 0 0\nD0\n~\n~\n0 0 22801\nS\n")
+        body = body[:at] + arena + "#22801\nQuiet Alcove~\nA quiet alcove.~\n1 0 0\nD2\n~\n~\n0 0 22800\nS\n$~\n"
+        world.write_text(body)
         zone = runtime / "areas_mini/mini.zon"
         zone.write_text(re.sub(r"^[MGEO] .*\n", "", zone.read_text(), flags=re.M))
         port, tls, websocket = journey.available_ports()
@@ -120,6 +126,10 @@ def run(binary):
 
                 grant()
                 assert not snapshot(BARD)[0] and not snapshot(PEER)[0]
+                assert "Quiet Alcove" in command(bard, "north")
+                assert snapshot(FOLLOWER)[0], "ordinary group following lost Sneak"
+                assert "The Regression Arena" in command(bard, "south")
+                assert snapshot(FOLLOWER)[0], "returning group walk lost Sneak"
                 command(follower, "follow self")
                 assert not snapshot(FOLLOWER)[0], "unfollowing retained Sneak"
                 command(follower, "follow " + BARD)
@@ -128,9 +138,18 @@ def run(binary):
                 assert not snapshot(FOLLOWER)[0], "leaving the group retained Sneak"
                 command(bard, "group " + FOLLOWER)
                 grant()
-                command(staff, "transfer " + FOLLOWER + " 22801")
-                assert not snapshot(FOLLOWER)[0], "leaving the room retained Sneak"
-                command(staff, "transfer " + FOLLOWER + " 22800")
+                assert "Quiet Alcove" in command(follower, "north")
+                assert not snapshot(FOLLOWER)[0], "walking apart retained Sneak"
+                assert "The Regression Arena" in command(follower, "south")
+                grant()
+                command(staff, "at 22801 transfer " + FOLLOWER)
+                sneak, text = snapshot(FOLLOWER)
+                assert "In room: [22801]" in text and not sneak, text
+                command(staff, "transfer " + FOLLOWER)
+                grant()
+                command(staff, "at 22801 transfer " + BARD)
+                assert not snapshot(FOLLOWER)[0], "singer relocation retained follower Sneak"
+                command(staff, "transfer " + BARD)
                 grant()
                 command(staff, "load mob 11")
                 command(follower, "kill raoul")

@@ -1639,6 +1639,28 @@ void bard_protection(int l, P_char ch, P_char victim, int song)
 	}
 }
 
+// Ordinary walks place the singer before moving followers; check outgoing links afterwards.
+void check_shadow_piper_rooms(P_char ch, bool followers_may_move)
+{
+	for (auto *link = ch->linking, *next = link; link; link = next)
+	{
+		next = link->next_linking;
+		if (link->type == LNK_SONG && link->affect &&
+		    link->affect->type == SONG_SHADOW_PIPER && link->linked->in_room != ch->in_room)
+			affect_remove(ch, link->affect);
+	}
+	if (followers_may_move)
+		return;
+	for (auto *link = ch->linked, *next = link; link; link = next)
+	{
+		next = link->next_linked;
+		if (link->type == LNK_SONG && link->affect &&
+		    link->affect->type == SONG_SHADOW_PIPER &&
+		    link->linking->in_room != ch->in_room)
+			affect_remove(link->linking, link->affect);
+	}
+}
+
 std::string song_shadow_piper_facts(P_char ch)
 {
 	return "  A level 56 player Scoundrel gives Sneak to players in the same group\n"

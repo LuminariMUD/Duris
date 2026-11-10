@@ -102,7 +102,7 @@ functions = [("affects.c", s) for s in (
 )] + [("bard.c", s) for s in (
     "void stop_singing(", "static int song_stop_rest(",
     "static int song_start_failure_rest(", "void do_play(",
-    "bool player_bard(", "void bard_shadow_piper(int /*level*/", "static int song_heroism_haste_level(",
+    "bool player_bard(", "void check_shadow_piper_rooms(", "void bard_shadow_piper(int /*level*/", "static int song_heroism_haste_level(",
     "static int song_heroism_pulse(", "static int song_heroism_singer_pulse(",
     "static int song_heroism_hit_dam(", "void bard_heroism(int l,",
     "static int song_healing_amount(", "static int song_healing_ally_amount(",
@@ -210,7 +210,7 @@ int main() {
                 bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
                 assert(!follower.affected->next); // no repeated-verse stacking
                 follower.in_room = 1;
-                check_room_links(&follower, NOWHERE, 1);
+                check_shadow_piper_rooms(&follower, false);
                 assert(!follower.affected && !IS_AFFECTED(&follower, AFF_SNEAK));
                 follower.in_room = 0;
                 bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
@@ -219,6 +219,17 @@ int main() {
                 bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
                 stop_singing(&bard);
                 assert(!follower.affected && !bard.linked);
+                bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
+                bard.in_room = 1;
+                check_shadow_piper_rooms(&bard, true);
+                assert(follower.affected); // keep silent steps through group following
+                follower.in_room = 1;
+                check_shadow_piper_rooms(&follower, true);
+                check_shadow_piper_rooms(&bard, false);
+                assert(follower.affected);
+                bard.in_room = 0;
+                check_shadow_piper_rooms(&bard, false); // teleport or failed following
+                assert(!follower.affected && !IS_AFFECTED(&follower, AFF_SNEAK));
             }
         }
     char_data singer{};
