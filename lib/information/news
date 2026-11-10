@@ -4,11 +4,75 @@
 &+R                   PWIPE HAPPENED &+YOCT 28TH 1800 UTC!&n
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
 &+W======================================================================&n
-&+WUpdated: November 09, 2026&n
+&+WUpdated: November 10, 2026&n
 
-Welcome back! Keep your songs hidden, put heavier steel in one hand,
-and catch up on combat, travel and recovery fixes.
+Welcome back! Explore revised item values, smoother enhancement paths,
+independent locker chests and clickable help in supported clients.
 Newest first; later updates replace older rules. Longer archive on web.
+
+&+R11/10/26&n &+L-&n &+YBetter gear paths and easier discovery&n
+&+W----------------------------------------------------------------------&n+
+&+CItem values and enhancement&n
+&+Y-&n Item values now account more consistently for combined stats and
+  weapon effects. This changes some crafting levels, material requirements,
+  enhancement choices and reward selections; it does not itself change
+  the item's combat stats. Browse the before-and-after list and filters:
+  &+Chttps://luminarimud.github.io/Duris/item-values/&n
+&+Y-&n Replacement enhancement uses your source item's level gate, without
+  the old separate result ceiling. Each replacement improves its value
+  by at most &+Y4&n with the current settings. New intermediate equipment
+  fills missing steps so more items can continue improving within that limit.
+  Enhancement shows its actual fee; ordinary eligibility and materials apply.
+&+Y-&n Crafting and smith work preserve your inputs when delivering the
+  replacement fails. Invalid material or value calculations are refused
+  before spending. Salvaged materials can again be taken from containers
+  at the inventory item-count limit; carrying-weight limits still apply.
+
+&+CLockers, temporary gear and recovery&n
+&+Y-&n Keep several private locker chests open at once. Opening another
+  authorized chest no longer closes the others; &+C'close <name>'&n closes
+  that chest, and bare &+C'close'&n closes all. Leaving ends your access.
+&+Y-&n No-rent gear cannot be preserved by leaving the game or stashing it
+  in a locker. Locker saves return such items before saving the visitor;
+  leaving the locker removes them. Private chests are checked only after
+  you have opened them during that visit. Read &+C'help lockers'&n.
+&+Y-&n Sold equipment and lasting conjured weapons no longer retain an
+  inappropriate no-rent flag. Temporary Doom, Holy and Flame Blades still
+  end when you leave. Dragoon talon blades and ash lances last until lost
+  or destroyed; once wielded, removing them requires Remove Curse.
+&+Y-&n Shop, collector, auction and smith payments now stay together with
+  their purchased or returned items through interrupted saves. Nested bags
+  and signed item timers are preserved more reliably during recovery.
+  Copyover can proceed while players occupy storage lockers.
+&+Y-&n Very large auction balances can be collected over repeated pickups.
+  Failed saves are no longer hidden by a later save of unrelated state.
+
+&+CCombat, travel and rewards&n
+&+Y-&n Dragon Roar and dragonkind axe roars keep their targets in the room
+  where the roar began, even if someone moves during its effects.
+&+Y-&n Essence of the Wolf ends on teleportation or other non-walking travel
+  by either participant, even when both travel together. Ordinary walking
+  retains its distance rule.
+&+Y-&n Doom Blade and Holy Blade summon the weapon named by the spell,
+  rather than choosing from the caster's class. Vitality potions refuse
+  use while Vitality is already active.
+&+Y-&n Losing and regaining levels no longer adds extra base hit points.
+  Large experience awards retain their normal caps without wrapping.
+  Bartender destinations no longer rely on staff-only travel shortcuts.
+&+Y-&n Slot rewards and counters wait for a confirmed result; ship cargo
+  discounts retain their intended rounding.
+
+&+CHelp and clients&n
+&+Y-&n Supported clients can follow clickable help references and search
+  results, plus web links in game output and chat. Plain-text clients
+  continue to receive readable text. Help commands also work while paging.
+&+Y-&n &+C'race innates <race>'&n shows the racial maximum damroll from gear
+  and buffs. Expanded multiclass help explains progression and restrictions;
+  hints, starter signs and several older help descriptions are corrected.
+&+Y-&n New help covers &+C'titan form'&n, &+C'pirates'&n, &+C'incarnate'&n,
+  &+C'detect artifact'&n, &+C'profession'&n and &+C'verspin'&n. Lookups such as
+  &+C'help spells illusionist'&n, &+C'help skill backstab'&n and
+  &+C'help spell info elemental power'&n point to the relevant commands.
 
 &+R11/08/26 - 11/09/26&n &+L-&n &+YHidden songs and a firmer grip&n
 &+W----------------------------------------------------------------------&n

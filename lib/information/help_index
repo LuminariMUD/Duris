@@ -28696,3 +28696,58 @@ Darkfall is Darkfall Forest, a wilderness zone. Grellinar, the high ranger,
 is an Epic Agility teacher there. Epic training has its own level,
 eligibility and payment rules; finding a teacher does not grant a skill.
 Read 'help epic' and 'help epic agility' before seeking that training.
+#
+Titan Form
+Titan Form is the stronger growth result of 'infuriate', not a separate
+command. You must know Infuriate, be berserk, and be able to act; you cannot
+already be enlarged or in Titan Form. Your Infuriate skill determines the
+chance of Titan Form instead of ordinary enlargement.
+
+The Infuriate effect lasts three game hours. Titan Form adds two size steps,
+subject to the normal size limits. It raises maximum Strength by one tenth
+of base Strength and maximum Constitution by one fifth of base Constitution,
+while reducing Agility and Dexterity by one fifth of their base values.
+Fractions are rounded down. Use 'skills info infuriate' for your values,
+chance and action delay. It does not change your base-size weapon allowance.
+See also: Berserk, Infuriate, Size, Wield.
+#
+Pirate / Pirates
+For NPC pirate ships, read 'help ship npcs'. It describes ambushes, boarding,
+hunters and pirate treasure. Read 'help ship cargo' for cargo and diplomats,
+and 'help ship weapons' for arming your vessel.
+#
+Incarnate / Incarnate of Stone
+The Incarnate of Stone is an elemental creature, seen as a moving pile of
+rocks. Incarnates of Fire, Frost, Air and Mischief also exist. These names
+refer to creatures, not player spell or innate commands. Use 'look stone'
+when the stone creature is present to inspect it.
+#
+Spells Illusionist
+Read 'help illusionist skills' for the base class's spell circles and skill
+levels. Use 'spells illusionist' to browse its spell catalog and
+'spells info <spell>' for mechanics. Specializations can change the grants;
+listed spells still need to be learned and prepared.
+#
+Skill Backstab / Skills Backstab
+Read 'help backstab' for the skill, or use 'skills info backstab' for its
+mechanics. The command to attempt it is 'backstab <target>'.
+#
+Spell Info Elemental Power
+Elemental Power is a passive Elementalist Shaman innate gained at level 35,
+not a spell to cast.
+Read 'help elemental power' or use 'innate info elemental power'.
+#
+Detect Artifact
+Use 'artifacts' for the list of player-held artifacts and 'artifact unique'
+to review unique artifacts. Read 'help artifact' for ownership and limits.
+There is no player spell named Detect Artifact.
+#
+Profession
+For your adventuring profession, read 'help class'. For making equipment,
+read 'help tradeskills'. These are different systems; a crafting trade is
+not a replacement for your character's class.
+#
+Verspin
+Verspin is a town and adventure zone, not a skill or spell. Use 'area' while
+there to inspect the current zone's information, and 'look' to examine your
+surroundings and visible exits.
