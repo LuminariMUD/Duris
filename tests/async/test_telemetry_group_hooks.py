@@ -53,7 +53,7 @@ mm_ds pool;
 mm_ds *dead_group_pool = &pool;
 constexpr int TERM_MSP = 9, CON_PLAYING = 0, MAX_STRING_LENGTH = 1024, LOG_DEBUG = 0;
 constexpr unsigned PLR2_BACK_RANK = 1;
-constexpr int LNK_CONSENT = 0, LNK_SONG = 1, SONG_SHADOW_PIPER = 2;
+constexpr int LNK_CONSENT = 0, LNK_SONG = 1, SONG_SHADOW_PIPER = 2, SONG_NIMBLENESS = 3;
 bool affected_by_spell(P_char, int) { return false; }
 void affect_from_char(P_char, int) { assert(false); }
 void affect_remove(P_char, affected_type *) { assert(false); }

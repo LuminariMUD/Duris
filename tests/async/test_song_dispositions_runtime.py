@@ -117,10 +117,10 @@ functions = [("affects.c", s) for s in (
 )] + [("bard.c", s) for s in (
     "void stop_singing(", "static int song_stop_rest(",
     "static int song_start_failure_rest(", "void do_play(",
-    "bool player_bard(", "void check_shadow_piper_rooms(", "void bard_shadow_piper(int /*level*/", "static int song_heroism_haste_level(",
+    "bool player_bard(", "void check_bard_song_rooms(", "void bard_shadow_piper(int /*level*/", "void bard_nimbleness(int /*level*/", "static int song_heroism_haste_level(",
     "static int song_heroism_pulse(", "static int song_heroism_singer_pulse(",
     "static int song_heroism_hit_dam(", "void bard_heroism(int l,",
-    "static int song_healing_amount(", "static int song_healing_ally_amount(",
+    "static int song_healing_amount(",
     "static int song_healing_cap_gap(", "static int song_healing_duration(",
     "static int song_healing_blind_rating(", "static int song_healing_poison_rating(",
     "static int song_healing_disease_rating(", "void bard_healing(int level,",
@@ -241,7 +241,7 @@ int main() {
                 bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
                 assert(!follower.affected->next); // no repeated-verse stacking
                 follower.in_room = 1;
-                check_shadow_piper_rooms(&follower, false);
+                check_bard_song_rooms(&follower, false);
                 assert(!follower.affected && !IS_AFFECTED(&follower, AFF_SNEAK));
                 follower.in_room = 0;
                 bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
@@ -252,17 +252,42 @@ int main() {
                 assert(!follower.affected && !bard.linked);
                 bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
                 bard.in_room = 1;
-                check_shadow_piper_rooms(&bard, true);
+                check_bard_song_rooms(&bard, true);
                 assert(follower.affected); // keep silent steps through group following
                 follower.in_room = 1;
-                check_shadow_piper_rooms(&follower, true);
-                check_shadow_piper_rooms(&bard, false);
+                check_bard_song_rooms(&follower, true);
+                check_bard_song_rooms(&bard, false);
                 assert(follower.affected);
                 bard.in_room = 0;
-                check_shadow_piper_rooms(&bard, false); // teleport or failed following
+                check_bard_song_rooms(&bard, false); // teleport or failed following
                 assert(!follower.affected && !IS_AFFECTED(&follower, AFF_SNEAK));
             }
         }
+    for (int level : {55,56}) for (int spec : {SPEC_SCOUNDREL,SPEC_MINSTREL})
+      for (bool npc_singer : {false,true}) for (bool npc_listener : {false,true}) {
+        char_data bard{}, listener{};
+        SET_POS(&bard, POS_STANDING | STAT_NORMAL); SET_POS(&listener, POS_STANDING | STAT_NORMAL);
+        bard.player.m_class = CLASS_BARD; bard.player.spec = spec; bard.player.level = level;
+        if (npc_singer) SET_BIT(bard.specials.act, ACT_ISNPC);
+        if (npc_listener) SET_BIT(listener.specials.act, ACT_ISNPC);
+        bard_nimbleness(56, &bard, &listener, SONG_NIMBLENESS);
+        bool eligible = level == 56 && spec == SPEC_MINSTREL && !npc_singer && !npc_listener;
+        assert(affected_by_spell(&listener, SONG_NIMBLENESS) == eligible);
+        if (eligible) {
+            elapsed_ticks(&listener);
+            assert(listener.affected && listener.affected->duration == -1);
+            bard_nimbleness(56, &bard, &listener, SONG_NIMBLENESS);
+            assert(!listener.affected->next);
+            listener.in_room = 1; check_bard_song_rooms(&listener, false);
+            assert(!listener.affected);
+            listener.in_room = 0;
+            bard_nimbleness(56, &bard, &listener, SONG_NIMBLENESS);
+            next_song(&bard, SONG_HEROISM); assert(!listener.affected);
+            bard_nimbleness(56, &bard, &bard, SONG_NIMBLENESS);
+            assert(affected_by_spell(&bard, SONG_NIMBLENESS));
+            stop_singing(&bard); assert(!bard.affected && !bard.linked);
+        }
+    }
     // Run the production final-verse cleanup, then several real affect updates.
     char_data ending{}, follower{};
     ending.player.m_class=CLASS_BARD; ending.player.spec=SPEC_SCOUNDREL; ending.player.level=56;
@@ -275,6 +300,13 @@ int main() {
     assert(SINGING(&ending) && IS_AFFECTED(&follower,AFF_SNEAK));
     final_verse(&ending,SONG_SHADOW_PIPER); elapsed_ticks(&follower);
     assert(!SINGING(&ending) && !ending.linked && !follower.affected && !IS_AFFECTED(&follower,AFF_SNEAK));
+    ending.player.spec=SPEC_MINSTREL; performing.modifier=1;
+    bard_nimbleness(56,&ending,&follower,SONG_NIMBLENESS);
+    bard_nimbleness(56,&ending,&ending,SONG_NIMBLENESS);
+    affect_to_char(&ending,&performing);
+    assert(SINGING(&ending) && affected_by_spell(&follower,SONG_NIMBLENESS));
+    final_verse(&ending,SONG_NIMBLENESS); elapsed_ticks(&follower); elapsed_ticks(&ending);
+    assert(!SINGING(&ending) && !ending.linked && !ending.affected && !follower.affected);
     char_data singer{};
     singer.player.m_class = CLASS_BARD; singer.player.spec = SPEC_DISHARMONIST;
     singer.curr_stats.Cha = 100;
