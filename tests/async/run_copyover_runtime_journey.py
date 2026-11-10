@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 import zlib
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_gmcp_control_journey import negotiate, wait_telnet, telnet_packets
 from test_flight_network_journey import command
 from run_racial_pulse_journey import paged

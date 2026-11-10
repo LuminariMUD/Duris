@@ -4,6 +4,7 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -12,7 +13,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 from run_world_quest_dual_backend import setup_run_root
 
@@ -227,8 +228,17 @@ def run(binary, backend, report, crash_paid_fresh=False):
                             f"WHERE p.name='{PLAYER}'")
                         return tuple(map(int, row.split("\t")))
 
+                    # A first paid purchase raises the wallet revision. The next one into a
+                    # different fresh bag must still read that revision after preparing the bag.
+                    first_wallet, first_items = financial_state()
+                    assert first_wallet == 100000 and first_items == 0
+                    player.send("buy ration smallbag 1")
+                    deadline = time.monotonic() + 30
+                    while financial_state()[1] != 1:
+                        assert time.monotonic() < deadline, "first paid fresh-bag purchase never committed"
+                        time.sleep(.05)
                     before_wallet, before_items = financial_state()
-                    assert before_wallet == 100000 and before_items == 0
+                    assert before_wallet < first_wallet and before_items == 1
                     player.send("buy ration bag 1")
                     deadline = time.monotonic() + 15
                     while time.monotonic() < deadline:
@@ -251,7 +261,7 @@ def run(binary, backend, report, crash_paid_fresh=False):
                     restored_wallet, restored_items = financial_state()
                     assert (restored_wallet, restored_items) == (paid_wallet, paid_items)
                     assert 0 < before_wallet - restored_wallet < before_wallet
-                    assert restored_items == 1, (
+                    assert restored_items == 2, (
                         "paid fresh-bag purchase lost the item after crash",
                         before_wallet, restored_wallet, restored_items)
                     uid, parent, physical_parent = map(int, sql(
@@ -260,7 +270,7 @@ def run(binary, backend, report, crash_paid_fresh=False):
                         "JOIN player_items i ON i.obj_uid=o.item_uid "
                         "LEFT JOIN player_items b ON b.id=i.container_id "
                         f"WHERE o.owner_type=1 AND o.owner_id=(SELECT pid FROM player_data WHERE name='{PLAYER}') "
-                        f"AND o.state=1 AND i.vnum={RATION}").split("\t"))
+                        f"AND o.state=1 AND i.vnum={RATION} AND b.vnum={BAG}").split("\t"))
                     assert uid and parent and parent == physical_parent
                     assert "test ration" in command(player, "look in bag")
                     evidence["paid_fresh_bag_crash"] = {
@@ -458,7 +468,7 @@ def main():
         if args.server:
             binary = args.server.resolve()
         else:
-            binary = journey.build_flatfile_server(Path(build) / "server")
+            binary = journey.build_mariadb_server(Path(build) / "server")
         run(binary, args.backend, args.report or ROOT / f"bin/qualification/issue454/{args.backend}-journey.json", args.crash_paid_fresh)
 
 

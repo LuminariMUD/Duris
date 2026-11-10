@@ -13,7 +13,7 @@ import tempfile
 import time
 import uuid
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_corpse_trap_restart_journey import clone_banana, drain
 from test_legacy_trap_content import check, parse_objects
 from legacy_trap_manifest import TRAPS

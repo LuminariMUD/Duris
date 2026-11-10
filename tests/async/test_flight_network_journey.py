@@ -19,7 +19,7 @@ import sys
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from run_world_quest_dual_backend import setup_run_root
 
 ROOT = journey.ROOT
@@ -520,7 +520,7 @@ def main():
             if args.server:
                 binary = args.server.resolve()
             else:
-                binary = journey.build_flatfile_server(build / 'server', real_clock=True)
+                binary = journey.build_mariadb_server(build / 'server', real_clock=True)
             run(binary, args.backend, args.interruptions_only, args.reconnect_only,
                 skip_interruptions=interruptions is not None)
     except BaseException:

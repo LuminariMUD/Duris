@@ -1,6 +1,7 @@
 # Clickable links: Phase 1 implementation plan
 
-Date: 2026-11-09. Status: implementation in progress.
+Date: 2026-11-09. Status: implementation and available-client qualification complete;
+ready for review. No merge or deployment performed.
 
 ## Outcome and scope
 
@@ -28,22 +29,24 @@ No database migration or help-content rewrite is expected.
 - Repository: `LuminariMUD/Duris`.
 - Base: `origin/master` at `91f40a01fe` when this worktree was created.
 - First PR branch: `branch/clickable-links-phase1`.
-- Current implementation branch: `branch/clickable-links-urls`, stacked on
-  `branch/clickable-links-help` (then MXP, output and the first PR branch).
+- Current implementation branch: `branch/clickable-links-qualification`, stacked
+  on `branch/clickable-links-web-protocol`, then URLs, help, MXP, output and the
+  first PR branch.
 - Worktree: `/home/aiwithapex/projects/duris-worktrees/clickable-links-phase1`.
 - Plan: `docs/ongoing-projects/clickable-links-phase1.md` in that worktree.
 - Deliver focused, reviewable commits and PRs as each chunk is verified. Stack
   dependent changes and keep this document current for handoff.
-- Implementation will also need a companion branch/worktree in `durisweb` for
-  its player renderer and transport decoder. Create that during implementation,
-  after reading that repository's instructions. Keep commits in their owning
-  repositories and link the server and client changes.
+- Companion `DurisWeb` branch: `branch/clickable-links-phase1`, worktree
+  `/home/aiwithapex/projects/durisweb-worktrees/clickable-links-phase1`, based on
+  `origin/master` at `a21e175`. Its instructions and relevant frontend contracts
+  are read; implementation is pushed in companion PR #161 (see Chunk 7).
+  Keep commits in their owning repositories and link PRs.
 - Mudlet should use native MXP for the new scrolling-output links; changing the
   `durisclient` package is not an expected dependency.
 
-The earlier 2-4 hour estimate covers implementation and verification, including
-DurisWeb, but is provisional. Reassess after the queue/pager slice below is proven;
-do not trade away acceptance criteria to fit the estimate.
+The original estimate was provisional; complete queue/pager ownership, literal
+URL handling and real-client qualification required additional work. Final
+verification and remaining compatibility limits are recorded below.
 
 ## Existing code and reuse points
 
@@ -591,6 +594,230 @@ semantic links to existing text/chat envelopes, implement and verify DurisWeb,
 then perform native-client and original-socket hotboot journeys. No live-client
 click, production operation or deployment has been performed. The goal remains
 in progress even though help and URL producers now reach native MXP delivery.
+
+### Chunk 6: negotiated browser text and chat presentation
+
+Review: [PR #942](https://github.com/LuminariMUD/Duris/pull/942), implementation
+commit `ccb0aa0f8`, stacked on #934; labels `enhancement`, `documentation`.
+
+Implemented on `branch/clickable-links-web-protocol`:
+
+- Exact `Duris.Links 1` support through the existing Core.Supports parser and
+  feature report. It needs no Subscribe stream. Removal, GMCP disable and the
+  player's opt-out stop optional presentation. Existing support storage already
+  retains the bit on supported native hotboot; no record-layout change is needed.
+- One shared JSON formatter replaces the duplicated chat run/dollar serializer
+  and supplies ordinary WebSocket text. Existing `type/category/data` remain;
+  the same envelope carries optional `presentation` with literal text, colors
+  and half-open code-point `{start,end,kind,target}` links. A flush produces one
+  ordered text batch, preserving original block folding and leading newlines.
+- Already queued WS wire bytes drain before raw text/prompt state is consumed.
+  This reuses the existing queue/buffer and adds no second retry queue or matching
+  IDs. Optional over-budget/invalid/allocation-failed presentation falls back to
+  ordinary text. Packet size remains inside the existing WS output budget.
+- All existing chat channels can carry optional `bodyPresentation`, built from
+  the recipient-approved body, for their normal sender/body layout. Adopted
+  full-line profile snapshots retain their fields and gain links when negotiated.
+  No language/visibility transform or profile resolution is repeated. Existing
+  unnegotiated payloads retain their shape and one-copy delivery.
+- The complete capability report fits when all existing streams are supported
+  and active. Shared legacy chat-root construction keeps required-field failures
+  atomic; new snapshots are also atomic. The wire contract and structured-chat
+  guide are updated.
+
+Verified: normal and ASan/UBSan output integration, including one-envelope order,
+Unicode offsets, literal text, capabilities/opt-out, full versus body chat, raw
+queue retention under pressure and 150 allocation-failure points. The actual
+GMCP parser/wire fixture passed under sanitizers with version negotiation,
+Add/Remove/Set, no subscription, all chat entry points, all-stream reporting and
+disable behavior. Deferred-prompt serialization and `make -C src -j8` passed.
+The local benchmark covers new-capability chat (about 20–21 microseconds CPU per
+message for both full/body snapshots, 12,800 messages to 64 recipients); this is
+not a live capacity claim. Formatting and commit-time tidy passed; the branch is
+pushed for review.
+
+Evidence: `bin/tests/phase1-web-protocol-{output,asan,gmcp,prompts,build}.log`,
+`bin/tests/phase1-web-protocol-benchmark.csv`. The output harness exports real
+synthetic producer payloads to `bin/tests/clickable-links-wire.json` when run with
+`OUTPUT_PRESENTATION_FIXTURE=bin/tests/clickable-links-wire.json`; use these for
+the paired browser qualification, not private player data.
+
+Next: implement the client decoder, line slicing through triggers, store/history
+retention and a shared safe renderer in the companion worktree. Preserve console
+versus chat palette contracts and the existing sender/body fallback; use the
+existing command sender for help and user-activated HTTP/HTTPS anchors. Validate
+rendered browser clicks/keyboard/history and then native-client/hotboot journeys.
+The frontend testing skill will use Playwright because the Browser plugin is
+absent. Prepare website release news locally under the website skill; this PR-only
+task does not publish the not-yet-deployed feature or refresh unrelated Mudlet
+package history. The goal remains active until the entire Phase 1 acceptance
+scope is proven.
+
+### Chunk 7: browser receipt, rendering and history
+
+Review: [DurisWeb PR #161](https://github.com/LuminariMUD/DurisWeb/pull/161),
+commit `fdf9f31`, based on web `master` at `a21e175`. Labels: `enhancement`,
+`documentation`. It depends on the server stack ending at #942. Both peers
+retain ordinary readable fallback with the older peer.
+
+The browser advertises `Duris.Links 1` on each connection. A shared bounded
+snapshot decoder validates targets, colors and code-point ranges; text metadata
+must match its terminal envelope before line clipping. Existing trigger input
+and gag behavior remain in place. Live output and both split-history panes use
+one Vue text-node renderer; help buttons call the existing command sender.
+HTTP/HTTPS anchors open separately and stop propagation to sender/game hotkeys.
+The same renderer covers full-line chat and optional body snapshots across
+existing chat channels. Store/history insertion retains both optional snapshots,
+and saved history revalidates without a storage-version migration. Console,
+authored-body and chat colors use their existing palette mappings. No URL regex,
+new settings, endpoints, stream subscriptions or link-ID registry were added.
+
+Verified: 50 focused tests, frontend format/lint/type checks, build and palette
+guard pass. The actual synthetic server output fixture covers text, adopted
+full-line say and legacy nchat body presentation. Playwright drove the real
+`/play` UI and normal WebSocket handler: receipt sends no game command; help
+click and Enter each send exactly one `help weather`; three text/chat URL
+surfaces retain the exact query ampersand target and a URL opens without a game
+command. Desktop 1440×1000, tablet 820×1180 and phone 390×844 passed with no page
+errors or framework overlay. Existing Vue Router `next()` deprecation remains.
+Screenshots are `/tmp/clickable-links-{desktop,tablet,phone}.png`; temporary
+browser script is `/tmp/clickable-links-browser.py`. Required check logs are
+`bin/tests/phase1-web-client-{unit,format,lint,types,build}.log` here. Browser
+plugin was absent; the already installed Playwright/Chromium was used.
+
+The website contract is updated in `docs/CHAT-COLORIZATION.md`. The website
+news skill supplied a local unpublished draft in
+`docs/ongoing-projects/clickable-links-changelog-draft.json`; release date/version,
+entry reconciliation and publication wait for an authorized verified deployment.
+No website backend, live news, Mudlet package history or production state changed.
+
+Remaining: booted server help/pager and negotiated browser journeys, native MXP
+client clicks and original-socket hotboot qualification. Browser fixture QA is
+not a claim that those live server/native journeys have passed. The local
+`mudlet` wrapper points to an absent AppImage; locate or provision an isolated
+client without changing user profiles. The goal remains active.
+
+### Chunk 8: real clients, hotboot and native compatibility
+
+Review: [PR #951](https://github.com/LuminariMUD/Duris/pull/951), commits
+`fb85ca258` and `08ab8e120`, stacked on #942. Labels: `bug`, `documentation`.
+
+The real isolated MariaDB server and /play browser passed account entry,
+help-reference activation during active paging, keyboard activation of retained
+history targets, a help search-result click, exact external query-string URLs
+and say-channel URLs. This uses normal WebSocket traffic and server dispatch,
+not replayed payloads. Evidence: bin/tests/phase1-web-client-live.log and
+/tmp/clickable-links-live-browser.png. The booted existing GMCP lifecycle
+journey also passes (phase1-gmcp-booted.log), as does the MariaDB/Redis copyover
+journey with two actual process replacements (phase1-copyover-booted.log).
+
+Native Mudlet 5.1.1 with default MXP/MCCP negotiated successfully. A real mouse
+click sent exactly one help Weather and replaced the active pager. Refresh and
+normal pager teardown were exercised in the client; forward/back and clipping
+retain the integration harness's coverage. Native testing exposed two
+compatibility regressions, repaired on this qualification branch:
+
+- Mudlet retains the amp entity literally in HREF attributes, whereas MUSHclient
+  decodes entities. The recipient's existing negotiated client_name now selects
+  the correct attribute serialization. It is already retained by copyover and
+  no new protocol state is needed. URI punctuation is serialized safely; unusual
+  help targets that cannot be represented safely in the older Mudlet attribute
+  form stay readable without a link. The protocol document specifies the limits.
+- The existing greeting uses numeric cursor-forward ANSI for its layout. Native
+  MXP now preserves that operation alongside SGR while still defusing raw MXP
+  mode changes. It no longer displays those layout escapes as caret text.
+
+After staging the repaired binary in the private runtime, a real native hotboot
+kept the same accepted TCP socket inode with MCCP active. Help/URL links rendered
+again; a real URL click opened exactly https://example.test/?x=1&name=two through
+an isolated native URL handler without sending a game command, and a help click
+again sent exactly one command. No reconnect was substituted for this proof.
+The before/after URL capture and socket observation are under
+/tmp/clickable-links-native/; screenshots include help.png, clicked.png and
+after-hotboot.png. The manual lab controller's 30-minute holding deadline later
+terminated its fixture; that cleanup deadline is not an application assertion or
+an additional passing journey. Its individual click/socket assertions had
+already passed. No production account, listener, profile or database was used.
+
+The user confirmed Mudlet is the actual client and approved a brief portable
+MUSHclient 5.06 cross-check. That client also entered the same isolated MUD,
+followed a help link during paging and opened the HTTPS URL above. The browser's
+focused address bar confirmed the complete destination with the literal query
+ampersand. The URL's network error is expected: example.test is synthetic.
+MUSHclient's portable first-run resource/import dialogs were test setup only.
+No native client package was modified. Mudlet 4.19.1 source was inspected for the
+same attribute behavior; the existing launcher referred to an absent binary and
+the attempted old release download returned 404. That exact binary remains
+untested; actual qualification used official Mudlet 5.1.1.
+
+Normal and ASan/UBSan output integration pass with new per-recipient attribute,
+snooper, quote/fallback, URI-punctuation and greeting-layout regressions.
+make -C src -j8, formatting, Telnet/TLS short-write/backpressure/MCCP runtime and
+copyover evidence tests pass. Logs:
+bin/tests/phase1-native-compat-{output,asan,build,telnet,copyover}.log.
+Native and browser feature qualification is complete; nothing has been merged
+or deployed.
+
+### Official Mudlet package verification
+
+The user identified `/home/aiwithapex/projects/durisclient` as the official
+client. It is `LuminariMUD/duris-client`, source revision
+`e4f6cc6`, package v2.5.3. Its `Core.Hello` identifies as `Mudlet-ArjUI`, so the
+server recognizes the Mudlet name prefix rather than only the bare name. The
+actual output-loop regression covers both names and an independent snooper.
+
+Built that exact source with `python3 build.py --check` and
+`python3 build.py -o /tmp/clickable-links-official.mpackage`, leaving the client
+checkout clean. Installed the resulting package in a fresh isolated Mudlet
+5.1.1 profile connected to a new disposable MariaDB MUD. Map requests used the
+client's existing loopback map fixture. No real account, live profile or public
+map service was involved.
+
+Real mouse clicks through the official `ArjUI_Console` passed before and after
+a real native hotboot on the same accepted socket, starting with MCCP enabled.
+The existing copyover path ends that compression stream; the proof is original
+socket continuity, not a claim that the old zlib stream survives exec. The
+package's `selectCurrentLine` / `copy` / `appendBuffer` / `deleteLine` route
+retains native link actions. A copied help link replaced the active pager and
+sent exactly one `help Weather`; a copied URL opened exactly
+`https://example.test/?x=1&name=two` and sent no game command. These assertions
+passed again after hotboot, including the `Mudlet-ArjUI` client-name path.
+
+Evidence: `bin/tests/phase1-official-client-links.json` pins the full client and
+server SHAs, built archive hash, socket observation and actual action results;
+`bin/tests/phase1-official-client-live.log` records the fixture. Screenshots and
+the isolated profile are under `/tmp/clickable-links-official/`, including
+`help.png`, `help-clicked.png`, `after-hotboot.png` and
+`post-hotboot-click.png`. The fixture exited successfully after an explicit
+completion signal and normal MUD shutdown. No official client source, version,
+changelog or distributed package needed a change.
+
+### Final review handoff
+
+All implementation commits are pushed. Review/merge the server stack in order:
+[909](https://github.com/LuminariMUD/Duris/pull/909) →
+[913](https://github.com/LuminariMUD/Duris/pull/913) →
+[917](https://github.com/LuminariMUD/Duris/pull/917) →
+[921](https://github.com/LuminariMUD/Duris/pull/921) →
+[934](https://github.com/LuminariMUD/Duris/pull/934) →
+[942](https://github.com/LuminariMUD/Duris/pull/942) →
+[951](https://github.com/LuminariMUD/Duris/pull/951).
+The browser [PR #161](https://github.com/LuminariMUD/DurisWeb/pull/161) targets
+its own master and uses the server contract from #942. PRs are open for review
+with appropriate labels; ordinary repository review gates remain in force.
+No release tag is appropriate before review/merge and deployment.
+
+Implementation scope is closed: help links and explicit HTTP/HTTPS URLs only,
+native MXP plus browser presentation, with readable legacy fallback. The final
+audit reuses the executable boundary, transport, parser, paging and allocation
+failure evidence recorded in Chunks 1–6, the 50 focused browser tests and
+required frontend quality/build checks, real browser/server qualification, and
+actual native/official-package clicks and hotboot. No speculative client
+adapter, link registry, periodic stream, extra settings or package fork was
+needed. Mudlet 4.19.1 remains source-inspected rather than runtime-qualified;
+the conditional minimum-version check could not run without that binary.
+Production rollout and website-news publication are separate, unauthorized
+operations, not outstanding implementation tasks.
 
 ## Scope review
 

@@ -76,8 +76,45 @@ critical_command command_for(const auction_command_payload &payload,
 {
 	critical_operation_id operation_id = {};
 	assert(critical_operation_id_generate(&operation_id));
+	auto prepared = payload;
+	if (payload.action == auction_action::list || payload.action == auction_action::claim_item)
+	{
+		std::vector<player_item_snapshot> items;
+		if (payload.action == auction_action::claim_item)
+		{
+			execute("SELECT obj_blob FROM auction_item_custody WHERE item_uid=" +
+				std::to_string(payload.items[0].item_uid));
+			MYSQL_RES *stored = mysql_store_result(connection);
+			MYSQL_ROW row = stored ? mysql_fetch_row(stored) : nullptr;
+			assert(row && row[0]);
+			const auto *lengths = mysql_fetch_lengths(stored);
+			prepared.object_blob_size = lengths[0];
+			memcpy(prepared.object_blob.data(), row[0], lengths[0]);
+			mysql_free_result(stored);
+			assert(player_item_snapshot_list_decode(
+				       prepared.object_blob.data(), prepared.object_blob_size,
+				       &items) == player_snapshot_codec_result::ok);
+		}
+		else
+			for (size_t index = 0; index < payload.item_count; ++index)
+			{
+				player_item_snapshot item = {};
+				item.object_uid = payload.items[index].item_uid;
+				item.vnum = payload.items[index].vnum;
+				item.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+				item.type = ITEM_WEAPON;
+				item.condition = 100;
+				items.push_back(item);
+			}
+		std::vector<uint8_t> encoded;
+		assert(player_item_snapshot_list_encode(items, &encoded) ==
+		       player_snapshot_codec_result::ok);
+		prepared.item_blob_size = encoded.size();
+		std::copy(encoded.begin(), encoded.end(), prepared.item_blob.begin());
+	}
 	critical_command command = {};
-	assert(auction_command_build(&command, operation_id, payload, critical_source_site::command,
+	assert(auction_command_build(&command, operation_id, prepared,
+				     critical_source_site::command,
 				     critical_deadline_class::interactive));
 	command.accepted_at_usec = 1;
 	assert(critical_command_valid(command));
@@ -179,13 +216,37 @@ int main()
 	listing.object_blob_size = 12;
 	memcpy(listing.object_short.data(), "a harness blade", 15);
 	critical_command list_command = command_for(listing, &operations);
+	// Refused revision/coverage must leave the original owner and wallet intact.
+	auto stale_listing = listing;
+	stale_listing.expected_wallet_revision = 1;
+	apply(command_for(stale_listing, &operations), critical_apply_outcome::terminal_failure,
+	      ESTALE);
+	auto unaffordable_listing = listing;
+	unaffordable_listing.listing_fee = 10001;
+	apply(command_for(unaffordable_listing, &operations),
+	      critical_apply_outcome::terminal_failure, ENOSPC);
+	// Fail the debit after listing/custody mutations to prove outer rollback.
+	execute("CREATE TRIGGER reject_auction_debit BEFORE UPDATE ON player_data FOR EACH ROW BEGIN IF NEW.pid=" +
+		std::to_string(seller) +
+		" THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='auction debit refusal'; END IF; END");
+	const auto refused_listing = critical_command_repository_apply(connection, list_command);
+	assert(refused_listing.error_code == 1644 &&
+	       refused_listing.outcome != critical_apply_outcome::applied);
+	assert(scalar("SELECT COUNT(*) FROM auction_item_custody WHERE item_uid=" +
+		      std::to_string(item_uid)) == 0);
+	assert(scalar("SELECT owner_type FROM item_current_owner WHERE item_uid=" +
+		      std::to_string(item_uid)) == 1);
+	assert(scalar("SELECT platinum FROM player_data WHERE pid=" + std::to_string(seller)) ==
+	       10);
+	assert(scalar("SELECT wallet_revision FROM player_data WHERE pid=" +
+		      std::to_string(seller)) == 0);
+	execute("DROP TRIGGER reject_auction_debit");
 	auction_command_result result = apply(list_command);
 	const uint32_t auction_id = result.auction_id;
 	assert(auction_id && result.event_type == auction_event_type::listed);
-	// The wallet is memory's: the repository reports the fee and leaves the row alone.
+	// The listing fee and custody share one SQL receipt.
 	assert(result.wallet_value_delta == -1000);
-	assert(scalar("SELECT platinum FROM player_data WHERE pid=" + std::to_string(seller)) ==
-	       10);
+	assert(scalar("SELECT platinum FROM player_data WHERE pid=" + std::to_string(seller)) == 9);
 	assert(scalar("SELECT owner_type FROM item_current_owner WHERE item_uid=" +
 		      std::to_string(item_uid)) == 6);
 	assert(scalar("SELECT COUNT(*) FROM auction_item_custody WHERE auction_id=" +
@@ -194,6 +255,42 @@ int main()
 		critical_command_repository_apply(connection, list_command);
 	assert(duplicate.outcome == critical_apply_outcome::already_applied);
 	assert(scalar("SELECT COUNT(*) FROM auctions WHERE id=" + std::to_string(auction_id)) == 1);
+	// A logout capture before publication still carries the listed UID and old
+	// purse. Its receipt must settle both fields before the snapshot can write.
+	player_snapshot listed_capture = {};
+	listed_capture.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+	listed_capture.pid = static_cast<int>(seller);
+	listed_capture.revision = 1;
+	listed_capture.components = PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_INVENTORY;
+	listed_capture.encoded_size_bound = 16384;
+	listed_capture.status_integers = { { player_status_field::copper, 0, 0, false },
+					   { player_status_field::silver, 0, 0, false },
+					   { player_status_field::gold, 0, 0, false },
+					   { player_status_field::platinum, 10, 0, false } };
+	player_item_snapshot original_item = {};
+	original_item.object_uid = item_uid;
+	original_item.vnum = 77;
+	original_item.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	listed_capture.items.push_back(original_item);
+	listed_capture.pending_trade.operation = list_command.operation_id.bytes;
+	listed_capture.pending_trade.payment = -1000;
+	std::vector<uint8_t> encoded_listing;
+	assert(critical_command_encode(list_command, &encoded_listing) ==
+	       critical_command_codec_result::ok);
+	SHA256(encoded_listing.data(), encoded_listing.size(),
+	       listed_capture.pending_trade.command_hash.data());
+	for (int repeat = 0; repeat < 2; ++repeat)
+	{
+		assert(player_snapshot_repository_apply(connection, listed_capture).outcome ==
+		       player_save_apply_outcome::applied);
+		assert(scalar("SELECT platinum FROM player_data WHERE pid=" +
+			      std::to_string(seller)) == 9);
+		assert(scalar("SELECT COUNT(*) FROM player_items WHERE obj_uid=" +
+			      std::to_string(item_uid)) == 0);
+		assert(scalar("SELECT owner_type FROM item_current_owner WHERE item_uid=" +
+			      std::to_string(item_uid)) == 6);
+	}
+	puts("listing debit: refusal/rollback, retry/replay and pre-publication UID/wallet capture pass");
 	auction_command_payload early_finalize = {};
 	early_finalize.action = auction_action::finalize;
 	early_finalize.auction_id = auction_id;
@@ -209,18 +306,61 @@ int main()
 	result = apply(command_for(bid, &operations));
 	assert(result.event_type == auction_event_type::bid_placed && result.final_price == 3000 &&
 	       result.wallet_value_delta == -3000);
-	assert(scalar("SELECT platinum FROM player_data WHERE pid=" + std::to_string(bidder)) ==
-	       10);
+	assert(scalar("SELECT platinum FROM player_data WHERE pid=" + std::to_string(bidder)) == 7);
+	// An existing winner pays only its increment. Fail the wallet write after
+	// bid/history mutation, then retry and settle a capture of the old purse.
+	auto own_bid = bid;
+	own_bid.value = 4000;
+	own_bid.expected_wallet_revision = 1;
+	const auto own_bid_command = command_for(own_bid, &operations);
+	execute("CREATE TRIGGER reject_auction_bid BEFORE UPDATE ON player_data FOR EACH ROW BEGIN IF NEW.pid=" +
+		std::to_string(bidder) +
+		" THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='bid debit refusal'; END IF; END");
+	assert(critical_command_repository_apply(connection, own_bid_command).error_code == 1644);
+	assert(scalar("SELECT cur_price FROM auctions WHERE id=" + std::to_string(auction_id)) ==
+	       3000);
+	assert(scalar("SELECT platinum FROM player_data WHERE pid=" + std::to_string(bidder)) == 7);
+	assert(scalar("SELECT COUNT(*) FROM auction_bid_history WHERE auction_id=" +
+		      std::to_string(auction_id)) == 1);
+	execute("DROP TRIGGER reject_auction_bid");
+	result = apply(own_bid_command);
+	assert(result.wallet_value_delta == -1000 && result.wallet_revision == 2);
+	auto bid_capture = listed_capture;
+	bid_capture.pid = static_cast<int>(bidder);
+	bid_capture.components = PLAYER_COMPONENT_STATUS;
+	bid_capture.items.clear();
+	bid_capture.wallet_revision = 1;
+	bid_capture.status_integers.back() = { player_status_field::platinum, 7, 0, false };
+	bid_capture.pending_trade.operation = own_bid_command.operation_id.bytes;
+	bid_capture.pending_trade.payment = -4000;
+	bid_capture.pending_trade.wallet_revision = 1;
+	std::vector<uint8_t> encoded_bid;
+	assert(critical_command_encode(own_bid_command, &encoded_bid) ==
+	       critical_command_codec_result::ok);
+	SHA256(encoded_bid.data(), encoded_bid.size(),
+	       bid_capture.pending_trade.command_hash.data());
+	for (int repeat = 0; repeat < 2; ++repeat)
+	{
+		assert(player_snapshot_repository_apply(connection, bid_capture).outcome ==
+		       player_save_apply_outcome::applied);
+		assert(scalar("SELECT platinum FROM player_data WHERE pid=" +
+			      std::to_string(bidder)) == 6);
+		assert(scalar("SELECT wallet_revision FROM player_data WHERE pid=" +
+			      std::to_string(bidder)) == 2);
+	}
+	assert(critical_command_repository_apply(connection, own_bid_command).outcome ==
+	       critical_apply_outcome::already_applied);
+	puts("bid debit: rolled-back history/wallet, actual own-bid increment and snapshot/replay pass");
 
 	auction_command_payload buy = {};
 	buy.action = auction_action::bid;
 	buy.auction_id = auction_id;
-	buy.value = 5000;
+	buy.value = 6000; // The buy-now receipt charges only 5000.
 	fill_actor(&buy, buyer, buyer_account, "AuctionBuyer", 0);
 	result = apply(command_for(buy, &operations));
 	assert(result.event_type == auction_event_type::sold && result.final_price == 5000);
 	assert(scalar("SELECT money FROM auction_money_pickups WHERE pid=" +
-		      std::to_string(bidder)) == 3000);
+		      std::to_string(bidder)) == 4000);
 	assert(scalar("SELECT money FROM auction_money_pickups WHERE pid=" +
 		      std::to_string(seller)) == 4850);
 	assert(scalar("SELECT claim_pid FROM auction_item_custody WHERE auction_id=" +
@@ -269,7 +409,52 @@ int main()
 	item_claim.items[0] = { item_uid, 1, 77 };
 	memcpy(item_claim.object_blob.data(), "object-blob", 12);
 	item_claim.object_blob_size = 12;
-	result = apply(command_for(item_claim, &operations));
+	const auto item_command = command_for(item_claim, &operations);
+	execute("CREATE TRIGGER reject_auction_item BEFORE INSERT ON player_items FOR EACH ROW BEGIN IF NEW.pid=" +
+		std::to_string(buyer) +
+		" THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='auction item refusal'; END IF; END");
+	assert(critical_command_repository_apply(connection, item_command).error_code == 1644);
+	assert(scalar("SELECT owner_type FROM item_current_owner WHERE item_uid=" +
+		      std::to_string(item_uid)) == 6);
+	assert(scalar("SELECT COUNT(*) FROM auction_item_custody WHERE item_uid=" +
+		      std::to_string(item_uid) + " AND claimed_at IS NULL") == 1);
+	assert(scalar("SELECT COUNT(*) FROM player_items WHERE obj_uid=" +
+		      std::to_string(item_uid)) == 0);
+	execute("DROP TRIGGER reject_auction_item");
+	result = apply(item_command);
+	assert(result.materialized_item_ids[0] ==
+	       scalar("SELECT id FROM player_items WHERE pid=" + std::to_string(buyer) +
+		      " AND obj_uid=" + std::to_string(item_uid)));
+	assert(result.wallet_revision == 2);
+	assert(critical_command_repository_apply(connection, item_command).outcome ==
+	       critical_apply_outcome::already_applied);
+	auto claim_capture = listed_capture;
+	claim_capture.pid = static_cast<int>(buyer);
+	claim_capture.items.clear();
+	claim_capture.status_integers.back() = { player_status_field::platinum, 5, 0, false };
+	claim_capture.wallet_revision = 1;
+	claim_capture.pending_trade.operation = item_command.operation_id.bytes;
+	claim_capture.pending_trade.payment = 0;
+	claim_capture.pending_trade.wallet_revision = 1;
+	std::vector<uint8_t> encoded_item_command;
+	assert(critical_command_encode(item_command, &encoded_item_command) ==
+	       critical_command_codec_result::ok);
+	SHA256(encoded_item_command.data(), encoded_item_command.size(),
+	       claim_capture.pending_trade.command_hash.data());
+	for (int repeat = 0; repeat < 2; ++repeat)
+	{
+		assert(player_snapshot_repository_apply(connection, claim_capture).outcome ==
+		       player_save_apply_outcome::applied);
+		assert(scalar("SELECT COUNT(*) FROM player_items WHERE pid=" +
+			      std::to_string(buyer) + " AND obj_uid=" + std::to_string(item_uid)) ==
+		       1);
+		assert(scalar("SELECT platinum FROM player_data WHERE pid=" +
+			      std::to_string(buyer)) == 5);
+		assert(scalar("SELECT wallet_revision FROM player_data WHERE pid=" +
+			      std::to_string(buyer)) == 2);
+	}
+	puts("item claim: target/source rollback, retry/replay and missing-UID snapshot retention pass");
+
 	assert(result.event_type == auction_event_type::item_claimed &&
 	       result.item_revisions[0] == 2);
 	assert(scalar("SELECT owner_id FROM item_current_owner WHERE item_uid=" +
@@ -280,7 +465,7 @@ int main()
 	apply(command_for(duplicate_item_claim, &operations),
 	      critical_apply_outcome::terminal_failure, ESTALE);
 	assert(scalar("SELECT COUNT(*) FROM auction_ledger WHERE auction_id=" +
-		      std::to_string(auction_id)) == 4);
+		      std::to_string(auction_id)) == 5);
 
 	const uint64_t expired_uid = item_uid + 1;
 	execute("INSERT INTO item_current_owner(item_uid,root_item_uid,parent_item_uid,owner_type,"
@@ -289,7 +474,7 @@ int main()
 		std::to_string(seller) + ",0,0,78,1)");
 	auction_command_payload expired_listing = {};
 	expired_listing.action = auction_action::list;
-	fill_actor(&expired_listing, seller, seller_account, "AuctionSeller", 2);
+	fill_actor(&expired_listing, seller, seller_account, "AuctionSeller", 1);
 	expired_listing.start_price = 1000;
 	expired_listing.listing_fee = 1000;
 	expired_listing.end_time = static_cast<uint64_t>(time(nullptr) - 1);
@@ -311,7 +496,7 @@ int main()
 	auction_command_payload expired_claim = {};
 	expired_claim.action = auction_action::claim_item;
 	expired_claim.auction_id = expired_auction_id;
-	fill_actor(&expired_claim, seller, seller_account, "AuctionSeller", 3);
+	fill_actor(&expired_claim, seller, seller_account, "AuctionSeller", 2);
 	expired_claim.item_count = 1;
 	expired_claim.items[0] = { expired_uid, 1, 78 };
 	memcpy(expired_claim.object_blob.data(), "expired-blob", 13);
@@ -329,7 +514,7 @@ int main()
 		std::to_string(seller) + ",0,0,79,1)");
 	auction_command_payload removable = {};
 	removable.action = auction_action::list;
-	fill_actor(&removable, seller, seller_account, "AuctionSeller", 4);
+	fill_actor(&removable, seller, seller_account, "AuctionSeller", 2);
 	removable.start_price = 1000;
 	removable.end_time = 2000000000;
 	removable.item_count = 1;
@@ -337,13 +522,21 @@ int main()
 	memcpy(removable.object_blob.data(), "removed-blob", 13);
 	removable.object_blob_size = 13;
 	memcpy(removable.object_short.data(), "a removed blade", 15);
-	result = apply(command_for(removable, &operations));
+	auto legacy_listing = command_for(removable, &operations);
+	auction_command_payload legacy_payload = {};
+	assert(auction_command_decode_payload(legacy_listing, &legacy_payload));
+	legacy_listing.payload.resize(legacy_listing.payload.size() - 4 -
+				      legacy_payload.item_blob_size);
+	legacy_listing.payload_version = 1;
+	result = apply(legacy_listing);
+	assert(scalar("SELECT wallet_revision FROM player_data WHERE pid=" +
+		      std::to_string(seller)) == 3);
 	const uint32_t removed_auction_id = result.auction_id;
 	auction_command_payload removed_bid = {};
 	removed_bid.action = auction_action::bid;
 	removed_bid.auction_id = removed_auction_id;
 	removed_bid.value = 2500;
-	fill_actor(&removed_bid, bidder, bidder_account, "AuctionBidder", 1);
+	fill_actor(&removed_bid, bidder, bidder_account, "AuctionBidder", 2);
 	apply(command_for(removed_bid, &operations));
 	const long long bidder_pickup = scalar(
 		"SELECT money FROM auction_money_pickups WHERE pid=" + std::to_string(bidder));
@@ -356,6 +549,9 @@ int main()
 	assert(scalar("SELECT money FROM auction_money_pickups WHERE pid=" +
 		      std::to_string(bidder)) == bidder_pickup + 2500);
 
+	// Start a separate credit fixture after verifying the bid debit above.
+	execute("UPDATE player_data SET copper=0,silver=0,gold=0,platinum=10,wallet_revision=0 WHERE pid=" +
+		std::to_string(buyer));
 	// A new money claim commits its exact credit and pickup consumption together.
 	execute("INSERT INTO auction_money_pickups(pid,money) VALUES(" + std::to_string(buyer) +
 		",100) ON DUPLICATE KEY UPDATE money=100");
@@ -421,7 +617,7 @@ int main()
 	captured.revision = 2;
 	captured.pending_trade.command_hash[0] ^= 1;
 	assert(player_snapshot_repository_apply(connection, captured).outcome ==
-	       player_save_apply_outcome::applied);
+	       player_save_apply_outcome::terminal_failure);
 	assert(scalar("SELECT copper+10*silver+100*gold+1000*platinum FROM player_data WHERE pid=" +
 		      std::to_string(buyer)) == 10025);
 

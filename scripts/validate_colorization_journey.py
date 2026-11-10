@@ -21,7 +21,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests/async"))
-from test_flatfile_combat_journey import (  # noqa: E402
+from test_mariadb_combat_journey import (  # noqa: E402
     ANSI, MudClient, PASSWORD, available_ports, create_character,
     generate_certificate, make_fixture, mariadb_authority, require,
 )

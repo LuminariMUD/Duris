@@ -18,7 +18,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 ROOT = Path(__file__).resolve().parents[2]
 START = "begins gathering magic toward YOU!"

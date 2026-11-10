@@ -23,7 +23,7 @@ import tempfile
 import time
 import uuid
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from _paths import HARNESS_STUBS
 
 ROOT = Path(__file__).resolve().parents[2]

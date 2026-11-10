@@ -238,7 +238,11 @@ bool canonicalize_extra_description(const player_item_extra_description_snapshot
 	return true;
 }
 
-bool materialize_direct_player_items(MYSQL *connection, const item_transfer_payload &payload)
+} // namespace
+
+bool item_transfer_repository_materialize_player_items(MYSQL *connection,
+						       const item_transfer_payload &payload,
+						       std::vector<uint64_t> *item_ids)
 {
 	// A command without the items' snapshot (an operator's reparent) has nothing to publish.
 	if (payload.to_owner.type != item_owner_type::player || !payload.item_blob_size)
@@ -429,9 +433,17 @@ bool materialize_direct_player_items(MYSQL *connection, const item_transfer_payl
 		    mysql_affected_rows(connection) > 1)
 			return false;
 	}
+	if (item_ids)
+	{
+		item_ids->clear();
+		for (size_t index = 0; index < payload.item_count; ++index)
+			item_ids->push_back(row_by_uid.at(payload.items[index].item_uid));
+	}
 	return true;
 }
 
+namespace
+{
 bool prepare(MYSQL_STMT **statement, MYSQL *connection, const char *sql)
 {
 	*statement = mysql_stmt_init(connection);
@@ -1331,7 +1343,7 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 				   same_owner ? from_revision + 1 : to_revision + 1))
 			return false;
 	}
-	if (!materialize_direct_player_items(connection, payload))
+	if (!item_transfer_repository_materialize_player_items(connection, payload))
 		return false;
 	if (!update_owner_revision(connection, payload.from_owner, from_revision) ||
 	    (!same_owner && !update_owner_revision(connection, payload.to_owner, to_revision)))

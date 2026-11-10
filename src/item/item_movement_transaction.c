@@ -21,6 +21,7 @@
 #include "guild/artifact_admission.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/collector_transaction.h"
+#include "economy/auction_transaction.h"
 #include "persistence/persistence_checkpoint.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_codec.h"
@@ -1860,6 +1861,16 @@ static bool queue_creation_batch(P_char actor, P_obj const *objects, size_t coun
 									    item_custody_state::active;
 						    }
 					    }
+					    // A paid grant also needs the committed wallet revision, read after
+					    // the parent so both are current before the grant is admitted.
+					    if (matched && current->second.payment)
+					    {
+						    if (!read_paid_wallet(actor_pid, first_uid))
+							    current->second
+								    .parent = creation_grant_queue::
+								    parent_preparation::failed;
+						    return;
+					    }
 					    current->second.parent =
 						    matched ? creation_grant_queue::
 								      parent_preparation::none :
@@ -2047,6 +2058,8 @@ bool item_movement_transaction_player_busy(P_char actor)
 {
 	if (!actor || IS_NPC(actor) || GET_PID(actor) <= 0)
 		return false;
+	if (auction_transaction_player_busy(actor))
+		return true;
 	const uint32_t pid = static_cast<uint32_t>(GET_PID(actor));
 	if (creation_grants.find(pid) != creation_grants.end())
 		return true;

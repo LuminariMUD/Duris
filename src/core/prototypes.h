@@ -2091,6 +2091,7 @@ void show_string(struct descriptor_data *, const char *);
 
 bool locker_container_access_allowed(P_char actor, P_obj container);
 bool locker_leave_for_extraction(P_char ch);
+void locker_return_norent_items(P_char ch);
 bool personal_locker_in_use(const char *char_name);
 void for_debug_print_char_list(P_char ch);
 

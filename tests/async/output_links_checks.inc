@@ -113,7 +113,7 @@ static void mxp_delivery_matrix()
 				       tags[0] == "SEND HREF=\"help weather\"" &&
 				       tags[1] == "/SEND");
 				assert(tags[2] ==
-				       "A HREF=\"https://durismud.com/?a=1&amp;b=&quot;&lt;2&gt;&quot;\"");
+				       "A HREF=\"https://durismud.com/?a=1&amp;b=%22%3C2%3E%22\"");
 				assert(tags[3] == "/A");
 			}
 			else
@@ -131,6 +131,52 @@ static void mxp_delivery_matrix()
 				       terminal_output[&sd].find("<SEND") == std::string::npos);
 			d.snoop.snoop_by_list = nullptr;
 		}
+	// Mudlet does not decode attribute entities. Select quoting independently
+	// for each recipient, including a standards-decoding snooper.
+	d.mxp_state = sd.mxp_state = MXP_ENABLED;
+	snoop_by_data watching{ &snooper, nullptr };
+	d.snoop.snoop_by_list = &watching;
+	for (const char *client : { "Mudlet", "Mudlet-ArjUI" })
+	{
+		strlcpy(d.client_name, client, sizeof d.client_name);
+		terminal_output.clear();
+		send_to_char(message.c_str(), &player, LOG_NONE, context);
+		assert(process_output(&d) == 1 && process_output(&sd) == 1);
+		assert(observe_mxp(terminal_output[&d]).second[2] ==
+		       "A HREF=\"https://durismud.com/?a=1&b=%22%3C2%3E%22\"");
+		assert(observe_mxp(terminal_output[&sd]).second[2] ==
+		       "A HREF=\"https://durismud.com/?a=1&amp;b=%22%3C2%3E%22\"");
+	}
+	d.snoop.snoop_by_list = nullptr;
+	d.client_name[0] = '\0';
+	for (const char *target : { "help O'Brien", "help a\"b", "help a&b" })
+	{
+		OutputLinks command{ { 0, 5, OutputLinkKind::Command, target } };
+		auto [text, tags] =
+			observe_mxp(mxp_render_output("label", command, false, TL_BLINK, true));
+		assert(text == "label" && tags.size() == 2);
+		assert(tags[0].find(target) != std::string::npos);
+	}
+	// An unrepresentable legacy-client command stays readable and inert.
+	for (const char *target : { "help a\"'b", "help <chapter>", "help chapter ]]" })
+	{
+		OutputLinks command{ { 0, 5, OutputLinkKind::Command, target } };
+		auto [text, tags] =
+			observe_mxp(mxp_render_output("label", command, false, TL_BLINK, true));
+		assert(text == "label" && tags.empty());
+	}
+	OutputLinks uri{ { 0, 5, OutputLinkKind::Url, "https://example.test/a[1]?x=2&name=two" } };
+	assert(observe_mxp(mxp_render_output("label", uri, false, TL_BLINK, true)).second[0] ==
+	       "A HREF=\"https://example.test/a%5B1%5D?x=2&name=two\"");
+	// An IPv6 host keeps its brackets, for Mudlet and for entity-decoding clients; brackets in
+	// the path or query are still encoded.
+	OutputLinks ipv6{ { 0, 5, OutputLinkKind::Url, "http://[::1]:8080/a[1]?x=[2]" } };
+	for (const bool mudlet : { false, true })
+		assert(observe_mxp(mxp_render_output("label", ipv6, false, TL_BLINK, mudlet)).second[0] ==
+		       "A HREF=\"http://[::1]:8080/a%5B1%5D?x=%5B2%5D\"");
+	// The existing greeting uses cursor-forward CSI for its artwork.
+	assert(mxp_render_output("a\x1b[12Cb", {}, false, TL_BLINK).find("\x1b[12C") !=
+	       std::string::npos);
 	for (const char *literal :
 	     { "<SEND HREF=\"quit\">literal</SEND>", "\x1b[1z<SEND HREF=\"quit\">literal\x1b[7z",
 				    "\x1b[31mcolored\x1b[m", "\xc2\x9b", "\a\b" })

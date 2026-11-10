@@ -12,7 +12,7 @@ import signal
 import subprocess
 import tempfile
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 from run_racial_pulse_journey import paged
 from run_world_quest_dual_backend import setup_run_root, wait_for_boot
@@ -278,4 +278,4 @@ if __name__ == '__main__':
     parser.add_argument('--evidence', type=Path)
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='issue37-build-', dir=ROOT / 'bin/tests') as build:
-        run(journey.build_flatfile_server(Path(build)), args.baseline, args.evidence)
+        run(journey.build_mariadb_server(Path(build)), args.baseline, args.evidence)

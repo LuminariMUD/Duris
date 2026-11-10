@@ -112,17 +112,17 @@ class AuctionTransactionalCutoverTests(unittest.TestCase):
             self.assertIn("auction_transaction_submit", body)
             self.assertNotIn("SUB_MONEY", body)
             self.assertNotIn("sql_begin_transaction", body)
-        # The listed items leave the inventory at submit and are extracted when the
-        # listing commits (auction_transaction.c); the callback only reports it.
+        # A pending listing keeps its source until the custody receipt commits.
         offer_callback = section(source, "void auction_list_completed(",
                                  "void auction_bid_completed(")
         self.assertNotIn("obj_from_char", offer_callback)
         transaction = (SRC / "auction_transaction.c").read_text()
         submit = transaction[transaction.index("bool submit(P_char character"):]
-        self.assertLess(submit.index("obj_from_char(object)"),
-                        submit.index("currency_transaction_save_first(character)"))
+        self.assertNotIn("obj_from_char(object)", submit)
         self.assertLess(submit.index("currency_transaction_save_first(character)"),
                         submit.index("critical_command_coordinator_submit"))
+        self.assertIn("currency_transaction_reserve_trade", submit)
+        self.assertIn("player_save_pipeline_reserve_trade", submit)
         self.assertNotIn("ws_broadcast_auction_new", offer_callback)
         publication = section(source, "static void auction_publish_event(",
                               "// syntax: auction offer")
@@ -264,12 +264,10 @@ int main() {
             "claim_operation_id", "claimed_at=CURRENT_TIMESTAMP(6)",
         ):
             self.assertIn(token, repository)
-        # Money claims commit the credit with pickup consumption. Listing/bid
-        # escrow retains its ordinary live-wallet boundary.
-        money_claim = section(repository, "else if (payload.action == auction_action::claim_money)",
-                              "else if (payload.action == auction_action::claim_item)")
-        self.assertIn("UPDATE player_data", money_claim)
-        self.assertNotIn("UPDATE player_data", repository.replace(money_claim, ""))
+        # Claims, listing fees and bids write the wallet in the same receipt.
+        self.assertIn("UPDATE player_data", repository)
+        self.assertIn("paid_receipt", repository)
+        self.assertIn("write_wallet(connection, payload, after, result)", repository)
         for token in ("account_banks", "currency_ledger"):
             self.assertNotIn(token, repository)
         self.assertIn("wallet_value_delta", repository)

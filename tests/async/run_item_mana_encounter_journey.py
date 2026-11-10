@@ -9,7 +9,7 @@ import time
 import re
 import run_item_pilot_journey as pilot
 import run_weapon_actions_journey as weapon
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 def reserve(client):
     client.send('itemmana prism')

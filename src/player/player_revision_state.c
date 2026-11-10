@@ -30,6 +30,7 @@ struct player_revision_entry
 	player_revision_t acknowledged_revision = 0;
 	player_revision_t written_revision = 0;
 	player_component_mask_t unacknowledged_components = 0;
+	player_component_mask_t failed_components = 0;
 	std::array<player_revision_t, CHECKPOINT_COMPONENT_COUNT> component_revisions = {};
 	bool overflowed = false;
 	bool session_ended = false;
@@ -76,6 +77,7 @@ bool player_revision_hydrate(int pid, player_revision_t durable_revision, bool i
 		state->current_revision = durable_revision;
 		state->acknowledged_revision = durable_revision;
 		state->written_revision = durable_revision;
+		state->failed_components = 0;
 		state->component_revisions.fill(durable_revision);
 		state->session_ended = false;
 		state->initial_creation = initial_creation;
@@ -154,12 +156,25 @@ bool player_revision_acknowledge_durable(int pid, player_revision_t revision,
 	return true;
 }
 
-bool player_revision_record_written(int pid, player_revision_t revision)
+bool player_revision_record_failed(int pid, player_component_mask_t components)
 {
 	player_revision_entry *state = find_state(pid);
-	if (!state)
+	if (!state || !valid_components(components))
 		return false;
-	if (revision > state->written_revision)
+	state->failed_components |= components;
+	return true;
+}
+
+bool player_revision_record_written(int pid, player_revision_t revision,
+				    player_component_mask_t components)
+{
+	player_revision_entry *state = find_state(pid);
+	if (!state || !valid_components(components))
+		return false;
+	// Completions arrive in writer order. A later partial success cannot stand
+	// in for failed components until a successful capture includes them again.
+	state->failed_components &= ~components;
+	if (!state->failed_components && revision > state->written_revision)
 		state->written_revision = revision;
 	if (revision)
 		state->initial_creation = false;
