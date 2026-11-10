@@ -177,7 +177,10 @@ try:
     if zone == 824:
         # A level 22 Vitality potion once replaced this grant and could kill the wearer.
         client.send("quaff potion")
-        client.expect("Nothing new seems to happen.", timeout=20)
+        # The potion must neither replace the grant nor stack on it. Either the potion's
+        # own refusal or the active-Vitality refusal (#943) leaves the wearer unchanged.
+        client.expect_any(("Nothing new seems to happen.", "You are already affected by vitality!"),
+                          timeout=20)
         expect_set(pieces)
     if zone == 87:
         assert not game.affects(41), "set Haste must not persist as an ordinary affect"
