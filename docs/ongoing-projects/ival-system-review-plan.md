@@ -202,9 +202,34 @@ The run uses an isolated full world under POSIX `/tmp` and a fresh loopback Mari
 10.11 schema; its private bank is also an inn for actual mortal rental. Fixture
 corrections use real rental, door-opening and carry limits rather than changing
 the server to accommodate the test. Python compilation and the real journey pass.
-Overall D is still **incomplete**: Craft/Forge recipe-provider and economic-command
-boundaries, salvage/reward journeys and the final corpus report remain open. The
-evidence explicitly keeps `complete=false` and `economic_journeys_complete=false`.
+**Craft/Forge qualified:** `branch/ival-economic-qualification`, stacked on #987.
+The real Forge-first migration-file test failed with "You dont know any recipes
+yet" because Forge bypassed the existing shared provider. Its only server change
+is to call `crafting_get_player_recipes`, matching Craft's SQL-first import,
+deduplication and eligibility policy. The same run now passes; invalid/quest
+targets stay out, and a later migration-file edit cannot override SQL ownership.
+Both commands reject #99432 at level 36 without changing any item, coin or XP.
+At level 37 it is actually forged at value 111, consuming exactly 23 high silver
+and one flux. The two other successful transactions cover value-8 Craft and a
+value-29 B5 magical Forge, including tool/essence consumption. Previews, delivered
+scores and XP match; nominal XP 8000/29000/111000 becomes 16000/58000/222000 with
+the observed well-rested multiplier of 2. Currency is unchanged. The full eight-item
+lifecycle bundle also passes after these commands. Evidence:
+[craft-forge.json](ival-evidence/f16-mariadb/craft-forge.json). Server build,
+recipe-provider contract, Python compilation and real MariaDB journey pass.
+
+**Final corpus/report passed:** [f16-integration](ival-evidence/f16-integration/),
+against the same `c0b82df5e` pre-semantics baseline as B. All 19,334 effective
+templates and 8,720 generated samples retain constructor/template/CLI parity;
+only #99432 changes (338 → 111), with no generated deltas. Report provenance,
+read-only evaluation and missing/invalid-context failure status pass. The measured
+salvage 5/10/15/20 and quest-floor crossings remain zero; the one recipe admission
+and regular-bag 125 crossing and zone-weight effects match B's recorded cohort.
+Nominal composition remains separate from scaled costs and economic scarcity.
+
+Overall D is still **incomplete**: salvage and reward command journeys remain
+open, followed by the final requirement audit. Evidence explicitly keeps
+`complete=false` and `economic_journeys_complete=false` until those gates pass.
 
 **Start with the existing MariaDB journey setup.** Verify dev/staging identity and
 reuse its command/persistence harness. Extend fixtures and assertions only.
@@ -254,8 +279,8 @@ by the batch. Codec/source-contract tests alone never prove a persistence journe
 
 Local: `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
 Remote: `duris-staging:/home/staging/duris-worktrees/ival-system-improvements`.
-Current branch: `branch/ival-qualification` for D (#987), based on
-`branch/ival-consumers` for C (#982).
+Current branch: `branch/ival-economic-qualification` for D, based on
+`branch/ival-qualification` (#987), then `branch/ival-consumers` for C (#982).
 Synchronize committed work to the remote worktree. A–C are implemented; D remains
 open. Read-only template views deliberately omit native runtime-state initialization;
 eligibility/score parity is qualified, rather than unrelated money/state slots.
@@ -263,12 +288,11 @@ eligibility/score parity is qualified, rather than unrelated money/state slots.
 Current formula: `ival-v8-proc-semantics`. Archive/evidence links above preserve
 baseline revisions and earlier PRs. Read the relevant historical finding when
 needed; do not reload the entire archive or restart the audit. The next
-implementation action is D: extend the existing MariaDB fixture for Craft/Forge
-recipe import/provider and economic boundaries, then salvage/reward commands and
-the final integration report. Forge still calls SQL directly where Craft uses the
-SQL-first import/filter provider; exercise Forge first with a private legacy recipe
-book to settle that path. Reuse the passed lifecycle bundle and A–C qualification;
-rerun a passed gate only when a relevant change or failure justifies it.
+implementation action is D: extend the same MariaDB fixture for salvage 5/10/15/20
+and faerie-bag command boundaries; reuse the existing focused MariaDB quest reward
+journey for its remaining real-game gate. Then audit the requirements and evidence.
+Forge/Craft, the lifecycle bundle and final integration report have passed; reuse
+those results unless a relevant change or failure justifies another run.
 
 ### Operator and player notes
 

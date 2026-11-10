@@ -1221,9 +1221,9 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 		return;
 	}
 
-	// load recipes from database
+	// Use the same SQL-first import and eligibility policy as Craft.
 	int recipe_count = 0;
-	int *recipes = sql_get_player_recipes(GET_PID(ch), &recipe_count);
+	int *recipes = crafting_get_player_recipes(ch, &recipe_count);
 	if (!recipes || recipe_count == 0)
 	{
 		send_to_char("You dont know any recipes yet.\r\n", ch);
