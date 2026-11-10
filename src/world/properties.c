@@ -10,6 +10,8 @@
 #include "core/prototypes.h"
 #include "core/config_parse.h"
 #include "item/item_actions.h"
+#include "item/enhance.h"
+#include "world/world_quest_policy.h"
 #include "item/weapon_actions.h"
 #include "item/device_actions.h"
 #include "item/studio_abilities.h"
@@ -187,6 +189,8 @@ void apply_properties()
 	hitroll_cap = get_property("damage.hitrollCap", 75);
 	errand_notch = get_property("epic.errandStep", 500);
 	update_misfire_properties();
+	refresh_enhancement_item_values();
+	refresh_world_quest_item_values();
 	// Observe effective values only after all cached property consumers update.
 	telemetry_config_reload_notify();
 }
