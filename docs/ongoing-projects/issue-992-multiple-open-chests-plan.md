@@ -1,6 +1,6 @@
 # Issue #992: independently open private locker chests
 
-Status: implementation plan only; gameplay changes have not started.
+Status: implementation in progress on `branch/issue-992-multiple-open-chests-plan`.
 Date: 2026-11-10.
 Issue: [#992](https://github.com/LuminariMUD/Duris/issues/992).
 Source inspected: `master` at `46468abbec508fd26c358535502e62b5590552ab`.
@@ -76,8 +76,7 @@ is a separate task. MariaDB is the only supported persistence backend.
 4. **Bare close.** Snapshot the open chest IDs, revoke every current grant,
    and invalidate pending opens, including when no chest has finished opening.
    Then record CLOSE once for each grant removed. Report when nothing was open.
-   Keep
-   the existing single-chest success wording where applicable; use clear
+   Keep the existing single-chest success wording where applicable; use clear
    plural wording when several were closed.
 5. **Close failures.** Revoke access before attempting CLOSE logging. If any
    audit submission fails, all requested grants still remain revoked and the
@@ -203,6 +202,7 @@ python3 tests/async/test_locker_container_weight_lifecycle.py
 python3 tests/async/test_help_layout.py
 ./scripts/format.sh --check
 make -C src
+make world
 ```
 
 Then run the real locker journey with the newly built binary and the existing
@@ -239,3 +239,31 @@ that gap and do not claim that behavior qualified. Submit the implementation
 for normal review linked to #992; keep the issue open until the implementation
 lands. This plan commit itself changes documentation only and does not claim
 any feature implementation, merge, or deployment.
+
+## Implementation handoff
+
+- 2026-11-10: clean worktree confirmed at plan commit `1ad221ed1`; no existing PR.
+  Extending lifecycle behavior coverage before replacing the single selection.
+- Ablation: retain one request-generation counter and the existing password
+  service. Completed grants need only an ID-to-manager-flag map. Keep global
+  management revocation and historical no-rent tracking separate. No migration
+  or new item-command layer is needed.
+- Remaining: production access/commands, expanded failure coverage, help, real
+  MariaDB and no-rent journeys, build/hooks, self-review, push and labeled PR.
+
+- Core implementation and 48 ASan/UBSan lifecycle cases now pass. The original
+  positive regressions failed on the baseline (`missing`, `overlength`, failed
+  audit admission, and `select-other`) before the access-state change.
+- The normal MariaDB server build, private-chest production/audit fixture,
+  password suite, result contracts, container-weight cases, help layout, and
+  formatting pass. Real locker/no-rent journey extensions are in progress.
+- First real locker launch exposed absent generated world files in this fresh
+  worktree. Add `make world` before journeys; this is a build prerequisite,
+  not an implementation defect or a reason to change the server.
+
+- Implementation checkpoint: code, help and focused fixtures are ready for
+  review; full MariaDB qualification is still pending. The built server SHA-256
+  is `aaa19b1ed4b5a75df1d22babb5bbe59d8ef34b634c9242626715015c497df518`.
+  Added two filled private chests to the restart journey and per-chest
+  OPEN/CLOSE audit checks. The first running journey predates the final
+  test-only fixes; complete the final journey before marking the PR ready.

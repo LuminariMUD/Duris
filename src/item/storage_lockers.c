@@ -658,12 +658,12 @@ bool locker_container_access_allowed(P_char actor, P_obj container)
 		return false;
 	if (!chest->IsPrivateChest())
 		return true;
+	const auto &opened = locker->GetOpenChests();
+	const auto grant = opened.find(chest->GetChestId());
 	return locker->LockerUserMatches(actor) && actor->desc &&
 	       actor->desc->connected == CON_PLAYING && !locker->ChestWritePending() &&
-	       actor->in_room == locker->GetRealRoom() &&
-	       locker->GetCurrentChestId() == chest->GetChestId() &&
-	       (!locker->CurrentChestOpenedAsManager() ||
-		locker_require_owner(locker, actor, NULL));
+	       actor->in_room == locker->GetRealRoom() && grant != opened.end() &&
+	       (!grant->second || locker_require_owner(locker, actor, NULL));
 }
 
 void locker_invalidate_chest_access(P_char actor)
@@ -763,8 +763,6 @@ StorageLocker::StorageLocker(int rroom, P_char chLocker, P_char chUser)
 	, m_userRuntimeId(chUser ? chUser->runtime_id : 0)
 	, m_userIsOwner(esc_locker_name_matches_player(GET_NAME(chLocker), chUser))
 	, m_bIValue(false)
-	, m_currentChestId(0)
-	, m_currentChestManager(false)
 	, m_chestAccessGeneration(0)
 	, m_lockerId(0)
 	, m_publicChestId(0)
@@ -3631,7 +3629,7 @@ static int create_new_locker(P_char ch, P_char locker, const sql_rows &rows)
 			"  eq chest password <name> <pw|none>\r\n"
 			"  eq log                      - view activity log\r\n"
 			"  open <chest> [password]     - open a chest\r\n"
-			"  close                       - close current chest\r\n";
+			"  close [chest]               - close one or all private chests\r\n";
 		world[realNum].description = str_dup(description);
 
 		strcpy(roomNameBuf, LOCKERS_DOORSIGN);
@@ -4859,17 +4857,17 @@ static int locker_opencmd(P_char ch, char *arg)
 		send_to_char("That private chest is unavailable.\r\n", ch);
 		return TRUE;
 	}
-	pLocker->InvalidateChestAccess();
-	const uint64_t generation = pLocker->GetChestAccessGeneration();
+	const uint64_t generation = pLocker->AdvanceChestAccessGeneration();
+	const uint64_t visit = pLocker->VisitId();
 	const uint64_t chest_uid = chest ? chest->GetChestObj()->obj_uid : 0;
 	const bool manager = locker_require_owner(pLocker, ch, NULL);
 	const bool is_public = chest_id == pLocker->GetPublicChestId();
-	auto current_request = [locker_id, chest_id, chest_uid, generation,
+	auto current_request = [locker_id, chest_id, chest_uid, generation, visit,
 				name = std::string(arg1)](P_char actor) -> StorageLocker *
 	{
 		StorageLocker *locker = locker_current(actor);
 		if (!locker || !locker->LockerUserMatches(actor) || locker->ChestWritePending() ||
-		    locker->GetLockerId() != locker_id ||
+		    locker->GetLockerId() != locker_id || locker->VisitId() != visit ||
 		    locker->GetChestAccessGeneration() != generation ||
 		    locker_chest_id(locker, name.c_str()) != chest_id)
 			return NULL;
@@ -4904,7 +4902,8 @@ static int locker_opencmd(P_char ch, char *arg)
 				     actor);
 			return;
 		}
-		locker->SetCurrentChestId(is_public ? 0 : chest_id, manager);
+		if (!is_public)
+			locker->OpenChest(chest_id, manager);
 		send_to_char_f(actor, "You open the '%s' chest.\r\n", name.c_str());
 	};
 	if (manager)
@@ -4990,18 +4989,44 @@ static int locker_closecmd(P_char ch, char *arg)
 		return FALSE;
 	char name[MAX_INPUT_LENGTH];
 	one_argument(arg, name);
-	if (name[0] && locker_chest_id(pLocker, name) != pLocker->GetCurrentChestId())
+	PrivateChest *chest = name[0] ? pLocker->FindPrivateChest(name) : NULL;
+	if (name[0] && !chest)
 		return FALSE;
-	const int chest_id = pLocker->GetCurrentChestId();
-	pLocker->InvalidateChestAccess();
-	if (!chest_id)
-		return FALSE;
-	if (!sql_log_chest_activity(pLocker->GetLockerId(), chest_id, GET_NAME(ch),
-				    CHEST_ACTION_CLOSE, NULL))
-		send_to_char("You close the chest, but its activity could not be recorded.\r\n",
-			     ch);
+
+	std::vector<int> closed;
+	if (chest)
+	{
+		if (pLocker->CloseChest(chest->GetChestId()))
+			closed.push_back(chest->GetChestId());
+	}
 	else
-		send_to_char("You close the chest.\r\n", ch);
+	{
+		for (const auto &grant : pLocker->GetOpenChests())
+			closed.push_back(grant.first);
+		pLocker->InvalidateChestAccess();
+	}
+	if (closed.empty())
+	{
+		send_to_char(chest ? "That private chest is already closed.\r\n" :
+				     "No private chests are open.\r\n",
+			     ch);
+		return TRUE;
+	}
+	bool recorded = true;
+	for (int id : closed)
+		if (!sql_log_chest_activity(pLocker->GetLockerId(), id, GET_NAME(ch),
+					    CHEST_ACTION_CLOSE, NULL))
+			recorded = false;
+	if (!recorded)
+		send_to_char(
+			closed.size() == 1 ?
+				"You close the chest, but its activity could not be recorded.\r\n" :
+				"You close the chests, but some activity could not be recorded.\r\n",
+			ch);
+	else
+		send_to_char(closed.size() == 1 ? "You close the chest.\r\n" :
+						  "You close all private chests.\r\n",
+			     ch);
 	return TRUE;
 }
 
