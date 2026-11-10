@@ -1,7 +1,7 @@
 # Enhancement gap fillers: "The Halfway Works"
 
-Status: 33 records implemented and native qualification passed; local gameplay
-qualification remains in progress.
+Status: complete and ready for review in [PR #998](https://github.com/LuminariMUD/Duris/pull/998).
+All implementation and local qualification steps passed. No deployment.
 Date: 2026-11-10.
 Branch: `branch/enhance-gap-fillers`, stacked on
 [PR #995](https://github.com/LuminariMUD/Duris/pull/995) (`branch/enhance-level-ceiling`),
@@ -16,8 +16,8 @@ leaves 53 pool items below item value 99 with no next step, because their wear
 slot has nothing 1 to 4 above them. On master those items could only advance
 through a lucky jump of 5 to 8.
 
-This plan adds 33 new object templates, one per gap, so every one of the 53 has
-a next step again. The templates exist only as enhancement results: they are
+This implementation adds 33 new object templates, one per gap, so every one of
+the 53 has a next step again. The templates exist only as enhancement results: they are
 not placed in any room, on any mob, in any shop or in any quest.
 
 Out of scope:
@@ -56,9 +56,9 @@ flag bit removed from six objects that the stack has not yet taken. Only two of
 the six are inside the enhancement index range (#44824, an oil lamp, and
 #120015, a pair of gnomish eyeglasses); the others are #56, #93, #171 and
 #402054. The stack must absorb those before it
-merges, so the measured world is the one expected to ship. The measurement is
-still repeated on the implementation branch (step 1), because each filler must
-land on an exact value and any later value change can move a target.
+merges, so the measured world is the one expected to ship. The measurement was
+repeated on the implementation branch: all 33 targets remain correct. Future
+valuation changes still need a fresh measurement, since they can move a target.
 
 ## Decisions
 
@@ -128,7 +128,7 @@ Values are item values under the stack.
 | 91565 | tail | 77 | a war ribbon knotted through a snakeskin band | a blood soaked war ribbon (73) | a ring made of snake skin (79) |
 | 91566 | tail | 97 | a Karthian tail spike capped in dragon scale | a Karthian tail spike (93) | a severed dragon tail (98) |
 
-Each record also needs a room description and one extra description in the
+Each record has a room description and one extra description in the
 house colour style. The shared motif for the extra description is a piece
 visibly abandoned mid-work: one half finished in the manner of the "from" item,
 the other in the manner of the "to" item.
@@ -165,6 +165,11 @@ For every new record in `areas/obj/wutvr.obj`:
   candidates to value <=99, in addition to the +8 reach; otherwise five old
   dead ends are incorrectly counted as lost paths. Scratch measurements live in
   `bin/qualification/gap-fillers/` and are deliberately uncommitted.
+  `measure.py fillers` assembles the current world and runs native index/value/
+  reward filters; `analyze.py` reconstructs the original 53 sources from the
+  preserved `baseline/` files. Do not overwrite that baseline with the new
+  content; recreating it requires the starting revision `8b0de0b85`.
+  `qualification.json`, `tuning.txt`, and `live-index.csv` hold the local results.
 - All 33 records now have colored names, room and unfinished-work extra
   descriptions, the exact planned values, and two plain applies. Source
   material/size/weight are preserved; quiver capacity fields are copied from
@@ -179,28 +184,44 @@ For every new record in `areas/obj/wutvr.obj`:
   `python3 tests/async/test_item_value_template_runtime.py` (19,367 native
   constructor/template/CLI comparisons), `make -C src`, `make -C src all -j6`,
   and `git diff --check`.
-- Next: commit/push the content chunk, open its labeled PR against
-  `branch/enhance-level-ceiling`, then run the two-step real-server journey
-  against disposable local MariaDB and record the final result here.
+- `areas/m_slow` also passed in the isolated qualification world, including
+  lookup tables; generated files are not committed.
+- Real server/MariaDB journey passed with a level-56 disposable test character:
+  `enhance copper hoop` turns #37760 (10) into #91553 (14), then
+  `enhance washed hoop` turns it into #9226 (17). Both original donor UIDs and
+  the source UID are gone, the two fees debit exactly 2,000 copper, and the real
+  successor survives a server restart and reconnect. Every live boot dumped
+  the index under GDB and matched all 9,116 measured entries exactly.
+- Exact local command:
+  `tests/async/with_disposable_mariadb.sh python3 bin/qualification/gap-fillers/journey.py`.
+  The scratch runner reuses the existing creation/SQL/command helpers, uses a
+  new loopback-only schema, and removes its server/runtime/schema on exit.
+  Evidence: `bin/qualification/gap-fillers/journey.json` (`complete: true`).
+- Content committed/pushed as `a2130de61`; PR #998 is open, labeled
+  `enhancement`, and targets `branch/enhance-level-ceiling` (#995). Its automated
+  review completed without findings on that content commit. The final follow-up
+  commit only records qualification in this plan.
+- Remaining implementation/qualification work: none. Review/merge #998 after
+  #995 and its parent #989; do not merge the content before its +4-rule parent.
 - No deployment or release tag is part of this content PR.
 
-## Implementation steps
+## Completed implementation steps
 
-1. **Re-measure on this branch.** Generate the world from this branch's area
+1. [x] **Re-measure on this branch.** Generate the world from this branch's area
    files, boot the branch build, dump the enhancement index and recompute the
    stranded set and filler targets. If any target in the table moved, update
    the table before writing records. Keep the dump script and its output out of
    the repository.
-2. **Write the 33 records** at the end of `areas/obj/wutvr.obj`, in vnum order.
-3. **Tune values.** For each record, adjust apply modifiers until the item
+2. [x] **Write the 33 records** at the end of `areas/obj/wutvr.obj`, in vnum order.
+3. [x] **Tune values.** For each record, adjust apply modifiers until the item
    value equals the target. The stack's template valuation
    (`itemvalue(const object_template &)`) gives the same number the index uses;
    the quickest loop is the in-game `stat` output on a local boot, or the
    offline scoring used by `tests/async/test_item_value_template_runtime.py`.
-4. **Regenerate the world** (`areas/m_slow`) and confirm the assembled object
+4. [x] **Regenerate the world** (`areas/m_slow`) and confirm the assembled object
    file is still strictly ascending.
-5. **Add a focused test** (see below).
-6. **Qualify** (see below), then open the PR against
+5. [x] **Add a focused test** (see below).
+6. [x] **Qualify** (see below), then open the PR against
    `branch/enhance-level-ceiling`.
 
 ## Test
