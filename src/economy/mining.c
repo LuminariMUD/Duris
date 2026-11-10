@@ -639,12 +639,16 @@ void event_mine_check(P_char ch, P_char /*victim*/, P_obj, void *data)
 	}
 }
 
+void assign_mining_object_procs()
+{
+	obj_index[real_object0(VOBJ_MINE)].func.obj = mine;
+	obj_index[real_object0(VOBJ_GEMMINE)].func.obj = mine;
+}
+
 void initialize_mining()
 {
 	mining_config_boot();
-
-	obj_index[real_object0(VOBJ_MINE)].func.obj = mine;
-	obj_index[real_object0(VOBJ_GEMMINE)].func.obj = mine;
+	assign_mining_object_procs();
 
 	for (int i = 0; mine_data[i].name; i++)
 	{

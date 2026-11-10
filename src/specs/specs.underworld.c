@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <vector>
 #include "world/buildings.h"
 #include "combat/ctf.h"
 #include "combat/damage.h"
@@ -128,7 +129,7 @@ int torment(P_obj obj, P_char ch, int cmd, char *arg)
 
 int dragonkind(P_obj obj, P_char ch, int cmd, char *arg)
 {
-	P_char tchar1 = NULL, tchar2 = NULL;
+	P_char tchar1 = NULL;
 	int curr_time;
 	P_char vict;
 	P_char temp;
@@ -354,11 +355,25 @@ int dragonkind(P_obj obj, P_char ch, int cmd, char *arg)
 			act("$n &+Lpulses with the power of &+rdragons&+L...\n&+L$n &+RROARS&+L, filling your heart with sheer terror!",
 			    1, ch, obj, 0, TO_ROOM);
 
-			for (tchar1 = world[ch->in_room].people; tchar1; tchar1 = tchar2)
-			{
-				tchar2 = tchar1->next_in_room;
+			// A flee can move or remove anyone, so roar at who is here now and recheck
+			// each of them when it is their turn.
+			const int roar_room = ch->in_room;
+			const uint64_t roarer_id = ch->runtime_id;
+			std::vector<uint64_t> target_ids;
+			for (tchar1 = world[roar_room].people; tchar1;
+			     tchar1 = tchar1->next_in_room)
+				target_ids.push_back(tchar1->runtime_id);
 
-				if (ch == tchar1 || !IS_ALIVE(tchar1))
+			for (uint64_t target_id : target_ids)
+			{
+				if (find_character_by_runtime_id(roarer_id) != ch || !IS_ALIVE(ch))
+				{
+					return FALSE;
+				}
+
+				tchar1 = find_character_by_runtime_id(target_id);
+				if (ch == tchar1 || !IS_ALIVE(tchar1) ||
+				    tchar1->in_room != roar_room)
 				{
 					continue;
 				}
@@ -394,12 +409,10 @@ int dragonkind(P_obj obj, P_char ch, int cmd, char *arg)
 						do_flee(tchar1, 0, 1);
 					}
 				}
-				if (ch->in_room != tchar1->in_room)
+				tchar1 = find_character_by_runtime_id(target_id);
+				if (tchar1 && tchar1->in_room != roar_room && IS_FIGHTING(tchar1))
 				{
-					if (IS_FIGHTING(tchar1))
-					{
-						stop_fighting(tchar1);
-					}
+					stop_fighting(tchar1);
 				}
 			}
 			return FALSE;

@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from run_item_pilot_journey import Server
 from run_world_quest_dual_backend import collect_logs
 from test_flight_network_journey import authority, command
@@ -109,6 +109,27 @@ def run(binary):
                 assert state() == (INT_MAX, 0, 0)
                 assert "trade_receipt_unresolved" not in collect_logs(runtime)
                 print("PASS accepted claim survives disconnect and restart; repeated pickup/save cannot duplicate credit", flush=True)
+
+                # SQL pickups are unsigned; collect a large balance in bounded claims.
+                stop()
+                sql(f"UPDATE player_data SET copper=0,silver=0,gold=0,platinum=0 WHERE pid={pid}")
+                sql(f"UPDATE auction_money_pickups SET money={INT_MAX + 17} WHERE pid={pid}")
+                server.start(full_world=True)
+                login()
+                client.send("auction pickup")
+                client.expect("being committed", timeout=20)
+                await_state((INT_MAX, 17, 0))
+                stop(crash=True)
+                server.start(full_world=True)
+                login()
+                assert state() == (INT_MAX, 17, 0)
+                client.send("auction pickup")
+                client.expect("being committed", timeout=20)
+                await_state((INT_MAX + 17, 0, 0))
+                command(client, "auction pickup")
+                command(client, "save")
+                await_state((INT_MAX + 17, 0, 0))
+                print("PASS unsigned staged balance collects in two exact claims across SIGKILL/restart", flush=True)
             except Exception:
                 target = ROOT / "bin/tests/auction-money-failure.log"
                 target.write_text(collect_logs(runtime) + "\n" +

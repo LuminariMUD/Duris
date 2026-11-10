@@ -37,6 +37,7 @@
 #define MAG_ESSENCE_VNUM 400211
 
 void salvage_examine_item(P_char ch, P_obj item);
+int material_start_vnum(int material);
 
 // The maximum level mob that can be conjured without use of a greater orb of magic.
 #define CONJURE_MAXLVL_NO_ORB 56

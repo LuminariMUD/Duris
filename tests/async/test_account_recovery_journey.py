@@ -18,7 +18,7 @@ load_env_file's setenv(name, value, 0) lets a real environment variable win.
 from __future__ import annotations
 
 import server_build_artifacts
-from test_flatfile_combat_journey import mariadb_authority
+from test_mariadb_combat_journey import mariadb_authority
 
 import argparse
 import os
@@ -320,9 +320,9 @@ def generate_certificate(run_root: pathlib.Path) -> None:
     (run_root / "duris.key").chmod(0o600)
 
 
-def build_flatfile_server(build_root: pathlib.Path, *, real_clock: bool = False) -> pathlib.Path:
+def build_mariadb_server(build_root: pathlib.Path, *, real_clock: bool = False) -> pathlib.Path:
     """Acquire the shared artifact while retaining journey-owned runtime state."""
-    return server_build_artifacts.build_flatfile_server(build_root, real_clock=real_clock)
+    return server_build_artifacts.build_mariadb_server(build_root, real_clock=real_clock)
 
 
 class IsolatedServer:

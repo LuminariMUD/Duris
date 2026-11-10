@@ -115,6 +115,23 @@ busy suppression, cancellation, partial bundles, pure/mixed/sparse/random spells
 and defensive random-equipment parity. The real mana arithmetic is used at the
 debit boundary; worker, repository, and game-bridge persistence tests live in #292.
 
+The [live combat journey](../../tests/async/run_weapon_actions_journey.py) uses a
+fresh disposable MariaDB schema and the ordinary 250 ms server clock. Build
+`bin/server/dms_new`, then run both complete A/B matrices:
+
+```sh
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_weapon_actions_journey.py \
+  --binary bin/server/dms_new --family packed --output bin/tests/weapon-packed.json
+tests/async/with_disposable_mariadb.sh python3 tests/async/run_weapon_actions_journey.py \
+  --binary bin/server/dms_new --family avernus --output bin/tests/weapon-avernus.json
+```
+
+The 2026-11-09 MariaDB qualification passed disabled legacy damage, enabled
+completion and enabled flee/fizzle without damage for both families. Both enabled
+windups measured 2.002 seconds; both room exits took .250 seconds. The Avernus
+fixture uses a capped NPC so ordinary hits reach the unchanged native 1/25
+selection within the bounded observation window. These checks do not infer PvP balance.
+
 The deterministic harness additionally drives 200 already-selected Avernus procs
 at four per second through a two-second windup and reports completed/suppressed
 counts. The measured result was 200 completed legacy drains versus 25 completed

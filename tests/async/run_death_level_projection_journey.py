@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_character_stat_choice_journey import WebSocketClient
 from test_flight_network_journey import authority, command
 from run_battleprep_journey import configure
@@ -26,7 +26,6 @@ PLAYERS = (("telnet", "Levelmonk"), ("websocket", "Webmonk"))
 
 def run(binary, backend, output):
     output.mkdir(parents=True, exist_ok=False)
-    inspector = output / "player-inspector"
     evidence = {"backend": backend, "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
                 "source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
                 "cases": [], "complete": False}
@@ -148,19 +147,14 @@ def run(binary, backend, output):
                 return {"level": int(status[1]), "experience": int(status[2].replace(",", ""))}
 
             def saved(name):
-                if sql:
-                    values = sql(f"SELECT level,exp,save_revision FROM player_data WHERE pid={ids[name]}").split("\t")
-                    return dict(zip(("level", "experience", "revision"), map(int, values)))
-                return json.loads(subprocess.check_output([str(inspector), env["FLATFILE_STATE_DIR"],
-                                                          "inspect", str(ids[name])], text=True))
+                values = sql(f"SELECT level,exp,save_revision FROM player_data WHERE pid={ids[name]}").split("\t")
+                return dict(zip(("level", "experience", "revision"), map(int, values)))
 
             def wait_saved(name, expected, previous):
                 deadline = time.monotonic() + 30
                 while True:
                     state = saved(name)
                     if state["revision"] > previous and all(state[key] == value for key, value in expected.items()):
-                        if backend == "flatfile":
-                            assert state["membership_level"] == expected["level"], state
                         return state
                     assert time.monotonic() < deadline, ("saved state mismatch", expected, previous, state)
                     time.sleep(.05)
@@ -229,10 +223,7 @@ def run(binary, backend, output):
                     client.close()
                 print("SETUP", backend, "four disposable characters saved", flush=True)
                 stop()
-                if sql:
-                    sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
-                else:
-                    journey.make_overlord(Path(env["FLATFILE_STATE_DIR"]), GOD)
+                sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
                 boot()
                 god = track(journey.reconnect_character(plain, account=STAFF, character=GOD, expected_room=None))
                 god.expect("Welcome to Duris", timeout=45)
@@ -287,22 +278,6 @@ def run(binary, backend, output):
                         client.expect("ACCOUNT MENU", timeout=30)
                     client.close()
                 stop()
-                if backend == "flatfile":
-                    name = PLAYERS[0][1]
-                    subprocess.run([str(inspector), env["FLATFILE_STATE_DIR"], "stale-membership", str(ids[name])], check=True)
-                    assert saved(name)["membership_level"] == 1 and saved(name)["level"] == 17
-                    boot()
-                    god = track(journey.reconnect_character(plain, account=STAFF, character=GOD, expected_room=None))
-                    god.expect("Welcome to Duris", timeout=45)
-                    command(god, "toggle paging no")
-                    client, _ = menu("telnet")
-                    check(listing(client), name, 1)
-                    enter(client, name)
-                    assert live(name)["level"] == 17
-                    client = die(client, "telnet", name, "legacy stale membership repaired at entry")
-                    client.send("quit")
-                    client.expect("ACCOUNT MENU", timeout=30)
-                    client.close()
                 # A long same-side session must not consume the opposite-side
                 # cooldown while still online. Use a fifteen-second fixture timer.
                 if not process or process.poll() is not None:
@@ -347,7 +322,7 @@ def run(binary, backend, output):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("mariadb", "flatfile"), required=True)
+    parser.add_argument("--backend", choices=("mariadb",), required=True)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()

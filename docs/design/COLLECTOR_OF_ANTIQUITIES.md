@@ -117,7 +117,7 @@ mutation.
 ## Before enabling
 
 `run_mysql_collector_intake_journey.py` (in `make test-db`) and
-`test_flatfile_collector_intake_journey.py` drive a real death and the collection of an
+`test_mariadb_collector_intake_journey.py` drive a real death and the collection of an
 antiquity from the live corpse, with shortened timers. No live journey yet covers sale
 activation, inspection, purchase, save and reconnect, or expiry; the
 harnesses below cover them against the repositories. Keep the feature disabled on a
@@ -157,7 +157,7 @@ exact blob reads, source-tree shell detachment, wallet debit, player restoration
 terminal custody, operation replay, and all seven lifecycle actions. Complete
 MariaDB builds remain required after every integration change; both intake
 journeys use disposable MariaDB schemas despite one retaining its original
-`test_flatfile_*` filename.
+`test_mariadb_*` filename.
 
 Run `python3 tests/async/test_item_transfer_codec.py` for the collector
 ownership/fence codec boundary. Run
