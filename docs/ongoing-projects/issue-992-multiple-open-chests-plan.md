@@ -1,7 +1,7 @@
 # Issue #992: independently open private locker chests
 
-Status: core implemented and pushed; final MariaDB qualification in progress.
-Review: [PR #997](https://github.com/LuminariMUD/Duris/pull/997), draft, labeled `enhancement`.
+Status: implemented and locally qualified; no implementation work remains.
+Review: [PR #997](https://github.com/LuminariMUD/Duris/pull/997), labeled `enhancement`.
 Date: 2026-11-10.
 Issue: [#992](https://github.com/LuminariMUD/Duris/issues/992).
 Source inspected: `master` at `46468abbec508fd26c358535502e62b5590552ab`.
@@ -238,49 +238,58 @@ server build, the real MariaDB multi-chest journey, accurate help, formatting,
 binary identity with any limitations. If a relevant check cannot run, state
 that gap and do not claim that behavior qualified. Submit the implementation
 for normal review linked to #992; keep the issue open until the implementation
-lands. This plan commit itself changes documentation only and does not claim
-any feature implementation, merge, or deployment.
+lands. The initial plan commit `1ad221ed1` changed documentation only;
+implementation and qualification evidence follows.
 
-## Implementation handoff
+## Implementation handoff and completion evidence
 
-- 2026-11-10: clean worktree confirmed at plan commit `1ad221ed1`; no existing PR.
-  Extending lifecycle behavior coverage before replacing the single selection.
-- Ablation: retain one request-generation counter and the existing password
-  service. Completed grants need only an ID-to-manager-flag map. Keep global
-  management revocation and historical no-rent tracking separate. No migration
-  or new item-command layer is needed.
-- Remaining: production access/commands, expanded failure coverage, help, real
-  MariaDB and no-rent journeys, build/hooks, self-review, push and labeled PR.
-
-- Core implementation and 48 ASan/UBSan lifecycle cases now pass. The original
-  positive regressions failed on the baseline (`missing`, `overlength`, failed
-  audit admission, and `select-other`) before the access-state change.
-- The normal MariaDB server build, private-chest production/audit fixture,
-  password suite, result contracts, container-weight cases, help layout, and
-  formatting pass. Real locker/no-rent journey extensions are in progress.
-- First real locker launch exposed absent generated world files in this fresh
-  worktree. Add `make world` before journeys; this is a build prerequisite,
-  not an implementation defect or a reason to change the server.
-
-- Implementation checkpoint: code, help and focused fixtures are ready for
-  review; full MariaDB qualification is still pending. The built server SHA-256
-  is `aaa19b1ed4b5a75df1d22babb5bbe59d8ef34b634c9242626715015c497df518`.
-  Added two filled private chests to the restart journey and per-chest
-  OPEN/CLOSE audit checks. The first running journey predates the final
-  test-only fixes; complete the final journey before marking the PR ready.
-
-- No-rent journey completed successfully on disposable MariaDB with the built
-  binary above. `bin/qualification/issue419/mariadb.json` records `passed=true`,
-  including previously opened/closed and never-opened private chest behavior.
-- Current remaining runtime check: final locker journey in session `40874`,
-  log `bin/issue992/mariadb-journey-final.log`. This run includes the corrected
-  singular EMPTY response, exact five OPEN/CLOSE event rows, and two filled
-  private chests through cold restart. After it passes, commit the two journey
-  files and final evidence, push, update #997 and mark it ready for review.
-
-- The final locker run passed actual two-way private EMPTY transfers and exact
-  movement rows, then exposed a fixture limitation: `private_graph()` selected
-  only `vault`. Extend that existing query to all non-public chests so the
-  three-UID/two-chest restart assertion measures its stated scope. The next
-  run is logged in `bin/issue992/mariadb-journey-complete.log`. No production
-  behavior change was needed for either journey fixture correction.
+- Core implementation: `971d82e6f`. No-rent qualification: `4350c44dc`.
+  The final qualification commit adds the complete locker journey and this
+  evidence. [PR #997](https://github.com/LuminariMUD/Duris/pull/997) contains
+  the feature and tests, labeled `enhancement`; merge and deployment remain
+  outside this task. Leave #992 open until the implementation lands.
+- Ablation: one request-generation counter, the existing password service,
+  and an ID-to-manager-flag map suffice. Global management revocation and
+  historical no-rent tracking retain their separate roles. No migration,
+  new item-command layer, or parallel password infrastructure was added.
+- Positive lifecycle expectations failed on the baseline for missing and
+  overlength credentials, failed audit admission, and opening another chest.
+  All **48 ASan/UBSan lifecycle cases** now pass: five simultaneous grants,
+  independent close, empty close, public/door fallthrough, failed service or
+  audit admission, mixed manager/password provenance, partial CLOSE logging
+  refusal, and stale callbacks across close/write/disconnect/visit changes.
+- The production private-chest/audit fixture, password-hardening suite, result
+  contracts, container-weight cases, help layout, and 15 documentation
+  contracts pass. The normal MariaDB server build and commit formatting and
+  changed-line clang-tidy hooks pass. The obsolete selection API has no
+  remaining source/test consumers.
+- **Locker MariaDB journey: 23 groups pass in one completed final run.**
+  Real commands verify all five chests and exact OPEN/CLOSE actor/chest rows,
+  protected and password-free guest grants, failed reopen preservation,
+  named close, ordinary/bulk/nested/coin movement, direct private-to-private
+  EMPTY, and unchanged items after rejected closed-endpoint transfers. Exact
+  movement rows, three UIDs, parentage and two private chest IDs survive
+  save/re-entry/cold restart. New visits require reopening. Existing owner,
+  guest and guild rules, idle disconnect and the injected private INSERT
+  failure plus rejected checkpoint/SIGKILL recovery also pass.
+  Evidence: `bin/qualification/issue490/journey.json` and
+  `bin/issue992/mariadb-journey-complete.log`.
+- **No-rent MariaDB journey: 19 checks and 8 rent cases pass.**
+  A previously opened, now closed chest returns its no-rent item while a
+  never-opened chest retains its exact UID. Existing rent, camp, disconnect,
+  restart, crash and copyover behavior also passes. Evidence:
+  `bin/qualification/issue419/mariadb.json` (`passed=true`) and
+  `bin/issue992/norent-journey.log`.
+- Both journeys use the same implementation binary, SHA-256:
+  `aaa19b1ed4b5a75df1d22babb5bbe59d8ef34b634c9242626715015c497df518`.
+  No C/C++ changes followed that build. Qualification changes are confined
+  to Python fixtures and this handoff. All runtime evidence/build outputs
+  remain under ignored `bin/`; no production service or data was used.
+- Fixture corrections: fresh worktrees need `make world`; singular EMPTY
+  prints `1 item`; the graph query must select all non-public chests rather
+  than only `vault`. These were repaired without gameplay workarounds.
+- Final review checked the complete feature diff, per-chest manager checks,
+  grant revocation before CLOSE logging, preserved generation guards and
+  no-rent history, ordinary item-command callers, help, and test coverage.
+  No further implementation or qualification work remains. No merge,
+  release tag, schema change or deployment has been performed.
