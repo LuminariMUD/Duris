@@ -223,6 +223,14 @@ static void failure_case(P_char actor, const std::string &test)
 			};
 			assert(parse_property(&parsed, line.data()) == -1 && !parsed.key);
 		}
+		{ // Too small for a float is tiny, not malformed.
+			std::string line = "sample=1e-40";
+			struct property parsed
+			{
+			};
+			assert(parse_property(&parsed, line.data()) == 1 && parsed.key);
+			FREE(parsed.key);
+		}
 		property_file(1.0F);
 		assert(initialize_properties());
 		const unsigned applies = completed_applies;

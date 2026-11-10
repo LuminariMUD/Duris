@@ -37,6 +37,10 @@
 
 #define MAX_STRING_LENGTH 65536
 
+// Internal separator between independently authored sends in a paged command.
+// The parser consumes it, so it never reaches a terminal or a link label.
+inline constexpr char OUTPUT_SEND_BOUNDARY = '\x1f';
+
 enum term_lastbit_t
 {
 	TL_BLINK,
@@ -58,7 +62,7 @@ class AnsiString : public std::wstring
 	void set(const char *txt, std::vector<size_t> *source_offsets);
 	AnsiString() {}
 	AnsiString(const char *txt) { set(txt); }
-	void ansi(char *out) const;
+	void ansi(char *out, size_t capacity = MAX_STRING_LENGTH) const;
 	void plain(char *out) const;
 	void term(char *out, int lastbit) const;
 	void colorize(int attr);

@@ -7,7 +7,7 @@ from pathlib import Path
 import tempfile
 
 import run_item_pilot_journey as pilot
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--server", type=Path, required=True)

@@ -30,8 +30,7 @@
  * included: an auction listing, a sale and a collection take their items out of
  * memory before their command, so no later save holds them. Items whose record
  * says they were destroyed are left out, with their contents, because only a save
- * captured before the destruction can still hold them. Intentional player rent
- * also destroys NORENT keys in this transaction, before writing the saved graph.
+ * captured before the destruction can still hold them.
  * claim_items() in item_claim_repository.c applies these rules.
  */
 
@@ -68,12 +67,6 @@ inline bool item_claim_owner_is_memory_held(item_owner_type type)
 // that committed. A live coin pile is claimed like any item, so coins follow the bag
 // that holds them.
 bool item_claim_leaves_out(item_custody_state state);
-
-// Only intentional player rent uses this exception to durable NORENT retention.
-inline bool item_claim_is_norent_key(int type, uint64_t flags)
-{
-	return type == ITEM_KEY && (flags & ITEM_NORENT);
-}
 
 // The items a save writes after its claim: all of them except those left out.
 // Parent indexes are renumbered for the items that remain.

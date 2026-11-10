@@ -348,7 +348,7 @@ recovery as a gameplay feature.
     python3 tests/async/test_persistence_backup.py
     python3 tests/async/test_combat_intent_backup.py
     python3 tests/async/test_backup_pfiles.py
-    python3 tests/async/test_flatfile_launcher.py
+    python3 tests/async/test_mariadb_launcher.py
     DURIS_RUN_BACKUP_INTEGRATION=1 python3 tests/async/test_persistence_backup_integration.py
 
 The combat-intent regression compiles the native writer/qualifier and exercises
