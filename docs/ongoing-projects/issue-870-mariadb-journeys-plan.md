@@ -3,7 +3,7 @@
 Status: standalone conversions and the full907-file regression/native/build gate passed. First DB run153/154; its sole pet-reader failure is repaired and qualified. Full154-leg DB retry is running; final readiness remains pending.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-pet-expiry-qualification`. See the latest qualification notes before continuing.
+Review head: `branch/issue-870-world-recovery-alert`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -668,206 +668,156 @@ These are preserved per-chunk results, not claims that a later binary ran them.
   accurate poison-ID lookup and separate selected-variant evidence. Final integrated named-set and Assassin scenarios passed; ready for review.
   No new fixture framework.
 
-### Current continuation checkpoint
+### Final integrated qualification
 
-- Integrated base `branch/issue-870-completion-qualification`, source integration6fba71dbf
-  and paid-crash import fixea9fd03ca, draft
-  [#958](https://github.com/LuminariMUD/Duris/pull/958), enhancement/documentation,
-  after ready bug #957. Master002ad622e is forward-merged; no history rewritten.
-  Merge conflict retained reviewed shop paid-crash coverage and current names.
-  Prerequisites #880/#887/#890–#893/#895–#897/#903 are merged by independent review;
-  #918 now targets master. Pending dependent PRs continue #918 → #922 → #923 →
-  #924 → #925 → #926 → #928 → #931 → #938 → #948 → #949 → #954 → #955 → #957 → #958
-  → #961 → #962 → #963.
-- Integrated native build and deep claim DB matrix exited0. Ordinary SHA-256:
-  `6dfb502003ca659f83dff27acd9cf51c5ac1b263d2b4a408e8339ecd0c1494f0`;
-  compatibility SHA-256:
+The qualified integration baseline is master `002ad622e`, forward-merged in
+`6fba71dbf`; later source changes are the documented task repairs. The reviewed
+shop merge retained its paid-crash case and the current MariaDB helper names.
+Later master `524eb47b8` adds independent MXP/output-link, auction, smith and
+proc-library work. Its merged #918 scripts are byte-identical to our qualified
+copies (review delta `e5294b9c` to `a88af2b07` is empty). This issue keeps its
+explicit tested baseline rather than expanding into those later features.
+
+- Integrated development build, production build and deep claim DB matrix passed.
+  Ordinary binary SHA-256:
+  `6dfb502003ca659f83dff27acd9cf51c5ac1b263d2b4a408e8339ecd0c1494f0`.
+  Production profile:
+  `1a41cd1c43ed76b83347d3d092e4e6eca605d7eac55e8bf3d000a2c0346ed175`.
+  Current-code/115-row catalog variant:
   `e0c5e6c1c3c466fe00f8882aeaad714fe2939ff9e09755ac35266cd217a34627`.
-  Logs `integrated-native-build.log`, `integrated-deep-save-claim.log`,
-  `integrated-compat-build.log`. Changed-line formatting/tidy and own diff check
-  against origin/master passed. Existing upstream help-index trailing spaces are
-  preserved. Other worktrees, production data and game .env files are untouched.
-- Named controller49919 exited0: all23 sequence labels passed (transfer,
-  edit/clone, pet, shop,16 wear zones, copied rollback, chest, report). Per-version
-  reused proof remains explicit. Frozen final metadata is
-  `named-set-qualified-integrated-sequence.json`; full log and terminal result:
-  `named-set-sequence-integrated-run.log`/`.exit`.
-  Reproduction: `python3 tests/async/named_set_gameplay.py
-  bin/tests/named-set-rollback-source/dms-115-catalog`; to continue the captured
-  fixture add `--resume bin/tests/named-set-mariadb-sequence-ununney2` and only
-  after an actual native rebuild add `--allow-binary-change`.
-- Copied rollback preserved every UID/origin/parent/slot and HP through298→115→298
-  rows, removed/restored the new spell and left source SQL/accounts/journals
-  unchanged. Chest passed real purchase/deposit/retrieval/world-storage/mortal
-  sale/paid-repurchase and reboots with the exact graph and set. Report passed all
-  298 rows, one-day warm TTL, staff local/Redis invalidation, stale-report reboot,
-  Redis loss and Redis-disabled pagination/order/conditional notes.
-- Assassin controller73465 exited0 on the integrated source: equal/mismatched gear,
-  Control Flee, preemptive and post-first-tick Heart cure, Slowness cure, Healer
-  poison, mixed/duplicate dual poisons, solo PvE survival and traded vial use.
-  Solo reference NPC completed60.77s with314 HP lost. Logs
-  `assassin-prepare-integrated-run.log`, `assassin-scenarios-integrated-run.log`
-  and `.exit`; exact integrated seeded binary hash is recorded above.
-- Paid fresh-bag crash controller74416 exited0. The new reviewed mode initially
-  exposed a missing `os` import at SIGSTOP; `integrated-paid-fresh-crash-missing-import.*`
-  retains that failure. Commit ea9fd03ca adds only that import. The same real
-  crash/restart path passed: wallet100000→99989, item UID1072350 under parent
-  UID1072324, identical after SIGKILL/cold restart. Evidence
-  `integrated-paid-fresh-crash.{json,log,exit}`. No schema or receipt change.
-- **First aggregate controller55425 is terminal:** production prebuild exited0.
-  `make test-all -j4 TEST_JOBS=8` completed907 files,903 passed/4 failed,
-  0 timeouts/signals in457.42s (make exit2). Preserved
-  `final-test-all-first-run.log`/`.exit`. It correctly did not start test-db.
-  The four concrete repairs and focused results follow below; no full-suite
-  success is claimed yet.
-- #938/#948/#955 descriptions now record their qualified runtime results and
-  linked follow-ups; all three are ready. #958 remains draft. The four findings
-  are now repaired in ready #961/#962/#963. Repeat full test-all and test-db to terminal success,
-  then finish scope/names/evidence/diff review and mark the final review work ready.
-  Preserve failed results before retries. No CI wait/full burn-in.
-- The mission remains all #870 work with autonomous issue repair and tested,
-  labeled, pushed PRs ready for review. Final-suite findings are the remaining
-  uncertainty. No GitHub merge, release, deployment or production action was
-  performed by this task.
+  Logs: `integrated-native-build.log`, `integrated-deep-save-claim.log`,
+  `integrated-compat-build.log`, `final-production-prebuild.log`/`.exit`.
+- Complete named-set sequence exited0: all23 labels, including every wear zone,
+  copied298→115→298 rollback/re-upgrade with exact graphs and unchanged source,
+  private chest/storage/shop journeys, and all298 report rows through TTL,
+  invalidation, stale reboot, Redis loss and disabled pagination. Evidence:
+  `named-set-qualified-integrated-sequence.json` and
+  `named-set-sequence-integrated-run.log`/`.exit`. Earlier reused cases retain
+  their actual proof epochs; these results do not relabel old binaries as new.
+- Integrated Assassin scenarios exited0: equal/mismatched gear, Control Flee,
+  both Heart-cure timings, Slowness cure, Healer poison, mixed/duplicate dual
+  poisons, solo PvE survival and traded vial use. Solo reference NPC completed in
+  60.77s with314 HP lost. Seeded binary SHA-256:
+  `44815784471b7846eedab8d74048280891d132783e38c8283c1103dd95816213`.
+  Logs: `assassin-prepare-integrated-run.log`, `assassin-scenarios-integrated-run.log`
+  and `.exit`; matching manifests/reports are preserved above. Immutable original12,
+  cleanse12 and complete revised36 matrices remain versioned evidence.
+- Paid fresh-bag SIGKILL/restart exited0: wallet100000→99989, purchased UID1072350
+  under parent1072324, identical after restart. Commit `ea9fd03ca` fixes only the
+  reviewed mode's missing `os` import. Original failure is retained as
+  `integrated-paid-fresh-crash-missing-import.*`; success is
+  `integrated-paid-fresh-crash.{json,log,exit}`.
+- Scope audit inspected each retained standalone report/log against the issue:
+  launch/denied state, news,28 onboarding cases/seven routes,11 death cases,
+  corpse/trap persistence, Cleric/aura, cache/concurrent reader, full flight plus
+  reconnect, telemetry normal/performance, rent/artifact, racial/cast timing,
+  six pwipe modes, weapons,65 color checks/15 frames, all copyover variants,
+  Discord, four item journeys, named-set consumers and historical comparison.
+  Cache/flight logs are `information-cache-run.log`, `flight-network-run.log` and
+  `flight-reconnect-run.log`. Other exact commands and per-version proof are above.
 
+### Aggregate results and focused integration repairs
 
-### First aggregate result and focused repairs
+All paths below are under ignored `bin/tests/issue-870/` unless stated otherwise.
+Failed aggregate results are preserved; focused successes never replace them.
 
-- `make test-all -j4 TEST_JOBS=8` completed all907 files:903 passed,4 failed,
-  0 timeouts/signals,457.42s; terminal make exit2. Production build passed.
-  Preserved complete result: `final-test-all-first-run.log`/`.exit`. Aggregate
-  controller55425 is terminal; it correctly did not start test-db after failure.
-- Two fixtures introduced by the reviewed-master merge still called the old
-  two-argument written-ack API. `test_item_movement_prompt_runtime.py` now passes
-  its actual queued component mask; `test_newbie_grant_lifecycle.py` passes the
-  STATUS component its baseline marked/queued. Keep all executable grant/prompt
-  assertions. Both focused executable tests exited0 after that repair (including
-  ASan/UBSan prompts), and `make -C src` passed. Evidence
+- First `make test-all -j4 TEST_JOBS=8`:903/907 passed, four failures,457.42s,
+  make exit2. `final-test-all-first-run.log`/`.exit` retains it.
+- Ready bug #961 (`cac3a9224`) updates two new starter fixtures to the component-
+  aware written-ack API: prompt replay passes its queued mask; newbie baseline
+  passes STATUS. Both executable regressions passed, including ASan/UBSan prompts,
+  and `make -C src` passed. Logs:
   `test_{item_movement_prompt_runtime,newbie_grant_lifecycle}-ack-mask-fixed.log`/`.exit`.
-  This is a focused test-only follow-up after #958.
-- Artifact inventory's old assignment-site parser loses all80 callbacks after
-  master #902 moved the same native499 bindings into their shared catalog.
-  An unfixed candidate confirms171 templates but0 callbacks, versus the tracked
-  80 bindings/69 callbacks. Do not regenerate that loss into documentation.
-  The existing consumer now reads the compiler-selected object/room catalogs in
-  stage order, preserving later overrides and rejecting missing/unreadable tables.
-  `test_artifact_source_inventory.py` passed the byte-identical tracked171-row
-  inventory with80 bindings/69 callbacks and explicit override checks; the native
-  499-entry catalog ASan/UBSan test passed too. No JSON loss was regenerated.
-  Evidence `test_{artifact_source_inventory,object_binding_catalog}-inventory-catalog-fixed.log`/`.exit`.
-- Telemetry passed reducer and first HTTPS matrix, then its second-build pin
-  case measured448292us against the existing250000us pulse limit under the
-  compilation pool. Its isolated run exited0 for both build variants, all64
-  reducer and33 HTTPS cases each, with the same pulse limit. This is consistent
-  with compilation contention; the runner currently has one shared pool. Keep
-  that hard latency test outside the pool, then require a green full aggregate.
-  Isolated log `telemetry-posthog-isolated.log`/`.exit`; no threshold relaxation.
-- #938, #948 and #955 are now ready with the exact integrated runtime results
-  and explicit linked follow-ups. #958 remains draft until both aggregate gates
-  and the final audit pass. Current repair branch:
-  #961 and #962 are ready for the save-fixture callers and inventory consumer
-  after #958. Current branch `branch/issue-870-telemetry-test-scheduling` adds
-  only the separately qualified hard-latency test scheduling fix after #962.
-
-- Telemetry scheduling outcome: preserve the250ms pulse budget and every selected
-  test while keeping this concrete hard-clock check after the compilation pool.
-  Files: existing runner/root-harness regression, testing guide and this tracker.
-  No native transport change, new target, option, resource framework or tolerance.
-  An executable three-test scheduling regression put telemetry first and failed
-  on the old runner (missing completed-pool markers). With the fix, the two pool
-  jobs overlap and telemetry follows both; all3 pass, and existing worker-limit,
-  timeout/signal/process cleanup contracts also pass. Logs
+- Ready bug #962 (`096d80e7b`) replaces the obsolete artifact assignment parser
+  with the existing compiler-selected object/room catalog in stage order. The
+  unfixed candidate lost all80 callbacks; the fix reproduces the byte-identical
+  171-template inventory with80 bindings/69 callbacks and validates overrides.
+  The production499-entry catalog ASan/UBSan regression also passed. No JSON loss
+  was regenerated. Logs:
+  `test_{artifact_source_inventory,object_binding_catalog}-inventory-catalog-fixed.log`/`.exit`.
+- Ready bug #963 (`bf2bbc41c`) keeps the strict PostHog250ms pulse test after the
+  compilation pool. The failed shared-pool pin case measured448292us; both native
+  variants passed alone with the unchanged limit,64 reducer/33 HTTPS cases each.
+  A real runner regression deliberately puts telemetry first: old scheduling
+  fails; new scheduling keeps two pool jobs overlapping and telemetry after both.
+  Existing worker-limit, timeout/signal and cleanup contracts pass. No native
+  transport change, extra target/option or generic resource framework. Evidence:
+  `telemetry-posthog-isolated.log`/`.exit`,
   `runner-telemetry-isolation-{repro,fixed}.log`, fixed `.exit`0.
-- All four first-aggregate findings now have focused passing proof. Full aggregate
-  success still requires rerunning test-all and test-db; earlier903/907 remains
-  the recorded failed aggregate and the DB gate has not yet run.
+- Full regression retry **passed907/907**, no timeouts/signals,261.13s, make exit0;
+  native signal gate and both build profiles also passed. Authoritative result:
+  `final-test-all-retry1.log`/`.exit`. No included test imports/reads the later two
+  changed DB-only journeys; pet appears only in exclusion/deadline sets and their
+  tests. Common helpers and native source/binaries are unchanged, so this full
+  gate remains valid. No redundant full regression rerun is needed.
+- First complete `make test-db`:153/154 passed, only pet_restart failed,2913s,
+  make exit2. Complete stdout/status: `final-test-db-first-run.log`/`.exit`;
+  all154 logs: `final-db-first-run/`. All serial artifact/guild and8-mortal/god
+  game-loop budget checks passed. The historical nexus concern is resolved:
+  `nexus_journey` passed290s with guardian captures, cooldown/turn/epics, real
+  cargo/contraband bonuses/exclusion, cold restore and expiry/neutral reload.
+- Ready bug #965 (`0ed24f840`) reads pet metadata and ordered item UIDs in one
+  committed SQL view. Native maintenance can replace legacy held pet row IDs;
+  the old separate queries could mix committed views. Empty/null UID semantics
+  and every expiry/stat/cooldown/rollback/held-state assertion remain intact.
+  A controlled real-MariaDB interleaving executes actual old/new reader bodies:
+  old loses apparent UIDs while777/NULL remain committed; new retains both.
+  The complete real-server pet journey passed, then passed under full parallel
+  load in150s. Evidence: `pet-reader-transaction-probe.log`/`.exit`0,
+  `pet-restart-coherent-read.log`/`.exit`0. An old-reader isolated pass is retained
+  in `pet-restart-diagnostic.log`; it is not substituted for the controlled proof.
+- Second complete DB run:153/154 passed, only world_recovery failed,2868s,
+  make exit2. Pet, all artifact/guild recovery cases and game-loop budget passed.
+  Complete logs: `final-db-retry1/`; stdout/status:
+  `final-test-db-retry1.log`/`.exit`. Archive completeness was verified before reuse.
+- Ready bug #970 (`caa1a4ba7`) corrects an overspecific outage-stage expectation.
+  Native redis_world_runtime.c1010–1042 reports floor_unavailable when the floor
+  barrier blocks before publication;1065–1074 reports publish_failed after reaching
+  the publisher. Redis loss can cause either. Accept only these traced reasons;
+  keep exact failure count3, last sequence/age, single-alert suppression, lease
+  recovery, crash restore, floor UID and default interval/max-age assertions.
+  No native/schema/CLI/tolerance change. Original failure:
+  `world-recovery-outage-phase-failure.log`. Normal complete focused journey passed
+  publish_failed in `world-recovery-alert-phase-fixed.log`/`.exit`0. An isolated
+  validation variant keeps the existing player connected and gets/drops the bag
+  after Redis stops, explicitly forcing/requiring floor_unavailable; it passes
+  the same complete recovery/crash/UID/defaults checks in
+  `world-recovery-floor-outage-probe.log`/`.exit`0. Both actual paths are proven.
 
-- **Active retry controller88225** on pushed scheduling code bf2bbc41c:
-  `make test-all -j4 TEST_JOBS=8`, then `make test-db` only if regression succeeds.
-  Logs `final-test-all-retry1.log`/`.exit`, then `final-test-db.log`/`.exit`.
-  It copies the first DB run to `final-db-first-run/` at terminal completion.
-  Previous controller55425 and every named/Assassin/paid-crash controller are
-  terminal. Check88225 before starting any duplicate full run. All four focused
-  repairs are committed, pushed and labeled bug (#961/#962/#963).
-- Current ETA update:1–2 more hours for remaining full gates and actual findings;
-  this is an estimate, not permission to omit required validation or final review.
+### Git state and final scope audit
 
+- Review branch: `branch/issue-870-world-recovery-alert`, ready bug #970 after
+  ready bug #965. Code commit `caa1a4ba7`; later commits update only this tracker.
+  Qualified source integration is `6fba71dbf`; no published history was rewritten.
+- Independent reviews merged #880/#887/#890–#893/#895–#897/#903/#918. #922 now
+  targets master. Pending review order is #922 → #923 → #924 → #925 → #926 → #928 →
+  #931 → #938 → #948 → #949 → #954 → #955 → #957 → #958 → #961 → #962 → #963 → #965 →
+  #970. Appropriate enhancement/bug/documentation labels are present. Completed
+  chunks are ready; only #958 stays draft until the complete final gate passes.
+- Final diff/ablation audit against002ad622e:180 paths;127 strictly mechanical
+  test/helper renames and53 scoped conversion/consumer/fixture/documentation or
+  reproduced-defect changes. Two obsolete C++ snapshot writers are deleted;
+  only the five documented native save files differ. Every retained addition
+  has a traced caller or concrete failing proof. No extra backend, generic
+  fixture/resource framework, compatibility alias or protected-file diff remains.
+- No current test_flatfile_ files or active old build-helper calls remain.
+  Historical archive creation helpers, negative-mode tests and unreachable
+  no-MySQL probe branches are explicit exceptions. Required wall-clock runners
+  take explicit ordinary binaries; Assassin preparation uses real_clock=True.
+- Other worktrees, production data and game .env files were untouched. All runtime
+  tests used private synthetic fixtures. No GitHub merge, release or deployment
+  was performed by this task; no CI wait/full burn-in is a completion requirement.
 
-### Full regression passed; database qualification continues
+### Current final-gate continuation
 
-- Controller88225's `make test-all -j4 TEST_JOBS=8` retry exited0:907/907 passed,
-  0 timeouts/signals,261.13s, including the isolated unchanged-budget PostHog check
-  and native signal gate. Production and development builds passed. Proof
-  `final-test-all-retry1.log`/`.exit`. The first903/907 result remains preserved.
-- Current ordinary binary remains6dfb502003ca659f83dff27acd9cf51c5ac1b263d2b4a408e8339ecd0c1494f0;
-  production profile1a41cd1c43ed76b83347d3d092e4e6eca605d7eac55e8bf3d000a2c0346ed175.
-  Scope/name audit found only the five intended native save files beyond frozen
-  master002ad622e, no protected-file diffs, no current test_flatfile_ files, and
-  no active old build-helper reference. Remaining retired strings are the
-  documented historical/negative-mode/no-MySQL-probe cases. Required wall-clock
-  runners require explicit binaries; the Assassin builder explicitly uses real_clock.
-- First `make test-db` is still collecting all legs under88225. It found
-  `pet_restart` failing an offline-expiry sibling-UID assertion; do not stop or
-  duplicate that live aggregate. Logs remain `bin/tests/db/` and `final-test-db.log`;
-  the controller archives them to `final-db-first-run/` after terminal completion.
-- Pet-reader outcome: metadata and gear IDs must come from the same committed
-  SQL view during maintenance checkpoints. Files: existing pet journey and this
-  tracker. Native `apply_pets` retains UID-bearing pet IDs but replaces legacy
-  held rows without pet_uid. The old reader fetched pet IDs, then issued separate
-  item queries; a committed row replacement between them loses the apparent UID.
-  Read each pet's metadata/ordered UID list in one SQL statement. Keep empty/null
-  UID semantics and every identity, expiry, stat, cooldown and rollback assertion;
-  improve the actual failure diagnostic rather than weakening its check.
-- The isolated old reader happened to pass (`pet-restart-diagnostic.log`/`.exit`),
-  so that pass alone is not the repair proof. A controlled real-MariaDB interleaving
-  executes the actual old/new reader bodies and replaces a legacy row after the
-  first SQL result: old returns no UID while committed777/NULL remain; new returns
-  both777/NULL consistently. Proof `pet-reader-transaction-probe.log`/`.exit`0.
-  The complete real-server journey with the coherent reader exited0 in
-  `pet-restart-coherent-read.log`/`.exit`, including offline artifact expiry,
-  finite/permanent pets, both cooldown reboots, rollback-held release and later
-  held-equipment quit/restart/save. No native code or schema change was needed.
-- Publish this focused follow-up after #963, then require terminal full DB output,
-  diagnose any other findings, and rerun the complete DB gate after repairs.
-  The successful907-file gate remains valid: only its excluded DB pet journey
-  changed, with common helpers and native source unchanged. No whole-issue claim.
-
-- GitHub audit verified appropriate labels on all19 pending/recent PRs; all are
-  ready or merged except #958, deliberately draft until the final gates finish.
-  #918 is now merged by independent review; its three runtime scripts are byte-
-  identical to our qualified copies (review delta e5294b9c→a88af2b07 is empty).
-  #922 now targets master because its prerequisite is merged.
-- Fresh master524eb47b8 adds independent MXP/output-link, auction, smith and
-  proc-library work. Its #918 changes are already present byte-for-byte here.
-  Keep the qualified002ad622e integration baseline for this issue, with explicit
-  native/source hashes, rather than expanding validation into those later features.
-  No original #870 requirement or reviewed #918 repair is omitted by this freeze.
-
-- Historical `nexus_journey` concern is resolved on the qualified image: the
-  complete current DB leg passed in290s, including mortal guardian captures,
-  cooldown/full turn/epic rewards, actual cargo/contraband bonus/exclusion,
-  cold restoration and expiry/neutral reload. Its log records the same6dfb5020…
-  binary. First DB run has reached its final serial recovery/latency checks with
-  151 passing legs and only the already-repaired pet-reader failure so far.
-
-### Database first run preserved; full retry active
-
-- First database controller88225 is terminal:153/154 passed, only pet_restart
-  failed,2913s, make exit2. All final serial checks passed, including all artifact/
-  guild crash/recovery cases and the8-mortal/god game-loop budget. Complete
-  stdout/status are in `final-test-db-first-run.log`/`.exit`; all154 logs are in
-  `final-db-first-run/`. Archive completeness was checked before bin/tests/db reuse.
-- Ready/labeled bug [#965](https://github.com/LuminariMUD/Duris/pull/965) contains
-  the old/new reader transactional reproduction and full pet journey proof.
-  Source commit0ed24f840; later commits update the tracker.
-- **Active full DB retry56758** runs unchanged `make test-db` with all154 legs
-  after the pet fix. Output/status: `final-test-db-retry1.log`/`.exit`; completed
-  logs will be archived as `final-db-retry1/`. Prior88225, both focused pet runs
-  and the transaction probe are terminal. Poll56758; do not duplicate this run.
-- Final diff/ablation audit against baseline002ad622e:180 changed paths,
-  128 strictly mechanical test/helper renames and52 scoped conversion, consumer,
-  fixture, documentation or reproduced-defect changes. Two obsolete C++ snapshot
-  writers are deleted; only the five documented native save files differ. Every
-  retained addition has a traced caller or concrete failing proof. No extra
-  backend, generic fixture/resource framework or protected-file diff remains.
-  Only the full DB retry and final PR/evidence publication remain.
+- **Only active controller:34613**, unchanged `make test-db`, all154 legs after
+  both committed DB-fixture corrections. Output/status:
+  `final-test-db-retry2.log`/`.exit`; terminal logs will be copied to
+  `final-db-retry2/`. Prior154-log archives were checked before bin/tests/db reuse.
+  Both previous aggregate controllers88225/56758 and every focused probe are terminal.
+- Await the authoritative terminal result; do not start a duplicate run or call
+  a focused pass a green aggregate. Resolve any actual further finding separately.
+- If all154 legs pass: update the two remaining checklist items, publish final
+  evidence/this plan, mark #958 ready, and verify clean/pushed Git plus PR labels/
+  readiness. Then complete the goal and return the worktree/plan paths. No merge
+  or deployment is requested.
