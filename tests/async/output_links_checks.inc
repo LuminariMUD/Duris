@@ -168,6 +168,12 @@ static void mxp_delivery_matrix()
 	OutputLinks uri{ { 0, 5, OutputLinkKind::Url, "https://example.test/a[1]?x=2&name=two" } };
 	assert(observe_mxp(mxp_render_output("label", uri, false, TL_BLINK, true)).second[0] ==
 	       "A HREF=\"https://example.test/a%5B1%5D?x=2&name=two\"");
+	// An IPv6 host keeps its brackets, for Mudlet and for entity-decoding clients; brackets in
+	// the path or query are still encoded.
+	OutputLinks ipv6{ { 0, 5, OutputLinkKind::Url, "http://[::1]:8080/a[1]?x=[2]" } };
+	for (const bool mudlet : { false, true })
+		assert(observe_mxp(mxp_render_output("label", ipv6, false, TL_BLINK, mudlet)).second[0] ==
+		       "A HREF=\"http://[::1]:8080/a%5B1%5D?x=%5B2%5D\"");
 	// The existing greeting uses cursor-forward CSI for its artwork.
 	assert(mxp_render_output("a\x1b[12Cb", {}, false, TL_BLINK).find("\x1b[12C") !=
 	       std::string::npos);

@@ -68,12 +68,29 @@ std::string attribute(const std::string &value, bool url, bool mudlet)
 	    (value.find_first_of("<>") != std::string::npos ||
 	     value.find("]]") != std::string::npos))
 		return {};
-	std::string result;
-	for (unsigned char c : value)
+	// An IPv6 host literal keeps its brackets; they are encoded everywhere else.
+	size_t authority_begin = 0, authority_end = 0;
+	if (url)
 	{
+		const size_t scheme = value.find("://");
+		if (scheme != std::string::npos)
+		{
+			authority_begin = scheme + 3;
+			authority_end = value.find_first_of("/?#", authority_begin);
+			if (authority_end == std::string::npos)
+				authority_end = value.size();
+		}
+	}
+	std::string result;
+	for (size_t index = 0; index < value.size(); ++index)
+	{
+		const unsigned char c = value[index];
+		const bool host_bracket = (c == '[' || c == ']') && index >= authority_begin &&
+					  index < authority_end;
 		// URI syntax survives attribute quoting, older native clients and CP437.
-		if (url && (c >= 128 || c == '"' || c == '\'' || c == '<' || c == '>' || c == '[' ||
-			    c == ']'))
+		if (url && !host_bracket &&
+		    (c >= 128 || c == '"' || c == '\'' || c == '<' || c == '>' || c == '[' ||
+		     c == ']'))
 		{
 			constexpr char hex[] = "0123456789ABCDEF";
 			result += '%';
