@@ -46,7 +46,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-material-bounds`; its initial synchronized commit was
+`origin/branch/ival-xp-conversion`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -67,7 +67,8 @@ it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-zero-modifiers`; #960 qualifies duplicate apply totals on
 `branch/ival-duplicate-applies`; #964 repairs numeric overflow/unavailable-value
 admission on `branch/ival-numeric-bounds`; #966 shares checked material quantities
-and plans crafting XP on `branch/ival-material-bounds`. Branch/base
+and plans crafting XP on `branch/ival-material-bounds`; #968 repairs downstream
+XP conversion checkpoints on `branch/ival-xp-conversion`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -1105,13 +1106,65 @@ Following the award into `src/world/limits.c` exposed another boundary to repair
 next: `gain_exp_amount<float>()` converts `XP` to `int` after a representability
 guard that applies only to Divine awards. `EXP_BOON` uses the float path; even
 an integer API value near INT_MAX can round beyond int range before the later
-level cap. The same code is present on freshly fetched `origin/master`. Add a
-focused native regression and repair this as its own change before considering
-crafting XP end-to-end qualified; do not merely tighten the caller's product and
-ignore this downstream conversion.
+level cap. The same code was present on freshly fetched `origin/master`. This
+separate repair is implemented and qualified in Chunk 16; full crafting command/
+persistence qualification remains F16.
 Do not infer all consumer behavior from score equality: qualifier projections
 hold current rules/configuration fixed; the direct changed-rule tests above
 cover quantity/XP checks. No database, migration or production operation occurred.
+
+### Chunk 16 — bound downstream XP conversions (F08 prerequisite, implemented)
+
+Branch: `branch/ival-xp-conversion`, based on `branch/ival-material-bounds`.
+Published: commit `05d6ea746`, [PR #968](https://github.com/LuminariMUD/Duris/pull/968)
+(bug label), stacked on #966. Ready for review; both dedicated worktrees carry
+the committed implementation and handoff.
+
+**Outcome:** retain existing float/double XP calculations and ordinary truncation,
+but make their integer checkpoints representable before Nexus, feedback and final
+award handling. Preserve existing level/storage caps, negative death losses and
+Divine rejection policy. Finite oversized ordinary awards reach the existing
+caps safely; nonfinite final amounts grant no XP.
+
+**Non-goals:** migrating ordinary XP to double, changing modifiers/reward policy,
+replacing progression or persistence, config parser changes, or deployment.
+
+**Files:** `src/world/limits.c`, the existing native XP/quest regression and this
+handoff. This is a separate repair discovered while tracing crafting XP.
+
+**Proof:** reproduce the INT_MAX boon award under float-cast-overflow, then cover
+large/invalid ordinary quest/combat paths and integer checkpoints, ordinary
+rounding, death losses, level/storage caps and existing Divine/feedback cases.
+Run the server build and relevant progression checks.
+
+**Evidence:** the new native INT_MAX boon case failed under float-cast-overflow
+before the repair (`2.14748e+09` outside int range). A positive long level-table
+case also reproduced signed overflow when its narrowed cap became INT_MIN and
+was negated. Both now pass. Integer checkpoints saturate finite ordinary values
+to the int interface range, then the established level/storage caps apply. The
+level cap is itself bounded in the table's original width before narrowing.
+Divine's strict rejection policy and ordinary float rounding remain intact.
+
+Native XP/quest tests pass with fatal ASan/UBSan/float-cast-overflow checks across
+both MariaDB-header and isolated-header fixtures (not persistence backends).
+Coverage includes INT_MAX boon/quest/world-quest/resurrection requests, enlarged
+finite awards, large kill/melee/damage paths, nonfinite earned/epic modifiers,
+and rejection before a Nexus minimum can turn an invalid amount into a reward.
+Existing ordinary rounding, negative death/resurrection behavior, Divine budget/
+feedback and level/global-storage cases pass. Lich residual-XP, difficulty-dial
+and progression-telemetry checks pass; final server build passes. Ival formulas
+and inputs do not change, so a new object-score corpus run is not applicable.
+
+**Continuation:** keep F08/configuration and F16 journeys open. Source tracing
+also confirmed `crafting.experience.per.ival=0` is documented to award no XP,
+but Craft/Forge still call `gain_exp(..., 0, EXP_BOON)`, whose existing minimum
+is one. Repair that separately at the crafting callers; do not change the
+general XP minimum to fix a zero crafting rate. Then resume strict configuration
+parsing and the remaining consumer bounds. No database or deployment operation
+was performed.
+
+**Ablation:** bound conversion at the existing integer interfaces. Keep the
+current XP pipeline and its established cap policy; add no reward framework.
 
 ## Main conclusions
 

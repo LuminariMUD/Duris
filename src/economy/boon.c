@@ -2545,7 +2545,10 @@ void boon_publish_transaction_result(P_char ch, double event_data, const boon_re
 		switch (entry.type)
 		{
 		case BTYPE_EXPM:
-			gain_exp(ch, nullptr, static_cast<int>(event_data * entry.bonus), EXP_BOON);
+			gain_exp(ch, nullptr,
+				 static_cast<int>(std::clamp<double>(event_data * entry.bonus,
+								     INT_MIN, INT_MAX)),
+				 EXP_BOON);
 			break;
 		case BTYPE_EXP:
 			gain_exp(ch, nullptr, static_cast<int>(entry.bonus), EXP_BOON);
