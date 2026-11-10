@@ -123,15 +123,15 @@ class SiegeKingdomRemovalContractTest(unittest.TestCase):
         longer wired into CI."""
         for relative in (
             "defaults/towns",
-            "tests/async/test_flatfile_towns.py",
+            "tests/async/test_mariadb_towns.py",
             "tests/async/flatfile_town_harness.cpp",
-            "tests/async/test_flatfile_siege.py",
+            "tests/async/test_mariadb_siege.py",
             "tests/async/flatfile_siege_harness.cpp",
         ):
             self.assertFalse((ROOT / relative).exists(), relative)
 
         quality = (ROOT / ".github/workflows/quality.yml").read_text()
-        self.assertNotRegex(quality, r"test_flatfile_(?:towns|siege)\.py")
+        self.assertNotRegex(quality, r"test_mariadb_(?:towns|siege)\.py")
 
     def test_retirement_contract_is_in_maintained_documentation(self) -> None:
         """Compatibility reservations remain visible after the research ledger is retired."""

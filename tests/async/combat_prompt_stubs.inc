@@ -16,4 +16,3 @@ affected_type *get_ward_from_char(P_char)
 	return nullptr;
 }
 void append_prompt(P_char, char *) {}
-void UpdateScreen(P_char, int) {}

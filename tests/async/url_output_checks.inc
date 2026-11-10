@@ -87,6 +87,45 @@ static void url_output_matrix()
 	const auto [combined_text, combined_tags] = observe_mxp(terminal_output[&d]);
 	assert(combined_text == "https://example.test/unrelated");
 	assert(combined_tags == std::vector<string>({ "A HREF=\"https://example.test/\"", "/A" }));
+	for (bool enabled : { false, true })
+	{
+		d.mxp_state = enabled ? MXP_ENABLED : MXP_OFF;
+		terminal_output.clear();
+		SEND_TO_Q("https://example.test/?x=1", &d);
+		SEND_TO_Q("&nNext message", &d);
+		assert(process_output(&d) == 1);
+		const auto [text, tags] = observe_mxp(terminal_output[&d]);
+		assert(text == "https://example.test/?x=1Next message");
+		assert(tags.size() == (enabled ? 2u : 0u));
+	}
+	terminal_output.clear();
+	SEND_TO_Q("https:", &d);
+	SEND_TO_Q("//example.test/?x=1", &d);
+	SEND_TO_Q("&nNext message", &d);
+	assert(process_output(&d) == 1);
+	const auto [separate_text, separate_tags] = observe_mxp(terminal_output[&d]);
+	assert(separate_text == "https://example.test/?x=1Next message" && separate_tags.empty());
+	terminal_output.clear();
+	SEND_TO_Q("&", &d);
+	SEND_TO_Q("nNext message", &d);
+	assert(process_output(&d) == 1);
+	assert(observe_mxp(terminal_output[&d]).first == "&nNext message");
+	d.mxp_state = MXP_ENABLED;
+	SET_BIT(player.specials.act, PLR_PAGING_ON);
+	pc.screen_length = 12;
+	command_action = [&](P_char recipient)
+	{
+		send_to_char("https://example.test/?x=1", recipient, LOG_NONE);
+		send_to_char("&nNext message", recipient, LOG_NONE);
+	};
+	char color_command[] = "color-boundary";
+	terminal_output.clear();
+	process_with_paging(&player, color_command);
+	assert(process_output(&d) == 1);
+	const auto [paged_color, paged_tags] = observe_mxp(terminal_output[&d]);
+	assert(paged_color == "https://example.test/?x=1Next message" && paged_tags.size() == 2);
+	command_action = {};
+	REMOVE_BIT(player.specials.act, PLR_PAGING_ON);
 	write_to_q(url.c_str(), &d.input, 0);
 	assert(d.input.head && !d.input.head->links);
 	char input[MAX_STRING_LENGTH];

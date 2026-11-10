@@ -2,7 +2,7 @@
 """Native marked gear in pet-held containers, owner reboots and recovery."""
 
 import json
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from named_set_gameplay import NamedSetGame, score, save, selector, put, expect_max_hp
 
 ACCOUNT, CHARACTER, PID = "Namedguest", "Meranen", 2
@@ -42,7 +42,12 @@ try:
     for row in game.pets(PID):
         if row[4]:
             prior[str(row[3])] = str(row[4])
-    journey.make_overlord(game.state, CHARACTER)
+    # Give cannot accept consent to an NPC. Keep this controlled witness
+    # portable while retaining its UID, origin, affects and equipment slots.
+    game.sql("UPDATE player_items SET weight=1 WHERE pid=2 AND obj_uid=" + str(uid))
+    game.sql("UPDATE player_pet_items i JOIN player_pets p ON p.id=i.pet_id "
+             "SET i.weight=1 WHERE p.owner_pid=2 AND i.obj_uid=" + str(uid))
+    game.make_overlord(CHARACTER)
     actor = game.boot("named-pet-prepare", account=ACCOUNT, character=CHARACTER)
     # Retain reward satchels created by earlier fixture preparation, freeing
     # mortal inventory slots through the ordinary container path.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """#14: how late multi-segment casts finish on a real server.
 
-Boots the full world on the flat-file backend (no database), creates a level-56
+Boots the full world on a disposable MariaDB schema, creates a level-56
 MindFlayer and has it cast ``adrenaline control`` (three or more segments of up to
 four pulses) a number of times with ``DURIS_NEVENT_TRACE_PLAYER=1``. The
 ``PLAYER EVENT TIMING`` lines in ``logs/log/status`` give, for every segment, the
@@ -9,7 +9,7 @@ tick it was due and the tick it ran at. ``--budget-usec`` cuts the event pass's
 budget so that it defers work every pulse, which is the load the item describes;
 without it the server's default applies.
 
-    python3 tests/async/run_cast_timing_probe.py --server <flat-file dms_new> [--casts 20] [--budget-usec 2000]
+    tests/async/with_disposable_mariadb.sh python3 tests/async/run_cast_timing_probe.py --server <MariaDB dms_new> [--casts 20] [--budget-usec 2000]
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SPELL = "adrenaline control"
@@ -162,11 +162,9 @@ def report(status: str, casts_asked: int) -> None:
 
 
 def run(binary: pathlib.Path, casts: int, budget_usec: int | None, gap: float) -> None:
-    with tempfile.TemporaryDirectory(prefix="cast-probe-state-") as state_tmp, \
+    with journey.mariadb_authority() as (environment, _), \
             tempfile.TemporaryDirectory(prefix="cast-probe-run-") as run_tmp:
-        state_root = pathlib.Path(state_tmp)
         run_root = pathlib.Path(run_tmp)
-        state_root.chmod(0o700)
         (run_root / "logs/log").mkdir(parents=True)
         for directory in ("areas", "areas_mini", "docs"):
             (run_root / directory).symlink_to(ROOT / directory, target_is_directory=True)
@@ -175,11 +173,9 @@ def run(binary: pathlib.Path, casts: int, budget_usec: int | None, gap: float) -
         (run_root / "journals/players").mkdir(parents=True, mode=0o700)
         (run_root / "journals/critical").mkdir(mode=0o700)
         port, tls_port, websocket_port = journey.available_ports()
-        environment = {
+        environment.update({
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "ENVIRONMENT": "local",
-            "PERSISTENCE_MODE": "flatfile-primary",
-            "FLATFILE_STATE_DIR": str(state_root),
             "CRITICAL_COMMAND_JOURNAL_DIR": str(run_root / "journals/critical"),
             "LISTEN_ADDRESS": "127.0.0.1",
             "DURIS_TLS_PORT": str(tls_port),
@@ -192,7 +188,7 @@ def run(binary: pathlib.Path, casts: int, budget_usec: int | None, gap: float) -
             "CREATION_ALL_CLASSES": "TRUE",
             "CHAOS_STARTER_EPIC_SKILLS": "TRUE",
             "DURIS_NEVENT_TRACE_PLAYER": "1",
-        }
+        })
         if budget_usec is not None:
             environment["DURIS_NEVENT_BUDGET_USEC"] = str(budget_usec)
         if runtime_library_path := os.environ.get("LD_LIBRARY_PATH"):
@@ -250,7 +246,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--server", type=pathlib.Path, required=True,
-                        help="a flat-file dms_new")
+                        help="a MariaDB dms_new with the ordinary 250 ms clock")
     parser.add_argument("--casts", type=int, default=20)
     parser.add_argument("--budget-usec", type=int,
                         help="DURIS_NEVENT_BUDGET_USEC for the run; unset keeps the default")

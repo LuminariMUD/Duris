@@ -27,6 +27,8 @@
 #include "magic/spells.h"
 #include "mob/studioproclib.h"
 #include "world/weather.h"
+#include "core/proc-libs.h"
+#include <string>
 
 /*
    external variables
@@ -304,6 +306,41 @@ struct ObjProcLib
 	  "'enter <keyword>' teleports the actor to a room.", PROCLIB_TRANSPORTER_HELP },
 };
 
+static int object_proclib_index(const char *name)
+{
+	if (!name)
+		return -1;
+	for (int index = static_cast<int>(sizeof(object_proc_libs) / sizeof(ObjProcLib)) - 1;
+	     index >= 0; --index)
+		if (!strn_cmp(name, object_proc_libs[index].procName,
+			      strlen(object_proc_libs[index].procName)) &&
+		    object_proc_libs[index].func)
+			return index;
+	return -1;
+}
+
+static char *object_proclib_parameters(int index, const char *arguments)
+{
+	// The legacy decoders use MAX_STRING_LENGTH token buffers. Bound the input
+	// before decoding, including for authored descriptions read at boot.
+	if (arguments && strlen(arguments) >= MAX_STRING_LENGTH)
+		return nullptr;
+	std::string copy = arguments ? arguments : "";
+	return object_proc_libs[index].parse_params(copy.data());
+}
+
+bool valid_object_proclib(const char *name, const char *arguments)
+{
+	const int index = object_proclib_index(name);
+	if (index < 0)
+		return false;
+	char *parameters = object_proclib_parameters(index, arguments);
+	if (!parameters)
+		return false;
+	FREE(parameters);
+	return true;
+}
+
 int proclib_obj_proc(P_obj obj, P_char ch, int cmd, char *argument);
 
 // event func - just redirects to generic proclib_obj_proc (which is in obj proc format)
@@ -382,18 +419,11 @@ void proclibUsage(P_char ch)
 // 0 - success.  <0 is a procname issue,  >0 is a params issue (and the retVal is the idx+1
 int proclibObj_add(P_obj obj, char *procName, char *args)
 {
-	int libIdx = -1;
-	for (libIdx = (sizeof(object_proc_libs) / sizeof(ObjProcLib)) - 1; libIdx >= 0; libIdx--)
-	{
-		if (!strn_cmp(procName, object_proc_libs[libIdx].procName,
-			      strlen(object_proc_libs[libIdx].procName)) &&
-		    object_proc_libs[libIdx].func)
-			break;
-	}
+	const int libIdx = object_proclib_index(procName);
 	if (-1 == libIdx)
 		return -1;
 
-	char *params = object_proc_libs[libIdx].parse_params(args);
+	char *params = object_proclib_parameters(libIdx, args);
 	if (!params)
 		return (libIdx + 1);
 

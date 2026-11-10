@@ -4,7 +4,7 @@
 import socket
 
 import test_account_recovery_journey as recovery
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 # The generated NPC journey once read "Cha:  87[0;1;33m ( 87)" from `stat mob`: a
 # read ended between the escape's ESC byte and the rest of it.

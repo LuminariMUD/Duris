@@ -724,7 +724,8 @@ int main(int argc, char **argv)
 				 "SQL pwipe recovery cannot combine with another boot mode");
 	if (material_rarity_report_mode)
 	{
-		boot_material_rarity_objects(mini_mode);
+		if (!boot_material_rarity_objects(mini_mode))
+			return 1;
 		return write_material_rarity_report(material_rarity_report_dir) ? 0 : 1;
 	}
 	logit(LOG_STATUS, "Running game on port %d.", port);
@@ -4808,6 +4809,8 @@ int process_output(P_desc t)
 			continue;
 		}
 
+		if (presented && presentation_fits && !output_message_fits_serializers(buf))
+			presentation_fits = false;
 		const auto frame =
 			presented && presentation_fits ?
 				freeze_output_links(buf, links, t->term_type == TERM_GENERIC) :
@@ -5099,16 +5102,17 @@ static void process_line(P_desc t, char *in)
 static char send_to_char_f_buf[MAX_STRING_LENGTH];
 bool send_paged_text(P_char ch, const std::string &text, int log)
 {
+	const size_t before = output_length;
+	const size_t separator = before && !text.empty() ? 1 : 0;
 	if (!ch || !ch->desc || executing_ch != ch || !IS_SET(ch->specials.act, PLR_PAGING_ON) ||
 	    strlen(command_output) != output_length ||
-	    text.size() >= MAX_COMMAND_OUTPUT - output_length)
+	    text.size() >= MAX_COMMAND_OUTPUT - before - separator)
 		return false;
-	const size_t before = output_length;
 	std::string frozen;
 	auto links = output_links_with_urls(text.c_str(), {}, &frozen);
 	const char *message = frozen.empty() ? text.c_str() : frozen.c_str();
 	const size_t bytes = strlen(message);
-	if (bytes >= MAX_COMMAND_OUTPUT - output_length)
+	if (bytes >= MAX_COMMAND_OUTPUT - before - separator)
 		return false;
 	if (!frozen.empty())
 		links = rebase_output_links(text.c_str(), message, links);
@@ -5116,7 +5120,7 @@ bool send_paged_text(P_char ch, const std::string &text, int log)
 	context.links = links;
 	context.links_prepared = true;
 	send_to_char(message, ch, log, context);
-	return output_length == before + bytes;
+	return output_length == before + bytes + separator;
 }
 
 void send_to_char_f(P_char ch, const char *fmt, ...)
@@ -5177,7 +5181,10 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 			command_links.clear();
 			pager_style_fallback = false;
 		}
-		size_t capacity = paging ? MAX_COMMAND_OUTPUT - output_length - 1 :
+		const size_t separator = paging && output_length ? 1 : 0;
+		size_t capacity = paging && MAX_COMMAND_OUTPUT - output_length > separator ?
+					  MAX_COMMAND_OUTPUT - output_length - separator - 1 :
+				  paging ? 0 :
 					   MAX_STRING_LENGTH - 1;
 		OutputContext recipient_context = context;
 		if (context.resolve_recipient_preferences)
@@ -5219,6 +5226,14 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 					pager_message = original_url_text.c_str();
 				messg = frozen_url_text.c_str();
 			}
+		}
+		if (paging && !bWarningAdded && output_length && *messg &&
+		    output_length < MAX_COMMAND_OUTPUT - 1)
+		{
+			command_output[output_length++] = OUTPUT_SEND_BOUNDARY;
+			command_output[output_length] = '\0';
+			if (!pager_original.empty())
+				pager_original.push_back(OUTPUT_SEND_BOUNDARY);
 		}
 		if (paging && !bWarningAdded && (!pager_original.empty() || messg != pager_message))
 		{

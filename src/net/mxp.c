@@ -118,8 +118,8 @@ std::string attribute(const std::string &value, bool url, bool mudlet)
 	return quote + result + quote;
 }
 
-// Preserve SGR and the greeting's cursor-forward layout, but never allow raw
-// MXP mode changes. The link freezer declines raw-ESC metadata.
+// Preserve SGR and existing cursor/screen controls, but never let authored ESC[z
+// sequences leave locked MXP mode. The link freezer declines raw-ESC metadata.
 AnsiString literal_controls(const AnsiString &text)
 {
 	AnsiString result;
@@ -133,7 +133,19 @@ AnsiString literal_controls(const AnsiString &text)
 			       ((text.ch(end) >= '0' && text.ch(end) <= '9') ||
 				text.ch(end) == ';'))
 				++end;
-			safe_csi = text.ch(end) == 'm' || text.ch(end) == 'C';
+			switch (text.ch(end))
+			{
+			case 'm': // SGR
+			case 'C': // Cursor right/left and absolute position
+			case 'D':
+			case 'H':
+			case 'J': // Clear screen/line
+			case 'K':
+			case 'r': // Scroll region
+			case 's': // Save/restore cursor
+			case 'u':
+				safe_csi = true;
+			}
 		}
 		if (text.ch(i) == '\x1b' && !safe_csi)
 		{

@@ -16,6 +16,7 @@
 #include "sql/item_instance_fields.h"
 #include "item/item_transfer_repository.h"
 #include "item/item_claim_repository.h"
+#include "economy/currency_value.h"
 #include "core/defines.h"
 #include "player/player_snapshot_codec.h"
 #include "core/structs.h"
@@ -237,7 +238,11 @@ bool canonicalize_extra_description(const player_item_extra_description_snapshot
 	return true;
 }
 
-bool materialize_direct_player_items(MYSQL *connection, const item_transfer_payload &payload)
+} // namespace
+
+bool item_transfer_repository_materialize_player_items(MYSQL *connection,
+						       const item_transfer_payload &payload,
+						       std::vector<uint64_t> *item_ids)
 {
 	// A command without the items' snapshot (an operator's reparent) has nothing to publish.
 	if (payload.to_owner.type != item_owner_type::player || !payload.item_blob_size)
@@ -428,9 +433,17 @@ bool materialize_direct_player_items(MYSQL *connection, const item_transfer_payl
 		    mysql_affected_rows(connection) > 1)
 			return false;
 	}
+	if (item_ids)
+	{
+		item_ids->clear();
+		for (size_t index = 0; index < payload.item_count; ++index)
+			item_ids->push_back(row_by_uid.at(payload.items[index].item_uid));
+	}
 	return true;
 }
 
+namespace
+{
 bool prepare(MYSQL_STMT **statement, MYSQL *connection, const char *sql)
 {
 	*statement = mysql_stmt_init(connection);
@@ -1024,6 +1037,47 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 		*result_code = E2BIG;
 		return true;
 	}
+	currency_vector wallet_after{};
+	uint64_t wallet_revision = 0;
+	if (payload.paid_creation)
+	{
+		// The critical inbox is already locked. Lock the player's wallet before
+		// item ownership, in the same order as a player checkpoint.
+		std::vector<uint64_t> wallet;
+		if (!one_row(
+			    connection,
+			    "SELECT wallet_revision,copper,silver,gold,platinum FROM player_data WHERE pid=" +
+				    std::to_string(payload.to_owner.id) + " FOR UPDATE",
+			    &wallet))
+		{
+			if (errno != EILSEQ)
+				return false;
+			*result_code = ESTALE;
+			return true;
+		}
+		if (wallet.size() != 5 || wallet[0] != payload.paid_wallet_revision ||
+		    wallet[0] == UINT64_MAX)
+		{
+			*result_code = ESTALE;
+			return true;
+		}
+		currency_vector before{};
+		for (size_t index = 0; index < before.amount.size(); ++index)
+		{
+			if (wallet[index + 1] > INT_MAX)
+			{
+				*result_code = EILSEQ;
+				return true;
+			}
+			before.amount[index] = static_cast<int64_t>(wallet[index + 1]);
+		}
+		if (!currency_wallet_after_value(before, payload.reason_id, &wallet_after))
+		{
+			*result_code = ENOSPC;
+			return true;
+		}
+		wallet_revision = wallet[0] + 1;
+	}
 	uint64_t from_revision = 0, to_revision = 0;
 	const bool same_owner = item_owner_identity_equal(payload.from_owner, payload.to_owner);
 	if (same_owner)
@@ -1289,7 +1343,7 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 				   same_owner ? from_revision + 1 : to_revision + 1))
 			return false;
 	}
-	if (!materialize_direct_player_items(connection, payload))
+	if (!item_transfer_repository_materialize_player_items(connection, payload))
 		return false;
 	if (!update_owner_revision(connection, payload.from_owner, from_revision) ||
 	    (!same_owner && !update_owner_revision(connection, payload.to_owner, to_revision)))
@@ -1306,6 +1360,25 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 		if (snapshots.size() == 1 && snapshots[0].type == ITEM_MONEY &&
 		    !update_coin_payload(connection, payload, result->max_item_revision))
 			return false;
+	}
+	if (payload.paid_creation)
+	{
+		std::string wallet_sql =
+			"UPDATE player_data SET wallet_revision=" + std::to_string(wallet_revision);
+		constexpr const char *coins[] = { "copper", "silver", "gold", "platinum" };
+		for (size_t index = 0; index < wallet_after.amount.size(); ++index)
+			wallet_sql += std::string(",") + coins[index] + "=" +
+				      std::to_string(wallet_after.amount[index]);
+		wallet_sql +=
+			" WHERE pid=" + std::to_string(payload.to_owner.id) +
+			" AND wallet_revision=" + std::to_string(payload.paid_wallet_revision);
+		if (!run_sql(connection, wallet_sql) || mysql_affected_rows(connection) != 1)
+		{
+			if (!errno)
+				errno = ESTALE;
+			return false;
+		}
+		result->corpse_revision = wallet_revision;
 	}
 	*mutation_applied = true;
 	return true;

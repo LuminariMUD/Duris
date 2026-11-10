@@ -2,7 +2,7 @@
 """Real PostHog gameplay/copyover journey in a disposable native world.
 
 No .env, existing database, live player data or namespace/container is used.
-Both backend builds must exist below bin/issue59/<backend> before running.
+Builds its instrumented MariaDB server below bin/issue59/mariadb.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ import threading
 import time
 
 import run_copyover_runtime_journey as copyover
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from telemetry_posthog_http import Receiver
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -95,7 +95,7 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
     cloud_state = artifacts / "cloud-smoke"
     cloud_key = None
     tag = "issue59-cloud-smoke" if cloud else "native-gameplay-" + backend
-    scope = "1001" if backend == "flatfile" else "1002"
+    scope = "1002"
     if cloud:
         # Read only the capture settings; never import the host's game/DB environment.
         settings = {}
@@ -125,10 +125,9 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
         work = Path(temporary)
         work.chmod(0o700)
         binary, state_tool = mock_binary(backend, work)
-        runtime, state = work / "runtime", work / "state"
+        runtime = work / "runtime"
         ledger = cloud_state / "ledger" if cloud else work / "ledger"
-        runtime.mkdir(); state.mkdir(mode=0o700); ledger.mkdir(mode=0o700)
-        (state / "domains").mkdir(mode=0o700)
+        runtime.mkdir(); ledger.mkdir(mode=0o700)
         journey.make_fixture(runtime)
         journey.generate_certificate(runtime)
         for name in ("logs/log", "journals/critical", "bin/server"):
@@ -235,7 +234,6 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
         # The host's MariaDB confinement permits /tmp, but refuses a datadir in
         # /home. Only the disposable database lives here; build outputs stay in bin/.
         database = Path(database_temporary)
-        database_context = private_database(database) if backend == "mariadb" else contextlib.nullcontext({})
         process = output = client = companion = None
         transcripts = []
         port, game_tls, websocket = journey.available_ports()
@@ -261,24 +259,20 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
 
         try:
             with contextlib.ExitStack() as cleanup:
-                database_env = cleanup.enter_context(database_context)
+                database_env = cleanup.enter_context(private_database(database))
                 cleanup.callback(stop)  # Writers must stop before their disposable DB.
                 env = {"PATH": os.environ["PATH"], "LANG": "C.UTF-8", "ENVIRONMENT": "local", **database_env}
-                if backend == "mariadb":
-                    mysql = ["mysql", "--no-defaults", "--protocol=socket", "--socket=" + env["DB_SOCKET"],
-                             "-u" + env["DB_USER"], "-N", "-B", env["DB_NAME"]]
+                mysql = ["mysql", "--no-defaults", "--protocol=socket", "--socket=" + env["DB_SOCKET"],
+                         "-u" + env["DB_USER"], "-N", "-B", env["DB_NAME"]]
 
-                    def sql(statement):
-                        return subprocess.check_output(mysql, input=statement, env=env, text=True).strip()
+                def sql(statement):
+                    return subprocess.check_output(mysql, input=statement, env=env, text=True).strip()
 
-                    sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
-                    for args in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
-                        subprocess.run([sys.executable, "scripts/migration_runner.py", *args],
-                                       cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
-                else:
-                    subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
-                env.update(PERSISTENCE_MODE=backend + "-primary", PERSISTENCE_BACKEND=backend,
-                           FLATFILE_STATE_DIR=str(state), CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
+                sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
+                for args in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
+                    subprocess.run([sys.executable, "scripts/migration_runner.py", *args],
+                                   cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
+                env.update(PERSISTENCE_MODE="mariadb-primary", CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
                            COPYOVER_STATE_FILE=str(copyover_state), LISTEN_ADDRESS="127.0.0.1",
                            DURIS_TLS_PORT=str(game_tls), DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1",
                            DURIS_WEBSOCKET_PORT=str(websocket), REDIS="FALSE", CHAOS_MUD="FALSE",
@@ -343,10 +337,7 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                 stop()
                 assert not received, "disabled telemetry exported events"
                 print("PASS disabled save/reload fixture", backend, flush=True)
-                if backend == "flatfile":
-                    journey.make_overlord(state, journey.CHARACTER)
-                else:
-                    sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{journey.CHARACTER}'")
+                sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{journey.CHARACTER}'")
                 env["TELEMETRY_ENABLED"] = "true"
                 if performance:
                     measurements = []
@@ -532,8 +523,7 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                     client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
                     time.sleep(2.2)
                 stop()
-                if backend == "mariadb":
-                    assert sql("SELECT COUNT(*) FROM telemetry_interval") == "0"
+                assert sql("SELECT COUNT(*) FROM telemetry_interval") == "0"
                 summaries = [row["properties"] for row in received if row["event"] == "duris_character_summary"]
                 sessions = [row["properties"] for row in received if row["event"] == "duris_session"]
                 assert summaries and sessions
@@ -597,7 +587,7 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("mariadb", "flatfile"), required=True)
+    parser.add_argument("--backend", choices=("mariadb",), required=True)
     parser.add_argument("--performance", action="store_true", help="Run three paired ordinary-save workloads")
     parser.add_argument("--cloud", action="store_true", help="Send one synthetic campaign, maximum 100 charged attempts; reruns refused")
     args = parser.parse_args()

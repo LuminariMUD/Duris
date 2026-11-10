@@ -39,7 +39,7 @@ static std::pair<std::string, std::vector<std::string>> observe_mxp(const std::s
 				secure = wire[i + 2] == '1';
 			}
 			else
-				assert(wire[end] == 'm');
+				assert(std::string("mCDHJKrsu").find(wire[end]) != std::string::npos);
 			i = end + 1;
 		}
 		else if (secure && wire[i] == '<')
@@ -72,6 +72,18 @@ static void mxp_delivery_matrix()
 	sd.character = &snooper;
 	d.connected = sd.connected = CON_PLAYING;
 	d.term_type = sd.term_type = TERM_ANSI;
+	pc.screen_length = 24;
+	d.mxp_state = MXP_ENABLED;
+	InitScreen(&player);
+	assert(process_output(&d) == 1);
+	const auto infobar = terminal_output[&d];
+	for (const char *control : { "\x1b[2J", "\x1b[0;0H", "\x1b[0;20r", "\x1b[s",
+				      "\x1b[22;13H", "\x1b[u" })
+		assert(infobar.find(control) != std::string::npos);
+	assert(infobar.find("^[[") == std::string::npos);
+	const auto greeting = mxp_render_output("\x1b[50CDuris", {}, false, TL_BLINK);
+	assert(greeting.find("\x1b[50C") != std::string::npos);
+	terminal_output.clear();
 	SET_BIT(player.specials.act, PLR_COMPACT | PLR_SMARTPROMPT);
 	SET_BIT(snooper.specials.act, PLR_COMPACT | PLR_SMARTPROMPT);
 	const std::string message = "😀 $$ &+cweather&n\n&+r<literal> & ok&n\n";

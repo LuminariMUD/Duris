@@ -160,7 +160,13 @@ void AnsiString::set(const char *txt, std::vector<size_t> *source_offsets)
 	while (*txt)
 	{
 		const size_t previous_size = size();
-		if (txt[0] == '\r')
+		if (txt[0] == OUTPUT_SEND_BOUNDARY)
+		{
+			attr = 0;
+			in_url = url_query = false;
+			txt++;
+		}
+		else if (txt[0] == '\r')
 			txt++;
 		else if (txt[0] == '\n')
 		{
