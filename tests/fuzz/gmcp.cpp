@@ -8,6 +8,7 @@
 #include "core/prototypes.h"
 #include "core/json_utils.h"
 #include "net/gmcp.h"
+#include "net/chat_presentation.h"
 #include "net/websocket.h"
 #include "ships/ships.h"
 #include "world/map.h"
@@ -94,6 +95,7 @@ char *PERS(P_char ch, P_char, int, bool)
 	return ch->player.name;
 }
 void update_groupies(P_char, bool) {}
+void gmcp_comm_channel_body(char_data *, const char *, const char *, const char *, const char *) {}
 char *json_build_char_affects(struct char_data *)
 {
 	return nullptr;

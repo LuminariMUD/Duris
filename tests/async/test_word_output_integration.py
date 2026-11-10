@@ -52,7 +52,7 @@ for filename, signatures in [
     ("specs.object.c", ["P_char melee_proc_target(", "int totem_of_mastery(", "int circlet_of_light("]),
     ("prompt.c", ["char *make_bar(", "void UpdateScreen(", "void InitScreen(", "void make_prompt("]),
     ("player_load_materialize.c", ["bool apply_string("]),
-    ("json_utils.c", ["char *json_build_comm_channel("]),
+    ("json_utils.c", ["cJSON *json_comm_channel_object(", "char *json_build_comm_channel("]),
     ("gmcp.c", ["void gmcp_broadcast_channel("])
 ]:
     functions.extend(extract_function(filename, signature) for signature in signatures)
@@ -88,6 +88,7 @@ with tempfile.TemporaryDirectory(prefix="word-output-", dir=BUILD) as directory:
         str(ROOT / "src/combat/combat_outcome_command.c"), str(ROOT / "src/guild/artifact_guild_command.c"), str(ROOT / "src/persistence/critical_command.c"),
         str(ROOT / "src/economy/currency_command.c"), str(ROOT / "src/net/ansi.c"), str(ROOT / "src/net/unicode.c"),
         str(ROOT / "src/net/chat_presentation.c"), str(ROOT / "src/net/output_links.c"),
+        str(ROOT / "src/net/output_presentation.c"),
         str(ROOT / "src/net/mxp.c"),
         str(ROOT / "src/net/output_style.c"), str(ROOT / "src/core/safe_format.c"),
         str(ROOT / "src/net/output_profiles.c"), str(ROOT / "src/player/output_preferences.c"),
