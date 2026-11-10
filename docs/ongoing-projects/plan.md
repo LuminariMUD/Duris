@@ -11,10 +11,11 @@ Status: plan only. No game code has changed. Written 2026-11-10.
 
 ## Outcome
 
-Every line of Rani's final proposal is either implemented, or shown by a test to be true on master already. Where the proposal left a range or an alternative, one value is chosen and recorded here. Players can read every new number on the in-game ability pages and in help.
+Every line of Rani's final proposal is either implemented, or shown by a test to be true on master already, except the one line the owner declined (level 51 charming, see Non-goals). Where the proposal left a range or an alternative, one value is chosen and recorded here. Players can read every new number on the in-game ability pages and in help.
 
 ## Non-goals
 
+- Charming level 51 mobs. The owner declined this on 2026-11-10: the highest charmable level stays 50, which is what the code already gives a level 56 Bard.
 - Ideas the final proposal dropped: Blink, Blur on Heroism, full caster slots, instruments played from inventory, a universal instrument item, a combat restriction on Drifting, and any "Bard must lead the group" rule.
 - Bryken's side suggestions that the final proposal did not adopt: Calming, Peace, Cowardice and Forgetfulness landing more often, a prismatic spray effect on Chaos, and Drifting's success rate.
 - Other classes, mob song AI, property/config knobs for the new numbers, database migrations, player news, and production deployment.
@@ -95,11 +96,11 @@ Proof: extend [test_song_dispositions_runtime.py](../../tests/async/test_song_di
 
 - Song of Healing, player Minstrels only: add (level − 31)/5 + (song rating − 50)/10 + (Cha − 100)/10, each at least 0, before the ally share. No target receives more than 45 per verse. A level 56, rating 100, Cha 150 Minstrel goes from 36 to 45 on self and from 23 to 33 on allies.
 - Salvation: a test that Song of Healing on another player adds to the achievement counter, not self or mobs.
-- Charm, player Minstrels only: targets save at 10 points worse. A level 56 Minstrel can charm level 51 (gap 5 → 4). A humanoid target stays charmed at least 50 to 60 minutes, rolled (40 to 48 game hours).
+- Charm, player Minstrels only: targets save at 10 points worse. A humanoid target stays charmed at least 50 to 60 minutes, rolled (40 to 48 game hours). The level limit does not change.
 - Drifting: a pet singer's verse does nothing.
 - New dodge song (working name **Song of Nimbleness**): takes the unused `SONG_MINDSHIELD` ID. Mandolin, level 56, Minstrel only, allies only, player singer, players only. While it plays, listeners get +5 to melee dodge and a 3.5% chance to avoid each damaging spell.
 
-Proof: fixture tests for the healing numbers and cap, Salvation credit, charm level, save and duration, pet Drifting, and the two dodge hooks; record healing per verse before and after on the local server, which also checks the reported 11 per tick.
+Proof: fixture tests for the healing numbers and cap, Salvation credit, charm save and duration with level 51 still refused, pet Drifting, and the two dodge hooks; record healing per verse before and after on the local server, which also checks the reported 11 per tick.
 
 ### PR 5: Disharmonist
 
