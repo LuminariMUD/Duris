@@ -126,6 +126,7 @@ void player_save_pipeline_quiesce() {}
 void player_save_pipeline_resume() {}
 bool player_save_pipeline_drain(uint64_t) { return true; }
 bool redis_world_recovery_drain(uint64_t) { return true; }
+int player_save_room_vnum(P_char, int room_vnum) { return room_vnum; }
 bool redis_world_checkpoint_for_copyover(redis_copyover_checkpoint *) { std::abort(); }
 int write_to_descriptor(P_desc, const char *) { assert(false); return -1; }
 void mxp_negotiate(P_desc) { std::abort(); } // This fixture restores no player descriptors.
