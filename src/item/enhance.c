@@ -70,6 +70,8 @@ struct enhance_essence_zone_rule
 static struct enhance_essence_zone_rule enhance_essence_zone_rules[ENHANCE_ESSENCE_MAX_ZONE_RULES];
 static int enhance_essence_zone_rule_count = 0;
 static bool enhancement_system_ready = false;
+// Minimal worlds may omit the index; only a failed rebuild disables commands.
+static bool enhancement_values_available = true;
 
 /* World tables needed to map an object template vnum back to its origin zone. */
 extern P_room world;
@@ -742,7 +744,7 @@ static bool perform_superior_enhancement(P_char ch, P_obj source, P_obj pouch,
 
 void do_enhance(P_char ch, char *argument, int /*cmd*/)
 {
-	if (!enhancement_system_ready)
+	if (!enhancement_values_available)
 	{
 		send_to_char("Enhancement is temporarily unavailable.\r\n", ch);
 		return;
@@ -2248,6 +2250,7 @@ void refresh_enhancement_item_values()
 	if (enhancement_system_ready && !load_enhance_index())
 	{
 		enhancement_system_ready = false;
+		enhancement_values_available = false;
 		logit(LOG_STATUS,
 		      "Enhancement disabled until restart: valuation index rebuild failed");
 	}
@@ -2261,6 +2264,7 @@ void boot_enhancement_system(void)
 	if (!load_enhance_index())
 		fatal_boot_error("enhancement", "Could not build complete enhancement index");
 	enhancement_system_ready = true;
+	enhancement_values_available = true;
 }
 
 void enhance_on_eligible_npc_death(P_char ch, P_char killer)
