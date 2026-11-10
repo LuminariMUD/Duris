@@ -15,6 +15,7 @@ from _innate_numbers import with_innate_numbers
 
 PRELUDE = r'''
 #include "core/prototypes.h"
+#include "abilities/abilities.h"
 #include "core/utils.h"
 #include "core/utility.h"
 #include "net/comm.h"
@@ -489,6 +490,7 @@ void do_group(P_char ch, char *, int) {
               extract_function("limits.c", "static void notify_level_advancement("),
               extract_function("limits.c", "static void advance_level_impl(P_char ch, bool notify_player, bool process_boons,\n\t\t\t       std::uint64_t threshold_xp)\n{"),
               extract_function("limits.c", "static void lose_level_impl(P_char ch, std::uint64_t threshold_xp,\n\t\t\t    telemetry_progression_source source,\n\t\t\t    telemetry_progression_reason reason)\n{"),
+              extract_function("affects.c", "float player_racial_damage_multiplier("),
               extract_function("affects.c", "char affect_total("),
               extract_function("affects.c", "void event_balance_affects("),
               extract_function("handler.c", "P_obj unequip_char("), DERIVED_CASES,

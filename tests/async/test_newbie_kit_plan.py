@@ -72,6 +72,8 @@ def oracle(race, cls, align, all_classes, additions):
         items += class_items
     elif cls == values['CLASS_BLIGHTER']:
         items += extra['blighter_stuff']
+    if cls == values['CLASS_ETHERMANCER']:
+        items += [256]
     if cls in (values['CLASS_RANGER'], values['CLASS_ROGUE']):
         items += [1116] + [1117] * 10 + [1118]
     result = [(v, 1) for v in items]

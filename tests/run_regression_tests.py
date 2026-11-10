@@ -154,6 +154,8 @@ MANUAL_ONLY_TEST_NAMES = frozenset(
         "test_conjurer_gameplay_journey.py",
         "test_shambler_reflection_journey.py",
         "test_minor_creation_instrument_journey.py",
+        "test_bard_support_journey.py",
+        "test_bard_disharmonist_journey.py",
         "test_generated_npc_journey.py",
         "test_mariadb_chaos_new_character_kit.py",
         "test_mariadb_newbie_regrant_journey.py",

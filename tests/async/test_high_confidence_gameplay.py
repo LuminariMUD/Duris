@@ -203,7 +203,7 @@ FUNCTIONS = {
         "true_seeing_duration", "spell_true_seeing", "animal_vision_duration", "spell_animal_vision",
         "natures_blessing_duration", "spell_natures_blessing", "shadow_vision_duration", "spell_shadow_vision",
         "prot_from_undead_duration", "spell_prot_from_undead", "starshell_duration", "spell_starshell",
-        "rope_trick_duration", "spell_rope_trick",
+        "rope_trick_duration", "rope_trick_limit", "spell_rope_trick",
         "enlarge_duration", "enlarge_refresh_duration", "enlarge_str_max", "enlarge_con_max", "enlarge_agi", "enlarge_dex", "spell_enlarge",
         "reduce_duration", "reduce_refresh_duration", "reduce_str", "reduce_con", "reduce_agi_max", "reduce_dex_max", "spell_reduce",
         "edictum_cineris_berserk_lag", "edictum_cineris_penalty", "edictum_cineris_duration", "spell_edictum_cineris",
@@ -469,16 +469,20 @@ int main() {
     event_meditation(&caster, nullptr, nullptr, nullptr);
     assert(scheduled == 2 && !IS_AFFECTED2(&caster, AFF2_POISONED));
     clear(&caster);
-    // Three hidden rope users fill the room's cap, including a recast on one of them.
+    // Five hidden rope users fill the room's cap, including a recast on one of them.
+    char_data fourth{}, fifth{};
+    fourth.in_room = fifth.in_room = caster.in_room;
     affected_type rope{}; rope.type = SPELL_ROPE_TRICK;
-    for (auto *ch : {&caster, &target, &other}) {
+    for (auto *ch : {&caster, &target, &other, &fourth, &fifth}) {
         affect_to_char(ch, &rope); ch->specials.affected_by = AFF_HIDE;
     }
     rooms[1].people = &caster; caster.next_in_room = &target;
-    target.next_in_room = &other; other.next_in_room = nullptr;
+    target.next_in_room = &other; other.next_in_room = &fourth;
+    fourth.next_in_room = &fifth; fifth.next_in_room = nullptr;
     spell_rope_trick(50, &caster, nullptr, 0, &target, nullptr);
     assert(!target.affected->next);
     clear(&caster); clear(&target); clear(&other);
+    clear(&fourth); clear(&fifth);
     // Recasts cannot replace three game hours with the cast level.
     target.player.size = SIZE_MEDIUM;
     for (auto spell : {spell_enlarge, spell_reduce}) {

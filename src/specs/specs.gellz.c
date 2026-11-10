@@ -1053,6 +1053,11 @@ void do_deaths_door(P_char ch, char *arg, int /*cmd*/)
 		send_to_char(buf, ch);
 		return;
 	}
+	if (GET_LEVEL(ch) < 25)
+	{
+		send_to_char("You must be level 25 to open Deaths Door.\r\n", ch);
+		return;
+	}
 	if (!*arg)
 	{
 		act("Pardon? Im not sure what you are trying to do.  Maybe open a &+Wdoor&n?\n",

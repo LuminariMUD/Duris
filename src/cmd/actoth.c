@@ -12,6 +12,7 @@
 #include "core/prototypes.h"
 #include "telemetry/telemetry_runtime.h"
 #include "item/device_actions.h"
+#include "item/named_sets.h"
 #include "player/output_message.h"
 #include "cmd/color_command.h"
 #include "core/structs.h"
@@ -4672,6 +4673,12 @@ void do_area(P_char ch, char *argument, int /*cmd*/)
 		if (zone->avg_mob_level >= 0 && (zone->avg_mob_level - GET_LEVEL(ch)) > 15)
 			details +=
 				"&-L&+RWarning&-L, some mobs in this zone may be very hazardous for you! Travel with care!&n\r\n";
+		const std::string bonuses = named_set_bonuses(zone->number);
+		details += "\r\n&+LNamed-set spell bonuses (pieces required):&n ";
+		details += bonuses.empty() ?
+				   "None listed; matching named items still grant hitpoints." :
+				   bonuses;
+		details += "\r\nSee namedreport for cooldowns and wearer restrictions.\r\n";
 		// Reserve the complete suffix so a long name cannot hide the danger warning.
 		std::string response = "&+LZone Name: ";
 		response.append(pad_ansi(zone->name, 30), 0,
@@ -5956,9 +5963,9 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 				   !str_cmp(setting, "off") ||
 				   (!errno && end != setting && !*end && number == 0);
 		if (*rest ||
-		    (!reset && (errno || end == setting || *end || number < 12 || number > 48)))
+		    (!reset && (errno || end == setting || *end || number < 12 || number > 100)))
 		{
-			send_to_char("Use toggle screensize <12-48|default|off|0>.\r\n", send_ch);
+			send_to_char("Use toggle screensize <12-100|default|off|0>.\r\n", send_ch);
 			return;
 		}
 		ch->only.pc->screen_length = reset ? DEFAULT_SCREEN_LENGTH : number;

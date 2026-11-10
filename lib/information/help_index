@@ -711,6 +711,14 @@ the enemy in assorted evil ways.
 ===========================================================================
 
 #
+Area
+Syntax: area
+Shows your current zone's name, average mobile level and danger warning.
+It also lists the zone's named-set spell bonuses and required piece counts.
+Matching named items still grant hitpoints when no spell bonus is listed.
+Use namedreport for the full catalog, cooldowns and wearer restrictions.
+
+#
 ARMOR (Spell)
 ===========================================================================
 Area of effect: <victim>
@@ -4456,6 +4464,12 @@ Typing "Disengage" while assisting in combat allows you to withdraw from
 the fight. Disengage will not work if you are the tank.
 ===========================================================================
 See also: FLEE, RETREAT
+
+#
+Dismiss
+Syntax: dismiss [pet name]
+Dismiss releases your NPC followers. Supply a name to dismiss one controlled
+pet in the same room. You may dismiss pets while sitting or standing.
 
 #
 DISGUISE (Skill)
@@ -10591,6 +10605,7 @@ An item in your wield, secondary weapon, hold, shield or light slot limits
 you to one base monk attack. For bare-hand damage, occupying wield,
 secondary weapon, hold or shield also reduces your monk damage dice to 1d1.
 An equipped light limits attacks but does not reduce those damage dice.
+Equipping these items warns you about the affected monk benefits.
 
 ==Weight==
 
@@ -18595,7 +18610,7 @@ no locate, no level, save notify, ship map, show titles, and hint channel.
 Their single-word commands remain available.
 
 Terminal uses ansi, gen, msp, or msp quiet (manual group display).
-Screensize uses 12-48, default, off, or 0;
+Screensize uses 12-100, default, off, or 0;
 no value resets the default. Color has its own channel and motion settings.
 Automatic fleeing (wimpy), smartprompt and retired specialization placeholders
 are unavailable. Use oldsmartprompt for prompt timing. Divine Boons apply
@@ -18609,7 +18624,8 @@ TOGGLE_AFK (Command)
 Syntax:         toggle afk [on|off]
 
 ON marks you as AFK; OFF clears the marker. Without a value, this command
-flips the marker. Other input clears AFK as soon as it is accepted. Be warned,
+flips the marker. Toggling AFK does not interrupt meditation.
+Other input clears AFK as soon as it is accepted. Be warned,
 if you remain AFK for too long, you will "Void". Be certain you are in a
 safe place (i.e. your guildhall) before you AFK.
 ===========================================================================
@@ -18773,8 +18789,8 @@ Syntax:         toggle screensize <size>
                 toggle screensize default
                 toggle screensize off
 
-This sets the page length to 12-48 lines. No value, default, off, or 0 resets
-it to the default of 24 lines. To disable paging, use "toggle paging off".
+This sets the page length to 12-100 lines. No value, default, off, or 0 resets
+it to the default of 40 lines. To disable paging, use "toggle paging off".
 ===========================================================================
 See also: PAGING, TOGGLE
 
@@ -23583,6 +23599,8 @@ Madness           51      100
 These are crafting requirements. Traded vials and coated weapons remain usable;
 the recipient does not inherit the maker's level or need that recipe's mix skill.
 Apply a dose with: apply <vial> <weapon>.
+Use 'skills info mixpoison' for your eligible recipes, ingredients and effects;
+viewing that information does not impose crafting lag.
 ===========================================================================
 See also: mix, poison, forage, assassinate
 #
@@ -26860,7 +26878,11 @@ The reward is Deaths Door, used with 'deathsdoor door'.
 Read 'help deaths door' before using it to recover a corpse.
 #
 Deaths Door
-Syntax: deathsdoor door
+Syntax: deathsdoor
+        deathsdoor door
+From level 20, 'deathsdoor' shows which base attributes still need to reach
+100 if you have not earned the achievement. Opening the door requires
+level 25 as well as the achievement.
 Deaths Door is the corpse-recovery reward from Toughen Up Princess.
 You must be alive and have earned the achievement by reaching 100
 in every base attribute. It brings your most recent available corpse
@@ -27991,7 +28013,8 @@ spells <class or specialization>
 spells info <spell name>
 
 Bare spells shows your own spells, including for staff. Spells are grouped by
-circle and name. Spells above your maximum circle are dimmed. The header shows
+circle and name. Spells above your maximum circle are dimmed and marked
+[future circle]. The header shows
 your class, specialization, secondary class and maximum circle.
 Your spell interface command appears below the list when applicable.
 Book markers check inventory, hands and belt only for spellbook users.
@@ -28002,6 +28025,8 @@ specialization catalog. An asterisk marks spells gained from the specialization.
 Lost base spells are listed separately. Bard songs and instruments use skills.
 The catalog shows the class's default spell interface when applicable.
 Catalogs are reference information, independent of your race, class and level.
+A [future circle] marker refers to your own current spell access; it does
+not change the catalog's class or specialization requirements.
 
 Use spells info fireball for registered aggression, class/spec circles and
 changes, your personal access, and the existing helpfile. Live definitions

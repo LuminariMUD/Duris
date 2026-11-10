@@ -13,6 +13,8 @@ fixture = r'''
 #include "core/utils.h"
 #include "core/utility.h"
 #include "world/db.h"
+#include "magic/spells.h"
+#include "item/named_sets.h"
 #include "world/world_quest_policy_math.h"
 #include <cassert>
 #include <string>
@@ -21,6 +23,8 @@ static zone_data zones[1] = {};
 P_room world = rooms;
 zone_data *zone_table = zones;
 static std::string feedback;
+Skill skills[MAX_AFFECT_TYPES + 1];
+static void spell(int, P_char, char *, int, P_char, P_obj) {}
 void send_to_char(const char *text, P_char) { feedback += text; }
 std::string pad_ansi(const char *text, int, bool) { return text; }
 int IS_MORPH(P_char) { return false; }
@@ -38,6 +42,17 @@ int main() {
         assert(feedback.size() < MAX_STRING_LENGTH);
         return feedback;
     };
+    skills[SPELL_ARMOR].name = "armor";
+    skills[SPELL_ARMOR].spell_pointer = spell;
+    skills[SPELL_BLESS].name = "bless";
+    skills[SPELL_BLESS].spell_pointer = spell;
+    zones[0].number = 14;
+    auto bonuses = display(10);
+    assert(bonuses.find("armor &+W(&+Y3&+W)") != std::string::npos);
+    assert(bonuses.find("bless &+W(&+Y3&+W)") != std::string::npos);
+    assert(bonuses.find("None listed") == std::string::npos);
+    zones[0].number = 0;
+    assert(display(10).find("None listed; matching named items still grant hitpoints.") != std::string::npos);
     auto unknown = display(-2);
     assert(unknown.find("unknown") != std::string::npos);
     assert(unknown.find("-2") == std::string::npos);
@@ -73,6 +88,7 @@ int main() {
                 const bool warning = average >= 0 && average - level > 15;
                 if (warning)
                     suffix += "&-L&+RWarning&-L, some mobs in this zone may be very hazardous for you! Travel with care!&n\r\n";
+                suffix += "\r\n&+LNamed-set spell bonuses (pieces required):&n None listed; matching named items still grant hitpoints.\r\nSee namedreport for cooldowns and wearer restrictions.\r\n";
                 assert(result.ends_with(suffix));
                 assert((result.find("Warning") != std::string::npos) == warning);
                 assert(result.starts_with("&+LZone Name: " + name.substr(0, 10)));
@@ -88,5 +104,5 @@ with tempfile.TemporaryDirectory(prefix='zone-display-', dir=out) as temporary:
     cpp.write_text(fixture)
     subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
                     '-fsanitize=address,undefined', '-no-pie', '-g', '-Isrc', '-I/usr/include/mysql',
-                    str(cpp), '-o', str(binary)], cwd=ROOT, check=True)
+                    '-ffunction-sections', '-fdata-sections', str(cpp), 'src/item/named_sets.c', '-Wl,--gc-sections', '-o', str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True, timeout=30)
