@@ -984,6 +984,7 @@ int main(int argc, char **argv)
 	assert(world_quest_policy_bootstrap());
 	const int boot_probes = probe_reads;
 	const int boot_objects = object_reads;
+	assert(boot_objects == 0); // Reward catalog inspection must not construct live objects.
 	assert(boot_probes == top_of_mobt + 1);
 	if (mode == "cosmetic")
 		mobiles[1].func.mob = bs_wino;
