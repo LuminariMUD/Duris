@@ -28,16 +28,17 @@ No database migration or help-content rewrite is expected.
 - Repository: `LuminariMUD/Duris`.
 - Base: `origin/master` at `91f40a01fe` when this worktree was created.
 - First PR branch: `branch/clickable-links-phase1`.
-- Current implementation branch: `branch/clickable-links-urls`, stacked on
-  `branch/clickable-links-help` (then MXP, output and the first PR branch).
+- Current implementation branch: `branch/clickable-links-web-protocol`, stacked
+  on `branch/clickable-links-urls` (then help, MXP, output and the first PR branch).
 - Worktree: `/home/aiwithapex/projects/duris-worktrees/clickable-links-phase1`.
 - Plan: `docs/ongoing-projects/clickable-links-phase1.md` in that worktree.
 - Deliver focused, reviewable commits and PRs as each chunk is verified. Stack
   dependent changes and keep this document current for handoff.
-- Implementation will also need a companion branch/worktree in `durisweb` for
-  its player renderer and transport decoder. Create that during implementation,
-  after reading that repository's instructions. Keep commits in their owning
-  repositories and link the server and client changes.
+- Companion `DurisWeb` branch: `branch/clickable-links-phase1`, worktree
+  `/home/aiwithapex/projects/durisweb-worktrees/clickable-links-phase1`, based on
+  `origin/master` at `a21e175`. Its instructions and relevant frontend contracts
+  are read; implementation is pushed in companion PR #161 (see Chunk 7).
+  Keep commits in their owning repositories and link PRs.
 - Mudlet should use native MXP for the new scrolling-output links; changing the
   `durisclient` package is not an expected dependency.
 
@@ -591,6 +592,108 @@ semantic links to existing text/chat envelopes, implement and verify DurisWeb,
 then perform native-client and original-socket hotboot journeys. No live-client
 click, production operation or deployment has been performed. The goal remains
 in progress even though help and URL producers now reach native MXP delivery.
+
+### Chunk 6: negotiated browser text and chat presentation
+
+Review: [PR #942](https://github.com/LuminariMUD/Duris/pull/942), implementation
+commit `ccb0aa0f8`, stacked on #934; labels `enhancement`, `documentation`.
+
+Implemented on `branch/clickable-links-web-protocol`:
+
+- Exact `Duris.Links 1` support through the existing Core.Supports parser and
+  feature report. It needs no Subscribe stream. Removal, GMCP disable and the
+  player's opt-out stop optional presentation. Existing support storage already
+  retains the bit on supported native hotboot; no record-layout change is needed.
+- One shared JSON formatter replaces the duplicated chat run/dollar serializer
+  and supplies ordinary WebSocket text. Existing `type/category/data` remain;
+  the same envelope carries optional `presentation` with literal text, colors
+  and half-open code-point `{start,end,kind,target}` links. A flush produces one
+  ordered text batch, preserving original block folding and leading newlines.
+- Already queued WS wire bytes drain before raw text/prompt state is consumed.
+  This reuses the existing queue/buffer and adds no second retry queue or matching
+  IDs. Optional over-budget/invalid/allocation-failed presentation falls back to
+  ordinary text. Packet size remains inside the existing WS output budget.
+- All existing chat channels can carry optional `bodyPresentation`, built from
+  the recipient-approved body, for their normal sender/body layout. Adopted
+  full-line profile snapshots retain their fields and gain links when negotiated.
+  No language/visibility transform or profile resolution is repeated. Existing
+  unnegotiated payloads retain their shape and one-copy delivery.
+- The complete capability report fits when all existing streams are supported
+  and active. Shared legacy chat-root construction keeps required-field failures
+  atomic; new snapshots are also atomic. The wire contract and structured-chat
+  guide are updated.
+
+Verified: normal and ASan/UBSan output integration, including one-envelope order,
+Unicode offsets, literal text, capabilities/opt-out, full versus body chat, raw
+queue retention under pressure and 150 allocation-failure points. The actual
+GMCP parser/wire fixture passed under sanitizers with version negotiation,
+Add/Remove/Set, no subscription, all chat entry points, all-stream reporting and
+disable behavior. Deferred-prompt serialization and `make -C src -j8` passed.
+The local benchmark covers new-capability chat (about 20–21 microseconds CPU per
+message for both full/body snapshots, 12,800 messages to 64 recipients); this is
+not a live capacity claim. Formatting and commit-time tidy passed; the branch is
+pushed for review.
+
+Evidence: `bin/tests/phase1-web-protocol-{output,asan,gmcp,prompts,build}.log`,
+`bin/tests/phase1-web-protocol-benchmark.csv`. The output harness exports real
+synthetic producer payloads to `bin/tests/clickable-links-wire.json` when run with
+`OUTPUT_PRESENTATION_FIXTURE=bin/tests/clickable-links-wire.json`; use these for
+the paired browser qualification, not private player data.
+
+Next: implement the client decoder, line slicing through triggers, store/history
+retention and a shared safe renderer in the companion worktree. Preserve console
+versus chat palette contracts and the existing sender/body fallback; use the
+existing command sender for help and user-activated HTTP/HTTPS anchors. Validate
+rendered browser clicks/keyboard/history and then native-client/hotboot journeys.
+The frontend testing skill will use Playwright because the Browser plugin is
+absent. Prepare website release news locally under the website skill; this PR-only
+task does not publish the not-yet-deployed feature or refresh unrelated Mudlet
+package history. The goal remains active until the entire Phase 1 acceptance
+scope is proven.
+
+### Chunk 7: browser receipt, rendering and history
+
+Review: [DurisWeb PR #161](https://github.com/LuminariMUD/DurisWeb/pull/161),
+commit `fdf9f31`, based on web `master` at `a21e175`. Labels: `enhancement`,
+`documentation`. It depends on the server stack ending at #942. Both peers
+retain ordinary readable fallback with the older peer.
+
+The browser advertises `Duris.Links 1` on each connection. A shared bounded
+snapshot decoder validates targets, colors and code-point ranges; text metadata
+must match its terminal envelope before line clipping. Existing trigger input
+and gag behavior remain in place. Live output and both split-history panes use
+one Vue text-node renderer; help buttons call the existing command sender.
+HTTP/HTTPS anchors open separately and stop propagation to sender/game hotkeys.
+The same renderer covers full-line chat and optional body snapshots across
+existing chat channels. Store/history insertion retains both optional snapshots,
+and saved history revalidates without a storage-version migration. Console,
+authored-body and chat colors use their existing palette mappings. No URL regex,
+new settings, endpoints, stream subscriptions or link-ID registry were added.
+
+Verified: 50 focused tests, frontend format/lint/type checks, build and palette
+guard pass. The actual synthetic server output fixture covers text, adopted
+full-line say and legacy nchat body presentation. Playwright drove the real
+`/play` UI and normal WebSocket handler: receipt sends no game command; help
+click and Enter each send exactly one `help weather`; three text/chat URL
+surfaces retain the exact query ampersand target and a URL opens without a game
+command. Desktop 1440×1000, tablet 820×1180 and phone 390×844 passed with no page
+errors or framework overlay. Existing Vue Router `next()` deprecation remains.
+Screenshots are `/tmp/clickable-links-{desktop,tablet,phone}.png`; temporary
+browser script is `/tmp/clickable-links-browser.py`. Required check logs are
+`bin/tests/phase1-web-client-{unit,format,lint,types,build}.log` here. Browser
+plugin was absent; the already installed Playwright/Chromium was used.
+
+The website contract is updated in `docs/CHAT-COLORIZATION.md`. The website
+news skill supplied a local unpublished draft in
+`docs/ongoing-projects/clickable-links-changelog-draft.json`; release date/version,
+entry reconciliation and publication wait for an authorized verified deployment.
+No website backend, live news, Mudlet package history or production state changed.
+
+Remaining: booted server help/pager and negotiated browser journeys, native MXP
+client clicks and original-socket hotboot qualification. Browser fixture QA is
+not a claim that those live server/native journeys have passed. The local
+`mudlet` wrapper points to an absent AppImage; locate or provision an isolated
+client without changing user profiles. The goal remains active.
 
 ## Scope review
 
