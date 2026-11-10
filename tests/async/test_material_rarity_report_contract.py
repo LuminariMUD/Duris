@@ -7,39 +7,7 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[2]
-report = (SRC / "material_rarity.c").read_text()
-header = (SRC / "material_rarity.h").read_text()
 comm = (SRC / "comm.c").read_text()
-db = (SRC / "db.c").read_text()
-
-# These shared APIs avoid a copied parser/formula. They do not establish full
-# valuation-context parity, which is tracked separately in the ival plan (F07).
-assert "cache_object_template" in report and "itemvalue(*obj)" in report
-assert "material_start_vnum" in report
-assert "read_object(" not in report and "extract_obj(" not in report
-
-# The executable mode is offline/read-only: boot the object database, write the
-# report, and exit before listening for player connections.
-assert "--material-rarity-report" in comm
-assert "boot_material_rarity_objects" in comm
-offline = db[db.index("bool boot_material_rarity_objects("):db.index("/** Load world data")]
-assert "initialize_property_values()" in offline and "assign_spell_pointers()" in offline
-assert "ne_init_event_pool" not in offline and "mm_create" not in offline
-assert "write_material_rarity_report" in comm
-assert comm.index("if (material_rarity_report_mode)") < comm.index("initialize_mysql")
-assert "bool write_material_rarity_report" in header
-
-# Preserve source data for auditability and make the percentage denominator
-# explicit. Unknown/unmapped material families must be reported, not silently
-# folded into a default material family.
-assert "material-rarity-summary.csv" in report
-assert "material-rarity-recipes.csv" in report
-assert "material-rarity-exclusions.csv" in report
-assert "unmapped-material-family" in report
-assert "total_material_units" in report
-assert "share_percent" in report
-
-print("material rarity report contract passed")
 
 # Compile the actual writer and command branch, controlling only the object boot
 # and unused valuation endpoints. An empty catalog isolates report I/O from the

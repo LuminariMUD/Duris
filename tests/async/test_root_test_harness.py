@@ -68,17 +68,17 @@ expected_resource_intensive = {
     "test_divine_boon_zone_journey.py",
     "test_game_loop_session_journey.py",
     "test_area_coin_pickup.py",
-    "test_flatfile_auction_coin_put_journey.py",
-    "test_flatfile_boot_preflight.py",
-    "test_flatfile_chaos_new_character_kit.py",
-    "test_flatfile_combat_journey.py",
-    "test_flatfile_collector_intake_journey.py",
-    "test_flatfile_death_restart_journey.py",
-    "test_flatfile_locker_journey.py",
-    "test_flatfile_newbie_regrant_journey.py",
-    "test_flatfile_first_session_currency.py",
-    "test_flatfile_full_world_boot.py",
-    "test_flatfile_hardcore_death_journey.py",
+    "test_mariadb_auction_coin_put_journey.py",
+    "test_mariadb_boot_preflight.py",
+    "test_mariadb_chaos_new_character_kit.py",
+    "test_mariadb_combat_journey.py",
+    "test_mariadb_collector_intake_journey.py",
+    "test_mariadb_death_restart_journey.py",
+    "test_mariadb_locker_journey.py",
+    "test_mariadb_newbie_regrant_journey.py",
+    "test_mariadb_first_session_currency.py",
+    "test_mariadb_full_world_boot.py",
+    "test_mariadb_hardcore_death_journey.py",
     "test_flight_network_journey.py",
     "test_frag_cap_journey.py",
     "test_generated_npc_journey.py",
@@ -113,6 +113,9 @@ assert runner.MANUAL_ONLY_TEST_NAMES == {
     "test_kept_character_ambiguous_commit.py",
     "test_mysql_playtime_journey.py",
     "test_mysql_coin_denomination_journey.py",
+    "test_mysql_auction_item_journey.py",
+    "test_mysql_auction_money_journey.py",
+    "test_mysql_smith_payment_journey.py",
     "test_mysql_locker_grant_journey.py",
     "test_mysql_nexus_journey.py",
     "test_playtime_mysql_repository.py",
@@ -144,31 +147,31 @@ assert runner.MANUAL_ONLY_TEST_NAMES == {
     "test_websocket_session_guard_journey.py",
     "test_storage_chest_crash_journey.py",
     "test_shaman_totems.py",
-    "test_flatfile_hardcore_death_journey.py",
+    "test_mariadb_hardcore_death_journey.py",
     "test_ranged_kill_xp_journey.py",
     "test_account_recovery_journey.py",
-    "test_flatfile_first_session_currency.py",
+    "test_mariadb_first_session_currency.py",
     "test_area_coin_pickup.py",
     "test_log_hygiene_journey.py",
     "test_hostname_files_journey.py",
     "test_studioproc_duplicate_record.py",
     "test_frag_cap_repository.py",
-    "test_flatfile_combat_journey.py",
-    "test_flatfile_collector_intake_journey.py",
-    "test_flatfile_death_restart_journey.py",
+    "test_mariadb_combat_journey.py",
+    "test_mariadb_collector_intake_journey.py",
+    "test_mariadb_death_restart_journey.py",
     "test_mob_gold_dial_runtime.py",
-    "test_flatfile_boot_preflight.py",
+    "test_mariadb_boot_preflight.py",
     "test_headbutt_feedback_journey.py",
     "test_assassin_combat_journey.py",
     "test_conjurer_gameplay_journey.py",
     "test_shambler_reflection_journey.py",
     "test_minor_creation_instrument_journey.py",
     "test_generated_npc_journey.py",
-    "test_flatfile_chaos_new_character_kit.py",
-    "test_flatfile_newbie_regrant_journey.py",
-    "test_flatfile_auction_coin_put_journey.py",
-    "test_flatfile_full_world_boot.py",
-    "test_flatfile_locker_journey.py",
+    "test_mariadb_chaos_new_character_kit.py",
+    "test_mariadb_newbie_regrant_journey.py",
+    "test_mariadb_auction_coin_put_journey.py",
+    "test_mariadb_full_world_boot.py",
+    "test_mariadb_locker_journey.py",
     "test_pet_restart_journey.py",
 }
 discovered = {path.name for path in runner.discover_tests(None)}
@@ -185,8 +188,8 @@ sample_tests = [
     Path("test_conjurer_gameplay_journey.py"),
     Path("test_divine_boon_zone_journey.py"),
     Path("test_gith_monk_journey.py"),
-    Path("test_flatfile_combat_journey.py"),
-    Path("test_flatfile_auction_coin_put_journey.py"),
+    Path("test_mariadb_combat_journey.py"),
+    Path("test_mariadb_auction_coin_put_journey.py"),
     Path("test_account_recovery_journey.py"),
     Path("test_mysql_combat_journey.py"),
     Path("test_information_cache_journey.py"),
@@ -302,6 +305,38 @@ with tempfile.TemporaryDirectory(prefix="duris-runner-") as scratch:
          mock.patch.dict(os.environ), contextlib.redirect_stdout(output):
         assert runner.main() == 0, output.getvalue()
     assert "2 passed, 0 failed" in output.getvalue(), output.getvalue()
+
+    # A strict pulse-budget check must run after compiler-heavy pool jobs finish,
+    # even if history/discovery puts it first. Every selected test still runs.
+    pooled = [tests_dir / f"test_pool_{name}.py" for name in ("one", "two")]
+    for path in pooled:
+        other = next(item.stem for item in pooled if item != path)
+        path.write_text(
+            "import pathlib, time\n"
+            "path = pathlib.Path(__file__)\n"
+            "path.with_suffix('.active').touch()\n"
+            "path.with_suffix('.started').touch()\n"
+            "deadline = time.monotonic() + 10\n"
+            f"while not path.with_name('{other}.started').exists():\n"
+            "    assert time.monotonic() < deadline, 'pooled tasks did not overlap'\n"
+            "    time.sleep(.01)\n"
+            "time.sleep(.1)\n"
+            "path.with_suffix('.active').unlink()\n"
+            "path.with_suffix('.done').touch()\n")
+    latency = tests_dir / "test_telemetry_posthog.py"
+    latency.write_text(
+        "import pathlib\n"
+        "root = pathlib.Path(__file__).parent\n"
+        "assert all((root / (name + '.done')).exists() for name in ('test_pool_one', 'test_pool_two'))\n"
+        "assert not list(root.glob('test_pool_*.active'))\n")
+    output = io.StringIO()
+    with mock.patch.object(runner, "ROOT", Path(scratch)), \
+         mock.patch.object(runner, "TEST_DIRECTORY", tests_dir), \
+         mock.patch.object(runner, "discover_tests", return_value=[latency, *pooled]), \
+         mock.patch.object(sys, "argv", ["runner", "--jobs", "2"]), \
+         mock.patch.dict(os.environ), contextlib.redirect_stdout(output):
+        assert runner.main() == 0, output.getvalue()
+    assert "3 passed, 0 failed" in output.getvalue(), output.getvalue()
 
     # Stopping the runner, by Ctrl-C or by a SIGTERM from a supervisor or `timeout`, ends
     # the test it is running with everything it started, and starts no other.

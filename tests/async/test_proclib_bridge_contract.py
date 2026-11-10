@@ -36,7 +36,7 @@ def slice_fn(text, start_marker, *, end_marker=None):
 # the character made it in, and every FALSE it can return to a dir < 0 caller
 # is raised BEFORE the character is placed.
 # ---------------------------------------------------------------------------
-char_to = slice_fn(handler, "bool char_to_room(P_char ch, int room, int dir)",
+char_to = slice_fn(handler, "bool char_to_room(P_char ch, int room, int dir, bool ordinary_movement)",
                    end_marker="void obj_from_room")
 assert contains(handler, "// Returns TRUE iff char made it into the room.")
 placed = index(char_to, "ch->in_room = room;")

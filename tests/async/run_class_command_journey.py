@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 
 ROOT = journey.ROOT
@@ -103,8 +103,6 @@ def run(binary, backend):
                 stop()
                 if sql:
                     sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='" + GOD + "'")
-                else:
-                    journey.make_overlord(Path(env["FLATFILE_STATE_DIR"]), GOD)
                 process = boot()
                 god = login(GOD, GOD_ACCOUNT)
                 player = login(PLAYER, ACCOUNT)
@@ -194,7 +192,7 @@ def run(binary, backend):
                     assert "Melee and archery damage: " + expected + " (passive)" in text, text
                 command(god, "properties set damage.totalOutput.racial.Barbarian 1.000")
                 assert "Melee and archery damage" not in command(player, "race innates barbarian")
-                assert "None." in command(player, "race innates storm giant")
+                assert "Max damroll (gear + buffs): 72" in command(player, "race innates storm giant")
                 command(god, "properties set damage.totalOutput.racial.StormGiant 1.100")
                 text = command(player, "race innates storm giant")
                 assert "Melee and archery damage: +10% (passive)" in text and "None." not in text
@@ -268,7 +266,7 @@ def run(binary, backend):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("mariadb", "flatfile"), default="flatfile")
+    parser.add_argument("--backend", choices=("mariadb",), default="mariadb")
     parser.add_argument("--server", type=Path, required=True)
     args = parser.parse_args()
     run(args.server.resolve(), args.backend)

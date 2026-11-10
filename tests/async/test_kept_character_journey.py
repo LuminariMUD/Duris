@@ -29,7 +29,7 @@ def kept_journey_binary(server: Path | None, backend: str):
     output = account.ROOT / "bin/tests"
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="kept-flatfile-build-", dir=output) as directory:
-        yield account.build_flatfile_server(Path(directory))
+        yield account.build_mariadb_server(Path(directory))
 
 
 @contextmanager
