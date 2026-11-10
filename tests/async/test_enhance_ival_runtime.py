@@ -549,6 +549,10 @@ static void test_level_gate_is_the_ceiling()
     ch.player.level = 33;
     ch.curr_stats.Luk = 10;
     ch.in_room = NOWHERE;
+    source.name = const_cast<char *>("upgrade");
+    donor.name = const_cast<char *>("donor");
+    source.next_content = &donor;
+    ch.carrying = &source;
     for (bool force_luck : {false, true})
     {
         lucky = force_luck;
@@ -564,7 +568,8 @@ static void test_level_gate_is_the_ceiling()
         lucky = force_luck;
         GET_PLATINUM(&ch) = 20;
         source.loc_p = donor.loc_p = LOC_CARRIED;
-        enhance(&ch, &source, &donor);
+        char command[] = "upgrade donor";
+        do_enhance(&ch, command, 0);
         assert(result && OBJ_VNUM(result) == 91002 && itemvalue(result) == 102);
         assert((extracted == std::vector<int>{91000, 91001}) && charges == 1);
         clear_attempt();
@@ -578,6 +583,38 @@ static void test_level_gate_is_the_ceiling()
     assert(output.find("up to ival 96") != std::string::npos);
     clear_attempt();
     for (auto &bucket : enhance_ival_table) bucket = nullptr;
+
+    // Above 99, the same bound follows configured gains and the pouch exception.
+    const int previous_gain = enhance_ival_gain_normal;
+    for (int gain : {4, 9}) {
+        enhance_ival_gain_normal = gain;
+        valued(0, 91000, 120);
+        valued(1, 91001, 115);
+        valued(2, 91002, 120 + gain);
+        valued(3, 91003, 121 + gain);
+        enhance_index_entry valid{}, excessive{};
+        index_entry(excessive, 91003, 121 + gain);
+        ch.player.level = 40;
+        GET_PLATINUM(&ch) = 20;
+        enhance(&ch, &source, &donor);
+        assert(!result && loads.empty() && extracted.empty() && charges == 0);
+        assert(GET_MONEY(&ch) == 20000 && source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
+        clear_attempt();
+        index_entry(valid, 91002, 120 + gain);
+        for (bool pouch : {false, true}) {
+            source.loc_p = donor.loc_p = LOC_CARRIED;
+            GET_PLATINUM(&ch) = 20;
+            active_pouch = pouch ? &fixture(6, VOBJ_CHAOS_CRAFT_POUCH) : nullptr;
+            enhance(&ch, &source, pouch ? active_pouch : &donor);
+            assert(result && itemvalue(result) == 120 + gain);
+            assert(charges == 1 && GET_MONEY(&ch) == 10000);
+            assert(extracted == (pouch ? std::vector<int>{91000} : std::vector<int>{91000, 91001}));
+            clear_attempt();
+            active_pouch = nullptr;
+        }
+        for (auto &bucket : enhance_ival_table) bucket = nullptr;
+    }
+    enhance_ival_gain_normal = previous_gain;
 }
 
 static void test_essence()
