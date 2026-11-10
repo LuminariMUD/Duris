@@ -304,6 +304,27 @@ static void clear_attempt()
     output.clear();
 }
 
+static void test_minimal_world_essence_command()
+{
+    assert(!enhancement_system_is_ready()); // Optional index was never booted.
+    char_data ch{};
+    ch.in_room = NOWHERE;
+    GET_PLATINUM(&ch) = 10;
+    auto &source = fixture(0, 90010);
+    source.name = const_cast<char *>("target");
+    source.affected[0] = {APPLY_MANA, 25};
+    auto &essence = fixture(1, 400254);
+    essence.name = const_cast<char *>("essence");
+    source.next_content = &essence;
+    ch.carrying = &source;
+    char command[] = "target essence";
+    do_enhance(&ch, command, 0);
+    assert(source.affected[2].location == APPLY_HIT && source.affected[2].modifier == 3);
+    assert(essence.loc_p == LOC_NOWHERE && charges == 1 && GET_MONEY(&ch) == 9000);
+    assert(loads.empty());
+    clear_attempt();
+}
+
 static void test_donor_floor()
 {
     for (bool insignia : {false, true}) for (int offset : {-1, 0}) {
@@ -1045,6 +1066,7 @@ int main()
     assert(enhance_wear_skip_mask == expected_mask);
     test_config();
     assert(enhance_wear_skip_mask == expected_mask);
+    test_minimal_world_essence_command();
     enhancement_system_ready=true;
     test_donor_floor();
     test_replacement();

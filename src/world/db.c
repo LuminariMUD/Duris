@@ -3158,10 +3158,6 @@ static void stage_artifact_population()
 		if (!restorable)
 			logit(LOG_ARTIFACT,
 			      "artifact boot: Redis world cannot be restored; identities remain reserved");
-		std::unordered_set<int> saved_artifacts;
-		for (const auto &item : population.items)
-			if (!item.extra_flags_present || (item.extra_flags & ITEM_ARTIFACT))
-				saved_artifacts.insert(item.vnum);
 		std::vector<artifact_population_template> prototypes;
 		prototypes.reserve(static_cast<size_t>(top_of_objt) + 1);
 		for (int index = 0; index <= top_of_objt; ++index)
@@ -3169,11 +3165,9 @@ static void stage_artifact_population()
 			auto prototype = parse_object_template(index);
 			const int vnum = obj_index[index].virtual_number;
 			prototypes.push_back({ vnum, prototype.extra_flags });
-			// Reports and bag accounting need immutable values, never temporary objects.
-			if (prototype.type == ITEM_CONTAINER ||
-			    (prototype.extra_flags & ITEM_ARTIFACT) ||
-			    saved_artifacts.count(vnum) || artifact_tracks_vnum(vnum))
-				object_templates.try_emplace(vnum, std::move(prototype));
+			// Every boot mode needs immutable inspection, including worlds that
+			// intentionally skip enhancement-index initialization.
+			object_templates.try_emplace(vnum, std::move(prototype));
 		}
 		if (!artifacts_stage_population(population.items, prototypes,
 						population.complete && restorable))
