@@ -177,6 +177,35 @@ publication. Use the existing lifecycle path, not a general invalidation system.
 
 ## D — qualify and hand off the integrated result (F07/F08/F14/F16)
 
+**In progress:** `branch/ival-qualification`, based on #982. Startup fix `f3ef35689`
+is review-ready in [PR #987](https://github.com/LuminariMUD/Duris/pull/987) (bug label).
+The existing disposable
+MariaDB item-instance journey exposed minimal/no-specials enhancement admission
+and template-cache startup regressions. The fix distinguishes an intentionally
+absent index from a failed rebuild and caches the already-parsed templates in every
+boot mode. The same real MariaDB journey now passes essence commands, relog/restart,
+stored instance fields, and cap rejection without currency/material loss. Preliminary
+evidence is in `ival-evidence/f16-mariadb/preliminary.json`. No live DB/player
+state is used.
+
+**Valuation lifecycle bundle passed:** `tests/async/run_ival_system_journey.py`
+extends the existing full-world/disposable-authority helpers. The same eight
+generated, essence/superior-enhanced, fourth-slot, duplicate, native-proc, packed
+glove and B5 items retain their UIDs, indexed applies, valuation fields and actual
+in-game Lore scores through save/rent/relogin, server restart, locker storage with
+restart/retrieval, and real player death with corpse restart/recovery. Real essence
+and superior commands also charge the expected 1000 and `1000 + 100 × source ival`
+copper respectively in this frozen configuration. Binary/formula/config hashes,
+initial fields/scores and the five passed gates are in
+[valuation-bundle.json](ival-evidence/f16-mariadb/valuation-bundle.json).
+The run uses an isolated full world under POSIX `/tmp` and a fresh loopback MariaDB
+10.11 schema; its private bank is also an inn for actual mortal rental. Fixture
+corrections use real rental, door-opening and carry limits rather than changing
+the server to accommodate the test. Python compilation and the real journey pass.
+Overall D is still **incomplete**: Craft/Forge recipe-provider and economic-command
+boundaries, salvage/reward journeys and the final corpus report remain open. The
+evidence explicitly keeps `complete=false` and `economic_journeys_complete=false`.
+
 **Start with the existing MariaDB journey setup.** Verify dev/staging identity and
 reuse its command/persistence harness. Extend fixtures and assertions only.
 
@@ -225,7 +254,8 @@ by the batch. Codec/source-contract tests alone never prove a persistence journe
 
 Local: `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
 Remote: `duris-staging:/home/staging/duris-worktrees/ival-system-improvements`.
-Latest batch: `branch/ival-consumers` for C (#982), based on `branch/ival-semantics` (#981).
+Current branch: `branch/ival-qualification` for D (#987), based on
+`branch/ival-consumers` for C (#982).
 Synchronize committed work to the remote worktree. A–C are implemented; D remains
 open. Read-only template views deliberately omit native runtime-state initialization;
 eligibility/score parity is qualified, rather than unrelated money/state slots.
@@ -233,6 +263,29 @@ eligibility/score parity is qualified, rather than unrelated money/state slots.
 Current formula: `ival-v8-proc-semantics`. Archive/evidence links above preserve
 baseline revisions and earlier PRs. Read the relevant historical finding when
 needed; do not reload the entire archive or restart the audit. The next
-implementation action is D: use the existing dev/staging MariaDB journey setup,
-carry the shared fixture bundle through actual commands and persistence lifecycles,
-and record final integration/operator evidence. Reuse A–C's completed qualification.
+implementation action is D: extend the existing MariaDB fixture for Craft/Forge
+recipe import/provider and economic boundaries, then salvage/reward commands and
+the final integration report. Forge still calls SQL directly where Craft uses the
+SQL-first import/filter provider; exercise Forge first with a private legacy recipe
+book to settle that path. Reuse the passed lifecycle bundle and A–C qualification;
+rerun a passed gate only when a relevant change or failure justifies it.
+
+### Operator and player notes
+
+The current formula is `ival-v8-proc-semantics`; qualifying binary/config hashes
+belong to their recorded evidence run. Before an authorized deployment, retain the
+previous binary, configuration files and formula identity together. Restart after
+valuation configuration changes so template inspection, enhancement indexes and
+quest reward profiles all use the same context. A failed index rebuild disables
+the affected consumer until restart; do not treat a partial catalog as current.
+Rollback must restore a matching binary/configuration set and rebuild those
+indexes/profiles by restarting. Recalculation and rollback do not reverse completed
+crafting, salvage, enhancement or reward transactions in MariaDB. No production
+deployment, database migration or player reimbursement is part of this delivery.
+
+For players, enhancement fees now display the amount actually charged. Item value
+includes the corrected stored applies and executable proc policy; the newly eligible
+Zarthos claymore (#99432) has value 111 and requires level 37 for its modern recipe.
+These are calculation fixes, with no new proc-strength coefficients. Staff/report
+breakdowns identify unsupported or incompletely classified effects rather than
+assigning them invented prices. Final economic journey qualification remains open.
