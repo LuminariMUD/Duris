@@ -8,7 +8,7 @@ import signal
 import subprocess
 import tempfile
 import time
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 ROOT = journey.ROOT
 PET_OWNER_TYPE = 11  # item_owner_type::pet
@@ -58,10 +58,15 @@ def run(binary):
         def pets():
             """Each pet as (id, hold reason, restore state, max hp, uid...), in pet order."""
             result = []
-            for line in sql(f"SELECT id,hold_reason,COALESCE(restore_state,''),max_hit FROM player_pets "
-                            f"WHERE owner_pid={pid} ORDER BY pet_order,id").splitlines():
-                pet_id, hold, state, max_hit = line.split("\t")
-                uids = sql(f"SELECT obj_uid FROM player_pet_items WHERE pet_id={pet_id} ORDER BY id").split()
+            # A maintenance checkpoint can replace a legacy pet's row ID.
+            # Read the row and its gear in one committed SQL view.
+            for line in sql(
+                    "SELECT p.id,p.hold_reason,COALESCE(p.restore_state,''),p.max_hit,"
+                    "COALESCE((SELECT GROUP_CONCAT(COALESCE(CAST(i.obj_uid AS CHAR),'NULL') "
+                    "ORDER BY i.id) FROM player_pet_items i WHERE i.pet_id=p.id),'-') "
+                    f"FROM player_pets p WHERE p.owner_pid={pid} ORDER BY p.pet_order,p.id").splitlines():
+                pet_id, hold, state, max_hit, uid_list = line.split("\t")
+                uids = uid_list.split(",") if uid_list != "-" else []
                 result.append([pet_id, hold, state, max_hit, *uids])
             return result
 
@@ -229,7 +234,9 @@ def run(binary):
                 assert process.poll() is None and time.monotonic() < deadline, (identity, current)
                 time.sleep(.2)
             assert len(current) == len(before_expiry) == 3, (before_expiry, current)
-            assert {uid for row in current for uid in row[3:]} == expected_uids
+            assert {uid for row in current for uid in row[3:]} == expected_uids, (
+                "offline expiry sibling UIDs", sorted(expected_uids), artifact_uid,
+                before_expiry, current, rows())
             stop(); boot()
             client = journey.reconnect_character(port)
             client.send("save")

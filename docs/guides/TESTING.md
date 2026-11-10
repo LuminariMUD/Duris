@@ -92,7 +92,8 @@ python3 tests/async/run_migration_runner_engines.py
 ```
 
 `TEST_JOBS=0` is the default and selects up to sixteen workers based on available
-CPUs. Test output is buffered per process so parallel failures remain readable,
+CPUs. The PostHog HTTPS pulse-budget test runs after the pool finishes so
+concurrent compiler jobs from this run do not distort its 250 ms wall-clock check. Test output is buffered per process so parallel failures remain readable,
 and a failing test's output is printed as soon as it fails. A test still running
 900 s after it started, or a journey 1800 s after, is ended with everything it
 started and reported as `TIMEOUT`; a test ended by a signal is reported by the
@@ -197,7 +198,7 @@ The shared MariaDB journey server runs a 125 ms game pulse instead of 250 ms
 so a journey plays the same game twice as fast. A journey that times the game
 against the wall clock (it sleeps into a pulse window, tests a timeout in seconds,
 or restores a wall-clock deadline that the game turns into pulses at four a second)
-asks for `build_flatfile_server(..., real_clock=True)`, a separate artifact
+asks for `build_mariadb_server(..., real_clock=True)`, a separate artifact
 with the real pulse. `bin/server/dms_new` and every production build keep 250 ms.
 
 The artifact key covers all files under `src/` (including untracked files),
@@ -384,7 +385,7 @@ crash stays fixed.
 
 ## Full-world save diagnostics
 
-`test_flatfile_full_world_boot.py` supports opt-in synthetic failure/recovery
+`test_mariadb_full_world_boot.py` supports opt-in synthetic failure/recovery
 experiments on disposable MariaDB without using the configured database:
 
 | Variable | Effect |

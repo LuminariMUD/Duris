@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 PILOTS = {21: 'Mayhem', 22: 'Symmetry', 922: 'mirrored ioun',
           19730: 'Avernus', 31514: 'Tsunami', 41350: 'wand of wonder',
           67243: 'living necroplasm'}
-SLOT = r'obj_index\s*\[\s*real_object0\s*\(\s*(\d+)\s*\)\s*\]\s*\.func\.obj'
 
 
 def source_templates():
@@ -51,21 +50,20 @@ def source_templates():
 
 def bindings():
     path = ROOT/'src/specs/specs.assign.c'
-    raw = re.sub(r'/\*.*?\*/|//[^\n]*', '', path.read_text(), flags=re.S)
-    literal = {int(v) for v in re.findall(SLOT, raw)}
-    # Use the compiler's selected configuration, including disabled
-    # branches. Resolve chained assignments in their execution order.
+    # Read the same compiler-selected catalog as boot, preserving stage order
+    # and later overrides without executing callbacks or starting the game.
     pre = subprocess.run(['g++', '-E', '-P', '-x', 'c++', '-std=c++20',
         '-I'+str(ROOT/'src'), str(path)], check=True, text=True, capture_output=True).stdout
-    pre = pre[pre.index('void assign_objects(void)\n{'):]
     result = {}
-    for statement in pre.split(';'):
-        targets = re.findall(SLOT, statement)
-        callback = re.search(r'=\s*(\w+)\s*$', statement)
-        if targets and callback:
-            for vnum in targets:
-                if int(vnum) in literal:
-                    result[int(vnum)] = callback[1]
+    for table in ('object_boot_bindings', 'room_boot_bindings'):
+        body = re.search(r'const object_proc_binding '+table+r'\[\]\s*=\s*\{(.*?)\};', pre, re.S)
+        if not body:
+            raise ValueError(f'Compiled object catalog is missing {table}')
+        rows = re.findall(r'\{\s*(\d+)\s*,\s*(\w+)\s*,\s*"[^"]*"\s*\}', body[1])
+        if not rows:
+            raise ValueError(f'Compiled object catalog has no readable rows in {table}')
+        for vnum, callback in rows:
+            result[int(vnum)] = callback
     return result
 
 

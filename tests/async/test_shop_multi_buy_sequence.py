@@ -60,7 +60,7 @@ static obj_data stock{}, bag{};
 static int clone_weight, fail_clone_after, clones, charges, refunds, keeper_credits, submissions;
 static int grants, completions;
 static unsigned clone_flags;
-static bool accept_submission, payment_commits;
+static bool accept_submission, payment_commits, payment_reserved;
 static std::string output;
 static uint64_t next_uid = 1000;
 static std::vector<P_obj> held;
@@ -110,12 +110,14 @@ void obj_to_obj(P_obj object, P_obj container) {
     object->next_content=container->contains; container->contains=object;
     ++grants;
 }
-bool currency_transaction_submit_wallet_value(P_char ch, int64_t amount, currency_reason_type,
-    int64_t, critical_source_site, critical_deadline_class, currency_completion_fn done,
-    const void *context, size_t context_size) {
-    assert(amount<0);
-    if (payment_commits) { money(ch,purse(ch)+amount); ++charges; }
-    if (done) done(ch,payment_commits,{},0,static_cast<const uint8_t *>(context),context_size);
+bool currency_transaction_reserve_atomic_trade(P_char ch, int64_t payment) {
+    if (payment_reserved || !payment_commits || purse(ch)<-payment) return false;
+    payment_reserved=true; return true;
+}
+void currency_transaction_release_trade(uint32_t) { payment_reserved=false; }
+bool currency_transaction_publish_trade(P_char ch, int64_t payment) {
+    assert(payment_reserved && payment<0);
+    money(ch,purse(ch)+payment); ++charges; ++ch->only.pc->wallet_revision;
     return true;
 }
 bool item_creation_grant_submit_batch_to_player(P_char, P_obj const *objects, size_t count,
@@ -125,6 +127,13 @@ bool item_creation_grant_submit_batch_to_player(P_char, P_obj const *objects, si
     held.assign(objects,objects+count); grant_done=done;
     grant_context.assign(static_cast<const uint8_t *>(context),static_cast<const uint8_t *>(context)+size);
     return true;
+}
+bool item_creation_grant_submit_paid_batch_to_player(P_char actor, P_obj const *objects,
+    size_t count, P_char recipient, P_obj target, int64_t payment,
+    item_movement_completion_fn done, const void *context, size_t size) {
+    assert(payment_reserved && payment<0 && recipient==actor);
+    return item_creation_grant_submit_batch_to_player(actor,objects,count,recipient,target,
+                                                       done,context,size);
 }
 """
 
@@ -142,9 +151,9 @@ FUNCTIONS = '\n'.join(function(SHOP, signature) for signature in (
     'static P_obj shop_trade_find_object(', 'static P_char shop_trade_find_keeper(',
     'static bool shop_trade_container_accepts(', 'static bool shop_purchase_count(',
     'static int64_t shop_wallet_value(', 'static void shop_purchase_report(',
-    'static void shop_creation_refund(', 'static void shop_discard_produced(',
+    'static void shop_discard_produced(',
     'static bool shop_stage_produced(', 'static void shop_produced_completion(',
-    'static void shop_creation_grant_completion(', 'static void shop_creation_payment_completion(',
+    'static void shop_creation_grant_completion(',
     'static bool shop_begin_produced(',
 ))
 FORWARDS = ""
@@ -165,75 +174,78 @@ static void reset(int balance=100000, int capacity=100000) {
     bag.loc_p=LOC_CARRIED;bag.loc.carrying=&buyer;bag_template.weight=0;
     stock.next=&bag;object_list=&stock;
     clone_weight=1;fail_clone_after=-1;clones=charges=refunds=keeper_credits=submissions=grants=completions=0;
-    accept_submission=payment_commits=true;output.clear();held.clear();
+    accept_submission=payment_commits=true;payment_reserved=false;output.clear();held.clear();
     clone_flags=0;
     money(&buyer,balance);money(&keeper,0);
 }
 static void finish(bool committed) {
     ++completions;
     if (committed) for (auto object:held) obj_to_obj(object,&bag);
-    grant_done(&buyer,committed,{},committed ? 0 : ESTALE,grant_context.data(),grant_context.size());
+    item_transfer_result receipt{};
+    if (committed && payment_reserved) receipt.corpse_revision=pc.wallet_revision+1;
+    grant_done(&buyer,committed,receipt,committed ? 0 : ESTALE,
+               grant_context.data(),grant_context.size());
 }
 int main() {
     {
         for (int count:{1,2,12,13,20,50}) {
             reset();
-            assert(shop_begin_produced(&buyer,&keeper,&stock,&bag,0,count,10));
-            assert(submissions==1 && charges==1 && held.size()==static_cast<size_t>(count));
+            assert(shop_begin_produced(&buyer,&stock,&bag,0,count,10));
+            assert(submissions==1 && charges==0 && held.size()==static_cast<size_t>(count));
             assert(grants==0 && output.find("You now have")==std::string::npos);
             assert(bag.contains==nullptr && bag.weight==0);
             finish(true);
             assert(descriptor.prompt_mode);
-            assert(grants==count && completions==1 && keeper_credits==1);
+            assert(grants==count && completions==1 && keeper_credits==1 && charges==1);
             assert(purse(&buyer)==100000-count*10 && purse(&keeper)==count*10);
             assert(produced_purchase_batches.empty());
             if (count>1) assert(output.find("Purchase complete:")!=std::string::npos);
         }
-        reset(70);assert(shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));
+        reset(70);assert(shop_begin_produced(&buyer,&stock,&bag,0,20,10));
         assert(held.size()==7);finish(true);assert(purse(&buyer)==0 && purse(&keeper)==70);
-        reset(1000,3);assert(shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));
+        reset(1000,3);assert(shop_begin_produced(&buyer,&stock,&bag,0,20,10));
         assert(held.size()==3);finish(true);assert(purse(&buyer)==970);
-        reset(0);assert(!shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));
+        reset(0);assert(!shop_begin_produced(&buyer,&stock,&bag,0,20,10));
         assert(charges==0 && submissions==0 && object_list==&stock);
         reset(1000,3);obj_data existing{};existing.weight=1;bag.contains=&existing;
-        assert(shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));
+        assert(shop_begin_produced(&buyer,&stock,&bag,0,20,10));
         assert(held.size()==2 && bag.contains==&existing);finish(true);
         reset();bag.type=ITEM_TREASURE;
-        assert(!shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));
+        assert(!shop_begin_produced(&buyer,&stock,&bag,0,20,10));
         assert(charges==0 && submissions==0 && object_list==&stock);
         for (unsigned restricted : {ITEM_NODROP, ITEM_ARTIFACT}) {
             reset();clone_flags=restricted;
-            assert(!shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));
+            assert(!shop_begin_produced(&buyer,&stock,&bag,0,20,10));
             assert(charges==0 && submissions==0 && object_list==&stock);
         }
-        reset();assert(shop_begin_produced(&buyer,&keeper,&stock,&bag,0,50,0));
+        reset();assert(shop_begin_produced(&buyer,&stock,&bag,0,50,0));
         finish(true);assert(charges==0 && purse(&buyer)==100000 && purse(&keeper)==0);
         assert(output.find("for no charge.")!=std::string::npos);
-        reset();assert(shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));
-        finish(false);assert(purse(&buyer)==100000 && purse(&keeper)==0 && refunds==1 && grants==0);
+        reset();assert(shop_begin_produced(&buyer,&stock,&bag,0,20,10));
+        finish(false);assert(purse(&buyer)==100000 && purse(&keeper)==0 && refunds==0 && grants==0);
         assert(descriptor.prompt_mode);
         assert(object_list==&stock && produced_purchase_batches.empty());
         reset();accept_submission=false;
-        assert(!shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));
+        assert(!shop_begin_produced(&buyer,&stock,&bag,0,20,10));
         assert(purse(&buyer)==100000 && purse(&keeper)==0 && object_list==&stock);
         reset();fail_clone_after=5;
-        assert(!shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));
+        assert(!shop_begin_produced(&buyer,&stock,&bag,0,20,10));
         assert(charges==0 && submissions==0 && object_list==&stock && bag.contains==nullptr);
         reset();SET_BIT(bag.value[1],CONT_CLOSED);
-        assert(!shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));
+        assert(!shop_begin_produced(&buyer,&stock,&bag,0,20,10));
         assert(charges==0 && submissions==0 && object_list==&stock);
         reset();clone_weight=0;
-        assert(shop_begin_produced(&buyer,&keeper,&stock,&bag,0,50,10));assert(held.size()==50);finish(true);
+        assert(shop_begin_produced(&buyer,&stock,&bag,0,50,10));assert(held.size()==50);finish(true);
         reset(1000,3);bag_template.weight=-2;bag.weight=-2;
-        assert(shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));assert(held.size()==5);finish(true);
+        assert(shop_begin_produced(&buyer,&stock,&bag,0,20,10));assert(held.size()==5);finish(true);
         reset(1000,3);bag.value[4]=50;
-        assert(shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));assert(held.size()==5);finish(true);
+        assert(shop_begin_produced(&buyer,&stock,&bag,0,20,10));assert(held.size()==5);finish(true);
         reset();GET_PLATINUM(&buyer)=INT_MAX;
-        assert(!shop_begin_produced(&buyer,&keeper,&stock,&bag,0,50,INT_MAX/2));
+        assert(!shop_begin_produced(&buyer,&stock,&bag,0,50,INT_MAX/2));
         assert(charges==0 && submissions==0 && object_list==&stock);
     }
     reset();payment_commits=false;
-    assert(!shop_begin_produced(&buyer,&keeper,&stock,&bag,0,20,10));
+    assert(!shop_begin_produced(&buyer,&stock,&bag,0,20,10));
     assert(charges==0 && refunds==0 && object_list==&stock);
     int count=0;
     for (const char *valid:{"1","2","20","50"}) assert(shop_purchase_count(valid,&count));

@@ -117,6 +117,8 @@ static void packed_rounding()
     assert(itemvalue(&object) == 6);
     object.value[5] += 1000000000;
     assert(itemvalue(&object) == 6); // Single integral random-one contribution agrees.
+    object = packed(32, 33, 11);
+    assert(itemvalue(&object) == 9); // 3 * 33 / 11 is whole; a rounded factor must not make it 8.
     object = packed(1000000032, 25);
     object.wear_flags |= ITEM_WEAR_EYES;
     assert(itemvalue(&object) == 3); // 2.5 * 1.3 quantizes only after the slot multiplier.

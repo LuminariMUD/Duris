@@ -60,6 +60,7 @@ void write_to_q(const char *text, txt_q *queue, int wrap) {
     assert(std::string(text) == "failed" && wrap == 1);
     queued.push_back(queue);
 }
+void write_output(const char *text, txt_q *queue) { write_to_q(text, queue, 1); }
 ''' + extract_function(source, 'const char *copyover_state_file()') + '\n' + extract_function(source, 'static void notify_copyover_failure(') + r'''
 int main() {
     unsetenv("COPYOVER_STATE_FILE");

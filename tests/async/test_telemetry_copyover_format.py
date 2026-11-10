@@ -26,8 +26,7 @@ def function(source, signature):
 
 def main():
     source = (ROOT / 'src/persistence/copyover.c').read_text()
-    header = (ROOT / 'src/persistence/copyover.h').read_text()
-    assert '#define COPYOVER_VERSION 21' in header
+    # Native descriptor version compatibility is executed by test_copyover_evidence.py.
     recover = source[source.index('int copyover_recover('):]
     assert 'copyover_version_supported(header.version)' in recover
     assert 'version >= 12 && version <= COPYOVER_VERSION' in source
