@@ -470,7 +470,7 @@ int main()
 		list(true); // another character on the owning account and side
 		char opening_as_manager[] = "vault";
 		assert(locker_opencmd(&actor, opening_as_manager));
-		assert(locker.GetCurrentChestId() == 55 && !password_done);
+		assert(locker.GetOpenChests().count(55) == 1 && !password_done);
 		GET_RACEWAR(&actor) = 2;
 		list(false);
 		assert(!locker_container_access_allowed(&actor, object));
@@ -596,7 +596,7 @@ int main()
 		assert(written_weights.back() == successor_weight &&
 		       locker.PrivateContentsDurable());
 		assert(!locker_container_access_allowed(&actor, object));
-		locker.SetCurrentChestId(55);
+		locker.OpenChest(55);
 		assert(locker_container_access_allowed(&actor, object));
 		assert(!locker_container_access_allowed(&guest, object));
 		auto nested = read_object(1, REAL);
@@ -604,7 +604,7 @@ int main()
 		assert(locker_container_access_allowed(&actor, nested));
 		locker.InvalidateChestAccess();
 		assert(!locker_container_access_allowed(&actor, nested));
-		locker.SetCurrentChestId(55);
+		locker.OpenChest(55);
 		desc.connected = CON_GET_RACE;
 		assert(!locker_container_access_allowed(&actor, nested));
 		desc.connected = CON_PLAYING;
@@ -698,7 +698,7 @@ int main()
 		}
 		item->short_description = NULL;
 		// The movement gate must not admit an operation whose audit cannot be retained.
-		locker.SetCurrentChestId(55);
+		locker.OpenChest(55);
 		event_ids_before_failure = 0;
 		assert(locker_container_access_allowed(&actor, object));
 		{

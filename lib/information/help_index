@@ -27466,12 +27466,14 @@ uses your purse if sufficient, otherwise your bank; short balances are
 not combined.
 
 Use "open <name> [password]" before looking in, putting into, getting
-from, or emptying a private chest. Only one private chest is open at a
-time. "close" revokes access; changing its password, disconnecting or
-leaving also closes it. Locker owners, staff and members of the owning
-guild are managers and can open without a password. Guild chests divide
-shared storage; they are not secret from fellow guild members. Guests
-still need permission to enter the locker and the chest password.
+from, or emptying a private chest. You can keep several private chests open.
+"close <name>" closes one; "close" closes all. Failed opens leave other
+open chests usable. Changing or removing a chest password, deleting a
+chest, disconnecting or leaving closes all private chests for your visit.
+Locker owners, staff and members of the owning guild are managers and
+can open without a password. Guild chests divide shared storage; they
+are not secret from fellow guild members. Guests still need permission
+to enter the locker and the chest password.
 
 Managers can use "eq chest password <name> <password|none>",
 "eq chest delete <name>" (empty chests only; no refund), and "eq log".

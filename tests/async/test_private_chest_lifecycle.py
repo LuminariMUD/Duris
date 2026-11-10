@@ -59,6 +59,9 @@ static std::function<void(bool, const sql_rows &)> rehash_completion;
 static std::string feedback;
 static std::vector<int> events;
 static bool admit_log = true;
+static bool admit_password = true;
+static int refused_chest = -1;
+static std::vector<std::pair<int, int>> audit_attempts;
 const unsigned LockerChest::m_chestVnum = 173;
 
 char *str_dup(const char *value) { return strdup(value); }
@@ -111,12 +114,15 @@ password_login_job *password_work_submit(const char *, const char *, const char 
     return reinterpret_cast<password_login_job *>(1);
 }
 bool password_async_start(P_desc, password_login_job *, const char *, password_completion done) {
-    assert(!completion); completion = std::move(done); return true;
+    if (!admit_password || completion) return false;
+    completion = std::move(done); return true;
 }
 bool sql_log_chest_activity(int locker, int chest, const char *, int action, const char *) {
     assert(locker == 7 && chest > 0);
-    if (admit_log) events.push_back(action);
-    return admit_log;
+    audit_attempts.emplace_back(chest, action);
+    if (!admit_log || chest == refused_chest) return false;
+    events.push_back(action);
+    return true;
 }
 bool sql_queue_at(persistence_query_site, const char *, ...) { return true; }
 unsigned int sql_execute(MYSQL *, const std::string &) { return 1; }
@@ -154,6 +160,133 @@ static void run(const std::string &mode) {
     ordinary.loc_p = LOC_ROOM; ordinary.loc.room = 0;
     assert(locker_container_access_allowed(&actor, &ordinary));
     assert(locker_container_access_allowed(&actor, nullptr));
+    if (mode.starts_with("multi-")) {
+        auto *other = new PrivateChest(11, "other", "$2b$other");
+        locker.AddPrivateChest(other); obj_to_room(other->GetChestObj(), 0);
+        auto open = [&](const char *name) {
+            std::string request = std::string(name) + " secret";
+            assert(locker_opencmd(&actor, request.data()));
+            if (completion) {
+                auto done = std::move(completion); completion = {};
+                done(&descriptor, 1, nullptr);
+            }
+        };
+        auto allowed = [&](PrivateChest *target) {
+            return locker_container_access_allowed(&actor, target->GetChestObj());
+        };
+        if (mode == "multi-five") {
+            manager = true;
+            for (int id = 12; id < 15; ++id) {
+                std::string name = "chest" + std::to_string(id);
+                auto *extra = new PrivateChest(id, name.c_str(), nullptr);
+                locker.AddPrivateChest(extra); obj_to_room(extra->GetChestObj(), 0);
+            }
+            for (auto *target : locker.GetPrivateChests()) open(target->GetName());
+            for (auto *target : locker.GetPrivateChests()) assert(allowed(target));
+            assert(locker.GetOpenChests().size() == 5);
+            const auto generation = locker.GetChestAccessGeneration();
+            char unknown[] = "sixth";
+            assert(!locker_opencmd(&actor, unknown));
+            assert(locker.GetChestAccessGeneration() == generation);
+            open("vault"); open("public");
+            assert(locker.GetOpenChests().size() == 5);
+            char named[] = "VaUlT";
+            assert(locker_closecmd(&actor, named));
+            assert(!allowed(chest) && allowed(other));
+            const auto logged = audit_attempts.size();
+            assert(locker_closecmd(&actor, named));
+            assert(audit_attempts.size() == logged);
+            char all[] = "";
+            assert(locker_closecmd(&actor, all));
+            assert(locker.GetOpenChests().empty());
+            assert(audit_attempts.size() == logged + 4);
+            for (size_t i = logged; i < audit_attempts.size(); ++i)
+                assert(audit_attempts[i].first >= 11 && audit_attempts[i].second == CHEST_ACTION_CLOSE);
+            assert(feedback.find("close all private chests") != std::string::npos);
+            assert(locker_closecmd(&actor, all));
+            assert(audit_attempts.size() == logged + 4);
+            return;
+        }
+        open("vault");
+        assert(allowed(chest) && !allowed(other));
+        if (mode.starts_with("multi-fail-")) {
+            std::string request = "other secret";
+            if (mode == "multi-fail-missing") request = "other";
+            if (mode == "multi-fail-overlength") request = "other " + std::string(73, 'Q');
+            if (mode == "multi-fail-busy") admit_password = false;
+            if (mode == "multi-fail-sql") DB = nullptr;
+            if (mode == "multi-fail-open-audit" || mode == "multi-fail-failed-audit") admit_log = false;
+            assert(locker_opencmd(&actor, request.data()));
+            if (completion) {
+                auto done = std::move(completion); completion = {};
+                done(&descriptor, mode == "multi-fail-open-audit" ? 1 : 0, nullptr);
+            }
+            DB = reinterpret_cast<MYSQL *>(1);
+            assert(allowed(chest) && !allowed(other));
+            assert(locker.GetOpenChests().size() == 1);
+            return;
+        }
+        if (mode == "multi-mixed") {
+            manager = true; open("other");
+            assert(allowed(chest) && allowed(other));
+            manager = false;
+            assert(allowed(chest) && !allowed(other));
+            manager = true;
+            assert(allowed(chest) && allowed(other));
+            locker.SetChestWritePending(true);
+            assert(!allowed(chest) && !allowed(other));
+            locker.SetChestWritePending(false);
+            assert(!allowed(chest) && !allowed(other));
+            return;
+        }
+        if (mode == "multi-partial-close" || mode == "multi-delete") {
+            open("other");
+            if (mode == "multi-delete") {
+                locker.RemovePrivateChest(other);
+                assert(!allowed(chest));
+            } else {
+                refused_chest = 11;
+                const auto logged = audit_attempts.size();
+                char all[] = "";
+                assert(locker_closecmd(&actor, all));
+                assert(!allowed(chest) && !allowed(other));
+                assert(audit_attempts.size() == logged + 2);
+                assert((audit_attempts[logged] == std::pair<int, int>(10, CHEST_ACTION_CLOSE)));
+                assert((audit_attempts[logged + 1] == std::pair<int, int>(11, CHEST_ACTION_CLOSE)));
+                assert(feedback.find("some activity could not be recorded") != std::string::npos);
+            }
+            return;
+        }
+        char another[] = "other secret";
+        assert(locker_opencmd(&actor, another) && completion);
+        auto delayed = std::move(completion); completion = {};
+        bool completed = false, first_open = true;
+        if (mode == "multi-delay-named" || mode == "multi-delay-closed") {
+            char named[] = "vault", pending[] = "other";
+            assert(locker_closecmd(&actor, mode == "multi-delay-named" ? named : pending));
+            first_open = mode != "multi-delay-named";
+        } else if (mode == "multi-delay-bare") {
+            char all[] = "";
+            assert(locker_closecmd(&actor, all)); first_open = false;
+        } else if (mode == "multi-delay-door" || mode == "multi-delay-public") {
+            const auto generation = locker.GetChestAccessGeneration();
+            char door[] = "door", public_name[] = "public";
+            assert(!locker_closecmd(&actor, mode == "multi-delay-door" ? door : public_name));
+            assert(locker.GetChestAccessGeneration() == generation);
+            completed = true;
+        } else if (mode == "multi-delay-visit") {
+            ++locker_char.runtime_id;
+        } else if (mode == "multi-delay-write") {
+            locker.SetChestWritePending(true); locker.SetChestWritePending(false);
+            first_open = false;
+        } else if (mode == "multi-delay-disconnect") {
+            locker_invalidate_chest_access(&actor); first_open = false;
+        } else assert(false);
+        delayed(&descriptor, 1, nullptr);
+        assert(allowed(chest) == first_open);
+        assert(allowed(other) == completed);
+        return;
+    }
     if (mode == "not-locker") {
         // A regular room's descriptions are not a StorageLocker attachment,
         // even when fixture text happens to carry an otherwise valid address.
@@ -192,17 +325,17 @@ static void run(const std::string &mode) {
         char unavailable[] = "vault correct";
         assert(locker_opencmd(&actor, unavailable));
         assert(!completion && events.empty());
-        assert(locker.GetCurrentChestId() == 0);
+        assert(locker.GetOpenChests().empty());
         assert(feedback.find("temporarily unavailable") != std::string::npos);
         return;
     }
     if (mode == "missing" || mode == "overlength" || mode == "failed-open-admission-failed") {
-        locker.SetCurrentChestId(10);
+        locker.OpenChest(10);
         std::string request = "vault";
         if (mode == "overlength") request += " " + std::string(73, 'Q');
         assert(locker_opencmd(&actor, request.data()));
-        assert(!completion && locker.GetCurrentChestId() == 0);
-        assert(!locker_container_access_allowed(&actor, &inner));
+        assert(!completion && locker.GetOpenChests().count(10) == 1);
+        assert(locker_container_access_allowed(&actor, &inner));
         assert(feedback.find(mode == "failed-open-admission-failed" ? "Chest activity is unavailable" : "Wrong password") != std::string::npos);
         assert(events.size() == (mode == "failed-open-admission-failed" ? 0U : 1U));
         if (!events.empty()) assert(events[0] == CHEST_ACTION_FAIL);
@@ -213,7 +346,7 @@ static void run(const std::string &mode) {
     if (manager) {
         assert(!completion);
         if (mode == "open-admission-failed") {
-            assert(locker.GetCurrentChestId() == 0 && events.empty());
+            assert(locker.GetOpenChests().empty() && events.empty());
             assert(!locker_container_access_allowed(&actor, chest->GetChestObj()));
             assert(feedback.find("Chest activity is unavailable") != std::string::npos);
             return;
@@ -233,7 +366,7 @@ static void run(const std::string &mode) {
         assert(locker_opencmd(&actor, another) && !completion);
         const auto published = events;
         delayed(&descriptor, 1, nullptr);
-        assert(locker.GetCurrentChestId() == 11 && events == published);
+        assert(locker.GetOpenChests().count(11) == 1 && events == published);
         assert(!locker_container_access_allowed(&actor, chest->GetChestObj()));
         assert(locker_container_access_allowed(&actor, other->GetChestObj()));
         return;
@@ -268,7 +401,7 @@ static void run(const std::string &mode) {
     }
     if (mode == "open" || mode == "close" || mode == "close-admission-failed" || mode == "close-door" ||
         mode == "disconnect" || mode == "select-other") {
-        assert(locker.GetCurrentChestId() == 10);
+        assert(locker.GetOpenChests().count(10) == 1);
         assert(events == std::vector<int>{CHEST_ACTION_OPEN});
         assert(locker_container_access_allowed(&actor, chest->GetChestObj()));
         assert(locker_container_access_allowed(&actor, &inner));
@@ -302,15 +435,19 @@ static void run(const std::string &mode) {
             char another[] = "other";
             assert(locker_opencmd(&actor, another));
             assert(!completion);
-            assert(!locker_container_access_allowed(&actor, &inner));
+            assert(locker_container_access_allowed(&actor, &inner));
             assert(locker_container_access_allowed(&actor, other->GetChestObj()));
             char public_name[] = "public";
             assert(locker_opencmd(&actor, public_name));
-            assert(locker.GetCurrentChestId() == 0);
-            assert(!locker_container_access_allowed(&actor, other->GetChestObj()));
+            assert(locker_container_access_allowed(&actor, &inner));
+            assert(locker_container_access_allowed(&actor, other->GetChestObj()));
+            char named[] = "vault";
+            assert(locker_closecmd(&actor, named));
+            assert(!locker_container_access_allowed(&actor, &inner));
+            assert(locker_container_access_allowed(&actor, other->GetChestObj()));
         }
     } else {
-        assert(locker.GetCurrentChestId() == 0);
+        assert(locker.GetOpenChests().empty());
         assert(std::find(events.begin(), events.end(), CHEST_ACTION_OPEN) == events.end());
     }
 }
@@ -334,7 +471,12 @@ with tempfile.TemporaryDirectory(prefix="private-chest-lifecycle-", dir=build) a
         str(HARNESS_STUBS), "-lbsd", "-lmysqlclient", "-o", str(binary),
     ], check=True)
     failures = []
-    for case in ("rehash", "rehash-failed", "rehash-stale", "open", "wrong", "missing", "overlength", "open-admission-failed",
+    for case in ("multi-five", "multi-mixed", "multi-partial-close", "multi-delete",
+                 "multi-fail-missing", "multi-fail-overlength", "multi-fail-busy", "multi-fail-sql",
+                 "multi-fail-wrong", "multi-fail-open-audit", "multi-fail-failed-audit",
+                 "multi-delay-named", "multi-delay-closed", "multi-delay-bare", "multi-delay-door",
+                 "multi-delay-public", "multi-delay-visit", "multi-delay-write", "multi-delay-disconnect",
+                 "rehash", "rehash-failed", "rehash-stale", "open", "wrong", "missing", "overlength", "open-admission-failed",
                  "failed-open-admission-failed", "close-admission-failed", "changed-hash", "close-pending", "superseded-open", "recreated",
                  "stale-user", "close", "close-door", "disconnect", "select-other",
                  "manager", "role-revoked", "sql-unavailable",
