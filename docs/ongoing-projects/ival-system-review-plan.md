@@ -45,7 +45,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-packed-proc-mean`; its initial synchronized commit was
+`origin/branch/ival-apply-composition`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -61,7 +61,8 @@ Current Git status verified 2026-11-09: PRs #876, #877, #878, #879, #884, #885,
 the #919 constructor repair and #927 CTF binding prerequisite are stacked above
 it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-circle-extents`; #946 repairs packed averaging on
-`branch/ival-packed-proc-mean`. Branch/base
+`branch/ival-packed-proc-mean`; #956 supplies canonical apply composition on
+`branch/ival-apply-composition`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -726,11 +727,99 @@ target/creation/payment cases passed. Legacy F08 overflow probes remain expected
 failures, not a claim of numeric safety. No live player inventory or production
 operation was used; complete persistence/command qualification remains F16.
 
+### Chunk 11 — canonical apply composition (F03, implemented)
+
+Branch: `branch/ival-apply-composition`, based on `branch/ival-packed-proc-mean`.
+Published: `8c49dfd69`, [PR #956](https://github.com/LuminariMUD/Duris/pull/956)
+(bug label), stacked on #946. Ready for review.
+
+**Outcome:** equivalent stored apply permutations yield identical values and
+breakdowns. Use local indexes sorted by apply kind/modifier/resolved racial
+credit for deterministic summation. Collect each apply's multiplier addition
+and factor, then apply additions before factors. Keep wear/flag premiums before
+this stage and weapon/armor/two-hand adjustments afterward. Stored slots and
+their paired context remain untouched. Formula: `ival-v4-apply-composition`.
+
+**Non-goals:** neutral-zero and duplicate aggregation semantics (F04), weights,
+racial override semantics, overflow/admission repairs, or deployment.
+
+**Files:** the shared evaluator and formula identity, existing characterization
+and corpus/report qualification, plus the plan and measured evidence.
+
+**Proof:** all permutations of four selected AC/max-stat/hit/damage/pulse
+effects across worn/armor/weapon, wear-premium and two-hand variants, asserting
+identical breakdowns and unchanged inputs. Native old/new corpus and seeded
+generator runs record actual stored apply slots, multiplier-stage categories,
+ordinary single-category stability and economic boundary effects. Run existing
+snapshot/SQL field regressions; full MariaDB journeys remain F16.
+
+**Ablation:** keep the current contribution formulas. Local indexes and two
+fixed four-slot arrays make the stages explicit without editing persistence,
+adding a policy engine, or introducing a score cache.
+
+**Qualification:** 10,080 mixed-effect permutations passed under ASan/UBSan with
+identical scalar breakdowns and byte-for-byte unchanged objects. Twenty-four
+single-effect/slot cases preserve their prior values. The native corpus and CLI
+qualification passed all 19,334 indexed templates and 8,720 seeded generated
+items, with **140 template increases (1..643)** and **222 generated increases
+(1..34)**, no decreases. Every changed row has both additive and multiplicative
+apply stages; no single-kind or non-mixed-stage row changed in either cohort.
+
+The [summary](ival-evidence/f03/summary.json),
+[changed values and original slots](ival-evidence/f03/changed-values.csv),
+[consumer effects](ival-evidence/f03/consumer-effects.json), and
+[cached quest reward-weight terms](ival-evidence/f03/quest-weight-deltas.csv)
+record code/input/config identities and effects. Reproduce from this chunk's
+implementation checkout:
+
+```text
+python3 tests/async/test_item_value_template_runtime.py --numeric-baseline 7ee32b507e0e255d4d49e044b81868285ee3d010 --delta-output docs/ongoing-projects/ival-evidence/f03
+```
+
+Observed direct effects under the recorded configuration:
+
+- #70941 and #98949 move 99 → 101. They leave the configured enhancement result
+  ceiling 99 and enter Salvage's 100,000 recipe-roll regime (before scientific
+  tools and player rolls); their salvage quality tier remains unchanged.
+- #87576 moves 124 → 126 and leaves the regular faerie-bag pool. No eligible rare
+  or exceptional bag threshold changes. #138959's raw 49 → 50 crosses a numeric
+  threshold but lies outside the bag's actual 1300..134000 range, so it is not an
+  admission change. Generated items also fail the actual bag candidate filter.
+  Two eligible templates cross the over-100 **logging** threshold, not a gate.
+- Fifty-eight native-admitted recipe plans change. One craft of each changed
+  recipe totals +34 high materials, -27 low materials and +143,000 nominal base
+  XP. Recipe admission is unchanged; 47 recipe minimum-level boundaries move.
+- Direct enhancement minimum-level boundaries move for 49 otherwise-eligible
+  authored sources and 88 seeded generated sources. Replacement fees do not
+  change. Nominal superior prices for these mortal source cohorts total +14,800
+  and +47,700 copper respectively. These are conditional source-price/gate
+  effects; full target selection remains F13/F16. Ninety-three authored index
+  score buckets move; per-source donor floors are recorded in the CSV/JSON.
+- Generated random-equipment VNUMs are rejected by native `is_salvageable()`;
+  they do not become recipe or salvage targets. Raw generated score crossings
+  are retained separately from actual consumer admission.
+- Cached reward-weight terms change in 55 zones across 3,410 level rows, with no
+  reward-floor membership changes. Fixed-mob-fit ratios increase about
+  0.0150%..0.8565%; geographic/zone eligibility and final selection remain separate.
+  Largest score changes include #59204 9203 → 9846, #59163 9845 → 10478 and
+  #59197 9704 → 10337.
+
+The actual native enhancement fixture now covers a mixed apply source: 74 → 76,
+with corrected superior charge 8,600 copper instead of the old nominal 8,400.
+A level-25 attempt is rejected with the entire source, wallet and materials
+unchanged; valid-level execution and wallet/pouch refusal paths pass. Existing
+snapshot codec and SQL field regressions passed; full MariaDB journeys remain
+F16. Characterization, monk tools/pilot, pool filters, quest reward and report-I/O
+checks passed. Full server and both maintained editor builds passed. Legacy F08
+overflow probes remain expected failures. Zero/duplicate semantics remain F04;
+no persisted slots, pricing formulas, coefficients or proc-route policies were rewritten.
+
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization
-   entries and F02's premature packed-proc rounding are repaired. Affect order,
-   zero modifiers and duplicate representation still need F03/F04.
+   entries and F02's premature packed-proc rounding are repaired. F03 now composes
+   stored apply permutations canonically; neutral zeros and duplicate semantics
+   remain F04.
 2. **Keep tools truthful.** The editor now uses shared arithmetic with explicit
    context estimates, and the offline material report has normalized context and
    native corpus qualification. Enhancement configuration/enforcement still needs
@@ -942,6 +1031,10 @@ report, even though order independence itself is an objective requirement.
 **Acceptance:** all permutations of mixed AC/max-stat/hit/damage/pulse slots
 produce the same value; indexed persistence preserves inputs; ordinary single
 category items remain unchanged unless another approved fix applies.
+
+Implemented in Chunk 11 with deterministic addition-before-factor stages,
+10,080 permutation cases, unchanged input/snapshot regressions and measured
+ordinary single-category stability. Full persistence integration remains F16.
 
 ### F04 — P1: neutral modifiers must be neutral; define duplicate semantics
 
@@ -1376,6 +1469,7 @@ partial deliveries and their verification are recorded in the implementation log
   Implemented and qualified in Chunks 9/#935 and 10/#946.
 - [ ] Make zero modifiers neutral and multiplier composition order independent
   (F03/F04); address duplicate semantics in its own slice if the delta is broad.
+  F03 is implemented and qualified in Chunk 11/#956. F04 remains pending.
 - [ ] Add finite/overflow checks at evaluator, config, and consumer boundaries
   (F08/F14); never make invalid content economically cheap.
 - [ ] Reconcile executable proc routing and explicit utility policy (F09).

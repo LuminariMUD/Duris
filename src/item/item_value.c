@@ -1,7 +1,10 @@
 // Shared numeric item valuation. Quantization follows all credits and multipliers.
 #include "item/item_value.h"
 #include "item/objmisc.h"
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <tuple>
 
 bool item_value_has_packed_proc(const item_value_input &input)
 {
@@ -296,10 +299,26 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 
 	workingvalue += context.native_proc_credit;
 
-	// Stored apply slots retain their legacy evaluation order.
-	int i = 0;
-	while (i < MAX_OBJ_AFFECT)
+	// Order only local indexes: persisted slots and their racial context stay paired.
+	// A canonical sum also avoids floating-point differences between permutations.
+	std::array<int, MAX_OBJ_AFFECT> order{};
+	for (int i = 0; i < MAX_OBJ_AFFECT; ++i)
+		order[i] = i;
+	std::sort(order.begin(), order.end(),
+		  [&](int left, int right)
+		  {
+			  return std::tie(obj->affected[left].location,
+					  obj->affected[left].modifier,
+					  context.racial_credits[left]) <
+				 std::tie(obj->affected[right].location,
+					  obj->affected[right].modifier,
+					  context.racial_credits[right]);
+		  });
+	double apply_additions[MAX_OBJ_AFFECT]{};
+	double apply_factors[MAX_OBJ_AFFECT]{};
+	for (int i : order)
 	{
+		apply_factors[i] = 1;
 		mod = obj->affected[i].modifier;
 		// dam/hitroll are normal values
 		if ((obj->affected[i].location == APPLY_DAMROLL) ||
@@ -317,7 +336,7 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 				workingvalue += (mod <= 2) ? (3 * mod - 1) : 3 * mod * mod + 3;
 			}
 			// Translates to 1:1, 2:2, 3:7, 4:15, 5:25, 6:37, 7:52, 8:70, 9:90, 10:112
-			multiplier *= 1.25;
+			apply_factors[i] = 1.25;
 			// So a 5/5 weapon is essentially 40 * 1.25 * 1.25 = 62.5 (before adding other stats).
 			// A 6/6 item (no other stats) is 93, a 2d2 6/6 sword would be 62 * 1.25^2 = 96, and 5d5 6/6 = 112.
 		}
@@ -380,7 +399,7 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 			}
 			workingvalue += (3 * mod) / 2;
 			// +10% at 50ac.
-			multiplier += mod / 500.;
+			apply_additions[i] = mod / 500.;
 		}
 
 		// saving throw values (good) are negative
@@ -398,7 +417,7 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 		if ((obj->affected[i].location == APPLY_COMBAT_PULSE) ||
 		    (obj->affected[i].location == APPLY_SPELL_PULSE))
 		{
-			multiplier *= 2;
+			apply_factors[i] = 2;
 			workingvalue += mod * -75;
 		}
 
@@ -415,10 +434,15 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 		{
 			// 1:3, 2:13, 3:24, 4:36, 5:51, 6:66, 7:83, 8:100
 			workingvalue += (mod < 2) ? 3.0 * mod : 3.52 * mod * sqrt(mod) + mod;
-			multiplier += .15;
+			apply_additions[i] = .15;
 		}
-		i++;
 	}
+	// Apply additions precede apply factors. Keep the existing wear/flag prefix
+	// and weapon/armor/two-hand stages in their original positions.
+	for (int i : order)
+		multiplier += apply_additions[i];
+	for (int i : order)
+		multiplier *= apply_factors[i];
 
 	if (obj->type == ITEM_WEAPON)
 	{
