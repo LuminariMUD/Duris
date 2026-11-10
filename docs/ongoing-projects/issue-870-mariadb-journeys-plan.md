@@ -1,9 +1,9 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: conversions, naming and standalone journey qualification are complete. All four first-regression findings have focused passing fixes; the full regression retry is running. Database gate and whole-issue completion remain pending.
+Status: standalone conversions and the full907-file regression/native/build gate passed. First DB run153/154; its sole pet-reader failure is repaired and qualified. Full154-leg DB retry is running; final readiness remains pending.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-telemetry-test-scheduling`. See the latest qualification notes before continuing.
+Review head: `branch/issue-870-pet-expiry-qualification`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -253,7 +253,7 @@ from a clean worktree with explicitly provisioned test prerequisites.
 - [x] Include runtime proof for #880's already edited standalone journeys
   `run_shop_bootstrap_journey.py`, `run_issue37_zone_journey.py` and
   `run_misty_vale_journey.py` if no valid evidence is available for their final code.
-- [ ] Review the final diff with ablation: every edit must support a listed
+- [x] Review the final diff with ablation: every edit must support a listed
   conversion, its actual consumer, or required proof. Keep unrelated defects
   separate and preserve unrelated worktree changes.
 - [ ] Push the implementation and prepare a PR that names this plan, #870 and
@@ -791,3 +791,83 @@ These are preserved per-chunk results, not claims that a later binary ran them.
   repairs are committed, pushed and labeled bug (#961/#962/#963).
 - Current ETA update:1–2 more hours for remaining full gates and actual findings;
   this is an estimate, not permission to omit required validation or final review.
+
+
+### Full regression passed; database qualification continues
+
+- Controller88225's `make test-all -j4 TEST_JOBS=8` retry exited0:907/907 passed,
+  0 timeouts/signals,261.13s, including the isolated unchanged-budget PostHog check
+  and native signal gate. Production and development builds passed. Proof
+  `final-test-all-retry1.log`/`.exit`. The first903/907 result remains preserved.
+- Current ordinary binary remains6dfb502003ca659f83dff27acd9cf51c5ac1b263d2b4a408e8339ecd0c1494f0;
+  production profile1a41cd1c43ed76b83347d3d092e4e6eca605d7eac55e8bf3d000a2c0346ed175.
+  Scope/name audit found only the five intended native save files beyond frozen
+  master002ad622e, no protected-file diffs, no current test_flatfile_ files, and
+  no active old build-helper reference. Remaining retired strings are the
+  documented historical/negative-mode/no-MySQL-probe cases. Required wall-clock
+  runners require explicit binaries; the Assassin builder explicitly uses real_clock.
+- First `make test-db` is still collecting all legs under88225. It found
+  `pet_restart` failing an offline-expiry sibling-UID assertion; do not stop or
+  duplicate that live aggregate. Logs remain `bin/tests/db/` and `final-test-db.log`;
+  the controller archives them to `final-db-first-run/` after terminal completion.
+- Pet-reader outcome: metadata and gear IDs must come from the same committed
+  SQL view during maintenance checkpoints. Files: existing pet journey and this
+  tracker. Native `apply_pets` retains UID-bearing pet IDs but replaces legacy
+  held rows without pet_uid. The old reader fetched pet IDs, then issued separate
+  item queries; a committed row replacement between them loses the apparent UID.
+  Read each pet's metadata/ordered UID list in one SQL statement. Keep empty/null
+  UID semantics and every identity, expiry, stat, cooldown and rollback assertion;
+  improve the actual failure diagnostic rather than weakening its check.
+- The isolated old reader happened to pass (`pet-restart-diagnostic.log`/`.exit`),
+  so that pass alone is not the repair proof. A controlled real-MariaDB interleaving
+  executes the actual old/new reader bodies and replaces a legacy row after the
+  first SQL result: old returns no UID while committed777/NULL remain; new returns
+  both777/NULL consistently. Proof `pet-reader-transaction-probe.log`/`.exit`0.
+  The complete real-server journey with the coherent reader exited0 in
+  `pet-restart-coherent-read.log`/`.exit`, including offline artifact expiry,
+  finite/permanent pets, both cooldown reboots, rollback-held release and later
+  held-equipment quit/restart/save. No native code or schema change was needed.
+- Publish this focused follow-up after #963, then require terminal full DB output,
+  diagnose any other findings, and rerun the complete DB gate after repairs.
+  The successful907-file gate remains valid: only its excluded DB pet journey
+  changed, with common helpers and native source unchanged. No whole-issue claim.
+
+- GitHub audit verified appropriate labels on all19 pending/recent PRs; all are
+  ready or merged except #958, deliberately draft until the final gates finish.
+  #918 is now merged by independent review; its three runtime scripts are byte-
+  identical to our qualified copies (review delta e5294b9c→a88af2b07 is empty).
+  #922 now targets master because its prerequisite is merged.
+- Fresh master524eb47b8 adds independent MXP/output-link, auction, smith and
+  proc-library work. Its #918 changes are already present byte-for-byte here.
+  Keep the qualified002ad622e integration baseline for this issue, with explicit
+  native/source hashes, rather than expanding validation into those later features.
+  No original #870 requirement or reviewed #918 repair is omitted by this freeze.
+
+- Historical `nexus_journey` concern is resolved on the qualified image: the
+  complete current DB leg passed in290s, including mortal guardian captures,
+  cooldown/full turn/epic rewards, actual cargo/contraband bonus/exclusion,
+  cold restoration and expiry/neutral reload. Its log records the same6dfb5020…
+  binary. First DB run has reached its final serial recovery/latency checks with
+  151 passing legs and only the already-repaired pet-reader failure so far.
+
+### Database first run preserved; full retry active
+
+- First database controller88225 is terminal:153/154 passed, only pet_restart
+  failed,2913s, make exit2. All final serial checks passed, including all artifact/
+  guild crash/recovery cases and the8-mortal/god game-loop budget. Complete
+  stdout/status are in `final-test-db-first-run.log`/`.exit`; all154 logs are in
+  `final-db-first-run/`. Archive completeness was checked before bin/tests/db reuse.
+- Ready/labeled bug [#965](https://github.com/LuminariMUD/Duris/pull/965) contains
+  the old/new reader transactional reproduction and full pet journey proof.
+  Source commit0ed24f840; later commits update the tracker.
+- **Active full DB retry56758** runs unchanged `make test-db` with all154 legs
+  after the pet fix. Output/status: `final-test-db-retry1.log`/`.exit`; completed
+  logs will be archived as `final-db-retry1/`. Prior88225, both focused pet runs
+  and the transaction probe are terminal. Poll56758; do not duplicate this run.
+- Final diff/ablation audit against baseline002ad622e:180 changed paths,
+  128 strictly mechanical test/helper renames and52 scoped conversion, consumer,
+  fixture, documentation or reproduced-defect changes. Two obsolete C++ snapshot
+  writers are deleted; only the five documented native save files differ. Every
+  retained addition has a traced caller or concrete failing proof. No extra
+  backend, generic fixture/resource framework or protected-file diff remains.
+  Only the full DB retry and final PR/evidence publication remain.
