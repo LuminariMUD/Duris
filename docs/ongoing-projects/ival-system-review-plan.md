@@ -177,7 +177,9 @@ publication. Use the existing lifecycle path, not a general invalidation system.
 
 ## D — qualify and hand off the integrated result (F07/F08/F14/F16)
 
-**In progress:** `branch/ival-qualification`, based on #982. The existing disposable
+**In progress:** `branch/ival-qualification`, based on #982. Startup fix `f3ef35689`
+is review-ready in [PR #987](https://github.com/LuminariMUD/Duris/pull/987) (bug label).
+The existing disposable
 MariaDB item-instance journey exposed minimal/no-specials enhancement admission
 and template-cache startup regressions. The fix distinguishes an intentionally
 absent index from a failed rebuild and caches the already-parsed templates in every
@@ -185,6 +187,10 @@ boot mode. The same real MariaDB journey now passes essence commands, relog/rest
 stored instance fields, and cap rejection without currency/material loss. Preliminary
 evidence is in `ival-evidence/f16-mariadb/preliminary.json`; full score/bundle and
 locker/corpse qualification remain pending. No live DB/player state is used.
+The local uncommitted `tests/async/run_ival_system_journey.py` extends the existing
+full-world/disposable-authority helpers with one eight-class fixture bundle.
+Its save/relog/restart phase is being brought up; locker/corpse and economic phases
+still need to be added. Keep this work-in-progress explicit until those gates pass.
 
 **Start with the existing MariaDB journey setup.** Verify dev/staging identity and
 reuse its command/persistence harness. Extend fixtures and assertions only.
