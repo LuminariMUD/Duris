@@ -265,7 +265,8 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 		spells[2] = obj->value[5] % 1000000000 / 1000000;
 
 		// val6 = level * val7 = chance -> 1/30 chance = 1, 1/60 chance = .5, 1/15 chance = 2, etc.
-		mod = ((obj->value[6] > 19) ? obj->value[6] / 10.0 : 1) * (30.0 / obj->value[7]);
+		// Integer numerator, so one division keeps a whole credit whole.
+		const int level_tenths = (obj->value[6] > 19) ? obj->value[6] : 10;
 
 		spellcirclesum = context.spell_circles[0];
 		spellcirclesum += context.spell_circles[1];
@@ -284,11 +285,12 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 			// If there are none?!, set to 1 anyway.
 			numspells = numspells ? numspells : 1;
 			// Keep the mean and scaled contribution fractional until final quantization.
-			workingvalue += mod * spellcirclesum / numspells;
+			workingvalue += 3.0 * level_tenths * spellcirclesum /
+					(double(obj->value[7]) * numspells);
 		}
 		else
 		{
-			workingvalue += mod * spellcirclesum;
+			workingvalue += 3.0 * level_tenths * spellcirclesum / obj->value[7];
 		}
 	}
 
