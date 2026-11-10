@@ -41,6 +41,7 @@ static std::string keywords;
 static std::string description;
 static std::map<int, int> materials;
 static int pouch_usage;
+static int prepared_value_override;
 
 static std::vector<std::string> removal_causes;
 item_removal_location capture_item_removal(P_obj obj)
@@ -61,7 +62,12 @@ int number(int low, int high) { return lucky ? low : high; }
 void logit(const char *, const char *, ...) {}
 bool chaos_starter_materials_enabled() { return true; }
 P_obj chaos_material_pouch_find(P_char) { return active_pouch; }
-void set_obj_extra_flags(P_obj obj, unsigned flags) { obj->extra_flags = flags; }
+void set_obj_extra_flags(P_obj obj, unsigned flags)
+{
+    obj->extra_flags = flags;
+    if (prepared_value_override)
+        obj->affected[1].modifier = prepared_value_override - 125;
+}
 
 bool currency_transaction_submit(P_char ch, const currency_vector &wallet, const currency_vector &,
                                  currency_reason_type reason, int64_t, critical_source_site,
@@ -223,6 +229,17 @@ static void index_entry(enhance_index_entry &entry, int vnum, int value)
     bucket = &entry;
 }
 
+static obj_data &value_fixture(int slot, int value)
+{
+    auto &obj = fixture(slot, 91000 + slot);
+    // Real itemvalue(): +50 mana contributes 125, with an exact small adjustment.
+    obj.affected[0] = {APPLY_MANA, 50};
+    obj.affected[1] = {APPLY_MANA, static_cast<sbyte>(MIN(value - 125, 25))};
+    obj.affected[2] = {APPLY_MANA, static_cast<sbyte>(MAX(value - 150, 0))};
+    assert(itemvalue(&obj) == value);
+    return obj;
+}
+
 static void clear_attempt()
 {
     if (result)
@@ -257,7 +274,7 @@ static void test_replacement()
     equal = source;
     equal.R_num = 3;
     auto &donor = fixture(4, 90001);
-    donor = lower;
+    donor = higher;
     donor.R_num = 4;
     auto &wrong_slot = fixture(5, 90002);
     wrong_slot = higher;
@@ -265,7 +282,7 @@ static void test_replacement()
     wrong_slot.wear_flags = ITEM_TAKE | ITEM_HOLD | ITEM_WEAR_LEGS;
 
     auto &over_cap = fixture(7, 90004, 80);
-    assert(itemvalue(&over_cap) > enhance_ival_cap + enhance_original_max_roll);
+    assert(itemvalue(&over_cap) > itemvalue(&source) + 4);
     assert(itemvalue(&source) == 88);
     assert(itemvalue(&lower) == 87);
     assert(itemvalue(&higher) == 91);
@@ -354,6 +371,128 @@ static void test_replacement()
     assert(source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
     clear_attempt();
     active_pouch = nullptr;
+}
+
+static void test_replacement_bounds()
+{
+    char_data ch{};
+    ch.player.level = 50;
+    ch.curr_stats.Luk = 10;
+    ch.in_room = NOWHERE;
+
+    struct scenario { int source, donor, candidate; bool succeeds; };
+    const scenario cases[] = {
+        {99, 100, 100, true},       // Cross the old absolute ceiling.
+        {120, 122, 122, true},      // A donor can fund its exact value.
+        {120, 122, 123, false},     // Even a +3 result may exceed the donor.
+        {120, 140, 124, true},      // Exact +4 is allowed above 99.
+        {80, 100, 85, false},       // Ordinary fallback must not grant +5.
+        {80, 100, 88, false},       // Extreme fallback must not grant +8.
+        {120, 120, 121, false},     // Equal donors cannot fund an upgrade.
+        {120, 119, 121, false},     // Nor can weaker donors above the old floor.
+        {120, 114, 121, false},     // Retain the configured material floor.
+        {120, 140, 120, false},     // A different template must still improve iVal.
+        {120, 140, 119, false},
+        {150, 154, 154, true},      // The level gate applies to the source.
+        {151, 155, 155, false},
+    };
+    for (const auto &test : cases)
+        for (bool down_first : {true, false})
+            for (bool force_luck : {false, true})
+            {
+                auto &source = value_fixture(0, test.source);
+                auto &donor = value_fixture(1, test.donor);
+                auto &candidate = value_fixture(2, test.candidate);
+                enhance_index_entry entry{};
+                index_entry(entry, OBJ_VNUM(&candidate), test.candidate);
+                enhance_original_cascade_down_first = down_first;
+                lucky = force_luck;
+                GET_PLATINUM(&ch) = 20;
+                enhance(&ch, &source, &donor);
+                if (test.succeeds)
+                {
+                    assert(result && itemvalue(result) == test.candidate);
+                    assert(charges == 1 && GET_PLATINUM(&ch) == 10);
+                    assert((loads == std::vector<int>{OBJ_VNUM(&candidate)}));
+                    assert((extracted == std::vector<int>{OBJ_VNUM(&source), OBJ_VNUM(&donor)}));
+                }
+                else
+                {
+                    // Known-invalid buckets are rejected before any object load.
+                    assert(!result && loads.empty() && extracted.empty());
+                    assert(charges == 0 && GET_PLATINUM(&ch) == 20);
+                    assert(source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
+                }
+                enhance_ival_table[enhance_hash(test.candidate)] = nullptr;
+                clear_attempt();
+            }
+
+    lucky = false;
+    enhance_original_cascade_down_first = true;
+    for (int donor_value : {122, 140})
+    {
+        auto &source = value_fixture(0, 120);
+        auto &donor = value_fixture(1, donor_value);
+        auto &valid = value_fixture(2, 122);
+        auto &stale = value_fixture(3, donor_value == 122 ? 123 : 125);
+        enhance_index_entry valid_entry{}, stale_entry{};
+        index_entry(valid_entry, OBJ_VNUM(&valid), 122);
+        index_entry(stale_entry, OBJ_VNUM(&stale), 121);
+        GET_PLATINUM(&ch) = 20;
+        enhance(&ch, &source, &donor);
+        assert(result && itemvalue(result) == 122);
+        assert((loads == std::vector<int>{OBJ_VNUM(&stale), OBJ_VNUM(&valid)}));
+        assert((extracted == std::vector<int>{OBJ_VNUM(&stale), OBJ_VNUM(&source), OBJ_VNUM(&donor)}));
+        assert(charges == 1);
+        clear_attempt();
+        enhance_ival_table[enhance_hash(121)] = nullptr;
+
+        // Revalidate the prepared result as well as the loaded candidate.
+        source.loc_p = donor.loc_p = LOC_CARRIED;
+        valid.extra_flags = ITEM_SECRET;
+        prepared_value_override = itemvalue(&stale);
+        GET_PLATINUM(&ch) = 20;
+        enhance(&ch, &source, &donor);
+        assert(!result && charges == 0 && GET_PLATINUM(&ch) == 20);
+        assert((extracted == std::vector<int>{OBJ_VNUM(&valid)}));
+        assert(source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
+        assert(output.find("No eligible higher-value replacement") != std::string::npos);
+        prepared_value_override = 0;
+        enhance_ival_table[enhance_hash(122)] = nullptr;
+        clear_attempt();
+    }
+
+    // The pouch remains donor-free, but its result still cannot gain more than +4.
+    auto &source = value_fixture(0, 120);
+    auto &pouch = fixture(6, VOBJ_CHAOS_CRAFT_POUCH);
+    active_pouch = &pouch;
+    for (int candidate_value : {124, 125, 128})
+    {
+        auto &candidate = value_fixture(2, candidate_value);
+        enhance_index_entry entry{};
+        index_entry(entry, OBJ_VNUM(&candidate), candidate_value);
+        source.loc_p = LOC_CARRIED;
+        GET_PLATINUM(&ch) = 20;
+        lucky = true;
+        enhance_original_max_roll = 12; // A larger radius must not raise the gain cap.
+        enhance(&ch, &source, &pouch);
+        if (candidate_value == 124)
+        {
+            assert(result && itemvalue(result) == 124 && charges == 1);
+            assert((extracted == std::vector<int>{OBJ_VNUM(&source)}));
+        }
+        else
+        {
+            assert(!result && loads.empty() && extracted.empty() && charges == 0);
+            assert(GET_PLATINUM(&ch) == 20 && source.loc_p == LOC_CARRIED);
+        }
+        assert(pouch.loc_p == LOC_CARRIED);
+        enhance_ival_table[enhance_hash(candidate_value)] = nullptr;
+        clear_attempt();
+    }
+    active_pouch = nullptr;
+    enhance_original_max_roll = 4;
+    lucky = false;
 }
 
 static void test_essence()
@@ -598,6 +737,7 @@ int main()
     load_enhance_config();
     assert(enhance_wear_skip_mask == expected_mask);
     test_replacement();
+    test_replacement_bounds();
     test_essence();
     test_superior();
 }

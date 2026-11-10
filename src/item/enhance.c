@@ -108,8 +108,9 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	char buf[MAX_STRING_LENGTH];
 	P_obj robj;
 	int cost, searchcount, maxsearch, sval;
-	int newval, minval, chluck, wearflags;
-	int cascade_dir, cascade_step, cascade_ival;
+	int minval, chluck, wearflags;
+	int cascade_dir, cascade_step;
+	int64_t newval, cascade_ival;
 	struct enhance_index_entry *entry;
 
 	if (!ch || !source || !material)
@@ -180,6 +181,19 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		return;
 	}
 
+	/* A replacement cannot exceed its donor or gain more than four iVal.
+	 * Chaos pouches retain their donor-free exception, with the same gain limit. */
+	const int64_t max_result_value =
+		pouch_material ? static_cast<int64_t>(sval) + 4 :
+				 MIN(static_cast<int64_t>(sval) + 4, itemvalue(material));
+	if (max_result_value <= sval)
+	{
+		send_to_char(
+			"The donor must have a higher item value than the item being enhanced.\r\n",
+			ch);
+		return;
+	}
+
 	if (sval <= enhance_cost_low_ival_threshold)
 	{
 		cost = enhance_cost_low_amount;
@@ -200,29 +214,27 @@ void enhance(P_char ch, P_obj source, P_obj material)
 
 	if (number(1, enhance_luck_extreme_range) < chluck)
 	{
-		newval = sval + enhance_ival_gain_extreme;
+		newval = static_cast<int64_t>(sval) + enhance_ival_gain_extreme;
 		maxsearch *= 4;
 		send_to_char("&+YYou feel &+MEXTREMELY Lucky&+Y!\r\n", ch);
 	}
 	else if (number(1, enhance_luck_very_range) < chluck)
 	{
-		newval = sval + enhance_ival_gain_very;
+		newval = static_cast<int64_t>(sval) + enhance_ival_gain_very;
 		maxsearch *= 3;
 		send_to_char("&+YYou feel &+MVery Lucky&+Y!\r\n", ch);
 	}
 	else if (number(1, enhance_luck_lucky_range) < chluck)
 	{
-		newval = sval + enhance_ival_gain_lucky;
+		newval = static_cast<int64_t>(sval) + enhance_ival_gain_lucky;
 		maxsearch *= 2;
 		send_to_char("&+YYou feel &+MLucky&+Y!\r\n", ch);
 	}
 	else
 	{
-		newval = sval + enhance_ival_gain_normal;
+		newval = static_cast<int64_t>(sval) + enhance_ival_gain_normal;
 	}
 
-	const int64_t max_result_value =
-		static_cast<int64_t>(enhance_ival_cap) + enhance_original_max_roll;
 	/* Cascade search through the ival hash table.
 	 * Try exact match first, then cascade in the configured direction.
 	 * cascade_down_first=1: try lower ival values first, then higher
@@ -257,8 +269,9 @@ void enhance(P_char ch, P_obj source, P_obj material)
 				continue;
 
 			/* Look up in hash table */
-			for (entry = enhance_ival_table[enhance_hash(cascade_ival)]; entry;
-			     entry = entry->next)
+			for (entry = enhance_ival_table[enhance_hash(
+				     static_cast<int>(cascade_ival))];
+			     entry; entry = entry->next)
 			{
 				if (entry->ival != cascade_ival)
 					continue;
@@ -1357,7 +1370,6 @@ static void enhance_load_essence_drop(P_char ch, P_char killer)
 		 */
 
 /* ---- Config settings (defaults) ---- */
-int enhance_ival_cap = 95;
 int enhance_material_ival_delta = 5;
 int enhance_guild_insignia_ival_bonus = 5;
 int enhance_cost_low_ival_threshold = 20;
@@ -1730,9 +1742,7 @@ void load_enhance_config(void)
 			/* [settings] section */
 			int ival = atoi(val);
 
-			if (!strcmp(key, "enhance.ival.cap"))
-				enhance_ival_cap = ival;
-			else if (!strcmp(key, "enhance.material.ival.delta"))
+			if (!strcmp(key, "enhance.material.ival.delta"))
 				enhance_material_ival_delta = ival;
 			else if (!strcmp(key, "enhance.guild.insignia.ival.bonus"))
 				enhance_guild_insignia_ival_bonus = ival;

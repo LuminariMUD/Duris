@@ -54,7 +54,6 @@ extern struct enhance_index_entry *enhance_ival_table[ENHANCE_IVAL_TABLE_SIZE];
 extern struct enhance_index_entry *enhance_stat_table[ENHANCE_STAT_TABLE_SIZE];
 
 /* Config settings — read from lib/enhance.cfg at boot */
-extern int enhance_ival_cap;
 extern int enhance_material_ival_delta;
 extern int enhance_guild_insignia_ival_bonus;
 extern int enhance_cost_low_ival_threshold;
