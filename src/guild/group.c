@@ -1017,6 +1017,16 @@ bool group_remove_member(P_char ch)
 		(void)telemetry_runtime_game_encounter_leave(
 			ch, telemetry_encounter_outcome::withdrawal);
 
+	if (affected_by_spell(ch, SONG_SHADOW_PIPER))
+		affect_from_char(ch, SONG_SHADOW_PIPER);
+	for (auto *link = ch->linked, *next = link; link; link = next)
+	{
+		next = link->next_linked;
+		if (link->type == LNK_SONG && link->affect &&
+		    link->affect->type == SONG_SHADOW_PIPER)
+			affect_remove(link->linking, link->affect);
+	}
+
 	purge_linked_auras(ch);
 
 	/* okay.. 2 possible special conditions:

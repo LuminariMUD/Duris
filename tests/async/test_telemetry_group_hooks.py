@@ -34,11 +34,14 @@ def main():
 #include <algorithm>
 struct character;
 using P_char = character*;
+struct affected_type { int type; };
+struct char_link_data { int type; affected_type *affect; P_char linking; char_link_data *next_linked; };
 struct descriptor { bool msp_group_manual = false; int connected = 0, last_group_update = 0, term_type = 0, gmcp_enabled = 1; };
 struct group_list { P_char ch; group_list *next; };
 struct character {
     int in_room = 1;
     group_list *group = nullptr;
+    char_link_data *linked = nullptr;
     descriptor *desc = nullptr;
     bool alive = true, npc = false;
     const char *name = "synthetic";
@@ -50,7 +53,10 @@ mm_ds pool;
 mm_ds *dead_group_pool = &pool;
 constexpr int TERM_MSP = 9, CON_PLAYING = 0, MAX_STRING_LENGTH = 1024, LOG_DEBUG = 0;
 constexpr unsigned PLR2_BACK_RANK = 1;
-constexpr int LNK_CONSENT = 0;
+constexpr int LNK_CONSENT = 0, LNK_SONG = 1, SONG_SHADOW_PIPER = 2;
+bool affected_by_spell(P_char, int) { return false; }
+void affect_from_char(P_char, int) { assert(false); }
+void affect_remove(P_char, affected_type *) { assert(false); }
 #define TRUE true
 #define FALSE false
 #define IS_ALIVE(c) ((c)->alive)

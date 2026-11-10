@@ -22737,6 +22737,12 @@ These permissions apply to an existing character; they do not enable a forbidden
 &+W30th Level: &+c1h piercing (cap 100%), backstab (cap 95%), circle (cap 80%),&n
     &+cdouble attack (cap 95%), dual wield (cap 80%), riff (cap 100%)&n
 &+W51st Level: &+cdisguise (cap 70%), trip (cap 75%)&n
+&+W56th Level: &+csong of the shadow piper (cap 100%)&n
+
+At level 56, a player Scoundrel grants Heroism listeners +2 combat and spell
+pulse instead of +1. The singer retains the usual song-level bonus.
+Shadow Piper gives Sneak to grouped player followers in the same room.
+Combat, leaving the group/room, stopping following or the song ends the benefit.
 
 ==Spell changes==
 
@@ -29489,5 +29495,20 @@ Use race innates <race> or class innates <class or specialization> to view
 the current values. These modifiers are separate from your damroll limit.
 ===========================================================================
 See also: RACE, CLASS, INNATE, MULTICLASS
+
+#0
+
+Song of the Shadow Piper
+Song of the Shadow Piper - Last Edited: 2026-11-10
+============================================================
+Level 56 Scoundrel song, played on a flute with 'play shadow piper'. A player
+singer grants Sneak to players who share the group and room and follow them.
+Pets and the singer receive no Sneak. Combat ends it, as do leaving the room
+or group, stopping following, or stopping/changing the song. It cannot renew
+Sneak during combat.
+
+==See also==
+
+Sneak, Scoundrel, Instrument, Song of Heroism
 
 #0

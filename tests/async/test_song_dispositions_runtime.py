@@ -27,6 +27,8 @@ mm_ds *dead_affect_pool = &aff_pool, *dead_link_pool = &link_pool;
 link_description link_types[LNK_MAX + 1]{};
 static std::map<P_char, std::vector<std::string>> recipient_messages;
 static int empower = 45, haste_calls, healing;
+static bool in_group = true;
+bool grouped(P_char, P_char) { return in_group; }
 int GET_CHAR_SKILL_P(P_char, int skill) { return skill == SKILL_EMPOWER_SONG ? empower : 100; }
 int GET_CLASS(P_char ch, uint cls) { return (ch->player.m_class & cls) != 0; }
 void send_to_char(const char *s, P_char ch) { recipient_messages[ch].emplace_back(s); }
@@ -42,9 +44,12 @@ void mm_release(mm_ds *pool, void *p) {
 }
 mm_ds *mm_create(const char *, size_t, size_t, unsigned) { assert(false); return nullptr; }
 void all_affects(P_char ch, int) {
+    REMOVE_BIT(ch->specials.affected_by, AFF_SNEAK);
     ch->specials.affected_by3 = 0;
-    for (auto *af = ch->affected; af; af = af->next)
+    for (auto *af = ch->affected; af; af = af->next) {
+        SET_BIT(ch->specials.affected_by, af->bitvector & AFF_SNEAK);
         ch->specials.affected_by3 |= af->bitvector3;
+    }
 }
 void balance_affects(P_char) {}
 void gmcp_char_affects(P_char) {}
@@ -96,7 +101,8 @@ functions = [("affects.c", s) for s in (
     "void linked_affect_to_char(",
 )] + [("bard.c", s) for s in (
     "void stop_singing(", "static int song_stop_rest(",
-    "static int song_start_failure_rest(", "void do_play(", "static int song_heroism_haste_level(",
+    "static int song_start_failure_rest(", "void do_play(",
+    "bool player_bard(", "void bard_shadow_piper(int /*level*/", "static int song_heroism_haste_level(",
     "static int song_heroism_pulse(", "static int song_heroism_singer_pulse(",
     "static int song_heroism_hit_dam(", "void bard_heroism(int l,",
     "static int song_healing_amount(", "static int song_healing_ally_amount(",
@@ -125,21 +131,23 @@ static std::map<int,int> bonuses(P_char ch) {
 }
 int main() {
     REGISTER
+    static_assert(POISON_LIFELEAK == 1536 && POISON_MADNESS == 1542, "saved poison IDs must stay stable");
     define_link(LNK_SNG_HEALING, "healing", nullptr, LNKFLG_AFFECT | LNKFLG_ROOM);
-    for (int level : {20,21,40,56}) for (bool self_first : {false,true}) for (bool npc : {false,true}) {
+    for (int level : {20,21,40,55,56}) for (int spec : {0,SPEC_SCOUNDREL,SPEC_MINSTREL})
+      for (bool self_first : {false,true}) for (bool npc : {false,true}) {
         char_data singer{}, listener{};
         SET_POS(&singer, POS_STANDING + STAT_NORMAL);
         SET_POS(&listener, POS_STANDING + STAT_NORMAL);
         singer.player.m_class = CLASS_BARD;
         listener.player.m_class = CLASS_WARRIOR;
-        singer.player.level = level;
+        singer.player.level = level; singer.player.spec = spec;
         if (npc) SET_BIT(singer.specials.act, ACT_ISNPC);
         recipient_messages.clear(); haste_calls = 0;
         bard_heroism(level, &singer, self_first ? &singer : &listener, SONG_HEROISM);
         bard_heroism(level, &singer, self_first ? &listener : &singer, SONG_HEROISM);
         for (P_char recipient : {&singer,&listener}) {
             auto values = bonuses(recipient);
-            assert(values[APPLY_COMBAT_PULSE] == (recipient == &singer ? -level/20 : -1));
+            assert(values[APPLY_COMBAT_PULSE] == (recipient == &singer ? -level/20 : (!npc && spec == SPEC_SCOUNDREL && level >= 56 ? -2 : -1)));
             assert(values[APPLY_SPELL_PULSE] == values[APPLY_COMBAT_PULSE]);
             assert(values[APPLY_HITROLL] == level/10 + (empower + (npc ? 100 : 0))/15);
             assert(values[APPLY_DAMROLL] == values[APPLY_HITROLL]);
@@ -179,6 +187,40 @@ int main() {
         assert(!song_scheduled && !IS_AFFECTED3(&singer, AFF3_SINGING));
         assert(!singer.affected && !singer.linked && !listener.affected && !listener.linking);
     }
+    // Shadow Piper is linked, player-only, follower-only, and never grants Sneak in combat.
+    for (int level : {55,56}) for (int spec : {SPEC_SCOUNDREL,SPEC_MINSTREL})
+      for (bool pet_singer : {false,true}) for (bool pet_listener : {false,true})
+       for (bool follows : {false,true}) for (bool grouped_now : {false,true})
+        for (bool fighting : {false,true}) {
+            char_data bard{}, follower{}, opponent{};
+            SET_POS(&bard, POS_STANDING | STAT_NORMAL);
+            SET_POS(&follower, POS_STANDING | STAT_NORMAL);
+            follower.specials.fighting = fighting ? &opponent : nullptr;
+            bard.player.m_class = CLASS_BARD; bard.player.spec = spec; bard.player.level = level;
+            follower.following = follows ? &bard : nullptr;
+            if (pet_singer) SET_BIT(bard.specials.act, ACT_ISNPC);
+            if (pet_listener) SET_BIT(follower.specials.act, ACT_ISNPC);
+            in_group = grouped_now;
+            bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
+            bool eligible = level == 56 && spec == SPEC_SCOUNDREL && !pet_singer &&
+                            !pet_listener && follows && grouped_now && !fighting;
+            assert(affected_by_spell(&follower, SONG_SHADOW_PIPER) == eligible);
+            if (eligible) {
+                assert(IS_AFFECTED(&follower, AFF_SNEAK));
+                bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
+                assert(!follower.affected->next); // no repeated-verse stacking
+                follower.in_room = 1;
+                check_room_links(&follower, NOWHERE, 1);
+                assert(!follower.affected && !IS_AFFECTED(&follower, AFF_SNEAK));
+                follower.in_room = 0;
+                bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
+                next_song(&bard, SONG_HEROISM);
+                assert(!follower.affected && !bard.linked);
+                bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
+                stop_singing(&bard);
+                assert(!follower.affected && !bard.linked);
+            }
+        }
     char_data singer{};
     singer.player.m_class = CLASS_BARD; singer.player.spec = SPEC_DISHARMONIST;
     singer.curr_stats.Cha = 100;

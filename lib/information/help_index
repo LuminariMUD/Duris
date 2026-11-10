@@ -14181,6 +14181,12 @@ These permissions apply to an existing character; they do not enable a forbidden
 &+W30th Level: &+c1h piercing (cap 100%), backstab (cap 95%), circle (cap 80%),&n
     &+cdouble attack (cap 95%), dual wield (cap 80%), riff (cap 100%)&n
 &+W51st Level: &+cdisguise (cap 70%), trip (cap 75%)&n
+&+W56th Level: &+csong of the shadow piper (cap 100%)&n
+
+At level 56, a player Scoundrel grants Heroism listeners +2 combat and spell
+pulse instead of +1. The singer retains the usual song-level bonus.
+Shadow Piper gives Sneak to grouped player followers in the same room.
+Combat, leaving the group/room, stopping following or the song ends the benefit.
 
 ==Spell changes==
 
@@ -23107,10 +23113,16 @@ Aggressive:     Yes
 ===========================================================================
 See also: song of discord, empower song, sing
 #
-"SONG OF SNATCHING" (Skill)
+"SONG OF THE SHADOW PIPER" (Skill)
 ===========================================================================
-"Song of snatching" exists only as a whisper in the bard colleges; its verses were never written into the living repertoire. The song is absent from the known song cycles, and even its masters profess ignorance of what it once did. As it stands, no bard can learn or perform it.
+Level 56 Scoundrel song, played on a flute with 'play shadow piper'. A player
+singer grants Sneak to players who share the group and room and follow them.
+Pets and the singer receive no Sneak. Combat ends it, as do leaving the room
+or group, stopping following, or stopping/changing the song. It cannot renew
+Sneak during combat.
 ===========================================================================
+See also: sneak, scoundrel, instrument, song of heroism
+
 #
 "2H BLUDGEON" (Skill)
 ===========================================================================
