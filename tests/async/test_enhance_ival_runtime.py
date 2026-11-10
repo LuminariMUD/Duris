@@ -443,12 +443,13 @@ static void test_essence()
     clear_attempt();
 }
 
-enum class superior_case { ordinary, packed, mixed_applies, zero_modifier };
+enum class superior_case { ordinary, packed, mixed_applies, zero_modifier, duplicate_applies };
 static void test_superior(superior_case probe = superior_case::ordinary)
 {
     const bool packed_case = probe == superior_case::packed;
     const bool mixed_case = probe == superior_case::mixed_applies;
     const bool zero_case = probe == superior_case::zero_modifier;
+    const bool duplicate_case = probe == superior_case::duplicate_applies;
     pouch_usage = 0;
     char_data ch{};
     ch.player.level = 60;
@@ -527,6 +528,7 @@ static void test_superior(superior_case probe = superior_case::ordinary)
         base.affected[3] = {APPLY_STR_MAX, 2};
     }
     if (zero_case) base.affected[2] = {APPLY_HITROLL, 0};
+    if (duplicate_case) base.affected[0].location = APPLY_STR;
     item = base;
     const int original_value = itemvalue(&item);
     if (packed_case) assert(original_value == 21); // 18 before F02; all charges use this corrected value.
@@ -535,8 +537,10 @@ static void test_superior(superior_case probe = superior_case::ordinary)
         assert(original_value == 12); // 14 before zero-modifier neutrality.
         ch.player.level = 4; // Newly within the source limit 12; execute at this level below.
     }
-    if (packed_case || mixed_case) {
-        ch.player.level = packed_case ? 6 : 25; // Old values passed these limits; corrected ones do not.
+    if (duplicate_case) assert(original_value == 13); // Split STR +2/+2 previously scored 12.
+    if (packed_case || mixed_case || duplicate_case) {
+        // Old values passed these limits; corrected ones do not.
+        ch.player.level = duplicate_case ? 4 : packed_case ? 6 : 25;
         const auto unchanged = item;
         do_enhance(&ch, command, 0);
         assert(output.find("at your level") != std::string::npos);
@@ -591,6 +595,7 @@ static void test_superior(superior_case probe = superior_case::ordinary)
 
     do_enhance(&ch, command, 0);
     assert(item.affected[0].modifier == 3 && item.affected[1].modifier == 3);
+    if (duplicate_case) assert(item.affected[0].location == APPLY_STR && item.affected[1].location == APPLY_STR);
     if (zero_case) assert(item.affected[2].location == APPLY_HITROLL && item.affected[2].modifier == 0);
     assert(itemvalue(&item) > original_value && strstr(item.short_description, "su&+wp"));
     assert(charges == 1 && GET_MONEY(&ch) == 20000 - (1000 + original_value * per_ival));
@@ -646,6 +651,7 @@ int main()
     test_superior(superior_case::packed);
     test_superior(superior_case::mixed_applies);
     test_superior(superior_case::zero_modifier);
+    test_superior(superior_case::duplicate_applies);
 }
 """
 

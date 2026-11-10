@@ -167,12 +167,12 @@ static void applies()
     assert(itemvalue(&object) == 25); // The fourth slot counts in the server.
     object.affected[0] = {APPLY_STR, 3};
     object.affected[3].modifier = 3;
-    assert(itemvalue(&object) == 12); // LEGACY F04: split total differs from merged.
+    assert(itemvalue(&object) == 25); // The curve sees the live total once.
     object.affected[0].modifier = object.affected[3].modifier = 100;
-    assert(itemvalue(&object) == 19602); // Widened semantic total must not narrow to a byte.
+    assert(itemvalue(&object) == 39601); // Total 200 must not narrow to a byte.
     object.affected[0].modifier = 6;
     object.affected[3].modifier = -6;
-    assert(itemvalue(&object) == 13); // LEGACY F04: cancellation differs from no stat.
+    assert(itemvalue(&object) == 1); // Cancellation is neutral, including its multiplier.
 
     for (int modifier : {SCHAR_MIN, SCHAR_MAX})
         for (int apply : {APPLY_HITROLL, APPLY_STR, APPLY_HIT, APPLY_MANA,
@@ -309,6 +309,12 @@ static void resolved_racial_context()
     item_value_breakdown detail;
     assert(itemvalue(&object, &detail) == 39);
     assert(detail.base == 39 && detail.multiplier == 1 && detail.score == 39);
+    object.affected[1] = {APPLY_STR_RACE, 1};
+    object.affected[2] = {APPLY_STR_RACE, 2}; // The zero factor is weaker than race 1.
+    assert(itemvalue(&object, &detail) == 39);
+    std::swap(object.affected[1], object.affected[2]);
+    assert(itemvalue(&object, &detail) == 39);
+    object.affected[1] = object.affected[2] = {};
     object.affected[3].location = APPLY_AGI_RACE;
     assert(itemvalue(&object, &detail) == 119);
     object.affected[3].modifier = -128;
@@ -343,9 +349,80 @@ PURE = r'''
 #include "item/item_value.h"
 #include <cassert>
 #include <cstring>
+#include <algorithm>
+#include <cstdio>
+
+static void apply_totals()
+{
+    int checked = 0;
+    for (int type : {ITEM_WORN, ITEM_ARMOR, ITEM_WEAPON})
+    for (int slot = 0; slot < MAX_OBJ_AFFECT; ++slot)
+    for (int kind : {APPLY_STR, APPLY_DEX, APPLY_INT, APPLY_WIS, APPLY_CON, APPLY_AGI,
+                     APPLY_POW, APPLY_CHA, APPLY_LUCK, APPLY_HIT, APPLY_MOVE, APPLY_MANA,
+                     APPLY_HIT_REG, APPLY_MOVE_REG, APPLY_MANA_REG, APPLY_AC,
+                     APPLY_SAVING_PARA, APPLY_SAVING_ROD, APPLY_SAVING_FEAR,
+                     APPLY_SAVING_BREATH, APPLY_SAVING_SPELL, APPLY_COMBAT_PULSE,
+                     APPLY_SPELL_PULSE, APPLY_STR_MAX, APPLY_DEX_MAX, APPLY_INT_MAX,
+                     APPLY_WIS_MAX, APPLY_CON_MAX, APPLY_AGI_MAX, APPLY_POW_MAX,
+                     APPLY_CHA_MAX, APPLY_LUCK_MAX})
+    for (int left : {-128, -100, -6, -1, 0, 1, 3, 6, 100, 127})
+    for (int right : {-128, -100, -6, -1, 0, 1, 3, 6, 100, 127}) {
+        item_value_input input;
+        item_value_context context;
+        input.type = type;
+        input.wear_flags = ITEM_TAKE | ITEM_WEAR_EYES;
+        input.extra_flags = ITEM_TWOHANDS;
+        input.value[0] = 10; input.value[1] = 2; input.value[2] = 6;
+        context.native_proc_credit = 29;
+        input.affected[slot] = {kind, left};
+        input.affected[(slot + 1) % MAX_OBJ_AFFECT] = {kind, right};
+        const auto unchanged = input;
+        item_value_breakdown split, merged;
+        evaluate_item_value(input, context, &split);
+        assert(!std::memcmp(&input, &unchanged, sizeof(input)));
+        input.affected[slot].modifier = left + right;
+        input.affected[(slot + 1) % MAX_OBJ_AFFECT] = {};
+        evaluate_item_value(input, context, &merged);
+        assert(split.score == merged.score && split.base == merged.base &&
+               split.multiplier == merged.multiplier && split.unrounded == merged.unrounded);
+        ++checked;
+    }
+    std::printf("apply totals: %d split/merge, cancellation and widened-total cases\n", checked);
+
+    // MAX also affects the live current stat, so the two locations stay distinct.
+    item_value_input input;
+    item_value_context context;
+    item_value_breakdown current, maximum, together;
+    input.affected[0] = {APPLY_STR, 6};
+    evaluate_item_value(input, context, &current);
+    input.affected[0] = {APPLY_STR_MAX, 2};
+    evaluate_item_value(input, context, &maximum);
+    input.affected[1] = {APPLY_STR, 6};
+    evaluate_item_value(input, context, &together);
+    assert(together.base == current.base + maximum.base && together.multiplier == maximum.multiplier);
+
+    for (int kind = APPLY_STR_RACE; kind <= APPLY_LUCK_RACE; ++kind)
+    for (int left : {-50, 0, 10, 50, 150})
+    for (int right : {-50, 0, 10, 50, 150}) {
+        input = {}; context = {};
+        context.native_proc_credit = 200;
+        input.affected[0] = {kind, 1}; input.affected[1] = {kind, 2};
+        context.racial_credits[0] = left; context.racial_credits[1] = right;
+        evaluate_item_value(input, context, &together);
+        assert(together.base == 200 + std::max(left, right));
+        input.affected[2] = {kind, LAST_RACE + 1}; context.racial_credits[2] = 100;
+        input.affected[3] = {kind, -1}; context.racial_credits[3] = 100;
+        evaluate_item_value(input, context, &together);
+        assert(together.base == 400 + std::max(left, right));
+        input.affected[2].modifier = input.affected[3].modifier = 0;
+        evaluate_item_value(input, context, &together);
+        assert(together.base == 200 + std::max(left, right));
+    }
+}
 
 int main()
 {
+    apply_totals();
     item_value_input input;
     item_value_context context;
     item_value_breakdown detail;
