@@ -44,6 +44,33 @@
     padding-bottom: 32px;
     border-bottom: 1px solid var(--line);
   }
+  .ival-intro,
+  .ival-story,
+  .ival-section-intro {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(24px, 4vw, 52px);
+  }
+  .ival-section-intro {
+    grid-template-columns: minmax(0, 1fr) 28%;
+  }
+  .ival-list-intro {
+    grid-template-columns: minmax(0, 1fr) 240px;
+  }
+  .ival-copy {
+    display: grid;
+    gap: 16px;
+  }
+  .ival-art {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 3 / 2;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--surface);
+  }
   .ival-eyebrow {
     font: 500 12px/1.4 var(--mono);
     letter-spacing: 0.08em;
@@ -306,6 +333,12 @@
   }
   .mc-W {
     color: #fff;
+  }
+}
+@media (max-width: 700px) {
+  .ival-content :is(.ival-intro, .ival-story, .ival-section-intro) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
   }
 }
 /* On narrow screens the zone moves under the item name so the values fit. */

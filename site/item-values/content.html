@@ -4,18 +4,35 @@
     ><span>Item value changes</span>
   </div>
   <header class="ival-mast">
-    <p class="ival-eyebrow">Item values · November 2026 update</p>
-    <h1>Item value changes</h1>
-    <p class="ival-lede">
-      The item value update fixes how a handful of stats are counted. Nothing
-      about your gear changes, and most values stay exactly as they were. Of
-      19,367 items checked, these {{COUNT}} that players can hold have a
-      different item value in this update.
-    </p>
-    <p class="ival-note">
-      The new values apply when the game server receives this update. Use Lore
-      or Identify to check the value currently in use.
-    </p>
+    <div class="ival-intro">
+      <div class="ival-copy">
+        <p class="ival-eyebrow">Item values · November 2026 update</p>
+        <h1>Item value changes</h1>
+        <p class="ival-lede">
+          The item value update fixes how a handful of stats are counted.
+          Nothing about your gear changes, and most values stay exactly as they
+          were. Of 19,367 items checked, these {{COUNT}} that players can hold
+          have a different item value in this update.
+        </p>
+        <p class="ival-note">
+          The new values apply when the game server receives this update. Use
+          Lore or Identify to check the value currently in use.
+        </p>
+      </div>
+      <img
+        class="ival-art"
+        src="{{BASE}}assets/item-values/relic-vault-960.webp"
+        srcset="
+          {{BASE}}assets/item-values/relic-vault-480.webp 480w,
+          {{BASE}}assets/item-values/relic-vault-960.webp 960w
+        "
+        sizes="(max-width: 700px) 90vw, (max-width: 1320px) 42vw, 544px"
+        width="960"
+        height="640"
+        fetchpriority="high"
+        alt="An engraved sword, crested helmet and emerald amulet in a golden-lit stone vault"
+      />
+    </div>
     <dl class="ival-facts">
       <div>
         <dt>Items checked</dt>
@@ -47,17 +64,35 @@
   </header>
 
   <section aria-labelledby="h-why">
-    <h2 id="h-why">Why a value changed</h2>
-    <p class="ival-prose">
-      Every change comes from one of five corrections. Each row in the list
-      names the one that applies.
-    </p>
+    <div class="ival-section-intro">
+      <div class="ival-copy">
+        <h2 id="h-why">Why a value changed</h2>
+        <p class="ival-prose">
+          Every change comes from one of five corrections. Each row in the list
+          names the one that applies.
+        </p>
+      </div>
+      <img
+        class="ival-art"
+        src="{{BASE}}assets/item-values/appraisal-960.webp"
+        srcset="
+          {{BASE}}assets/item-values/appraisal-480.webp 480w,
+          {{BASE}}assets/item-values/appraisal-960.webp 960w
+        "
+        sizes="(max-width: 700px) 90vw, (max-width: 1320px) 28vw, 336px"
+        width="960"
+        height="640"
+        loading="lazy"
+        decoding="async"
+        alt="A dagger, emerald crystals and brass lens arranged on an enchanter's appraisal table"
+      />
+    </div>
     <ul class="ival-reasons">
       <li>
         <b>Stat order</b><span class="count">117 items · all up</span>
         <p>
-          Two items with the same stats could score differently depending on
-          the order the stats were stored in. Order no longer matters.
+          Two items with the same stats could score differently depending on the
+          order the stats were stored in. Order no longer matters.
         </p>
       </li>
       <li>
@@ -93,7 +128,23 @@
   </section>
 
   <section aria-labelledby="h-list" id="list">
-    <h2 id="h-list">The full list</h2>
+    <div class="ival-section-intro ival-list-intro">
+      <h2 id="h-list">The full list</h2>
+      <img
+        class="ival-art"
+        src="{{BASE}}assets/item-values/armory-960.webp"
+        srcset="
+          {{BASE}}assets/item-values/armory-480.webp 480w,
+          {{BASE}}assets/item-values/armory-960.webp 960w
+        "
+        sizes="(max-width: 700px) 90vw, 240px"
+        width="960"
+        height="640"
+        loading="lazy"
+        decoding="async"
+        alt="A sword, shield, carved staff and horned helmet displayed in an ancient armory"
+      />
+    </div>
     <div class="ival-controls" hidden>
       <label class="search-field"
         ><span class="sr-only">Search items</span
@@ -164,63 +215,117 @@
     </p>
     <p class="ival-note">
       Level is the character level needed to craft or enhance the item at its
-      new value. Enter your level to see only items you can work on, and pick
-      a stat to rank them by how much of it they give.
+      new value. Enter your level to see only items you can work on, and pick a
+      stat to rank them by how much of it they give.
     </p>
     <p class="ival-note">
-      Staff equipment and hidden creature-only items are left out, since
-      players never hold them.
+      Staff equipment and hidden creature-only items are left out, since players
+      never hold them.
     </p>
   </section>
 
   <section aria-labelledby="h-random">
-    <h2 id="h-random">Randomly generated gear</h2>
-    <div class="ival-prose">
-      <p>
-        Random drops have no fixed entry to list, so we tested 8,720 generated
-        samples instead. About 6% of them changed, split evenly: 269 went up
-        and 258 went down, typically by around 10 points.
-      </p>
-      <p>
-        A random item is affected only if it mixes flat and percentage stats,
-        repeats a stat, or carries a +0 stat. Lore or identify it to see
-        its current value.
-      </p>
+    <div class="ival-story">
+      <div class="ival-copy">
+        <h2 id="h-random">Randomly generated gear</h2>
+        <div class="ival-prose">
+          <p>
+            Random drops have no fixed entry to list, so we tested 8,720
+            generated samples instead. About 6% of them changed, split evenly:
+            269 went up and 258 went down, typically by around 10 points.
+          </p>
+          <p>
+            A random item is affected only if it mixes flat and percentage
+            stats, repeats a stat, or carries a +0 stat. Lore or identify it to
+            see its current value.
+          </p>
+        </div>
+      </div>
+      <img
+        class="ival-art"
+        src="{{BASE}}assets/item-values/random-treasure-960.webp"
+        srcset="
+          {{BASE}}assets/item-values/random-treasure-480.webp 480w,
+          {{BASE}}assets/item-values/random-treasure-960.webp 960w
+        "
+        sizes="(max-width: 700px) 90vw, (max-width: 1320px) 42vw, 544px"
+        width="960"
+        height="640"
+        loading="lazy"
+        decoding="async"
+        alt="An open treasure chest reveals a silver bracer, emerald ring and wand in a woodland ruin"
+      />
     </div>
   </section>
 
   <section aria-labelledby="h-effects">
-    <h2 id="h-effects">What follows the number</h2>
-    <div class="ival-prose">
-      <p>
-        Item value sets the level needed to craft or enhance an item, the
-        materials a recipe uses, the grade of salvage, and which faerie bag an
-        item can drop from. For most of this list a few points changes none of
-        that. Where a value crosses a threshold, the requirement moves with it:
-        for 64 items the level needed to craft or enhance them shifts, 52 of
-        them by a single level.
-      </p>
-      <p>
-        Enhancing follows the same rule as crafting and forging: the item you
-        enhance must be within your level's limit of three item value per level,
-        and each enhancement raises it by 1 to 4. The old fixed ceiling on
-        enhanced items is gone, and 33 new items fill gaps where a piece of gear
-        had no next step.
-      </p>
-      <p>
-        Figures compare the same items before and after the update. Items you
-        have already enhanced are valued from their own stats, by the same
-        corrected rules.
-      </p>
+    <div class="ival-story">
+      <div class="ival-copy">
+        <h2 id="h-effects">What follows the number</h2>
+        <div class="ival-prose">
+          <p>
+            Item value sets the level needed to craft or enhance an item, the
+            materials a recipe uses, the grade of salvage, and which faerie bag
+            an item can drop from. For most of this list a few points changes
+            none of that. Where a value crosses a threshold, the requirement
+            moves with it: for 64 items the level needed to craft or enhance
+            them shifts, 52 of them by a single level.
+          </p>
+          <p>
+            Enhancing follows the same rule as crafting and forging: the item
+            you enhance must be within your level's limit of three item value
+            per level, and each enhancement raises it by 1 to 4. The old fixed
+            ceiling on enhanced items is gone, and 33 new items fill gaps where
+            a piece of gear had no next step.
+          </p>
+          <p>
+            Figures compare the same items before and after the update. Items
+            you have already enhanced are valued from their own stats, by the
+            same corrected rules.
+          </p>
+        </div>
+      </div>
+      <img
+        class="ival-art"
+        src="{{BASE}}assets/item-values/forge-960.webp"
+        srcset="
+          {{BASE}}assets/item-values/forge-480.webp 480w,
+          {{BASE}}assets/item-values/forge-960.webp 960w
+        "
+        sizes="(max-width: 700px) 90vw, (max-width: 1320px) 42vw, 544px"
+        width="960"
+        height="640"
+        loading="lazy"
+        decoding="async"
+        alt="A sword and forging hammer on an anvil beside metal ingots and an enhancement crystal"
+      />
     </div>
   </section>
 
   <section aria-labelledby="h-reasons">
-    <h2 id="h-reasons">Why we made these changes</h2>
-    <p class="ival-prose">
-      Item value decides what you can craft, forge, enhance and salvage. A
-      number with that much say over your gear has to be one you can trust.
-    </p>
+    <div class="ival-section-intro">
+      <div class="ival-copy">
+        <h2 id="h-reasons">Why we made these changes</h2>
+        <p class="ival-prose">
+          Item value decides what you can craft, forge, enhance and salvage. A
+          number with that much say over your gear has to be one you can trust.
+        </p>
+      </div>
+      <img
+        class="ival-art"
+        src="{{BASE}}assets/item-values/balanced-scales-960.webp"
+        srcset="
+          {{BASE}}assets/item-values/balanced-scales-480.webp 480w,
+          {{BASE}}assets/item-values/balanced-scales-960.webp 960w
+        "
+        sizes="(max-width: 700px) 90vw, (max-width: 1320px) 28vw, 336px"
+        width="960"
+        height="640"
+        loading="lazy"
+        decoding="async"
+        alt="Matching emerald rings rest on the level pans of a brass balance scale"
+      />
+    </div>
     <ul class="ival-reasons">
       <li>
         <b>Same stats, same value</b>
