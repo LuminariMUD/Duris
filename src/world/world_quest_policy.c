@@ -142,6 +142,9 @@ void build_geography()
 				continue;
 			const int to = edge->to_room;
 			const int from_zone = world[room].zone, to_zone = world[to].zone;
+			// Heavens' staff shortcuts do not define geographic attachments.
+			if (zone_table[from_zone].number == 0 || zone_table[to_zone].number == 0)
+				continue;
 			if (!IS_MAP_ROOM(room) && IS_MAP_ROOM(to))
 				quest_geography[from_zone].entrances.push_back(to);
 			else if (IS_MAP_ROOM(room) && !IS_MAP_ROOM(to))

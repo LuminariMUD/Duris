@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 import time
 
-from test_flatfile_combat_journey import (
+from test_mariadb_combat_journey import (
     CHARACTER, ROOT, MudClient, available_ports, create_character, generate_certificate,
     inspect_authority, make_fixture, mariadb_authority, require, runtime_logs,
 )

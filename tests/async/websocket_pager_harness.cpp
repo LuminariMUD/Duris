@@ -7,6 +7,7 @@
 #include "net/command_latency.h"
 #include "net/session_input.h"
 #include "net/ws_handlers.h"
+#include "net/output_style.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -30,6 +31,8 @@
 static std::string output;
 static std::vector<std::string> commands;
 static unsigned errors;
+static bool creation_grant_blocked, playing_queue_blocked;
+static unsigned playing_queue_calls;
 
 void logit(const char *, const char *, ...)
 {
@@ -44,6 +47,10 @@ void send_to_char(const char *text, P_char, int)
 {
 	output += text;
 }
+void send_to_char(const char *text, P_char ch, int log, const OutputContext &)
+{
+	send_to_char(text, ch, log);
+}
 
 // This fixture has no pending world transactions, casting or account admission.
 bool pwipe_launch_admit(P_desc)
@@ -52,7 +59,7 @@ bool pwipe_launch_admit(P_desc)
 }
 bool item_creation_grant_blocks_commands(P_char)
 {
-	return false;
+	return creation_grant_blocked;
 }
 static bool casting_input_for_descriptor(P_desc, P_char)
 {
@@ -65,6 +72,9 @@ int get_casting_cmd_from_q(P_char, struct txt_q *, char *)
 }
 static int get_playing_cmd_from_q(P_char, struct txt_q *queue, char *input)
 {
+	++playing_queue_calls;
+	if (playing_queue_blocked)
+		return 0;
 	return get_from_q(queue, input);
 }
 static void dispatch_playing_command(P_char, char *input)
@@ -208,6 +218,91 @@ int main()
 	}
 	assert_pager_released(&d);
 	puts("PASS: numeric page selection, refresh, back, whitespace and quit retain their behavior");
+
+	for (const char *help : { "help combat", "  HeLp combat", "help" })
+	{
+		begin_pager(&d);
+		commands.clear();
+		// Both transports feed this same owned command queue; WebSocket is
+		// exercised above, while a typed Telnet command arrives without JSON.
+		write_to_q(help, &d.input, 0);
+		const unsigned before = playing_queue_calls;
+		dispatch_input(&d, session_input_route::playing);
+		assert(playing_queue_calls == before + 1);
+		assert(commands == std::vector<std::string>{ help });
+		assert(output.empty());
+		assert_pager_released(&d);
+		assert_empty_queue(&d);
+		dispatch_input(&d, session_input_route::none);
+		assert(commands.size() == 1);
+	}
+	begin_pager(&d);
+	commands.clear();
+	send_json(&d, R"({"command":"help combat"})");
+	send_json(&d, R"("look")");
+	dispatch_input(&d, session_input_route::playing);
+	assert_pager_released(&d);
+	assert(commands == std::vector<std::string>{ "help combat" });
+	assert(d.input.head == d.input.tail && !strcmp(d.input.head->text, "look"));
+	dispatch_input(&d, session_input_route::playing);
+	assert((commands == std::vector<std::string>{ "help combat", "look" }));
+	assert_empty_queue(&d);
+	puts("PASS: typed and WebSocket help replace paging through normal dispatch exactly once");
+
+	begin_pager(&d);
+	commands.clear();
+	send_json(&d, R"("help combat")");
+	creation_grant_blocked = true;
+	dispatch_input(&d, session_input_route::none);
+	creation_grant_blocked = false;
+	SET_BIT(ch.specials.act2, PLR2_WAIT);
+	dispatch_input(&d, session_input_route::none);
+	REMOVE_BIT(ch.specials.act2, PLR2_WAIT);
+	SET_BIT(ch.specials.affected_by, AFF_CHARM);
+	dispatch_input(&d, session_input_route::none);
+	REMOVE_BIT(ch.specials.affected_by, AFF_CHARM);
+	playing_queue_blocked = true;
+	const unsigned before = playing_queue_calls;
+	dispatch_input(&d, session_input_route::none);
+	assert(playing_queue_calls == before + 1);
+	assert(d.showstr_count == 3 && d.showstr_page == 1 && output.empty());
+	assert(d.input.head == d.input.tail && !strcmp(d.input.head->text, "help combat"));
+	assert(commands.empty());
+	playing_queue_blocked = false;
+	dispatch_input(&d, session_input_route::playing);
+	assert(commands == std::vector<std::string>{ "help combat" });
+	assert_pager_released(&d);
+	assert_empty_queue(&d);
+	puts("PASS: help respects action, charm, creation and playing-queue gates before releasing pages");
+
+	for (const char *text : { "helpful", "look", "h" })
+	{
+		begin_pager(&d);
+		commands.clear();
+		write_to_q(text, &d.input, 0);
+		dispatch_input(&d, session_input_route::pager);
+		assert(commands.empty());
+		assert_pager_released(&d);
+		assert_empty_queue(&d);
+	}
+	begin_pager(&d);
+	char *editor_text = nullptr;
+	d.str = &editor_text;
+	send_json(&d, R"("help combat")");
+	char input[MAX_STRING_LENGTH] = {};
+	assert(select_session_input(&d, &ch, input) == session_input_route::pager);
+	assert(d.showstr_count == 3); // Do not promote editor input to a game command.
+	d.str = nullptr;
+	free_paging_data(&d);
+	begin_pager(&d);
+	d.connected = CON_MAIN_MENU;
+	write_to_q("help combat", &d.input, 0);
+	assert(select_session_input(&d, &ch, input) == session_input_route::pager);
+	assert(d.showstr_count == 3);
+	d.connected = CON_PLAYING;
+	free_paging_data(&d);
+	assert_empty_queue(&d);
+	puts("PASS: other pager input, editors and non-playing states keep their existing owner");
 
 	begin_pager(&d);
 	for (const char *json :

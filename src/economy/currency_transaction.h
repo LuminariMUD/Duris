@@ -84,10 +84,12 @@ bool currency_transaction_submit_bank_payment(P_char character, int64_t value,
 // Queue the character's save now, before whatever the money it gave up moves into is
 // saved: when money leaves one saved owner for another, the one it leaves goes first.
 void currency_transaction_save_first(P_char character);
-// One cargo market operation reserves its future purse while other wallet
+// One durable economic operation reserves its future purse while other wallet
 // changes keep the facade's synchronous behavior. No money moves here.
 bool currency_transaction_publish_trade(P_char character, int64_t payment);
 bool currency_transaction_reserve_trade(P_char character, int64_t payment);
+// A receipt that owns the wallet write freezes other live wallet changes until publish/release.
+bool currency_transaction_reserve_atomic_trade(P_char character, int64_t payment);
 void currency_transaction_release_trade(uint32_t pid);
 // Reserve one player's pending bartender fee without debiting it before commit.
 bool currency_transaction_reserve_world_quest(P_char character, int64_t fee);

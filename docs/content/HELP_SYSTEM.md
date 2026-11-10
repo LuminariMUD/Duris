@@ -20,8 +20,23 @@ The `help` command (`do_help`, `src/cmd/actinf.c`) does two things:
    the full entry; multiple matches render the exact match plus "see also"
    links. Misses are logged to `lib/etc/help`
    (`logit(LOG_HELP, ...)`), which is useful for spotting missing topics.
-   Entries are stored wiki-formatted; `dewikify()` converts `[[...]]` markup
-   into ANSI-colored output. There is no browsing cooldown.
+   Entries are stored wiki-formatted; `dewikify()` converts valid `[[topic]]`
+   references to cyan labels. `do_help()` attaches the target `help topic` as
+   semantic metadata; [MXP](../network/MXP.md) clients can click those references
+   and search-result titles. Other clients retain readable colored text.
+   Missing/empty closing brackets, empty topics, nested brackets and targets with
+   control characters or command/menu separators remain literal readable text.
+   Only authored help adopts this syntax; arbitrary `[[...]]` player text does
+   not create a command link. Bold `'''text'''` markers continue to be removed.
+
+   Clicking a help link uses the same command route as typing `help topic`.
+   A full help command replaces an active page after the normal session/command
+   gates; pager controls keep their usual behavior. Targets and text are frozen
+   for refresh/back replay, even if the help catalog changes. There is no browsing
+   cooldown. Large help output is sent in bounded chunks that retain colors,
+   complete Unicode characters and clipped link ranges, including with paging
+   disabled. Existing string-only help consumers keep their interfaces and do
+   not acquire executable help-link metadata implicitly.
 
    Two page features are applied at render time (`src/cmd/wikihelp.c`,
    `wiki_help_single()`):

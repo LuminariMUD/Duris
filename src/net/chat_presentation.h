@@ -22,3 +22,5 @@ struct char_data;
 // never resolves a second profile, transforms language, or advances animation.
 void gmcp_comm_channel_output(char_data *recipient, const OutputChatMessage &chat,
 			      const OutputContext &context, const char *frozen);
+void gmcp_comm_channel_body(char_data *recipient, const char *channel, const char *sender,
+			    const char *text, const char *alignment = nullptr);

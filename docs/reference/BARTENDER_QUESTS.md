@@ -265,8 +265,10 @@ The boot catalog uses surface continent identities and undirected authored
 map-to-map adjacency for Underdark components, ignoring travel conditions.
 Interior zones attach to the nearest authored zone boundary for each family
 separately, allowing nearby connector zones without flooding every connected
-interior. Multiple entrances in the same region agree; tied boundaries in
-different regions remain unresolved for that family. Surface and Underdark
+interior. Heavens (zone 0) is excluded from attachment boundaries and interior
+connections: its staff shortcuts must not make unrelated areas local. Multiple
+entrances in the same region agree; tied boundaries in different regions remain
+unresolved for that family. Surface and Underdark
 attachments do not conflict. Interiors cannot merge Underdark components.
 Ambiguous geography preserves accepted work as unproven; a known matching
 family still permits the task even if the other family is ambiguous.
@@ -604,7 +606,7 @@ accounts/databases/state roots, never the repository `.env` or long-running
 local stack. Its gameplay cases exercise real grants, ordinary outbound/return
 travel, ASK/KILL completion, and partial progress across restart. Its recovery
 case exercises paid maps, invalidation, relogin/restart, and durable free
-replacement. Set test-only `DURIS_WORLD_QUEST_BACKEND=mariadb` explicitly. `DURIS_WORLD_QUEST_JOURNEY` selects `recovery`, `gameplay`,
+replacement. `DURIS_WORLD_QUEST_JOURNEY` selects `recovery`, `gameplay`,
 `both` (default), or `audit` for the loaded-world audit/observer timing pass.
 `reported` checks the Quietus, Bloodstone and Tharnadia purchase/abandon/regrant
 reports, consent/sharing/maps with locked exits, restart state for both players,
@@ -619,7 +621,7 @@ Focused gameplay cases can be selected with `DURIS_WORLD_QUEST_GAMEPLAY_CASES=30
 the full matrix is `11:2,11:1,29:1,29:2,30:1` (KILL=1, ASK=2). For example:
 
 ```sh
-DURIS_WORLD_QUEST_BACKEND=mariadb DURIS_WORLD_QUEST_JOURNEY=gameplay \
+DURIS_WORLD_QUEST_JOURNEY=gameplay \
   DURIS_WORLD_QUEST_GAMEPLAY_CASES=30:1 \
   python3 tests/async/run_world_quest_dual_backend.py
 ```
