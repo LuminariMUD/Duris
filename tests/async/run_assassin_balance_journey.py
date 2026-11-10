@@ -20,7 +20,7 @@ import tarfile
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from run_paladin_balance_journey import command, hp
 from test_flight_network_journey import command as combat_command
 from test_assassin_combat_journey import ACTORS, fixture, seed_actors, spell_id
@@ -38,7 +38,7 @@ RUNTIME_INPUTS = (
     "lib", "areas_mini", "areas/obj/heavens.obj", "src",
     "tests/async/run_assassin_balance_journey.py",
     "tests/async/test_assassin_combat_journey.py",
-    "tests/async/test_flatfile_combat_journey.py",
+    "tests/async/test_mariadb_combat_journey.py",
     "tests/async/_paths.py",
     "tests/async/run_paladin_balance_journey.py",
     "tests/async/run_divine_refusal_journey.py",
@@ -153,7 +153,7 @@ def prepare_binaries():
             os.environ["MAKEFLAGS"] = f"EXTRA_LDFLAGS=-Wl,--wrap=_Z9randomizem,{seed_object}"
             os.environ["DURIS_REGRESSION_BUILD_CACHE"] = str(source / "bin/qualification-cache")
             os.environ.pop("WSL_INTEROP", None)
-            binary = builder.build_flatfile_server(source / "bin/qualification-build", real_clock=True)
+            binary = builder.build_mariadb_server(source / "bin/qualification-build", real_clock=True)
         finally:
             for key, value in saved.items():
                 if value is None:

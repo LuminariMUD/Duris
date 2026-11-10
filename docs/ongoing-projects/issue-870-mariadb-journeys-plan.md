@@ -3,7 +3,7 @@
 Status: batches 1, 2 and 4 are qualified, including every weapon, copyover and live-item mode. Named sets/historical assassin comparison, naming/docs and aggregate gates remain.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-assassin-comparison`. See the current-work section before continuing.
+Review head: `branch/issue-870-mariadb-test-names`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -217,23 +217,23 @@ the existing crash/reconnect cases. No new mana table or persistence layer.
 
 ### 5. Rename supported tests/build helpers and repair active documentation
 
-- [ ] Rename the 14 current `test_flatfile_*.py` files to the corresponding
+- [x] Rename the 14 current `test_flatfile_*.py` files to the corresponding
   `test_mariadb_*.py` names. No destination collisions existed at planning time;
   check again before renaming. Rename `build_flatfile_server` to
   `build_mariadb_server` in both its owner and exposed journey wrapper.
-- [ ] Update imports, runner registrations, artifact tests, source-contract
+- [x] Update imports, runner registrations, artifact tests, source-contract
   references, manifests, scripts and active documentation in the same change.
   Include `tests/run_regression_tests.py`, `tests/run_db_tests.sh`,
   `server_build_artifacts.py` and `test_server_build_artifacts.py` where referenced.
   Preserve cache correctness and fast/real-clock behavior. No alias layer is needed
   for repository-owned callers; historical archived sources keep their own API.
-- [ ] Replace retired inspector CLI instructions with tested MariaDB commands in
+- [x] Replace retired inspector CLI instructions with tested MariaDB commands in
   `docs/testing/ITEM_ABILITY_ROLLOUT.md`, `docs/reference/WEAPON_ACTIONS.md`,
   `docs/guides/COLORIZATION_RELEASE.md` and affected active references in
   `docs/testing/REGRESSIONS.md`, `docs/guides/TESTING.md` and
   `docs/network/DISCORD_BRIDGE.md`. Incorporate the newer master documentation
   instead of undoing it. Leave historical execution records intact.
-- [ ] Search the changed scripts and active callers for obsolete backend choices,
+- [x] Search the changed scripts and active callers for obsolete backend choices,
   inspector execution, `FLATFILE_STATE_DIR` and old imports. Classify legitimate
   negative-mode tests and historical references rather than requiring zero hits.
 
@@ -769,3 +769,133 @@ This is an estimate, not a time limit or permission to omit required proof.
   manifests and verified-build keys are generated once against the final names.
   Then prepare the three variants with CPU affinity capped to four build workers,
   run the full matrix and revised scenarios, and complete aggregate gates.
+
+
+### Mechanical naming conversion
+
+- Current review head is `branch/issue-870-mariadb-test-names`, after the Assassin
+  conversion branch. Fourteen MariaDB tests now use `test_mariadb_*.py`; both
+  the artifact builder and public combat-helper wrapper expose only
+  `build_mariadb_server`. Repository-owned imports, registrations, source-contract
+  tests, scripts, active docs, Makefile and backup workflow references are updated.
+- No destination collisions; no alias/shim. Pinned ignored archives are untouched.
+  Historical reports and execution records retain the command names they tested.
+  Earlier evidence in this plan also retains its pre-rename names; current commands
+  use the corresponding `test_mariadb_` names and `build_mariadb_server`.
+- All moved and changed Python files compile; regression discovery lists905
+  tests with no retired prefix. Focused root-harness, artifact reuse/corruption/
+  isolation/publication, Assassin manifest, launcher, real MariaDB boot-preflight,
+  information-reader and shopkeeper-capture checks passed. Logs:
+  `bin/tests/issue-870/naming-*.log`. Boot preflight's actual command includes
+  `with_disposable_mariadb.sh` and `--server bin/server/dms_new`.
+  Active imports/build calls are updated. The pinned comparison explicitly names
+  its immutable archive's old creation helper; that historical path is intentional.
+  Keep historical reports/records and legitimate file/journal/negative-mode names.
+  Active item/weapon/colorization and Discord runbooks give the qualified commands.
+- Named-set retry advanced beyond its original outfit check; the next missing
+  fixture precondition is Taverek's staff promotion before `transfer Meranen`.
+  Meranen was promoted, but the shared donor remained mortal from transfer proof.
+  `9bc9cff2c` adds the donor's offline SQL promotion before boot. Shop then
+  passed real sale, restart, paid repurchase, exact UID/origin/slot and final
+  Armor/+5HP reboot. The resumed sequence now runs the16 wear zones under the
+  canonical imports. Log: `named-set-sequence-shop-staff-run.log`; earlier donor
+  failure is retained under `named-set-shop-staff-failure/`.
+- Assassin preparation is running with four-CPU affinity. Fresh original/cleanse
+  archive verification and relevant constant checks passed; original MariaDB
+  seeded binary built in134.602s. Log `assassin-prepare-run.log`; inspect terminal
+  result and all three manifest entries before runtime qualification.
+
+
+### Latest continuation checkpoint
+
+- Current worktree/head: `branch/issue-870-mariadb-test-names`; all changes are
+  committed and pushed. [#949](https://github.com/LuminariMUD/Duris/pull/949)
+  is ready (enhancement), after draft [#948](https://github.com/LuminariMUD/Duris/pull/948)
+  and draft [#938](https://github.com/LuminariMUD/Duris/pull/938). The earlier
+  qualified PR stack remains ready; no merge/deployment/release is requested.
+- Named-set completed labels include transfer, edit/clone, pet, shop, wear1325,
+  wear740 and wear827. Wear13 reached its HP/spell thresholds, then its retained
+  ordinary potion timer exceeded180s: it is a three-normal-tick cooldown and cold
+  boots reset the tick phase. `8069eabfa` keeps all cooldown state and waits for
+  native expiry up to600s. It passed wear13 on retry; remaining zones follow.
+  Current command adds `--resume bin/tests/named-set-mariadb-sequence-ununney2`;
+  log `named-set-sequence-potion-run.log`. Tool session23072 is still active at
+  this checkpoint; poll before restarting. Initial bounded-wait failure is under
+  `named-set-potion-window-failure/`.
+- All three pinned seeded MariaDB binaries built and were verified. Hashes:
+  original `5a2c9dbacf2eb71ab0ff360e2724f5cb9e3d6078286ff15c67953b673f470521`;
+  cleansed `dd66f5d524c2b5babdd52673b3da6ec22da103c537b3803bbe4a5f48b4cb680e`;
+  revised `5cf1d7842edfb4af2f1cc77e9c00ab2b48acd0b1ab9148edf35e1b1bbd7ca080`.
+  Each uses seed187 and250000us ordinary pulses. Native source/archive hashes,
+  patch/seed hashes, schema roots and protocol-helper hashes are in
+  `bin/tests/assassin-comparative/binaries.json`.
+- Two pinned protocol assumptions were repaired without changing persistence:
+  BASE's Keep enters its MOTD directly, so use its byte-checked creation helper;
+  its save emits queued then complete, so await **Save complete**, never admission.
+  Current reconnect protocol was compared to BASE and is identical. Current
+  transport and all actor seeding/inspection remain MariaDB. Source constants
+  match, including class/skill/memorization flags. Seed helper class4096/spec1 is
+  the Assassin; `SPEC_ASSASSIN=1` was checked in current headers.
+- Repreparation reused all three verified binaries (zero compile time), preserving
+  cache correctness. The current matrix has completed the original variant's12
+  openings and is advancing; command `python3 tests/async/run_assassin_balance_journey.py`
+  then `--variant revised --scenarios-only`. Controller session61334 is active;
+  log `assassin-matrix-run.log`, then `assassin-scenarios-run.log`. Prior creation
+  and save-ack failures are retained. Do not mark comparison complete until both
+  invocations terminate0 with the entire12/12/36 matrix and all revised scenarios.
+- Remaining completion work: finish every named-set case (all16 zones, copied
+  rollback, existing chest/report), finish the comparison, update their draft PRs
+  to ready, then run the required full regression and disposable DB gates and fix
+  actual findings as focused changes. Keep heavy compilation away from the timing
+  comparison. No aggregate or whole-issue completion is claimed yet.
+- User requested focus/ETA during work; #870 remains the mission. The estimate at
+  that point was3–5 additional hours, with final-suite defects the main uncertainty.
+
+
+### Current authoritative state after the live runs
+
+- Both previously active controllers are terminal. Session61334: matrix exit0,
+  revised-scenarios exit1. Session23072: named-set sequence exit1 at wear1350.
+  Do not restart either merely from an old active-session note above.
+- Assassin's complete60 openings passed: original12, cleanse-only12, revised36,
+  all listed levels/races/defenders, with the seeded ordinary-clock binaries.
+  Original/cleanse results remain valid and their sources/binaries are immutable.
+  `assassin-qualified-initial-binaries.json` and
+  `assassin-qualified-initial-results-matrix.json` preserve their exact provenance.
+- Revised scenarios reached real poison and cure, then the new SQL inspector
+  called `spell_id("SONG_DRIFTING")`, whose definition is an expression rather
+  than a numeric literal. Correct this specific poison-range lookup from the
+  actual header; keep the complete FIRST_POISON..LAST_POISON inspection and all
+  cure/coating assertions. Evidence: `assassin-scenarios-run.log`.
+- Named-set completed through wear300 (plus transfer/edit-clone/pet/shop and the
+  earlier zones). Wear1350's native transcript shows all three items removed,
+  but committed SQL kept their slots. This is **not** an inventory-cap failure.
+  Native manual `Saving` is emitted after written-revision acknowledgement
+  (`actoth.c`2037); do not weaken the fixture or merely add sleeps to hide it.
+- Actual writer failures are error1296 with confirmed rollback. A disposable clone
+  of the frozen SQL reproduced the owning operation: tree depth15,1361 item rows;
+  `DELETE FROM player_items WHERE pid=1` fails with InnoDB error193 at
+  `fk_player_item_affects`' ON DELETE CASCADE. Log:
+  `bin/tests/issue-870/named-set-sql-delete-repro.log`. Metadata adds a cascade
+  level beyond the nested item tree. This is a real MariaDB snapshot replacement
+  defect, not permission to reduce the depth or discard previously generated UIDs.
+- Next repair: inspect the existing item-row replacement path in
+  `src/player/player_snapshot_repository.c` (DELETE around824 and shared helper
+  around396), keep its transaction/owner boundary, and avoid recursive parent
+  cascades before replacement. Extend the existing executable player-save database
+  harness for a supported deep tree and associated metadata. Fix it as its own
+  focused PR after #949; format, focused DB tests, native build and review the diff.
+  Investigate whether the observed later status revision can falsely acknowledge
+  a failed inventory write; do not presume a second root cause without proof.
+- Then rebuild the ordinary server and115-row catalog variant against repaired
+  source, preserve previous hashes/reports, resume the frozen named-set fixture
+  without changing UIDs/origins/slots, and finish all remaining zones, rollback,
+  chest and report checks. Inspect any compatibility-binary mismatch guard rather
+  than editing checksum metadata to pretend an old binary was tested anew.
+- Repairing native source invalidates the revised comparison manifest. Reuse
+  immutable original/cleanse evidence, prepare the new revised binary through the
+  existing verified cache, qualify revised matrix/scenarios with true provenance,
+  then run full regression/build and disposable DB aggregates. Keep timing cases
+  away from heavy compilation. #938 and #948 remain draft; #949 is ready.
+- Current branch `branch/issue-870-mariadb-test-names`, clean and pushed; latest
+  PRs have enhancement labels. No production operation, merge or release occurred.

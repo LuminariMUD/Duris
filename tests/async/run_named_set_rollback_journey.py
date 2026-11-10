@@ -16,7 +16,7 @@ import sys
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from named_set_gameplay import NamedSetGame, dump_authority, expect_max_hp, save, score, selector
 
 ROOT = journey.ROOT

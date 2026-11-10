@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 from _paths import ROOT, HARNESS_STUBS, extract_function
 from test_newbie_kit_plan import tables, extra
-from test_flatfile_chaos_new_character_kit import world_object_text
+from test_mariadb_chaos_new_character_kit import world_object_text
 
 PRELUDE = r'''
 #include "core/prototypes.h"

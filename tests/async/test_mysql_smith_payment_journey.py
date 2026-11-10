@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from run_item_pilot_journey import Server
 from run_world_quest_dual_backend import collect_logs
 from test_flight_network_journey import authority, command

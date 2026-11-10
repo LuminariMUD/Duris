@@ -5,7 +5,7 @@ import os
 import re
 import subprocess
 import time
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 
 # Required cases: generation room, maximum tier, primary native name and spell ID.

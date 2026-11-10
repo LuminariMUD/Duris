@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -404,7 +404,7 @@ if __name__ == "__main__":
         with tempfile.TemporaryDirectory(
             prefix="corpse-trap-build-", dir=ROOT / "bin/tests"
         ) as build:
-            run(journey.build_flatfile_server(Path(build)), "mariadb")
+            run(journey.build_mariadb_server(Path(build)), "mariadb")
     elif len(sys.argv) in (2, 3):
         run(Path(sys.argv[1]).resolve(), sys.argv[2] if len(sys.argv) == 3 else "mariadb")
     else:

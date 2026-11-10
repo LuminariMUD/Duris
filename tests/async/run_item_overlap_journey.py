@@ -10,7 +10,7 @@ import time
 import run_item_pilot_journey as pilot
 import run_weapon_actions_journey as weapon
 import run_spellcast_racial_multiplier_journey as caster
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 
 def run(binary, dual):

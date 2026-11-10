@@ -11,7 +11,7 @@ import json
 import re
 import sys
 import time
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from named_set_gameplay import NamedSetGame, score, save, selector, expect_max_hp
 
 from named_set_gameplay import WEAR_CASES as CASES

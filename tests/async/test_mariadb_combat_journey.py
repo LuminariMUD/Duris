@@ -691,9 +691,9 @@ def verify_recovered_loot(port: int) -> None:
         client.close()
 
 
-def build_flatfile_server(build_root: pathlib.Path, *, real_clock: bool = False) -> pathlib.Path:
+def build_mariadb_server(build_root: pathlib.Path, *, real_clock: bool = False) -> pathlib.Path:
     """Acquire the shared artifact while retaining journey-owned runtime state."""
-    return server_build_artifacts.build_flatfile_server(build_root, real_clock=real_clock)
+    return server_build_artifacts.build_mariadb_server(build_root, real_clock=real_clock)
 
 
 def run_journey(binary: pathlib.Path, reset_coins: bool = False,
@@ -762,7 +762,7 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                     client = MudClient(plain_port)
                     create_character(client)
                     if first_session_only:
-                        from test_flatfile_first_session_currency import verify_first_session
+                        from test_mariadb_first_session_currency import verify_first_session
                         verify_first_session(client, plain_port, sql, populated_bank)
                         return
                     if not boons_enabled:

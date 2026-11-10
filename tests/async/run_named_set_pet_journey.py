@@ -2,7 +2,7 @@
 """Native marked gear in pet-held containers, owner reboots and recovery."""
 
 import json
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from named_set_gameplay import NamedSetGame, score, save, selector, put, expect_max_hp
 
 ACCOUNT, CHARACTER, PID = "Namedguest", "Meranen", 2

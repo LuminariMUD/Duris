@@ -26,7 +26,7 @@ import threading
 import time
 
 import run_copyover_runtime_journey as copyover
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from telemetry_posthog_http import Receiver
 
 ROOT = Path(__file__).resolve().parents[2]
