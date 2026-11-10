@@ -611,6 +611,9 @@ void stop_follower(P_char ch)
 		return;
 	}
 
+	if (affected_by_spell(ch, SONG_SHADOW_PIPER))
+		affect_from_char(ch, SONG_SHADOW_PIPER);
+
 	// If ch is a charmie who has charmies?
 	// IE Charm person on a necro with pets.
 	if (GET_MASTER(ch))

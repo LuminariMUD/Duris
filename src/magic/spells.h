@@ -1100,12 +1100,11 @@
 #define SONG_STORMS (FIRST_SONG + 15)
 #define SONG_DISCORD (FIRST_SONG + 16)
 #define SONG_HARMONY (FIRST_SONG + 17)
-#define SONG_SNATCHING (FIRST_SONG + 18)
+#define SONG_SHADOW_PIPER (FIRST_SONG + 18)
 #define SONG_DISSONANCE (FIRST_SONG + 19)
 #define SONG_DRIFTING (FIRST_SONG + 20)
-// Currently 19 instead of 21 (first+20 more), because SNATCHING and MINDSHIELD ?!?
-//   These two songs are not included in the songs[] array in bard.c, nor do they seem implemented.
-#define NUM_SONGS 19
+// The unused Mindshield slot stays reserved; poison IDs below must not move.
+#define NUM_SONGS 20
 #define LAST_SONG (SONG_DRIFTING)
 
 #define FIRST_POISON (LAST_SONG + 1)

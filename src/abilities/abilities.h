@@ -881,6 +881,7 @@ std::string song_harming_facts(char_data *ch);
 std::string song_harmony_facts(char_data *ch);
 std::string song_healing_facts(char_data *ch);
 std::string song_heroism_facts(char_data *ch);
+std::string song_shadow_piper_facts(char_data *ch);
 std::string song_peace_facts(char_data *ch);
 std::string song_revelation_facts(char_data *ch);
 std::string song_storms_facts(char_data *ch);

@@ -1709,6 +1709,8 @@ AbilityFacts ability_facts(int skill)
 		return song_healing_facts;
 	case SONG_HEROISM:
 		return song_heroism_facts;
+	case SONG_SHADOW_PIPER:
+		return song_shadow_piper_facts;
 	case SONG_PEACE:
 		return song_peace_facts;
 	case SONG_REVELATION:

@@ -8965,6 +8965,8 @@ void set_fighting(P_char ch, P_char vict)
 	if (IS_AFFECTED(ch, AFF_SLEEP))
 		REMOVE_BIT(ch->specials.affected_by, AFF_SLEEP);
 
+	if (affected_by_spell(ch, SONG_SHADOW_PIPER))
+		affect_from_char(ch, SONG_SHADOW_PIPER);
 	if (IS_AFFECTED(ch, AFF_SNEAK))
 	{
 		if (affected_by_spell(ch, SKILL_SNEAK))

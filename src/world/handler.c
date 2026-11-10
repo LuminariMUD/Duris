@@ -1495,6 +1495,7 @@ bool char_to_room(P_char ch, int room, int dir, bool ordinary_movement)
 	was_in_arena = IS_ROOM(was_in, ROOM_ARENA) != 0;
 
 	ch->in_room = room;
+	check_shadow_piper_rooms(ch, ordinary_movement);
 
 	// Ordinary movement keeps its existing departure/arrival link check. Every
 	// other relocation ends Essence, even if both partners travel together.

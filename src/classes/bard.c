@@ -84,6 +84,7 @@ void bard_forgetfulness(int, P_char, P_char, int);
 void bard_peace(int, P_char, P_char, int);
 void bard_calm(int, P_char, P_char, int);
 void bard_heroism(int, P_char, P_char, int);
+void bard_shadow_piper(int, P_char, P_char, int);
 void bard_cowardice(int, P_char, P_char, int);
 void bard_chaos(int, P_char, P_char, int);
 void bard_storms(int, P_char, P_char, int);
@@ -95,10 +96,7 @@ void bard_harmony(int, P_char, P_char, int);
 void bard_drifting(int, P_char, P_char, int);
 void bard_dissonance(int, P_char, P_char, int);
 
-/* These two songs are missing from the list of songs and I have no idea what they do:
- *   SONG_MINDSHIELD
- *   SONG_SNATCHING
- */
+// SONG_MINDSHIELD is reserved for the Minstrel defensive song.
 struct song_description
 {
 	const char *name;
@@ -127,6 +125,7 @@ struct song_description
 	  { "peace", bard_peace, INSTRUMENT_HARP, SONG_PEACE, 0 },
 	  { "protection", bard_protection, INSTRUMENT_HORN, SONG_PROTECTION, SONG_ALLIES },
 	  { "revelation", bard_revelation, INSTRUMENT_MANDOLIN, SONG_REVELATION, SONG_ALLIES },
+	  { "shadow piper", bard_shadow_piper, INSTRUMENT_FLUTE, SONG_SHADOW_PIPER, SONG_ALLIES },
 	  { "sleep", bard_sleep, INSTRUMENT_FLUTE, SONG_SLEEP, SONG_AGGRESSIVE },
 	  { "storms", bard_storms, INSTRUMENT_DRUMS, SONG_STORMS, SONG_AGGRESSIVE },
 	  {} };
@@ -1640,15 +1639,62 @@ void bard_protection(int l, P_char ch, P_char victim, int song)
 	}
 }
 
+// Ordinary walks place the singer before moving followers; check outgoing links afterwards.
+void check_shadow_piper_rooms(P_char ch, bool followers_may_move)
+{
+	for (auto *link = ch->linking, *next = link; link; link = next)
+	{
+		next = link->next_linking;
+		if (link->type == LNK_SONG && link->affect &&
+		    link->affect->type == SONG_SHADOW_PIPER && link->linked->in_room != ch->in_room)
+			affect_remove(ch, link->affect);
+	}
+	if (followers_may_move)
+		return;
+	for (auto *link = ch->linked, *next = link; link; link = next)
+	{
+		next = link->next_linked;
+		if (link->type == LNK_SONG && link->affect &&
+		    link->affect->type == SONG_SHADOW_PIPER &&
+		    link->linking->in_room != ch->in_room)
+			affect_remove(link->linking, link->affect);
+	}
+}
+
+std::string song_shadow_piper_facts(P_char ch)
+{
+	return "  A level 56 player Scoundrel gives Sneak to players in the same group\n"
+	       "  who follow the singer in the room. The singer and pets receive no Sneak.\n"
+	       "  It ends on combat, leaving the group or room, stopping following,\n"
+	       "  or stopping/changing the song. It cannot give Sneak during combat.\n" +
+	       song_common_facts(ch, SONG_SHADOW_PIPER);
+}
+
+void bard_shadow_piper(int /*level*/, P_char ch, P_char victim, int song)
+{
+	if (!player_bard(ch, SPEC_SCOUNDREL, 56) || !IS_PC(victim) || victim->following != ch ||
+	    !grouped(ch, victim) || IS_FIGHTING(victim) || affected_by_spell(victim, song))
+		return;
+
+	struct affected_type af
+	{
+	};
+	af.type = song;
+	af.duration = -1; // The song link owns the lifetime.
+	af.bitvector = AFF_SNEAK;
+	linked_affect_to_char(victim, &af, ch, LNK_SONG);
+	send_to_char("You follow the shadow piper's tune with silent steps.\r\n", victim);
+}
+
 // The singer level that adds haste.
 static int song_heroism_haste_level()
 {
 	return 21;
 }
 
-static int song_heroism_pulse()
+static int song_heroism_pulse(P_char ch)
 {
-	return -1;
+	return player_bard(ch, SPEC_SCOUNDREL, 56) ? -2 : -1;
 }
 
 // The singer's level-scaled pulses, independent of listener order.
@@ -1666,7 +1712,7 @@ std::string song_heroism_facts(P_char ch)
 {
 	const int level = GET_LEVEL(ch);
 	const int empower = GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG) + (IS_NPC(ch) ? 100 : 0);
-	return fact("Combat pulse and spell pulse", std::to_string(song_heroism_pulse())) +
+	return fact("Combat pulse and spell pulse", std::to_string(song_heroism_pulse(ch))) +
 	       fact("Yours instead", std::to_string(song_heroism_singer_pulse(level)) +
 					     " at song level " + std::to_string(level)) +
 	       fact("Hitroll and damroll for you and listeners",
@@ -1695,7 +1741,8 @@ void bard_heroism(int l, P_char ch, P_char victim, int /*song*/)
 		};
 		af.type = SONG_HEROISM;
 		af.location = APPLY_COMBAT_PULSE;
-		af.modifier = recipient == ch ? song_heroism_singer_pulse(l) : song_heroism_pulse();
+		af.modifier = recipient == ch ? song_heroism_singer_pulse(l) :
+						song_heroism_pulse(ch);
 		linked_affect_to_char(recipient, &af, ch, LNK_SONG);
 		af.location = APPLY_SPELL_PULSE;
 		linked_affect_to_char(recipient, &af, ch, LNK_SONG);
@@ -2339,6 +2386,8 @@ static struct song_text songwords[] = {
 	  "$n plays a song to lift $s spirit off the ground." },
 	{ SONG_PROTECTION, "You sing a song to protect you from the world.",
 	  "$n sings a song to protect $m from the world." },
+	{ SONG_SHADOW_PIPER, "You play a shadowy tune, guiding silent footsteps.",
+	  "$n plays a shadowy tune that guides silent footsteps." },
 	{ SONG_HEROISM, "You sing a song that makes your heart swell with pride.",
 	  "$n sings a song to make your heart swell with pride." },
 	{ SONG_COWARDICE, "You sing an absolutely terrifying song. It even makes you afraid.",
@@ -2698,7 +2747,10 @@ void event_bardsong(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 		{
 			act("&+BYou finish your song.", FALSE, ch, 0, 0, TO_CHAR);
 			act("&+B$n finishes $s song.", FALSE, ch, 0, 0, TO_ROOM);
-			affect_remove(ch, af);
+			if (song == SONG_SHADOW_PIPER)
+				stop_singing(ch);
+			else
+				affect_remove(ch, af);
 			return;
 		}
 	}
