@@ -251,7 +251,7 @@ int main()
         assert(item_creation_grant_blocks_commands(&f.actor));
         for (int i = 0; i < 3; ++i) item_movement_transaction_handle_completions(nullptr, 0);
         assert(submitted.empty());
-        assert(player_revision_record_written(42, baseline));
+        assert(player_revision_record_written(42, baseline, PLAYER_COMPONENT_STATUS));
         item_movement_transaction_handle_completions(nullptr, 0);
         assert(submitted.size() == 1 && item_creation_grant_blocks_commands(&f.actor));
         deliver(next_completion(critical_apply_outcome::applied));
