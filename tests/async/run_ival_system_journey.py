@@ -4,6 +4,7 @@
 Run through with_disposable_mariadb.sh. Never reads .env or uses a running game.
 """
 import argparse
+from collections import Counter
 import hashlib
 import json
 import os
@@ -20,6 +21,7 @@ from test_flight_network_journey import command
 from run_world_quest_dual_backend import setup_run_root
 from run_item_pilot_journey import object_records
 from test_mariadb_locker_journey import reenter_locker
+from named_set_gameplay import enable_items, selector
 
 ROOT = Path(__file__).resolve().parents[2]
 OWNER, OWNER_ACCOUNT = "Ivalmortal", "Ivalowner"
@@ -29,6 +31,9 @@ IDS = dict(fourth=131990, duplicate=131991, glove=131992, bank5=131993,
            essence=131994, superior=131995, tier=131996, native=23808)
 LABELS = {name: "iv" + name for name in IDS if name != "tier"}
 RANDOM_VNUMS = (1252, 1253, 1254)
+ECON_IDS = dict(craft=131997, forge=131998, quest=131999)
+SALVAGE_CASES = tuple(zip(range(131980, 131988), (5, 6, 10, 11, 15, 16, 20, 21)))
+BAGS = (400217, 400235, 400233)
 FIELDS = ("vnum", "item_type", "wear_flags", "extra_flags", "extra2_flags",
           "anti_flags", "anti2_flags", "craftsmanship", "item_material",
           *("value" + str(i) for i in range(8)),
@@ -64,6 +69,8 @@ def fixtures(root):
         (root / f"areas/tworld.{kind}").rename(root / f"areas/world.{kind}")
     source = object_records((root / "areas/world.obj").read_text(encoding="latin1"))
     assert all(vnum not in source for name, vnum in IDS.items() if name != "native")
+    assert all(vnum not in source for vnum in ECON_IDS.values())
+    assert all(vnum not in source for vnum, _ in SALVAGE_CASES)
     source[IDS["fourth"]] = record(IDS["fourth"], LABELS["fourth"], ((0, 0), (0, 0), (18, 0), (1, 6)))
     source[IDS["duplicate"]] = record(IDS["duplicate"], LABELS["duplicate"], ((1, 3), (1, 3)))
     source[IDS["glove"]] = record(IDS["glove"], LABELS["glove"], item_type=9, wear=129,
@@ -73,6 +80,15 @@ def fixtures(root):
     source[IDS["superior"]] = record(IDS["superior"], LABELS["superior"], ((1, 2), (4, 2)), wear=9)
     source[IDS["tier"]] = record(IDS["tier"], "ivtier", ((1, 3), (4, 3)), wear=9)
     source[IDS["native"]] = record(IDS["native"], LABELS["native"], ((13, 10),))
+    source[ECON_IDS["craft"]] = record(ECON_IDS["craft"], "iveconcraft", ((1, 2), (4, 2)))
+    source[ECON_IDS["forge"]] = record(ECON_IDS["forge"], "iveconforge", ((13, 10),), bank5=2048)
+    source[ECON_IDS["quest"]] = record(ECON_IDS["quest"], "iveconquest", ((1, 2),), extra2=32768)
+    for vnum, score in SALVAGE_CASES:
+        source[vnum] = record(vnum, f"ivsalvage{score}", ((14, score),))
+    for vnum in BAGS:
+        entry = source[vnum]
+        start = entry.index("\n") + 1
+        source[vnum] = entry[:start] + f"ivbag{vnum}~" + entry[entry.index("~", start) + 1:]
     (root / "areas/world.obj").write_text("".join(source[key] for key in sorted(source)) + "$~\n", encoding="latin1")
     # Real mortal logout uses rent at an inn; quit routes to outdoor camping.
     world = root / "areas/world.wld"
@@ -85,7 +101,7 @@ def fixtures(root):
 
 
 def run(binary, destination):
-    evidence = {"backend": "MariaDB", "complete": False,
+    evidence = {"backend": "MariaDB", "scope": "item commands and eight-class persistence bundle", "complete": False,
                 "valuation_bundle_complete": False, "economic_journeys_complete": False, "checks": [],
                 "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
                 "formula_revision": "ival-v8-proc-semantics"}
@@ -173,7 +189,7 @@ def run(binary, destination):
                             result[label] = int(found[1])
                             break
                     else:
-                        raise AssertionError("lore did not return value for " + label + ": " + text[-1200:])
+                        raise AssertionError(f"lore did not return value for {label} ({keyword!r}): " + text[-1200:])
                 return result
 
             def state(table="player_items"):
@@ -203,14 +219,33 @@ def run(binary, destination):
 
             def act(text, expected):
                 client = clients[OWNER]
+                start = len(client.transcript)
                 client.send(text)
-                client.expect(expected, timeout=60)
+                try:
+                    client.expect(expected, timeout=60)
+                except AssertionError:
+                    output = re.sub(rb"\xff\xfa.*?\xff\xf0", b"", bytes(client.transcript[start:]), flags=re.S)
+                    raise AssertionError(text + ": " + output.decode(errors="replace")[-3500:]) from None
                 command(client, "score")
 
             def purse():
                 save()
                 row = sql(f"SELECT copper+10*silver+100*gold+1000*platinum FROM player_data WHERE name='{OWNER}'")
                 return int(row)
+
+            def economy_state():
+                save()
+                money, experience = map(int, sql(
+                    "SELECT copper+10*silver+100*gold+1000*platinum,exp FROM player_data "
+                    f"WHERE name='{OWNER}'").split("\t"))
+                rows = sql("SELECT i.obj_uid,i.vnum FROM player_items i JOIN player_data p ON p.pid=i.pid "
+                           f"WHERE p.name='{OWNER}' ORDER BY i.obj_uid")
+                return money, experience, dict(tuple(map(int, row.split("\t"))) for row in rows.splitlines())
+
+            def stock(vnum, keyword):
+                assert "You have created" in command(clients[STAFF], f"load obj {vnum}")
+                reply = command(clients[STAFF], f"give {keyword} {OWNER}")
+                assert "You give" in reply or "Ok." in reply, reply
 
             def wait_for_state(table, expected):
                 deadline = time.monotonic() + 60
@@ -250,7 +285,8 @@ def run(binary, destination):
                 command(actor, "drop all")
                 for name in LABELS:
                     assert "You have created" in command(actor, "load obj " + str(IDS[name]))
-                for vnum, count in ((400015, 6), (400019, 8), (400254, 1)):
+                for vnum, count in ((400015, 11), (400019, 16), (400254, 1),
+                                    (400224, 1), (400223, 2), (400211, 1), (400144, 23), (BAGS[0], 1)):
                     for _ in range(count):
                         assert "You have created" in command(actor, "load obj " + str(vnum))
                 generated = command(actor, "randobj eq any 20 1")
@@ -264,13 +300,89 @@ def run(binary, destination):
                 labels = {**LABELS, "generated": generated_name}
                 quit_owner("quit")
                 stop()
-                sql(f"UPDATE player_data SET level=37,highest_level=37,m_class=524288,spec=0,base_str=150,base_dex=150 "
-                    f"WHERE name='{OWNER}'; INSERT INTO player_skills(pid,skill_id,learned,taught) "
-                    f"SELECT pid,1074,100,100 FROM player_data WHERE name='{OWNER}' "
-                    "ON DUPLICATE KEY UPDATE learned=100,taught=100")
+                sql(f"UPDATE player_data SET level=37,highest_level=37,m_class=524288,spec=0,base_str=150,base_dex=150,base_luk=150 "
+                    f"WHERE name='{OWNER}'")
+                for skill in (1074, 1132, 1134, 1297):
+                    sql(f"INSERT INTO player_skills(pid,skill_id,learned,taught) "
+                        f"SELECT pid,{skill},100,100 FROM player_data WHERE name='{OWNER}' "
+                        "ON DUPLICATE KEY UPDATE learned=100,taught=100")
+                book = root / "Players/Tradeskills/i/ivalmortal.crafting"
+                book.parent.mkdir(parents=True, exist_ok=True)
+                book.write_text("131997\n131998\n99432\n131997\n131999\n999999999\n")
                 boot()
                 login(STAFF, STAFF_ACCOUNT)
                 login(OWNER, OWNER_ACCOUNT)
+                recipe_query = ("SELECT recipe_vnum FROM player_recipes r JOIN player_data p ON p.pid=r.pid "
+                                f"WHERE p.name='{OWNER}' ORDER BY recipe_vnum")
+                assert not sql(recipe_query)
+                forge_book = command(clients[OWNER], "forge")
+                for vnum in (99432, ECON_IDS["craft"], ECON_IDS["forge"]):
+                    assert str(vnum) in forge_book, ("Forge-first import omitted recipe", vnum, forge_book)
+                assert "131999" not in forge_book and "999999999" not in forge_book
+                save()
+                assert sql(recipe_query).splitlines() == ["99432", "131997", "131998"]
+                craft_book = command(clients[OWNER], "craft")
+                assert all(str(vnum) in craft_book for vnum in (99432, 131997, 131998))
+                assert "131999" not in craft_book and "999999999" not in craft_book
+                book.write_text("131996\n")
+                for mode in ("forge", "craft"):
+                    assert "131996" not in command(clients[OWNER], mode), "legacy file overrode SQL recipes"
+                check("Forge-first legacy recipe import matches Craft, filters unavailable targets and deduplicates SQL")
+
+                before = economy_state()
+                reply = command(clients[OWNER], f"open ivbag{BAGS[0]}")
+                assert "too many items" in reply, reply
+                assert economy_state() == before, "rejected bag opening consumed an item, coin or XP"
+
+                command(clients[STAFF], f"setbit char {OWNER} level 36")
+                before = economy_state()
+                for mode in ("forge", "craft"):
+                    reply = command(clients[OWNER], f"{mode} make 99432")
+                    assert f"You need level 37 to {mode} this recipe (you are level 36)." in reply, reply
+                    assert economy_state() == before, "level rejection consumed inputs, currency or XP"
+                    reply = command(clients[OWNER], f"{mode} make 999999999")
+                    assert "recipe" in reply and "your list" in reply, reply
+                    assert economy_state() == before, "unknown recipe consumed inputs, currency or XP"
+                command(clients[STAFF], f"setbit char {OWNER} level 37")
+                check("Craft/Forge reject the newly eligible 111-value recipe at level 36 and preserve all inputs")
+
+                bundle_before = state()
+                transactions = []
+                for mode, vnum, keyword, score, high, low, material, tool, magical in (
+                    ("craft", ECON_IDS["craft"], "iveconcraft", 8, 2, 2, 400015, 400224, False),
+                    ("forge", ECON_IDS["forge"], "iveconforge", 29, 6, 3, 400015, 400223, True),
+                    ("forge", 99432, "claymore", 111, 23, 0, 400140, 400223, False),
+                ):
+                    preview = command(clients[OWNER], f"{mode} info {vnum}")
+                    line = next(line for line in preview.splitlines() if line.startswith(f"To {mode} this item"))
+                    counts = list(map(int, re.findall(r"(\d+) of", line)))
+                    assert counts == ([high, low] if low else [high]), preview
+                    assert ("magical essence" in preview) == magical, preview
+                    before = economy_state()
+                    status = command(clients[OWNER], "score")
+                    rested = 2 if "well-rested bonus" in status else 1.5 if "rested bonus" in status else 1
+                    reply = command(clients[OWNER], f"{mode} make {vnum}", timeout=60)
+                    assert "admiring your new" in reply, reply
+                    after = economy_state()
+                    consumed = Counter(before[2][uid] for uid in before[2].keys() - after[2].keys())
+                    expected = Counter({material + 4: high, tool: 1})
+                    if low:
+                        expected[material] = low
+                    if magical:
+                        expected[400211] = 1
+                    assert consumed == expected, (mode, consumed, expected)
+                    created = after[2].keys() - before[2].keys()
+                    assert len(created) == 1 and after[2][next(iter(created))] == vnum, (mode, created)
+                    assert after[0] == before[0], "Craft/Forge unexpectedly charged currency"
+                    assert after[1] - before[1] == int(score * 1000 * rested), (mode, before, after, rested)
+                    assert scores({mode: keyword})[mode] == score
+                    transactions.append(dict(mode=mode, vnum=vnum, score=score,
+                                             consumed=dict(consumed), nominal_xp=score * 1000,
+                                             rested_multiplier=rested, credited_xp=after[1] - before[1], copper=0))
+                    act("drop " + keyword, "You drop")
+                assert state() == bundle_before, "economic commands changed an unrelated bundle item"
+                evidence["craft_forge_transactions"] = transactions
+                check("Craft/Forge previews match exact material/tool/essence debits, delivered scores and credited XP")
                 original = scores({"essence": LABELS["essence"], "superior": LABELS["superior"]})
                 before = purse()
                 act("enhance ivessence essence", "Your enhancement is a success!")
@@ -281,6 +393,77 @@ def run(binary, destination):
                 # Loading as staff bypassed mortal carry limits. Keep only the
                 # eight-item bundle for the later real locker/corpse retrievals.
                 act("drop all.salvaged", "You drop")
+
+                bag_results = []
+                bundle_before = state()
+                enable_items(clients[OWNER])
+                for index, bag in enumerate(BAGS):
+                    if index:
+                        stock(bag, f"ivbag{bag}")
+                    before = economy_state()
+                    reply = command(clients[OWNER], f"open ivbag{bag}")
+                    assert "all that remains" in reply, reply
+                    after = economy_state()
+                    assert before[:2] == after[:2], "bag reward changed money or XP"
+                    consumed = Counter(before[2][uid] for uid in before[2].keys() - after[2].keys())
+                    created = after[2].keys() - before[2].keys()
+                    assert consumed == Counter({bag: 1}) and len(created) == 1, (consumed, created)
+                    uid = next(iter(created))
+                    # Open as a mortal, then inspect the exact result as staff;
+                    # eligible rewards can carry NOIDENTIFY or awkward keywords.
+                    command(clients[STAFF], f"setbit char {OWNER} level 62")
+                    keyword = selector(clients[OWNER], uid)
+                    score = scores({"reward": keyword})["reward"]
+                    command(clients[STAFF], f"setbit char {OWNER} level 37")
+                    assert (1 <= score <= 125) if index == 0 else score >= (25 if index == 1 else 50)
+                    bag_results.append(dict(bag=bag, reward=after[2][uid], score=score))
+                    evidence["bag_rewards"] = bag_results
+                    keyword = selector(clients[OWNER], uid)
+                    act("drop " + keyword, "You drop")
+                    assert state() == bundle_before, "bag opening changed an unrelated item"
+                check("real faerie-bag commands enforce 125/25/50 cohorts; inventory rejection preserves all inputs")
+
+                salvage_results = []
+                for vnum, score in SALVAGE_CASES:
+                    failures = 0
+                    for attempt in range(100 if score == 5 else 1):
+                        if 400227 not in economy_state()[2].values():
+                            stock(400227, "brilliant")
+                        stock(vnum, f"ivsalvage{score}")
+                        assert scores({"source": f"ivsalvage{score}"})["source"] == score
+                        assessment = command(clients[OWNER], f"examine ivsalvage{score}")
+                        assert "can be broken down for salvage materials" in assessment, assessment
+                        before = economy_state()
+                        reply = command(clients[OWNER], f"salvage ivsalvage{score}")
+                        after = economy_state()
+                        assert before[:2] == after[:2], "salvage changed money or XP"
+                        consumed = Counter(before[2][uid] for uid in before[2].keys() - after[2].keys())
+                        created = Counter(after[2][uid] for uid in after[2].keys() - before[2].keys())
+                        if "unusable bits" in reply:
+                            # The existing cheap-item fragility roll intentionally
+                            # consumes the source, while keeping unused tools.
+                            assert score == 5 and consumed == Counter({vnum: 1}) and not created
+                            failures += 1
+                            continue
+                        expected_material = 400015 + sum(score > edge for edge in (5, 10, 15, 20))
+                        assert consumed == Counter({vnum: 1, 400227: 1}), (reply, consumed)
+                        assert created[expected_material] in (1, 2), (score, created)
+                        assert set(created) <= {expected_material, 400210, 400211}, created
+                        assert created[400210] <= 1 and created[400211] <= 1
+                        salvage_results.append(dict(source=vnum, score=score, material=expected_material,
+                                                    outputs=dict(created), cheap_item_breakages=failures))
+                        act("drop all.salvaged", "You drop")
+                        assert state() == bundle_before, "salvage changed an unrelated bundle item"
+                        break
+                    else:
+                        raise AssertionError("cheap-item fragility prevented all 100 material recoveries")
+                evidence["salvage_boundaries"] = salvage_results
+                # Recipes and rare essences may be additional legitimate outputs.
+                # Remove only those outputs before the fixed eight-item lifecycle.
+                command(clients[OWNER], "drop all.recipe")
+                command(clients[OWNER], "drop all.magical")
+                evidence["economic_journeys_complete"] = True
+                check("real salvage commands preserve 5/10/15/20 material boundaries and account for deliberate breakage")
                 baseline = scores(labels)
                 assert {name: baseline[name] for name in ("fourth", "duplicate", "bank5", "native")} == {
                     "fourth": 25, "duplicate": 25, "bank5": 29, "native": 154}
@@ -346,8 +529,8 @@ def run(binary, destination):
                 save()
                 assert state() == inputs
                 evidence["valuation_bundle_complete"] = True
+                evidence["complete"] = True
                 check("same bundle preserves all inputs/scores through real death, corpse restart and recovery")
-                # Craft/forge/salvage/reward command phases still extend this same run.
                 stop()
             except BaseException:
                 target = ROOT / "bin/qualification/ival-failure"
@@ -364,11 +547,48 @@ def run(binary, destination):
                     process.wait(timeout=90)
 
 
+def run_quest_rewards(binary, destination):
+    """Reuse the focused quest journey with shipped catalogs and POSIX journals."""
+    import run_world_quest_dual_backend as quest
+
+    with tempfile.TemporaryDirectory(prefix="ival-quest-source-") as temporary:
+        root = Path(temporary)
+        for entry in ROOT.iterdir():
+            if entry.is_dir() and entry.name not in ("areas", "bin", ".git"):
+                (root / entry.name).symlink_to(entry, target_is_directory=True)
+        (root / "areas").symlink_to(ROOT / "areas", target_is_directory=True)
+        (root / "bin/tests").mkdir(parents=True)
+        fixtures(root)
+        # Replace item-specific fixtures with the unchanged shipped catalogs.
+        for kind in ("obj", "wld"):
+            assembled = subprocess.run([str(ROOT / f"bin/areas/tools/make_{kind}")],
+                                       cwd=root / "areas", capture_output=True)
+            assert assembled.returncode == 0, assembled.stderr[-1500:]
+            (root / f"areas/tworld.{kind}").replace(root / f"areas/world.{kind}")
+        context = {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+                   for path in (root / "areas").glob("world.*") if path.suffix != ".weather"}
+        quest.ROOT = root
+        quest.BINARY_OVERRIDE = str(binary)
+        quest.JOURNEY = "rewards"
+        quest.REWARD_CASES = ((11, 2, 0, 0), (30, 1, 9, 0), (31, 1, 9, 1))
+        result = quest.run_backend("mariadb", root / "bin/tests/build")
+        result.update(scope="quest reward commands and restart", complete=True,
+                      world_sha256=context, formula_revision="ival-v8-proc-semantics")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(json.dumps(result, indent=2) + "\n")
+        print(f"PASS real MariaDB quest rewards and restart: {len(result['gameplay'])} cases", flush=True)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--server", type=Path, default=ROOT / "bin/server/dms_new")
-    parser.add_argument("--evidence", type=Path,
-                        default=ROOT / "bin/qualification/ival-system/journey.json")
+    parser.add_argument("--evidence", type=Path)
+    parser.add_argument("--quest-rewards", action="store_true")
     args = parser.parse_args()
-    assert os.getenv("TEST_DB_HOST"), "run with with_disposable_mariadb.sh"
-    run(args.server.resolve(), args.evidence.resolve())
+    destination = args.evidence or ROOT / "bin/qualification/ival-system" / (
+        "quest-rewards.json" if args.quest_rewards else "journey.json")
+    if args.quest_rewards:
+        run_quest_rewards(args.server.resolve(), destination.resolve())
+    else:
+        assert os.getenv("TEST_DB_HOST"), "run with with_disposable_mariadb.sh"
+        run(args.server.resolve(), destination.resolve())

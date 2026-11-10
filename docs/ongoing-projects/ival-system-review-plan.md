@@ -2,7 +2,8 @@
 
 Replanned 2026-11-10 at the user's request: finish the agreed ival outcome with
 direct implementation, bounded verification, and no continuing hardening detours.
-Implementation is **incomplete**. This file is the active work queue; the original
+Implementation and qualification are **complete**, ready for review in the linked
+stacked PRs. This file is the delivery and verification reference; the original
 review, source evidence, and 22 chunk records are preserved in
 [review history](ival-system-review-history.md). Its old queues are superseded.
 
@@ -10,8 +11,8 @@ review, source evidence, and 22 chunk records are preserved in
 
 One consistent, explainable, numerically safe valuation for authored and generated
 items, shared by server/editor/report, with correct economic consumers and proven
-preservation of valuation inputs through **MariaDB** persistence. Finish the
-remaining proc semantics, diagnostics, inspection/index work, and real journeys.
+preservation of valuation inputs through **MariaDB** persistence. Proc semantics,
+diagnostics, inspection/index work and the real journeys below are qualified.
 New balance coefficients remain separate reviewed policy work. Deployment is a
 separate authorized operation. Flat-file server persistence is unsupported.
 
@@ -22,8 +23,8 @@ separate authorized operation. Flat-file server persistence is unsupported.
 - F01–F04 circle, packed-average, apply-order, zero and duplicate repairs;
   F08 numeric/config/property bounds and unavailable-score admission; F14 shared
   material quantities and checked XP; F15 dead reset/recovery work removal.
-- Published implementation through [#982](https://github.com/LuminariMUD/Duris/pull/982),
-  commit `3253eddfa`. Publication does not mean every PR has merged.
+- Published implementation through [#989](https://github.com/LuminariMUD/Duris/pull/989),
+  stacked on #987/#982/#981/#978. Publication does not mean every PR has merged.
 - Native evidence: 19,334 effective templates; 8,720 seeded generated items in
   formula-delta runs; 2,649 unchanged shipped property values. Results apply to
   their recorded revisions, not automatically to future changes. Durable results
@@ -88,8 +89,8 @@ and read-only evaluation pass. Evidence: [f09-procs](ival-evidence/f09-procs/).
 Item **99432: 338 → 111**; minimum level 113 → 37, recipe admission 0 → 1,
 high/low units 68/2 → 23/0, XP 338000 → 111000, nominal superior fee 34800 → 12100
 copper. It crosses the faerie-bag 125 ceiling; zone 994 unit-fit quest weights fall
-about 9.85–10.74%, without quest-floor/count changes. D must exercise this newly
-eligible authored item in its shared command/persistence fixture bundle.
+about 9.85–10.74%, without quest-floor/count changes. D actually forges this newly
+eligible item at level 37 and verifies rejection at level 36.
 
 **Files:** existing `src/item/item_value*`, the proc chain in
 `src/economy/tradeskill.c`, relevant packed/native dispatch, existing staff/report
@@ -177,7 +178,7 @@ publication. Use the existing lifecycle path, not a general invalidation system.
 
 ## D — qualify and hand off the integrated result (F07/F08/F14/F16)
 
-**In progress:** `branch/ival-qualification`, based on #982. Startup fix `f3ef35689`
+**Complete:** qualification spans #987 and #989. Startup fix `f3ef35689`
 is review-ready in [PR #987](https://github.com/LuminariMUD/Duris/pull/987) (bug label).
 The existing disposable
 MariaDB item-instance journey exposed minimal/no-specials enhancement admission
@@ -202,9 +203,64 @@ The run uses an isolated full world under POSIX `/tmp` and a fresh loopback Mari
 10.11 schema; its private bank is also an inn for actual mortal rental. Fixture
 corrections use real rental, door-opening and carry limits rather than changing
 the server to accommodate the test. Python compilation and the real journey pass.
-Overall D is still **incomplete**: Craft/Forge recipe-provider and economic-command
-boundaries, salvage/reward journeys and the final corpus report remain open. The
-evidence explicitly keeps `complete=false` and `economic_journeys_complete=false`.
+**Craft/Forge qualified:** `bca0024f2`,
+[PR #989](https://github.com/LuminariMUD/Duris/pull/989) (bug label),
+`branch/ival-economic-qualification`, stacked on #987.
+The real Forge-first migration-file test failed with "You dont know any recipes
+yet" because Forge bypassed the existing shared provider. Its only server change
+is to call `crafting_get_player_recipes`, matching Craft's SQL-first import,
+deduplication and eligibility policy. The same run now passes; invalid/quest
+targets stay out, and a later migration-file edit cannot override SQL ownership.
+Both commands reject #99432 at level 36 without changing any item, coin or XP.
+At level 37 it is actually forged at value 111, consuming exactly 23 high silver
+and one flux. The two other successful transactions cover value-8 Craft and a
+value-29 B5 magical Forge, including tool/essence consumption. Previews, delivered
+scores and XP match; nominal XP 8000/29000/111000 becomes 16000/58000/222000 with
+the observed well-rested multiplier of 2. Currency is unchanged. The full eight-item
+lifecycle bundle also passes after these commands. Evidence:
+[craft-forge.json](ival-evidence/f16-mariadb/craft-forge.json). Server build,
+recipe-provider contract, Python compilation and real MariaDB journey pass.
+
+**Final corpus/report passed:** [f16-integration](ival-evidence/f16-integration/),
+against the same `c0b82df5e` pre-semantics baseline as B. All 19,334 effective
+templates and 8,720 generated samples retain constructor/template/CLI parity;
+only #99432 changes (338 → 111), with no generated deltas. Report provenance,
+read-only evaluation and missing/invalid-context failure status pass. The measured
+salvage 5/10/15/20 and quest-floor crossings remain zero; the one recipe admission
+and regular-bag 125 crossing and zone-weight effects match B's recorded cohort.
+Nominal composition remains separate from scaled costs and economic scarcity.
+
+**Quest reward journey passed:** the existing focused MariaDB reward scenario
+passes level-11 ASK, level-30 KILL and level-31 KILL with a bonus root (1/1/2 items),
+including completion state and reward UID preservation after restart. It uses
+seven real boots and a fresh schema without requiring any `quest_zone=1` rows.
+The existing probe controls route, level, quota and bonus rolls for reproducibility;
+production valuation, reward execution, SQL authority and restart remain active.
+The private POSIX world's object/room hashes exactly match the final shipped-world
+report. Evidence: [quest-rewards.json](ival-evidence/f16-mariadb/quest-rewards.json).
+Reproduce with `python3 tests/async/run_ival_system_journey.py --quest-rewards`.
+
+**Final item commands and lifecycles passed:**
+[commands-and-lifecycles.json](ival-evidence/f16-mariadb/commands-and-lifecycles.json)
+records ten passed gates with `complete=true`. The same run covers all eight
+salvage values 5/6/10/11/15/16/20/21, recovering the expected material grades.
+Seven deliberate cheap-item breakages at value 5 consume only the source and
+retain unused tools before the successful recovery. Scientific-tool consumption,
+one/two material outputs and optional recipe/essence outputs are accounted for.
+Real regular/rare/exceptional bags deliver values 79/470/54 within their respective
+125/25/50 cohorts; overfull-inventory rejection preserves every item, coin and XP.
+Bag openings occur as a mortal; existing exact UID selectors and temporary staff
+Lore inspection handle arbitrary reward keywords/NOIDENTIFY, then restore level 37.
+After these commands, the same eight item classes preserve their fields, UIDs and
+scores through relog, restart, locker store/restart/retrieval and real death with
+corpse restart/recovery. Both final MariaDB evidence scopes use binary SHA-256
+`2dfe4f4cc8ca416cf20331c43a08d58ecccec6d997511927cf0aff6d871b714e`.
+
+The completion audit below has no remaining implementation gate. Earlier
+`preliminary.json`, `valuation-bundle.json` and `craft-forge.json` retain their
+historical partial-scope flags; the two completed evidence scopes above supersede
+those flags for final qualification. Unsupported weights and balance decisions
+remain the explicitly separate policy work described in this plan.
 
 **Start with the existing MariaDB journey setup.** Verify dev/staging identity and
 reuse its command/persistence harness. Extend fixtures and assertions only.
@@ -237,7 +293,7 @@ balance tuning and reimbursement are separate decisions.
 ## Requirement coverage and verification reuse
 
 - F01–F04: implemented; retain characterization and prior corpus evidence.
-- F05/F09: B. F06: implemented editor sharing plus B's remaining status/parity.
+- F05/F09: B. F06: shared editor arithmetic and B's qualified estimate/status parity.
 - F07: implemented offline context plus D's final report verification.
 - F08: implemented bounds/config/property fixes plus D's concrete command admission.
 - F10: A. F11: implemented shared owner/template adapter plus B's detailed breakdown.
@@ -250,25 +306,71 @@ Reuse `test_item_value_characterization.py`, `test_monk_glove_tools.py`,
 tests, and actual MariaDB journeys under `tests/async/`. Run only those affected
 by the batch. Codec/source-contract tests alone never prove a persistence journey.
 
+## Completion audit
+
+The current tree was checked against F01–F16, including their original acceptance
+criteria in the archived review. Every implementation gate below has retained proof.
+
+- **F01–F04:** `get_mincircle` and the shared numeric evaluator implement full
+  class/spec bounds, fractional packed means, canonical multiplier composition,
+  neutral zero modifiers and widened duplicate totals without rewriting slots.
+  Native sanitizer characterization and the per-slice reports in `f01`, `f02`,
+  `f03`, `f04-zero` and `f04-duplicates` retain every changed threshold cohort.
+- **F05/F09/F11:** the explicit proc policies, all-five-bank coverage and shared
+  evaluator/runtime adapter/header are byte-identical to qualified batch B
+  (`0f7e12253`, LF-normalized comparison). Its mapping/route/67-priced-bit fixtures
+  and reconciled staff/report breakdowns remain applicable. Utility overrides,
+  unclassified and unsupported inputs are explicit; unresolved aggregate native
+  strengths retain their declared incomplete status rather than new coefficients.
+- **F06:** editor arithmetic, view and search are also unchanged since B. Retained
+  common-input server/editor, four-slot, B5 I/O and actual search fixtures pass;
+  normal/debug maintained editor builds are recorded in the history. Missing
+  native/racial/specialization context remains an explicitly labeled estimate.
+- **F07/F14:** the final native/CLI report proves all 19,334 effective templates,
+  8,720 generated samples, configured provenance, read-only evaluation and failed
+  missing/invalid-context publication. Existing writer I/O failure qualification
+  is retained. Checked quantity fixtures cover fractional/large bounds; actual
+  Craft/Forge and superior commands verify quantities, coins and nominal versus
+  credited XP. Report identity composition remains nominal and unscaled.
+- **F08/F10:** sanitizer bounds/config/property fixtures, explicit unavailable
+  admission, and minimal-world startup qualification remain applicable. Real
+  level/recipe rejection conserves inventory, wallet and XP; essence cap rejection
+  conserves currency/materials after restart. The two real enhancement fees agree
+  with the configured copper contract; inert sections and undefined rows were removed.
+- **F12/F13/F15:** `f12-consumers` records normalized catalog/index parity, atomic
+  failure/tie/duplicate cases, zero inspection identities/RNG/events, scoped timings,
+  and one locker valuation per object. Native bag empty/read/delivery failures
+  preserve their source; reset/recovery tests preserve outcomes and RNG. The real
+  locker store/restart/retrieval bundle independently preserves inputs and scores.
+- **F16:** the complete eight-class lifecycle, Craft/Forge, all eight salvage
+  boundary cases and three faerie-bag cohorts pass in the same item fixture, with
+  rejected-operation conservation. The final corpus and three real quest reward/
+  restart cases also pass. Completed evidence is linked above; every changed
+  score/threshold cohort remains explained in its per-slice report.
+
+Reproduction on this NTFS worktree uses an LF-normalized copy of the existing
+disposable-DB wrapper under `bin/tests/ival-disposable-mariadb.sh`, followed by
+`python3 tests/async/run_ival_system_journey.py`. The separate `--quest-rewards`
+mode creates its own disposable MariaDB authority and private POSIX world. Neither
+mode reads checkout credentials or operates on a running game. Reuse the final
+corpus report after these test-only additions; no server/evaluator source changed.
+
 ## Handoff
 
 Local: `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
 Remote: `duris-staging:/home/staging/duris-worktrees/ival-system-improvements`.
-Current branch: `branch/ival-qualification` for D (#987), based on
-`branch/ival-consumers` for C (#982).
-Synchronize committed work to the remote worktree. A–C are implemented; D remains
-open. Read-only template views deliberately omit native runtime-state initialization;
+Current branch: `branch/ival-economic-qualification` for D (#989), based on
+`branch/ival-qualification` (#987), then `branch/ival-consumers` for C (#982).
+Both worktrees receive the committed final qualification. A–D are implemented and
+qualified for review. Read-only template views deliberately omit native runtime-state initialization;
 eligibility/score parity is qualified, rather than unrelated money/state slots.
 
 Current formula: `ival-v8-proc-semantics`. Archive/evidence links above preserve
 baseline revisions and earlier PRs. Read the relevant historical finding when
-needed; do not reload the entire archive or restart the audit. The next
-implementation action is D: extend the existing MariaDB fixture for Craft/Forge
-recipe import/provider and economic boundaries, then salvage/reward commands and
-the final integration report. Forge still calls SQL directly where Craft uses the
-SQL-first import/filter provider; exercise Forge first with a private legacy recipe
-book to settle that path. Reuse the passed lifecycle bundle and A–C qualification;
-rerun a passed gate only when a relevant change or failure justifies it.
+needed; the archived queues are superseded. No implementation acceptance gate
+remains. The next step is review of the published PR stack; merge and deployment
+are separate operations. Reuse the completed evidence unless a relevant source
+change or failure justifies another run.
 
 ### Operator and player notes
 
@@ -288,4 +390,5 @@ includes the corrected stored applies and executable proc policy; the newly elig
 Zarthos claymore (#99432) has value 111 and requires level 37 for its modern recipe.
 These are calculation fixes, with no new proc-strength coefficients. Staff/report
 breakdowns identify unsupported or incompletely classified effects rather than
-assigning them invented prices. Final economic journey qualification remains open.
+assigning them invented prices. Final economic and persistence qualification is
+recorded above; no deployment or balance-coefficient change was performed.

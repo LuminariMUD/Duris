@@ -1,0 +1,79 @@
+{
+  "backend": "MariaDB",
+  "complete": false,
+  "valuation_bundle_complete": true,
+  "economic_journeys_complete": false,
+  "checks": [
+    "Forge-first legacy recipe import matches Craft, filters unavailable targets and deduplicates SQL",
+    "Craft/Forge reject the newly eligible 111-value recipe at level 36 and preserve all inputs",
+    "Craft/Forge previews match exact material/tool/essence debits, delivered scores and credited XP",
+    "eight real item classes: indexed inputs and runtime lore values captured",
+    "full valuation bundle preserves inputs and scores through save/logout/login",
+    "full valuation bundle preserves inputs and scores through server restart",
+    "same bundle preserves all inputs/scores through locker store, restart and retrieval",
+    "same bundle preserves all inputs/scores through real death, corpse restart and recovery"
+  ],
+  "binary_sha256": "2dfe4f4cc8ca416cf20331c43a08d58ecccec6d997511927cf0aff6d871b714e",
+  "formula_revision": "ival-v8-proc-semantics",
+  "context_sha256": {
+    "areas/world.obj": "0b8ef6cabd3a151ef7a561273bdc320497ad4b479bee9c3fbbf3b71add3d9aca",
+    "areas/world.trg": "83ee73d82a513766a5c999d4455bea35de75e7f082db700f76fb12149c8405c2",
+    "areas/world.wld": "6857d3460b6327b635e6f59d880a29762a3a044a35827a40ee388fb8b4e35fcb",
+    "lib/duris.properties": "d7026a5c348bca13241b0674b35262d969b20ff0dceb1ca6b75d2daadb5175ac",
+    "lib/enhance.cfg": "9820b4d78b8cf782fedb8e2842aab373143aa8e61a837bb6de8ff63332675160",
+    "lib/crafting.cfg": "ab131f865b1fbf31460cef466faba224c4f51f0aad7595bef25b472f40b69a42",
+    "lib/random_equipment.cfg": "2e018f35ea3464a4fef20053e7d66c9a456bac46834a29fb6190a127713ce264",
+    "lib/kingdom.cfg": "ba7ad50ee68449c0e85500f21ae42de3551112bbadd841c9a7dfc8f2fe4f38e6",
+    "lib/item_abilities.json": "fc66b8b5348ff754022c95b90b2ceac9b766ab7451d5176212d18ed7e4ae9719"
+  },
+  "craft_forge_transactions": [
+    {
+      "mode": "craft",
+      "vnum": 131997,
+      "score": 8,
+      "consumed": {
+        "400019": 2,
+        "400224": 1,
+        "400015": 2
+      },
+      "nominal_xp": 8000,
+      "rested_multiplier": 2,
+      "credited_xp": 16000,
+      "copper": 0
+    },
+    {
+      "mode": "forge",
+      "vnum": 131998,
+      "score": 29,
+      "consumed": {
+        "400015": 3,
+        "400019": 6,
+        "400223": 1,
+        "400211": 1
+      },
+      "nominal_xp": 29000,
+      "rested_multiplier": 2,
+      "credited_xp": 58000,
+      "copper": 0
+    },
+    {
+      "mode": "forge",
+      "vnum": 99432,
+      "score": 111,
+      "consumed": {
+        "400144": 23,
+        "400223": 1
+      },
+      "nominal_xp": 111000,
+      "rested_multiplier": 2,
+      "credited_xp": 222000,
+      "copper": 0
+    }
+  ],
+  "source_parent_commit": "ca60958680e897a39ff7a08b6ac529fa9a3a8050",
+  "red_before_fix": "Forge-first returned: You dont know any recipes yet.",
+  "command": "bash bin/tests/ival-disposable-mariadb.sh python3 tests/async/run_ival_system_journey.py",
+  "changed_server_sources_sha256_lf": {
+    "src/economy/crafting.c": "6aee0ebffccec1d41062503cafdc7156836b81ee6202ad3e8738aced739bf179"
+  }
+}
