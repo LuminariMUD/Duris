@@ -265,8 +265,10 @@ The boot catalog uses surface continent identities and undirected authored
 map-to-map adjacency for Underdark components, ignoring travel conditions.
 Interior zones attach to the nearest authored zone boundary for each family
 separately, allowing nearby connector zones without flooding every connected
-interior. Multiple entrances in the same region agree; tied boundaries in
-different regions remain unresolved for that family. Surface and Underdark
+interior. Heavens (zone 0) is excluded from attachment boundaries and interior
+connections: its staff shortcuts must not make unrelated areas local. Multiple
+entrances in the same region agree; tied boundaries in different regions remain
+unresolved for that family. Surface and Underdark
 attachments do not conflict. Interiors cannot merge Underdark components.
 Ambiguous geography preserves accepted work as unproven; a known matching
 family still permits the task even if the other family is ambiguous.
