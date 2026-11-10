@@ -348,8 +348,9 @@ string list_innates(int race, int cls, int spec)
 						   combat_by_class[cls][1]);
 	// Same calculation apply_affs() uses to enforce the cap.
 	if (race)
-		return_str += "*&+cMax damroll (gear + buffs):&n " +
-			      std::to_string((int)(damroll_cap * combat_by_race[race][2])) + "\n";
+		return_str += "*&+cGear/buff damroll cap:&n " +
+			      std::to_string((int)(damroll_cap * combat_by_race[race][2])) +
+			      " (Strength and mastery bonuses can exceed this)\n";
 	found = !return_str.empty();
 	for (innate = 0; innate <= LAST_INNATE; innate++)
 	{

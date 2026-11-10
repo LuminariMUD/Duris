@@ -195,7 +195,7 @@ int main(int argc, char **argv) {
         check_classes(race);
         const auto innates = run("innates " + std::string(race_names_table[race].normal));
         assert(innate_race == race);
-        assert(innates.find("*Max damroll (gear + buffs): 50\n") != std::string::npos);
+        assert(innates.find("*Gear/buff damroll cap: 50 (Strength and mastery bonuses can exceed this)\n") != std::string::npos);
         char_data profile{};
         GET_RACE(&profile) = race;
         set_char_size(&profile);
@@ -211,10 +211,10 @@ int main(int argc, char **argv) {
     assert(run("innates shadow beast").find("  Race size: medium\n\n") != std::string::npos);
     assert(run("innates harpy").find("  Race size: small\n\n") != std::string::npos);
     combat_by_race[RACE_OGRE][2] = 1.5f;
-    assert(run("innates ogre").find("*Max damroll (gear + buffs): 75\n") != std::string::npos);
+    assert(run("innates ogre").find("*Gear/buff damroll cap: 75 (Strength and mastery bonuses can exceed this)\n") != std::string::npos);
     // The listing matches the enforced cap, including its float truncation.
     combat_by_race[RACE_TROLL][2] = 1.18f;
-    assert(run("innates troll").find("*Max damroll (gear + buffs): 58\n") != std::string::npos);
+    assert(run("innates troll").find("*Gear/buff damroll cap: 58 (Strength and mastery bonuses can exceed this)\n") != std::string::npos);
     // Runtime table changes are displayed without changing innate grants.
     assert(run("innates barbarian").find("Melee and archery damage") == std::string::npos);
     combat_by_race[RACE_BARBARIAN][1] = 1.15f;
@@ -234,7 +234,7 @@ int main(int argc, char **argv) {
     assert(modifier_only.find("help attack damage modifiers") != std::string::npos);
     combat_by_race[RACE_SGIANT][1] = 1.0f;
     const auto cap_only = run("innates storm giant");
-    assert(cap_only.find("Max damroll") != std::string::npos && cap_only.find("None.") == std::string::npos);
+    assert(cap_only.find("Gear/buff damroll cap") != std::string::npos && cap_only.find("None.") == std::string::npos);
     spell_pulse_data[RACE_BARBARIAN] = 1.22f;
     assert(run("info barbarian").find("    Spell speed  : 1.220x casting time\n") != std::string::npos);
     spell_pulse_data[RACE_ILLITHID] = 0.025f;
