@@ -6,10 +6,13 @@ still holds it. It takes the banana back and the server restarts again: the bana
 inventory and the locker is empty. A mace left in the locker of a guild it founds is there when
 it enters again once that save has landed (a minimal world loads no guilds after a restart).
 The character is promoted to a god, which may use a locker outside a town.
+Copyover and hotboot from occupied public/private lockers retain the items and
+restore the occupant outside the door on the original connection.
 """
 
 import argparse
 import pathlib
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -117,6 +120,24 @@ def leave(client):
     client.close()
 
 
+def copyover_occupied_locker(client, process, sql, inventory, *, hotboot=False):
+    client.send("shutdown hotboot" if hotboot else "copyover")
+    matched, text = client.expect_any(("Copyover complete!", "Copyover cancelled:",
+                                       "Copyover FAILED"), timeout=90)
+    journey.require(matched == "Copyover complete!", text)
+    journey.require(process.poll() is None, "copyover lost the server process")
+    journey.require("The Regression Arena" in command(client, "look"),
+                    "the occupant did not return outside the locker door")
+    journey.require(sql(f"SELECT last_room FROM player_data WHERE name='{journey.CHARACTER}'") ==
+                    "22800", "the occupant was saved inside the locker")
+    journey.require(sql(f"SELECT obj_uid FROM player_items WHERE pid=(SELECT pid FROM player_data "
+                        f"WHERE name='{journey.CHARACTER}') ORDER BY obj_uid") == inventory,
+                    "copyover changed the occupant's inventory")
+    journey.require("a banana" in command(client, "inventory"), "copyover lost the banana")
+    print(f"{'hotboot' if hotboot else 'copyover'} retained inventory and recovered outside "
+          "the occupied locker on the original connection", flush=True)
+
+
 def run(binary: pathlib.Path) -> None:
     with tempfile.TemporaryDirectory(prefix="duris-locker-run-") as run_tmp, \
             journey.mariadb_authority() as (environment, sql):
@@ -125,6 +146,11 @@ def run(binary: pathlib.Path) -> None:
         journey.make_fixture(run_root, reset_coins=True)
         add_lockers(run_root)
         journey.generate_certificate(run_root)
+        (run_root / "logs/log/.gitignore").write_text("*\n")
+        (run_root / "bin/server").mkdir(parents=True)
+        for name in ("dms", "dms_new"):
+            shutil.copy2(binary, run_root / "bin/server" / name)
+        binary = run_root / "bin/server/dms"
         (run_root / "journals/critical").mkdir(parents=True, mode=0o700)
         plain_port, tls_port, websocket_port = journey.available_ports()
         environment.update(CRITICAL_COMMAND_JOURNAL_DIR=str(run_root / "journals/critical"),
@@ -138,6 +164,7 @@ def run(binary: pathlib.Path) -> None:
             client.close()
             stop(process)
             journey.make_overlord(sql, journey.CHARACTER)
+            sql(f"UPDATE player_data SET platinum=1000 WHERE name='{journey.CHARACTER}'")
 
             process = boot(binary, run_root, environment, plain_port)
             client = journey.reconnect_character(plain_port)
@@ -185,7 +212,40 @@ def run(binary: pathlib.Path) -> None:
             client = journey.reconnect_character(plain_port)
             client.send("inventory")
             client.expect("a banana", timeout=10)
+            inventory = sql(f"SELECT obj_uid FROM player_items WHERE pid=(SELECT pid FROM player_data "
+                            f"WHERE name='{journey.CHARACTER}') ORDER BY obj_uid")
             enter_locker(client, 0)
+            client.send("load obj 677")
+            client.expect("You have created", timeout=10)
+            client.send("drop mace")
+            client.expect("You drop", timeout=10)
+            copyover_occupied_locker(client, process, sql, inventory)
+            enter_locker(client, 1)
+            journey.require("mace" in command(client, "look in chest"),
+                            "copyover lost the public locker contents")
+            client.send("get mace chest")
+            client.expect("You get", timeout=10)
+            client.send("eq chest create vault fixture-secret")
+            client.expect("Private chest 'vault' created", timeout=30)
+            client.send("open vault fixture-secret")
+            client.expect("You open the 'vault' chest", timeout=30)
+            client.send("put mace vault")
+            client.expect("Ok.", timeout=10)
+            copyover_occupied_locker(client, process, sql, inventory, hotboot=True)
+            # The entry count covers public storage; inspect private contents below.
+            enter_locker(client, 0)
+            client.send("open vault fixture-secret")
+            client.expect("You open the 'vault' chest", timeout=30)
+            journey.require("mace" in command(client, "look in vault"),
+                            "hotboot lost the private chest contents")
+            # A newly loaded chest has no in-memory save receipt yet. Its first
+            # terminal snapshot must wait for the private destination to commit.
+            copyover_occupied_locker(client, process, sql, inventory)
+            enter_locker(client, 0)
+            client.send("open vault fixture-secret")
+            client.expect("You open the 'vault' chest", timeout=30)
+            journey.require("mace" in command(client, "look in vault"),
+                            "copyover lost the reloaded private chest contents")
             leave(client)
             stop(process)
         except Exception:

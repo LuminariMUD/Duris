@@ -49,6 +49,7 @@
 #include "persistence/critical_outbox.h"
 #include "player/player_save_pipeline.h"
 #include "player/player_save_worker.h"
+#include "player/player_snapshot_capture.h"
 #include "player/player_load_items.h"
 #include "player/player_load_materialize.h"
 #include "player/player_load_pets.h"
@@ -426,7 +427,7 @@ static int write_desc_entry(FILE *fp, P_desc d)
 		entry.room = NOWHERE;
 		if (ch->in_room >= 0 && ch->in_room <= top_of_world)
 		{
-			entry.room = world[ch->in_room].number;
+			entry.room = player_save_room_vnum(ch, world[ch->in_room].number);
 			if (IS_SHIP_ROOM(ch->in_room))
 			{
 				const int cabin = entry.room;
@@ -1532,9 +1533,10 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 			return false;
 		}
 	}
-	// Neither handoff serializes descriptorless PCs.
+	// Neither handoff serializes descriptorless PCs. Locker holders have no PID;
+	// their contents are saved by the locker drain, not the player pipeline.
 	for (ch = character_list; ch; ch = ch->next)
-		if (!IS_NPC(ch) && !ch->desc &&
+		if (!IS_NPC(ch) && !ch->desc && GET_PID(ch) > 0 &&
 		    !persistence_save_character_terminal_database_acknowledged(ch, RENT_CRASH))
 		{
 			notify_copyover_failure(

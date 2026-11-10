@@ -25,6 +25,7 @@
 #include "sql/item_owner_rows.h"
 #include "economy/divine_trade_runtime.h"
 #include "economy/currency_transaction.h"
+#include "player/player_snapshot_capture.h"
 
 #include <cstdlib>
 #include <cerrno>
@@ -452,4 +453,9 @@ __attribute__((weak)) bool kept_character_recovery_pending(int)
 __attribute__((weak)) bool kept_character_recovery_owner_pending(const char *)
 {
 	return false;
+}
+// A character inside a locker is recorded in the room outside its door; nothing here is in a locker.
+HARNESS_STUB int player_save_room_vnum(P_char, int room_vnum)
+{
+	return room_vnum;
 }
