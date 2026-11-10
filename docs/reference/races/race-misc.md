@@ -149,8 +149,10 @@ updates the loaded tables; character recalculation continues to compose the
 combat factor through the existing path.
 
 `race innates <race>` lists every playable race's cap, for example
-`*Max damroll (gear + buffs): 75` for Ogre. It uses the same calculation that
-enforces the cap, so Troll and Centaur show the 58 they currently receive.
+`*Gear/buff damroll cap: 75 (Strength and mastery bonuses can exceed this)`
+for Ogre. Strength and applicable mastery/class bonuses are added after this cap.
+It uses the same calculation that enforces the cap, so Troll and Centaur show
+the 58 they currently receive.
 
 Sources: [loading and composition](../../../src/magic/affects.c),
 [racial listing](../../../src/classes/innates.c),
