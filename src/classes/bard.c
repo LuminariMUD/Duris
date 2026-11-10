@@ -2819,8 +2819,7 @@ void do_play(P_char ch, char *arg, int /*cmd*/)
 		}
 		else
 		{
-			disarm_char_nevents(ch, event_bardsong);
-			REMOVE_BIT(ch->specials.affected_by3, AFF3_SINGING);
+			stop_singing(ch);
 			send_to_char("You change up your song...\n\r", ch);
 		}
 	}

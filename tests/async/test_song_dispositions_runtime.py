@@ -6,6 +6,7 @@ from _paths import ROOT, HARNESS_STUBS, extract_function
 
 prelude = r'''
 #include "core/prototypes.h"
+#include "cmd/interp.h"
 #include "core/utils.h"
 #include "core/mm.h"
 #include "net/gmcp.h"
@@ -19,6 +20,8 @@ prelude = r'''
 #include <map>
 #include <string>
 #include <vector>
+static room_data rooms[2]{};
+P_room world = rooms;
 static mm_ds aff_pool{}, link_pool{};
 mm_ds *dead_affect_pool = &aff_pool, *dead_link_pool = &link_pool;
 link_description link_types[LNK_MAX + 1]{};
@@ -38,7 +41,11 @@ void mm_release(mm_ds *pool, void *p) {
     else delete static_cast<affected_type *>(p);
 }
 mm_ds *mm_create(const char *, size_t, size_t, unsigned) { assert(false); return nullptr; }
-void all_affects(P_char, int) {}
+void all_affects(P_char ch, int) {
+    ch->specials.affected_by3 = 0;
+    for (auto *af = ch->affected; af; af = af->next)
+        ch->specials.affected_by3 |= af->bitvector3;
+}
 void balance_affects(P_char) {}
 void gmcp_char_affects(P_char) {}
 int char_light(P_char) { return 0; }
@@ -46,12 +53,14 @@ int room_light(int, int) { return 0; }
 void wear_off_message(P_char, affected_type *) {}
 void unlink_char_obj_affect(P_char, affected_type *) { assert(false); }
 void unlink_char_affect(P_char, affected_type *);
-void disarm_char_nevents(P_char, event_func_type) {}
+static bool song_scheduled = false;
+static nevent_data song_event{};
+void disarm_char_nevents(P_char, event_func_type) { song_scheduled = false; }
 void event_web_spray(P_char, P_char, P_obj, void *) {}
 nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, const void *, int) { return {}; }
 nevent_handle nevent_handle_from_event(P_nevent) { return {}; }
 nevent_cancel_result nevent_cancel(nevent_handle) { return nevent_cancel_result::canceled; }
-P_nevent get_scheduled(P_char, event_func_type) { return nullptr; }
+P_nevent get_scheduled(P_char, event_func_type) { return song_scheduled ? &song_event : nullptr; }
 void event_bardsong(P_char, P_char, P_obj, void *) {}
 void heal(P_char, P_char, int amount, int) { healing = amount; }
 void update_pos(P_char) {}
@@ -62,6 +71,20 @@ bool is_silent(P_char ch, bool) { return IS_AFFECTED2(ch, AFF2_SILENCED); }
 int number(int low, int) { return low; }
 int dice(int n, int) { return n; }
 const Rolls live_rolls = {dice, number};
+#define NUM_VERSES(ch, song) GET_LEVEL(ch)
+#define INSTRUMENT_OFFSET (FIRST_INSTRUMENT - 184)
+static int song_learned_level(P_char, int) { return 1; }
+struct song_description { const char *name; int song; };
+static song_description songs[] = {{"heroism", SONG_HEROISM}, {}};
+char *skip_spaces(char *s) { while (*s && isspace(*s)) ++s; return s; }
+bool is_abbrev(const char *a, const char *b) { return !strcmp(a, b); }
+P_obj has_instrument(P_char, int) { return nullptr; }
+int bard_get_type(int) { return INSTRUMENT_DRUMS; }
+int bard_calc_chance(P_char, int) { return 100; }
+int get_bard_pulse(P_char) { return 8; }
+void set_short_affected_by(P_char, int, int) {}
+void do_action(P_char, char *, int) {}
+
 '''
 functions = [("affects.c", s) for s in (
     "bool affected_by_spell(", "struct affected_type *affect_to_char(",
@@ -72,7 +95,8 @@ functions = [("affects.c", s) for s in (
     "void clear_links(P_char ch, ush_int type)", "void check_room_links(",
     "void linked_affect_to_char(",
 )] + [("bard.c", s) for s in (
-    "void stop_singing(", "static int song_heroism_haste_level(",
+    "void stop_singing(", "static int song_stop_rest(",
+    "static int song_start_failure_rest(", "void do_play(", "static int song_heroism_haste_level(",
     "static int song_heroism_pulse(", "static int song_heroism_singer_pulse(",
     "static int song_heroism_hit_dam(", "void bard_heroism(int l,",
     "static int song_healing_amount(", "static int song_healing_ally_amount(",
@@ -135,6 +159,25 @@ int main() {
         bard_heroism(level, &singer, &listener, SONG_HEROISM);
         stop_singing(&singer);
         assert(!singer.affected && !listener.affected && !singer.linked);
+    }
+    // A failed switch must retire the same performance links as a normal stop.
+    {
+        char_data singer{}, listener{};
+        singer.player.m_class = CLASS_BARD; singer.player.level = 56;
+        SET_POS(&singer, POS_STANDING + STAT_NORMAL);
+        SET_POS(&listener, POS_STANDING + STAT_NORMAL);
+        affected_type singing{};
+        singing.bitvector3 = AFF3_SINGING; singing.duration = -1;
+        affect_to_char(&singer, &singing);
+        bard_heroism(56, &singer, &listener, SONG_HEROISM);
+        int song = SONG_HEROISM;
+        song_event.data = &song; song_scheduled = true;
+        char same[] = "heroism", unknown[] = "nonexistent";
+        do_play(&singer, same, 0);
+        assert(song_scheduled && listener.affected && singer.linked);
+        do_play(&singer, unknown, 0);
+        assert(!song_scheduled && !IS_AFFECTED3(&singer, AFF3_SINGING));
+        assert(!singer.affected && !singer.linked && !listener.affected && !listener.linking);
     }
     char_data singer{};
     singer.player.m_class = CLASS_BARD; singer.player.spec = SPEC_DISHARMONIST;
