@@ -383,6 +383,16 @@ static void numeric_bounds()
         assert(evaluate_item_value(input, context, &detail) == 0 && detail.invalid);
         input.value[0] = WEAPON_LONGSWORD;
     }
+    for (int weapon : {WEAPON_LONGSWORD, WEAPON_DAGGER}) { // Negative dice value as no dice.
+        input.value[0] = weapon;
+        for (int sides : {-50, 6}) {
+            input.value[1] = 0; input.value[2] = std::max(sides, 0);
+            const int empty = evaluate_item_value(input, context, &detail);
+            input.value[1] = -5; input.value[2] = sides;
+            assert(evaluate_item_value(input, context, &detail) == empty && detail.multiplier > 0);
+        }
+    }
+    input.value[0] = WEAPON_LONGSWORD;
     for (int count : {INT_MIN, INT_MAX})
     for (int sides : {INT_MIN, INT_MAX}) {
         input.value[1] = count; input.value[2] = sides;
