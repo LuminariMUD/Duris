@@ -37,6 +37,7 @@
 #include "net/session_input.h"
 #include "net/output_style.h"
 #include "net/chat_presentation.h"
+#include "net/output_presentation.h"
 #include "net/output_profiles.h"
 #include "player/output_preferences.h"
 #include "net/command_latency.h"
@@ -4707,6 +4708,11 @@ void clear_logs(P_char ch)
 
 int process_output(P_desc t)
 {
+	// The pulse drains retained WS wire bytes first. Keep text, links and prompt
+	// state queued when a direct caller reaches us while that buffer is blocked.
+	if (t->websocket && (t->ws_output_offset < t->ws_output_len ||
+			     t->ws_control_output_offset < t->ws_control_output_len))
+		return 1;
 	char buf[MAX_STRING_LENGTH];
 	char buf2[MAX_STRING_LENGTH];
 	snoop_by_data *snoop_by_ptr;
@@ -4765,6 +4771,12 @@ int process_output(P_desc t)
 		make_prompt(t);
 
 	/* Cycle thru output queue */
+	const bool presented = t->websocket && gmcp_links_enabled(t);
+	OutputLinkFrame presentation;
+	if (presented && !descbuf.empty())
+		presentation.text.set(descbuf.c_str());
+	bool presentation_fits = true;
+	size_t target_bytes = 0;
 	OutputLinks links;
 	while (get_linked_output(&t->output, buf, links))
 	{
@@ -4796,6 +4808,12 @@ int process_output(P_desc t)
 			continue;
 		}
 
+		if (presented && presentation_fits && !output_message_fits_serializers(buf))
+			presentation_fits = false;
+		const auto frame =
+			presented && presentation_fits ?
+				freeze_output_links(buf, links, t->term_type == TERM_GENERIC) :
+				OutputLinkFrame{};
 		AnsiString abuf(buf);
 		if (t->term_type == TERM_GENERIC)
 			abuf.colorize(0);
@@ -4805,11 +4823,49 @@ int process_output(P_desc t)
 		delete_doubledollar(buf);
 
 		descbuf += buf;
+		if (presented && presentation_fits)
+		{
+			// Freeze each original block separately: legacy dollar folding and
+			// attributes must not cross unrelated queue-entry boundaries.
+			const size_t offset = presentation.text.size();
+			if (frame.text.size() > OUTPUT_PRESENTATION_MAX_TEXT - offset)
+			{
+				presentation_fits = false;
+				presentation = {};
+			}
+			else
+			{
+				presentation.text.append(frame.text);
+				for (const auto &link : frame.links)
+					if (presentation.links.size() < OUTPUT_LINK_MAX_COUNT &&
+					    link.target.size() <=
+						    OUTPUT_LINK_MAX_TARGET_BYTES - target_bytes)
+					{
+						presentation.links.push_back(
+							{ link.begin + offset, link.end + offset,
+							  link.kind, link.target });
+						target_bytes += link.target.size();
+					}
+			}
+		}
 	}
 
 	{
-		int output_result = write_to_descriptor(t, descbuf.c_str());
-		if (output_result < 0 && !(t->websocket && output_result == WS_OUTPUT_QUEUE_FULL))
+		int output_result;
+		if (presented && !descbuf.empty())
+		{
+			char *json = output_text_json(
+				descbuf.c_str(), presentation_fits ? &presentation : nullptr,
+				t->character && PLR3_FLAGGED(t->character, PLR3_UNDERLINE));
+			if (!json)
+				return -1;
+			output_result = websocket_send_text(t, json);
+			free(json);
+		}
+		else
+			output_result = write_to_descriptor(t, descbuf.c_str());
+		if (output_result < 0 &&
+		    (presented || !(t->websocket && output_result == WS_OUTPUT_QUEUE_FULL)))
 			return (-1);
 	}
 
@@ -5242,6 +5298,8 @@ void send_to_char(const char *messg, P_char ch, int log, const OutputContext &co
 
 		if (context.chat && (!paging || !bWarningAdded))
 		{
+			recipient_context.links = links;
+			recipient_context.links_prepared = true;
 			if (!styled_frame || (paging && pager_style_fallback))
 				recipient_context.policy = OutputPolicy::Preserve;
 			gmcp_comm_channel_output(ch, *context.chat, recipient_context, messg);
