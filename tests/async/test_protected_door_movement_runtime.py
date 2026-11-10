@@ -212,7 +212,7 @@ void char_from_room(P_char ch) {
 
 '''
 placement = r'''
-bool char_to_room(P_char ch,int room,int dir) {
+bool char_to_room(P_char ch,int room,int dir,bool ordinary_movement) {
  assert(char_in_list(ch) && room>=0 && room<=top_of_world);
  __ROOM_INSERTION__
  if(room==1) ++placements;
@@ -220,7 +220,7 @@ bool char_to_room(P_char ch,int room,int dir) {
   assert(GET_MOUNT(ch)==&mount && GET_RIDER(&mount)==ch);
   mounted_during_entry=true;
  }
- if(!move_riding_companions(ch,room,dir)) return false;
+ if(!move_riding_companions(ch,room,dir,ordinary_movement)) return false;
  if(dir>=0 && ch==hook_target) {
   if(rng_route==4 && ch==&actor)
    assert(GET_MOUNT(ch)==&mount && GET_RIDER(&mount)==ch && mount.in_room==ch->in_room);
@@ -237,6 +237,9 @@ bool char_to_room(P_char ch,int room,int dir) {
   if(hook==Hook::redirect_actor) place(&actor,2);
  }
  return true;
+}
+bool char_to_room(P_char ch,int room,int dir) {
+ return char_to_room(ch,room,dir,false);
 }
 '''
 room_placement = extract_function('handler.c', 'bool char_to_room(')

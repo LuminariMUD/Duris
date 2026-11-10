@@ -11,6 +11,7 @@
 #include "world/db.h"
 #include "core/utils.h"
 #include "net/gmcp.h"
+#include "net/chat_presentation.h"
 #include <cjson/cJSON.h>
 #include <math.h>
 #include <algorithm>
@@ -211,17 +212,19 @@ static void gmcp_flush_capabilities(P_desc d)
 		if (streams & GMCP_SUPPORT_SPELL_PREPARATION)
 			result += (result.empty() ? "" : ",") +
 				  std::string("\"Char.SpellPreparation\"");
+		if (streams & GMCP_SUPPORT_LINKS)
+			result += (result.empty() ? "" : ",") + std::string("\"Duris.Links\"");
 		return result;
 	};
 	const std::string supported = names(d->gmcp_supports);
 	const std::string interested = names(d->gmcp_interests);
 	const std::string active_names = names(active);
-	char json[512];
+	char json[1024];
 	const int length = snprintf(
 		json, sizeof(json),
 		"{\"version\":1,\"enabled\":%s,\"features\":{\"Duris.Capabilities\":1,"
 		"\"Duris.Subscribe\":1,\"Duris.Time\":1,\"Duris.Session\":1,\"Duris.Combat\":1,\"Char.Items\":1,\"Char.Items.Get\":1,"
-		"\"Char.SpellPreparation\":1},\"supported\":[%s],"
+		"\"Char.SpellPreparation\":1,\"Duris.Links\":1},\"supported\":[%s],"
 		"\"interested\":[%s],\"active\":[%s],\"control\":[%s]}",
 		gmcp_streaming_enabled(d) ? "true" : "false", supported.c_str(), interested.c_str(),
 		active_names.c_str(), gmcp_session_supported(d) ? "\"Duris.Session\"" : "");
@@ -490,6 +493,8 @@ static void gmcp_apply_control(P_desc d, gmcp_control_kind kind, const cJSON *ar
 			requested |= GMCP_SUPPORT_ITEMS;
 		else if (!strcmp(entry->valuestring, "Char.SpellPreparation 1"))
 			requested |= GMCP_SUPPORT_SPELL_PREPARATION;
+		else if (!strcmp(entry->valuestring, "Duris.Links 1"))
+			requested |= GMCP_SUPPORT_LINKS;
 	}
 	const bool had_control = d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES;
 	if (kind == gmcp_control_kind::subscribe)
@@ -2313,6 +2318,11 @@ void gmcp_comm_channel(struct char_data *ch, const char *channel, const char *se
 		return;
 	if (!GMCP_ENABLED(ch))
 		return;
+	if (gmcp_links_enabled(ch->desc))
+	{
+		gmcp_comm_channel_body(ch, channel, sender, text);
+		return;
+	}
 
 	json = json_build_comm_channel(channel, sender, text);
 
@@ -2333,6 +2343,11 @@ void gmcp_comm_channel_ex(struct char_data *ch, const char *channel, const char 
 		return;
 	if (!GMCP_ENABLED(ch))
 		return;
+	if (gmcp_links_enabled(ch->desc))
+	{
+		gmcp_comm_channel_body(ch, channel, sender, text, alignment);
+		return;
+	}
 
 	json = json_build_comm_channel_ex(channel, sender, text, alignment);
 
@@ -2359,7 +2374,10 @@ void gmcp_broadcast_channel(const char *channel, const char *sender, const char 
 		if (d->character && d->character != exclude && STATE(d) == CON_PLAYING &&
 		    GMCP_ENABLED(d->character))
 		{
-			gmcp_send(d, GMCP_PKG_COMM_CHANNEL, json);
+			if (gmcp_links_enabled(d))
+				gmcp_comm_channel_body(d->character, channel, sender, text);
+			else
+				gmcp_send(d, GMCP_PKG_COMM_CHANNEL, json);
 		}
 	}
 

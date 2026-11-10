@@ -93,7 +93,7 @@ def main() -> None:
     )
 
     movement = text("cmd/actmove.c")
-    moved_at = movement.index("if (!char_to_room(ch, new_room, exitnumb))")
+    moved_at = movement.index("if (!char_to_room(ch, new_room, exitnumb, true))")
     assert movement.index("telemetry_gameplay_context_changed(ch)", moved_at) > moved_at
     assert movement.index("telemetry_gameplay_movement(ch)", moved_at) > moved_at
     assert "IS_AFFECTED5(ch, AFF5_FOLLOWING)" in movement
