@@ -1,4 +1,5 @@
 #include "core/prototypes.h"
+#include "core/json_utils.h"
 #include "core/utils.h"
 #include "core/utility.h"
 #include "net/comm.h"
@@ -9,6 +10,10 @@
 #include "player/news.h"
 #include "net/gmcp.h"
 #include "net/chat_presentation.h"
+#include "net/output_presentation.h"
+#include "net/mxp.h"
+#include "net/websocket.h"
+#include "economy/collector_transaction.h"
 #include "world/specs.prototypes.h"
 #include "cmd/interp.h"
 #include "core/files.h"
@@ -54,6 +59,40 @@ static bool visible = true;
 static P_char hidden_recipient = nullptr;
 static std::vector<std::pair<std::string, int>> logged;
 static std::function<void(P_char)> command_action;
+static std::map<P_desc, std::string> terminal_output;
+static std::map<P_desc, std::vector<std::string>> websocket_packets;
+int websocket_send_text(P_desc d, const char *text)
+{
+	websocket_packets[d].emplace_back(text);
+	return 0;
+}
+void format_to_snoopers(char *, char *);
+int write_to_descriptor(P_desc d, const char *text)
+{
+	terminal_output[d] += text;
+	return 0;
+}
+int write_to_descriptor_binary(P_desc d, const unsigned char *text, size_t length)
+{
+	terminal_output[d].append(reinterpret_cast<const char *>(text), length);
+	return 0;
+}
+int send_ga(P_desc)
+{
+	return 0;
+}
+bool item_creation_grant_blocks_commands(P_char)
+{
+	return false;
+}
+bool item_movement_transaction_player_busy(P_char)
+{
+	return false;
+}
+bool collector_service_player_busy(P_char)
+{
+	return false;
+}
 static player_save_pipeline_result save_result = player_save_pipeline_result::queued;
 static P_char saved_owner;
 static int save_calls;
@@ -222,6 +261,7 @@ P_Alliance Guild::get_alliance()
 {
 	return &privacy_alliance;
 }
+#include "help_output_stubs.inc"
 #include "production_output.inc"
 
 static std::string drain(P_desc d)
@@ -656,6 +696,11 @@ static size_t visible_terminal_bytes(const std::string &markup)
 	return bytes;
 }
 
+#include "output_links_checks.inc"
+#include "help_output_checks.inc"
+#include "url_output_checks.inc"
+#include "web_presentation_checks.inc"
+
 int main()
 {
 #ifdef COLORIZATION_BENCHMARK
@@ -663,6 +708,11 @@ int main()
 	return 0;
 #endif
 	privacy_delivery_matrix();
+	output_links_matrix();
+	mxp_delivery_matrix();
+	help_output_matrix();
+	url_output_matrix();
+	web_presentation_matrix();
 	privacy_toggle_matrix();
 	toggle_matrix();
 	chat_presentation_matrix();
@@ -999,7 +1049,11 @@ int main()
 		original += chunk;
 	}
 	assert(original.size() < MAX_COMMAND_OUTPUT);
-	assert(std::string(command_output) == original && output_length == original.size());
+	const AnsiString visible_accumulated(command_output);
+	assert(visible_accumulated.size() == original.size() &&
+	       output_length == strlen(command_output));
+	for (size_t i = 0; i < original.size(); ++i)
+		assert(visible_accumulated.ch(i) == original[i]);
 	// Once original content reaches the legacy warning, later sends must leave it.
 	std::string excess(MAX_COMMAND_OUTPUT, 'x');
 	send_to_char(excess.c_str(), &actor, LOG_NONE, style);

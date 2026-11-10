@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from run_world_quest_dual_backend import setup_run_root
 from test_flight_network_journey import authority
 
@@ -53,6 +53,19 @@ def seed_character(sql):
 
 def verify(client, restart, sql, expect_regression=False):
     command(client, "put banana testbag", "Ok.")
+    if not expect_regression:
+        pid=sql(f"SELECT pid FROM player_data WHERE name='{journey.CHARACTER}'")
+        sql("DELIMITER //\nCREATE TRIGGER reject_auction_payment BEFORE UPDATE ON player_data FOR EACH ROW "
+            f"BEGIN IF NEW.pid={pid} AND NEW.wallet_revision>OLD.wallet_revision AND NEW.platinum<OLD.platinum THEN "
+            "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='auction payment refusal'; END IF; END//\nDELIMITER ;\n")
+        command(client,"auction offer saleitem 1","The auction was not listed")
+        journey.require(journey.inspect_authority(sql)["wallet"]==[0,0,0,10],"refused receipt changed wallet")
+        journey.require(sql("SELECT COUNT(*) FROM auction_item_custody WHERE item_uid=980002")=="0","refused listing took custody")
+        client=restart(client,crash=True)
+        sql("DROP TRIGGER reject_auction_payment")
+        journey.require(sql(f"SELECT COUNT(*) FROM player_items WHERE pid={pid} AND obj_uid=980002")=="1","refused listing lost source UID on restart")
+        command(client,"inventory","a large leather bag")
+        print("PASS refused auction payment + SIGKILL retains wallet and source UID",flush=True)
     command(client, "auction offer saleitem 1", "is now listed as auction")
     listed = journey.inspect_authority(sql)
     journey.require(listed["wallet"] == REMAINING_WALLET,
@@ -159,9 +172,12 @@ def run(binary, expect_regression):
                     client.expect("Pos: standing >", timeout=30)
                     return client
 
-                def restart(previous):
+                def restart(previous,crash=False):
                     nonlocal process
-                    stop(process)
+                    if crash:
+                        process.kill(); process.wait(timeout=10)
+                    else:
+                        stop(process)
                     previous.close()
                     process = boot()
                     return login()

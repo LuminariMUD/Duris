@@ -17,6 +17,7 @@ P_room world = nullptr;
 // Everything queued, in order: "save:<pid>" and "bank", plus
 // "completion" when a completion runs.
 static std::vector<std::string> order;
+static player_save_pipeline_result save_result = player_save_pipeline_result::queued;
 static int dirty = 0;
 static int alerts = 0;
 static P_char invalid_account = nullptr;
@@ -66,7 +67,7 @@ player_save_pipeline_result player_save_pipeline_request(P_char ch, player_compo
 							 int)
 {
 	order.push_back("save:" + std::to_string(GET_PID(ch)));
-	return player_save_pipeline_result::queued;
+	return save_result;
 }
 
 // The online characters of one account and side share the bank.

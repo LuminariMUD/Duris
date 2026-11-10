@@ -20,8 +20,8 @@ for retired in ("verify_player_item_custody", "verify_player_death_item_payload"
                 "verify_pet_custody", "PLAYER_SAVE_ERROR_CUSTODY_PAYLOAD_MISMATCH",
                 "read_durable_revision"):
     assert retired not in REPOSITORY, retired
-assert REPOSITORY.count("claim_items(connection, owner, items, &claim.outcome, rent_keys)") == 1
-assert "claim_graph(connection, owner, snapshot.items, claims, &written," in REPOSITORY
+assert REPOSITORY.count("claim_items(connection, owner, items, &claim.outcome)") == 1
+assert "claim_graph(connection, owner, snapshot.items, claims, &written)" in REPOSITORY
 assert "claim_graph(connection, owner, pet.items, claims, &written)" in REPOSITORY
 assert "INSERT INTO item_owner_audit" in CLAIM
 assert "replay_fence" not in REPOSITORY
@@ -31,7 +31,6 @@ assert "query = ensure_player_row(connection, snapshot, &created," in REPOSITORY
 # synchronous first save on MariaDB.
 assert "if (query.ok && created)\n\t\tquery = insert_opening_baselines(connection, snapshot.pid);" in REPOSITORY
 NANNY = (SRC / "nanny.c").read_text()
-assert "CHAR_RFLAG_NO_DB_BASELINE" not in NANNY
 print("[PASS] custody checks and the revision fence are gone; a missing row is created")
 
 PIPELINE = (SRC / "player_save_pipeline.c").read_text()

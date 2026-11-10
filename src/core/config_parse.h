@@ -33,9 +33,9 @@ inline bool config_parse_double(const char *text, double &result)
 inline bool config_parse_float(const char *text, float &result)
 {
 	char *end;
-	errno = 0;
+	// Overflow parses as infinity; underflow is a legitimate tiny value.
 	const float value = std::strtof(text, &end);
-	if (errno || end == text || *end || !std::isfinite(value))
+	if (end == text || *end || !std::isfinite(value))
 		return false;
 	result = value;
 	return true;

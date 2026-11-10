@@ -159,7 +159,8 @@ OBJS =  $(SHIP_OBJS) \
 				 cmd/actset.o \
 				 cmd/actwiz.o \
 				 cmd/community_spellup.o \
-				 net/ansi.o net/chat_presentation.o \
+				 net/ansi.o net/chat_presentation.o net/output_links.o net/mxp.o \
+				 net/output_presentation.o \
 				 net/output_style.o \
 				 net/output_profiles.o \
 				 specs/specs.ailvio.o \

@@ -16,7 +16,7 @@ from test_account_recovery_journey import (
     ACCOUNT, OLD_PASSWORD, EMAIL, IsolatedServer, MudClient,
     create_account, enter_account_name, require,
 )
-from test_flatfile_combat_journey import make_overlord
+from test_mariadb_combat_journey import make_overlord
 
 PASSWORD_PROMPT = "Please enter your password:  "
 CONFIRM_PASSWORD = "Please re-enter the same password to confirm:  "

@@ -22,6 +22,8 @@ typedef struct char_data *P_char;
 struct obj_data;
 typedef struct obj_data *P_obj;
 
+int player_save_room_vnum(P_char ch, int room_vnum);
+
 player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revision_t revision,
 						       player_component_mask_t components,
 						       int save_intent, int room_vnum,

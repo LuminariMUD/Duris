@@ -1411,7 +1411,7 @@ int main(int argc, char **argv) {
         epoch_call("active", 3, 1)
         launch(epoch=3); assert (old.read_bytes(), native_handoff.read_bytes()) == file_before
         if server:
-            import test_flatfile_combat_journey as journey
+            import test_mariadb_combat_journey as journey
             direct_root = root / "direct-fence"; direct_root.mkdir()
             journey.make_fixture(direct_root); journey.generate_certificate(direct_root)
             (direct_root / "logs/log").mkdir(parents=True)

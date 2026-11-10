@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercise information browsing with two real players and automatic refresh.
 
-The default uses isolated flat-file state. --backend mariadb requires explicit
+Uses MariaDB and requires explicit
 TEST_DB_HOST/USER/PASSWORD for a disposable loopback database server and creates
 and drops only a uniquely named fixture schema. Never reads the checkout .env.
 """
@@ -14,15 +14,13 @@ import os
 from pathlib import Path
 import re
 import signal
-import shutil
 import statistics
 import subprocess
 import tempfile
 import threading
 import time
-import uuid
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 ROOT = journey.ROOT
 PAGES = ("credits", "faq", "wizlist")
@@ -37,70 +35,16 @@ def page_content(name, version):
 
 @contextmanager
 def authority(backend, runtime):
-    environment = {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-        "ENVIRONMENT": "local", "REDIS": "FALSE", "CHAOS_MUD": "FALSE",
-        "LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1",
-    }
-    if "LD_LIBRARY_PATH" in os.environ:
-        environment["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"]
-    if backend == "flatfile":
-        state = runtime / "state"
-        state.mkdir(mode=0o700)
-        (state / "domains").mkdir(mode=0o700)
-        subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
-        environment.update(PERSISTENCE_MODE="flatfile-primary", FLATFILE_STATE_DIR=str(state))
+    with journey.mariadb_authority() as (environment, sql):
+        journey.import_help(runtime, environment)
 
         def publish(version):
-            directory = runtime / "lib/information"
-            directory.mkdir(exist_ok=True)
-            for name in PAGES:
-                temporary = directory / (name + ".new")
-                temporary.write_text(page_content(name, version))
-                temporary.replace(directory / name)
+            rows = ",".join(f"('{name}',CONVERT(0x{page_content(name, version).encode().hex()} USING utf8mb4))"
+                            for name in PAGES)
+            sql("START TRANSACTION; INSERT INTO mud_info(name,content) VALUES " + rows +
+                " ON DUPLICATE KEY UPDATE content=VALUES(content); COMMIT;")
 
         yield environment, publish
-        return
-
-    host = os.environ["TEST_DB_HOST"]
-    journey.require(host in ("127.0.0.1", "localhost"), "use a disposable loopback database")
-    database = "information_journey_test_" + uuid.uuid4().hex[:12]
-    environment.update(
-        PERSISTENCE_MODE="mariadb-primary", DB_TLS="FALSE", DB_HOST=host, DB_PORT=os.environ.get("TEST_DB_PORT", "3306"),
-        DB_USER=os.environ["TEST_DB_USER"], DB_PASSWD=os.environ["TEST_DB_PASSWORD"],
-        DB_NAME=database, DB_ALLOWED_TARGETS=host + "/" + database,
-        MYSQL_PWD=os.environ["TEST_DB_PASSWORD"],
-    )
-    mysql = ["mysql", "--protocol=tcp", "-h", host, "-P", environment["DB_PORT"], "-u",
-             environment["DB_USER"], "-N", "-B"]
-
-    def sql(statement, selected=True):
-        return subprocess.check_output(mysql + ([database] if selected else []),
-                                       input=statement, text=True, env=environment)
-
-    def publish(version):
-        rows = ",".join(f"('{name}',CONVERT(0x{page_content(name, version).encode().hex()} USING utf8mb4))"
-                        for name in PAGES)
-        sql("START TRANSACTION; INSERT INTO mud_info(name,content) VALUES " + rows +
-            " ON DUPLICATE KEY UPDATE content=VALUES(content); COMMIT;")
-
-    sql("CREATE DATABASE " + database + " CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", False)
-    try:
-        sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
-        for action in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
-            subprocess.run(["python3", "scripts/migration_runner.py", *action],
-                           cwd=ROOT, env=environment, check=True)
-        (runtime / "scripts").mkdir()
-        importer = runtime / "scripts/import_help_to_prod.sh"
-        shutil.copy2(ROOT / "scripts/import_help_to_prod.sh", importer)
-        subprocess.run(["bash", str(importer), "--dry-run"], env=environment,
-                       check=True, capture_output=True, timeout=90)
-        imported = subprocess.run(["bash", str(importer), "--local"], input="yes\n",
-                                  text=True, env=environment, capture_output=True, timeout=90)
-        journey.require(imported.returncode == 0, imported.stdout[-2000:] + imported.stderr[-2000:])
-        yield environment, publish
-    finally:
-        sql("DROP DATABASE " + database, False)
 
 
 def response(client, command, marker, timeout=5):
@@ -254,19 +198,15 @@ def run(binary, backend):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("flatfile", "mariadb"), default="flatfile")
+    parser.add_argument("--backend", choices=("mariadb",), default="mariadb")
     parser.add_argument("--server", type=Path)
     args = parser.parse_args()
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-    if args.backend != "flatfile" and not all(os.environ.get(name) for name in ("TEST_DB_HOST", "TEST_DB_USER", "TEST_DB_PASSWORD")):
+    if not all(os.environ.get(name) for name in ("TEST_DB_HOST", "TEST_DB_USER", "TEST_DB_PASSWORD")):
         parser.error("MariaDB requires explicit disposable TEST_DB_HOST, TEST_DB_USER and TEST_DB_PASSWORD")
     with tempfile.TemporaryDirectory(prefix="information-build-", dir=ROOT / "bin/tests") as build:
         if args.server:
             binary = args.server.resolve()
-        elif args.backend == "flatfile":
-            binary = journey.build_flatfile_server(Path(build))
         else:
-            binary = Path(build) / "dms_information_mysql"
-            subprocess.run(["make", "-C", "src", "-j2", "PERSISTENCE_BACKEND=mariadb",
-                            "DMS_BINARY=" + str(binary)], cwd=ROOT, check=True)
+            binary = journey.build_mariadb_server(Path(build))
         run(binary, args.backend)
