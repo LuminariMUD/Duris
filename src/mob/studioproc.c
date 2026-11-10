@@ -3315,7 +3315,7 @@ static void sp_bind(struct sp_rec *rec)
 	}
 }
 
-void studioproc_boot(void)
+static void studioproc_boot_impl(bool objects_only)
 {
 	std::string ability_error;
 	if (!studio_abilities_reload_file(ability_error))
@@ -3340,7 +3340,7 @@ void studioproc_boot(void)
 	studioproc_count = 0;
 	sp_lineno = 0;
 
-	if (!sp_roomctr && top_of_world >= 0)
+	if (!objects_only && !sp_roomctr && top_of_world >= 0)
 	{
 		CREATE(sp_roomctr, int, SP_ROOM_SLOTS *(top_of_world + 1), MEM_TAG_BUFFER);
 		memset(sp_roomctr, 0, sizeof(int) * SP_ROOM_SLOTS * (top_of_world + 1));
@@ -3371,6 +3371,12 @@ void studioproc_boot(void)
 		       (tc == 'O') ? SP_T_OBJ :
 		       (tc == 'R') ? SP_T_ROOM :
 				     -1;
+		if (objects_only && targ != SP_T_OBJ)
+		{
+			if (!sp_skip_record(fl))
+				break;
+			continue;
+		}
 		ok = (targ >= 0 && vnum > 0);
 		if (ok)
 		{
@@ -3429,4 +3435,14 @@ void studioproc_boot(void)
 	fprintf(stderr, "--    STUDIOPROC: %d records, %d triggers.\n", nrec, studioproc_count);
 	/* the HOUR timer is armed lazily, from the first dispatch - see
 	   sp_arm_hour().  The event pool does not exist yet at this point. */
+}
+
+void studioproc_boot(void)
+{
+	studioproc_boot_impl(false);
+}
+
+void studioproc_boot_object_bindings(void)
+{
+	studioproc_boot_impl(true);
 }

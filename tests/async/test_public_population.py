@@ -29,6 +29,7 @@ harness = r'''
 #include "core/mm.h"
 #include "net/ttype.h"
 #include "net/gmcp.h"
+#include "net/mxp.h"
 #include <cassert>
 #include <climits>
 #include <cstring>
@@ -81,6 +82,7 @@ int copyover_player_room(const copyover_desc &, int version, bool preserve_world
 @UPDATE_POPULATION@
 
 void gmcp_session_restored(P_desc) {}
+void mxp_negotiate(P_desc) {}
 @DESC_BYTES@
 bool restore_descriptors(FILE *fp, int count) {
     copyover_header header = {};

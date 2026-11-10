@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
-"""Real lethal corpse trap, reconnect, and restart journey on both backends."""
+"""Real lethal corpse trap, reconnect, and restart journey on MariaDB."""
 
 from pathlib import Path
-import json
-import os
 import signal
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
-import uuid
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -123,76 +120,15 @@ PH 0 0 -1
 
 
 def run(binary, backend):
-    assert backend in ("mariadb", "flatfile")
-    database = "corpse_trap_" + uuid.uuid4().hex[:12]
-    host = os.environ.get("TEST_DB_HOST", "127.0.0.1")
-    assert host in ("127.0.0.1", "localhost")
-    database_port = os.environ.get("TEST_DB_PORT", "3307")
-    env = dict(
-        PATH=os.environ.get("PATH", "/usr/bin:/bin"),
-        ENVIRONMENT="local",
-        PERSISTENCE_MODE=backend + "-primary",
-        REDIS="FALSE",
-        CHAOS_MUD="FALSE",
-        LISTEN_ADDRESS="127.0.0.1",
-        DURIS_WEBSOCKET_LISTEN_ADDRESS="127.0.0.1",
-    )
-    if value := os.environ.get("LD_LIBRARY_PATH"):
-        env["LD_LIBRARY_PATH"] = value
-    state = None
-    state_root = None
-    sql = None
-    if backend == "mariadb":
-        password = os.environ["TEST_DB_PASSWORD"]
-        env.update(
-            DB_HOST=host,
-            DB_PORT=database_port,
-            DB_NAME=database,
-            DB_USER=os.environ.get("TEST_DB_USER", "root"),
-            DB_PASSWD=password,
-            MYSQL_PWD=password,
-            DB_ALLOWED_TARGETS=host + "/" + database,
-            DB_TLS="FALSE",
-        )
-        mysql = [
-            "mysql",
-            "--protocol=tcp",
-            "-h",
-            host,
-            "-P",
-            database_port,
-            "-u",
-            env["DB_USER"],
-            "-N",
-            "-B",
-            "--unbuffered",
-        ]
-
-        def sql(statement, selected=True):
-            return subprocess.check_output(
-                mysql + ([database] if selected else []), input=statement, text=True, env=env
-            ).strip()
-
-        sql("CREATE DATABASE " + database, False)
-    else:
-        (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
-        state = tempfile.TemporaryDirectory(prefix="corpse-trap-state-")
-        state_root = Path(state.name)
-        (state_root / "domains").mkdir(mode=0o700)
-        subprocess.run([str(journey.INSPECTOR), str(state_root), "seed-combat"], check=True)
-        env["FLATFILE_STATE_DIR"] = str(state_root)
-
-    def promote_builder():
-        if sql:
+    assert backend == "mariadb"
+    with journey.mariadb_authority() as (env, sql):
+        def promote_builder():
             sql(
                 "UPDATE player_data SET level=62,highest_level=62 "
                 f"WHERE name='{BUILDER}'"
             )
-        else:
-            journey.make_overlord(state_root, BUILDER)
 
-    def source_rows():
-        if sql:
+        def source_rows():
             rows = sql(
                 "SELECT ci.vnum,ci.obj_uid FROM corpse_items ci JOIN corpses c "
                 f"ON c.id=ci.corpse_id WHERE c.player_name='{SOURCE}' "
@@ -202,19 +138,8 @@ def run(binary, backend):
                 {"vnum": int(vnum), "uid": int(uid)}
                 for vnum, uid in (line.split("\t") for line in rows.splitlines())
             ]
-        result = subprocess.check_output(
-            [
-                str(journey.INSPECTOR),
-                str(state_root),
-                "inspect-world-items",
-                *(str(vnum) for vnum in TARGET_VNUMS),
-            ],
-            text=True,
-        )
-        return json.loads(result)["items"]
 
-    def source_trap_state():
-        if sql:
+        def source_trap_state():
             return sql(
                 "SELECT ed.description FROM corpse_item_extra_descr ed "
                 "JOIN corpse_items ci ON ci.id=ed.item_id "
@@ -222,19 +147,7 @@ def run(binary, backend):
                 f"WHERE c.player_name='{SOURCE}' AND ci.vnum={TRAP_VNUM} "
                 f"AND ed.keyword='{TRAP_STATE_KEYWORD}'"
             )
-        trap = next(row for row in source_rows() if row["vnum"] == TRAP_VNUM)
-        return trap.get("trap_state", "")
 
-    try:
-        if sql:
-            sql((ROOT / "migrations/bootstrap_multithread_safe.sql").read_text())
-            for args in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
-                subprocess.run(
-                    ["python3", "scripts/migration_runner.py", *args],
-                    cwd=ROOT,
-                    env=env,
-                    check=True,
-                )
         (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(
             prefix="corpse-trap-", dir=ROOT / "bin/tests"
@@ -422,12 +335,11 @@ def run(binary, backend):
                 before_restart = source_rows()
                 assert len(before_restart) == 3, before_restart
                 assert source_trap_state() == "6,2,0,100"
-                if sql:
-                    assert sql(
-                        "SELECT COUNT(*) FROM corpse_items ci JOIN corpses c "
-                        "ON c.id=ci.corpse_id WHERE c.player_name='Taverek' "
-                        f"AND ci.vnum IN {TARGET_VNUMS}"
-                    ) == "0"
+                assert sql(
+                    "SELECT COUNT(*) FROM corpse_items ci JOIN corpses c "
+                    "ON c.id=ci.corpse_id WHERE c.player_name='Taverek' "
+                    f"AND ci.vnum IN {TARGET_VNUMS}"
+                ) == "0"
 
                 boot()
                 builder = journey.reconnect_character(
@@ -484,11 +396,6 @@ def run(binary, backend):
                 raise
             finally:
                 stop()
-    finally:
-        if sql:
-            sql("DROP DATABASE " + database, False)
-        if state:
-            state.cleanup()
 
 
 if __name__ == "__main__":
@@ -497,10 +404,10 @@ if __name__ == "__main__":
         with tempfile.TemporaryDirectory(
             prefix="corpse-trap-build-", dir=ROOT / "bin/tests"
         ) as build:
-            run(journey.build_flatfile_server(Path(build)), "flatfile")
+            run(journey.build_mariadb_server(Path(build)), "mariadb")
     elif len(sys.argv) in (2, 3):
         run(Path(sys.argv[1]).resolve(), sys.argv[2] if len(sys.argv) == 3 else "mariadb")
     else:
         raise SystemExit(
-            "usage: test_corpse_trap_restart_journey.py [SERVER [mariadb|flatfile]]"
+            "usage: test_corpse_trap_restart_journey.py [SERVER [mariadb]]"
         )

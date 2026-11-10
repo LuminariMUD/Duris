@@ -59,14 +59,14 @@ void make_prompt(P_desc point)
 			promptbuf, MAX_INPUT_LENGTH,
 			"\n[Return to continue, (q)uit, (r)efresh, (b)ack, or page number (%d/%d)]\n",
 			point->showstr_page, point->showstr_count);
-		write_to_q(promptbuf, &point->output, 1);
+		write_output(promptbuf, &point->output);
 		// Reset the promptmode (decides when to display another prompt).
 		point->prompt_mode = FALSE;
 		return;
 	}
 	if (point->str)
 	{
-		write_to_q("] ", &point->output, 1);
+		write_output("] ", &point->output);
 		point->prompt_mode = FALSE;
 		return;
 	}
@@ -423,26 +423,26 @@ void make_prompt(P_desc point)
 	snoop_by_ptr = point->snoop.snoop_by_list;
 	while (snoop_by_ptr)
 	{
-		write_to_q("&+B%&n ", &snoop_by_ptr->snoop_by->desc->output, 1);
-		write_to_q(promptbuf, &snoop_by_ptr->snoop_by->desc->output, 1);
+		write_output("&+B%&n ", &snoop_by_ptr->snoop_by->desc->output);
+		write_output(promptbuf, &snoop_by_ptr->snoop_by->desc->output);
 		if (two_lines)
 		{
-			write_to_q("&+B%&n ", &snoop_by_ptr->snoop_by->desc->output, 1);
-			write_to_q(promptbuf2, &snoop_by_ptr->snoop_by->desc->output, 1);
+			write_output("&+B%&n ", &snoop_by_ptr->snoop_by->desc->output);
+			write_output(promptbuf2, &snoop_by_ptr->snoop_by->desc->output);
 		}
-		write_to_q("\n", &snoop_by_ptr->snoop_by->desc->output, 1);
+		write_output("\n", &snoop_by_ptr->snoop_by->desc->output);
 		process_output(snoop_by_ptr->snoop_by->desc);
 
 		snoop_by_ptr = snoop_by_ptr->next;
 	}
 
 	point->prompt_mode = FALSE;
-	write_to_q(promptbuf, &point->output, 1);
+	write_output(promptbuf, &point->output);
 	if (two_lines)
-		write_to_q(promptbuf2, &point->output, 1);
+		write_output(promptbuf2, &point->output);
 	if (point->character && point->character->desc &&
 	    !(point->character->desc->term_type == TERM_MSP))
-		write_to_q("&n", &point->output, 1);
+		write_output("&n", &point->output);
 }
 
 /* Converts numerical data to a dynamic line for infobar */

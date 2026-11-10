@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "item/objmisc.h"
+#include "item/item_value.h"
 #include "magic/spells.h"
 
 extern Skill skills[];
@@ -104,7 +105,7 @@ void convertObj(P_obj obj)
 	if (!obj || IS_SET(obj->extra_flags, ITEM_IGNORE))
 		return;
 
-	obj->bitvector &= ~(AFF_SLEEP | AFF_FEAR | AFF_CHARM);
+	normalize_item_value_fields(*obj);
 
 	val0 = obj->value[0];
 	val1 = obj->value[1];
@@ -129,11 +130,6 @@ void convertObj(P_obj obj)
 	case ITEM_WEAPON:
 		/* 1 g * max damage */
 
-		/* number of dice more important than size.. */
-		if (val1 < 1)
-			val1 = obj->value[1] = 1;
-		if (val2 < 1)
-			val2 = obj->value[2] = 1;
 		cost = 100L * (val1 * 2) * val2;
 		if (IS_BACKSTABBER(obj))
 		{

@@ -71,13 +71,13 @@ GET_CASTING = extract(comm_path, "int get_casting_cmd_from_q(P_char ch, struct t
 GET_FROM = extract(comm_path, "int get_from_q(struct txt_q *queue, char *dest)")
 
 PRELUDE = r'''
+#include "net/output_links.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
 
-#define MAX_INPUT_LENGTH 512
 #define LOG_COMM 0
 #define FALSE false
 #define TRUE true
@@ -119,6 +119,7 @@ struct txt_block
 {
 	char *text;
 	struct txt_block *next;
+	OutputLinks *links;
 };
 
 struct txt_q
@@ -158,6 +159,7 @@ static void push(struct txt_q *queue, const char *text)
 {
 	struct txt_block *block = (struct txt_block *)malloc(sizeof(struct txt_block));
 	block->text = strdup(text);
+	block->links = nullptr;
 	block->next = NULL;
 	if (queue->tail)
 		queue->tail->next = block;
@@ -361,7 +363,7 @@ def main() -> int:
         source.write_text(harness, encoding="utf-8")
         subprocess.run(
             ["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g",
-             "-fsanitize=address,undefined", str(source), "-o", str(binary)],
+             "-fsanitize=address,undefined", f"-I{SRC}", str(source), "-o", str(binary)],
             check=True,
         )
         subprocess.run([str(binary)], check=True)
