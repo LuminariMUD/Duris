@@ -2747,7 +2747,10 @@ void event_bardsong(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 		{
 			act("&+BYou finish your song.", FALSE, ch, 0, 0, TO_CHAR);
 			act("&+B$n finishes $s song.", FALSE, ch, 0, 0, TO_ROOM);
-			affect_remove(ch, af);
+			if (song == SONG_SHADOW_PIPER)
+				stop_singing(ch);
+			else
+				affect_remove(ch, af);
 			return;
 		}
 	}

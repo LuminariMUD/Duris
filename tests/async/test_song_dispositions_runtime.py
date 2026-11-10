@@ -59,10 +59,10 @@ void mm_release(mm_ds *pool, void *p) {
 mm_ds *mm_create(const char *, size_t, size_t, unsigned) { assert(false); return nullptr; }
 void all_affects(P_char ch, int) {
     REMOVE_BIT(ch->specials.affected_by, AFF_SNEAK);
-    ch->specials.affected_by3 = 0;
+    REMOVE_BIT(ch->specials.affected_by3, AFF3_SINGING);
     for (auto *af = ch->affected; af; af = af->next) {
         SET_BIT(ch->specials.affected_by, af->bitvector & AFF_SNEAK);
-        ch->specials.affected_by3 |= af->bitvector3;
+        SET_BIT(ch->specials.affected_by3, af->bitvector3 & AFF3_SINGING);
     }
 }
 void balance_affects(P_char) {}
@@ -133,6 +133,9 @@ verse = extract_function("bard.c", "void event_bardsong(P_char ch,")
 a = verse.index("\tfor (cld = ch->linked;")
 b = verse.index("\n\tif (!CAN_SING(ch))", a)
 cleanup = "void next_song(P_char ch, int song) { char_link_data *cld, *next_cld;\n" + verse[a:b] + "}\n"
+a = verse.index("\tfor (af = ch->affected; af; af = af2)")
+b = verse.index("\n\tadd_event(event_bardsong", a)
+cleanup += "void final_verse(P_char ch, int song) { affected_type *af, *af2;\n" + verse[a:b] + "}\n"
 driver = r'''
 static std::map<int,int> bonuses(P_char ch) {
     std::map<int,int> out;
@@ -260,6 +263,18 @@ int main() {
                 assert(!follower.affected && !IS_AFFECTED(&follower, AFF_SNEAK));
             }
         }
+    // Run the production final-verse cleanup, then several real affect updates.
+    char_data ending{}, follower{};
+    ending.player.m_class=CLASS_BARD; ending.player.spec=SPEC_SCOUNDREL; ending.player.level=56;
+    SET_POS(&ending,POS_STANDING|STAT_NORMAL); SET_POS(&follower,POS_STANDING|STAT_NORMAL);
+    follower.following=&ending; in_group=true;
+    bard_shadow_piper(56,&ending,&follower,SONG_SHADOW_PIPER);
+    affected_type performing{}; performing.type=INSTRUMENT_FLUTE; performing.duration=-1;
+    performing.bitvector3=AFF3_SINGING; performing.modifier=1;
+    affect_to_char(&ending,&performing);
+    assert(SINGING(&ending) && IS_AFFECTED(&follower,AFF_SNEAK));
+    final_verse(&ending,SONG_SHADOW_PIPER); elapsed_ticks(&follower);
+    assert(!SINGING(&ending) && !ending.linked && !follower.affected && !IS_AFFECTED(&follower,AFF_SNEAK));
     char_data singer{};
     singer.player.m_class = CLASS_BARD; singer.player.spec = SPEC_DISHARMONIST;
     singer.curr_stats.Cha = 100;
