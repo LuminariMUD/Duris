@@ -3,7 +3,7 @@
 Status: batches 1, 2 and 4 are qualified, including every weapon, copyover and live-item mode. Named sets/historical assassin comparison, naming/docs and aggregate gates remain.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-mariadb-test-names`. See the latest qualification notes before continuing.
+Review head: `branch/issue-870-qualification-fixes`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -921,3 +921,25 @@ This is an estimate, not a time limit or permission to omit required proof.
   corrected it to assert the specific persisted nonzero affect. No behavior was
   relaxed. Native build and preserved-fixture replay are next. This fix is on
   `branch/issue-870-deep-inventory-checkpoint` after #949.
+
+
+### Qualification replay support
+
+- The native deep-checkpoint build passed (`deep-inventory-build.log`), and the
+  current-code/115-row catalog variant was relinked with the repaired repository
+  (`deep-inventory-compat-build.log`). Old build metadata is preserved separately.
+- The saved named-set fixture must retain its generated UID graph across this
+  actual native repair. `--resume --allow-binary-change` explicitly records prior
+  proof hashes/completed labels in `reused_from`; normal resume still rejects a
+  mismatch, and the SQL dump hash remains mandatory. This is a concrete repair
+  replay, not relabeling previous passes as executions of the rebuilt binary.
+- The revised poison inspector now uses the persisted1536..1542 range from
+  `spells.h`, retaining all seven poison types. Header-chain checks pin those IDs
+  against BASE; no replacement binary inspector or general macro parser.
+- A selected comparison variant writes its own matrix JSON, preserving the valid
+  original/cleanse results when revised-only qualification follows a native repair.
+  Only revised source changed, so those immutable baselines need no rerun.
+- Current head `branch/issue-870-qualification-fixes` after the deep-checkpoint
+  repair. Next: commit/push these narrow replay fixes, open the bug PR, resume the
+  captured named-set case on rebuilt binaries, and refresh/qualify the revised
+  comparison. Full regression/build and DB aggregates still remain.
