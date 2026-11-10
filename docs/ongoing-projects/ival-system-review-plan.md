@@ -202,7 +202,9 @@ The run uses an isolated full world under POSIX `/tmp` and a fresh loopback Mari
 10.11 schema; its private bank is also an inn for actual mortal rental. Fixture
 corrections use real rental, door-opening and carry limits rather than changing
 the server to accommodate the test. Python compilation and the real journey pass.
-**Craft/Forge qualified:** `branch/ival-economic-qualification`, stacked on #987.
+**Craft/Forge qualified:** `bca0024f2`,
+[PR #989](https://github.com/LuminariMUD/Duris/pull/989) (bug label),
+`branch/ival-economic-qualification`, stacked on #987.
 The real Forge-first migration-file test failed with "You dont know any recipes
 yet" because Forge bypassed the existing shared provider. Its only server change
 is to call `crafting_get_player_recipes`, matching Craft's SQL-first import,
@@ -279,7 +281,7 @@ by the batch. Codec/source-contract tests alone never prove a persistence journe
 
 Local: `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
 Remote: `duris-staging:/home/staging/duris-worktrees/ival-system-improvements`.
-Current branch: `branch/ival-economic-qualification` for D, based on
+Current branch: `branch/ival-economic-qualification` for D (#989), based on
 `branch/ival-qualification` (#987), then `branch/ival-consumers` for C (#982).
 Synchronize committed work to the remote worktree. A–C are implemented; D remains
 open. Read-only template views deliberately omit native runtime-state initialization;
