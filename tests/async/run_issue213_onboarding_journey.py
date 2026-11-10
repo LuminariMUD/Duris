@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 from run_world_quest_dual_backend import setup_run_root
 from test_issue213_tutorial_parity import records, room_exit_fields
@@ -101,7 +101,6 @@ def run(binary, backend, output_path):
         'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(), 'cases': []}
     graph, guilds = authored_graph(), guild_rooms()
     assert len(guilds) == 27, 'guild catalog includes only active hometown rows'
-    inspector = ROOT / 'bin/qualification/issue213/player-inspector'
     output_path.parent.mkdir(parents=True, exist_ok=True)
     (ROOT / 'bin/tests').mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='issue213-' + backend + '-', dir=ROOT / 'bin/tests') as temporary:
@@ -161,13 +160,10 @@ def run(binary, backend, output_path):
 
             def state(name, resident=True):
                 room, pid = stat(name) if resident else (None, player_ids[name])
-                if sql:
-                    row = list(map(int, sql(f"SELECT hometown,birthplace,orig_birthplace,exp,level,race FROM player_data WHERE pid={pid}").split('\t')))
-                    result = dict(zip(('hometown', 'birthplace', 'original_birthplace', 'experience', 'level', 'race'), row))
-                    result['player_items'] = [{'vnum': int(value)} for value in sql(
-                        f'SELECT vnum FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND state=1').splitlines()]
-                else:
-                    result = json.loads(subprocess.check_output([str(inspector), environment['FLATFILE_STATE_DIR'], 'inspect', str(pid)], text=True))
+                row = list(map(int, sql(f"SELECT hometown,birthplace,orig_birthplace,exp,level,race FROM player_data WHERE pid={pid}").split('\t')))
+                result = dict(zip(('hometown', 'birthplace', 'original_birthplace', 'experience', 'level', 'race'), row))
+                result['player_items'] = [{'vnum': int(value)} for value in sql(
+                    f'SELECT vnum FROM item_current_owner WHERE owner_type=1 AND owner_id={pid} AND state=1').splitlines()]
                 result['current_room'] = room
                 return result
 
@@ -353,10 +349,7 @@ def run(binary, backend, output_path):
                 with ThreadPoolExecutor(max_workers=8) as workers:
                     list(workers.map(create, enumerate(creations)))
                 stop()
-                if sql:
-                    sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
-                else:
-                    journey.make_overlord(Path(environment['FLATFILE_STATE_DIR']), GOD)
+                sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
                 boot()
                 god = login(GOD, GOD_ACCOUNT)
                 pupils = {case['name']: login(case['name'], case['account']) for case in CASES}
@@ -503,7 +496,7 @@ def run(binary, backend, output_path):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server', type=Path, required=True)
-    parser.add_argument('--backend', choices=('flatfile', 'mariadb'), default='flatfile')
+    parser.add_argument('--backend', choices=("mariadb",), default="mariadb")
     parser.add_argument('--output', type=Path)
     parser.add_argument('--case', action='append', choices=[case['name'] for case in CASES],
                         help='run only the named route(s) while developing a focused acceptance leg')

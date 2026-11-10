@@ -9,7 +9,7 @@ import time
 import test_account_recovery_journey as account
 import test_creation_prompt_journey as creation
 from test_character_stat_choice_journey import WebSocketClient
-from test_flatfile_combat_journey import make_overlord
+from test_mariadb_combat_journey import make_overlord
 from test_kept_character_approval_journey import STAFF, OWNER, enter_staff
 from test_kept_character_journey import (
     character_choices, kept_journey_binary, login, persistence, websocket_character,

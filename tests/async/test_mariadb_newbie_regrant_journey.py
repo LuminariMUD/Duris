@@ -13,8 +13,8 @@ import tempfile
 import threading
 import time
 
-import test_flatfile_combat_journey as journey
-import test_flatfile_chaos_new_character_kit as chaos_kit
+import test_mariadb_combat_journey as journey
+import test_mariadb_chaos_new_character_kit as chaos_kit
 
 ROOT = Path(__file__).resolve().parents[2]
 MASTER_SPELLBOOK_VNUM = 7

@@ -5,6 +5,7 @@ Flat-file builds have no SQL season epoch and use the disabled-Redis report path
 """
 
 import json
+import os
 from pathlib import Path
 import re
 import signal
@@ -12,7 +13,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from named_set_gameplay import score, save
 from test_flight_network_journey import authority
 
@@ -46,7 +47,7 @@ def semantic(text):
 def run():
     runtime = Path(tempfile.mkdtemp(prefix="named-report-mariadb-", dir=ROOT / "bin/tests"))
     print("Artifacts: " + str(runtime), flush=True)
-    (runtime / "areas").symlink_to(ROOT / "bin/tests/named-set-roster-world/areas", target_is_directory=True)
+    (runtime / "areas").symlink_to(Path(os.environ.get("NAMED_SET_RUNTIME", ROOT / "bin/tests/named-set-roster-world")) / "areas", target_is_directory=True)
     (runtime / "docs").symlink_to(ROOT / "docs", target_is_directory=True)
     archive = subprocess.Popen(["git", "archive", "HEAD", "lib", "help"], cwd=ROOT, stdout=subprocess.PIPE)
     subprocess.run(["tar", "-x", "-C", str(runtime)], stdin=archive.stdout, check=True)

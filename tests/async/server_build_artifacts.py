@@ -190,7 +190,7 @@ def verified_artifact(cache, key, pulse):
         return None
 
 
-def build_flatfile_server(build_root, *, legacy_cache=None, real_clock=False):
+def build_mariadb_server(build_root, *, legacy_cache=None, real_clock=False):
     """Return a read-only executable; callers own every runtime fixture and process."""
     started = time.monotonic()
     pulse = None if real_clock else FAST_PULSE_USEC

@@ -17,6 +17,7 @@ PRELUDE = r'''
 #include "combat/training_dummy.h"
 #include "item/item_actions.h"
 #include "net/gmcp.h"
+#include "net/comm.h"
 #include "world/db.h"
 #include "telemetry/telemetry_runtime.h"
 #include <cassert>
@@ -51,6 +52,16 @@ static std::vector<P_obj> extracted_items;
 static bool transient_items;
 static bool locker_test;
 static int session_exits;
+static int teleport_entry_mode, teleport_placements, teleport_arrivals;
+P_char find_character_by_runtime_id(uint64_t id) {
+    for (P_char ch = character_list; ch; ch = ch->next)
+        if (ch->runtime_id == id) return ch;
+    return nullptr;
+}
+void act(const char *, int, P_char ch, P_obj, void *, int) {
+    assert(IS_ALIVE(ch));
+    if (ch->in_room == 1) ++teleport_arrivals;
+}
 telemetry_capture_result telemetry_runtime_game_session_exit(P_char ch, P_desc,
                                                              telemetry_session_end_reason) {
     ++session_exits;
@@ -356,7 +367,21 @@ static void free_locker(int) {
     rooms[0].funct = nullptr;
 }
 bool char_to_room(P_char ch, int room, int direction) {
-    assert(ch->in_room == NOWHERE && room == 1 && direction == -2);
+    assert(ch->in_room == NOWHERE && room == 1);
+    if (direction == 0) {
+        ++teleport_placements;
+        if (teleport_entry_mode == 1) {
+            character_list = nullptr; ++character_removal_generation;
+            delete ch; return false;
+        }
+        if (teleport_entry_mode == 2) {
+            ch->~char_data(); new (ch) char_data{};
+            ch->runtime_id = 2;
+            SET_POS(ch, STAT_NORMAL + POS_STANDING);
+        }
+        if (teleport_entry_mode == 3) SET_POS(ch, STAT_DEAD);
+        if (teleport_entry_mode == 4) { ch->in_room = 0; return false; }
+    } else assert(direction == -2);
     ch->in_room = room;
     ch->next_in_room = rooms[room].people;
     rooms[room].people = ch;
@@ -665,8 +690,42 @@ static void run_locker_extraction(int failure, bool saved, bool terminal = false
     locker_test = false;
 }
 
+static void run_teleport(Scenario selected, int entry_mode = 0)
+{
+    rooms[0] = {}; rooms[1] = {};
+    rooms[0].number = 100; rooms[1].number = 200;
+    rooms[0].funct = room_hook;
+    auto *ch = new char_data{};
+    ch->runtime_id = 1; ch->in_room = 0;
+    ch->points.hit = ch->points.max_hit = 100;
+    SET_POS(ch, STAT_NORMAL + POS_STANDING);
+    character_list = rooms[0].people = ch;
+    dummy_guard = false; terminal_departure_override = nullptr;
+    scenario = selected; character_removal_generation = 0;
+    teleport_entry_mode = entry_mode;
+    teleport_placements = teleport_arrivals = 0;
+    teleport_to(ch, 1, 0);
+    const bool departed = selected == ordinary || selected == handled ||
+                          selected == detached || selected == unrelated_removal ||
+                          selected == extraction_returned;
+    assert(teleport_placements == (departed ? 1 : 0));
+    assert(teleport_arrivals == (departed && entry_mode == 0 ? 1 : 0));
+    if (selected != freed && entry_mode != 1) {
+        if (selected == veto || selected == reused) assert(ch->in_room == 0);
+        if (selected == redirected) assert(ch->in_room == 1);
+        if (selected == reused || entry_mode == 2) assert(ch->runtime_id == 2);
+        delete ch;
+    }
+    character_list = rooms[0].people = rooms[1].people = nullptr;
+}
+
 int main()
 {
+    // A room hook may free or replace the actor at either teleport boundary.
+    for (Scenario selected : {freed, ordinary, handled, veto, redirected, detached,
+                              removed, reused, killed, unrelated_removal, extraction_returned})
+        run_teleport(selected);
+    for (int entry_mode : {1, 2, 3, 4}) run_teleport(ordinary, entry_mode);
     for (bool npc : {false, true})
         for (Scenario selected : {ordinary, handled, veto, redirected, detached,
                                   removed, freed, reused, killed, already_dead,
@@ -721,6 +780,7 @@ with tempfile.TemporaryDirectory(prefix="char-from-room-", dir=build_root) as di
         PRELUDE,
         LOCKER_FIXTURE,
         extract_function("utility.c", "int char_in_list(const P_char ch)"),
+        extract_function("magic.c", "void teleport_to("),
         extract_function("storage_lockers.c", "static bool locker_handle_leave("),
         extract_function("storage_lockers.c", "bool locker_leave_for_extraction("),
         "void char_from_room(P_char ch)\n" + function_body(
