@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute production WHERE: trap dispatch, sorted lists and bounded zone output."""
+"""Execute WHERE and LOOKUP: shared name searches, colors, catalog text and bounded output."""
 
 from pathlib import Path
 import subprocess
@@ -12,14 +12,31 @@ text = source("actwiz.c").read_text()
 line_info = text[text.index("struct line_info\n{"):text.index("// To sort the players")]
 production = line_info + "\n" + "\n".join(
     extract_function("actwiz.c", signature)
-    for signature in ("int where_compare(", "void do_where(")
+    for signature in ("static bool staff_name_matches(", "void do_lookup(",
+                      "int where_compare(", "void do_where(")
 )
+
+production = "\n".join(
+    extract_function(file, signature)
+    for file, signature in (
+        ("handler.c", "bool isname(const char *str, const char *namelist)"),
+        ("utility.c", "string strip_ansi("),
+        ("utility.c", "void strToLower("),
+        ("interp.c", "void half_chop("),
+        ("interp.c", "char *one_argument("),
+    )
+) + "\n" + production
 
 harness = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "core/utility.h"
 #include "net/comm.h"
+#include "core/mm.h"
+#include "core/safe_format.h"
+#include "world/db.h"
+#include <cstdarg>
+#include <algorithm>
 #include <cassert>
 #include <climits>
 #include <cstdio>
@@ -36,36 +53,157 @@ P_desc descriptor_list = nullptr;
 P_char character_list = nullptr;
 P_obj object_list = nullptr;
 P_index mob_index = nullptr, obj_index = nullptr;
+int top_of_mobt = -1, top_of_objt = -1;
+mm_ds *dead_mob_pool = nullptr, *dead_pconly_pool = nullptr;
 static struct { char color = 'w'; } racewar_color[MAX_RACEWAR + 2]{};
 static std::string output;
 static int traps, pages;
 bool ac_can_see(P_char, P_char, bool) { return true; }
-bool ac_can_see_obj(P_char, P_obj, int) { abort(); }
+bool ac_can_see_obj(P_char, P_obj, int) { return true; }
 void send_to_char(const char *text, P_char) { output += text; }
 void page_string(P_desc, char *text, int) { output += text; ++pages; }
 void do_traplist(P_char, char *, int) { ++traps; output += "Traps\n"; }
 void where_stat(P_char, char *) { abort(); }
 void where_nowhere(P_char, char *) { abort(); }
-char *where_obj(P_obj, int) { abort(); }
+char *where_obj(P_obj, int) { return const_cast<char *>("Test room"); }
 std::string pad_ansi(const char *text, int, bool) { return text; }
 char *FirstWord(char *text) { return text; }
-bool isname(const char *word, const char *list) { return !strcmp(word, list); }
+void send_to_char_f(P_char, const char *format, ...) {
+    char text[MAX_STRING_LENGTH]; va_list args; va_start(args, format);
+    vsnprintf(text, sizeof(text), format, args); va_end(args); output += text;
+}
+void logit(const char *, const char *, ...) {}
+int fill_word(char *) { return 0; }
+void display_random_zones(P_char) { abort(); }
+void ensure_pconly_pool() { abort(); }
+void *_mm_get(mm_ds *, const char *, int) { abort(); }
+int restoreCharOnly(P_char, char *) { abort(); }
+int stripansi_2(const char *, char *) { abort(); }
+const char *race_to_string(P_char) { abort(); }
+char *get_class_string(P_char, char *) { abort(); }
+char *skip_spaces(char *) { abort(); }
 bool is_abbrev(const char *word, const char *full) {
     return *word && !strncmp(word, full, strlen(word));
 }
 bool is_number(char *) { return false; }
 bool is_linked_to(P_char, P_char, unsigned short) { return false; }
 int panic_corruption_int(const char *, const char *, ...) { abort(); }
-char *one_argument(const char *text, char *word) {
-    strcpy(word, text); return const_cast<char *>(text + strlen(text));
-}
 
 // PRODUCTION
 
-static void run(P_char viewer, const char *argument) {
+static void run(P_char viewer, const char *argument, bool lookup = false) {
     output.clear(); pages = 0;
     char input[MAX_INPUT_LENGTH]; strcpy(input, argument);
-    do_where(viewer, input, 0);
+    if (lookup) do_lookup(viewer, input, 0);
+    else do_where(viewer, input, 0);
+}
+
+static void check_name_searches(P_char viewer) {
+    descriptor_data descriptor{};
+    viewer->desc = &descriptor;
+    viewer->player.level = 60;
+    index_data entries[7]{};
+    const char *keywords[] = {
+        "giant fire guard", "sentinel", "fire giant", "thri-kreen",
+        "giant fireball", "unspawned ember", nullptr,
+    };
+    const char *descriptions[] = {
+        "&+Ra stone sentinel&n", "a &=Rbfi&+Gre &+Lgiant&n", "a fire giant",
+        "a mantis guard", "a fireball construct", "a sleeping sentinel", nullptr,
+    };
+    char_data mobs[5]{};
+    npc_only_data npc[5]{};
+    obj_data objects[5]{};
+    for (int i = 0; i < 7; ++i) {
+        entries[i].virtual_number = 91001 + i;
+        entries[i].keys = const_cast<char *>(keywords[i]);
+        entries[i].desc2 = const_cast<char *>(descriptions[i]);
+        entries[i].number = i < 5 ? 1 : 0;
+        if (i >= 5) continue;
+        mobs[i].specials.act = ACT_ISNPC;
+        mobs[i].only.npc = &npc[i]; npc[i].R_num = i;
+        mobs[i].player.name = entries[i].keys;
+        mobs[i].player.short_descr = entries[i].desc2;
+        mobs[i].in_room = 0;
+        mobs[i].next = i < 4 ? &mobs[i+1] : nullptr;
+        objects[i].R_num = i;
+        objects[i].name = entries[i].keys;
+        objects[i].short_description = entries[i].desc2;
+        objects[i].next = i < 4 ? &objects[i+1] : nullptr;
+    }
+    mob_index = obj_index = entries;
+    top_of_mobt = top_of_objt = 6;
+    auto check = [&](const std::vector<int> &expected) {
+        for (int i = 0; i < 7; ++i) {
+            const std::string vnum = std::to_string(entries[i].virtual_number);
+            const auto at = output.find(vnum);
+            const bool wanted = std::find(expected.begin(), expected.end(), i) != expected.end();
+            assert((at != std::string::npos) == wanted);
+            if (wanted) assert(output.find(vnum, at + vnum.size()) == std::string::npos);
+            assert(entries[i].number == (i < 5 ? 1 : 0));
+        }
+        assert(pages == !expected.empty());
+    };
+    for (const char *type : {"mob", "char", "obj"}) {
+        character_list = !strcmp(type, "obj") ? nullptr : mobs;
+        object_list = !strcmp(type, "obj") ? objects : nullptr;
+        for (const char *pattern : {"fire-giant", "GIANT-FIRE", "fire giant"}) {
+            const std::string query = std::string(type) + " " + pattern;
+            run(viewer, query.c_str(), true);
+            check(!strcmp(pattern, "fire giant") ? std::vector<int>{1, 2} : std::vector<int>{0, 1, 2});
+            assert(output.find(descriptions[1]) != std::string::npos); // Preserve display colors.
+            run(viewer, pattern);
+            check(!strcmp(pattern, "fire giant") ? std::vector<int>{1, 2} : std::vector<int>{0, 1, 2});
+        }
+        for (const char *pattern : {"thri-kreen", "fire-troll", "fire--giant"}) {
+            const std::string query = std::string(type) + " " + pattern;
+            run(viewer, query.c_str(), true);
+            check(!strcmp(pattern, "thri-kreen") ? std::vector<int>{3} : std::vector<int>{});
+            run(viewer, pattern);
+            check(!strcmp(pattern, "thri-kreen") ? std::vector<int>{3} : std::vector<int>{});
+        }
+        for (const char *pattern : {"StOnE", "tone sent", "#91001"}) {
+            const std::string query = std::string(type) + " " + pattern;
+            run(viewer, query.c_str(), true); check({0});
+        }
+        run(viewer, (std::string(type) + " re gi").c_str(), true); check({1, 2});
+        run(viewer, "tone sent"); check({}); // Partial text remains LOOKUP-only.
+        run(viewer, (std::string(type) + " unspawned-ember").c_str(), true); check({5});
+        run(viewer, (std::string(type) + " 91006").c_str(), true); check({5});
+        run(viewer, "unspawned-ember"); check({});
+        run(viewer, (std::string(type) + " no-such-match").c_str(), true); check({});
+        assert(output == "No matches found for pattern 'no-such-match'\n");
+        run(viewer, (std::string(type) + " 91007").c_str(), true); check({6});
+    }
+    for (const char *query : {"", "mob", "obj", "unknown fire"}) {
+        run(viewer, query, true);
+        assert(output.starts_with("Syntax : lookup") && pages == 0);
+    }
+    // Empty catalogs and a catalog larger than the output limit stay bounded.
+    top_of_mobt = top_of_objt = -1;
+    mob_index = obj_index = nullptr;
+    for (const char *type : {"mob", "obj"}) {
+        run(viewer, (std::string(type) + " fire").c_str(), true);
+        assert(output == "No matches found for pattern 'fire'\n" && !pages);
+    }
+    std::vector<index_data> many(2000);
+    std::string description(200, 'x');
+    for (int i = 0; i < 2000; ++i) {
+        many[i].virtual_number = 100000 + i;
+        many[i].keys = const_cast<char *>("crowd");
+        many[i].desc2 = description.data();
+    }
+    mob_index = obj_index = many.data(); top_of_mobt = top_of_objt = 1999;
+    for (const char *type : {"mob", "obj"}) {
+        run(viewer, (std::string(type) + " crowd").c_str(), true);
+        const std::string warning = "...and the list goes on...\n";
+        assert(output.size() < MAX_STRING_LENGTH && pages == 1);
+        assert(output.starts_with("#100000 ") && output.ends_with("~\n" + warning));
+        assert(output.find(warning) == output.rfind(warning));
+    }
+    character_list = nullptr; object_list = nullptr;
+    mob_index = obj_index = nullptr; top_of_mobt = top_of_objt = -1;
+    viewer->desc = nullptr;
 }
 
 int main() {
@@ -130,7 +268,8 @@ int main() {
     assert(output.starts_with("Players in this zone:\n"));
     assert(output.ends_with(warning));
     assert(output.find(warning) == output.rfind(warning));
-    puts("where command: trap-only output, room sorting, headers and bounded zone list passed");
+    check_name_searches(&viewer);
+    puts("where/lookup: shared keywords, compounds, colors, partial text, cold prototypes, sorting and bounds passed");
 }
 '''
 
@@ -140,6 +279,6 @@ with tempfile.TemporaryDirectory(prefix="where-command-", dir=ROOT / "bin/tests"
     path.write_text(harness.replace("// PRODUCTION", production))
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
-        "-fsanitize=address,undefined", "-Isrc", str(path), "-o", str(binary),
+        "-fsanitize=address,undefined", "-Isrc", str(path), "src/core/safe_format.c", "-o", str(binary),
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True)

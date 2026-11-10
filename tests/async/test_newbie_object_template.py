@@ -230,18 +230,22 @@ static void check_boot_names()
         P_index generated = generate_indices(obj_f, &top);
         assert(top == 1 && generated[0].virtual_number == 100);
         assert(generated[1].virtual_number == 101 && !generated[1].desc2);
-        assert(!generated[0].keys && generated[0].number == 0);
+        assert(strcmp(generated[0].keys, "cold_keywords") == 0);
+        assert(generated[0].number == 0 && generated[1].number == 0);
         assert(strcmp(generated[0].desc2, "A &+Csynthetic item&n") == 0);
         assert(generated[0].pos == indexes[0].pos);
         indexes[0] = generated[0];
+        indexes[1] = generated[1];
         FREE(generated);
         auto *shared = indexes[0].desc2;
+        auto *keywords = indexes[0].keys;
         const auto prototype = parse_object_template(0);
         assert(prototype.name == "cold_keywords" && prototype.value[0] == 12);
         assert(prototype.short_description == shared);
         P_obj first = instantiate_object_template(prototype);
         P_obj second = instantiate_object_template(prototype);
         assert(first->short_description == shared && second->short_description == shared);
+        assert(first->name == keywords && second->name == keywords);
         assert(indexes[0].desc2 == shared && indexes[0].number == 2);
         cleanup();
         assert(allocations.empty());
@@ -491,6 +495,7 @@ def main() -> int:
         extract_function("core/utility.c", "int strn_cmp(const char *arg1, const char *arg2, uint n)"),
         extract_function("handler.c", "bool isname(const char *str, const char *namelist)"),
         extract_function("db.c", "void skip_fread(FILE *fl)"),
+        extract_function("utility.c", "void strToLower("),
         extract_function("db.c", "P_index generate_indices(FILE *fl, int *top)"),
         extract_function("db.c", "std::string read_template_string(FILE *file,"),
         extract_function("db.c", "object_template parse_object_template(int nr)"),

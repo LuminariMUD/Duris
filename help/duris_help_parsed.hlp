@@ -11793,15 +11793,21 @@ Example: load o 1400
 #0
 
 Godlookup
-Godlookup - Last Edited: 2007-04-22 22:12:53 by Unknown
+Godlookup - Last Edited: 2026-11-10
 =======================================================
 "Lookup" is for finding the database number (v-number) of objects or
 characters in preparation for loading or statting.
 Syntax : lookup <room | zone | mob | obj> <pattern>
 Example: lookup o staff
-Gives you a listing of all items with staff in their short description
-along with their associated database number.
-	See also:god load ,god stat
+Lists matching items along with their associated database number. Mob and
+object searches check keywords and short descriptions, ignoring case and
+description colors. Join keywords with hyphens: lookup mob fire-giant
+finds both fire and giant in either order. Literal names such as thri-kreen
+also work.
+Partial description text and v-number searches still work. Lookup includes
+prototypes even when no copies are currently in the game; use where to
+locate live copies.
+	See also:god load ,god stat ,god where
 
 #0
 
@@ -12152,7 +12158,7 @@ Example:
 #0
 
 Godwhere
-Godwhere - Last Edited: 2007-04-22 22:12:53 by Unknown
+Godwhere - Last Edited: 2026-11-10
 ======================================================
 This will tell you the detailed location of all things (monsters, players,
 objects) with a given name.
@@ -12160,6 +12166,11 @@ Examples:
   where dragon
   where fizzwig
   where torch
+  where fire-giant
+Mob and object searches check keywords and short descriptions, ignoring
+case and description colors. Hyphens join keywords in either order;
+literal names such as thri-kreen also work. Use lookup mob or lookup obj
+for partial description searches or prototypes not currently in the game.
 You can also type "where" without arguments to see where all visible
 players are.
 
