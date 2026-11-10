@@ -45,7 +45,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-apply-composition`; its initial synchronized commit was
+`origin/branch/ival-zero-modifiers`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -62,7 +62,8 @@ the #919 constructor repair and #927 CTF binding prerequisite are stacked above
 it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-circle-extents`; #946 repairs packed averaging on
 `branch/ival-packed-proc-mean`; #956 supplies canonical apply composition on
-`branch/ival-apply-composition`. Branch/base
+`branch/ival-apply-composition`; #959 makes zero modifiers neutral on
+`branch/ival-zero-modifiers`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -814,12 +815,73 @@ checks passed. Full server and both maintained editor builds passed. Legacy F08
 overflow probes remain expected failures. Zero/duplicate semantics remain F04;
 no persisted slots, pricing formulas, coefficients or proc-route policies were rewritten.
 
+### Chunk 12 — make zero apply modifiers neutral (F04, partial, implemented)
+
+Branch: `branch/ival-zero-modifiers`, based on `branch/ival-apply-composition`.
+Published: commit `2052d5dc7`, [PR #959](https://github.com/LuminariMUD/Duris/pull/959)
+(bug label), stacked on #956. Ready for review; both dedicated worktrees carry
+the committed implementation and evidence.
+
+**Outcome:** a zero stored modifier contributes neither base credit, multiplier
+addition nor multiplier factor. Leave its stored location and slot untouched.
+Formula identity: `ival-v5-zero-neutral`.
+
+**Non-goals:** duplicate aggregation and racial override selection remain the next
+F04 slice; no weights, input admission, slot storage, or deployment changes.
+
+**Files:** the shared evaluator/revision and existing native characterization,
+report/corpus, enhancement and monk-tool tests, plus measured evidence and this plan.
+
+**Proof:** insert zero modifiers at every byte-sized stored location in every
+slot across worn/armor/weapon, asserting unchanged score, full breakdown and
+object bytes. Reuse native old/new template/generator/consumer qualification.
+Live numeric stat application adds ordinary modifiers, so zero is neutral;
+racial modifier zero is invalid and already ignored by `affect_modify()`.
+The pure fixture pairs its explicit racial credit with an actual racial apply.
+
+**Measured effects:** native comparison against `bf457ad5aa22885a209753c9f5020ed3eb76168a`
+covered 19,334 effective templates and 8,720 actual generated samples. Four
+templates change: #40433 1→2, #97528 17→15, #134028 17→15 and #134136 93→76.
+All 227 changed generated samples decrease (−92..−1). Every changed row contains
+a stored zero modifier. Evidence and native consumer settings/hashes are in
+[`ival-evidence/f04-zero/`](ival-evidence/f04-zero/).
+
+Two templates cross salvage quality 15. Recipe admission is unchanged; four
+material plans change, totaling −5 high/+5 low material units and −20,000 nominal
+base XP for one craft of each. Three craft and enhancement source minimum levels
+change. Eligible template sources total −2,000 copper in nominal superior fees;
+replacement fees are unchanged. Two enhancement index score buckets change;
+none crosses the result cap. Quest floors gain two/lose eight and cached quest
+weights change in zones 404, 975 and 1340 (100 level rows). No actual faerie-bag
+25/50/125 boundary crosses. Generated random VNUMs fail native salvageability,
+which both enhancement command modes require: their raw price/level projections
+in the CSV are not reachable enhancement effects. The report now applies this
+existing command gate when aggregating source/price effects.
+
+**Validation passed:** 3,072 zero-location/slot/type cases, the existing 10,080
+permutation cases, unchanged input bytes/breakdowns, native constructor/template
+and CLI comparisons/provenance, report I/O, full server build, enhancement runtime,
+monk tools, snapshot codec and SQL item-field checks. The enhancement command
+regression exercises a newly eligible level-4 source (12 instead of 14), verifies
+the charge/material debit, and preserves its stored zero slot through upgrade.
+F08's deliberate overflow probes remain expected failures; full MariaDB journeys
+remain F16. No database or production operation was performed.
+
+Reproduce the native delta after building:
+
+```text
+python3 tests/async/test_item_value_template_runtime.py --numeric-baseline bf457ad5aa22885a209753c9f5020ed3eb76168a --delta-output docs/ongoing-projects/ival-evidence/f04-zero
+```
+
+**Ablation:** skip zero after initializing its local neutral factor. No new
+abstraction, policy switch, or persistence rewrite is required.
+
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization
    entries and F02's premature packed-proc rounding are repaired. F03 now composes
-   stored apply permutations canonically; neutral zeros and duplicate semantics
-   remain F04.
+   stored apply permutations canonically and zero modifiers are neutral. Duplicate
+   semantics remain F04.
 2. **Keep tools truthful.** The editor now uses shared arithmetic with explicit
    context estimates, and the offline material report has normalized context and
    native corpus qualification. Enhancement configuration/enforcement still needs
@@ -1469,7 +1531,8 @@ partial deliveries and their verification are recorded in the implementation log
   Implemented and qualified in Chunks 9/#935 and 10/#946.
 - [ ] Make zero modifiers neutral and multiplier composition order independent
   (F03/F04); address duplicate semantics in its own slice if the delta is broad.
-  F03 is implemented and qualified in Chunk 11/#956. F04 remains pending.
+  F03 is implemented and qualified in Chunk 11/#956. Chunk 12 implements neutral
+  zeros; F04 duplicate semantics remain pending.
 - [ ] Add finite/overflow checks at evaluator, config, and consumer boundaries
   (F08/F14); never make invalid content economically cheap.
 - [ ] Reconcile executable proc routing and explicit utility policy (F09).
@@ -1564,7 +1627,7 @@ must use the effective booted world and native normalization instead.
 
 Not run: full server/editor builds (no implementation changes), a live MUD session,
 production data inspection, full-world before/after scoring with complete runtime
-context, or SQL/flatfile command journeys. No empirical claims about latency,
+context, or MariaDB command journeys. No empirical claims about latency,
 live prevalence, player economic impact, or new balancing weights are made.
 
 ## Completion bar and simplification decisions

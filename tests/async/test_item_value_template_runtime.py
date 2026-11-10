@@ -466,7 +466,8 @@ def consumer_effects(rows, settings, quest_rows):
         changed = [{key: (value if key == "cohort" else int(value)) for key, value in row.items()}
                    for row in rows if row["cohort"] == cohort and row["before"] != row["after"]]
         recipes = [row for row in changed if row["recipe_before"] or row["recipe_after"]]
-        sources = [row for row in changed if row["enhance_allowed"]]
+        # Both command modes reject non-salvageable sources before their score/price gates.
+        sources = [row for row in changed if row["salvageable"] and row["enhance_allowed"]]
         mortal_sources = [row for row in sources if min(row["enhance_min_level_before"], row["enhance_min_level_after"]) <= maximum]
         effects = {
             "changed_scores": len(changed),
@@ -529,6 +530,7 @@ def consumer_effects(rows, settings, quest_rows):
     result["quest_zone_reward_weight_ratios"] = zones
     result["interpretation"] = [
         "Scores, crafting plans, recipe admission and enhancement candidate eligibility come from native code.",
+        "Enhancement source/price effects require both native salvageability and enhancement admission; random equipment VNUMs fail this command gate.",
         "XP and superior prices are nominal if the action is otherwise eligible; currency units are copper.",
         "A source minimum rising from L to H removes levels L..H-1; a donor floor rising from A to B removes donor values A..B-1 if donor scores are fixed.",
         "Quest weight ratios assume unchanged mob level fit; the CSV uses unit fit. Geographic and zone eligibility remain separate gates.",
@@ -689,7 +691,7 @@ def main():
                             ("kingdom_config", world / "lib/kingdom.cfg"),
                             ("item_abilities", world / "lib/item_abilities.json")):
             assert provenance[label + "_sha256"] == hashlib.sha256(file.read_bytes()).hexdigest()
-        assert provenance["formula_revision"] == "ival-v4-apply-composition"
+        assert provenance["formula_revision"] == "ival-v5-zero-neutral"
         assert provenance["context"] == "configured-healthy-boot"
         assert provenance["mini_mode"] == "0" and provenance["no_specials"] == "0"
         if args.delta_output:
