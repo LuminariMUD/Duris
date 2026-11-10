@@ -439,7 +439,7 @@ static void starter_replay_matrix(const char *directory)
     assert(item_creation_grant_submit_batch_to_player_before_entry(&actor, roots, 1, &actor, true));
     assert(critical_operation_id_equal(previous.operation_id, submitted.operation_id)); // Initialization has not committed.
     assert(player_revision_acknowledge_durable(42, revision, components));
-    assert(player_revision_record_written(42, revision));
+    assert(player_revision_record_written(42, revision, components));
     item_movement_transaction_player_ready(&actor);
     const auto bound = submitted;
     critical_command stored;
