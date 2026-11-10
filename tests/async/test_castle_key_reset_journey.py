@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as base
+import test_mariadb_combat_journey as base
 from test_castle_key_reset import GATES, REVERSE, castle_data, records
 from test_flight_network_journey import command
 

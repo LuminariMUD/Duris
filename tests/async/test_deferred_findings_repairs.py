@@ -20,7 +20,6 @@ def src(name):
 actoth = src("actoth.c")
 sql_player = src("sql_player.c")
 sql_player_h = src("sql_player.h")
-enhance = src("enhance.c")
 nq = src("nq.c")
 artifact = src("artifact.c")
 language = src("language.c")
@@ -79,17 +78,8 @@ check(
     and corpses.count("last_item_stored = true;") == 1,
 )
 
-# 3. modenhance deliberately has no enhance_material_ival_delta floor: essences
-#    are purpose-built stock, priced by their own tiers.  enhance() keeps it.
-check(
-    "enhance() still computes and enforces the material floor",
-    "minval = sval - enhance_material_ival_delta;" in enhance
-    and "if (!pouch_material && itemvalue(material) < minval)" in enhance,
-)
-check(
-    "modenhance() records why the floor does not apply to essences",
-    "enhance_material_ival_delta floor here" in body(enhance, "void modenhance("),
-)
+# 3. The native enhancement harness checks the ordinary/insignia donor-floor
+#    boundaries and cheap-essence admission in test_enhance_ival_runtime.py.
 
 # 4. The <class>/<race> quest children were parsed and ignored, so a quest using
 #    listedclasses="allow" allowed nobody at all.

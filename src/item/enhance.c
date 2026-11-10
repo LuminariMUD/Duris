@@ -1764,7 +1764,8 @@ void load_enhance_config(void)
 	while (fgets(line, sizeof(line), fp))
 	{
 		line_num++;
-		if (!strchr(line, '\n'))
+		// Judge by length: an embedded NUL must not make a complete line look cut off.
+		if (strlen(line) == sizeof(line) - 1 && line[sizeof(line) - 2] != '\n')
 		{
 			int next = fgetc(fp);
 			if (next != EOF && next != '\n')

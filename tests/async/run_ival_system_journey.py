@@ -16,11 +16,11 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import command
 from run_world_quest_dual_backend import setup_run_root
 from run_item_pilot_journey import object_records
-from test_flatfile_locker_journey import reenter_locker
+from test_mariadb_locker_journey import reenter_locker
 from named_set_gameplay import enable_items, selector
 
 ROOT = Path(__file__).resolve().parents[2]

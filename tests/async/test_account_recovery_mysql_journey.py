@@ -14,7 +14,7 @@ import time
 import uuid
 
 import test_account_recovery_journey as journey
-import test_flatfile_combat_journey as combat
+import test_mariadb_combat_journey as combat
 from test_character_stat_choice_journey import WebSocketClient
 
 

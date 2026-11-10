@@ -335,6 +335,17 @@ int main()
 	prototype.description = const_cast<char *>("A chest is here.");
 	prototype.short_description = const_cast<char *>("a chest");
 	prototype.action_description = const_cast<char *>("");
+	// Auction blobs still use this reader. Signed 32-bit timer sentinels must
+	// remain negative when decoded into the runtime's wider time_t fields.
+	indexes[0].virtual_number = 391;
+	obj_data timed = prototype;
+	const std::array<time_t, 4> timers = { -1, -8, 0, INT32_MAX };
+	std::copy(timers.begin(), timers.end(), timed.timer);
+	std::array<char, SAV_MAXSIZE> timer_bytes = {};
+	assert(write_one_object(&timed, timer_bytes.data(), false) > 0);
+	P_obj decoded_timer = read_one_object(timer_bytes.data());
+	assert(decoded_timer && std::equal(timers.begin(), timers.end(), decoded_timer->timer));
+	extract_obj(decoded_timer, FALSE);
 	for (const auto &entry : manifest)
 	{
 		indexes[0].virtual_number = entry.vnum;

@@ -44,6 +44,7 @@ void nevent_periodic_continue_after(unsigned long long) { ++continuations; }
 bool redis_floor_runtime_enabled() { return false; }
 int locker_hooks = 0;
 void locker_post_save_hook(P_char) { ++locker_hooks; }
+void locker_return_norent_items(P_char) {}
 void redis_flush_floor_drops() { std::abort(); }
 
 int main() {

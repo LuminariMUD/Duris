@@ -78,6 +78,11 @@ int main() {
     assert(quest_zones[0].reward_count[61] == 2 && quest_zones[0].reward_average[61] == 40);
     assert(quest_zones[0].reward_count[20] == 3 && quest_zones[0].reward_average[20] == 30);
     assert(quest_zones[1].reward_count[50] == 1 && quest_zones[1].reward_count[51] == 0);
+    // An unavailable value never enters the reward pools.
+    quest_zones.assign(2, {});
+    objects[0].ivalue = 0;
+    load_reward_profiles();
+    assert((quest_zones[0].reward_vnums == std::vector<int>{101, 102}));
 }
 """, "duris-world-quest-catalog-")
 

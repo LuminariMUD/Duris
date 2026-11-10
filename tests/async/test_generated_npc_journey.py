@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import time
 import uuid
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 
 def drain(client,duration=.4):
