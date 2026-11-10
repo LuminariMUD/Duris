@@ -24,8 +24,8 @@ struct enhance_index_entry
 	int ival;
 	unsigned int wear_flags;
 	int material;
-	int apply_loc[4];
-	int apply_mod[4];
+	int apply_loc[MAX_OBJ_AFFECT];
+	int apply_mod[MAX_OBJ_AFFECT];
 	struct enhance_index_entry *next;
 };
 
@@ -41,6 +41,8 @@ bool is_enhance_banned(P_obj item);
 // Shared by index construction, final result loading and offline qualification.
 bool is_enhance_pool_candidate(P_obj item);
 void load_enhance_config(void);
+bool load_enhance_index(void);
+void refresh_enhancement_item_values();
 void enhance(P_char ch, P_obj source, P_obj material);
 void do_enhance(P_char ch, char *argument, int cmd);
 void modenhance(P_char ch, P_obj source, P_obj material);

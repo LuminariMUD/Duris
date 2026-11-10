@@ -139,7 +139,8 @@ def test_temporary_mobile_load_failures_are_cleaned() -> None:
     assert "partial_mobile_name" in read_mobile
     assert "SET_BIT(mob->specials.act, ACT_ISNPC);" in read_mobile
     assert "mobile_probe_guard" in POLICY
-    assert "object_probe_guard" in POLICY
+    # The shared live-target harness executes catalog bootstrap and requires
+    # zero reward-object loads; template inspection needs no object cleanup.
     assert "P_char read_mobile_probe(int nr, int type)" in DB
     assert "mobile_probe_mode = true;" in DB
     assert "if (!mobile_probe_mode)" in DB

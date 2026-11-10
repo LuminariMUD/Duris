@@ -30,6 +30,8 @@ uint32_t native_artifact_ability(int vnum, int power);
 void update_native_artifact_properties();
 // Invalid opt-in settings suppress the new power, never fall through to legacy.
 bool native_artifact_owns(int vnum);
+// Same configured routing policy, without refresh or action-state mutations.
+bool native_artifact_configured_owner(int vnum);
 native_artifact_config native_artifact_settings(int vnum);
 bool native_artifact_prepare(int vnum, const native_artifact_config &);
 bool native_artifact_actor(P_char);
