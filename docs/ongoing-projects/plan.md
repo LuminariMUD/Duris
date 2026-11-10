@@ -1,6 +1,6 @@
 # Issue #707: Bard redesign (base class, Scoundrel, Disharmonist, Minstrel)
 
-Status: implementation in progress, 2026-11-10. PR 1 (caps, circles and Riff) is qualified and ready for review. PR 2 is qualified in review-ready PR #1004. PR 3 is in progress on `branch/issue-707-bard-scoundrel`; PRs 4–5 remain unimplemented.
+Status: implementation in progress, 2026-11-10. PR 1 (caps, circles and Riff) is qualified and ready for review. PR 2 is qualified in review-ready PR #1004. PR 3 is qualified in review-ready PR #1005. PR 4 is in progress on `branch/issue-707-bard-minstrel`; PR 5 remains unimplemented.
 
 - Work item: [Duris #707](https://github.com/LuminariMUD/Duris/issues/707). The scope is "Rani's final proposal — 9 November 2026" at the top of the issue. The earlier proposal below it is history, as the issue says.
 - GitHub Development branch: [branch/issue-707-bard-redesign](https://github.com/LuminariMUD/Duris/tree/branch/issue-707-bard-redesign).
@@ -60,6 +60,9 @@ Confirmed baselines for the registration changes: Hide 70 (Scoundrel 90), Sneak 
 Nothing else could go: each remaining change maps to one proposal line.
 
 ## Current handoff
+
+- Review-ready PR 3: [#1005](https://github.com/LuminariMUD/Duris/pull/1005), branch `branch/issue-707-bard-scoundrel`, base PR 2 (#1004), label `enhancement`. Qualified head `04343d8bf` includes movement repair `712b3badd`; real Scoundrel gameplay and focused compatibility checks passed. Continue PR 4 in `/home/aiwithapex/projects/duris-issue-707-bard-minstrel` (branch `branch/issue-707-bard-minstrel`); its code/help/tests are in progress and must incorporate the latest Scoundrel parent before publication. PR 5 is unimplemented.
+
 
 - Review-ready PR 2: [#1004](https://github.com/LuminariMUD/Duris/pull/1004), base `branch/issue-707-bard-redesign` (#1002), label `enhancement`, qualified implementation through `d69b3686c`, handoff `044522680`. Utility code, help, focused sanitizer/facts checks and the real MariaDB instrument/hidden-switch/grouped-Rope Trick journey all passed. Continue PR 3 in `/home/aiwithapex/projects/duris-issue-707-bard-scoundrel`; merge the latest utility handoff commits before publishing.
 
