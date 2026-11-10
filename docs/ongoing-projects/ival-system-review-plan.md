@@ -46,7 +46,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-zero-crafting-xp`; its initial synchronized commit was
+`origin/branch/ival-crafting-config-bounds`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -69,7 +69,8 @@ it. The metadata/report work is published as #930; the circle repair is #935 on
 admission on `branch/ival-numeric-bounds`; #966 shares checked material quantities
 and plans crafting XP on `branch/ival-material-bounds`; #968 repairs downstream
 XP conversion checkpoints on `branch/ival-xp-conversion`; #969 honors disabled
-crafting XP on `branch/ival-zero-crafting-xp`. Branch/base
+crafting XP on `branch/ival-zero-crafting-xp`; #971 validates crafting config and
+its arithmetic on `branch/ival-crafting-config-bounds`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -1158,9 +1159,9 @@ and inputs do not change, so a new object-score corpus run is not applicable.
 
 **Continuation:** keep F08/configuration and F16 journeys open. Source tracing
 also confirmed `crafting.experience.per.ival=0` is documented to award no XP,
-but Craft/Forge still call `gain_exp(..., 0, EXP_BOON)`, whose existing minimum
-is one. Repair that separately at the crafting callers; do not change the
-general XP minimum to fix a zero crafting rate. Then resume strict configuration
+but Craft/Forge still called `gain_exp(..., 0, EXP_BOON)`, whose existing minimum
+is one. That separate caller repair is implemented in Chunk 17, preserving the
+general XP minimum. Continue with strict configuration
 parsing and the remaining consumer bounds. No database or deployment operation
 was performed.
 
@@ -1205,6 +1206,60 @@ or production operation occurred.
 **Continuation:** resume strict finite/ranged configuration parsing and remaining
 level/gain/radius/salvage/property bounds from F08. Keep the full project scope
 and F05/F09/F10/F11–F16 work open as recorded above.
+
+### Chunk 18 — validate crafting config and its arithmetic (F08, implemented)
+
+Branch: `branch/ival-crafting-config-bounds`, based on `branch/ival-zero-crafting-xp`.
+Published: commit `71bb02fe3`, [PR #971](https://github.com/LuminariMUD/Duris/pull/971)
+(bug label), stacked on #969. Ready for review; dedicated local/remote worktrees
+carry the committed implementation and handoff.
+
+**Outcome:** accept complete finite/ranged numeric values for crafting settings,
+retain prior/default values with diagnostics on invalid recognized entries, and
+reject truncated overlong lines. Widen level and Salvage recipe-score products;
+bound probability thresholds without changing representable ordinary rounding.
+
+**Non-goals:** enhancement config conversion (next slice), new gameplay weights,
+new practical content limits, config hot reload, persistence or deployment.
+
+**Files:** two scalar config parsers in a small core header reused from the
+existing random-equipment integer parser, crafting/Salvage consumers, their native
+tests/config documentation and this handoff.
+
+**Proof:** actual loader tests for shipped/default config, malformed/trailing/
+overflow/nonfinite values, zero/positive boundaries, overlong lines, repeated
+loads/keys, large level products and probability/recipe thresholds. Preserve
+existing random-equipment parser behavior and run server/focused checks.
+
+**Ablation:** share scalar parsing because real modules need the same whole-value
+contract; keep key dispatch and domain ranges local. No config framework or new
+operational mode is needed.
+
+**Validation:** the new native loader regression fails against the parent
+loader and passes with this change. It executes the shipped file, all 18 numeric
+settings with distinct valid values, invalid/trailing/overflow/nonfinite inputs,
+strict booleans, zero-XP/chance settings, duplicate keys, invalid content vnums,
+overlong lines, no-final-newline input and repeated loads. Invalid entries retain
+the prior accepted/default value with diagnostics. Maximum level/multiplier
+products are checked in widened arithmetic.
+
+Native Salvage tests verify a scientific-tool recipe multiplier at INT_MAX,
+ordinary Luck/probability roll parity, tiny positive scales and finite extreme
+scales without float-to-int overflow. The thresholds saturate only where every
+possible roll already succeeds, retaining normal truncation and RNG calls.
+Existing random-equipment native/config tests pass with the shared integer
+parser; its float/line parsing behavior is unchanged. Enhancement runtime,
+crafting/module/economic checks and the native ability-facts/shared-roll suite
+pass, as does the server build. No Ival formula or storage input changes occur;
+full command/MariaDB journeys remain F16.
+
+**Continuation:** fix the separately discovered recipe selection boundary next:
+Craft's list fallback checks an upper bound without requiring a positive index;
+both recipe commands also parse selection text with `atoi`. Use complete bounded
+integer selection before indexing, preserving stable vnum precedence and valid
+list-number behavior. Keep this separate from the loader change. Then convert
+enhancement config and finish remaining F08/property/admission bounds. No
+database, migration or production operation occurred.
 
 ## Main conclusions
 
