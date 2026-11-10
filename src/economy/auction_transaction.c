@@ -21,15 +21,20 @@
 #include "core/prototypes.h"
 #include "sql/sql_player.h"
 #include "core/utils.h"
+#include "player/player_save_pipeline.h"
 
 #include <algorithm>
 #include <cerrno>
 #include <climits>
+#include <chrono>
+#include <openssl/sha.h>
 #include <new>
 #include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+extern P_char character_list;
 
 namespace
 {
@@ -40,9 +45,7 @@ struct pending_auction
 	auction_completion_fn completion;
 	bool completion_ready;
 	critical_completion completed;
-	// What the submit took from the wallet: a listing's fee or a bid.
-	int64_t escrow;
-	// A listing's items, taken out of the seller's inventory at submit.
+	// A listing keeps these live sources until its custody receipt commits.
 	std::vector<P_obj> held;
 };
 
@@ -75,33 +78,57 @@ std::string operation_key(const critical_operation_id &operation_id)
 bool publish(std::unordered_map<std::string, pending_auction>::iterator found, P_char character)
 {
 	pending_auction &entry = found->second;
+	const bool receipt =
+		entry.payload.action == auction_action::list ||
+		entry.payload.action == auction_action::bid ||
+		entry.payload.action == auction_action::claim_item ||
+		(entry.payload.action == auction_action::claim_money && entry.payload.value > 0);
+	if (receipt && !character)
+		for (P_char current = character_list; current; current = current->next)
+			if (IS_PC(current) &&
+			    static_cast<uint32_t>(GET_PID(current)) == entry.actor_pid)
+			{
+				character = current;
+				break;
+			}
 	auction_command_result result = {};
 	const bool decoded = auction_command_decode_result(entry.completed.result_payload.data(),
 							   entry.completed.result_size, &result);
-	const bool committed = decoded &&
-			       (entry.completed.outcome == critical_apply_outcome::applied ||
-				entry.completed.outcome == critical_apply_outcome::already_applied);
-	// The auction keeps what it charged of the fee or bid the submit took and gives the
-	// rest back, all of it when refused; a money claim brings its money.
-	const int64_t credit = entry.escrow + (committed ? result.wallet_value_delta : 0);
-	// A held item may have been extracted while the listing was in flight.
+	const bool durable_commit = entry.completed.outcome == critical_apply_outcome::applied ||
+				    entry.completed.outcome ==
+					    critical_apply_outcome::already_applied;
+	const bool committed = decoded && durable_commit;
+	const int64_t delta = committed ? result.wallet_value_delta : 0;
+	if (receipt)
+	{
+		const int64_t requested =
+			entry.payload.action == auction_action::list ? -entry.payload.listing_fee :
+			entry.payload.action == auction_action::bid  ? -entry.payload.value :
+			entry.payload.action == auction_action::claim_item ? 0 :
+									     entry.payload.value;
+		if (durable_commit &&
+		    (!decoded || result.action != entry.payload.action ||
+		     (entry.payload.action == auction_action::bid ?
+			      (delta < requested || delta > 0) :
+			      delta != requested) ||
+		     result.wallet_revision != entry.payload.expected_wallet_revision + 1))
+			return false;
+		if (committed && character && entry.payload.action == auction_action::claim_item &&
+		    !auction_publish_item_claim(character, result, entry.payload))
+			return false;
+		if (committed && character && !currency_transaction_publish_trade(character, delta))
+			return false;
+		player_save_pipeline_release_trade(entry.actor_pid);
+		currency_transaction_release_trade(entry.actor_pid);
+	}
+	// A listed source may have been extracted while the receipt was in flight.
 	for (size_t index = 0; index < entry.held.size(); ++index)
 		if (P_obj object = find_live_object(entry.held[index],
 						    entry.payload.items[index].item_uid))
 		{
 			if (committed)
 				extract_obj(object);
-			else if (character)
-				obj_to_char(object, character);
 		}
-	if (character && credit > 0)
-		currency_transaction_submit_wallet_value(
-			character, credit,
-			committed && result.action == auction_action::claim_money ?
-				currency_reason_type::auction_pickup :
-				currency_reason_type::refund,
-			entry.payload.auction_id, critical_source_site::command,
-			critical_deadline_class::interactive, nullptr, nullptr, 0);
 	if (committed && result.item_count)
 	{
 		// Settlement advances both owners. Updating only the destination leaves
@@ -149,6 +176,8 @@ bool publish(std::unordered_map<std::string, pending_auction>::iterator found, P
 				return false;
 			}
 	}
+	if (!committed && character && entry.payload.action == auction_action::claim_item)
+		send_to_char("Your auction items remain available for pickup.\r\n", character);
 	if (entry.completion)
 		entry.completion(character, committed, decoded ? result : auction_command_result{},
 				 entry.completed.error_code, entry.payload);
@@ -168,7 +197,8 @@ bool submit(P_char character, const auction_command_payload &payload,
 	    auction_completion_fn completion, critical_source_site source,
 	    critical_deadline_class deadline)
 {
-	if (character && currency_transaction_wallet_busy(character))
+	if ((payload.action == auction_action::claim_money && payload.value <= 0) ||
+	    (character && currency_transaction_wallet_busy(character)))
 		return false;
 	if (pending.size() >= AUCTION_PENDING_MAX ||
 	    (payload.actor_pid && (!character || IS_NPC(character) ||
@@ -179,16 +209,34 @@ bool submit(P_char character, const auction_command_payload &payload,
 	if (!critical_operation_id_generate(&operation_id) ||
 	    !auction_command_build(&command, operation_id, payload, source, deadline))
 		return false;
-	// A listing's fee and a bid leave the wallet now, and the player's save is queued
-	// before the command, so a crash between them loses the money instead of paying it
-	// twice. The completion gives back what the auction did not keep.
-	const int64_t escrow = !payload.actor_pid		      ? 0 :
-			       payload.action == auction_action::list ? payload.listing_fee :
-			       payload.action == auction_action::bid  ? payload.value :
-									0;
-	// A listing's items leave the seller's inventory now too, so no save captured before
-	// the listing commits can claim them back from the auction. The completion extracts
-	// them, or gives them back when the listing is refused.
+	const bool receipt = payload.action == auction_action::list ||
+			     payload.action == auction_action::bid ||
+			     payload.action == auction_action::claim_item ||
+			     (payload.action == auction_action::claim_money && payload.value > 0);
+	const int64_t payment = payload.action == auction_action::list ? -payload.listing_fee :
+				payload.action == auction_action::bid  ? -payload.value :
+				payload.action == auction_action::claim_item ? 0 :
+									       payload.value;
+	player_pending_trade_snapshot claim = {};
+	if (receipt)
+	{
+		if (payload.expected_wallet_revision != character->only.pc->wallet_revision)
+			return false;
+		command.accepted_at_usec =
+			std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::system_clock::now().time_since_epoch())
+				.count();
+		std::vector<uint8_t> encoded;
+		if (critical_command_encode(command, &encoded) != critical_command_codec_result::ok)
+			return false;
+		claim.operation = operation_id.bytes;
+		SHA256(encoded.data(), encoded.size(), claim.command_hash.data());
+		claim.payment = payment;
+		claim.wallet_revision = payload.expected_wallet_revision;
+	}
+	// Keep listed objects in inventory until the receipt is durable. The existing
+	// pending-item command gate prevents their use, and tagged snapshots omit them
+	// only when that same receipt confirms the auction owns them.
 	std::vector<P_obj> held;
 	if (payload.actor_pid && payload.action == auction_action::list)
 		for (size_t index = 0; index < payload.item_count; ++index)
@@ -203,7 +251,6 @@ bool submit(P_char character, const auction_command_payload &payload,
 				  .completion = completion,
 				  .completion_ready = false,
 				  .completed = {},
-				  .escrow = std::max<int64_t>(escrow, 0),
 				  .held = held };
 	const std::string key = operation_key(operation_id);
 	try
@@ -214,32 +261,34 @@ bool submit(P_char character, const auction_command_payload &payload,
 	{
 		return false;
 	}
-	if (escrow > 0 &&
-	    !currency_transaction_submit_wallet_value(
-		    character, -escrow,
-		    payload.action == auction_action::list ? currency_reason_type::auction_listing :
-							     currency_reason_type::auction_bid,
-		    payload.auction_id, source, deadline, nullptr, nullptr, 0))
+	if (receipt)
 	{
-		pending.erase(key);
-		return false;
+		if (!currency_transaction_reserve_trade(character, payment))
+		{
+			pending.erase(key);
+			return false;
+		}
+		if (!player_save_pipeline_reserve_trade(payload.actor_pid, claim))
+		{
+			currency_transaction_release_trade(payload.actor_pid);
+			pending.erase(key);
+			return false;
+		}
 	}
-	for (P_obj object : held)
-		obj_from_char(object);
-	if (escrow > 0 || !held.empty())
+	// Save the unchanged source and purse first, including recent live earnings.
+	// A refused checkpoint cannot authorize a debit against a stale SQL revision.
+	if (receipt)
 		currency_transaction_save_first(character);
 	const critical_submit_result submitted =
 		critical_command_coordinator_submit(std::move(command));
 	if (!critical_submit_result_keeps_operation(submitted))
 	{
-		pending.erase(key);
-		for (P_obj object : held)
-			obj_to_char(object, character);
-		if (escrow > 0)
-			currency_transaction_submit_wallet_value(character, escrow,
-								 currency_reason_type::refund,
-								 payload.auction_id, source,
-								 deadline, nullptr, nullptr, 0);
+		auto found = pending.find(key);
+		found->second.completion = nullptr; // Refused admission has no business completion.
+		found->second.completed.outcome = critical_apply_outcome::terminal_failure;
+		found->second.completion_ready = true;
+		// Refused admission releases reservations without moving money or items.
+		publish(found, character);
 		return false;
 	}
 	return true;
@@ -274,7 +323,12 @@ void auction_transaction_handle_completions(const critical_completion *completio
 		P_char character = found->second.actor_pid ?
 					   find_player_by_pid(found->second.actor_pid) :
 					   nullptr;
-		if (!found->second.actor_pid || character)
+		if (!found->second.actor_pid || character ||
+		    (found->second.payload.action == auction_action::claim_item ||
+		     found->second.payload.action == auction_action::list ||
+		     found->second.payload.action == auction_action::bid ||
+		     (found->second.payload.action == auction_action::claim_money &&
+		      found->second.payload.value > 0)))
 			publish(found, character);
 	}
 }
@@ -355,6 +409,21 @@ void auction_transaction_outbox_published(unsigned long long outbox_id, bool suc
 
 void auction_transaction_publish_outbox(void)
 {
+	for (auto found = pending.begin(); found != pending.end();)
+	{
+		auto current = found++;
+		if (current->second.completion_ready)
+		{
+			P_char character = find_player_by_pid(current->second.actor_pid);
+			if (character ||
+			    (current->second.payload.action == auction_action::claim_item ||
+			     current->second.payload.action == auction_action::list ||
+			     current->second.payload.action == auction_action::bid ||
+			     (current->second.payload.action == auction_action::claim_money &&
+			      current->second.payload.value > 0)))
+				publish(current, character);
+		}
+	}
 	std::vector<std::pair<uint64_t, auction_command_result>> work;
 	{
 		std::lock_guard<std::mutex> lock(outbox_mutex);
@@ -378,6 +447,19 @@ void auction_transaction_publish_outbox(void)
 
 void auction_transaction_reset_for_tests(void)
 {
+	for (const auto &[operation, entry] : pending)
+	{
+		static_cast<void>(operation);
+		if (entry.payload.action == auction_action::list ||
+		    entry.payload.action == auction_action::bid ||
+		    entry.payload.action == auction_action::claim_item ||
+		    (entry.payload.action == auction_action::claim_money &&
+		     entry.payload.value > 0))
+		{
+			player_save_pipeline_release_trade(entry.actor_pid);
+			currency_transaction_release_trade(entry.actor_pid);
+		}
+	}
 	pending.clear();
 	std::lock_guard<std::mutex> lock(outbox_mutex);
 	outbox_publications.clear();

@@ -7,7 +7,7 @@ import tempfile
 import time
 
 from _paths import ROOT, extract_function
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 
 harness = r'''

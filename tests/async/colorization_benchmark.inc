@@ -27,15 +27,22 @@ static void colorization_benchmark()
 			"Water from the river passes beneath the forest. Moss grows on stone beside the old path, where trees hide the distant lake. ";
 	const std::string chat_text =
 		"Meet me beside the river after sunset; the &+gforest&n path is clear. Bring a torch and follow the eastern bank.";
+	const std::string link_text = "Read &+cweather&n: https://durismud.com/help?topic=weather";
+	const OutputLinks link_spans{
+		{ 8, 15, OutputLinkKind::Command, "help weather" },
+		{ 19, link_text.size(), OutputLinkKind::Url,
+		  "https://durismud.com/help?topic=weather" }
+	};
 	cJSON_Hooks hooks{ benchmark_json_malloc, std::free };
 	cJSON_InitHooks(&hooks);
 	std::cout
 		<< "scenario,mode,recipients,messages,cpu_us_per_message,wall_us_per_message,allocations_per_message,allocated_bytes_per_message,terminal_bytes_per_message,gmcp_bytes_per_message\n";
-	for (const std::string scenario : { "room", "chat", "chat_gmcp", "combat" })
+	for (const std::string scenario : { "room", "chat", "chat_gmcp", "chat_links", "combat", "links", "links_mxp" })
 	{
+		const std::string body = chat_text + (scenario == "chat_links" ? " https://example.test/?x=1&name=two" : "");
 		for (const std::string mode : { "legacy", "preserve", "static", "animated" })
 		{
-			if (mode == "animated" && scenario != "room")
+			if ((mode == "animated" && scenario != "room") || (scenario == "chat_links" && mode == "legacy"))
 				continue;
 			const bool decorate = mode == "static" || mode == "animated";
 			for (size_t i = 0; i < recipients; ++i)
@@ -53,7 +60,8 @@ static void colorization_benchmark()
 							       OutputChannel::ChatTell,
 						       ATTR_FG(i % 2 ? 20 : 27));
 				pcs[i].output_preferences = pref.state();
-				descriptors[i].gmcp_enabled = scenario == "chat_gmcp";
+				descriptors[i].gmcp_enabled = scenario == "chat_gmcp" || scenario == "chat_links";
+				descriptors[i].gmcp_supports = scenario == "chat_links" ? GMCP_SUPPORT_LINKS : 0;
 			}
 			const size_t batches = scenario == "room" ? 500 : 200;
 			const size_t audience = scenario == "room" ? 1 : recipients;
@@ -81,6 +89,17 @@ static void colorization_benchmark()
 									OutputChannel::RoomDescription,
 									OutputPolicy::Animated));
 					}
+					else if (scenario == "links" || scenario == "links_mxp")
+					{
+						OutputContext context = recipient_output_context(
+							OutputChannel::ChatTell,
+							decorate ? OutputPolicy::Static : OutputPolicy::Preserve);
+						if (mode != "legacy")
+							context.links = link_spans;
+						else
+							context.links_prepared = true; // Explicit plain baseline.
+						send_to_char(link_text.c_str(), ch, LOG_NONE, context);
+					}
 					else if (scenario == "combat")
 					{
 						const char *text =
@@ -97,12 +116,12 @@ static void colorization_benchmark()
 					else if (mode == "legacy")
 					{
 						std::string text = "&+WAlice tells you '" +
-								   chat_text + "'&N\r\n";
+								   body + "'&N\r\n";
 						send_to_char(text.c_str(), ch, LOG_NONE);
-						if (scenario == "chat_gmcp")
+						if (scenario == "chat_gmcp" || scenario == "chat_links")
 						{
 							char *json = json_build_comm_channel(
-								"tell", "Alice", chat_text.c_str());
+								"tell", "Alice", body.c_str());
 							gmcp_send(ch->desc, "Comm.Channel", json);
 							std::free(json);
 						}
@@ -111,20 +130,40 @@ static void colorization_benchmark()
 					{
 						PlayerOutputMessage message(
 							ch, OutputChannel::ChatTell);
-						if (scenario == "chat_gmcp")
+						if (scenario == "chat_gmcp" || scenario == "chat_links")
 							message.chat("tell", "Alice",
-								     chat_text.c_str());
+								     body.c_str());
 						message.literal("&+W")
 							.entity("Alice", StyleOrigin::Sender)
 							.literal("&+W tells you '")
-							.body(chat_text)
+							.body(body)
 							.literal("'&N\r\n")
 							.send(LOG_NONE);
 					}
-					const std::string queued = drain(&descriptors[i]);
 					char terminal[MAX_STRING_LENGTH];
-					AnsiString(queued.c_str()).term(terminal, TL_BLINK);
-					terminal_bytes += strlen(terminal);
+					if (scenario == "links" || scenario == "links_mxp")
+					{
+						char markup[MAX_STRING_LENGTH];
+						OutputLinks spans;
+						while (get_linked_output(&descriptors[i].output, markup, spans))
+						{
+							if (scenario == "links_mxp")
+								terminal_bytes += mxp_render_output(markup, spans, false, TL_BLINK).size();
+							else
+							{
+								auto frame = freeze_output_links(markup, spans);
+								assert(frame.links.size() == (mode == "legacy" ? 0 : 2));
+								frame.text.term(terminal, TL_BLINK);
+								terminal_bytes += strlen(terminal);
+							}
+						}
+					}
+					else
+					{
+						const std::string queued = drain(&descriptors[i]);
+						AnsiString(queued.c_str()).term(terminal, TL_BLINK);
+						terminal_bytes += strlen(terminal);
+					}
 					for (auto &packet : chat_packets)
 						gmcp_bytes += packet.second.size();
 					chat_packets.clear();

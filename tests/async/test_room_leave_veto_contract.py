@@ -16,7 +16,7 @@ assert contains(interp, "#define CMD_FROMROOM")
 assert contains(interp, "#define ROOM_PROC_LEAVE_VETO")
 
 char_from_start = index(handler, "void char_from_room(P_char ch)")
-char_to_start = index(handler, "bool char_to_room(P_char ch, int room, int dir)")
+char_to_start = index(handler, "bool char_to_room(P_char ch, int room, int dir, bool ordinary_movement)")
 char_from = handler[char_from_start:char_to_start]
 char_to = handler[char_to_start:index(handler, "void obj_from_room", char_to_start)]
 

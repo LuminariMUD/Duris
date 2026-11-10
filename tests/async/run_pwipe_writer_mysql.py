@@ -49,7 +49,9 @@ def main():
                        "src/player/player_save_worker.c", "src/player/player_snapshot_repository.c",
                        "src/player/player_snapshot_codec.c", "src/sql/sql_async.c", "src/sql/sql_pool.c",
                        "src/item/item_claim_repository.c", "src/item/item_claim.c", "src/persistence/dupe_log.c",
-                       "src/sql/item_extra_descr_codec.c", "src/persistence/persistence_observability.c"]
+                       "src/sql/item_extra_descr_codec.c", "src/persistence/persistence_observability.c",
+                       "src/economy/collector_command.c", "src/economy/collector_codec.c",
+                       "src/economy/collector_policy.c"]
             cflags = shlex.split(subprocess.check_output(["mysql_config", "--cflags"], text=True))
             libs = shlex.split(subprocess.check_output(["mysql_config", "--libs"], text=True))
             binary = work / "pwipe_writer"

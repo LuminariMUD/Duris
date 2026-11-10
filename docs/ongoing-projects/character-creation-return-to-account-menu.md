@@ -310,7 +310,7 @@ Primary existing tests to extend or adapt:
   regressions for the acknowledgment boundary.
 - `tests/async/test_creation_prompt_journey.py`,
   `test_character_stat_choice_journey.py`, and shared creation helpers such as
-  `test_flatfile_combat_journey.py::create_character()`. Helpers that promise a
+  `test_mariadb_combat_journey.py::create_character()`. Helpers that promise a
   playing character must now explicitly select it after Keep. Keep tests that
   deliberately stop before entry distinct. Audit other `PRESS RETURN` and
   `create_character: created` expectations by purpose; do not globally replace

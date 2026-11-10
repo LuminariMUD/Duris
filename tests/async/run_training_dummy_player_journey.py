@@ -11,7 +11,7 @@ import string
 import sys
 import time
 
-from test_flatfile_combat_journey import MudClient, create_character, require
+from test_mariadb_combat_journey import MudClient, create_character, require
 
 
 def command(client: MudClient, line: str, prompt: str = "Pos: standing >") -> str:

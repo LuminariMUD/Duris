@@ -154,5 +154,7 @@ with tempfile.TemporaryDirectory(prefix="duris-playtime-sql-") as temporary:
                     "src/item/item_claim_repository.c", "src/item/item_claim.c",
                     "src/persistence/dupe_log.c",
                     "src/persistence/persistence_observability.c",
+                    "src/economy/collector_command.c", "src/economy/collector_codec.c",
+                    "src/economy/collector_policy.c",
                     "-Wl,--gc-sections", "-lmysqlclient", "-pthread", str(HARNESS_STUBS), "-o", str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True)

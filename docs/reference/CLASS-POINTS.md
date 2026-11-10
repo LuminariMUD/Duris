@@ -489,7 +489,7 @@ or individual scenario.
 
 Multiclassing is also one build, not the sum of two class scores. Only use
 ordinary ordered pairs and eligible Human/Orc combinations from
-[Multiclassing](CLASSES.md#multiclassing). Apply the restart, loss of spec,
+[Multiclassing](classes/multiclass.md). Apply the restart, loss of spec,
 primary/secondary identity rules, secondary-only skill delay/cap, extra spell
 circle, and preparation/cost rules before rating the result. In this snapshot,
 secondary-only ordinary skills use +5 levels and a 95% cap multiplier;
