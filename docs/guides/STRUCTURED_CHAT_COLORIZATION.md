@@ -24,6 +24,13 @@ It describes the complete displayed line, including its known template and prote
 A client must replace its usual sender/body rendering with this complete line once, not append a second copy.
 The surrounding timestamp/channel label may remain. Default `preserve` uses the client's existing layout.
 
+Clients advertising `Duris.Links 1` can additionally receive safe semantic `links`
+inside this full-line snapshot and an optional `bodyPresentation` on all existing
+chat channels. The latter describes only the recipient-approved body for the
+legacy sender/body layout, including `preserve`; it does not add another event
+or override the selected profile. The shared schema, capability and bounds are
+documented in [Duris.Links](../network/GMCP.md#durislinks-version-1).
+
 ## Version 1 wire contract
 
 ```json

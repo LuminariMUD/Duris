@@ -20,6 +20,8 @@ PRELUDE = r'''
 #include "net/comm.h"
 #include "net/mccp.h"
 #include "net/mxp.h"
+#include "net/output_presentation.h"
+#include "net/gmcp.h"
 #include "net/websocket.h"
 #include "core/json_utils.h"
 #include "item/item_movement_transaction.h"
@@ -530,7 +532,7 @@ def main():
             extract_function('comm.c', 'int process_output(P_desc t)'), DRIVER]))
         subprocess.run(['g++', '-std=c++20', '-g', '-O1', '-ffunction-sections', '-fdata-sections',
                         '-fsanitize=address,undefined', '-Isrc', str(source),
-                        *[str(SRC / name) for name in ['output_profiles.c', 'output_style.c', 'output_links.c', 'mxp.c', 'prompt.c', 'ansi.c', 'mccp.c', 'unicode.c', 'json_utils.c', 'safe_format.c',
+                        *[str(SRC / name) for name in ['output_profiles.c', 'output_style.c', 'output_links.c', 'output_presentation.c', 'mxp.c', 'prompt.c', 'ansi.c', 'mccp.c', 'unicode.c', 'json_utils.c', 'safe_format.c',
                             'item_movement_transaction.c', 'item_ownership_runtime.c',
                             'item_transfer_command.c', 'critical_command.c', 'starter_kit_intent.c', 'flatfile_store.c', 'player_revision_state.c',
                             'player_snapshot_capture.c', 'player_snapshot_codec.c', 'news.c']],
