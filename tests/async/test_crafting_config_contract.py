@@ -43,10 +43,18 @@ HARNESS = r'''
 #include <limits>
 #include <cstring>
 static int score;
+static int xp_calls, requested_xp;
+int gain_exp(P_char, P_char, int amount, int type) {
+    assert(type == EXP_BOON);
+    ++xp_calls;
+    requested_xp = amount;
+    return std::max(1, amount); // The production API has this minimum too.
+}
 int itemvalue(P_obj) { return score; }
 int get_matstart(P_obj) { return 400015; }
 int main() {
     obj_data object{};
+    char_data player{};
     struct test_case { int value, high, low; };
     for (const test_case test : {test_case{1, 1, 0}, {4, 1, 3}, {5, 1, 4}, {6, 2, 0}, {9, 2, 3}, {10, 2, 4},
                                  {INT_MAX - 1, 429496730, 0}, {INT_MAX, 429496730, 1}}) {
@@ -58,6 +66,12 @@ int main() {
                plan.low_material_count == test.low);
         assert(plan.low_material_vnum == 400015 && plan.high_material_vnum == 400019);
         assert(plan.experience == (score < 100 ? score * 1000 : 0));
+        const auto original = plan;
+        xp_calls = requested_xp = 0;
+        crafting_award_experience(&player, plan);
+        assert(xp_calls == (plan.experience > 0 ? 1 : 0));
+        if (xp_calls) assert(requested_xp == plan.experience);
+        assert(!std::memcmp(&plan, &original, sizeof(plan)));
     }
     crafting_experience_per_item_value = 1000;
     score = INT_MAX / 1000;
@@ -100,4 +114,4 @@ with tempfile.TemporaryDirectory(prefix="craft-plan-bounds-", dir=root / "bin/te
                     "-fno-sanitize-recover=all", "-fno-pie", "-no-pie", str(cpp), "src/item/item_value.c", "-o", str(binary)],
                    cwd=root, check=True)
     subprocess.run([str(binary)], check=True)
-print("native crafting plan: unavailable and INT_MAX score boundaries passed")
+print("native crafting plan: quantity/XP boundaries and disabled XP awards passed")

@@ -46,7 +46,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-xp-conversion`; its initial synchronized commit was
+`origin/branch/ival-zero-crafting-xp`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -68,7 +68,8 @@ it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-duplicate-applies`; #964 repairs numeric overflow/unavailable-value
 admission on `branch/ival-numeric-bounds`; #966 shares checked material quantities
 and plans crafting XP on `branch/ival-material-bounds`; #968 repairs downstream
-XP conversion checkpoints on `branch/ival-xp-conversion`. Branch/base
+XP conversion checkpoints on `branch/ival-xp-conversion`; #969 honors disabled
+crafting XP on `branch/ival-zero-crafting-xp`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -1165,6 +1166,45 @@ was performed.
 
 **Ablation:** bound conversion at the existing integer interfaces. Keep the
 current XP pipeline and its established cap policy; add no reward framework.
+
+### Chunk 17 — honor disabled crafting XP (F08/F10 prerequisite, implemented)
+
+Branch: `branch/ival-zero-crafting-xp`, based on `branch/ival-xp-conversion`.
+Published: commit `8a61b065d`, [PR #969](https://github.com/LuminariMUD/Duris/pull/969)
+(bug label), stacked on #968. Ready for review; both dedicated worktrees carry
+the committed implementation and handoff.
+
+**Outcome:** a valid zero-XP crafting plan makes no XP request, as documented in
+`lib/crafting.cfg`. Both Craft and Forge use the same private award policy;
+positive requests retain the exact checked planned amount.
+
+**Non-goals:** changing the general XP minimum, item/material behavior, formula,
+configuration format, persistence or deployment.
+
+**Files:** crafting's two award sites and private shared policy, the existing
+native crafting/XP tests and this handoff.
+
+**Proof:** preserve the actual XP API's minimum-one behavior, execute the native
+crafting award policy with zero/positive plans, verify request counts/amounts and
+unchanged plan fields, and run the server build and relevant crafting checks.
+Full command/persistence journeys remain F16.
+
+**Ablation:** centralize this one policy for two real discipline callers in the
+existing crafting module. Add no public API or new reward/persistence layer.
+
+**Validation:** the native regression failed against the extracted unchanged
+award behavior because a zero plan still submitted an XP request. It now passes
+with zero requests for zero plans and one request carrying the exact checked
+amount for positive plans; the plan bytes remain unchanged. The full native XP
+regression explicitly verifies the general `gain_exp(..., 0, EXP_BOON)` minimum
+is still one. Native crafting quantity/XP bounds, crafting module and craft/
+enhance checks pass, as does the server build. Ival formulas and storage inputs
+are unchanged. F16's full command/MariaDB journeys remain required; no database
+or production operation occurred.
+
+**Continuation:** resume strict finite/ranged configuration parsing and remaining
+level/gain/radius/salvage/property bounds from F08. Keep the full project scope
+and F05/F09/F10/F11–F16 work open as recorded above.
 
 ## Main conclusions
 

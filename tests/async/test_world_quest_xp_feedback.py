@@ -613,6 +613,8 @@ int main() {
     assert(player.points.curr_exp == 3333);
     quest_line(3333);
     // A valid integer request may round above INT_MAX on the legacy float path.
+    reset();
+    assert(gain_exp(&player, nullptr, 0, EXP_BOON) == 1); // Crafting must skip a disabled XP award.
     for (int kind : {EXP_BOON, EXP_QUEST, EXP_WORLD_QUEST, EXP_RESURRECT}) {
         reset();
         assert(gain_exp(&player, nullptr, INT_MAX, kind) == (kind == EXP_RESURRECT ? 100000 : 3333));
