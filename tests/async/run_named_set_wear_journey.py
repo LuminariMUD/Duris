@@ -176,11 +176,20 @@ try:
     assert not game.affects(spell), "set effect must not persist as an ordinary affect"
     if zone == 824:
         # A level 22 Vitality potion once replaced this grant and could kill the wearer.
-        client.send("quaff potion")
-        # The potion must neither replace the grant nor stack on it. Either the potion's
-        # own refusal or the active-Vitality refusal (#943) leaves the wearer unchanged.
-        client.expect_any(("Nothing new seems to happen.", "You are already affected by vitality!"),
-                          timeout=20)
+        deadline = time.monotonic() + 600
+        while True:
+            offset = len(client.transcript)
+            client.send("quaff potion")
+            score(client)
+            output = client.transcript[offset:].decode(errors="replace")
+            # Neither refusal may replace or stack on the set's grant (#943 adds the second).
+            if ("Nothing new seems to happen." in output or
+                    "You are already affected by vitality!" in output):
+                break
+            assert ("another potion would do you any good yet" in output or
+                    "almost ready to try another potion" in output), output
+            assert time.monotonic() < deadline, "the potion cooldown never ended"
+            time.sleep(5)
         expect_set(pieces)
     if zone == 87:
         assert not game.affects(41), "set Haste must not persist as an ordinary affect"

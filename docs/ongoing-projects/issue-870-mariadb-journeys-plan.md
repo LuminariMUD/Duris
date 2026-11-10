@@ -1,9 +1,9 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: conversions and naming are committed/pushed; named-set and Assassin qualification and full regression/database gates remain. Reproduced checkpoint defects are tracked below.
+Status: conversions, naming and standalone journey qualification are complete. Final full regression/database gates are running; whole-issue completion remains pending.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-partial-save-order`. See the latest qualification notes before continuing.
+Review head: `branch/issue-870-completion-qualification`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -165,12 +165,12 @@ case matrices explicitly; one default invocation is not proof of all flags.
 
 ### 3. Convert named-set support and the assassin comparison
 
-- [ ] `named_set_gameplay.py`: replace `NamedSetGame`'s removed snapshot fixture
+- [x] `named_set_gameplay.py`: replace `NamedSetGame`'s removed snapshot fixture
   compilation, state-directory requirement and inspector reads with the existing
   MariaDB authority. Seed/promote synthetic actors through SQL and read item
   identity, containment, provenance, affects and pets from their owning tables.
   Keep database lifetime across required boots and clean it up after the journey.
-- [ ] Update and execute its concrete consumers:
+- [x] Update and execute its concrete consumers:
   `run_named_set_edit_clone_journey.py`, `run_named_set_pet_journey.py`,
   `run_named_set_rollback_journey.py`, `run_named_set_shop_journey.py`,
   `run_named_set_transfer_journey.py`, and `run_named_set_wear_journey.py`.
@@ -179,14 +179,14 @@ case matrices explicitly; one default invocation is not proof of all flags.
   Reuse the chest journey's existing SQL/provenance patterns and generate the
   isolated named-set world through the existing preparation path. Trace the
   rollback runner's compatibility binary before changing its assertions.
-- [ ] `run_assassin_balance_journey.py`: replace snapshot seeding/inspection
+- [x] `run_assassin_balance_journey.py`: replace snapshot seeding/inspection
   with SQL while keeping deterministic RNG and the original/cleansed/revised
   comparison, levels/races, poison/cure and movement scenarios. Inspect the
   pinned `24a2776f13a2f3580c91f945743b09f80144b829` source and cleanse-only patch
   to select their existing MariaDB build/schema path, then prove equivalent
   synthetic actors and gear in all variants. Keep source/binary hashes and
   cache validation truthful; do not relabel current code as a historical build.
-- [ ] If either historical comparison cannot be run on its existing MariaDB
+- [x] If either historical comparison cannot be run on its existing MariaDB
   path, record the exact incompatibility and resolve the coverage requirement
   explicitly before claiming completion. A skip or a restored flat-file backend
   does not satisfy this batch.
@@ -243,14 +243,14 @@ from a clean worktree with explicitly provisioned test prerequisites.
 
 ### 6. Validate, record evidence and integrate
 
-- [ ] Record for every batch: tested commit, exact command/flags, binary hash
+- [x] Record for every batch: tested commit, exact command/flags, binary hash
   where available, result and the ignored evidence path. Every supported
   scenario above needs runtime proof; note obsolete scenarios and their reason.
 - [ ] Run the final regression suite and DB suite to completion. Check the
   earlier `nexus_journey` failure against current code; if it recurs, diagnose it
   and run the focused reproducer. A focused rerun does not make a failed aggregate
   result disappear. Preserve both results and repair task-blocking failures.
-- [ ] Include runtime proof for #880's already edited standalone journeys
+- [x] Include runtime proof for #880's already edited standalone journeys
   `run_shop_bootstrap_journey.py`, `run_issue37_zone_journey.py` and
   `run_misty_vale_journey.py` if no valid evidence is available for their final code.
 - [ ] Review the final diff with ablation: every edit must support a listed
@@ -317,10 +317,14 @@ This is an estimate, not a time limit or permission to omit required proof.
 
 ## Evidence and handoff
 
+The earlier results below retain their tested revisions and hashes. Current PR
+status, source integration and outstanding work are in the final checkpoint.
+
 ### Baseline reconciliation — 2026-11-09
 
-- Base PRs #873, #874 and #880 remain open at their planned heads. Original
-  worktrees were untouched. No production operation or game `.env` was used.
+- Initial base PRs #873, #874 and #880 have since merged. The current integration
+  checkpoint below supersedes their historical review status. Original worktrees
+  were untouched. No production operation or game `.env` was used.
 - Merge: `4f216b90c`; `make -C src -j4` passed. Build log:
   `bin/tests/issue-870/build.log`. This is the ordinary 250 ms server.
 - GCC 16's installed C++ headers triggered a Clang 18 diagnostic in the merge
@@ -454,536 +458,275 @@ This is an estimate, not a time limit or permission to omit required proof.
   `bin/tests/issue-870/flight-reconnect-run.log`. The full default/interruptions
   matrix was already green in [PR #892](https://github.com/LuminariMUD/Duris/pull/892).
 
-### Current work / next action
+### Completed standalone qualifications
 
-- Ready PR stack: #880 → #887 baseline → #890 login/news/onboarding/death →
-  #891 corpses → #892 cache/flight → #893 Cleric/aura → #895 telemetry →
-  #896 rent/artifact → #903 container-grant repair → #897 shop → #918 racial/cast.
-  #888 is closed because #880 adopted its exact source changes. #897 is ready.
-  Every PR has an appropriate documentation, bug or enhancement label. No merge,
-  tag/release or deployment was requested or performed.
-- Telemetry performance passed all three paired workloads (six legs, 240 saves):
-  `python3 tests/async/run_telemetry_player_journey.py --backend mariadb --performance`.
-  Pooled native pulse p99 was 645 µs disabled / 541 µs enabled; pooled save p99
-  was 1,775,503 / 1,755,792 µs. These local samples passed the existing gate;
-  they are not production capacity measurements. Instrumented binary SHA-256:
+All paths below are relative to this worktree. Logs are under ignored
+`bin/tests/issue-870/`; previous binary hashes describe the revisions actually run.
+These are preserved per-chunk results, not claims that a later binary ran them.
+
+- **Telemetry performance, #895:** `python3 tests/async/run_telemetry_player_journey.py
+  --backend mariadb --performance` passed all three pairs/six legs/240 saves.
+  Pulse p99 off/on645/541us; save p99 off/on1,775,503/1,755,792us. These are local
+  samples, not production capacity measurements. Instrumented SHA-256:
   `0731f59506dd86d4942eb1490e5708bea81bea40821435b7c1dac14f9a56eb3c`.
-  Logs, a hash record and copied pair summaries are under `bin/tests/issue-870/`.
-  Session `11319` is terminal with exit 0; do not restart it.
-- Shop conversion code: `55927b624`, `branch/issue-870-shop-journey`,
-  [PR #897](https://github.com/LuminariMUD/Duris/pull/897), ready after #903.
-  Initial failures at the fresh/unsaved staff-bag purchase and retired deferred-sale
-  expectation remain under `bin/tests/issue-870/shop-unsaved-bag-failure-*` and
-  `shop-retired-sale-expectation-*`. Both are now resolved; the full journey passed
-  again after upstream integration (`integrated-shop.json` and run log).
-- Server repair is qualified on `branch/issue-870-container-grants-fix`
-  before #897. Outcome: newly loaded carried bags can receive a transactional
-  child batch without synchronous SQL or a guessed owner/revision. Reuse the
-  existing creation queue: capture the actor's inventory, queue an ownership
-  read on the same writer, then hydrate its actual row and submit the child
-  batch. Offline/failure delivery stays in that queue and existing business
-  callback. Already-cached parents keep their existing path. No schema,
-  persistence redesign, new service, cache or backend selector is introduced.
-- Repair files: `src/item/item_movement_transaction.c`,
-  `src/sql/{sql.h,item_owner_rows.h}`, `tests/async/harness_stubs.cpp`, and
-  `tests/async/test_item_movement_input_queue.py`. The existing ownership-row
-  declaration/macros move to a narrow header used by both real callers; this
-  avoids importing MySQL connection headers into the item runtime and changing
-  unrelated native-harness compiler flags.
-- Repair proof so far: `make -C src -j4` passed; ASan/UBSan item-input queue
-  regression passed with new unavailable-checkpoint/read, deferred-parent,
-  offline-resume and failure-callback assertions. Creation-batch and
-  reconciliation contracts and the existing newbie lifecycle runtime passed.
-  Prompt runtime also passed. With the companion #897 conversion, the complete
-  real shop journey passed, including a fresh unsaved bag, all 108 ration UIDs/
-  parentage/wallet across restart, and sale/logout while SQL saves are locked.
-  It then verified exactly-once payment, no returned sold UID and stable buyback
-  after restart. The retired deferred-sale receipt was corrected to the current
-  immediate-memory sale contract; the lock now holds actual player/shop/log
-  tables until the account menu, without querying locked inventory tables.
-  Source repair commit: `50112a024`, inserted as a prerequisite of #897.
-  It has the same source/native fixture bytes as the originally tested local
-  `a504cd578` (verified with `git diff --exit-code`); no published history was
-  rewritten. Binary SHA-256:
-  `4f13e85355b8940a950d14e3a4b3e061cf294a43369e68c249b17ce3b44d823c`.
-  Full runtime evidence: `bin/tests/issue-870/shop-multi-buy*`; earlier failures
-  remain under `shop-unsaved-bag-failure-*` and `shop-retired-sale-expectation-*`.
-- Container preparation follow-up: failure cleanup now releases the batch before
-  notifying its callback, including a target moved during the SQL read. A callback
-  may enqueue successor work; the pump stops using its previous map iterators.
-  Reads completed while the actor is unloaded leave its cache untouched and resume
-  from the subsequent load's current ownership. Query/callback allocation remains
-  inside the existing admission guard. Native ASan/UBSan coverage passed for
-  rejected/thrown read admission, link loss, unloaded resume, moved target,
-  reentrant callback and exactly-once failure delivery. Build and the existing
-  grant/reconciliation, newbie and prompt checks passed after upstream integration.
-- Racial/cast conversion: `957cab3ac`, `branch/issue-870-racial-casting`,
-  [PR #918](https://github.com/LuminariMUD/Duris/pull/918), ready after #897.
-  Full racial pulse (21 races, rebalance/help, groundfighting, reflection boundaries,
-  adjustment, saved properties/restart and 100-row listing), multiplier .5/1/2,
-  default 20-cast probe and 20-cast `--budget-usec 2000` probe passed.
-  Commands use `tests/async/with_disposable_mariadb.sh python3 tests/async/<runner>`
-  with `--server bin/server/dms_new` for all three runners. Logs: `racial-pulse-run.log`,
-  `spellcast-multiplier-run.log`, `cast-timing-default-run.log`, `cast-timing-budget-run.log`.
-- Pwipe code: `0de5f6bc9` removes the impossible backend mode; `a8e18cb7b`
-  separates mode-specific failure artifacts; `112f0dddb` seeds the website's
-  verified synthetic donor email. Direct, Redis, Redis re-enable, reward-discard
-  and full website modes passed. CLI help and all six invalid combinations passed
-  (`pwipe-cli.json`). Use the real five-minute countdown; no reduced timing.
-- Matched restore: `04439c766` fixes tar extraction permissions. A focused
-  reproduction proved `filter="data"` creates directories as 0755 under umask022,
-  whereas native recovery locks require private0700. Extract under a temporary
-  umask077, restoring the caller's umask afterwards. Earlier wrong-store-image
-  diagnosis was incorrect: the guard failed before image decoding. Remove the
-  extra reboot/crash-freeze workaround; keep the original clean-stop capture and
-  native checks. The full `--redis --restore bin/server/dms_new` retry passed
-  (ordinary user, real five-minute countdown, fresh private SQL store, original
-  bank9/reward3/PID/files and authenticated world, save/reconnect/second boot,
-  post-wipe source SQL/files/Redis and immutable backup unchanged). Report revision
-  `04439c766`, binary024e32b9dd95… above; `pwipe-restore-run.log` and copied
-  `pwipe-runtime-mariadb-redis-restore.json`. First and second failure evidence is
-  retained. [PR #922](https://github.com/LuminariMUD/Duris/pull/922) is ready.
-- Website qualification uses a detached private DurisWeb worktree at
-  `bin/tests/issue-870/website`, pinned to `51549c2`, with no `.env` files.
-  Frozen offline pnpm install and backend tsc build passed. Node26.11.1 and
-  pnpm12.10.1 must be on PATH. The wrapper uses `TEST_DB_IMAGE=mysql:8.0`;
-  `--redis --website <absolute-fixture-path> bin/server/dms_new` passed actual
-  HTTP/session/WHO/presence/cache/websocket drain, queued synthetic webhook and
-  exactly-once durable donation delivery. Current signup keeps email empty until
-  verification; seed that verified donor precondition offline. Mail, Discord,
-  analytics and real payment services remain disabled. No website source change.
-- Divine refusal: `e7e83d8c3`, `branch/issue-870-divine-refusal-journey`,
-  [PR #923](https://github.com/LuminariMUD/Duris/pull/923), ready above #922.
-  SQL promotion replaces the embedded C++
-  snapshot writer/compiler; preserve the shared drain helper's five consumers.
-  `tests/async/with_disposable_mariadb.sh python3 tests/async/run_divine_refusal_journey.py bin/server/dms_new`
-  passed both full A/B scenarios: disabled dispatch2/2, enabled dispatch0/2,
-  retry lock, exempt commands and mixed non-Cleric orders. Evidence:
-  `bin/tests/issue-870/divine-refusal-run.log`; ordinary server SHA-256:
+- **Shop, #897 and repair #903:** the full SQL journey passed quantities, funds,
+  capacity/refusals, a fresh unsaved bag,108 exact ration UIDs/parentage/wallet
+  across restart, SQL-stalled sale/logout, exactly-once payment and stable UID
+  buyback. Logs `shop-multi-buy*`, `integrated-shop*`; initial failures remain in
+  `shop-unsaved-bag-failure-*` and `shop-retired-sale-expectation-*`.
+  The merged repair reuses the creation queue and same-writer ownership read;
+  existing owner declarations use `src/sql/item_owner_rows.h`. Its independent
+  review added version8 atomic paid-creation receipts, exact wallet debit and
+  retention of purchased bag subtrees through pre-publication saves. Those
+  reviewed changes are included from master002ad622e, without a schema change,
+  synchronous game-thread SQL or second persistence path. Native ASan/UBSan
+  input, grant/reconciliation, newbie/prompt and ownership consumers passed.
+- **Racial/cast, #918, code957cab3ac:** ordinary 250ms binary
+  `4f13e85355b8940a950d14e3a4b3e061cf294a43369e68c249b17ce3b44d823c`
+  passed21 races, rebalance/help/groundfighting/Reflection boundaries, adjustment,
+  saved properties/restart and listing. Multiplier0.5/1/2 and20-cast default and
+  `--budget-usec 2000` probes passed. Use the disposable wrapper and each runner's
+  `--server bin/server/dms_new`. Logs `racial-pulse-run.log`,
+  `spellcast-multiplier-run.log`, `cast-timing-{default,budget}-run.log`.
+- **Pwipe, #922:** all six supported modes passed with the real five-minute
+  countdown: direct; Redis; Redis re-enable; reward discard; matched restore;
+  website. Help and six invalid CLI combinations passed (`pwipe-cli.json`).
+  Codes0de5f6bc9/a8e18cb7b/112f0dddb remove the impossible retired mode, separate
+  failure artifacts and seed the synthetic donor's verified email. Restore
+  code04439c766 extracts under temporary umask077 because native recovery locks
+  require0700; the earlier extra-reboot workaround was removed. Restore preserved
+  bank9/reward3/PID/files/authenticated world, reconnect/second boot, source
+  SQL/files/Redis and immutable backup. Logs `pwipe-*-run.log`, copied reports
+  including `pwipe-runtime-mariadb-redis-restore.json`; ordinary hash024e32b9dd95….
+  Website fixture `bin/tests/issue-870/website` is detached DurisWeb51549c2,
+  with no `.env`. Frozen offline install/tsc passed using Node26.11.1/pnpm12.10.1.
+  `TEST_DB_IMAGE=mysql:8.0` and `--redis --website <absolute-fixture-path>
+  bin/server/dms_new` passed real local HTTP/session/WHO/cache/websocket drain
+  and exactly-once synthetic webhook donation delivery; real providers disabled.
+- **Divine refusal, #923, e7e83d8c3:** the disposable wrapper with
+  `python3 tests/async/run_divine_refusal_journey.py bin/server/dms_new` passed
+  disabled dispatch2/2, enabled0/2, retry lock, exempt commands and mixed orders.
+  Log `divine-refusal-run.log`; binary
   `024e32b9dd95cf654ed9dbcadb937785d444b20967dbd11ce73d845aed3c875e`.
-- Other #880 standalone proof: issue37 zone reset/restart/restart-reset and the
-  complete Misty Vale crafting/portals/switches/population/canoe/rod/fishing/reward
-  persistence journey passed. Evidence: `issue37-run.log`,
-  `misty-vale-run.log` and copied reports under `bin/tests/issue-870/`.
-  Their unchanged source was exercised with the recorded 4f13e85355b8… binary.
-- Container follow-up `bbb0aca1b` is pushed on #903 and forwarded through the stack.
-  Current compiled server SHA-256 is
-  `024e32b9dd95cf654ed9dbcadb937785d444b20967dbd11ce73d845aed3c875e`.
-  Latest native ASan/UBSan, creation-batch/reconciliation, newbie and prompt checks
-  and `make -C src -j4` passed. Final aggregate gates must qualify this integration.
-- Colorization: `9939996fb`, `branch/issue-870-colorization-journey`,
-  [PR #925](https://github.com/LuminariMUD/Duris/pull/925), ready after #924, removes
-  inspector/state setup and uses the shared MariaDB authority. All 65 checks and
-  15 frames passed (two accounts, independent recipient GMCP/ANSI colors, saved
-  choices/reconnect, paging, coherent animation, motion/static, authored mural,
-  previews and shutdown). Evidence: `colorization-run.log`, `colorization.json`;
-  binary SHA-256 024e32b9dd95… above. The active release guide now gives the exact
-  disposable MariaDB reproduction command. No native gameplay/rendering change.
-- Weapon actions: `2b52eaf2e` uses the shared MariaDB authority and removes the
-  inspector option. `92d835596` applies the existing ten-minute natural-selection
-  deadline to both families: the original 45-second packed window timed out while
-  the player dodged every melee hit (failure log retained). All three packed cases
-  now passed: legacy damage, 2.002s warning-to-hit, and .250s flee with no damage
-  and a fizzle. Avernus off/hold and enabled/hold passed, but its flee case
-  timed out before a natural selection within600s. `9f914ede8` raises only the
-  synthetic Avernus NPC to the mortal cap56, improving ordinary hit frequency;
-  native 1/25 selection and damage/timing/cancellation assertions remain unchanged.
-  The complete Avernus matrix passed: disabled damage18.268s, enabled windup2.002s,
-  flee.250s with no damage and fizzle. Packed's three cases were already green.
-  Prior partial results/failure remain under `pre-fixture-repair-weapon-avernus*`.
-  [PR #924](https://github.com/LuminariMUD/Duris/pull/924) is ready; the active weapon
-  guide now publishes both exact disposable commands.
-- Copyover: `d3df89e40` uses one shared MariaDB setup for ordinary and Redis modes,
-  removes the duplicate schema installer, and replaces corrupt-snapshot injection
-  with a real rejecting player-save SQL trigger. The first plain case already
-  passed all failures and successful socket/session recovery; default MCCP and
-  Redis fault and fresh minimal-world modes also passed. Both full-world fresh
-  and preserving hotboot modes subsequently passed, plain and MCCP in each.
-  UID10001 first failed before boot: Linux protected_regular blocks O_CREAT on
-  the ordinary user's shared /tmp port-lock file. `cfea325b8` reopens that same
-  existing lock without O_CREAT on PermissionError; confirmed root r+ succeeds.
-  Keep shared fcntl reservations. Both UID10001 plain/MCCP retries passed; initial
-  failure retained. Full-world first failed before injected file-open failure:
-  fresh absent-artifact catalog rows publish asynchronously in batches4. Use the
-  existing paged `world persistence` health output to await zero dirty/pending
-  artifact/guild work; repeat after replacement boot before the mismatched-account
-  rehearsal (`004272af6`, `e74ff78a6`, `de0ae203c`). Native guards stay intact.
-  The prior full-world run passed its actual exec and original socket recovery,
-  then failed at the second drain before mismatch injection. Both earlier failures
-  and the initial pager mistake are retained. All eleven cases now passed:
-  default minimal, fresh minimal, preserving full-world, fresh full-world and
-  UID10001 (plain/MCCP each), plus Redis checkpoint/failed-replacement faults.
-  Plain fresh cases also refused a mismatched authenticated account on the inherited
-  socket. Logs: `copyover-{default,redis,fresh,full-world,full-world-preserve,nonroot}-run.log`.
-  [PR #926](https://github.com/LuminariMUD/Duris/pull/926) is qualified for review.
-- Discord: `a98106d9e` seeds staff in MariaDB. The unchanged bridge sink is at
-  `/home/aiwithapex/projects/discord-mud-chat/scripts/testing/duris-game-sink.js`,
-  clean checkout `70865ecafb0aeb9b9ac71da37696e416d892ce4c`. Its dependencies load
-  using Node26.11.1; the driver uses loopback config and a mocked Discord client,
-  without dotenv or real Discord access. Complete runtime qualification passed:
-  petition/ptell, concealment/exclusions, one-way ingress, original player/bridge
-  sockets across failed exec and successful copyover, save/reload, offline/disabled
-  relay, audit deduplication and ordinary shutdown. `8de873801` corrects a stale
-  fixture expectation: failed exec removes sealed recovery files. Initial failure
-  retained as `discord-game-initial-failed-exec.log`; success `discord-game-run.log`.
-  [PR #928](https://github.com/LuminariMUD/Duris/pull/928) is ready after #926.
-- Live item conversion: `aa5f4f231`, `branch/issue-870-item-mana-journeys`, uses
-  `mariadb_authority()` and the Server helper's existing environment injection.
-  Keep Server's current signature: eleven other real journeys still import it;
-  no new helper API or duplicate server fixture is needed. `mana_rows(sql)` reads
-  all eight authority columns from `artifact_mana`, preserving reserve/version,
-  crash/restart, recharge and clamping assertions. No binary file decoder remains.
-  Native artifacts are created by real staff `load obj` commands after offline SQL
-  promotion, saved and demoted to their original mortal levels; check the resulting
-  actual UID instead of fabricating UID1000922. Corpse custody uses existing
-  `inspect_authority(sql)`. The existing optional failure-retention mode captures
-  the private synthetic SQL dump in place of copying retired domain files.
-- The overlap fixture modified mini objects/resets after configure had copied
-  them into the generated world. Area-debugger mode2 reads those generated files;
-  copy the two modified inputs so dual-weapon/caster cases exercise their intended
-  equipment. `6a079045d` replaces obsolete boon-toggle response expectations with
-  the current automatic-boon response, preserving the native behavior.
-  All four parsers/compiles and diff checks pass. Every runtime case passed:
-  Studio complete/abort and crash, Tsunami disabled/complete/abort including real
-  corpse loot and unchanged mana, Ioun real incoming spell/paid deflection,
-  operator toggles/reload/invalid catalog/private metrics, sustained PvE and low-
-  reserve player refusal/recharge, and both dual-weapon/mortal-cast overlaps.
-  `4487cc3a6` checkpoints the carried Studio source before the crash-only case;
-  otherwise the test killed the process before saving the picked-up item at all.
-  Its pending action still never revives and the committed debit remains exact.
-  Reused unchanged passing complete/abort evidence and reran the affected crash
-  case with `--family studio --case on-crash`; both raw JSONs and their three-case
-  aggregate are retained. Initial boon and missing-checkpoint failures remain.
-  Evidence: `item-pilot-{studio,studio-crash,tsunami,ioun}*.json/.log`,
-  `item-{config,encounter,overlap}*.json/.log`. Native ioun took173.415s to intercept;
-  recharge took5.506s from1500 to3000 units; dual sources completed33.534s;
-  ordinary mortal casting overlapped its own passive release in4.755s.
-  [PR #931](https://github.com/LuminariMUD/Duris/pull/931) is qualified for review.
-  The active item rollout runbook now supplies all reproduction commands.
-- Named-set discovery: the six runners form a real shared-authority sequence:
-  transfer produces gear/containers and a measured baseline consumed by edit/clone,
-  pet and shop runners. Rollback copies the authority and changes binaries twice.
-  SQL lifetime must span that sequence and the rollback copy must preserve its
-  source SQL as well as filesystem evidence. Do not create independent databases
-  per consumer or replace generated gear with guessed UIDs. No named-set edit yet;
-  inspect the retained compatibility source/catalog before choosing its MariaDB build.
-- Current head: `branch/issue-870-named-set-journeys`; no live test sessions remain
-  from the preceding batch. #922, #923, #924, #925, #926, #928 and #931 are qualified; the
-  earlier stack remains as listed above. All PRs carry enhancement/bug/documentation
-  labels as appropriate. Do not merge or deploy without the user's instruction.
-- Named-set conversion is now implemented but unqualified. Keep the existing
-  six consumer scripts and their assertions. The helper's specific batch entry
-  owns one `mariadb_authority()` lifetime, creates the synthetic account through
-  the real protocol, and runs transfer → edit/clone → pet → shop → all16 wear
-  zones → copied-authority rollback → existing chest/report journeys. Shared
-  runtime/server paths are passed only to these concrete consumers; no backend
-  selector or generic fixture framework. Each wear result is retained separately.
-- SQL readers preserve full inventory parent indices/UID graphs, named provenance,
-  permanent HP/Constitution/bit modifiers, saved affects and pet custody/holds.
-  SQL intentionally does not restore transient item affects (see
-  `src/sql/item_instance_fields.h`); keep the native measured HP/spell assertions
-  after reload rather than decoding an obsolete snapshot. The old C++ snapshot
-  compiler/fixture is removed after confirming it has no other callers.
-- Rollback keeps one copied SQL schema through both binary changes. Dump the
-  stopped source, hash SQL/accounts/journals before/after, import directly into another
-  disposable schema. The maintained bootstrap has no views and the captured dump
-  has no qualified schema identifiers; remove the speculative rebinding machinery. Preserve every
-  copied UID/revision/parent/slot and all original gameplay/report assertions.
-  The batch retains a private synthetic SQL dump before its authority is removed.
-- The compatibility checkpoint is current native code with only its catalog array
-  replaced by the115-row array from `bff1043fd`, matching the existing rollback
-  rehearsal's purpose and previous plan to keep integrated safety fixes. It is
-  **not** represented as a full historical server. Generated source:
-  `bin/tests/named-set-rollback-source/named_sets.c`; binary:
-  `bin/tests/named-set-rollback-source/dms-115-catalog`; metadata `build.json`.
-  The maintained Makefile compiled that one replacement object with normal flags
-  and relinked current objects while excluding `item/named_sets.o`; ordinary
-  binary remained024e32b9dd95… . Variant source SHA-256:
-  `2fb1c22f2e20f125df0bd8bb03509e4ecccbc0394a7d4247bca3b02ea0a2f988`;
-  variant binary SHA-256:
-  `1576a431f07c49a21f18c79aa85fe0146e98ca83c8b269be4a850d7f3e8b62b8`.
-  Build log: `bin/tests/issue-870/named-set-compat-build.log`.
-- Current named-set qualification:
-  `python3 tests/async/named_set_gameplay.py bin/tests/named-set-rollback-source/dms-115-catalog`,
-  running from `cacfbc8be`; log `bin/tests/issue-870/named-set-sequence-run.log`.
-  Artifacts: `bin/tests/named-set-mariadb-sequence-ununney2` (private SQL dump is
-  retained on exit). Transfer already passed two-level native give, original UID/
-  origin/parent/slot persistence through nested/worn reboots and independent
-  ordinary Armor non-stacking at -90 Armor Points. Edit/clone also passed renamed
-  originals, five distinct recursive clone UIDs, mixed outfit benefits and reboot.
-  Pet then stopped on a legitimate NULL pet_uid for an empty saved pet. Mirror the
-  native loader's COALESCE(...,0), without inventing a UID. Resume the captured
-  SQL fixture in a fresh disposable schema, checking its dump and binary hashes;
-  preserve existing generated identities and reuse the two unaffected passes.
-  Original failure evidence: `bin/tests/issue-870/named-set-initial-pet-failure/`.
-  Resume guard proof passed: a mismatched binary was rejected without changing
-  the SQL dump or sequence metadata (`named-set-resume-rejection.log`).
-  The pet retry passed both cold reboots with exact nested UID/origin/slots. Its
-  return then hit the normal heavy-item consent guard (`actobj.c`4336): the bag
-  weighs33. The consent attempt was invalid: `do_consent` accepts players only.
-  Set only the controlled named witness's weight to1 while offline, in whichever
-  of its two real payload tables currently owns it. Preserve its UID, origin,
-  affects and slots; the native loader recalculates its enclosing bag's weight
-  from the prototype plus contents (`handler.c`178). Keep both cold reboots and
-  the original native give/return assertions. No gameplay rule change.
-  Server termination was normal; no product repair is justified by these failures.
-  Evidence: `bin/tests/issue-870/named-set-heavy-return-failure/` and
-  `named-set-consent-failure/`. Current retry log:
-  `bin/tests/issue-870/named-set-sequence-portable-witness-run.log`: pet passed
-  both cold reboots, native give/get return, same origin and final worn reboot
-  with Armor/+5HP. Completed metadata now includes transfer/edit-clone/pet.
-  Shop then exposed a stale prepared-outfit precondition: edit/clone intentionally
-  leaves mixed original/clone slots. Equip the three originals through normal
-  remove/wear before capturing its sale/rebuy slot baseline. Preserve all asserts.
-  That failure is under `named-set-shop-baseline-failure/`; current retry log:
-  `bin/tests/issue-870/named-set-sequence-shop-baseline-run.log`.
-  The entry self-enters the disposable wrapper. The retry adds
-  `--resume bin/tests/named-set-mariadb-sequence-ununney2`; its metadata explicitly
-  records reused cases. Inspect its terminal result
-  and every case before marking batch3 complete; preserve failures and repair
-  actual defects without dropping cases. Historical assassin comparison,
-  naming/docs and full regression/DB gates still follow. No whole-issue claim.
+- **#880 standalone consumers:** `shop-bootstrap-run.log` confirms full-world
+  initialization and cold restoration. `issue37-run.log` confirms ordinary route
+  reset/restart/reset; `misty-vale-run.log` confirms full crafting/portals/switches/
+  population/canoe/rod/fishing/reward persistence. The latter unchanged sources
+  used the recorded4f13e85355b8… image. Copied reports are retained.
+- **Weapons, #924:** packed and Avernus each passed all three cases: disabled
+  ordinary damage, enabled windup/hit and flee with no damage/fizzle. Both enabled
+  windups2.002s; flee0.250s. Native Avernus1/25 selection remains unchanged;
+  synthetic NPC level56 and the existing600s natural-selection bound avoid
+  expecting a proc from a window of missed melee attacks. Prior failures remain
+  under `pre-fixture-repair-weapon-avernus*`. Active weapon guide has both commands.
+- **Colorization, #925, 9939996fb:** all65 checks/15 frames passed: independent
+  accounts/GMCP/ANSI recipients, saved choices/reconnect, paging, animation,
+  motion/static, authored mural and previews. `colorization-run.log`/`.json`,
+  binary024e32b9dd95…; active release guide gives the disposable SQL command.
+- **Copyover, #926:** all11 cases passed: default/fresh minimal, preserving/fresh
+  full-world and UID10001, plain/MCCP each, plus Redis faults. Retain sockets,
+  TLS/WebSocket survivors, failure/success, session change, mismatched-account
+  refusal and failed-replacement generation assertions. SQL save rejection
+  replaces snapshot corruption. The shared port lock retries an existing file
+  without O_CREAT on PermissionError, preserving fcntl reservations. Full-world
+  cases await paged zero artifact/guild dirty/pending before faults and after
+  replacement. Logs `copyover-{default,redis,fresh,full-world,
+  full-world-preserve,nonroot}-run.log`; initial failures are retained.
+- **Discord, #928, a98106d9e/8de873801:** full petition/ptell/exclusions/ingress,
+  original player/bridge sockets through failed/successful exec, saves, reconnect,
+  offline/disabled relay, deduplicated audit and shutdown passed. Use clean
+  companion70865ecafb0aeb9b9ac71da37696e416d892ce4c at
+  `/home/aiwithapex/projects/discord-mud-chat/scripts/testing/duris-game-sink.js`
+  and Node26.11.1. It uses loopback/mock Discord with no dotenv. Logs
+  `discord-game-run.log` and the retained initial failed-exec expectation failure.
+- **Four item journeys, #931, aa5f4f231/6a079045d/4487cc3a6:** all seven pilot
+  cases passed: Studio complete/abort/crash; Tsunami disabled/complete/abort with
+  corpse loot; Ioun paid incoming-spell interception. Config/reload/invalid
+  catalog/metrics, sustained PvE/player refusal/recharge and both dual-weapon and
+  mortal-cast overlaps passed. SQL reads all eight artifact_mana fields. Real
+  staff-created UIDs survive demotion to original mortal levels; Server's existing
+  signature remains for11 other consumers. Modified mini objects/resets are
+  copied to their generated world inputs. Crash proof checkpoints the carried
+  source before SIGKILL and preserves exact debit/no revival. Unchanged Studio
+  complete/abort evidence is reused with the separately rerun affected crash.
+  Logs/reports `item-pilot-{studio,studio-crash,tsunami,ioun}*` and
+  `item-{config,encounter,overlap}*`. Ioun173.415s; recharge1500→3000 in5.506s;
+  dual sources33.534s; mortal casting/passive overlap4.755s. Active rollout
+  runbook publishes the complete reproduction matrix.
 
+### Named-set implementation and proof
 
-### Assassin conversion underway
+- Code starts at cacfbc8be, PR #938. `NamedSetGame` owns one SQL authority through
+  transfer → edit/clone → pet → shop →16 wear zones → copied rollback → existing
+  chest/report. Existing consumers receive only their concrete runtime/server
+  paths. The removed C++ snapshot writer has no remaining caller.
+- SQL readers keep exact UID/parent/slot/provenance, permanent HP/Constitution/bit
+  modifiers, saved affects and pet custody. SQL does not restore transient item
+  affects; native HP/spell assertions prove those benefits after reload. Nullable
+  empty pet_uid mirrors the native loader's COALESCE0. The controlled named coat
+  is seeded weight1 offline in its actual owning payload table, retaining all
+  identity/affect fields, so native pet give/return meets the heavy-item guard.
+  Shop equips originals natively and promotes both donor and recipient before
+  transfer; no production gameplay rule is changed.
+- Transfer, edit/clone, pet and shop passed: original nested/worn UID/origin/slots,
+  independent ordinary Armor, five distinct recursive clone UIDs, mixed outfit
+  benefits, two pet reboots/return/final wear, paid sale/rebuy and Armor/+5HP.
+  Wear1325,740,827,13,44,204,808,811,814,990,300,1350,87,370,676 passed their full
+  native threshold, persistence and removal assertions. Wear824 also passed its full potion/removal leg; all16 wear cases are complete.
+- Preserve ordinary potion timers. Wear13 waits up to600s for native Armor-potion
+  expiry. Wear824 likewise recognizes both actual potion cooldown messages from
+  actoth.c4767–4777, then requires `Nothing new seems to happen.` and intact
+  Vitality set benefits. Previous cooldown failures remain under
+  `named-set-vitality-cooldown-failure/` and `named-set-last-tick-cooldown-failure/`.
+- The captured fixture is `bin/tests/named-set-mariadb-sequence-ununney2`.
+  `authority.sql` is private synthetic state; `sequence.json` records SQL/binary
+  checksums, completed labels and reused proof hashes. Normal `--resume` rejects
+  changed binaries without changing recovery evidence; negative proof is
+  `named-set-resume-rejection.log`. `--allow-binary-change` explicitly records
+  repair replays; SQL dump SHA remains mandatory. Earlier frozen sequence
+  metadata in failure folders preserves each previous proof epoch.
+- Rollback hashes stopped source SQL/accounts/journals, imports into another
+  disposable schema, keeps that copy across both binary changes and requires the
+  source unchanged. No view/schema-rebinding framework is needed. Compatibility
+  uses current code with only bff1043fd's115-row catalog substituted, not a full
+  historical server. Source SHA-256:
+  `2fb1c22f2e20f125df0bd8bb03509e4ecccbc0394a7d4247bca3b02ea0a2f988`.
+  Build source/binary/command are in `bin/tests/named-set-rollback-source/`.
+  Its Make recipe uses `.SECONDEXPANSION` for DMS_OBJS and excludes the normal
+  named_sets.o; relinks must actually change the binary hash after native edits.
 
-- Existing pinned BASE `24a2776f13a2f3580c91f945743b09f80144b829`
-  already has a MariaDB Makefile backend and the fresh-bootstrap migration runner.
-  Its runtime schema check is strict; use each variant's own bootstrap/migrations.
-  `mariadb_authority(source_root=...)` adds that concrete schema-root requirement;
-  all existing callers retain their current default.
-- Keep the original and cleanse-only archives byte-verified against BASE plus the
-  existing patch. Use the current verified builder with each archive as its ROOT,
-  its already-supported MariaDB default, the seed187 linker wrapper, and the real
-  250ms clock for all three variants. Do not use the old builder's hard-coded
-  flat-file backend or mix the current fast clock with historical ordinary clocks.
-- Replace the removed snapshot writer with shared SQL `seed_actors()`, adding the
-  audit's Cleric victim and its four remove-poison/two slow-poison memorized slots.
-  Poison/coating persistence comes from SQL; retain levels/races, equal gear,
-  mismatches, poison/cure/movement and all comparison assertions. Check relevant
-  class/skill/memorization constants agree between current and BASE headers.
-- The obsolete C++ actor writer is removed after updating its real manifest-input
-  regression to track the Python seeder/auditor instead. That regression, Python
-  compilation, CLI help and diff checks passed; no comparative runtime proof yet.
-- Move the mechanical naming step before comparison preparation so its runtime
-  manifests and verified-build keys are generated once against the final names.
-  Then prepare the three variants with CPU affinity capped to four build workers,
-  run the full matrix and revised scenarios, and complete aggregate gates.
+### Assassin implementation and versioned proof
 
+- PR #948 pins BASE24a2776f13a2f3580c91f945743b09f80144b829 and the exact existing
+  cleanse-only patch. Fresh archives are byte-verified. Each uses its own existing
+  MariaDB bootstrap/migrations through `mariadb_authority(source_root=...)`.
+  The current verified builder builds each source with seed187 and ordinary
+  250000us pulses; no retired backend or current fast-clock comparison.
+- SQL seed_actors creates the same attacker/Cleric defender, gear and four
+  remove-poison/two slow-poison memorization slots. Class/skill/memorization
+  constants match headers. Historical account creation uses its byte-checked
+  archive helper because Keep entered the MOTD directly; current transport/SQL
+  remain shared. Old saves await `Save complete`, never queued admission.
+- FIRST_POISON1536..LAST_POISON1542 comes from the verified header chain, retaining
+  all seven poison types without a general macro parser. Poison/coating/cure
+  inspection remains SQL. The obsolete C++ actor writer is removed; the existing
+  manifest-input regression tracks the actual Python seeder/auditor.
+- Full original12/cleanse12/revised36 openings passed. Immutable original/cleanse
+  evidence is `assassin-qualified-initial-{binaries,results-matrix}.json`.
+  Original binary5a2c9dbacf2eb71ab0ff360e2724f5cb9e3d6078286ff15c67953b673f470521;
+  cleanse dd66f5d524c2b5babdd52673b3da6ec22da103c537b3803bbe4a5f48b4cb680e.
+- Revised36 was requalified after each native save repair. Matching manifests/
+  reports are `assassin-qualified-deep-{binaries,results-revised-matrix}.json`
+  and `assassin-qualified-ordering-{binaries,results-revised-matrix}.json`.
+  The latter matrix exited0. Following scenario invocations correctly refused
+  changed source/runtime inputs; never relabel those older matrices as current
+  integrated executions. Selected variants write separate result files.
+- Preparation verifies source, fixture, seed, patch, creator, schema, runtime and
+  binary hashes. Original/cleanse cache reuse remains valid. The final integrated
+  preparation and revised scenarios exited0. Seeded binary SHA-256:
+  `44815784471b7846eedab8d74048280891d132783e38c8283c1103dd95816213`;
+  source6fba71dbf. `assassin-qualified-integrated-{binaries,results-scenarios}.json`
+  preserves that exact epoch. PR #948 is ready. No PvP win-rate inference is claimed.
 
-### Mechanical naming conversion
+### Mechanical naming
 
-- Current review head is `branch/issue-870-mariadb-test-names`, after the Assassin
-  conversion branch. Fourteen MariaDB tests now use `test_mariadb_*.py`; both
-  the artifact builder and public combat-helper wrapper expose only
-  `build_mariadb_server`. Repository-owned imports, registrations, source-contract
-  tests, scripts, active docs, Makefile and backup workflow references are updated.
-- No destination collisions; no alias/shim. Pinned ignored archives are untouched.
-  Historical reports and execution records retain the command names they tested.
-  Earlier evidence in this plan also retains its pre-rename names; current commands
-  use the corresponding `test_mariadb_` names and `build_mariadb_server`.
-- All moved and changed Python files compile; regression discovery lists905
-  tests with no retired prefix. Focused root-harness, artifact reuse/corruption/
-  isolation/publication, Assassin manifest, launcher, real MariaDB boot-preflight,
-  information-reader and shopkeeper-capture checks passed. Logs:
-  `bin/tests/issue-870/naming-*.log`. Boot preflight's actual command includes
-  `with_disposable_mariadb.sh` and `--server bin/server/dms_new`.
-  Active imports/build calls are updated. The pinned comparison explicitly names
-  its immutable archive's old creation helper; that historical path is intentional.
-  Keep historical reports/records and legitimate file/journal/negative-mode names.
-  Active item/weapon/colorization and Discord runbooks give the qualified commands.
-- Named-set retry advanced beyond its original outfit check; the next missing
-  fixture precondition is Taverek's staff promotion before `transfer Meranen`.
-  Meranen was promoted, but the shared donor remained mortal from transfer proof.
-  `9bc9cff2c` adds the donor's offline SQL promotion before boot. Shop then
-  passed real sale, restart, paid repurchase, exact UID/origin/slot and final
-  Armor/+5HP reboot. The resumed sequence now runs the16 wear zones under the
-  canonical imports. Log: `named-set-sequence-shop-staff-run.log`; earlier donor
-  failure is retained under `named-set-shop-staff-failure/`.
-- Assassin preparation is running with four-CPU affinity. Fresh original/cleanse
-  archive verification and relevant constant checks passed; original MariaDB
-  seeded binary built in134.602s. Log `assassin-prepare-run.log`; inspect terminal
-  result and all three manifest entries before runtime qualification.
+- PR #949 physically renames all14 test_flatfile_ Python files to test_mariadb_,
+  and both public build helpers to build_mariadb_server. Update every active
+  import, runner, source contract, script, Makefile/workflow and runbook; no alias.
+  Historical reports and immutable archive helpers retain their actual old names.
+- Moved/changed Python files compile. Initial naming discovery listed905 tests.
+  Artifact reuse/corruption/isolation/publication, root harness, manifest inputs,
+  launcher, real MariaDB boot preflight, help reader and shopkeeper-capture checks
+  passed: `naming-*.log`. Boot preflight uses the disposable wrapper and --server.
+  The integrated checkout compiles150 changed Python modules. Final regression
+  discovery/count comes from the pending full gate; do not reuse905 as its result.
+- Remaining retired strings are historical/negative-mode/file-journal references
+  or unreachable __NO_MYSQL__ probe branches, not an active supported backend.
 
+### Native defects found and separately repaired
 
-### Latest continuation checkpoint
+- **#954, c5f47b514, bug:** the named-set sequence reproduced DELETE failure1296/
+  InnoDB193 on a15-level/1361-row graph because item metadata adds a cascade level.
+  `named-set-sql-delete-repro.log` proves the owning SQL operation. Detach parent
+  links only on rows selected for replacement inside the existing transaction,
+  excluding validated retained components, then delete/reinsert. No depth/schema/
+  UID reduction. The existing player-save claim DB harness passed a20-level tree,
+  affects/descriptions, injected-delete rollback restoring exact links/revision,
+  successful payload replacement and empty replacement. Ordinary build and native
+  wear1350 save/reboot/removal passed. Integrated claim harness passed again,
+  including current master's retained paid-receipt logic.
+- **#957, 5e5c76d9e, bug:** executable worker/pipeline regressions reproduced a
+  status-only tail replacing a queued inventory payload and a later partial
+  success falsely acknowledging an earlier failed full save. Repro logs are
+  `test_player_save_{worker,pipeline}-partial-repro.log`. Only coalesce a covering
+  component mask. One internal failed-component mask holds written acknowledgement
+  until successful ordered completions repair it; stale captures cannot clear it.
+  Existing worker, pipeline, revision-state and actual manual-feedback harnesses
+  passed, including stale completion and repair. Formatting/tidy and native build
+  passed; post-integration pipeline passed (`partial-save-post-integration-pipeline.log`).
+- **#955, afc746847, enhancement:** explicit captured-fixture repair replay,
+  accurate poison-ID lookup and separate selected-variant evidence. Final integrated named-set and Assassin scenarios passed; ready for review.
+  No new fixture framework.
 
-- Current worktree/head: `branch/issue-870-mariadb-test-names`; all changes are
-  committed and pushed. [#949](https://github.com/LuminariMUD/Duris/pull/949)
-  is ready (enhancement), after draft [#948](https://github.com/LuminariMUD/Duris/pull/948)
-  and draft [#938](https://github.com/LuminariMUD/Duris/pull/938). The earlier
-  qualified PR stack remains ready; no merge/deployment/release is requested.
-- Named-set completed labels include transfer, edit/clone, pet, shop, wear1325,
-  wear740 and wear827. Wear13 reached its HP/spell thresholds, then its retained
-  ordinary potion timer exceeded180s: it is a three-normal-tick cooldown and cold
-  boots reset the tick phase. `8069eabfa` keeps all cooldown state and waits for
-  native expiry up to600s. It passed wear13 on retry; remaining zones follow.
-  Current command adds `--resume bin/tests/named-set-mariadb-sequence-ununney2`;
-  log `named-set-sequence-potion-run.log`. Tool session23072 is still active at
-  this checkpoint; poll before restarting. Initial bounded-wait failure is under
-  `named-set-potion-window-failure/`.
-- All three pinned seeded MariaDB binaries built and were verified. Hashes:
-  original `5a2c9dbacf2eb71ab0ff360e2724f5cb9e3d6078286ff15c67953b673f470521`;
-  cleansed `dd66f5d524c2b5babdd52673b3da6ec22da103c537b3803bbe4a5f48b4cb680e`;
-  revised `5cf1d7842edfb4af2f1cc77e9c00ab2b48acd0b1ab9148edf35e1b1bbd7ca080`.
-  Each uses seed187 and250000us ordinary pulses. Native source/archive hashes,
-  patch/seed hashes, schema roots and protocol-helper hashes are in
-  `bin/tests/assassin-comparative/binaries.json`.
-- Two pinned protocol assumptions were repaired without changing persistence:
-  BASE's Keep enters its MOTD directly, so use its byte-checked creation helper;
-  its save emits queued then complete, so await **Save complete**, never admission.
-  Current reconnect protocol was compared to BASE and is identical. Current
-  transport and all actor seeding/inspection remain MariaDB. Source constants
-  match, including class/skill/memorization flags. Seed helper class4096/spec1 is
-  the Assassin; `SPEC_ASSASSIN=1` was checked in current headers.
-- Repreparation reused all three verified binaries (zero compile time), preserving
-  cache correctness. The current matrix has completed the original variant's12
-  openings and is advancing; command `python3 tests/async/run_assassin_balance_journey.py`
-  then `--variant revised --scenarios-only`. Controller session61334 is active;
-  log `assassin-matrix-run.log`, then `assassin-scenarios-run.log`. Prior creation
-  and save-ack failures are retained. Do not mark comparison complete until both
-  invocations terminate0 with the entire12/12/36 matrix and all revised scenarios.
-- Remaining completion work: finish every named-set case (all16 zones, copied
-  rollback, existing chest/report), finish the comparison, update their draft PRs
-  to ready, then run the required full regression and disposable DB gates and fix
-  actual findings as focused changes. Keep heavy compilation away from the timing
-  comparison. No aggregate or whole-issue completion is claimed yet.
-- User requested focus/ETA during work; #870 remains the mission. The estimate at
-  that point was3–5 additional hours, with final-suite defects the main uncertainty.
+### Current continuation checkpoint
 
-
-### Current authoritative state after the live runs
-
-- Both previously active controllers are terminal. Session61334: matrix exit0,
-  revised-scenarios exit1. Session23072: named-set sequence exit1 at wear1350.
-  Do not restart either merely from an old active-session note above.
-- Assassin's complete60 openings passed: original12, cleanse-only12, revised36,
-  all listed levels/races/defenders, with the seeded ordinary-clock binaries.
-  Original/cleanse results remain valid and their sources/binaries are immutable.
-  `assassin-qualified-initial-binaries.json` and
-  `assassin-qualified-initial-results-matrix.json` preserve their exact provenance.
-- Revised scenarios reached real poison and cure, then the new SQL inspector
-  called `spell_id("SONG_DRIFTING")`, whose definition is an expression rather
-  than a numeric literal. Correct this specific poison-range lookup from the
-  actual header; keep the complete FIRST_POISON..LAST_POISON inspection and all
-  cure/coating assertions. Evidence: `assassin-scenarios-run.log`.
-- Named-set completed through wear300 (plus transfer/edit-clone/pet/shop and the
-  earlier zones). Wear1350's native transcript shows all three items removed,
-  but committed SQL kept their slots. This is **not** an inventory-cap failure.
-  Native manual `Saving` is emitted after written-revision acknowledgement
-  (`actoth.c`2037); do not weaken the fixture or merely add sleeps to hide it.
-- Actual writer failures are error1296 with confirmed rollback. A disposable clone
-  of the frozen SQL reproduced the owning operation: tree depth15,1361 item rows;
-  `DELETE FROM player_items WHERE pid=1` fails with InnoDB error193 at
-  `fk_player_item_affects`' ON DELETE CASCADE. Log:
-  `bin/tests/issue-870/named-set-sql-delete-repro.log`. Metadata adds a cascade
-  level beyond the nested item tree. This is a real MariaDB snapshot replacement
-  defect, not permission to reduce the depth or discard previously generated UIDs.
-- Next repair: inspect the existing item-row replacement path in
-  `src/player/player_snapshot_repository.c` (DELETE around824 and shared helper
-  around396), keep its transaction/owner boundary, and avoid recursive parent
-  cascades before replacement. Extend the existing executable player-save database
-  harness for a supported deep tree and associated metadata. Fix it as its own
-  focused PR after #949; format, focused DB tests, native build and review the diff.
-  Investigate whether the observed later status revision can falsely acknowledge
-  a failed inventory write; do not presume a second root cause without proof.
-- Then rebuild the ordinary server and115-row catalog variant against repaired
-  source, preserve previous hashes/reports, resume the frozen named-set fixture
-  without changing UIDs/origins/slots, and finish all remaining zones, rollback,
-  chest and report checks. Inspect any compatibility-binary mismatch guard rather
-  than editing checksum metadata to pretend an old binary was tested anew.
-- Repairing native source invalidates the revised comparison manifest. Reuse
-  immutable original/cleanse evidence, prepare the new revised binary through the
-  existing verified cache, qualify revised matrix/scenarios with true provenance,
-  then run full regression/build and disposable DB aggregates. Keep timing cases
-  away from heavy compilation. #938 and #948 remain draft; #949 is ready.
-- Current branch `branch/issue-870-mariadb-test-names`, clean and pushed; latest
-  PRs have enhancement labels. No production operation, merge or release occurred.
-
-
-### Deep inventory checkpoint repair
-
-- Outcome: replace a valid deep player inventory without exceeding InnoDB's
-  recursive cascade depth; keep existing transaction/claim boundaries, retained
-  components, UID graph and metadata. No schema change, depth reduction or data
-  disposal. Files: `src/player/player_snapshot_repository.c` and the existing
-  `player_save_claim_mysql_harness.cpp`.
-- `apply_items` now nulls parent links only on rows already selected for replacement,
-  inside the same transaction, then deletes/reinserts that payload. Retained row
-  IDs/links/metadata are excluded by the existing validated predicate.
-- `tests/async/run_player_save_claim_mysql.sh` passed with a20-level executable
-  checkpoint regression: initial graph, injected delete failure restoring links/
-  revision, successful replacement with exact UID edges and affects/descriptions,
-  changed payload and empty replacement. Existing ownership/rent/quest rollback,
-  load filtering/affect-slot and large zone-story legs also passed. Log:
-  `bin/tests/issue-870/deep-inventory-claim-run.log`.
-- New regression first used a total affect-row count that included zero slots;
-  corrected it to assert the specific persisted nonzero affect. No behavior was
-  relaxed. Native build and preserved-fixture replay are next. This fix is on
-  `branch/issue-870-deep-inventory-checkpoint` after #949.
-
-
-### Qualification replay support
-
-- The native deep-checkpoint build passed (`deep-inventory-build.log`), and the
-  current-code/115-row catalog variant was relinked with the repaired repository
-  (`deep-inventory-compat-build.log`). Old build metadata is preserved separately.
-- The saved named-set fixture must retain its generated UID graph across this
-  actual native repair. `--resume --allow-binary-change` explicitly records prior
-  proof hashes/completed labels in `reused_from`; normal resume still rejects a
-  mismatch, and the SQL dump hash remains mandatory. This is a concrete repair
-  replay, not relabeling previous passes as executions of the rebuilt binary.
-- The revised poison inspector now uses the persisted1536..1542 range from
-  `spells.h`, retaining all seven poison types. Header-chain checks pin those IDs
-  against BASE; no replacement binary inspector or general macro parser.
-- A selected comparison variant writes its own matrix JSON, preserving the valid
-  original/cleanse results when revised-only qualification follows a native repair.
-  Only revised source changed, so those immutable baselines need no rerun.
-- Current head `branch/issue-870-qualification-fixes` after the deep-checkpoint
-  repair. Next: commit/push these narrow replay fixes, open the bug PR, resume the
-  captured named-set case on rebuilt binaries, and refresh/qualify the revised
-  comparison. Full regression/build and DB aggregates still remain.
-
-
-### Partial-save ordering and acknowledgement repair
-
-- Ready bug PR [#954](https://github.com/LuminariMUD/Duris/pull/954) contains
-  the deep inventory checkpoint repair after #949. Its real native wear1350
-  replay passed; wear87/370/676 also passed on the repaired binary. Wear824,
-  rollback, chest and report are next in the continuing sequence.
-- Draft [#955](https://github.com/LuminariMUD/Duris/pull/955), enhancement, holds
-  the explicit repair replay and poison-inspector fixes. The rebuilt revised
-  Assassin matrix is nearing completion; its scenario phase follows.
-- Investigation proved a second checkpoint defect rather than assuming one:
-  existing executable worker/pipeline harnesses fail on the prior source when
-  a status-only capture replaces a queued inventory graph, and when a successful
-  status-only write falsely acknowledges an earlier failed full checkpoint.
-  Logs: `test_player_save_worker-partial-repro.log` and
-  `test_player_save_pipeline-partial-repro.log` under `bin/tests/issue-870/`.
-- Outcome: retain every queued component and report manual/terminal durability
-  only after failed components have actually been repaired. Files: existing
-  worker, revision state and pipeline plus their existing focused harnesses.
-  No schema, persistence redesign or new framework. A tail replacement requires
-  component coverage; one internal failed-component mask holds the written
-  revision until successful ordered completions cover it. A stale completion
-  does not write payload and cannot clear that failure.
-- Initial worker, pipeline, revision-state and real manual-save feedback tests
-  passed after the fix. Additional stale-completion and manual-feedback legs are
-  being qualified; native build and focused review follow before publishing this
-  separate bug chunk on `branch/issue-870-partial-save-order` after #955.
-- Current binary evidence remains explicitly versioned; do not claim the running
-  pre-ordering-repair binaries include this source change. Aggregate gates have
-  not run yet. No merge, release, deployment or production operation occurred.
-
-- The partial-save worker, pipeline, revision-state and real feedback harnesses
-  all passed, including stale completion and delayed feedback through repair.
-  Changed-line formatting and a native `make -C src -j4` build passed. Build used
-  `SERVER_BIN_DIR=bin/tests/issue-870/partial-save-server` and its corresponding
-  absolute `DMS_BINARY` so the still-running named-set sequence retains its
-  pinned binary. Log `partial-save-build.log`, terminal exit in `.exit`.
-- The deep-repair revised matrix completed all36 openings. Its matching manifest
-  and report are preserved as `assassin-qualified-deep-binaries.json` and
-  `assassin-qualified-deep-results-revised-matrix.json`. The following scenario
-  invocation correctly refused changed runtime/source inputs after this new
-  checkpoint repair. Prepare the current seeded binary, then run those scenarios;
-  never edit the old manifest to pretend it executed the new source.
+- Branch `branch/issue-870-completion-qualification`, source integration6fba71dbf
+  and paid-crash import fixea9fd03ca, draft
+  [#958](https://github.com/LuminariMUD/Duris/pull/958), enhancement/documentation,
+  after ready bug #957. Master002ad622e is forward-merged; no history rewritten.
+  Merge conflict retained reviewed shop paid-crash coverage and current names.
+  Prerequisites #880/#887/#890–#893/#895–#897/#903 are merged by independent review;
+  #918 now targets master. Pending dependent PRs continue #918 → #922 → #923 →
+  #924 → #925 → #926 → #928 → #931 → #938 → #948 → #949 → #954 → #955 → #957 → #958.
+- Integrated native build and deep claim DB matrix exited0. Ordinary SHA-256:
+  `6dfb502003ca659f83dff27acd9cf51c5ac1b263d2b4a408e8339ecd0c1494f0`;
+  compatibility SHA-256:
+  `e0c5e6c1c3c466fe00f8882aeaad714fe2939ff9e09755ac35266cd217a34627`.
+  Logs `integrated-native-build.log`, `integrated-deep-save-claim.log`,
+  `integrated-compat-build.log`. Changed-line formatting/tidy and own diff check
+  against origin/master passed. Existing upstream help-index trailing spaces are
+  preserved. Other worktrees, production data and game .env files are untouched.
+- Named controller49919 exited0: all23 sequence labels passed (transfer,
+  edit/clone, pet, shop,16 wear zones, copied rollback, chest, report). Per-version
+  reused proof remains explicit. Frozen final metadata is
+  `named-set-qualified-integrated-sequence.json`; full log and terminal result:
+  `named-set-sequence-integrated-run.log`/`.exit`.
+  Reproduction: `python3 tests/async/named_set_gameplay.py
+  bin/tests/named-set-rollback-source/dms-115-catalog`; to continue the captured
+  fixture add `--resume bin/tests/named-set-mariadb-sequence-ununney2` and only
+  after an actual native rebuild add `--allow-binary-change`.
+- Copied rollback preserved every UID/origin/parent/slot and HP through298→115→298
+  rows, removed/restored the new spell and left source SQL/accounts/journals
+  unchanged. Chest passed real purchase/deposit/retrieval/world-storage/mortal
+  sale/paid-repurchase and reboots with the exact graph and set. Report passed all
+  298 rows, one-day warm TTL, staff local/Redis invalidation, stale-report reboot,
+  Redis loss and Redis-disabled pagination/order/conditional notes.
+- Assassin controller73465 exited0 on the integrated source: equal/mismatched gear,
+  Control Flee, preemptive and post-first-tick Heart cure, Slowness cure, Healer
+  poison, mixed/duplicate dual poisons, solo PvE survival and traded vial use.
+  Solo reference NPC completed60.77s with314 HP lost. Logs
+  `assassin-prepare-integrated-run.log`, `assassin-scenarios-integrated-run.log`
+  and `.exit`; exact integrated seeded binary hash is recorded above.
+- Paid fresh-bag crash controller74416 exited0. The new reviewed mode initially
+  exposed a missing `os` import at SIGSTOP; `integrated-paid-fresh-crash-missing-import.*`
+  retains that failure. Commit ea9fd03ca adds only that import. The same real
+  crash/restart path passed: wallet100000→99989, item UID1072350 under parent
+  UID1072324, identical after SIGKILL/cold restart. Evidence
+  `integrated-paid-fresh-crash.{json,log,exit}`. No schema or receipt change.
+- **Active aggregate controller55425:** production prebuild exited0
+  (`final-production-prebuild.log`/`.exit`). It now runs
+  `make test-all -j4 TEST_JOBS=8` (907 discovered files plus native gate), followed
+  by `make test-db` only on success. Logs/terminal results:
+  `final-test-all.log`/`.exit`, `final-test-db.log`/`.exit`. DB logs are copied to
+  `final-db-first-run/` after terminal completion; preserve them before any retry.
+  No full-suite pass is claimed yet. Poll this controller before restarting work.
+- Next: publish the consolidated plan, finish ready-state descriptions for
+  #938/#948/#955 with their explicit qualification follow-ups, inspect both
+  terminal aggregate results, autonomously repair actual failures as separate
+  focused changes, then finish scope/names/evidence/diff review and mark #958 ready.
+  No CI wait/full burn-in. Source is frozen at reviewed master002ad622e plus the
+  documented task commits; do not relabel earlier matrix images as later builds.
+- The mission remains all #870 work with autonomous issue repair and tested,
+  labeled, pushed PRs ready for review. Final-suite findings are the remaining
+  uncertainty. No GitHub merge, release, deployment or production action was
+  performed by this task.
