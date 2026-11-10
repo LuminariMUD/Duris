@@ -41,6 +41,7 @@ void charm_broken(char_link_data *);
 void __free(void *pointer, const char *, int) { std::free(pointer); }
 void dispose_link(char_link_data *link) { assert(!link->affect); std::free(link); }
 void wear_off_message(P_char, affected_type *) { std::abort(); }
+void affect_from_char(P_char, int) { std::abort(); }
 bool group_remove_member(P_char) { std::abort(); }
 void act(const char *, int, P_char, P_obj, void *, int) {}
 void schedule_pet_death(P_char, int) { ++scheduled; }

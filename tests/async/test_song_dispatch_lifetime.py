@@ -104,7 +104,7 @@ void do_action(P_char, char *, int) {}
 bool has_innate(P_char, int) { return false; }
 bool notch_skill(P_char, int, float) { return false; }
 int GET_CHAR_SKILL_P(P_char, int) { return 100; }
-char *skip_spaces(char *text) { return text; }
+char *skip_spaces(char *text) { while (*text && isspace(*text)) ++text; return text; }
 bool is_abbrev(const char *, const char *) { return true; }
 int is_char_in_room(P_char ch, int room) {
     for (P_char t = world[room].people; t; t = t->next_in_room) if (t == ch) return 1;
@@ -128,16 +128,22 @@ void event_bardsong(P_char, P_char, P_obj, void *);
     'static int echo_roll(',
     'static int echo_delay(',
     'void event_bardsong(P_char ch,',
+    'bool player_bard(',
     'static int riff_failed_rest(',
     'static int riff_rest(',
     'static int riff_lag(',
     'void do_riff(P_char ch,',
 ]) + r'''
 // Execute the production interpreter's hide gate before a song command.
-static void command_hide_rule(P_char ch, int cmd) {
+static void command_hide_rule(P_char ch, int cmd, const char *args = "") {
+    std::string input = "  command " + std::string(args);
+    char *argument = input.data();
+    unsigned begin = 2, look_at = 7;
     P_char exec_char = ch;
-    const char *argument = "";
     COMMAND_HIDE_RULE
+}
+static void command_song_result(P_char exec_char, int cmd) {
+    COMMAND_SONG_RESULT
 }
 struct Crowd { P_char bard, first, second, third; };
 static Crowd crowd() {
@@ -153,6 +159,7 @@ static Crowd crowd() {
     c.bard = make_char(); // Head of the room, so the dispatch sees first, second, third.
     c.bard->player.m_class = CLASS_BARD;
     c.bard->specials.affected_by3 = AFF3_SINGING;
+    c.bard->player.spec = SPEC_MINSTREL;
     return c;
 }
 static void clear_room() {
@@ -198,6 +205,13 @@ int main() {
         if (path == 2) assert(rests == 1 && waits == 1);
         clear_room();
     }
+    // A retained Riff rating cannot be used before respecializing.
+    {
+        Crowd c = crowd(); c.bard->player.spec = 0;
+        dispatch(2, c.bard);
+        assert(sung.empty() && !rests && !waits);
+        clear_room();
+    }
     // Run all dispatch paths with the actual catalog flags for the four songs.
     // A callback records delivery; the separate dissonance harness exercises its
     // handler's hostile/group/room eligibility checks.
@@ -214,17 +228,31 @@ int main() {
         assert(!aggros);
         ally = nullptr; clear_room();
     }
-    // Starting and switching via either song command still reveal ordinary hide.
-    // Look/scan/sneak are controls for commands that preserve it. Sneak survives.
-    for (int cmd : {CMD_PLAY, CMD_WAIL, CMD_LOOK, CMD_SCAN, CMD_SNEAK})
-        for (bool already_singing : {false, true}) {
-            Crowd c = crowd();
+    // Only an already-singing player Scoundrel keeps hide while switching.
+    for (int spec : {0, SPEC_SCOUNDREL, SPEC_MINSTREL})
+      for (bool npc : {false, true})
+       for (const char *argument : {"", "   ", "healing"})
+        for (int cmd : {CMD_PLAY, CMD_WAIL, CMD_LOOK, CMD_SCAN, CMD_SNEAK})
+         for (bool already_singing : {false, true}) {
+            Crowd c = crowd(); c.bard->player.spec = spec;
+            if (npc) c.bard->specials.act = ACT_ISNPC;
             if (!already_singing) REMOVE_BIT(c.bard->specials.affected_by3, AFF3_SINGING);
             c.bard->specials.affected_by = AFF_HIDE | AFF_SNEAK;
-            command_hide_rule(c.bard, cmd);
-            assert(bool(IS_AFFECTED(c.bard, AFF_HIDE)) == (cmd != CMD_PLAY && cmd != CMD_WAIL));
+            command_hide_rule(c.bard, cmd, argument);
+            bool switch_hidden = spec == SPEC_SCOUNDREL && !npc && already_singing &&
+                                 *skip_spaces(const_cast<char *>(argument));
+            assert(bool(IS_AFFECTED(c.bard, AFF_HIDE)) ==
+                   ((cmd != CMD_PLAY && cmd != CMD_WAIL) || switch_hidden));
             assert(IS_AFFECTED(c.bard, AFF_SNEAK));
             assert(bool(IS_AFFECTED3(c.bard, AFF3_SINGING)) == already_singing);
+            // Unknown songs, missing instruments and fumbled starts can end singing.
+            command_song_result(c.bard, cmd);
+            assert(bool(IS_AFFECTED(c.bard, AFF_HIDE)) ==
+                   ((cmd != CMD_PLAY && cmd != CMD_WAIL) || switch_hidden));
+            REMOVE_BIT(c.bard->specials.affected_by3, AFF3_SINGING);
+            command_song_result(c.bard, cmd);
+            assert(bool(IS_AFFECTED(c.bard, AFF_HIDE)) == (cmd != CMD_PLAY && cmd != CMD_WAIL));
+            assert(IS_AFFECTED(c.bard, AFF_SNEAK));
             clear_room();
         }
     // A Bard who hides after starting Flight/Sleep stays hidden on later beats,
@@ -250,7 +278,7 @@ int main() {
         ally = nullptr; clear_room();
     }
     std::puts("PASS song dispatch survives the singer, target and next target dying mid-song");
-    std::puts("PASS ongoing Flight/Sleep preserve hide and sneak; start/switch still reveal hide");
+    std::puts("PASS ongoing songs preserve hide; only player Scoundrel song switches keep hide");
 }
 '''
 
@@ -271,6 +299,10 @@ hide_start = interpreter.index('// Kill hide if applicable')
 hide_end = interpreter.index('if (IS_AFFECTED(exec_char, AFF_MEDITATE))', hide_start)
 assert hide_start < interpreter.index('((*cmd_info[cmd].command_pointer)')
 fixture = fixture.replace('COMMAND_HIDE_RULE', interpreter[hide_start:hide_end])
+result_start = interpreter.index('// A failed song switch may stop singing')
+result_end = interpreter.index('// If mobs should and can aggro', result_start)
+assert result_start > interpreter.index('((*cmd_info[cmd].command_pointer)', hide_start)
+fixture = fixture.replace('COMMAND_SONG_RESULT', interpreter[result_start:result_end])
 for command in ('CMD_PLAY', 'CMD_WAIL'):
     assert contains(source('interp.c').read_text(),
                     f'CMD_Y({command}, STAT_RESTING + POS_SITTING, do_play, 0, TRUE);')

@@ -2,10 +2,11 @@
 """Run Heroism's production handler, affect links and stop/movement cleanup."""
 import re
 import subprocess
-from _paths import ROOT, HARNESS_STUBS, extract_function
+from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
 prelude = r'''
 #include "core/prototypes.h"
+#include "cmd/interp.h"
 #include "core/utils.h"
 #include "core/mm.h"
 #include "net/gmcp.h"
@@ -13,17 +14,35 @@ prelude = r'''
 #include "abilities/abilities.h"
 #include "net/comm.h"
 #include "world/events.h"
+#include "world/falling.h"
+#include "classes/disguise.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <map>
 #include <string>
 #include <vector>
+static room_data rooms[2]{};
+P_room world = rooms;
+int IS_MORPH(P_char) { return false; }
+int GET_PRIME_CLASS(P_char ch, uint cls) { return bool(ch->player.m_class & cls); }
+int GET_SECONDARY_CLASS(P_char ch, uint cls) { return bool(ch->player.secondary_class & cls); }
+P_char character_list;
+const racial_data_type racial_data[LAST_RACE + 1]{};
+time_info_data age(P_char) { return {}; }
+unsigned int char_slice(P_char, unsigned int) { return 0; }
+void StartRegen(P_char, regen_resource) {}
+void remove_disguise(P_char, bool) { assert(false); }
+P_char un_morph(P_char) { assert(false); return nullptr; }
+bool char_falling(P_char) { return false; }
+falling_start_result falling_start(P_char) { assert(false); return falling_start_result::not_applicable; }
 static mm_ds aff_pool{}, link_pool{};
 mm_ds *dead_affect_pool = &aff_pool, *dead_link_pool = &link_pool;
 link_description link_types[LNK_MAX + 1]{};
 static std::map<P_char, std::vector<std::string>> recipient_messages;
 static int empower = 45, haste_calls, healing;
+static bool in_group = true;
+bool grouped(P_char, P_char) { return in_group; }
 int GET_CHAR_SKILL_P(P_char, int skill) { return skill == SKILL_EMPOWER_SONG ? empower : 100; }
 int GET_CLASS(P_char ch, uint cls) { return (ch->player.m_class & cls) != 0; }
 void send_to_char(const char *s, P_char ch) { recipient_messages[ch].emplace_back(s); }
@@ -38,7 +57,14 @@ void mm_release(mm_ds *pool, void *p) {
     else delete static_cast<affected_type *>(p);
 }
 mm_ds *mm_create(const char *, size_t, size_t, unsigned) { assert(false); return nullptr; }
-void all_affects(P_char, int) {}
+void all_affects(P_char ch, int) {
+    REMOVE_BIT(ch->specials.affected_by, AFF_SNEAK);
+    REMOVE_BIT(ch->specials.affected_by3, AFF3_SINGING);
+    for (auto *af = ch->affected; af; af = af->next) {
+        SET_BIT(ch->specials.affected_by, af->bitvector & AFF_SNEAK);
+        SET_BIT(ch->specials.affected_by3, af->bitvector3 & AFF3_SINGING);
+    }
+}
 void balance_affects(P_char) {}
 void gmcp_char_affects(P_char) {}
 int char_light(P_char) { return 0; }
@@ -46,12 +72,14 @@ int room_light(int, int) { return 0; }
 void wear_off_message(P_char, affected_type *) {}
 void unlink_char_obj_affect(P_char, affected_type *) { assert(false); }
 void unlink_char_affect(P_char, affected_type *);
-void disarm_char_nevents(P_char, event_func_type) {}
+static bool song_scheduled = false;
+static nevent_data song_event{};
+void disarm_char_nevents(P_char, event_func_type) { song_scheduled = false; }
 void event_web_spray(P_char, P_char, P_obj, void *) {}
 nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, const void *, int) { return {}; }
 nevent_handle nevent_handle_from_event(P_nevent) { return {}; }
 nevent_cancel_result nevent_cancel(nevent_handle) { return nevent_cancel_result::canceled; }
-P_nevent get_scheduled(P_char, event_func_type) { return nullptr; }
+P_nevent get_scheduled(P_char, event_func_type) { return song_scheduled ? &song_event : nullptr; }
 void event_bardsong(P_char, P_char, P_obj, void *) {}
 void heal(P_char, P_char, int amount, int) { healing = amount; }
 void update_pos(P_char) {}
@@ -62,7 +90,22 @@ bool is_silent(P_char ch, bool) { return IS_AFFECTED2(ch, AFF2_SILENCED); }
 int number(int low, int) { return low; }
 int dice(int n, int) { return n; }
 const Rolls live_rolls = {dice, number};
+#define NUM_VERSES(ch, song) GET_LEVEL(ch)
+#define INSTRUMENT_OFFSET (FIRST_INSTRUMENT - 184)
+static int song_learned_level(P_char, int) { return 1; }
+struct song_description { const char *name; int song; };
+static song_description songs[] = {{"heroism", SONG_HEROISM}, {}};
+char *skip_spaces(char *s) { while (*s && isspace(*s)) ++s; return s; }
+bool is_abbrev(const char *a, const char *b) { return !strcmp(a, b); }
+P_obj has_instrument(P_char, int) { return nullptr; }
+int bard_get_type(int) { return INSTRUMENT_DRUMS; }
+int bard_calc_chance(P_char, int) { return 100; }
+int get_bard_pulse(P_char) { return 8; }
+void set_short_affected_by(P_char, int, int) {}
+void do_action(P_char, char *, int) {}
+
 '''
+prelude += re.search(r"^#define AFFECT_UPDATE_SLICES .*", source("affects.c").read_text(), re.M).group() + "\n"
 functions = [("affects.c", s) for s in (
     "bool affected_by_spell(", "struct affected_type *affect_to_char(",
     "void affect_remove(", "void affect_from_char(", "void define_link(",
@@ -70,12 +113,14 @@ functions = [("affects.c", s) for s in (
     "P_char get_linking_char(", "void dispose_link(", "void internal_unlink_char(",
     "void unlink_char(", "void unlink_char_affect(P_char ch, struct affected_type *af)",
     "void clear_links(P_char ch, ush_int type)", "void check_room_links(",
-    "void linked_affect_to_char(",
+    "void linked_affect_to_char(", "void affect_update(",
 )] + [("bard.c", s) for s in (
-    "void stop_singing(", "static int song_heroism_haste_level(",
+    "void stop_singing(", "static int song_stop_rest(",
+    "static int song_start_failure_rest(", "void do_play(",
+    "bool player_bard(", "void check_bard_song_rooms(", "void bard_shadow_piper(int /*level*/", "void bard_nimbleness(int /*level*/", "static int song_heroism_haste_level(",
     "static int song_heroism_pulse(", "static int song_heroism_singer_pulse(",
     "static int song_heroism_hit_dam(", "void bard_heroism(int l,",
-    "static int song_healing_amount(", "static int song_healing_ally_amount(",
+    "static int song_healing_amount(",
     "static int song_healing_cap_gap(", "static int song_healing_duration(",
     "static int song_healing_blind_rating(", "static int song_healing_poison_rating(",
     "static int song_healing_disease_rating(", "void bard_healing(int level,",
@@ -88,6 +133,9 @@ verse = extract_function("bard.c", "void event_bardsong(P_char ch,")
 a = verse.index("\tfor (cld = ch->linked;")
 b = verse.index("\n\tif (!CAN_SING(ch))", a)
 cleanup = "void next_song(P_char ch, int song) { char_link_data *cld, *next_cld;\n" + verse[a:b] + "}\n"
+a = verse.index("\tfor (af = ch->affected; af; af = af2)")
+b = verse.index("\n\tadd_event(event_bardsong", a)
+cleanup += "void final_verse(P_char ch, int song) { affected_type *af, *af2;\n" + verse[a:b] + "}\n"
 driver = r'''
 static std::map<int,int> bonuses(P_char ch) {
     std::map<int,int> out;
@@ -99,23 +147,35 @@ static std::map<int,int> bonuses(P_char ch) {
     assert(out.size() == 4);
     return out;
 }
+static void elapsed_ticks(P_char ch) {
+    character_list = ch;
+    for (int tick = 0; tick < 5; ++tick) affect_update(0);
+    character_list = nullptr;
+}
 int main() {
     REGISTER
+    char_data timed{};
+    affected_type expiring{}; expiring.type = SKILL_RIFF; expiring.duration = 1;
+    affect_to_char(&timed, &expiring);
+    elapsed_ticks(&timed);
+    assert(!timed.affected); // control: ordinary timed affects still expire
+    static_assert(POISON_LIFELEAK == 1536 && POISON_MADNESS == 1542, "saved poison IDs must stay stable");
     define_link(LNK_SNG_HEALING, "healing", nullptr, LNKFLG_AFFECT | LNKFLG_ROOM);
-    for (int level : {20,21,40,56}) for (bool self_first : {false,true}) for (bool npc : {false,true}) {
+    for (int level : {20,21,40,55,56}) for (int spec : {0,SPEC_SCOUNDREL,SPEC_MINSTREL})
+      for (bool self_first : {false,true}) for (bool npc : {false,true}) {
         char_data singer{}, listener{};
         SET_POS(&singer, POS_STANDING + STAT_NORMAL);
         SET_POS(&listener, POS_STANDING + STAT_NORMAL);
         singer.player.m_class = CLASS_BARD;
         listener.player.m_class = CLASS_WARRIOR;
-        singer.player.level = level;
+        singer.player.level = level; singer.player.spec = spec;
         if (npc) SET_BIT(singer.specials.act, ACT_ISNPC);
         recipient_messages.clear(); haste_calls = 0;
         bard_heroism(level, &singer, self_first ? &singer : &listener, SONG_HEROISM);
         bard_heroism(level, &singer, self_first ? &listener : &singer, SONG_HEROISM);
         for (P_char recipient : {&singer,&listener}) {
             auto values = bonuses(recipient);
-            assert(values[APPLY_COMBAT_PULSE] == (recipient == &singer ? -level/20 : -1));
+            assert(values[APPLY_COMBAT_PULSE] == (recipient == &singer ? -level/20 : (!npc && spec == SPEC_SCOUNDREL && level >= 56 ? -2 : -1)));
             assert(values[APPLY_SPELL_PULSE] == values[APPLY_COMBAT_PULSE]);
             assert(values[APPLY_HITROLL] == level/10 + (empower + (npc ? 100 : 0))/15);
             assert(values[APPLY_DAMROLL] == values[APPLY_HITROLL]);
@@ -136,6 +196,117 @@ int main() {
         stop_singing(&singer);
         assert(!singer.affected && !listener.affected && !singer.linked);
     }
+    // A failed switch must retire the same performance links as a normal stop.
+    {
+        char_data singer{}, listener{};
+        singer.player.m_class = CLASS_BARD; singer.player.level = 56;
+        SET_POS(&singer, POS_STANDING + STAT_NORMAL);
+        SET_POS(&listener, POS_STANDING + STAT_NORMAL);
+        affected_type singing{};
+        singing.bitvector3 = AFF3_SINGING; singing.duration = -1;
+        affect_to_char(&singer, &singing);
+        bard_heroism(56, &singer, &listener, SONG_HEROISM);
+        int song = SONG_HEROISM;
+        song_event.data = &song; song_scheduled = true;
+        char same[] = "heroism", unknown[] = "nonexistent";
+        do_play(&singer, same, 0);
+        assert(song_scheduled && listener.affected && singer.linked);
+        do_play(&singer, unknown, 0);
+        assert(!song_scheduled && !IS_AFFECTED3(&singer, AFF3_SINGING));
+        assert(!singer.affected && !singer.linked && !listener.affected && !listener.linking);
+    }
+    // Shadow Piper is linked, player-only, follower-only, and never grants Sneak in combat.
+    for (int level : {55,56}) for (int spec : {SPEC_SCOUNDREL,SPEC_MINSTREL})
+      for (bool pet_singer : {false,true}) for (bool pet_listener : {false,true})
+       for (bool follows : {false,true}) for (bool grouped_now : {false,true})
+        for (bool fighting : {false,true}) {
+            char_data bard{}, follower{}, opponent{};
+            SET_POS(&bard, POS_STANDING | STAT_NORMAL);
+            SET_POS(&follower, POS_STANDING | STAT_NORMAL);
+            follower.specials.fighting = fighting ? &opponent : nullptr;
+            bard.player.m_class = CLASS_BARD; bard.player.spec = spec; bard.player.level = level;
+            follower.following = follows ? &bard : nullptr;
+            if (pet_singer) SET_BIT(bard.specials.act, ACT_ISNPC);
+            if (pet_listener) SET_BIT(follower.specials.act, ACT_ISNPC);
+            in_group = grouped_now;
+            bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
+            bool eligible = level == 56 && spec == SPEC_SCOUNDREL && !pet_singer &&
+                            !pet_listener && follows && grouped_now && !fighting;
+            assert(affected_by_spell(&follower, SONG_SHADOW_PIPER) == eligible);
+            if (eligible) {
+                assert(IS_AFFECTED(&follower, AFF_SNEAK));
+                assert(follower.affected->duration == -1);
+                elapsed_ticks(&follower);
+                assert(follower.affected && IS_AFFECTED(&follower, AFF_SNEAK));
+                bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
+                assert(!follower.affected->next); // no repeated-verse stacking
+                follower.in_room = 1;
+                check_bard_song_rooms(&follower, false);
+                assert(!follower.affected && !IS_AFFECTED(&follower, AFF_SNEAK));
+                follower.in_room = 0;
+                bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
+                next_song(&bard, SONG_HEROISM);
+                assert(!follower.affected && !bard.linked);
+                bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
+                stop_singing(&bard);
+                assert(!follower.affected && !bard.linked);
+                bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
+                bard.in_room = 1;
+                check_bard_song_rooms(&bard, true);
+                assert(follower.affected); // keep silent steps through group following
+                follower.in_room = 1;
+                check_bard_song_rooms(&follower, true);
+                check_bard_song_rooms(&bard, false);
+                assert(follower.affected);
+                bard.in_room = 0;
+                check_bard_song_rooms(&bard, false); // teleport or failed following
+                assert(!follower.affected && !IS_AFFECTED(&follower, AFF_SNEAK));
+            }
+        }
+    for (int level : {55,56}) for (int spec : {SPEC_SCOUNDREL,SPEC_MINSTREL})
+      for (bool npc_singer : {false,true}) for (bool npc_listener : {false,true}) {
+        char_data bard{}, listener{};
+        SET_POS(&bard, POS_STANDING | STAT_NORMAL); SET_POS(&listener, POS_STANDING | STAT_NORMAL);
+        bard.player.m_class = CLASS_BARD; bard.player.spec = spec; bard.player.level = level;
+        if (npc_singer) SET_BIT(bard.specials.act, ACT_ISNPC);
+        if (npc_listener) SET_BIT(listener.specials.act, ACT_ISNPC);
+        bard_nimbleness(56, &bard, &listener, SONG_NIMBLENESS);
+        bool eligible = level == 56 && spec == SPEC_MINSTREL && !npc_singer && !npc_listener;
+        assert(affected_by_spell(&listener, SONG_NIMBLENESS) == eligible);
+        if (eligible) {
+            elapsed_ticks(&listener);
+            assert(listener.affected && listener.affected->duration == -1);
+            bard_nimbleness(56, &bard, &listener, SONG_NIMBLENESS);
+            assert(!listener.affected->next);
+            listener.in_room = 1; check_bard_song_rooms(&listener, false);
+            assert(!listener.affected);
+            listener.in_room = 0;
+            bard_nimbleness(56, &bard, &listener, SONG_NIMBLENESS);
+            next_song(&bard, SONG_HEROISM); assert(!listener.affected);
+            bard_nimbleness(56, &bard, &bard, SONG_NIMBLENESS);
+            assert(affected_by_spell(&bard, SONG_NIMBLENESS));
+            stop_singing(&bard); assert(!bard.affected && !bard.linked);
+        }
+    }
+    // Run the production final-verse cleanup, then several real affect updates.
+    char_data ending{}, follower{};
+    ending.player.m_class=CLASS_BARD; ending.player.spec=SPEC_SCOUNDREL; ending.player.level=56;
+    SET_POS(&ending,POS_STANDING|STAT_NORMAL); SET_POS(&follower,POS_STANDING|STAT_NORMAL);
+    follower.following=&ending; in_group=true;
+    bard_shadow_piper(56,&ending,&follower,SONG_SHADOW_PIPER);
+    affected_type performing{}; performing.type=INSTRUMENT_FLUTE; performing.duration=-1;
+    performing.bitvector3=AFF3_SINGING; performing.modifier=1;
+    affect_to_char(&ending,&performing);
+    assert(SINGING(&ending) && IS_AFFECTED(&follower,AFF_SNEAK));
+    final_verse(&ending,SONG_SHADOW_PIPER); elapsed_ticks(&follower);
+    assert(!SINGING(&ending) && !ending.linked && !follower.affected && !IS_AFFECTED(&follower,AFF_SNEAK));
+    ending.player.spec=SPEC_MINSTREL; performing.modifier=1;
+    bard_nimbleness(56,&ending,&follower,SONG_NIMBLENESS);
+    bard_nimbleness(56,&ending,&ending,SONG_NIMBLENESS);
+    affect_to_char(&ending,&performing);
+    assert(SINGING(&ending) && affected_by_spell(&follower,SONG_NIMBLENESS));
+    final_verse(&ending,SONG_NIMBLENESS); elapsed_ticks(&follower); elapsed_ticks(&ending);
+    assert(!SINGING(&ending) && !ending.linked && !ending.affected && !follower.affected);
     char_data singer{};
     singer.player.m_class = CLASS_BARD; singer.player.spec = SPEC_DISHARMONIST;
     singer.curr_stats.Cha = 100;

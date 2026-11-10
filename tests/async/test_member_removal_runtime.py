@@ -6,7 +6,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from _paths import extract_function
+from _paths import ROOT, extract_function, source
+import re
 
 PRELUDE = r'''
 #include <cassert>
@@ -14,13 +15,16 @@ PRELUDE = r'''
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include "magic/spells.h"
 struct char_data;
 using P_char = char_data *;
 struct group_list { P_char ch; group_list *next; };
-struct affected_type { int modifier = 9; };
+struct affected_type { int type = 0; int modifier = 9; };
+LINK_DECLARATION
 struct descriptor_data { int last_group_update = 0; };
 struct char_data {
     group_list *group = nullptr;
+    char_link_data *linked = nullptr;
     struct { int act2 = 3; int affected_by3 = 3; P_char was_fighting = nullptr;
              P_char next_fighting = nullptr; P_char opponent = nullptr; } specials;
     struct { const char *short_descr = "synthetic mobile"; } player;
@@ -48,8 +52,6 @@ struct char_data {
 #define GET_OPPONENT(ch) ((ch)->specials.opponent)
 #define IS_FIGHTING(ch) (GET_OPPONENT(ch) != nullptr)
 #define GET_CHAR_SKILL(ch, unused_skill) ((ch)->skill)
-#define SPELL_CEGILUNE_BLADE 1
-#define SKILL_LANCE_CHARGE 2
 #define PULSE_VIOLENCE 8
 #define LOG_EXIT 0
 #define LOG_DEBUG 1
@@ -84,7 +86,9 @@ int free_back_slots(P_char) { return -1; }
 void fix_group_ranks(P_char ch) { ++ch->rank_fixes; }
 bool SanityCheck(P_char ch, const char *) { return ch && ch->sane; }
 void telemetry_combat_context_changed(P_char ch) { ++ch->telemetry; }
-bool affected_by_spell(P_char ch, int) { return ch->spell; }
+bool affected_by_spell(P_char ch, int spell) { return spell == SPELL_CEGILUNE_BLADE && ch->spell; }
+void affect_from_char(P_char, int) { assert(false); }
+void affect_remove(P_char, affected_type *) { assert(false); }
 affected_type *get_spell_from_char(P_char ch, int) { return &ch->effect; }
 void set_short_affected_by(P_char ch, int skill, int duration) {
     assert(skill == SKILL_LANCE_CHARGE && duration == PULSE_VIOLENCE / 2);
@@ -96,6 +100,14 @@ void gmcp_char_vitals(P_char ch) { ++ch->vitals; }
 void update_pos(P_char ch) { ++ch->positions; }
 bool group_remove_member(P_char);
 '''
+
+# Reuse the production link shape and IDs rather than maintain another copy.
+header = source("structs.h").read_text()
+PRELUDE = PRELUDE.replace("LINK_DECLARATION", "\n".join([
+    re.search(r"^typedef .* ush_int;", header, re.M)[0],
+    re.search(r"^#define LNK_SONG .*", header, re.M)[0],
+    extract_function("structs.h", "struct char_link_data\n") + ";",
+]))
 
 DRIVER = r'''
 group_list *make_group(std::vector<P_char> members) {
@@ -267,7 +279,7 @@ with tempfile.TemporaryDirectory(prefix="member-removal-") as directory:
         "g++", "-std=c++20", "-g", "-O1", "-Wall", "-Wextra", "-Werror",
         "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
         "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
-        str(source), "-o", str(binary),
+        "-I" + str(ROOT / "src"), str(source), "-o", str(binary),
     ], check=True)
     env = dict(os.environ, ASAN_OPTIONS="detect_leaks=1:halt_on_error=1",
                UBSAN_OPTIONS="halt_on_error=1:print_stacktrace=1")

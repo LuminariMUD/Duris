@@ -69,6 +69,9 @@ void update_skills(P_char ch)
 
 	for (skl = FIRST_SKILL; skl <= LAST_SKILL; skl++)
 	{
+		// Keep trained Riff through unspecialization and login; it remains spec-only.
+		if (skl == SKILL_RIFF && GET_CLASS(ch, CLASS_BARD) && !IS_SPECIALIZED(ch))
+			continue;
 		skllvl = GET_LVL_FOR_SKILL(ch, skl);
 		if (IS_EPIC_SKILL(skl))
 		{

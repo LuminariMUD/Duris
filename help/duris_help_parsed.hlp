@@ -2744,6 +2744,13 @@ Bard Skills - Last Edited: 2026-10-18
 The following is a list of all skills and spells available to the Bard class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+Bards can train Hide to 80%; Scoundrels retain their 90% cap.
+Riff is specialization-only; an acquired rating survives respecialization.
+Existing Scoundrels above 75% Trip are capped at their next skill update.
+Songs use a matching instrument from any equipment slot, including all three
+belt attachments. Instruments must be equipped; carried instruments do not play.
+Scoundrels already singing can change songs with play or wail while hidden.
+Starting or stopping a song still reveals Hide; later verses preserve it.
 
 ==Innate abilities==
 
@@ -2769,8 +2776,7 @@ None.
 &+W6th Circle: &+cdispel magic, infravision, lightning bolt, ray of enfeeblement&n
 &+W7th Circle: &+cdimension door, fireball, slowness&n
 &+W8th Circle: &+cbigbys clenched fist&n
-&+W9th Circle: &+cfeeblemind&n
-&+W10th Circle: &+cdetect invisibility&n
+&+W9th Circle: &+cdetect invisibility, feeblemind&n
 &+W11th Circle: &+cfreedom of movement, rope trick&n
 &+W12th Circle: &+cenlarge, sirens song&n
 
@@ -7244,6 +7250,7 @@ These permissions apply to an existing character; they do not enable a forbidden
 
 ==Skill changes==
 
+&+W1st Level: &+cmeditate (cap 100%), quick chant (cap 100%)&n
 &+W30th Level: &+criff (cap 100%)&n
 &+W36th Level: &+cshriek (cap 100%)&n
 
@@ -14803,7 +14810,7 @@ Instrument
 Instrument - Last Edited: 2018-09-20 22:59:56 by lohrr
 ======================================================
 Instruments are a necessity of a bard and needed to create magical affects.
-The bard must first be holding the appropriate instrument and then type
+Equip the appropriate instrument in any slot (all three belt slots work), then type
 "play <songname>".  The various instruments are as follows:  flute, harp,
 horn, drums, lyre, mandolin.  Unlike spells, the music played by a bard
 is continuous when the bard begins playing and will continue until he/she
@@ -17006,6 +17013,18 @@ None beyond the base-class registrations.
 ==Song changes==
 
 &+W46th Level: &+csong of drifting (cap 100%)&n
+&+W56th Level: &+csong of nimbleness (cap 100%)&n
+
+Player Minstrels add healing from levels above 31, song rating above 50 and
+Charisma above 100. The usual 65% ally share applies before a 45-HP base cap;
+other healing modifiers still apply. Effective healing of other players counts
+toward Salvation, as it does for all Bard healing songs.
+Minstrels make charm saves 10 points harder. Humanoids remain charmed at least
+40-48 game hours (50-60 minutes), or longer at low Intelligence. The highest
+charmable level remains 50 at Bard level 56. Pets cannot sing Drifting.
+Song of Nimbleness uses a mandolin. A level-56 player singer grants players in
+the room and group, including the singer, +5 to melee dodge and a 3.5% chance
+to avoid a damaging spell hit. Pets cannot provide or receive the new song.
 
 ==Innate additions==
 
@@ -19434,7 +19453,7 @@ Play - Last Edited: 2009-03-15 03:15:21 by Blaize
 =================================================
 Syntax:         play <song_name>
 * Aggressive:     Dependent on song
-To create magical effects, the bard must hold the proper instrument, then
+To create magical effects, equip a matching instrument in any slot, then
 "play" the appropriate song. A magical song will not work without the
 proper instrumental accompaniment. To end a song simply type "play."
 See also:
@@ -22389,9 +22408,11 @@ Myrabolus, socials, commands
 #0
 
 Rope Trick
-Rope Trick - Last Edited: 2007-04-22 22:12:53 by Unknown
+Rope Trick - Last Edited: 2026-11-10
 ========================================================
-''Rope trick'' is a unique spell for the bard-class and allows the bard to conjure a rope and ascend it to disappear. Voila! You can also help your friends by having them consent you and then conjure a rope for them as well. However, you can only conjure a few ropes at a time.
+Rope Trick hides one target per cast, up to five rope-hidden people in a room.
+You and members of your group need no consent and bypass resistance and saves.
+Other targets can consent; otherwise they may resist or save against the spell.
 While staying at the rope, silent and without movement you will remain unseen for anyone passing by.
 Beware though, that an ill-minded foe might be sensing your presence and can easily search you out!
 
@@ -22724,14 +22745,20 @@ These permissions apply to an existing character; they do not enable a forbidden
 
 ==Skill changes==
 
-&+W1st Level: &+chide (cap 90%)&n
+&+W1st Level: &+chide (cap 90%), sneak (cap 85%)&n
 &+W30th Level: &+c1h piercing (cap 100%), backstab (cap 95%), circle (cap 80%),&n
-    &+cdouble attack (cap 95%), dual wield (cap 70%), riff (cap 100%)&n
-&+W51st Level: &+cdisguise (cap 55%), trip (cap 90%)&n
+    &+cdouble attack (cap 95%), dual wield (cap 80%), riff (cap 100%)&n
+&+W51st Level: &+cdisguise (cap 70%), trip (cap 75%)&n
+&+W56th Level: &+csong of the shadow piper (cap 100%)&n
+
+At level 56, a player Scoundrel grants Heroism listeners +2 combat and spell
+pulse instead of +1. The singer retains the usual song-level bonus.
+Shadow Piper gives Sneak to grouped player followers in the same room.
+Combat, leaving the group/room, stopping following or the song ends the benefit.
 
 ==Spell changes==
 
-None beyond the base-class registrations.
+&+W10th Circle: &+cinvisibility&n
 
 ==Innate additions==
 
@@ -25029,17 +25056,20 @@ Song of Charming
 Song of Charming - Last Edited: 2015-07-13 19:41:50 by lohrr
 ============================================================
 * Area of effect:	Room
-* Aggressive:	No
+* Aggressive:	Yes
 * Cumulative:	N/A
-* Duration:	Dependant on proficiency of singer
+* Duration:	Intelligence-based; player Minstrels have a humanoid minimum
 * Type of song:	Enchantment
 "Song of charming" is one of the most powerful songs of the bard and
 attempts to charm all those mobs in the bard"s room.
-This song will only show on score if those affected have detect magic up.
+Player Minstrels make the target's save 10 points harder. Humanoids stay
+charmed for at least 40-48 game hours (50-60 minutes); low Intelligence can
+make the usual duration longer. A level-56 Bard still cannot charm level 51.
+The existing exclusions and three-pet limit remain.
 
 ==See also==
 
-Songs, Instrument, Play, Bard, Bard Skills
+Bard, Minstrel, Songs, Instrument, Play
 
 #0
 
@@ -25115,6 +25145,7 @@ Song of drifting - Last Edited: 2008-05-13 16:10:17 by Blaize
 * Cumulative:	N/A
 * Duration:	Dependant on proficiency of singer
 * Type of song:	Transportation
+Only player singers can use Drifting; NPC singers cannot teleport a group.
 A powerful Minstrel song that resonates through the air, changing the
 very fabric of the environment around you, transporting and teleporting you
 and your group to a new random location.
@@ -25207,20 +25238,19 @@ Song of healing - Last Edited: 2026-11-05
 * Cumulative:	Yes
 * Duration:	Instantaneous
 * Type of song:	Healing
-This song restores the life force of those in the room, including those not
-in the singer's group. The amount it heals is highly dependent on level and
-skill in the song.
-Higher Charisma increases the healing restored each verse.
-Powerful minstrels are able to heal many afflictions.
-Powerful disharmonists may break the affect of the silence spell.
+Song of Healing restores the singer and grouped listeners in the room. Each
+verse heals Charisma/8 + song level/4 + song level/14, with a 65% ally share.
+A player Minstrel adds (level-31)/5 + (song rating-50)/10 + (Charisma-100)/10,
+each at least zero, before that share. Each target's base amount caps at 45 HP;
+other healing modifiers still apply. Level 56, rating 100, Charisma 150 gives
+45 HP to the Minstrel and 33 HP to an ally before other modifiers.
+Effective healing of another player counts toward the Salvation achievement;
+self-healing, healing NPCs and overhealing do not. Minstrels can also cure
+poison at song rating 50, disease/plague at 70, and blindness at 90.
 
-==See Also==
+==See also==
 
-* Bard
-* Bard Skills
-* Instrument
-* Play
-* Songs
+Bard, Minstrel, Instrument, Play, Songs, Salvation
 
 #0
 
@@ -29480,5 +29510,35 @@ Use race innates <race> or class innates <class or specialization> to view
 the current values. These modifiers are separate from your damroll limit.
 ===========================================================================
 See also: RACE, CLASS, INNATE, MULTICLASS
+
+#0
+
+Song of the Shadow Piper
+Song of the Shadow Piper - Last Edited: 2026-11-10
+============================================================
+Level 56 Scoundrel song, played on a flute with 'play shadow piper'. A player
+singer grants Sneak to players who share the group and room and follow them.
+Pets and the singer receive no Sneak. Combat ends it, as do leaving the room
+or group, stopping following, or stopping/changing the song. It cannot renew
+Sneak during combat.
+
+==See also==
+
+Sneak, Scoundrel, Instrument, Song of Heroism
+
+#0
+
+Song of Nimbleness
+Song of Nimbleness - Last Edited: 2026-11-10
+============================================================
+A level-56 player Minstrel plays this mandolin song to give players in the
+same group and room, including the singer, +5 to melee dodge and a 35 in 1000
+(3.5%) chance to avoid each damaging spell hit. Existing melee dodge conditions
+still apply. Pets cannot sing it successfully or receive its benefits.
+It ends when the song stops/changes or the listener leaves the room.
+
+==See also==
+
+Minstrel, Bard, Instruments, Play
 
 #0

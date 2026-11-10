@@ -6,6 +6,7 @@
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "magic/spells.h"
 #include "account/account.h"
 #include "item/storage_lockers.h"
 #include "item/starter_kit_intent.h"
@@ -460,4 +461,17 @@ HARNESS_STUB void refresh_world_quest_item_values() {}
 HARNESS_STUB int player_save_room_vnum(P_char, int room_vnum)
 {
 	return room_vnum;
+}
+
+// Unrelated movement fixtures have no player-only Bard song links. Their lifecycle fixture
+// supplies the real cleanup and tests both ordinary walks and relocations.
+HARNESS_STUB void check_bard_song_rooms(P_char ch, bool)
+{
+	for (auto *af = ch->affected; af; af = af->next)
+		if (af->type == SONG_SHADOW_PIPER || af->type == SONG_NIMBLENESS)
+			std::abort();
+	for (auto *link = ch->linked; link; link = link->next_linked)
+		if (link->affect && (link->affect->type == SONG_SHADOW_PIPER ||
+				     link->affect->type == SONG_NIMBLENESS))
+			std::abort();
 }

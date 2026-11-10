@@ -2292,6 +2292,8 @@ revalidate_movement:
 		 */
 	}
 
+	check_bard_song_rooms(ch, false);
+
 	return (1);
 }
 
