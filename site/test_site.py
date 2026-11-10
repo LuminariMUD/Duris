@@ -1,5 +1,6 @@
 """Check the generated Pages artifact, including every local link and anchor."""
 
+import csv
 import hashlib
 import json
 import os
@@ -51,7 +52,7 @@ class PagesTests(unittest.TestCase):
         }
 
     def test_all_curated_guides_are_published(self):
-        self.assertEqual(len(self.pages), len(self.catalog) + len(self.diagrams) + 4)
+        self.assertEqual(len(self.pages), len(self.catalog) + len(self.diagrams) + 5)
         for doc in self.catalog:
             page = OUTPUT / "docs" / doc["slug"] / "index.html"
             self.assertIn(page, self.pages)
@@ -102,7 +103,7 @@ class PagesTests(unittest.TestCase):
 
     def test_every_site_page_links_the_main_website_in_menu_and_footer(self):
         framed = [file for file in self.pages if 'class="site-header"' in file.read_text()]
-        self.assertGreaterEqual(len(framed), len(self.catalog) + 3)
+        self.assertGreaterEqual(len(framed), len(self.catalog) + 4)
         for file in framed:
             self.assertEqual(self.pages[file].links.count("https://duris.sbs/"), 2, file)
 
@@ -227,6 +228,30 @@ class PagesTests(unittest.TestCase):
             for level in data["meta"]["levels"]:
                 for tier in data["meta"]["tiers"]:
                     self.assertIsNotNone(cells[f"{level}|{tier}"][0])
+
+    def test_item_values_lists_every_changed_item_with_its_colours(self):
+        url = f"{BASE}item-values/"
+        self.assertIn(url, self.pages[OUTPUT / "index.html"].links)
+        self.assertIn(f"{url}</loc>", (OUTPUT / "sitemap.xml").read_text())
+        items = json.loads((ROOT / "site/item-values/data.json").read_text())
+        self.assertEqual(len(items), 146)
+        self.assertEqual(len({item["vnum"] for item in items}), 146)
+        html = (OUTPUT / "item-values/index.html").read_text()
+        self.assertNotIn("{{", html)
+        self.assertEqual(html.count("<tr data-name="), 146)
+        text = "".join(self.pages[OUTPUT / "item-values/index.html"].text)
+        self.assertNotRegex(text, r"&\+[a-zA-Z]|&[nN]\b")
+        # The claymore's colour codes become spans; its values and direction are shown.
+        self.assertIn('<span class="mc-W">Zarthos </span>', html)
+        self.assertIn('data-old="338" data-new="111" data-delta="-227"', html)
+        self.assertIn("▼ −227", text)
+        with (OUTPUT / "item-values/item-value-changes.csv").open(newline="") as file:
+            rows = list(csv.DictReader(file))
+        self.assertEqual(len(rows), 146)
+        claymore = next(row for row in rows if row["number"] == "99432")
+        self.assertEqual(claymore["item"], "the claymore of Zarthos the vampire hunter")
+        self.assertEqual((claymore["old value"], claymore["new value"]), ("338", "111"))
+        self.assertEqual(sum(int(row["change"]) > 0 for row in rows), 138)
 
 
 if __name__ == "__main__":

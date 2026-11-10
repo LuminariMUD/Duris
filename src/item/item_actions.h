@@ -163,6 +163,8 @@ void item_actions_disable(uint32_t ability_id);
 void item_actions_reload(); // Data reload barrier: cancel all and discard definitions.
 void update_item_action_properties();
 bool item_actions_enabled();
+// Configured healthy-boot state, without publishing/cancelling action state.
+bool item_actions_configured_enabled();
 uint64_t item_actions_definition_revision(uint32_t ability_id);
 
 // Only `legacy` permits a caller to use its original instant path. A selected

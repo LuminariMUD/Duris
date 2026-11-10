@@ -24,8 +24,8 @@ struct enhance_index_entry
 	int ival;
 	unsigned int wear_flags;
 	int material;
-	int apply_loc[4];
-	int apply_mod[4];
+	int apply_loc[MAX_OBJ_AFFECT];
+	int apply_mod[MAX_OBJ_AFFECT];
 	struct enhance_index_entry *next;
 };
 
@@ -41,6 +41,8 @@ bool is_enhance_banned(P_obj item);
 // Shared by index construction, final result loading and offline qualification.
 bool is_enhance_pool_candidate(P_obj item);
 void load_enhance_config(void);
+bool load_enhance_index(void);
+void refresh_enhancement_item_values();
 void enhance(P_char ch, P_obj source, P_obj material);
 void do_enhance(P_char ch, char *argument, int cmd);
 void modenhance(P_char ch, P_obj source, P_obj material);
@@ -57,7 +59,6 @@ extern struct enhance_index_entry *enhance_ival_table[ENHANCE_IVAL_TABLE_SIZE];
 extern struct enhance_index_entry *enhance_stat_table[ENHANCE_STAT_TABLE_SIZE];
 
 /* Config settings — read from lib/enhance.cfg at boot */
-extern int enhance_ival_cap;
 extern int enhance_material_ival_delta;
 extern int enhance_guild_insignia_ival_bonus;
 extern int enhance_cost_low_ival_threshold;

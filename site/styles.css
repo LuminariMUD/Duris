@@ -242,9 +242,6 @@ p {
   border-left: 1px solid var(--line);
   padding-left: 20px;
 }
-.categories > a:nth-child(n + 4) {
-  grid-column: span 3;
-}
 .categories > a:nth-child(4) {
   border-left: 0;
   padding-left: 0;

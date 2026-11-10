@@ -19,6 +19,8 @@
 #define _STUDIOPROCLIB_H_
 
 #include "core/structs.h"
+// Read-only: a per-instance library must not change its sibling templates' value.
+obj_proc_type proclib_chain_incumbent(int rnum);
 
 char *proclibobj_parse_sayresponse(char *argument);
 int proclibobj_sayresponse(P_obj obj, P_char ch, int cmd, char *argument);

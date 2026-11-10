@@ -4,7 +4,7 @@
 #include "core/config.h"
 #include "core/defines.h"
 
-inline constexpr const char *ITEM_VALUE_FORMULA_REVISION = "ival-v3-packed-mean";
+inline constexpr const char *ITEM_VALUE_FORMULA_REVISION = "ival-v8-proc-semantics";
 
 // Numeric inputs only: no object identity, links, callbacks, or mutable state.
 struct item_value_apply
@@ -25,11 +25,23 @@ struct item_value_input
 
 // Resolved by the caller, not by the numeric evaluator. Zero means no credit;
 // callers with incomplete context must identify their output as an estimate.
+enum class item_value_proc_policy
+{
+	none,
+	priced,
+	utility,
+	unclassified
+};
+const char *item_value_proc_policy_name(item_value_proc_policy policy);
+
 struct item_value_context
 {
 	int spell_circles[3]{};
 	int native_proc_credit = 0;
 	double racial_credits[MAX_OBJ_AFFECT]{};
+	item_value_proc_policy native_proc_policy = item_value_proc_policy::none;
+	unsigned int callable_packed_spells = 7;
+	bool packed_proc_disabled = false;
 };
 
 struct item_value_breakdown
@@ -40,6 +52,19 @@ struct item_value_breakdown
 	bool floored = false;
 	bool utility_override = false;
 	int score = 0;
+	bool invalid = false;
+	item_value_proc_policy native_proc_policy = item_value_proc_policy::none;
+	const char *native_proc_name = nullptr;
+	double packed_credit = 0;
+	unsigned int packed_cast_mask = 0;
+	bool native_melee_suppressed = false;
+	bool native_price_suppressed = false;
+	bool context_complete = true;
+	double flags_base = 0, applies_base = 0, type_base = 0, native_base = 0;
+	double after_wear = 1, after_flags = 1, after_applies = 1, after_type = 1;
+	unsigned long long unpriced_affects[5]{};
+	unsigned int unpriced_apply_slots = 0;
+	bool unpriced_type = false, unpriced_dynamic_effects = false;
 };
 
 // The power-field part of convertObj(), shared with read-only template views.
@@ -59,6 +84,12 @@ template <typename Object> void normalize_item_value_fields(Object &object)
 }
 
 bool item_value_has_packed_proc(const item_value_input &input);
+// Dispatch selects a prefix by nonzero slot count; monk gloves also require density.
+unsigned int item_value_packed_cast_mask(const item_value_input &input,
+					 unsigned int callable_spells);
+// Historical material decomposition, scaled upward. Outputs change only on success.
+bool item_value_material_quantities(int score, double scale, int &high, int &low);
+// Positive scores are usable. Zero means unavailable, including invalid arithmetic.
 int evaluate_item_value(const item_value_input &input, const item_value_context &context,
 			item_value_breakdown *breakdown = nullptr);
 

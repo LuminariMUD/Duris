@@ -342,6 +342,22 @@ bool integer_property(const char *key, int fallback, int minimum, int maximum, i
 	value = static_cast<int>(raw);
 	return true;
 }
+action_config configured_item_actions()
+{
+	action_config updated;
+	// A resource-gate transition is a barrier for already-paid work too.
+	// Keep the ledger intact; cancellation follows the adapter's no-refund policy.
+	updated.mana_enabled = get_property("itemActions.mana.enabled", 0.0, false) == 1;
+	int enabled = 0;
+	bool valid = integer_property("itemActions.enabled", 0, 0, 1, enabled);
+	valid &= integer_property("itemActions.reactionPulses", 4, 1, 600, updated.reaction_pulses);
+	valid &= integer_property("itemActions.maxPulses", 120, 1, 600, updated.max_pulses);
+	valid &= integer_property("itemActions.maxPerWielder", 2, 1, 8, updated.per_wielder);
+	valid &= integer_property("itemActions.maxPending", 4096, 1, 4096, updated.total);
+	updated.enabled = valid && enabled == 1 && updated.reaction_pulses <= updated.max_pulses;
+	return updated;
+}
+
 } // namespace
 
 void update_item_action_properties()
@@ -357,17 +373,7 @@ void update_item_action_properties()
 		telemetry.peak_pending = pending.size();
 		++telemetry_generation;
 	}
-	action_config updated;
-	// A resource-gate transition is a barrier for already-paid work too.
-	// Keep the ledger intact; cancellation follows the adapter's no-refund policy.
-	updated.mana_enabled = get_property("itemActions.mana.enabled", 0.0, false) == 1;
-	int enabled = 0;
-	bool valid = integer_property("itemActions.enabled", 0, 0, 1, enabled);
-	valid &= integer_property("itemActions.reactionPulses", 4, 1, 600, updated.reaction_pulses);
-	valid &= integer_property("itemActions.maxPulses", 120, 1, 600, updated.max_pulses);
-	valid &= integer_property("itemActions.maxPerWielder", 2, 1, 8, updated.per_wielder);
-	valid &= integer_property("itemActions.maxPending", 4096, 1, 4096, updated.total);
-	updated.enabled = valid && enabled == 1 && updated.reaction_pulses <= updated.max_pulses;
+	const auto updated = configured_item_actions();
 	if (!(config == updated))
 	{
 		config = updated;
@@ -444,6 +450,11 @@ void item_actions_reload()
 	cancel_matching([](const pending_item_action &) { return true; },
 			item_action_cancel_reason::reload);
 	abilities.clear();
+}
+
+bool item_actions_configured_enabled()
+{
+	return configured_item_actions().enabled;
 }
 
 bool item_actions_enabled()

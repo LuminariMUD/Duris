@@ -180,6 +180,106 @@ static std::string read_file()
 
 static void failure_case(P_char actor, const std::string &test)
 {
+	if (test == "numeric-values")
+	{
+		for (const char *family :
+		     { "str", "dex", "agi", "con", "pow", "int", "wis", "cha", "kar", "luc" })
+		{
+			for (const char *number : { "100.75", "32767.9", "-32768.9" })
+			{
+				std::string line = std::string("stats.") + family +
+						   ".Probe = " + number + " # retained comment\n";
+				const auto original = line;
+				struct property parsed
+				{
+				};
+				assert(parse_property(&parsed, line.data()) == 1 &&
+				       line == original);
+				const auto narrowed = static_cast<sh_int>(parsed.value);
+				assert(narrowed == (!strcmp(number, "100.75") ? 100 :
+						    number[0] == '-'	      ? -32768 :
+										32767));
+				FREE(parsed.key);
+			}
+			for (const char *number : { "32768", "-32769", "32767.9999", "NaN", "Inf",
+						    "-Inf", "1e1000", "2junk" })
+			{
+				std::string line =
+					std::string("stats.") + family + ".Probe=" + number + '\n';
+				const auto original = line;
+				struct property parsed
+				{
+				};
+				assert(parse_property(&parsed, line.data()) == -1 && !parsed.key &&
+				       line == original);
+			}
+		}
+		for (const char *text : { "sample=NaN", "sample=Inf", "sample=1e1000",
+					  "sample=2junk", "sample 1=2", "=1" })
+		{
+			std::string line = text;
+			struct property parsed
+			{
+			};
+			assert(parse_property(&parsed, line.data()) == -1 && !parsed.key);
+		}
+		{ // Too small for a float is tiny, not malformed.
+			std::string line = "sample=1e-40";
+			struct property parsed
+			{
+			};
+			assert(parse_property(&parsed, line.data()) == 1 && parsed.key);
+			FREE(parsed.key);
+		}
+		property_file(1.0F);
+		assert(initialize_properties());
+		const unsigned applies = completed_applies;
+		for (const char *value :
+		     { "NaN", "Inf", "1e1000", "2junk", "2 extra", "32768", "-32769" })
+		{
+			output.clear();
+			command(actor, (std::string("set * ") + value).c_str());
+			assert(get_property("epic.touch.PayoutFactor", 0.0) == 1 &&
+			       get_property("stats.str.Drider", 0.0) == 95);
+			assert(completed_applies == applies && cached_strength == 95 &&
+			       !output.empty());
+		}
+		const auto baseline = read_file();
+		for (const char *value : { "NaN", "32768", "2junk" })
+		{
+			std::ofstream("lib/duris.properties")
+				<< "epic.touch.PayoutFactor=77\nstats.str.Drider=" << value << '\n';
+			output.clear();
+			command(actor, "reload");
+			assert(output.find("reload failed") != std::string::npos);
+			assert(get_property("epic.touch.PayoutFactor", 0.0) == 1 &&
+			       get_property("stats.str.Drider", 0.0) == 95);
+			assert(completed_applies == applies && cached_strength == 95 &&
+			       rebalanced_characters == 0);
+		}
+		std::ofstream("lib/duris.properties") << baseline;
+		assert(get_property("absent.key", INT_MAX) == INT_MAX);
+		auto *entry = static_cast<struct property *>(
+			bsearch("epic.touch.PayoutFactor", duris_properties, properties_count,
+				sizeof(struct property), key_property_comp));
+		assert(entry);
+		for (float value :
+		     { std::numeric_limits<float>::quiet_NaN(),
+		       std::numeric_limits<float>::infinity(),
+		       -std::numeric_limits<float>::infinity(), 2147483648.0F, -2147483904.0F })
+		{
+			entry->value = value;
+			assert(get_property(entry->key, 17) == 17);
+		}
+		entry->value = 2147483520.0F;
+		assert(get_property(entry->key, 0) == 2147483520);
+		entry->value = -2147483648.0F;
+		assert(get_property(entry->key, 0) == INT_MIN);
+		entry->value = 1.75F;
+		assert(get_property(entry->key, 0) == 1);
+		entry->value = 1.0F;
+		return;
+	}
 	if (test == "keys")
 	{
 		for (size_t length : { 127, 128, 200 })

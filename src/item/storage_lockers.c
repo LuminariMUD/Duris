@@ -4295,48 +4295,27 @@ bool personal_locker_in_use(const char *char_name)
 
 void StorageLocker::SortIValues(void)
 {
-	P_obj object, rest, pObjList;
-	LockerChest *pChests = m_pChestList;
-	int value;
-
 	if (m_bIValue)
 	{
-		while (pChests)
+		for (auto *chest = m_pChestList; chest; chest = chest->m_pNextInChain)
 		{
-			rest = pChests->m_pChestObject->contains;
-			pChests->m_pChestObject->contains = NULL;
-
-			// While there is more to sort..
-			while (rest)
+			std::vector<std::pair<int, P_obj>> entries;
+			for (auto *object = chest->m_pChestObject->contains; object;
+			     object = object->next_content)
+				entries.emplace_back(itemvalue(object), object);
+			// Legacy insertion places each equal-valued item before earlier ties.
+			std::reverse(entries.begin(), entries.end());
+			std::stable_sort(entries.begin(), entries.end(),
+					 [](const auto &left, const auto &right)
+					 { return left.first < right.first; });
+			P_obj *next = &chest->m_pChestObject->contains;
+			for (const auto &[score, object] : entries)
 			{
-				// Remove one object from the list
-				object = rest;
-				rest = rest->next_content;
-				object->next_content = NULL;
-				value = itemvalue(object);
-
-				// Put into right spot in chest.
-				// If value is smallest, insert to head of list.
-				if (!pChests->m_pChestObject->contains ||
-				    value <= itemvalue(pChests->m_pChestObject->contains))
-				{
-					object->next_content = pChests->m_pChestObject->contains;
-					pChests->m_pChestObject->contains = object;
-				}
-				else
-				{
-					// Walk through the list to find the correct spot.
-					pObjList = pChests->m_pChestObject->contains;
-					while (pObjList->next_content &&
-					       value > itemvalue(pObjList->next_content))
-						pObjList = pObjList->next_content;
-
-					// Insert the object into the list.
-					object->next_content = pObjList->next_content;
-					pObjList->next_content = object;
-				}
+				(void)score;
+				*next = object;
+				next = &object->next_content;
 			}
-			pChests = pChests->m_pNextInChain;
+			*next = nullptr;
 		}
 	}
 	else

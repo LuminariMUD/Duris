@@ -1,0 +1,17 @@
+{
+  "scenario": "existing item-instance MariaDB relog/restart journey",
+  "result": "passed",
+  "command": "bash tests/async/with_disposable_mariadb.sh python3 tests/async/run_item_instance_journey.py bin/server/dms_new",
+  "database": "disposable loopback MariaDB 10.11, fresh migrated schema",
+  "binary_sha256": "bedcf582b87569e6749892af2c3b48215dc841eef6f4161ead79bfe4a3a8e162",
+  "formula_revision": "ival-v8-proc-semantics",
+  "checks": [
+    "minimal/no-specials essence enhancement succeeds",
+    "sparse stored apply slots remain indexed",
+    "crafted item NPC-give restriction survives relog/restart",
+    "extra2/anti/anti2/craftsmanship instance fields survive restart",
+    "cap rejection after restart preserves currency and remaining essence"
+  ],
+  "valuation_scores_before_after_checked": false,
+  "full_valuation_bundle_complete": false
+}

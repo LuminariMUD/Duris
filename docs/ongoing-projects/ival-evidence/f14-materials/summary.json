@@ -1,0 +1,109 @@
+{
+  "baseline_revision": "c5fbb485cd",
+  "circle_functions_sha256": {
+    "before": "fb7219d48f8ac81378c15a134696deccd58697c4eef0ba529bd4299b45578784",
+    "after": "fb7219d48f8ac81378c15a134696deccd58697c4eef0ba529bd4299b45578784"
+  },
+  "formula_revision": "ival-v7-numeric-bounds",
+  "comparison": "numeric evaluator and runtime adapter",
+  "consumer_settings": {
+    "max_mortal_level": 56,
+    "craft_level_gate": 3,
+    "craft_xp_per_ival": 1000,
+    "enhance_level_gate": 3,
+    "enhance_donor_delta": 5,
+    "enhance_insignia_bonus": 5,
+    "enhance_cap": 95,
+    "enhance_radius": 4,
+    "enhance_low_threshold": 20,
+    "enhance_low_cost_copper": 1000,
+    "enhance_high_cost_copper": 10000,
+    "superior_base_copper": 1000,
+    "superior_per_ival_copper": 100
+  },
+  "consumer_config_sha256": {
+    "crafting.cfg": "6cc0c007a103c3fe87d8308a096900e036b38333daff0b0437882c6b7a70440b",
+    "enhance.cfg": "0ef5adb2b4c13badc09a39ab32fffc1b6af91e374bfae256fca55a7428278589",
+    "random_equipment.cfg": "2e018f35ea3464a4fef20053e7d66c9a456bac46834a29fb6190a127713ce264"
+  },
+  "provenance": {
+    "qualifying_templates": "17551",
+    "excluded_templates": "1783",
+    "ingredient_contributions": "25055",
+    "count_mode": "one-per-required-material",
+    "formula_revision": "ival-v7-numeric-bounds",
+    "source_revision": "c5fbb485cdf90ae1f9ebc3e6c71b09386703dbd8-dirty",
+    "context": "configured-healthy-boot",
+    "mini_mode": "0",
+    "no_specials": "0",
+    "binary_sha256": "c1941ec4d246097f69c53740e456accb9271b8b24d4babf7a494199a91fe7d9b",
+    "objects_sha256": "6ab3b8e04e21b4321fed4e91edaad59bf884f2ca2a7998d38ee852c9d5bf7049",
+    "properties_sha256": "d7026a5c348bca13241b0674b35262d969b20ff0dceb1ca6b75d2daadb5175ac",
+    "studio_sha256": "83ee73d82a513766a5c999d4455bea35de75e7f082db700f76fb12149c8405c2",
+    "item_abilities_sha256": "fc66b8b5348ff754022c95b90b2ceac9b766ab7451d5176212d18ed7e4ae9719",
+    "kingdom_config_sha256": "ba7ad50ee68449c0e85500f21ae42de3551112bbadd841c9a7dfc8f2fe4f38e6",
+    "mobiles_sha256": "9edf4176f59797707defd0e0a4bf4f2b19493cb75295d5f9ae4bf5aba623c6eb",
+    "rooms_sha256": "af2c1e6233ed3211f5b69cbaf8318cbff1df675aa047427f1fabe8f00ed8dde2",
+    "zones_sha256": "6d66ed5ec43042e63961525a5fc32b6caa10d0c0299e1d5b2383d2f00aeb048d"
+  },
+  "compared": {
+    "template": 19334,
+    "generated": 8720
+  },
+  "changed": {
+    "template": 0,
+    "generated": 0
+  },
+  "generated_seeds": "seed=1..16; source_level=1,20,40,60,62; every native slot; finder_level=56/luck=160",
+  "observed_ranges": {
+    "template": {
+      "score": [
+        1,
+        10171659
+      ],
+      "unavailable_scores": 0,
+      "unrepresentable_craft_xp": 2,
+      "craft_xp_overflow_within_mortal_level_gate": 0,
+      "max_weapon_dice_count": 200,
+      "max_weapon_dice_sides": 200,
+      "apply_modifier": [
+        -125,
+        125
+      ]
+    },
+    "generated": {
+      "score": [
+        4,
+        770
+      ],
+      "unavailable_scores": 0,
+      "unrepresentable_craft_xp": 0,
+      "craft_xp_overflow_within_mortal_level_gate": 0,
+      "max_weapon_dice_count": 8,
+      "max_weapon_dice_sides": 12,
+      "apply_modifier": [
+        -8,
+        64
+      ]
+    }
+  },
+  "score_derived_consumer_effects": {
+    "status": "none in measured cohorts",
+    "families": [
+      "salvage quality/breakage",
+      "craft/forge level/recipe/material/XP",
+      "enhancement source/donor/result/price",
+      "quest floors/zone weights",
+      "faerie bag 25/50/125"
+    ],
+    "basis": "Under fixed current consumer rules/configuration, equal scores imply no score-derived threshold, material, XP or currency delta"
+  },
+  "runtime_adapter_sha256": {
+    "before": "c2d04a3344d54279d5503a3d23956398f40b8bf4c0aa095b25eb73701c086247",
+    "after": "9ab7da5a90858406933355208fdfd781535515a377d409742afc7487b210d0dc"
+  },
+  "evaluator_functions_sha256": {
+    "before": "5673c7db2db05ba2a6a91b9632025e76e942fe0d28a53242534ce082d6e7be13",
+    "after": "5673c7db2db05ba2a6a91b9632025e76e942fe0d28a53242534ce082d6e7be13"
+  }
+}

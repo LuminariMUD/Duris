@@ -980,7 +980,7 @@ void do_test(P_char ch, char *arg, int cmd)
 		else
 		{
 			send_to_char(
-				"This is for testing x*log(x) function used in itemvalue.\n\rTakes a number > 0 as an argument.\n\r",
+				"This is for testing legacy x*log(x) curve.\n\rTakes a number > 0 as an argument.\n\r",
 				ch);
 		}
 	}
@@ -1001,7 +1001,7 @@ void do_test(P_char ch, char *arg, int cmd)
 		else
 		{
 			send_to_char(
-				"This is for testing x*log2(x) function used in itemvalue.\n\rTakes a number > 0 as an argument.\n\r",
+				"This is for testing legacy x*log2(x) curve.\n\rTakes a number > 0 as an argument.\n\r",
 				ch);
 		}
 	}

@@ -19,11 +19,12 @@ def main():
             extract_function("random.mob.c", "void spawn_random_mapmob()"))
         (work / "training_dummy_is.inc").write_text(
             extract_function("training_dummy.c", "bool training_dummy_is("))
-        for mode, flags in [("sql", []), ("flatfile", ["-D__NO_MYSQL__", "-I" + str(ROOT / "src/no_mysql")])]:
+        # Header fixtures only; server persistence remains MariaDB-only.
+        for mode, flags in [("mariadb-headers", []), ("isolated-headers", ["-D__NO_MYSQL__", "-I" + str(ROOT / "src/no_mysql")])]:
             binary = work / mode
             subprocess.run([os.environ.get("CXX", "g++"), "-std=c++20", "-Wall", "-Wextra", "-Werror",
                             "-ffunction-sections", "-fdata-sections", "-I" + str(ROOT / "src"),
-                            "-g", "-fsanitize=address,undefined,float-cast-overflow", "-I" + str(work), "-fno-omit-frame-pointer",
+                            "-g", "-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all", "-I" + str(work), "-fno-omit-frame-pointer",
                             "-fno-pie", "-no-pie",
                             "-I/usr/include/libxml2", "-I/usr/include/mysql", *flags,
                             str(ROOT / "tests/async/issue263_property_reload.cpp"),
@@ -32,7 +33,7 @@ def main():
                             "-Wl,--gc-sections,--wrap=fclose,--wrap=rename,--wrap=fgets",
                             str(HARNESS_STUBS), "-o", str(binary)], check=True, cwd=ROOT)
             results = [subprocess.run([str(binary)], cwd=work).returncode]
-            for case in ("keys", "reload-missing", "reload-read", "reload-close-source",
+            for case in ("keys", "numeric-values", "reload-missing", "reload-read", "reload-close-source",
                          "reload-malformed", "reload-limit", "save-missing", "save-open",
                          "save-read", "save-write", "save-flush", "save-close-source",
                          "save-close-target", "save-rename", "save-malformed", "mapmob-cap",
