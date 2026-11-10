@@ -349,8 +349,43 @@ static void test_durable_admission()
     state.attempts.clear();
 }
 
+static void test_partial_capture_order()
+{
+    player_save_worker_reset_for_tests();
+    assert(player_save_worker_init(apply_snapshot, nullptr));
+    assert(player_save_worker_submit(snapshot_for(1, 1)) == player_save_submit_result::accepted);
+    {
+        std::unique_lock<std::mutex> lock(state.mutex);
+        state.changed.wait(lock, [] { return state.first_started; });
+    }
+    auto inventory = snapshot_for(16, 1);
+    inventory.components = PLAYER_COMPONENT_INVENTORY | PLAYER_COMPONENT_EQUIPMENT;
+    assert(player_save_worker_submit(inventory) == player_save_submit_result::accepted);
+    auto status = snapshot_for(16, 2);
+    status.components = PLAYER_COMPONENT_STATUS;
+    assert(player_save_worker_submit(status) == player_save_submit_result::accepted);
+    status.revision = 3;
+    assert(player_save_worker_submit(status) == player_save_submit_result::replaced);
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.release_first = true;
+        state.changed.notify_all();
+    }
+    assert(persistence_writer_wait_idle(5000));
+    assert((state.order == std::vector<std::string>{"p1:1", "p16:1", "p16:3"}));
+    const auto completions = drain();
+    assert(completions.size() == 3);
+    assert(completions[1].components == inventory.components);
+    assert(completions[2].components == status.components);
+    player_save_worker_reset_for_tests();
+    state.order.clear();
+    state.attempts.clear();
+    state.first_started = state.release_first = false;
+}
+
 int main()
 {
+    test_partial_capture_order();
     test_durable_admission();
     test_admission_capacity();
     test_admission_allocation_failure();
@@ -572,6 +607,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-worker-", dir=test_ou
     subprocess.run([str(binary)], check=True, timeout=30)
 print("[PASS] byte/job limits include in-flight captures and undrained completions; refusal preserves order and fitting tail replacement")
 print("[PASS] allocation failures admit neither partial queue jobs nor owner entries; tail replacement allocates nothing")
+print("[PASS] partial player captures retain earlier component payloads; covering captures still coalesce")
 print("[PASS] one writer applies saves in capture order; a newer save replaces its queued one")
 print("[PASS] a lost connection is retried at the head; other failures are reported and dropped")
 print("[PASS] shutdown stops a stuck retry and names the owners it could not write")

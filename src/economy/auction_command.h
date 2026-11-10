@@ -21,14 +21,14 @@
 #include <array>
 #include <cstdint>
 
-constexpr uint16_t AUCTION_COMMAND_PAYLOAD_VERSION = 1;
+constexpr uint16_t AUCTION_COMMAND_PAYLOAD_VERSION = 3; // Claims also materialize their inventory.
 constexpr size_t AUCTION_COMMAND_MAX_ITEMS = 9;
 constexpr size_t AUCTION_NAME_MAX_BYTES = 32;
 constexpr size_t AUCTION_SHORT_MAX_BYTES = 255;
 constexpr size_t AUCTION_KEYWORDS_MAX_BYTES = 1024;
 constexpr size_t AUCTION_INFO_MAX_BYTES = 8192;
 constexpr size_t AUCTION_BLOB_MAX_BYTES = 32768;
-constexpr size_t AUCTION_RESULT_PAYLOAD_BYTES = 320;
+constexpr size_t AUCTION_RESULT_PAYLOAD_BYTES = 360;
 
 enum class auction_action : uint8_t
 {
@@ -70,7 +70,7 @@ struct auction_command_payload
 	std::array<char, AUCTION_NAME_MAX_BYTES + 1> actor_name;
 	uint64_t expected_wallet_revision;
 	uint64_t expected_bank_revision;
-	int64_t value;
+	int64_t value; // Bid amount; money claims bind a positive amount (zero replays old claims).
 	int64_t start_price;
 	int64_t buy_price;
 	int64_t listing_fee;
@@ -81,6 +81,9 @@ struct auction_command_payload
 	std::array<auction_item_entry, AUCTION_COMMAND_MAX_ITEMS> items;
 	std::array<uint8_t, AUCTION_BLOB_MAX_BYTES> object_blob;
 	uint32_t object_blob_size;
+	// Canonical snapshots for every listed/claimed UID; legacy display bytes stay separate.
+	std::array<uint8_t, AUCTION_BLOB_MAX_BYTES> item_blob;
+	uint32_t item_blob_size;
 	std::array<char, AUCTION_SHORT_MAX_BYTES + 1> object_short;
 	std::array<char, AUCTION_KEYWORDS_MAX_BYTES + 1> id_keywords;
 	std::array<char, AUCTION_INFO_MAX_BYTES + 1> object_info;
@@ -107,6 +110,7 @@ struct auction_command_result
 	uint16_t item_count;
 	std::array<uint64_t, AUCTION_COMMAND_MAX_ITEMS> item_uids;
 	std::array<uint64_t, AUCTION_COMMAND_MAX_ITEMS> item_revisions;
+	std::array<uint32_t, AUCTION_COMMAND_MAX_ITEMS> materialized_item_ids;
 };
 
 bool auction_command_encode_payload(const auction_command_payload &payload,

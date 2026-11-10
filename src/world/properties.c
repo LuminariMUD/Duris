@@ -416,17 +416,17 @@ int load_properties(struct property *properties)
 		return -1;
 	}
 
+	int line = 0;
 	while (fgets(buf, sizeof(buf), f) != NULL)
 	{
-		if (strlen(buf) == sizeof(buf) - 1 && buf[sizeof(buf) - 2] != '\n')
-		{
-			ok = false;
-			break;
-		}
+		++line;
 		struct property parsed;
-		int status = parse_property(&parsed, buf);
+		int status = -1;
+		if (strlen(buf) != sizeof(buf) - 1 || buf[sizeof(buf) - 2] == '\n')
+			status = parse_property(&parsed, buf);
 		if (status < 0)
 		{
+			fprintf(stderr, "Invalid property at %s line %d.\n", PROPERTIES_FILE, line);
 			ok = false;
 			break;
 		}

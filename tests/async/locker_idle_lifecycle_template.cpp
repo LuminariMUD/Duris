@@ -189,6 +189,8 @@ static deferred_save_slot *find_deferred_save_slot(int)
 	return nullptr;
 }
 static void clear_manual_save_status(int) {}
+static void remove_norent_items(P_char) {}
+void locker_return_norent_items(P_char) {}
 static void locker_handle_postsave(P_char, StorageLocker *, int);
 void locker_post_save_hook(P_char ch)
 {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a disposable real-server A/B journey for ordered divine refusal."""
+"""Run ordered divine refusal A/B cases under with_disposable_mariadb.sh."""
 
 from pathlib import Path
 import os
@@ -9,48 +9,7 @@ import sys
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
-
-
-STAFF_FIXTURE = r'''
-#include "flatfile/flatfile_store.h"
-#include "player/player_snapshot_codec.h"
-#include <cassert>
-#include <openssl/sha.h>
-template<class T> void number(std::vector<uint8_t>& out, T value) {
-    for (size_t i=0; i<sizeof(T); ++i)
-        out.push_back(static_cast<uint64_t>(value) >> (i*8));
-}
-int main(int argc, char **argv) {
-    assert(argc == 2);
-    player_snapshot snapshot; std::string error;
-    assert(flatfile_player_snapshot_read(argv[1], 1, &snapshot, &error) ==
-           flatfile_player_load_result::ok);
-    for (auto &field : snapshot.status_integers) {
-        if (field.field == player_status_field::level ||
-            field.field == player_status_field::highest_level)
-            field.signed_value = field.unsigned_value = 62;
-        if (field.field == player_status_field::base_hit)
-            field.signed_value = field.unsigned_value = 200000;
-        if (field.field == player_status_field::hit_difference)
-            field.signed_value = field.unsigned_value = 0;
-    }
-    std::vector<uint8_t> payload, bytes;
-    snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
-    assert(player_snapshot_encode(snapshot, &payload) == player_snapshot_codec_result::ok);
-    using namespace flatfile_player_snapshot_file;
-    bytes.insert(bytes.end(), player_magic.begin(), player_magic.end());
-    number(bytes, player_file_version); number<uint32_t>(bytes, payload.size());
-    number(bytes, snapshot.pid); number(bytes, snapshot.revision);
-    number(bytes, snapshot.components);
-    unsigned char digest[SHA256_DIGEST_LENGTH];
-    SHA256(payload.data(), payload.size(), digest);
-    bytes.insert(bytes.end(), digest, digest + sizeof(digest));
-    bytes.insert(bytes.end(), payload.begin(), payload.end());
-    assert(flatfile_atomic_write(player_directory(argv[1]), player_filename(1), bytes,
-                                 &error));
-}
-'''
+import test_mariadb_combat_journey as journey
 
 
 CLERIC_MOBS = """#22801
@@ -132,37 +91,13 @@ def configure_fixture(runtime: Path, enabled: bool) -> None:
     )
 
 
-def elevate_player(root: Path, state: Path) -> None:
-    source = root / "staff.cpp"
-    binary = root / "staff"
-    source.write_text(STAFF_FIXTURE, encoding="utf-8")
-    subprocess.run(
-        [
-            "g++",
-            "-std=c++20",
-            "-Isrc",
-            str(source),
-            "src/player/player_snapshot_codec.c",
-            "src/flatfile/flatfile_store.c",
-            "-lcrypto",
-            "-o",
-            str(binary),
-        ],
-        cwd=journey.ROOT,
-        check=True,
-    )
-    subprocess.run([str(binary), str(state)], check=True)
-
-
 def run_scenario(server_binary: Path, enabled: bool) -> None:
     label = "enabled-100-percent" if enabled else "disabled"
     print(f"divine refusal journey: {label}", flush=True)
-    with tempfile.TemporaryDirectory(prefix=f"divine-refusal-{label}-") as temporary:
+    with journey.mariadb_authority() as (environment, sql), \
+            tempfile.TemporaryDirectory(prefix=f"divine-refusal-{label}-") as temporary:
         root = Path(temporary)
-        state = root / "state"
         runtime = root / "runtime"
-        state.mkdir(mode=0o700)
-        (state / "domains").mkdir(mode=0o700)
         runtime.mkdir()
         (runtime / "logs/log").mkdir(parents=True)
         configure_fixture(runtime, enabled)
@@ -170,16 +105,11 @@ def run_scenario(server_binary: Path, enabled: bool) -> None:
         (runtime / "bin/server").mkdir(parents=True)
         for name in ("dms", "dms_new"):
             shutil.copy2(server_binary, runtime / "bin/server" / name)
-        subprocess.run(
-            [str(journey.INSPECTOR), str(state), "seed-combat"], check=True
-        )
 
         port, tls_port, websocket_port = journey.available_ports()
-        environment = dict(
+        environment.update(
             PATH=os.environ.get("PATH", "/usr/bin:/bin"),
             ENVIRONMENT="local",
-            PERSISTENCE_MODE="flatfile-primary",
-            FLATFILE_STATE_DIR=str(state),
             CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
             REDIS="FALSE",
             CHAOS_MUD="FALSE",
@@ -236,7 +166,8 @@ def run_scenario(server_binary: Path, enabled: bool) -> None:
             client.send("quit")
             client.expect("ACCOUNT MENU", timeout=30)
             stop()
-            elevate_player(root, state)
+            sql("UPDATE player_data SET level=62,highest_level=62,base_hit=200000,hit_diff=0 "
+                "WHERE name='" + journey.CHARACTER + "'")
 
             boot()
             client = journey.reconnect_character(port)
@@ -311,7 +242,7 @@ def run_scenario(server_binary: Path, enabled: bool) -> None:
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print("usage: run_divine_refusal_journey.py /path/to/flatfile/dms", file=sys.stderr)
+        print("usage: run_divine_refusal_journey.py /path/to/mariadb/dms", file=sys.stderr)
         return 2
     binary = Path(sys.argv[1]).resolve()
     require(binary.is_file(), f"server binary does not exist: {binary}")
