@@ -12,7 +12,7 @@ import shutil
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from run_divine_refusal_journey import drain
 from run_item_pilot_journey import Server
 from run_paladin_balance_journey import command

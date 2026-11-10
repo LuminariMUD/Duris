@@ -65,14 +65,59 @@ string str_replace(string haystack_, const char *needle_, const char *replace_)
 	return result;
 }
 
-/* clean up some of the wiki formatting */
-string dewikify(string str_)
+static void append_help_link(string &output, const string &topic, OutputLinks *links)
 {
-	string str(str_);
-	str = str_replace(str, "[[", "&+c");
-	str = str_replace(str, "]]", "&n");
-	str = str_replace(str, "'''", "");
-	return str;
+	const size_t begin = output.size();
+	output += topic;
+	if (links && links->size() < OUTPUT_LINK_MAX_COUNT)
+	{
+		const OutputLink link{ begin, output.size(), OutputLinkKind::Command,
+				       "help " + trim(topic, " \t\r\n") };
+		append_output_links(*links, std::span(&link, 1), 0, output.size());
+	}
+}
+
+// Only authored help adopts [[topic]] syntax. Malformed references remain
+// readable; no arbitrary output scanner can create a command link.
+static string dewikify(string str, OutputLinks *links)
+{
+	if (links)
+		links->clear();
+	str = str_replace(std::move(str), "'''", "");
+	string result;
+	for (size_t position = 0; position < str.size();)
+	{
+		if (str.compare(position, 2, "[["))
+		{
+			result += str[position++];
+			continue;
+		}
+		const size_t end = str.find("]]", position + 2);
+		if (end == string::npos)
+		{
+			result.append(str, position, string::npos);
+			break;
+		}
+		const string topic = str.substr(position + 2, end - position - 2);
+		const OutputLink candidate{ 0, topic.size(), OutputLinkKind::Command,
+					    "help " + trim(topic, " \t\r\n") };
+		if (topic.find_first_of("[]") != string::npos ||
+		    !valid_output_links(std::span(&candidate, 1), topic.size()))
+			result.append(str, position, end + 2 - position);
+		else
+		{
+			result += "&+c";
+			append_help_link(result, topic, links);
+			result += "&n";
+		}
+		position = end + 2;
+	}
+	return result;
+}
+
+string dewikify(string str)
+{
+	return dewikify(std::move(str), nullptr);
 }
 
 string tolower(string str_)
@@ -86,11 +131,18 @@ string tolower(string str_)
 
 string wiki_help(string str)
 {
+	return wiki_help(std::move(str), nullptr);
+}
+
+string wiki_help(string str, OutputLinks *links)
+{
+	if (links)
+		links->clear();
 	const auto *catalog = help_cache_get();
 	if (!catalog)
 		return "&+GHelp is temporarily unavailable while its catalog loads. Please try again shortly.";
 	if (str.empty())
-		return wiki_help_single("help");
+		return wiki_help_single("help", links);
 	std::vector<const help_page *> matches;
 	for (const auto &page : *catalog)
 		if (help_title_matches(page.fields[0], str))
@@ -105,7 +157,7 @@ string wiki_help(string str)
 		return "&+GSorry, but there are no help topics that match your search.";
 	}
 	if (matches.size() == 1)
-		return wiki_help_single(matches.front()->fields[0]);
+		return wiki_help_single(matches.front()->fields[0], links);
 	std::string result;
 	const help_page *exact = nullptr;
 	for (const auto *page : matches)
@@ -115,13 +167,17 @@ string wiki_help(string str)
 			break;
 		}
 	if (exact)
-		result = wiki_help_single(exact->fields[0]) +
+		result = wiki_help_single(exact->fields[0], links) +
 			 "\n\n&+GThe following help topics also matched your search:\n";
 	else
 		result = "&+GThe following help topics matched your search:\n";
 	for (const auto *page : matches)
 		if (page != exact)
-			result += " &+c" + page->fields[0] + "\n";
+		{
+			result += " &+c";
+			append_help_link(result, page->fields[0], links);
+			result += "\n";
+		}
 	return result;
 }
 
@@ -484,6 +540,13 @@ string wiki_races(string title, int type)
 // Display a single help topic. Resolve redirects without recursion or I/O.
 string wiki_help_single(string str)
 {
+	return wiki_help_single(std::move(str), nullptr);
+}
+
+string wiki_help_single(string str, OutputLinks *links)
+{
+	if (links)
+		links->clear();
 	const auto *catalog = help_cache_get();
 	if (!catalog)
 		return "&+GHelp is temporarily unavailable while its catalog loads. Please try again shortly.";
@@ -528,7 +591,12 @@ string wiki_help_single(string str)
 	}
 	return_str += "&N\n";
 
-	return_str += dewikify(trim(string(row[1]), " \t\n"));
+	OutputLinks body_links;
+	const string body = dewikify(trim(string(row[1]), " \t\n"), links ? &body_links : nullptr);
+	if (links)
+		append_output_links(*links, body_links, return_str.size(),
+				    return_str.size() + body.size());
+	return_str += body;
 
 	// Race type help files
 	if (atoi(row[2]) == 25)

@@ -19,6 +19,9 @@ PRELUDE = r'''
 #include "core/utils.h"
 #include "net/comm.h"
 #include "net/mccp.h"
+#include "net/mxp.h"
+#include "net/output_presentation.h"
+#include "net/gmcp.h"
 #include "net/websocket.h"
 #include "core/json_utils.h"
 #include "item/item_movement_transaction.h"
@@ -436,7 +439,7 @@ static void starter_replay_matrix(const char *directory)
     assert(item_creation_grant_submit_batch_to_player_before_entry(&actor, roots, 1, &actor, true));
     assert(critical_operation_id_equal(previous.operation_id, submitted.operation_id)); // Initialization has not committed.
     assert(player_revision_acknowledge_durable(42, revision, components));
-    assert(player_revision_record_written(42, revision));
+    assert(player_revision_record_written(42, revision, components));
     item_movement_transaction_player_ready(&actor);
     const auto bound = submitted;
     critical_command stored;
@@ -529,7 +532,7 @@ def main():
             extract_function('comm.c', 'int process_output(P_desc t)'), DRIVER]))
         subprocess.run(['g++', '-std=c++20', '-g', '-O1', '-ffunction-sections', '-fdata-sections',
                         '-fsanitize=address,undefined', '-Isrc', str(source),
-                        *[str(SRC / name) for name in ['output_profiles.c', 'output_style.c', 'prompt.c', 'ansi.c', 'mccp.c', 'unicode.c', 'json_utils.c', 'safe_format.c',
+                        *[str(SRC / name) for name in ['output_profiles.c', 'output_style.c', 'output_links.c', 'output_presentation.c', 'mxp.c', 'prompt.c', 'ansi.c', 'mccp.c', 'unicode.c', 'json_utils.c', 'safe_format.c',
                             'item_movement_transaction.c', 'item_ownership_runtime.c',
                             'item_transfer_command.c', 'critical_command.c', 'starter_kit_intent.c', 'flatfile_store.c', 'player_revision_state.c',
                             'player_snapshot_capture.c', 'player_snapshot_codec.c', 'news.c']],

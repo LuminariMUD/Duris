@@ -8,7 +8,7 @@ import subprocess
 
 import test_account_recovery_journey as account
 import test_creation_prompt_journey as creation
-from test_flatfile_combat_journey import make_overlord
+from test_mariadb_combat_journey import make_overlord
 from test_kept_character_approval_journey import enter_staff, OWNER, STAFF
 from test_kept_character_journey import kept_journey_binary, persistence, login, character_choices, saved_character, pause_writer
 from test_character_stat_choice_journey import WebSocketClient

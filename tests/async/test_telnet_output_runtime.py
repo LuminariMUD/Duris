@@ -16,7 +16,9 @@ with tempfile.TemporaryDirectory(prefix="telnet-output-", dir=BUILD) as director
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Wlogical-op", "-D__NO_MYSQL__",
         "-ffunction-sections", "-fdata-sections", f"-I{ROOT / 'src'}",
         f"-I{ROOT / 'src/no_mysql'}", f"-I{directory}", str(ROOT / "tests/async/telnet_output_runtime_harness.cpp"),
-        str(ROOT / "src/net/mccp.c"), str(ROOT / "src/net/unicode.c"), "-Wl,--gc-sections", "-Wl,--wrap=write", "-Wl,--wrap=poll", "-lz",
+        str(ROOT / "src/net/mccp.c"), str(ROOT / "src/net/mxp.c"),
+        str(ROOT / "src/net/output_links.c"), str(ROOT / "src/net/ansi.c"),
+        str(ROOT / "src/net/unicode.c"), "-Wl,--gc-sections", "-Wl,--wrap=write", "-Wl,--wrap=poll", "-lz",
         str(HARNESS_STUBS), "-o", str(binary)
     ], check=True, cwd=ROOT, timeout=120)
     subprocess.run([str(binary)], check=True, cwd=ROOT, timeout=30)

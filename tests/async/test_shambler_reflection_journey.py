@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 ROOT = journey.ROOT
 REPORT = ROOT / "bin/qualification/issue420/gameplay-report.json"

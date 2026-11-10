@@ -13,6 +13,7 @@ prelude = r'''
 #include "core/prototypes.h"
 #include "core/utility.h"
 #include "cmd/interp.h"
+#include "core/files.h"
 #include "economy/tradeskill.h"
 #include "net/comm.h"
 #include <algorithm>
@@ -88,7 +89,7 @@ int main()
     forge_item_list[132].ore_needed[0] = 234;
     online[0] = &buyer.ch;
 
-    for (int failure = 0; failure < 5; ++failure)
+    for (int failure = 0; failure < 6; ++failure)
     {
         currency_transaction_reset_for_tests();
         buyer.ch.carrying = nullptr; smith_actor.carrying = nullptr;
@@ -104,6 +105,8 @@ int main()
         refuse_creation = failure == 1; refuse_delivery = failure == 2;
         if (failure == 3) assert(currency_transaction_reserve_chest(&buyer.ch));
         if (failure == 4) assert(currency_transaction_reserve_trade(&buyer.ch, -8000));
+        save_result = failure == 5 ? player_save_pipeline_result::unavailable :
+                                    player_save_pipeline_result::queued;
         order.clear(); extracted.clear();
         auto revision = buyer.pc.wallet_revision;
         char choice[]="1";
@@ -115,7 +118,10 @@ int main()
             assert(OBJ_CARRIED_BY(&ore1, &buyer.ch) && OBJ_CARRIED_BY(&ore2, &buyer.ch));
             assert(std::find(extracted.begin(), extracted.end(), 1001) == extracted.end());
             assert(std::find(extracted.begin(), extracted.end(), 1002) == extracted.end());
-            assert(order.empty());
+            if (failure == 5)
+                assert((order == std::vector<std::string>{"save:44"}));
+            else
+                assert(order.empty());
             if (failure != 1) assert((extracted == std::vector<uint64_t>{3003}));
         }
         else
@@ -128,12 +134,26 @@ int main()
             assert((order == std::vector<std::string>{"save:44"}));
         }
         currency_transaction_reset_for_tests();
+        save_result = player_save_pipeline_result::queued;
         refuse_creation = refuse_delivery = false;
     }
     // Choices outside this smith's actual menu leave its customer untouched.
     char invalid[]="7";
     assert(!smith(&smith_actor, &buyer.ch, CMD_FORGE, invalid));
     assert(GET_MONEY(&buyer.ch) == 10000);
+    // A valid wallet may exceed the signed 32-bit copper range.
+    buyer.ch.carrying = nullptr;
+    obj_data rich_ore1{}, rich_ore2{};
+    rich_ore1.loc_p=rich_ore2.loc_p=LOC_NOWHERE;
+    rich_ore1.R_num=0; rich_ore1.obj_uid=4001; rich_ore1.material=7;
+    rich_ore2.R_num=1; rich_ore2.obj_uid=4002;
+    obj_to_char(&rich_ore1, &buyer.ch); obj_to_char(&rich_ore2, &buyer.ch);
+    GET_PLATINUM(&buyer.ch)=3000000;
+    char rich_choice[]="1";
+    assert(smith(&smith_actor, &buyer.ch, CMD_FORGE, rich_choice));
+    assert(buyer.ch.carrying == &output);
+    assert(GET_COPPER(&buyer.ch) + 10LL*GET_SILVER(&buyer.ch) +
+           100LL*GET_GOLD(&buyer.ch) + 1000LL*GET_PLATINUM(&buyer.ch) == 2999995000LL);
     (void)last_committed; (void)last_error; (void)completion; (void)wallet;
     puts("smith: customer ore UIDs, menu bounds, delivery/payment refusals and one checkpoint pass");
 }
