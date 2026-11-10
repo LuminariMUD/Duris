@@ -109,7 +109,7 @@ void salvage_examine_item(P_char ch, P_obj item)
 	int skill;
 	if (!ch || !item || (skill = GET_CHAR_SKILL(ch, SKILL_SALVAGE)) < 1)
 		return;
-	if (!is_salvageable(item))
+	if (!is_salvageable(item) || itemvalue(item) < 1)
 	{
 		act("&+ySalvage assessment:&n $p cannot yield usable salvage materials.", FALSE, ch,
 		    item, 0, TO_CHAR);
@@ -205,6 +205,7 @@ void do_salvage(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
+	itemval = itemvalue(item);
 	itemvnum = OBJ_VNUM(item);
 
 	// Handle salvage materials
@@ -244,6 +245,11 @@ void do_salvage(P_char ch, char *argument, int /*cmd*/)
 		act("That item cannot be &+ysalvaged&n.", FALSE, ch, 0, 0, TO_CHAR);
 		return;
 	}
+	if (itemval < 1)
+	{
+		send_to_char("The item's value is unavailable; salvage was not attempted.\r\n", ch);
+		return;
+	}
 
 	if (scitools < 1)
 	{
@@ -271,8 +277,6 @@ void do_salvage(P_char ch, char *argument, int /*cmd*/)
 	    TO_ROOM);
 	act("You begin breaking down your $p into its &+yraw &+Ymaterials&n...", FALSE, ch, item, 0,
 	    TO_CHAR);
-
-	itemval = itemvalue(item);
 
 	if ((itemval <= 5) && (number(1, 1000) > GET_C_LUK(ch)))
 	{

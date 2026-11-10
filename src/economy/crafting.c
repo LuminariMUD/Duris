@@ -240,14 +240,15 @@ bool crafting_build_plan(P_obj item, struct crafting_plan *plan)
 		return FALSE;
 	}
 
-	high_material_count = (item_value + 4) / 5;
+	const int64_t material_value = static_cast<int64_t>(item_value) + 4;
+	high_material_count = material_value / 5;
 	plan->item_value = item_value;
 	plan->low_material_vnum = low_material_vnum;
 	plan->high_material_vnum = low_material_vnum + 4;
 	plan->high_material_count =
 		(int)ceil(high_material_count * crafting_material_quantity_multiplier);
-	plan->low_material_count = (int)ceil(((item_value + 4) - high_material_count * 5) *
-					     crafting_material_quantity_multiplier);
+	plan->low_material_count =
+		(int)ceil((material_value % 5) * crafting_material_quantity_multiplier);
 	plan->magical = has_affect(item);
 	return TRUE;
 }

@@ -4,7 +4,7 @@
 #include "core/config.h"
 #include "core/defines.h"
 
-inline constexpr const char *ITEM_VALUE_FORMULA_REVISION = "ival-v6-apply-totals";
+inline constexpr const char *ITEM_VALUE_FORMULA_REVISION = "ival-v7-numeric-bounds";
 
 // Numeric inputs only: no object identity, links, callbacks, or mutable state.
 struct item_value_apply
@@ -40,6 +40,7 @@ struct item_value_breakdown
 	bool floored = false;
 	bool utility_override = false;
 	int score = 0;
+	bool invalid = false;
 };
 
 // The power-field part of convertObj(), shared with read-only template views.
@@ -59,6 +60,7 @@ template <typename Object> void normalize_item_value_fields(Object &object)
 }
 
 bool item_value_has_packed_proc(const item_value_input &input);
+// Positive scores are usable. Zero means unavailable, including invalid arithmetic.
 int evaluate_item_value(const item_value_input &input, const item_value_context &context,
 			item_value_breakdown *breakdown = nullptr);
 

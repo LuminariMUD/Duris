@@ -19,6 +19,7 @@ HARNESS = r"""
 
 static index_data indices[12]{};
 index_data *obj_index = indices;
+int top_of_objt = static_cast<int>(std::size(indices)) - 1;
 P_room world = nullptr;
 struct zone_data *zone_table = nullptr;
 int top_of_zone_table = -1;
@@ -36,6 +37,7 @@ static bool refuse_wallet_commit;
 static bool refuse_pouch_write;
 static int unavailable_vnum;
 static int charges;
+static int rolls;
 static std::string output;
 static std::string keywords;
 static std::string description;
@@ -61,7 +63,7 @@ int get_mincircle(int spell) {
     return spell == 32 ? 1 : 2;
 }
 int get_ival_from_proc(obj_proc_type) { std::abort(); }
-int number(int low, int high) { return lucky ? low : high; }
+int number(int low, int high) { ++rolls; return lucky ? low : high; }
 void logit(const char *, const char *, ...) {}
 bool chaos_starter_materials_enabled() { return true; }
 P_obj chaos_material_pouch_find(P_char) { return active_pouch; }
@@ -639,6 +641,39 @@ static void test_superior(superior_case probe = superior_case::ordinary)
     enhance_stat_table[enhance_stat_hash(APPLY_STR)] = nullptr;
 }
 
+static void test_unavailable()
+{
+    char_data ch{};
+    ch.player.level = 60;
+    ch.in_room = NOWHERE;
+    GET_PLATINUM(&ch) = 20;
+    materials = {{400010, 20}};
+    for (bool invalid_source : {false, true}) {
+        auto &source = fixture(0, 90010);
+        auto &donor = fixture(1, 400254);
+        auto &invalid = invalid_source ? source : donor;
+        invalid.type = ITEM_WEAPON;
+        invalid.value[0] = WEAPON_LONGSWORD;
+        invalid.value[1] = invalid.value[2] = 50000;
+        assert(itemvalue(&invalid) == 0);
+        ch.carrying = &source;
+        const auto original_source = source, original_donor = donor;
+        const auto original_materials = materials;
+        const int original_rolls = rolls;
+        for (int mode = 0; mode < (invalid_source ? 3 : 2); ++mode) {
+            if (mode == 0) enhance(&ch, &source, &donor);
+            if (mode == 1) modenhance(&ch, &source, &donor);
+            if (mode == 2) { char command[] = "fixture"; do_enhance(&ch, command, 0); }
+            assert(output.find("value is unavailable") != std::string::npos);
+            assert(!std::memcmp(&source, &original_source, sizeof(source)));
+            assert(!std::memcmp(&donor, &original_donor, sizeof(donor)));
+            assert(charges == 0 && GET_MONEY(&ch) == 20000 && materials == original_materials);
+            assert(rolls == original_rolls && loads.empty() && extracted.empty());
+            clear_attempt();
+        }
+    }
+}
+
 int main()
 {
     const auto expected_mask = ITEM_TAKE | ITEM_HOLD | ITEM_ATTACH_BELT | ITEM_WEAR_BACK;
@@ -652,6 +687,7 @@ int main()
     test_superior(superior_case::mixed_applies);
     test_superior(superior_case::zero_modifier);
     test_superior(superior_case::duplicate_applies);
+    test_unavailable();
 }
 """
 

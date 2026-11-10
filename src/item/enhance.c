@@ -132,6 +132,12 @@ void enhance(P_char ch, P_obj source, P_obj material)
 
 	chluck = (GET_C_LUK(ch));
 	sval = itemvalue(source);
+	if (sval < 1 || (!pouch_material && itemvalue(material) < 1))
+	{
+		send_to_char("The item's value is unavailable; enhancement was not attempted.\r\n",
+			     ch);
+		return;
+	}
 	minval = sval - enhance_material_ival_delta;
 	searchcount = 0;
 	maxsearch = enhance_search_max_attempts;
@@ -569,6 +575,8 @@ static bool build_superior_enhancement_plan(P_obj item, struct superior_enhancem
 	obj_data proposed = *item;
 
 	memset(plan, 0, sizeof(*plan));
+	if (source_value < 1)
+		return FALSE;
 	for (i = 0; i < MAX_OBJ_AFFECT; i++)
 	{
 		int base;
@@ -791,12 +799,20 @@ void do_enhance(P_char ch, char *argument, int /*cmd*/)
 			    FALSE, ch, source, 0, TO_CHAR);
 			return;
 		}
-		if (itemvalue(source) > GET_LEVEL(ch) * enhance_level_gate_multiplier)
+		const int source_value = itemvalue(source);
+		if (source_value < 1)
+		{
+			send_to_char(
+				"The item's value is unavailable; enhancement was not attempted.\r\n",
+				ch);
+			return;
+		}
+		if (source_value > GET_LEVEL(ch) * enhance_level_gate_multiplier)
 		{
 			snprintf(
 				rest, sizeof(rest),
 				"&+yThis item has ival %d; at your level you can enhance items up to ival %d.\r\n",
-				itemvalue(source), GET_LEVEL(ch) * enhance_level_gate_multiplier);
+				source_value, GET_LEVEL(ch) * enhance_level_gate_multiplier);
 			send_to_char(rest, ch);
 			return;
 		}
@@ -1038,6 +1054,13 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 	// the floor would make a cheap essence unusable on exactly the good gear
 	// it exists for.  A dead 'minval' local here once implied otherwise.
 	int val = itemvalue(material);
+	const int source_value = itemvalue(source);
+	if (source_value < 1 || val < 1)
+	{
+		send_to_char("The item's value is unavailable; enhancement was not attempted.\r\n",
+			     ch);
+		return;
+	}
 
 	if (val <= 20)
 	{
@@ -1117,7 +1140,7 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 	proposed.affected[2].location = loc;
 	proposed.affected[2].modifier = mod;
 	const int final_value = itemvalue(&proposed);
-	if (final_value <= itemvalue(source))
+	if (final_value <= source_value)
 	{
 		send_to_char("That essence would not improve your item's value.\r\n", ch);
 		return;
@@ -2038,6 +2061,11 @@ void load_enhance_index(void)
 		}
 
 		ival = itemvalue(obj);
+		if (ival < 1)
+		{
+			extract_obj(obj);
+			continue;
+		}
 
 		/* Allocate and fill index entry */
 		entry = (struct enhance_index_entry *)malloc(sizeof(struct enhance_index_entry));

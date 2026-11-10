@@ -114,10 +114,13 @@ static int item_value_with_context(const item_value_input &input, int rnum, cons
 
 int itemvalue(P_obj obj, item_value_breakdown *breakdown)
 {
-	if (!obj)
+	if (!obj || !obj_index || obj->R_num < 0 || obj->R_num > top_of_objt)
 	{
 		if (breakdown)
+		{
 			*breakdown = {};
+			breakdown->invalid = true;
+		}
 		return 0;
 	}
 	return item_value_with_context(item_value_fields(*obj), obj->R_num, obj->short_description,
@@ -135,7 +138,10 @@ int itemvalue(const object_template &prototype, item_value_breakdown *breakdown)
 	if (!obj_index || rnum < 0 || rnum > top_of_objt)
 	{
 		if (breakdown)
+		{
 			*breakdown = {};
+			breakdown->invalid = true;
+		}
 		return 0;
 	}
 	auto input = item_value_fields(prototype);

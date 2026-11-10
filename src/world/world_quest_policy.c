@@ -546,6 +546,8 @@ void load_reward_profiles()
 		quest_reward_profile profile;
 		profile.vnum = obj_index[rnum].virtual_number;
 		profile.ivalue = itemvalue(probe.value);
+		if (profile.ivalue < 1)
+			continue;
 		quest_zones[zone].rewards.push_back(profile);
 		quest_zones[zone].reward_vnums.push_back(profile.vnum);
 	}

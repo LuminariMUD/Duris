@@ -322,8 +322,9 @@ bool write_material_rarity_report(const char *output_dir)
 
 		/* Canonical craft decomposition: one high-quality unit every five itemvalue
 		 * points, with the remainder represented by lowest-quality units. */
-		high_quantity = (ival + 4) / 5;
-		low_quantity = (ival + 4) - (high_quantity * 5);
+		const int64_t material_value = static_cast<int64_t>(ival) + 4;
+		high_quantity = material_value / 5;
+		low_quantity = material_value % 5;
 		display_name(source_name, sizeof(source_name), obj->short_description.c_str());
 		material_template_name(low_vnum, low_name, sizeof(low_name));
 		material_template_name(high_vnum, high_name, sizeof(high_name));
