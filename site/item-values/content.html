@@ -9,7 +9,7 @@
     <p class="ival-lede">
       The item value update fixes how a handful of stats are counted. Nothing
       about your gear changes, and most values stay exactly as they were. Of
-      19,334 items checked, these {{COUNT}} that players can hold have a
+      19,367 items checked, these {{COUNT}} that players can hold have a
       different item value in this update.
     </p>
     <p class="ival-note">
@@ -19,7 +19,7 @@
     <dl class="ival-facts">
       <div>
         <dt>Items checked</dt>
-        <dd>19,334</dd>
+        <dd>19,367</dd>
       </div>
       <div>
         <dt>Values changed</dt>
@@ -42,7 +42,7 @@
       <a class="button" href="#list">See the list ↓</a
       ><a href="item-value-changes.csv" download
         >Download the list as a spreadsheet (CSV)</a
-      >
+      ><a href="#h-reasons">Why we made these changes</a>
     </div>
   </header>
 
@@ -175,10 +175,71 @@
         them by a single level.
       </p>
       <p>
+        Enhancing follows the same rule as crafting and forging: the item you
+        enhance must be within your level's limit of three item value per level,
+        and each enhancement raises it by 1 to 4. The old fixed ceiling on
+        enhanced items is gone, and 33 new items fill gaps where a piece of gear
+        had no next step.
+      </p>
+      <p>
         Figures compare the same items before and after the update. Items you
         have already enhanced are valued from their own stats, by the same
         corrected rules.
       </p>
     </div>
+  </section>
+
+  <section aria-labelledby="h-reasons">
+    <h2 id="h-reasons">Why we made these changes</h2>
+    <p class="ival-prose">
+      Item value decides what you can craft, forge, enhance and salvage. A
+      number with that much say over your gear has to be one you can trust.
+    </p>
+    <ul class="ival-reasons">
+      <li>
+        <b>Same stats, same value</b>
+        <p>
+          Two identical items could score differently because of how their stats
+          happened to be stored. Now equal gear is always worth the same.
+        </p>
+      </li>
+      <li>
+        <b>Credit only for what works</b>
+        <p>
+          An item is valued for what it actually does. A spell it cannot cast no
+          longer inflates its value, and an empty +0 no longer shifts it.
+        </p>
+      </li>
+      <li>
+        <b>One number everywhere</b>
+        <p>
+          Lore, crafting, forging, enhancing, salvage and quest rewards all read
+          the same calculation, so the value you see is the value the game uses.
+        </p>
+      </li>
+      <li>
+        <b>Your gear is untouched</b>
+        <p>
+          No stat was changed and nothing was rebalanced. Only the way stats are
+          counted was corrected, and {{UP}} of the {{COUNT}} changes went up.
+        </p>
+      </li>
+      <li>
+        <b>Nothing lost on a failure</b>
+        <p>
+          A craft, forge or enhancement that is refused or cannot finish leaves
+          your gear, materials and coins as they were. The price shown is the
+          price charged.
+        </p>
+      </li>
+      <li>
+        <b>Checked against the whole world</b>
+        <p>
+          Every one of the 19,367 items was valued before and after, and tested
+          gear kept its value through rent, lockers, death and restarts. This
+          page is the complete result.
+        </p>
+      </li>
+    </ul>
   </section>
 </main>
