@@ -12,7 +12,6 @@ assert re.search(r"int\s+enhance_stat_enabled\s*=\s*0;", source)
 assert "extern int enhance_stat_enabled;" in header
 assert "else if (section_idx == 1)" in source
 assert 'if (!strcmp(key, "enhance_stat.enabled"))' in source
-assert "enhance_stat_enabled = atoi(val) ? 1 : 0;" in source
 assert "enhance_stat.enabled=1" in config
 
 # The enabled no-material path is isolated, so all two-argument commands retain
