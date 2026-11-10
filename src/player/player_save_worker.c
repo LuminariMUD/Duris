@@ -244,8 +244,13 @@ player_save_submit_result enqueue(queued_job job, persistence_job_admit_fn admit
 	}
 	const persistence_job_owner key = { job.kind, job.owner };
 	const auto found = queued_by_owner.find(key);
-	const bool replace_tail = !admit && found != queued_by_owner.end() &&
-				  found->second == std::prev(queue.end());
+	// Partial player captures may replace a tail only when they include every
+	// component it carries; otherwise the earlier payload still needs writing.
+	const bool replace_tail =
+		!admit && found != queued_by_owner.end() &&
+		found->second == std::prev(queue.end()) &&
+		(job.kind != persistence_job_kind::player ||
+		 !(found->second->snapshot.components & ~job.snapshot.components));
 	const size_t retained_bytes = queued_bytes + (inflight ? inflight->bytes : 0) -
 				      (replace_tail ? found->second->bytes : 0);
 	const size_t pending_jobs = queue.size() + (inflight ? 1 : 0) + results.size();

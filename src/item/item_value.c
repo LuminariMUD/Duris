@@ -296,7 +296,8 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 		spells[2] = obj->value[5] % 1000000000 / 1000000;
 
 		// val6 = level * val7 = chance -> 1/30 chance = 1, 1/60 chance = .5, 1/15 chance = 2, etc.
-		mod = ((obj->value[6] > 19) ? obj->value[6] / 10.0 : 1) * (30.0 / obj->value[7]);
+		// Integer numerator, so one division keeps a whole credit whole.
+		const int level_tenths = (obj->value[6] > 19) ? obj->value[6] : 10;
 
 		spellcirclesum = context.spell_circles[0];
 		spellcirclesum += context.spell_circles[1];
@@ -315,11 +316,12 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 			// If there are none?!, set to 1 anyway.
 			numspells = numspells ? numspells : 1;
 			// Keep the mean and scaled contribution fractional until final quantization.
-			workingvalue += mod * spellcirclesum / numspells;
+			workingvalue += 3.0 * level_tenths * spellcirclesum /
+					(double(obj->value[7]) * numspells);
 		}
 		else
 		{
-			workingvalue += mod * spellcirclesum;
+			workingvalue += 3.0 * level_tenths * spellcirclesum / obj->value[7];
 		}
 	}
 
@@ -501,8 +503,10 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 
 	if (obj->type == ITEM_WEAPON)
 	{
-		const double dice_count = obj->value[1];
-		const double maximum_damage = dice_count * obj->value[2];
+		// Negative dice deal no damage; they must not flip the multiplier's sign.
+		const double dice_count = std::max(obj->value[1], 0);
+		const double dice_sides = std::max(obj->value[2], 0);
+		const double maximum_damage = dice_count * dice_sides;
 		// Maximum dice damage is the historical valuation term.
 		workingvalue += maximum_damage;
 		// 1d1 = .5%, 5d5 = 12.5%, 10d10 = 50%.
@@ -510,7 +514,7 @@ int evaluate_item_value(const item_value_input &input, const item_value_context 
 		// Backstabbing weapons get a big ival for big dice.
 		if (IS_BACKSTABBER(obj))
 		{
-			mod = obj->value[2];
+			mod = dice_sides;
 			// workingvalue increases quadratic for every die roll and cubic for dice size.
 			// For number of dice: 1:1, 2:1.15, 3:1.4, 4:1.75, 5:2.2, 6:2.75, 7:3.4, 8:4.15, 9:5, 10:5.95
 			// For number of die sides: 1:0, 2:1, 3:5, 4:12, 5:25, 6:43, 7: 68, 8:102, 9:145, 10: 200

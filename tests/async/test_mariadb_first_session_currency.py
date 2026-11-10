@@ -4,7 +4,7 @@
 import argparse
 import pathlib
 
-from test_flatfile_combat_journey import (
+from test_mariadb_combat_journey import (
     CHARACTER, inspect_authority, reconnect_character, require, run_journey,
 )
 

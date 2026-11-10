@@ -18,7 +18,7 @@ import time
 import uuid
 
 from playwright.sync_api import sync_playwright
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 from run_world_quest_dual_backend import setup_run_root
 from run_issue213_onboarding_journey import authored_graph, guild_rooms, path_between
@@ -64,8 +64,6 @@ def full_world(args):
                 stop()
                 if sql:
                     sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
-                else:
-                    journey.make_overlord(Path(environment['FLATFILE_STATE_DIR']), GOD)
                 boot()
                 yield {'runtime': str(runtime), 'plain': plain, 'tls': tls, 'websocket': websocket}, sql
             finally:
@@ -286,7 +284,7 @@ def exercise(server, sql, args, evidence):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server', type=Path, required=True)
-    parser.add_argument('--backend', choices=('flatfile', 'mariadb'), default='flatfile')
+    parser.add_argument('--backend', choices=("mariadb",), default="mariadb")
     parser.add_argument('--frontend-url', required=True)
     parser.add_argument('--frontend-source', type=Path)
     parser.add_argument('--browser-executable', type=Path)

@@ -47,6 +47,7 @@
 #include "world/map.h"
 #include "net/mccp.h"
 #include "player/player_save_pipeline.h"
+#include "redis/redis_floor_runtime.h"
 #include "redis/redis_presence_runtime.h"
 #include "ships/ships.h"
 #include "classes/specializations.h"
@@ -2329,6 +2330,67 @@ bool persistence_flush_all_character_saves(void)
 	return all_saved;
 }
 
+// Take a detached no-rent item off its departing owner. What it holds moves to
+// `container`, or to the owner's inventory, first.
+static void remove_norent_item(P_char ch, P_obj item, P_obj container)
+{
+	while (P_obj content = item->contains)
+	{
+		obj_from_obj(content);
+		if (container)
+			obj_to_obj(content, container);
+		else
+			obj_to_char(content, ch);
+	}
+	// A ghost being extracted may not be in any room.
+	if (IS_SET(item->extra_flags, ITEM_NODROP) || IS_SET(item->extra2_flags, ITEM2_SOULBIND) ||
+	    ch->in_room == NOWHERE || IS_ROOM(ch->in_room, ROOM_LOCKER))
+	{
+		act("$p is no-rent and crumbles to dust.", TRUE, ch, item, 0, TO_CHAR);
+		act("$p is no-rent and crumbles to dust.", TRUE, ch, item, 0, TO_ROOM);
+		extract_obj(item);
+		return;
+	}
+	act("$p is no-rent and falls to the floor.", TRUE, ch, item, 0, TO_CHAR);
+	act("$p is no-rent and falls to the floor.", TRUE, ch, item, 0, TO_ROOM);
+	obj_to_room(item, ch->in_room);
+	if (item->obj_uid)
+		redis_log_floor_drop(item, world[item->loc.room].number);
+}
+
+// Innermost first, so a no-rent bag has only items that stay when it comes off.
+static void remove_norent_contents(P_char ch, P_obj list, P_obj container)
+{
+	P_obj next;
+	for (P_obj object = list; object; object = next)
+	{
+		remove_norent_contents(ch, object->contains, object);
+		next = object->next_content;
+		if (!IS_SET(object->extra_flags, ITEM_NORENT))
+			continue;
+		if (container)
+			obj_from_obj(object);
+		else
+			obj_from_char(object);
+		remove_norent_item(ch, object, container);
+	}
+}
+
+// A no-rent item never leaves the game with its owner, whatever its ownership record says.
+static void remove_norent_items(P_char ch)
+{
+	for (int slot = 0; slot < MAX_WEAR; ++slot)
+	{
+		P_obj worn = ch->equipment[slot];
+		if (!worn)
+			continue;
+		remove_norent_contents(ch, worn->contains, worn);
+		if (IS_SET(worn->extra_flags, ITEM_NORENT))
+			remove_norent_item(ch, unequip_char(ch, slot), nullptr);
+	}
+	remove_norent_contents(ch, ch->carrying, nullptr);
+}
+
 /*
  * Logging out never waits: the terminal save is captured and queued on the one
  * writer, and the caller extracts at once. Shutdown and copyover drain the writer.
@@ -2338,6 +2400,10 @@ bool persistence_save_character_terminal(P_char ch, int type)
 {
 	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !GET_NAME(ch))
 		return false;
+
+	locker_return_norent_items(ch);
+	if (type == RENT_INN || type == RENT_CAMPED || type == RENT_LINKDEAD)
+		remove_norent_items(ch);
 
 	const int room = calculate_save_room(ch, type, ch->in_room);
 	const player_save_pipeline_result queued =
@@ -2372,6 +2438,7 @@ bool persistence_save_character_terminal_database_acknowledged(P_char ch, int ty
 {
 	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !GET_NAME(ch))
 		return false;
+	locker_return_norent_items(ch);
 	const int room = calculate_save_room(ch, type, ch->in_room);
 	if (player_save_pipeline_terminal(ch, type, room, 5000) !=
 	    player_save_terminal_result::database_acknowledged)
@@ -4746,6 +4813,13 @@ void do_quaff(P_char ch, char *argument, int /*cmd*/)
 		act("You cannot quaff this potion.", FALSE, ch, 0, 0, TO_CHAR);
 		return;
 	}
+
+	for (i = 1; i < 4; ++i)
+		if (bottle->value[i] == SPELL_VITALITY && affected_by_spell(ch, SPELL_VITALITY))
+		{
+			send_to_char("You are already affected by vitality!\r\n", ch);
+			return;
+		}
 
 	if (affected_by_spell(ch, TAG_POTION_TIMER))
 	{
