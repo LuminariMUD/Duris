@@ -124,6 +124,7 @@ struct mining_data
 };
 
 void initialize_mining();
+void assign_mining_object_procs();
 int mines_properties(int map);
 bool load_one_mine(int map);
 void load_mines(bool set_event, bool load_all, int map);

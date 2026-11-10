@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real local bartender-quest journey for MariaDB and flatfile-primary builds.
+"""Real local bartender-quest journey on MariaDB.
 
 This is intentionally a ``run_`` script rather than an automatically discovered
 regression: it builds/boots the full world, exercises restart, and needs Docker for the
@@ -24,7 +24,7 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from test_flatfile_combat_journey import MudClient, reconnect_character, create_character
+from test_mariadb_combat_journey import MudClient, reconnect_character, create_character
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -32,7 +32,7 @@ BARTENDER_ROOM = 16633
 QUEST_LEVEL = 11
 # The migrations verify their schema on MariaDB 10.11 and MySQL 8.0 only.
 DB_IMAGE = os.environ.get("DURIS_WORLD_QUEST_DB_IMAGE", "mariadb:10.11")
-REQUESTED_BACKEND = os.environ.get("DURIS_WORLD_QUEST_BACKEND", "both")
+REQUESTED_BACKEND = os.environ.get("DURIS_WORLD_QUEST_BACKEND", "mariadb")
 BINARY_OVERRIDE = os.environ.get("DURIS_WORLD_QUEST_BINARY")
 JOURNEY = os.environ.get("DURIS_WORLD_QUEST_JOURNEY", "both")
 GAMEPLAY_CASES = tuple(tuple(map(int, case.split(":"))) for case in
@@ -50,8 +50,8 @@ if not GAMEPLAY_CASES or any(case not in {(11, 2), (11, 1), (29, 1), (29, 2), (3
     raise ValueError("unsupported focused gameplay cases")
 if JOURNEY not in {"both", "recovery", "gameplay", "rewards", "reward-recovery", "rested-ask", "audit", "reported", "history", "history-failure", "history-failure-restart"}:
     raise ValueError("unsupported DURIS_WORLD_QUEST_JOURNEY scenario")
-if REQUESTED_BACKEND not in {"both", "mariadb", "flatfile"}:
-    raise ValueError("DURIS_WORLD_QUEST_BACKEND must be both, mariadb, or flatfile")
+if REQUESTED_BACKEND != "mariadb":
+    raise ValueError("DURIS_WORLD_QUEST_BACKEND must be mariadb")
 
 
 def require(condition: bool, message: str) -> None:
@@ -103,12 +103,6 @@ def build_server(backend: str, build_root: pathlib.Path) -> pathlib.Path:
     require(result.returncode == 0,
             f"{backend} server build failed:\n{result.stdout[-12000:].decode(errors='replace')}")
     output = result.stdout.decode(errors="replace")
-    if backend == "flatfile":
-        require("-D__NO_MYSQL__" in output, "flat build did not define __NO_MYSQL__")
-        require("-I/usr/include/mysql" not in output, "flat build used MySQL headers")
-        require("-lmysqlclient" not in output, "flat build linked MySQL")
-    else:
-        require("-D__NO_MYSQL__" not in output, "MariaDB build selected flatfile mode")
     require(binary.is_file() and os.access(binary, os.X_OK),
             f"{backend} build did not create an executable")
     return binary
@@ -246,7 +240,7 @@ def runtime_environment(backend: str, state_root: pathlib.Path, player_journal: 
     environment = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "ENVIRONMENT": "local",
-        "PERSISTENCE_MODE": "flatfile-primary" if backend == "flatfile" else "mariadb-primary",
+        "PERSISTENCE_MODE": "mariadb-primary",
         "CRITICAL_COMMAND_JOURNAL_DIR": str(critical_journal),
         "LISTEN_ADDRESS": "127.0.0.1",
         "DURIS_TLS_PORT": str(tls_port),
@@ -258,15 +252,12 @@ def runtime_environment(backend: str, state_root: pathlib.Path, player_journal: 
         "CHAOS_TEST_ACCOUNT": "Journeyacct",
         "CHAOS_STARTER_BONUSES": "FALSE",
     }
-    if backend == "flatfile":
-        environment["FLATFILE_STATE_DIR"] = str(state_root)
-    else:
-        if database_environment is None:
-            raise AssertionError("MariaDB runtime environment missing")
-        environment.update({key: database_environment[key] for key in (
-            "DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWD", "DB_NAME",
-            "DB_ALLOWED_TARGETS", "DB_TLS", "DB_SOCKET",
-        )})
+    if database_environment is None:
+        raise AssertionError("MariaDB runtime environment missing")
+    environment.update({key: database_environment[key] for key in (
+        "DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWD", "DB_NAME",
+        "DB_ALLOWED_TARGETS", "DB_TLS", "DB_SOCKET",
+    )})
     return environment
 
 
@@ -1271,8 +1262,7 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
         probe_source = run_root / "recovery_probe.cpp"
         probe_binary = run_root / "recovery_probe.so"
         probe_source.write_text(RECOVERY_PROBE_SOURCE)
-        flags = (["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else
-                 subprocess.check_output(["mysql_config", "--cflags"], text=True).split())
+        flags = subprocess.check_output(["mysql_config", "--cflags"], text=True).split()
         built = run(["g++", "-std=c++20", "-g", "-shared", "-fPIC", "-Wall", "-Wextra", "-Werror",
                      "-fsanitize=undefined", "-fno-sanitize-recover=all", "-Isrc", *flags,
                      str(probe_source), "-lcjson", "-o", str(probe_binary)], timeout=60)
@@ -1844,8 +1834,6 @@ def run_backend(backend: str, build_root: pathlib.Path) -> dict:
             result["database_zone_flags"] = verify_mariadb_zone_flag(container, root_password, database)
             require(result["database_zone_flags"]["quest_enabled_rows"] == 0,
                     "MariaDB fixture unexpectedly needed quest_zone=1 for successful quest")
-        else:
-            result["flatfile_state_root_created"] = state_root.is_dir()
         return result
     finally:
         if container:
@@ -1862,8 +1850,7 @@ def main() -> None:
     build_parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="world-quest-build-", dir=build_parent) as build_tmp:
         build_root = pathlib.Path(build_tmp)
-        backends = ("mariadb", "flatfile") if REQUESTED_BACKEND == "both" else (REQUESTED_BACKEND,)
-        results = [run_backend(backend, build_root) for backend in backends]
+        results = [run_backend(REQUESTED_BACKEND, build_root)]
     print(json.dumps({"status": "passed", "results": results}, indent=2))
 
 

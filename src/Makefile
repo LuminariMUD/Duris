@@ -158,7 +158,8 @@ OBJS =  $(SHIP_OBJS) \
 				 cmd/actset.o \
 				 cmd/actwiz.o \
 				 cmd/community_spellup.o \
-				 net/ansi.o net/chat_presentation.o \
+				 net/ansi.o net/chat_presentation.o net/output_links.o net/mxp.o \
+				 net/output_presentation.o \
 				 net/output_style.o \
 				 net/output_profiles.o \
 				 specs/specs.ailvio.o \
@@ -598,6 +599,14 @@ $(TELEMETRY_STATE_BINARY): telemetry/telemetry_state.cc $(OBJDIR)/telemetry/tele
 dms_new: $(DMS_BINARY)
 
 FORCE:
+
+# Only the report object embeds Git identity; a new revision need not rebuild
+# the whole server. The executable hash also identifies exported/dirty builds.
+VALUE_REVISION_HEADER := $(BIN_ROOT)/generated/item_value_revision.h
+$(VALUE_REVISION_HEADER): FORCE
+	@python3 ../scripts/write_build_revision.py "$@" "$(ROOT_DIR)"
+$(OBJDIR)/item/material_rarity.o: CFLAGS += -include $(VALUE_REVISION_HEADER)
+$(OBJDIR)/item/material_rarity.o: $(VALUE_REVISION_HEADER)
 
 # A backend/profile switch must relink even if its objects are older than the
 # previous binary. Publish the build stamp only with a completed link.

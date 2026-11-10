@@ -21,7 +21,7 @@ STATS = ('str', 'dex', 'agi', 'con', 'pow', 'int', 'wis', 'cha', 'kar', 'luk')
 def login_journey(socket, work, server):
     """Use the real account menu, command parser, writer and materialization path."""
     import signal
-    import test_flatfile_combat_journey as journey
+    import test_mariadb_combat_journey as journey
     database = 'stats_login'
     environment = {
         'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'ENVIRONMENT': 'local',
@@ -160,7 +160,9 @@ def main():
                'src/player/player_snapshot_repository.c', 'src/player/player_snapshot_codec.c',
                'src/item/item_claim_repository.c', 'src/item/item_claim.c',
                'src/persistence/dupe_log.c', 'src/sql/item_extra_descr_codec.c',
-               'src/persistence/persistence_observability.c']
+               'src/persistence/persistence_observability.c',
+               'src/economy/collector_command.c', 'src/economy/collector_codec.c',
+               'src/economy/collector_policy.c']
     subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-pthread',
                     '-ffunction-sections', '-fdata-sections', '-Isrc',
                     *shlex.split(subprocess.check_output(['mysql_config', '--cflags'], text=True)),

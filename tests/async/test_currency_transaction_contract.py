@@ -122,6 +122,14 @@ class CurrencyTransactionContractTests(unittest.TestCase):
             "GET_GOLD(pet) = wallet[2];",
             "GET_PLATINUM(pet) = wallet[3];",
         }
+        # The forge rewinds its own debit when its checkpoint cannot be queued
+        # (covered by test_smith_payment.py).
+        forge_rollback = {
+            "GET_COPPER(pl) = wallet_before[0];",
+            "GET_SILVER(pl) = wallet_before[1];",
+            "GET_GOLD(pl) = wallet_before[2];",
+            "GET_PLATINUM(pl) = wallet_before[3];",
+        }
         violations = []
         for path in SRC.rglob("*.c"):
             if path.name in allowed:
@@ -134,6 +142,8 @@ class CurrencyTransactionContractTests(unittest.TestCase):
                     relative == "world/generated_npc_runtime.c"
                     and line.strip() in generated_npc_restoration
                 ):
+                    continue
+                if relative == "economy/tradeskill.c" and line.strip() in forge_rollback:
                     continue
                 if assignment.search(line):
                     violations.append(f"{path.relative_to(ROOT)}:{number}:{line.strip()}")

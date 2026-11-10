@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from test_flight_network_journey import authority, command
 from test_mysql_epic_training_journey import stats
 from run_world_quest_dual_backend import setup_run_root
@@ -42,7 +42,8 @@ def run(binary):
         guardian_diagnostic = ''
         evidence = {'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
                     'fixture_touch_seconds': 5, 'fixture_turn_seconds': 6,
-                    'guardian_combat_fixture': {'level': 1, 'hit': 1, 'armor': 1000, 'agility': 1},
+                    'guardian_combat_fixture': {'level': 1, 'hit': 1, 'base_hit': 1,
+                                                'max_hit': 1, 'armor': 1000, 'agility': 1},
                     'attacker_fixture_hitroll': 100, 'attacker_fixture_damroll': 100,
                     'attacker_fixture_unarmed_skill': 100, 'captures': [], 'cargo_sales': []}
         with authority('mariadb', runtime) as (env, sql), output_path.open('w') as output:
@@ -168,10 +169,15 @@ def run(binary):
                     command(god, 'setbit char guardian level 1')
                     command(god, 'setbit char guardian ac 1000')
                     command(god, 'setbit char guardian agi 1')
-                    command(god, 'setbit char guardian hit 1')
+                    # Current HP alone leaves the boss's 30000-HP capacity and
+                    # regeneration intact. Prepare the intended one-HP target.
+                    command(god, 'setbit char guardian basehit 1')
+                    command(god, 'restore guardian')
                     command(god, f'setbit char {player_name} hitrol 100')
                     command(god, f'setbit char {player_name} damrol 100')
                     guardian_diagnostic = command(god, 'stat mob guardian')
+                    assert re.search(r'Hits:\s*\[\s*1\s*/\s*1\s*/\s*1\s*\+',
+                                     guardian_diagnostic), guardian_diagnostic
                     command(god, 'transfer ' + player_name)
                     blocked = command(player, 'touch stone')
                     assert 'strange field of energy prevents' in blocked, blocked
