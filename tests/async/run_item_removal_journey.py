@@ -4,7 +4,7 @@ from pathlib import Path
 import re
 import sys
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from run_world_restart_journey import Rig
 
 UPGRADE_UID = 800000000041

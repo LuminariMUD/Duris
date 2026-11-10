@@ -807,7 +807,6 @@ Aggr - Last Edited: 2007-04-19 19:17:09 by Unknown
 *aggr          : Check aggressiveness
 *aggr off      : Turn off aggressiveness
 *aggr 120      : You will only be aggressive to monsters when your hitpoints >=120
-NOTE: Paladins may *not* have this option set to ON, as it goes against all their training and principles.
 
 ==See also==
 
@@ -1732,6 +1731,12 @@ imbalance after Discord playerbase consultation. See &+Yhelp rules&n.
 ==See also==
 
 Unique
+
+You may hold one major artifact, one unique and one ioun at a time. If you
+hold two or more of any one type, the periodic artifact check makes all
+artifacts you wear or carry fall to the ground, including other types.
+Inventory counts as well as equipment, and even a brief overlap can trigger
+the check. The forced drop causes no damage or loss of remaining feeding time.
 
 #0
 
@@ -2888,7 +2893,7 @@ warrior, paladin, bodyslam, kneel, shieldless bash
 Battle-Forger
 Battle-Forger - Last Edited: 2026-10-18
 ============================================================
-Battle-Forger is a Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Battle-Forger is an Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -3299,7 +3304,7 @@ acquire/pray/cast your spells when you multiclass.
 Blacksmith
 Blacksmith - Last Edited: 2026-10-18
 ============================================================
-Blacksmith is a Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Blacksmith is an Alchemist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -4160,7 +4165,7 @@ place to camp for the night and then type "camp". You must then wait a
 period of time before you can exit the game. If you leave the room in which
 you are trying to set up camp or if you fight, camping will automatically
 cancel. Once you fully camp, you will be sent to the main menu, just as
-when you rent.
+when you rent. Items flagged no rent fall to the floor when you finish.
 Should you choose to 'camp abort', 'camp stop' or 'camp off', you will stop attempting to set up camp.
 Warning: If you go link-dead, camping will stop
 (linkdead rent does *not* reset your homeroom).
@@ -5842,7 +5847,7 @@ defense.
 Star Magus
 Star Magus - Last Edited: 2026-10-18
 ============================================================
-Star Magus is a Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Star Magus is an Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -6410,7 +6415,7 @@ lands of the living. It has been known to fail however...
 Dark Dreamer
 Dark Dreamer - Last Edited: 2026-10-18
 ============================================================
-Dark Dreamer is a Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Dark Dreamer is an Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -6445,7 +6450,7 @@ Requirements are registration values, not automatic learning or preparation. Bas
 Dark Knight
 Dark Knight - Last Edited: 2026-10-18
 ============================================================
-Dark Knight is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Dark Knight is an Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -6702,9 +6707,11 @@ after a successful attack from an offensive spell.
 Delete
 Delete - Last Edited: 2007-04-22 22:12:53 by Unknown
 ====================================================
-Player files can be deleted at the login menu. Once a character is deleted,
-you can NOT get it back. You may have several characters and often times
-people reroll their stats until they end up with stats that please them.
+Delete a character with account-menu option 3. After selecting the
+character, type its full name at the final warning to confirm permanent
+deletion; capitalization does not matter. Any other answer cancels.
+A deleted character cannot be recovered. An online character cannot be
+deleted while it is still in play.
 	See also:stats ,classes ,races ,reimbursement
 
 #0
@@ -6723,7 +6730,7 @@ deal with the simple reality of direction is lost.
 Demonic Rider
 Demonic Rider - Last Edited: 2026-10-18
 ============================================================
-Demonic Rider is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Demonic Rider is an Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -7472,7 +7479,7 @@ Doom Blade - Last Edited: 2014-07-26 01:08:54 by ashyel
 * Area of effect: <caster>
 * Aggressive:     No
 * Cumulative:     No
-* Duration:       Permanent
+* Duration:       Until you leave the game
 * Type of spell:  Summoning
 Doomblade conjures a death sickle for the use of the
 Reaper, an extremely powerful and potent weapon that
@@ -9810,6 +9817,12 @@ On Duris, artifacts, uniques, and iouns are in need of "feeding", which can be d
 Artifacts come with an initial timer which can be supplemented by epic zoning or fragging enemies.  If you fail to feed, your artifact will be removed and placed back into the game where it loads when the timer counts down.
 See also:  artifact ,unique ,ioun
 
+You may hold one major artifact, one unique and one ioun at a time. If you
+hold two or more of any one type, the periodic artifact check makes all
+artifacts you wear or carry fall to the ground, including other types.
+Inventory counts as well as equipment, and even a brief overlap can trigger
+the check. The forced drop causes no damage or loss of remaining feeding time.
+
 #0
 
 Feign death
@@ -10145,7 +10158,7 @@ Flame Blade - Last Edited: 2017-09-17 05:14:30 by lohrr
 * Area of effect: <caster>
 * Aggressive:     No
 * Cumulative:     No
-* Duration:       Forever
+* Duration:       Until you leave the game
 * Type of spell:  Summoning
 This spell summons a blade of pure flame to appear for the Druid to wield.  The statistics on the blade increase based on the level of the caster at the time of casting, including a possible proc at higher levels.
 
@@ -10821,7 +10834,7 @@ chills them to the bone.
 Frost Magus
 Frost Magus - Last Edited: 2026-10-18
 ============================================================
-Frost Magus is a Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Frost Magus is an Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -11078,6 +11091,12 @@ If you wished to get the second box, you would type:
 If you wish to get all of a single type of item:
         "get all.box"
        See also:drop ,put
+
+Join full object keywords with hyphens: "get fire-sword" matches an object
+with both fire and sword keywords. "get 2.fire-sword" picks the second match,
+and "get all.fire-sword" takes all matching objects. Existing keywords such
+as two-handed still work. Use full keywords in each combined part; leading,
+trailing or doubled hyphens do not form a combination.
 
 #0
 
@@ -14897,6 +14916,12 @@ is alike, and they all bestow different powers.
 For a list of iouns, type "arti ioun".
 	See also:artifact ,unique ,feeding
 
+You may hold one major artifact, one unique and one ioun at a time. If you
+hold two or more of any one type, the periodic artifact check makes all
+artifacts you wear or carry fall to the ground, including other types.
+Inventory counts as well as equipment, and even a brief overlap can trigger
+the check. The forced drop causes no damage or loss of remaining feeding time.
+
 #0
 
 Jade Empire
@@ -15758,8 +15783,9 @@ for the protection of these lockers -any illegal entry or attempts at
 subterfuge will be punished.
 Anything you drop in a locker room will be stored and saved as if you were
 carrying it on your person and rented. This means items that are transient
-will crumble and items flagged no rent will disappear. Anyone who is on
-your grant list will be able to access your locker as well. Please see
+will crumble, and items flagged no rent can't be stored and are handed back
+to you. Anyone who is on your grant list will be able to access your locker
+as well. Please see
 "help grant" for information on giving others access to your locker!
 To help with sorting and finding eq stored in a locker the command "equip
 sort" can be used. Typing that while in the locker will show a long list
@@ -16056,7 +16082,7 @@ chart.
 Magician
 Magician - Last Edited: 2026-10-18
 ============================================================
-Magician is a Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Magician is an Illusionist specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -21897,6 +21923,7 @@ Syntax:         rent
 This command is for use in a reception or inn, which appear throughout the
 world. "Rent" will store your items and make you leave the game. The next
 time you enter the game, you'll start out at the inn where you rented.
+Items flagged no rent can't be stored and fall to the floor when you leave.
 Warning: Players who have been recently attacked by another player may
 have to wait a few minutes before being allowed to rent at an inn.
 
@@ -27811,7 +27838,7 @@ Requirements are registration values, not automatic learning or preparation. Bas
 Violator
 Violator - Last Edited: 2026-10-18
 ============================================================
-Violator is a Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Violator is an Anti-Paladin specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 
@@ -28463,7 +28490,7 @@ Requirements are registration values, not automatic learning or preparation. Bas
 Tempest Magus
 Tempest Magus - Last Edited: 2026-10-18
 ============================================================
-Tempest Magus is a Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
+Tempest Magus is an Ethermancer specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 
 ==Allowed races==
 

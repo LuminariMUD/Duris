@@ -15,7 +15,7 @@ import tempfile
 import time
 import uuid
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 import run_weapon_actions_journey as weapon
 from run_item_pilot_journey import Server, set_properties, configure, object_records
 from run_world_quest_dual_backend import prepare_mariadb
@@ -92,8 +92,6 @@ def run(binary, backend):
         root = Path(temporary) / "runtime"
         state = Path(temporary) / "state"
         root.mkdir(); state.mkdir(mode=0o700); (state / "domains").mkdir(mode=0o700)
-        if backend == "flatfile":
-            subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
         configure(root, "studio", False)
         set_properties(root, {"hitpoints.class.Monk": 5000, "hitpoints.class.Warrior": 5000})
         objects = root / "areas_mini/mini.obj"
@@ -133,10 +131,7 @@ def run(binary, backend):
             command(client, "wear gloves")
             command(client, "save"); command(client, "quit", 1)
             server.stop()
-            if backend == "flatfile":
-                journey.make_overlord(state, journey.CHARACTER)
-            else:
-                sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='Taverek'")
+            sql("UPDATE player_data SET level=62,highest_level=62 WHERE name='Taverek'")
             server.start()
             client = server.client = journey.reconnect_character(server.port, expected_room="The Regression Refuge")
             inspection = command(client, "stat obj gloves", 1)
@@ -198,10 +193,6 @@ def run(binary, backend):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--flatfile", type=Path)
-    parser.add_argument("--mariadb", type=Path)
+    parser.add_argument("--mariadb", type=Path, required=True)
     args = parser.parse_args()
-    assert args.flatfile or args.mariadb
-    results = [run(binary.resolve(), backend) for backend, binary in
-               (("flatfile", args.flatfile), ("mariadb", args.mariadb)) if binary]
-    print(json.dumps(results, indent=2))
+    print(json.dumps([run(args.mariadb.resolve(), "mariadb")], indent=2))

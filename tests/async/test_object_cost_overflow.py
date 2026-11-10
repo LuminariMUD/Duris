@@ -14,6 +14,7 @@ from _paths import ROOT, extract_function
 HARNESS = r'''
 #include "core/structs.h"
 #include "core/utils.h"
+#include "item/item_value.h"
 #include "item/objmisc.h"
 #include <cassert>
 #include <cstdio>

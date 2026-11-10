@@ -44,6 +44,7 @@ time_info_data time_info{};
 Skill skills[MAX_SKILLS];
 float combat_by_race[LAST_RACE + 1][3];
 float combat_by_class[CLASS_COUNT + 1][2];
+int damroll_cap;
 static int attacks;
 int GET_CLASS(P_char ch, unsigned int cls) { return (ch->player.m_class & cls) != 0; }
 bool affected_by_spell(P_char, int) { return false; }

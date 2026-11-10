@@ -79,7 +79,8 @@ extern struct race_names race_names_table[];
 extern float racial_exp_mods[LAST_RACE + 1];
 extern float racial_exp_mod_victims[LAST_RACE + 1];
 
-long new_exp_table[TOTALLVLS];
+// One spare zero entry: award caps read the next level, including for MAXLVL.
+long new_exp_table[TOTALLVLS + 1];
 long global_exp_limit;
 float exp_mods[EXPMOD_MAX + 1];
 
@@ -932,6 +933,11 @@ static void lose_level_impl(P_char ch, std::uint64_t threshold_xp,
 		ch->points.base_hit = MAX(1, (ch->points.base_hit - 3));
 		ch->points.base_mana = MAX(0, (ch->points.base_mana - 3));
 	}
+	else
+	{
+		// Undo advance_level_impl's flat +1 so re-earning a level cannot add HP.
+		ch->points.base_hit = MAX(1, ch->points.base_hit - 1);
+	}
 
 	const int previous_level = GET_LEVEL(ch);
 	ch->player.level = MAX(1, ch->player.level - 1);
@@ -1432,7 +1438,7 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 					gain_exp_amount<double>(tank, victim, tank_share,
 								EXP_TANKING, true);
 				else
-					gain_exp(tank, victim, XP, EXP_TANKING);
+					gain_exp(tank, victim, experience_integer(XP), EXP_TANKING);
 			}
 		}
 

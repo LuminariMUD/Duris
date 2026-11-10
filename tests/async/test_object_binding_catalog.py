@@ -44,6 +44,15 @@ static void prepare(bool omit_thirty = false)
     for (auto &entry : indexes) { entry.number = 7; entry.limit = 99; }
 }
 
+static obj_proc_type final_binding(std::span<const object_proc_binding> bindings, int vnum)
+{
+    obj_proc_type result = nullptr;
+    for (const auto &entry : bindings)
+        if (entry.vnum == vnum)
+            result = entry.proc;
+    return result;
+}
+
 int main()
 {
     using stage = object_proc_binding_stage;
@@ -53,6 +62,15 @@ int main()
     assert(objects.front().vnum == 500055 && rooms.back().vnum == 55434);
     assert(!std::strcmp(objects.front().name, "tharnrifts_portal"));
     assert(!std::strcmp(rooms.back().name, "blackjack_table"));
+    assert(final_binding(objects, 73) == huntsman_ward);
+    assert(final_binding(objects, 67262) == mace_of_sea);
+    assert(final_binding(objects, 67237) == serpent_blade);
+    assert(final_binding(objects, 67242) == lich_spine);
+    assert(final_binding(objects, 67276) == sword_whirlwinds);
+    assert(final_binding(objects, 36884) == kvasir_dagger);
+    assert(final_binding(objects, 22962) == hammer_titans);
+    assert(final_binding(objects, 32862) == aboleth_pendant);
+    assert(final_binding(objects, 3833) == glades_dagger);
     assert(lookups.empty()); // Inspecting metadata does not touch even the object index.
     assign_object_proc_bindings(stage::objects); // An empty offline catalog is valid.
     assert(lookups.empty());

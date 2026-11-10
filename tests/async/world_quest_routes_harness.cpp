@@ -7,9 +7,9 @@
 #include <iostream>
 
 P_room world = nullptr;
-zone_data zones[10]{};
+zone_data zones[14]{};
 zone_data *zone_table = zones;
-int top_of_world = 0, top_of_zone_table = 9;
+int top_of_world = 0, top_of_zone_table = 13;
 std::vector<room_data> rooms;
 std::deque<room_direction_data> exits;
 
@@ -28,8 +28,11 @@ void fixture(size_t count = 14)
 	exits.clear();
 	world = rooms.data();
 	top_of_world = static_cast<int>(count) - 1;
-	for (auto &zone : zones)
-		zone = {};
+	for (int zone = 0; zone <= top_of_zone_table; ++zone)
+	{
+		zones[zone] = {};
+		zones[zone].number = zone + 1;
+	}
 	for (int room = 0; room <= top_of_world; ++room)
 	{
 		world[room].number = 500100 + room;
@@ -82,6 +85,38 @@ void verify()
 	assert(!quest_local_match(NOWHERE, 6));
 }
 
+void verify_pragtog_staff_shortcuts()
+{
+	fixture(20);
+	const int numbers[] = { 10649, 10700, 17087, 32, 34, 35 };
+	const int zone_ids[] = { 10, 11, 12, 13, 13, 13 };
+	for (int index = 0; index < 6; ++index)
+	{
+		world[14 + index].number = numbers[index];
+		world[14 + index].zone = zone_ids[index];
+	}
+	zones[10].number = 106; // Pragtog's Domain.
+	zones[11].number = 107; // Black Tunnels.
+	zones[12].number = 170; // Khildarak.
+	zones[13].number = 0; // Heavens, at a nonzero real zone index.
+	edge(14, DIR_NORTH, 15);
+	edge(15, DIR_NORTH, 16);
+	edge(14, DIR_DOWN, 4); // Pragtog has an ordinary Underdark entrance.
+	edge(17, DIR_SOUTH, 16); // Staff shortcut into Khildarak, incoming only.
+	edge(18, DIR_NORTH, 8); // A disconnected Heavens room points to GC.
+	edge(8, DIR_SOUTH, 18);
+	edge(19, DIR_DOWN, 9); // Staff shortcuts cannot convey Underdark either.
+	edge(9, DIR_UP, 19);
+	verify();
+	const auto pragtog = quest_region_for_room(14);
+	assert(pragtog.surface == 0 && !pragtog.uncertain);
+	assert(pragtog.underdark == quest_region_for_room(4).underdark);
+	assert(!quest_local_match(10, 14)); // GC cannot inherit Pragtog through Heavens.
+	assert(quest_local_match(0, 14) && quest_local_match(1, 14));
+	const auto heavens = quest_region_for_room(17);
+	assert(heavens.surface == 0 && heavens.underdark == 0 && !heavens.uncertain);
+}
+
 int main()
 {
 	fixture();
@@ -95,7 +130,9 @@ int main()
 	assert(quest_local_match(0, 7) && !quest_local_match(0, 6));
 	fixture(65536 + 8); // No old route-size budget participates.
 	verify();
+	verify_pragtog_staff_shortcuts();
 	std::cout
 		<< "both local regions, nearest boundaries, one-way geography, disconnected rooms, "
-		   "remote rejection, ambiguity, non-mutation and large-world geography passed\n";
+		   "remote rejection, ambiguity, non-mutation, large-world geography and staff "
+		   "shortcut exclusion passed\n";
 }

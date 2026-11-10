@@ -7319,7 +7319,78 @@ void do_help(P_char ch, char *argument, int /*cmd*/)
 {
 	char *attribs;
 	// Catalog reads do not impose a character wait or a browsing cooldown.
-	send_to_char(wiki_help(string(argument)).c_str(), ch);
+	OutputLinks links;
+	string text = wiki_help(string(argument), &links);
+	string frozen_urls;
+	links = output_links_with_urls(text.c_str(), links, &frozen_urls);
+	if (!frozen_urls.empty())
+	{
+		links = rebase_output_links(text.c_str(), frozen_urls.c_str(), links);
+		text = std::move(frozen_urls);
+	}
+	OutputContext context;
+	context.links_prepared = true;
+	// Leave room for the worst ANSI/UTF-8 expansion of each visible character.
+	constexpr size_t chunk_limit = MAX_STRING_LENGTH / 32;
+	if (text.size() <= chunk_limit)
+	{
+		context.links = links;
+		send_to_char(text.c_str(), ch, context);
+	}
+	else
+	{
+		// Cached pages can exceed a queue block. Bound both markup and terminal
+		// expansion, preserving attributes and code points across every chunk.
+		std::vector<size_t> offsets;
+		AnsiString visible;
+		visible.set(text.c_str(), &offsets);
+		offsets.push_back(text.size());
+		for (size_t begin = 0; begin < visible.size();)
+		{
+			size_t end = std::min(visible.size(), begin + chunk_limit);
+			// Dollar folding happens per output block. Keep an equal-attribute
+			// pair together (generic terminals remove attributes before folding).
+			if (end < visible.size() && visible.ch(end) == '$')
+			{
+				size_t run = end;
+				while (run > begin && visible.ch(run - 1) == '$' &&
+				       ((ch->desc && ch->desc->term_type == TERM_GENERIC) ||
+					visible.attr(run - 1) == visible.attr(end)))
+					--run;
+				if ((end - run) % 2)
+					--end;
+			}
+			AnsiString part;
+			part.assign(visible.begin() + begin, visible.begin() + end);
+			char markup[MAX_STRING_LENGTH];
+			part.ansi(markup);
+			std::vector<size_t> part_offsets;
+			AnsiString serialized;
+			serialized.set(markup, &part_offsets);
+			part_offsets.push_back(strlen(markup));
+			OutputLinks chunk_links;
+			for (const auto &link : links)
+			{
+				const size_t first = std::max(
+					begin, static_cast<size_t>(std::lower_bound(offsets.begin(),
+										    offsets.end(),
+										    link.begin) -
+								   offsets.begin()));
+				const size_t last = std::min(
+					end, static_cast<size_t>(std::lower_bound(offsets.begin(),
+										  offsets.end(),
+										  link.end) -
+								 offsets.begin()));
+				if (first < last)
+					chunk_links.push_back({ part_offsets[first - begin],
+								part_offsets[last - begin],
+								link.kind, link.target });
+			}
+			context.links = chunk_links;
+			send_to_char(markup, ch, context);
+			begin = end;
+		}
+	}
 	send_to_char("\n", ch);
 
 	attribs = attrib_help(argument);

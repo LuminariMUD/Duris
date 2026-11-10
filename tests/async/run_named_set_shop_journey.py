@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
-"""Native mortal sale, shop reboot, repurchase and set recovery on retained flat-file state."""
+"""Native mortal sale, shop reboot, repurchase and set recovery on the shared disposable MariaDB authority."""
 
 import json
-import subprocess
 import time
 
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from named_set_gameplay import NamedSetGame, expect_max_hp, save, score, selector
-from run_shop_reboot_stock_journey import build_inspector
 
 ACCOUNT, CHARACTER, PID = "Namedguest", "Meranen", 2
 ROOM, KEEPER = 132500, 132617
 game = NamedSetGame()
-inspector = build_inspector()
 source = json.loads((game.runtime / "named-transfer-setup.json").read_text())
 originals = source["uids"]
 uid = originals[0]
@@ -22,9 +19,14 @@ actor = None
 
 
 def stock():
-    rows = subprocess.check_output(
-        [str(inspector), str(game.state), str(ROOM), str(KEEPER), "named"], text=True
-    )
+    rows = game.sql(
+        "SELECT i.obj_uid,i.vnum,COALESCE(parent.obj_uid,0),i.equip_slot,i.cost,"
+        "COALESCE(e.description,'-') FROM shopkeeper_items i "
+        "JOIN shopkeepers s ON s.id=i.shopkeeper_id "
+        "LEFT JOIN shopkeeper_items parent ON parent.id=i.container_id "
+        "LEFT JOIN shopkeeper_item_extra_descr e ON e.item_id=i.id "
+        "AND e.keyword='DURIS_NAMED_SET_ORIGIN_V1' WHERE s.room_vnum=" + str(ROOM) +
+        " AND s.mob_vnum=" + str(KEEPER) + " ORDER BY i.obj_uid")
     return {int(fields[0]): [int(value) for value in fields[1:5]] + [fields[5]]
             for line in rows.splitlines() if (fields := line.split("\t"))}
 
@@ -48,9 +50,15 @@ def command(text, expected=None):
 
 try:
     if uid not in stock():
-        journey.make_overlord(game.state, CHARACTER)
+        game.make_overlord()
+        game.make_overlord(CHARACTER)
         actor = game.boot("named-shop-prepare", account=ACCOUNT, character=CHARACTER)
         command("vis 0")
+        # Edit/clone deliberately leaves a mixed outfit. Establish this sale's
+        # original three-piece baseline through normal equipment commands.
+        command("remove all")
+        for piece in originals:
+            command("wear " + selector(actor, piece))
         save(actor, CHARACTER)
         if not setup:
             setup["slots"] = {row[0]: row[2] for row in game.items(PID) if int(row[0]) in originals}

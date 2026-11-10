@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Release walkthrough using a disposable world, two accounts and real TCP clients.
 
-Run on Linux after building the flatfile server and the player repository inspector.
+Run on Linux with a MariaDB server through tests/async/with_disposable_mariadb.sh.
 No environment file or existing account/state directory is read. The optional JSON
 report contains only synthetic command results and rendered room frames.
 """
@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 import re
 import signal
@@ -22,9 +21,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests/async"))
-from test_flatfile_combat_journey import (  # noqa: E402
+from test_mariadb_combat_journey import (  # noqa: E402
     ANSI, MudClient, PASSWORD, available_ports, create_character,
-    generate_certificate, make_fixture, require,
+    generate_certificate, make_fixture, mariadb_authority, require,
 )
 
 
@@ -117,18 +116,16 @@ def foregrounds(raw: bytes, word: str) -> list[int]:
     return colors[start:start + len(word)]
 
 
-def run(server: Path, inspector: Path, report_path: Path | None) -> None:
+def run(server: Path, report_path: Path | None) -> None:
     checks: list[dict] = []
     frames: list[dict] = []
     clients: list[ColorClient] = []
     accounts = (("Journeyacct", "Taverek"), ("Coloracct", "Colorbob"))
-    with tempfile.TemporaryDirectory(prefix="duris-colorization-") as temporary:
+    with mariadb_authority() as (env, sql), \
+            tempfile.TemporaryDirectory(prefix="duris-colorization-") as temporary:
         root = Path(temporary)
-        state, runtime = root / "state", root / "run"
-        state.mkdir(mode=0o700)
-        (state / "domains").mkdir(mode=0o700)
+        runtime = root / "run"
         runtime.mkdir()
-        subprocess.run([str(inspector), str(state), "seed-combat"], check=True)
         make_fixture(runtime)
         generate_certificate(runtime)
         zone = runtime / "areas_mini/mini.zon"
@@ -149,15 +146,11 @@ def run(server: Path, inspector: Path, report_path: Path | None) -> None:
         for name in ("players", "critical"):
             (runtime / "journals" / name).mkdir(parents=True, mode=0o700)
         port, tls, web = available_ports()
-        env = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "ENVIRONMENT": "local",
-            "PERSISTENCE_MODE": "flatfile-primary", "FLATFILE_STATE_DIR": str(state),
-            "CRITICAL_COMMAND_JOURNAL_DIR": str(runtime / "journals/critical"),
-            "LISTEN_ADDRESS": "127.0.0.1", "DURIS_TLS_PORT": str(tls),
-            "DURIS_WEBSOCKET_LISTEN_ADDRESS": "127.0.0.1", "DURIS_WEBSOCKET_PORT": str(web),
-            "REDIS": "FALSE", "CHAOS_MUD": "FALSE",
-            "DURIS_OUTPUT_PROFILES_FILE": str(ROOT / "docs/examples/scenery-profiles-v1.json"),
-        }
+        env.update(
+            CRITICAL_COMMAND_JOURNAL_DIR=str(runtime / "journals/critical"),
+            DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(web),
+            DURIS_OUTPUT_PROFILES_FILE=str(ROOT / "docs/examples/scenery-profiles-v1.json"),
+        )
         with (runtime / "server.out").open("w") as log:
             process = subprocess.Popen(
                 [str(server), "--minimal", "-s", "-d", str(runtime), str(port)],
@@ -370,7 +363,6 @@ def run(server: Path, inspector: Path, report_path: Path | None) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", type=Path, default=ROOT / "bin/server/dms_new")
-    parser.add_argument("--inspector", type=Path, default=ROOT / "bin/tests/color-inspector")
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
-    run(args.server.resolve(), args.inspector.resolve(), args.report)
+    run(args.server.resolve(), args.report)
