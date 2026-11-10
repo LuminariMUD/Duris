@@ -1067,12 +1067,13 @@ P_index generate_indices(FILE *fl, int *top)
 				t_idx[i].number = 0;
 				t_idx[i].func.mob = NULL;
 				t_idx[i].qst_func = NULL;
-				t_idx[i].keys = NULL;
 				t_idx[i].desc1 = NULL;
 				// Both formats start with keywords followed by the short description.
 				// Keep the record position for ordinary loading, and share this text
 				// through the existing index ownership/cleanup path.
-				skip_fread(fl);
+				t_idx[i].keys = fread_string(fl);
+				if (t_idx[i].keys)
+					strToLower(t_idx[i].keys);
 				t_idx[i].desc2 = fread_string(fl);
 				t_idx[i].desc3 = NULL;
 				if (i && (t_idx[i - 1].virtual_number >= t_idx[i].virtual_number))
