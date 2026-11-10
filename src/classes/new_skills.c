@@ -2674,7 +2674,6 @@ void event_summon_book(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*dat
 	snprintf(namebuf, 512, "a &+Wsp&+wel&+Wlb&+woo&+Wk&n &+Lbearing the insignia of&n %s",
 		 ch->player.name);
 	book->short_description = str_dup(namebuf);
-	book->extra_flags |= ITEM_NORENT;
 	book->bitvector = 0;
 
 	submit_summoned_replacement(ch, book, summoned_replacement_kind::book);
@@ -2724,7 +2723,6 @@ void event_summon_totem(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 	totem->name = str_dup(namebuf);
 	snprintf(namebuf, 512, "a &+wspirit &+ytotem&n of&n &+G%s&n", ch->player.name);
 	totem->short_description = str_dup(namebuf);
-	totem->extra_flags |= ITEM_NORENT;
 	totem->bitvector = 0;
 	/* okay, lets give the totem stats, based on the level of the lil baby goblin */
 	if (GET_LEVEL(ch) >= 56)
