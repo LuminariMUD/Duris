@@ -264,9 +264,9 @@ def run(binary):
                 assert count == "1", "starter dagger was lost or granted twice: " + count
                 assert "steel dagger" in command(ether, "equipment") + command(ether, "inventory")
                 passed("I26/I11: restart restores 100-line paging and exactly one Ethermancer starter dagger")
-                text = command(rogue, f"give {ROGUE} {ETHER}")
-                assert "Ok." in text, text
-                assert "mixed by " + ROGUE in command(ether, "inventory")
+                command(rogue, f"drop {ROGUE}")
+                assert "mixed by " + ROGUE in command(rogue, "look")
+                assert "mixed by " + ROGUE not in command(rogue, "inventory")
                 passed("Crafting: maker keywords survive a MariaDB save and server restart")
                 stop()
             except BaseException:
