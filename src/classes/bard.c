@@ -1680,6 +1680,7 @@ void bard_shadow_piper(int /*level*/, P_char ch, P_char victim, int song)
 	{
 	};
 	af.type = song;
+	af.duration = -1; // The song link owns the lifetime.
 	af.bitvector = AFF_SNEAK;
 	linked_affect_to_char(victim, &af, ch, LNK_SONG);
 	send_to_char("You follow the shadow piper's tune with silent steps.\r\n", victim);

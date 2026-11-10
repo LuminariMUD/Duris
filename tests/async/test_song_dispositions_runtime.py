@@ -2,7 +2,7 @@
 """Run Heroism's production handler, affect links and stop/movement cleanup."""
 import re
 import subprocess
-from _paths import ROOT, HARNESS_STUBS, extract_function
+from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
 prelude = r'''
 #include "core/prototypes.h"
@@ -14,6 +14,8 @@ prelude = r'''
 #include "abilities/abilities.h"
 #include "net/comm.h"
 #include "world/events.h"
+#include "world/falling.h"
+#include "classes/disguise.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -22,6 +24,18 @@ prelude = r'''
 #include <vector>
 static room_data rooms[2]{};
 P_room world = rooms;
+int IS_MORPH(P_char) { return false; }
+int GET_PRIME_CLASS(P_char ch, uint cls) { return bool(ch->player.m_class & cls); }
+int GET_SECONDARY_CLASS(P_char ch, uint cls) { return bool(ch->player.secondary_class & cls); }
+P_char character_list;
+const racial_data_type racial_data[LAST_RACE + 1]{};
+time_info_data age(P_char) { return {}; }
+unsigned int char_slice(P_char, unsigned int) { return 0; }
+void StartRegen(P_char, regen_resource) {}
+void remove_disguise(P_char, bool) { assert(false); }
+P_char un_morph(P_char) { assert(false); return nullptr; }
+bool char_falling(P_char) { return false; }
+falling_start_result falling_start(P_char) { assert(false); return falling_start_result::not_applicable; }
 static mm_ds aff_pool{}, link_pool{};
 mm_ds *dead_affect_pool = &aff_pool, *dead_link_pool = &link_pool;
 link_description link_types[LNK_MAX + 1]{};
@@ -91,6 +105,7 @@ void set_short_affected_by(P_char, int, int) {}
 void do_action(P_char, char *, int) {}
 
 '''
+prelude += re.search(r"^#define AFFECT_UPDATE_SLICES .*", source("affects.c").read_text(), re.M).group() + "\n"
 functions = [("affects.c", s) for s in (
     "bool affected_by_spell(", "struct affected_type *affect_to_char(",
     "void affect_remove(", "void affect_from_char(", "void define_link(",
@@ -98,7 +113,7 @@ functions = [("affects.c", s) for s in (
     "P_char get_linking_char(", "void dispose_link(", "void internal_unlink_char(",
     "void unlink_char(", "void unlink_char_affect(P_char ch, struct affected_type *af)",
     "void clear_links(P_char ch, ush_int type)", "void check_room_links(",
-    "void linked_affect_to_char(",
+    "void linked_affect_to_char(", "void affect_update(",
 )] + [("bard.c", s) for s in (
     "void stop_singing(", "static int song_stop_rest(",
     "static int song_start_failure_rest(", "void do_play(",
@@ -129,8 +144,18 @@ static std::map<int,int> bonuses(P_char ch) {
     assert(out.size() == 4);
     return out;
 }
+static void elapsed_ticks(P_char ch) {
+    character_list = ch;
+    for (int tick = 0; tick < 5; ++tick) affect_update(0);
+    character_list = nullptr;
+}
 int main() {
     REGISTER
+    char_data timed{};
+    affected_type expiring{}; expiring.type = SKILL_RIFF; expiring.duration = 1;
+    affect_to_char(&timed, &expiring);
+    elapsed_ticks(&timed);
+    assert(!timed.affected); // control: ordinary timed affects still expire
     static_assert(POISON_LIFELEAK == 1536 && POISON_MADNESS == 1542, "saved poison IDs must stay stable");
     define_link(LNK_SNG_HEALING, "healing", nullptr, LNKFLG_AFFECT | LNKFLG_ROOM);
     for (int level : {20,21,40,55,56}) for (int spec : {0,SPEC_SCOUNDREL,SPEC_MINSTREL})
@@ -207,6 +232,9 @@ int main() {
             assert(affected_by_spell(&follower, SONG_SHADOW_PIPER) == eligible);
             if (eligible) {
                 assert(IS_AFFECTED(&follower, AFF_SNEAK));
+                assert(follower.affected->duration == -1);
+                elapsed_ticks(&follower);
+                assert(follower.affected && IS_AFFECTED(&follower, AFF_SNEAK));
                 bard_shadow_piper(56, &bard, &follower, SONG_SHADOW_PIPER);
                 assert(!follower.affected->next); // no repeated-verse stacking
                 follower.in_room = 1;
