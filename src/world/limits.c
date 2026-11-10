@@ -79,7 +79,8 @@ extern struct race_names race_names_table[];
 extern float racial_exp_mods[LAST_RACE + 1];
 extern float racial_exp_mod_victims[LAST_RACE + 1];
 
-long new_exp_table[TOTALLVLS];
+// One spare zero entry: award caps read the next level, including for MAXLVL.
+long new_exp_table[TOTALLVLS + 1];
 long global_exp_limit;
 float exp_mods[EXPMOD_MAX + 1];
 
@@ -1437,7 +1438,7 @@ template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, 
 					gain_exp_amount<double>(tank, victim, tank_share,
 								EXP_TANKING, true);
 				else
-					gain_exp(tank, victim, XP, EXP_TANKING);
+					gain_exp(tank, victim, experience_integer(XP), EXP_TANKING);
 			}
 		}
 
