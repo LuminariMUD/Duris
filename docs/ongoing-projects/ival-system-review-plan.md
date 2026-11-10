@@ -45,7 +45,7 @@ Matching remote checkout on `duris-staging`:
 `/home/staging/duris-worktrees/ival-system-improvements`.
 Both checkouts use the tracked plan at
 `docs/ongoing-projects/ival-system-review-plan.md`. The remote checkout tracks
-`origin/branch/ival-zero-modifiers`; its initial synchronized commit was
+`origin/branch/ival-duplicate-applies`; its initial synchronized commit was
 `c9822bbd3` on the constructor-repair branch. Only committed work is synchronized.
 These are development worktrees;
 creating them does not deploy or change the running server.
@@ -63,7 +63,8 @@ it. The metadata/report work is published as #930; the circle repair is #935 on
 `branch/ival-circle-extents`; #946 repairs packed averaging on
 `branch/ival-packed-proc-mean`; #956 supplies canonical apply composition on
 `branch/ival-apply-composition`; #959 makes zero modifiers neutral on
-`branch/ival-zero-modifiers`. Branch/base
+`branch/ival-zero-modifiers`; #960 qualifies duplicate apply totals on
+`branch/ival-duplicate-applies`. Branch/base
 descriptions below record the
 original delivery order. The worktree incorporates reviewed master `341bd84ee`
 through non-rewriting merge `0f61c60f7`; no production deployment was performed by
@@ -876,12 +877,91 @@ python3 tests/async/test_item_value_template_runtime.py --numeric-baseline bf457
 **Ablation:** skip zero after initializing its local neutral factor. No new
 abstraction, policy switch, or persistence rewrite is required.
 
+### Chunk 13 — value equivalent duplicate applies once (F04, implemented)
+
+Branch: `branch/ival-duplicate-applies`, based on `branch/ival-zero-modifiers`.
+Published: commit `3e88c32f8`, [PR #960](https://github.com/LuminariMUD/Duris/pull/960)
+(bug label), stacked on #959. Ready for review; local and dedicated remote
+worktrees carry the committed implementation/evidence.
+
+**Outcome:** sum additive modifiers per exact apply kind in a widened local total
+before its nonlinear curve and multiplier. Cancellation is neutral; max-stat and
+current-stat kinds remain distinct because max-stat applies affect both live
+fields. For racial overrides, select the greatest valid resolved stat credit per
+kind, matching `affect_modify()`'s greatest-factor selection. Preserve existing
+conservative credits for invalid nonzero race IDs pending F08's invalid-input
+policy. Leave every stored slot and engine context untouched.
+
+**Non-goals:** coefficients, omitted input weights, enhancement slot selection/caps,
+proc routing, invalid-input admission, or deployment.
+
+**Files:** shared numeric evaluator/revision, existing characterization and
+enhancement fixtures, native corpus/evidence report and this handoff.
+
+**Proof:** split/merge and cancellation across priced additive kinds, totals over
+127, racial dominance/ties/invalid IDs, distinct max/current kinds, permutations
+and unchanged bytes. Qualify native before/after scores and consumer thresholds;
+exercise actual essence/superior command slot behavior and persistence codecs.
+
+**Measured effects:** native comparison against `37f172a3fb` covered 19,334
+effective templates and 8,720 actual generated samples. Twenty-three templates
+change (19 increases, four decreases; −34..+10,417), as do 90 generated samples
+(56 increases, 34 decreases; −83..+85). Every changed row has duplicate nonzero
+apply kinds; no measured nonduplicate row changes. The highest increase is the
+already non-admitted #921, 10,476→20,893 (HIT_REG +125/+125). Evidence is retained
+in [`ival-evidence/f04-duplicates/`](ival-evidence/f04-duplicates/).
+
+Important authored thresholds: #7357 70→174 leaves recipe admission; it and
+#83164 93→129 leave the enhancement result ceiling 99 and cross Salvage's
+100,000 recipe-roll rule. #7357, #83164 and #131621 112→150 leave the regular
+faerie-bag ceiling 125; #8727 42→58 crosses its high-value floor 50. The raw
+#135132 19→25 crossing is outside bag VNUM admission; its eligible replacement
+fee increases 1,000→10,000 copper. Two salvage-quality-10 and one quality-20
+crossings occur. Ten before/after recipe plans change; the conditional one-craft
+projection is +42 high/+14 low units and +224,000 nominal base XP, including the
+recipe that becomes unavailable. Nine craft and enhancement source minimum
+levels change; otherwise-eligible mortal source superior fees total +22,400
+copper. Ten index buckets change; quest floors gain 24/lose 10 and 608 cached
+zone-level rows change across 12 zones (34 with source-count changes). Generated
+random VNUMs remain excluded by native economic and bag admission; their changed
+raw scores do not imply reachable enhancement, recipe, salvage or bag effects.
+
+**Validation:** 38,400 split/merge/cancellation/widened-total cases pass in both
+isolated server/editor builds, plus valid/invalid racial dominance and distinct
+max/current cases. The existing 10,080 permutations and 3,072 zero-insertion
+cases pass with unchanged inputs. Full server and both maintained editor builds,
+enhancement runtime (including essence slot/cap cases), report I/O, monk tools,
+pool filters, quest policy, snapshot codec and SQL item-field checks pass. A
+duplicate STR +2/+2 source now scores 13 instead of 12: the real superior command
+rejects it at level 4 without mutations, then upgrades both existing slots at a
+valid level and debits the corrected nominal fee/materials. F08 overflow probes
+remain expected failures; complete MariaDB journeys remain F16.
+
+Native constructor/template, primary/minimal/no-special CLI parity/provenance,
+and missing-context failure checks pass. Formula identity: `ival-v6-apply-totals`.
+
+Reproduce after building:
+
+```text
+python3 tests/async/test_item_value_template_runtime.py --numeric-baseline 37f172a3fb --delta-output docs/ongoing-projects/ival-evidence/f04-duplicates
+```
+
+**Ablation:** group the existing canonical local index order. No persistent
+normalization, public API, configuration switch or new valuation layer is needed.
+
+**Continuation:** F01–F04 arithmetic repairs are now published. Next address F08
+numeric/input/config/consumer bounds, beginning with the two pinned sanitizer
+failures. Record native world maxima before selecting practical content limits.
+F05/F09 coverage/proc policy, F10 config truthfulness, remaining F11–F15 consumer
+work and real MariaDB journeys in F16 remain required. Use focused branches/PRs;
+do not treat these formula slices as project completion or deploy them here.
+
 ## Main conclusions
 
 1. **Finish the calculation invariants.** F01's omitted class/specialization
    entries and F02's premature packed-proc rounding are repaired. F03 now composes
-   stored apply permutations canonically and zero modifiers are neutral. Duplicate
-   semantics remain F04.
+   stored apply permutations canonically. Zero modifiers are neutral and equivalent
+   duplicate applies now share a value. Numeric bounds remain F08.
 2. **Keep tools truthful.** The editor now uses shared arithmetic with explicit
    context estimates, and the offline material report has normalized context and
    native corpus qualification. Enhancement configuration/enforcement still needs
@@ -1121,6 +1201,9 @@ max-stat/current-stat interaction before generalizing aggregation.
 **Acceptance:** zero-insertion invariance; additive split/merge invariance;
 duplicate totals above 127; cancellation; distinct applies; essence and superior
 enhancement still modify their intended slots and respect their own caps.
+
+Implemented and qualified in Chunks 12–13. Stored slots remain untouched; invalid
+nonzero racial IDs retain their previous conservative credits pending F08.
 
 ### F05 — P2: inventory omitted mechanical inputs before choosing weights
 
@@ -1529,10 +1612,10 @@ partial deliveries and their verification are recorded in the implementation log
 
 - [x] Correct minimum-circle bounds and packed averaging (F01/F02).
   Implemented and qualified in Chunks 9/#935 and 10/#946.
-- [ ] Make zero modifiers neutral and multiplier composition order independent
+- [x] Make zero modifiers neutral and multiplier composition order independent
   (F03/F04); address duplicate semantics in its own slice if the delta is broad.
   F03 is implemented and qualified in Chunk 11/#956. Chunk 12 implements neutral
-  zeros; F04 duplicate semantics remain pending.
+  zeros; Chunk 13 qualifies additive totals and racial duplicate semantics.
 - [ ] Add finite/overflow checks at evaluator, config, and consumer boundaries
   (F08/F14); never make invalid content economically cheap.
 - [ ] Reconcile executable proc routing and explicit utility policy (F09).

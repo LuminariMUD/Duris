@@ -1,0 +1,354 @@
+{
+  "template": {
+    "changed_scores": 23,
+    "score_delta_range": [
+      -34,
+      10417
+    ],
+    "salvage_quality_crossings": {
+      "5": 0,
+      "10": 2,
+      "15": 0,
+      "20": 1
+    },
+    "salvage_recipe_roll_100_crossings": 2,
+    "faerie_bag_crossings": {
+      "25": 0,
+      "50": 1,
+      "125": 3
+    },
+    "faerie_bag_high_value_log_crossings": 2,
+    "raw_score_25_50_125_crossings": {
+      "25": 1,
+      "50": 1,
+      "125": 3
+    },
+    "recipe_admission_changes": 1,
+    "craft_mortal_level_requirement_changes": 9,
+    "recipe_material_plan_changes": 10,
+    "recipe_high_units_delta_one_craft_each": 42,
+    "recipe_low_units_delta_one_craft_each": 14,
+    "nominal_recipe_xp_delta_one_craft_each": 224000,
+    "enhance_source_mortal_level_requirement_changes": 9,
+    "enhance_mortal_source_donor_floor_shifts": {
+      "2769": [
+        24,
+        27
+      ],
+      "7357": [
+        65,
+        169
+      ],
+      "8727": [
+        37,
+        53
+      ],
+      "11200": [
+        6,
+        3
+      ],
+      "37705": [
+        7,
+        5
+      ],
+      "82214": [
+        37,
+        39
+      ],
+      "83164": [
+        88,
+        124
+      ],
+      "92078": [
+        46,
+        70
+      ],
+      "131621": [
+        107,
+        145
+      ],
+      "135132": [
+        14,
+        20
+      ]
+    },
+    "replacement_fee_changes": 1,
+    "nominal_superior_cost_delta_mortal_sources_copper": 22400,
+    "enhancement_index_score_bucket_changes": 10,
+    "enhancement_result_cap_crossings": 2,
+    "quest_reward_floor_losses": 10,
+    "quest_reward_floor_gains": 24,
+    "changed_rows_with_unpriced_bank5": 0,
+    "changed_native_proc_credits": [
+      0,
+      185
+    ],
+    "changed_dense_callable_packed_rows": 9,
+    "changed_partially_callable_packed_ids": [],
+    "changed_single_apply_kind_ids": [
+      902,
+      921,
+      2769,
+      7357,
+      8727,
+      11200,
+      28155,
+      37705,
+      41317,
+      76699,
+      77738,
+      82214,
+      83164,
+      83524,
+      83525,
+      83526,
+      83533,
+      83534,
+      83582,
+      83583,
+      92078,
+      131621,
+      135132
+    ],
+    "changed_without_mixed_apply_stages_ids": [
+      902,
+      921,
+      2769,
+      7357,
+      8727,
+      11200,
+      28155,
+      37705,
+      41317,
+      76699,
+      77738,
+      82214,
+      83164,
+      83524,
+      83525,
+      83526,
+      83533,
+      83534,
+      83582,
+      83583,
+      92078,
+      131621,
+      135132
+    ]
+  },
+  "generated": {
+    "changed_scores": 90,
+    "score_delta_range": [
+      -83,
+      85
+    ],
+    "salvage_quality_crossings": {
+      "5": 0,
+      "10": 0,
+      "15": 0,
+      "20": 0
+    },
+    "salvage_recipe_roll_100_crossings": 0,
+    "faerie_bag_crossings": {
+      "25": 0,
+      "50": 0,
+      "125": 0
+    },
+    "faerie_bag_high_value_log_crossings": 0,
+    "raw_score_25_50_125_crossings": {
+      "25": 0,
+      "50": 1,
+      "125": 3
+    },
+    "recipe_admission_changes": 0,
+    "craft_mortal_level_requirement_changes": 0,
+    "recipe_material_plan_changes": 0,
+    "recipe_high_units_delta_one_craft_each": 0,
+    "recipe_low_units_delta_one_craft_each": 0,
+    "nominal_recipe_xp_delta_one_craft_each": 0,
+    "enhance_source_mortal_level_requirement_changes": 0,
+    "enhance_mortal_source_donor_floor_shifts": {},
+    "replacement_fee_changes": 0,
+    "nominal_superior_cost_delta_mortal_sources_copper": 0,
+    "enhancement_index_score_bucket_changes": 0,
+    "enhancement_result_cap_crossings": 0,
+    "quest_reward_floor_losses": 0,
+    "quest_reward_floor_gains": 0,
+    "changed_rows_with_unpriced_bank5": 7,
+    "changed_native_proc_credits": [
+      0
+    ],
+    "changed_dense_callable_packed_rows": 24,
+    "changed_partially_callable_packed_ids": [],
+    "changed_single_apply_kind_ids": [],
+    "changed_without_mixed_apply_stages_ids": [
+      295,
+      302,
+      314,
+      326,
+      411,
+      432,
+      846,
+      866,
+      950,
+      1061,
+      1085,
+      1401,
+      1412,
+      1509,
+      1608,
+      1952,
+      2063,
+      2064,
+      2071,
+      2170,
+      2501,
+      2582,
+      2608,
+      2611,
+      2613,
+      2720,
+      3036,
+      3042,
+      3145,
+      3237,
+      3263,
+      3270,
+      3571,
+      3578,
+      3583,
+      3693,
+      4234,
+      4241,
+      4243,
+      4248,
+      4348,
+      4763,
+      4764,
+      4777,
+      4876,
+      4885,
+      4900,
+      5441,
+      5746,
+      5750,
+      5751,
+      5765,
+      5960,
+      5961,
+      5969,
+      6313,
+      6319,
+      6322,
+      6423,
+      6517,
+      6528,
+      6832,
+      6867,
+      6942,
+      6976,
+      7063,
+      7065,
+      7397,
+      7486,
+      7506,
+      7511,
+      7515,
+      7596,
+      7623,
+      7923,
+      7938,
+      7939,
+      8064,
+      8594,
+      8596,
+      8605,
+      8608,
+      8609,
+      8610,
+      8705
+    ]
+  },
+  "quest_zone_reward_weight_ratios": {
+    "27": {
+      "changed_level_rows": 62,
+      "count_changes": 4,
+      "ratio_min": 1.0011261261261262,
+      "ratio_max": 1.0125244618395304
+    },
+    "73": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0543648719289074,
+      "ratio_max": 1.0638036809815952
+    },
+    "87": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0291970802919708,
+      "ratio_max": 1.037914691943128
+    },
+    "112": {
+      "changed_level_rows": 22,
+      "count_changes": 6,
+      "ratio_min": 0.0,
+      "ratio_max": 0.8235294117647058
+    },
+    "377": {
+      "changed_level_rows": 24,
+      "count_changes": 4,
+      "ratio_min": 0.984313725490196,
+      "ratio_max": 0.9977553310886644
+    },
+    "413": {
+      "changed_level_rows": 16,
+      "count_changes": 8,
+      "ratio_min": 1.0014598540145985,
+      "ratio_max": 1.003017729158808
+    },
+    "766": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 0.9922762380736029,
+      "ratio_max": 0.9925405879771829
+    },
+    "822": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0030165912518854,
+      "ratio_max": 1.00354609929078
+    },
+    "831": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0009153318077804,
+      "ratio_max": 1.0009206219312603
+    },
+    "920": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0036248300860897,
+      "ratio_max": 1.0037836985653477
+    },
+    "1316": {
+      "changed_level_rows": 62,
+      "count_changes": 0,
+      "ratio_min": 1.0128075497135154,
+      "ratio_max": 1.0130404941660947
+    },
+    "1351": {
+      "changed_level_rows": 50,
+      "count_changes": 12,
+      "ratio_min": 1.3,
+      "ratio_max": 1.3157894736842106
+    }
+  },
+  "interpretation": [
+    "Scores, crafting plans, recipe admission and enhancement candidate eligibility come from native code.",
+    "Enhancement source/price effects require both native salvageability and enhancement admission; random equipment VNUMs fail this command gate.",
+    "XP and superior prices are nominal if the action is otherwise eligible; currency units are copper.",
+    "A source minimum rising from L to H removes levels L..H-1; a donor floor rising from A to B removes donor values A..B-1 if donor scores are fixed.",
+    "Quest weight ratios assume unchanged mob level fit; the CSV uses unit fit. Geographic and zone eligibility remain separate gates.",
+    "Index tie/selection behavior and complete command/persistence journeys remain F13/F16; legacy mechanical coverage remains F05/F09."
+  ]
+}
