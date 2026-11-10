@@ -1,9 +1,9 @@
 # Issue #870: finish the MariaDB journey conversion
 
-Status: batches 1, 2 and 4 are qualified, including every weapon, copyover and live-item mode. Named sets/historical assassin comparison, naming/docs and aggregate gates remain.
+Status: conversions and naming are committed/pushed; named-set and Assassin qualification and full regression/database gates remain. Reproduced checkpoint defects are tracked below.
 Date: 2026-11-09.
 Issue: [#870 — Follow-ups from the flat-file backend removal](https://github.com/LuminariMUD/Duris/issues/870).
-Review head: `branch/issue-870-qualification-fixes`. See the latest qualification notes before continuing.
+Review head: `branch/issue-870-partial-save-order`. See the latest qualification notes before continuing.
 Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-870-mariadb-journeys`.
 Remote: `origin` (`LuminariMUD/Duris` on GitHub); no server worktree is required.
 
@@ -943,3 +943,47 @@ This is an estimate, not a time limit or permission to omit required proof.
   repair. Next: commit/push these narrow replay fixes, open the bug PR, resume the
   captured named-set case on rebuilt binaries, and refresh/qualify the revised
   comparison. Full regression/build and DB aggregates still remain.
+
+
+### Partial-save ordering and acknowledgement repair
+
+- Ready bug PR [#954](https://github.com/LuminariMUD/Duris/pull/954) contains
+  the deep inventory checkpoint repair after #949. Its real native wear1350
+  replay passed; wear87/370/676 also passed on the repaired binary. Wear824,
+  rollback, chest and report are next in the continuing sequence.
+- Draft [#955](https://github.com/LuminariMUD/Duris/pull/955), enhancement, holds
+  the explicit repair replay and poison-inspector fixes. The rebuilt revised
+  Assassin matrix is nearing completion; its scenario phase follows.
+- Investigation proved a second checkpoint defect rather than assuming one:
+  existing executable worker/pipeline harnesses fail on the prior source when
+  a status-only capture replaces a queued inventory graph, and when a successful
+  status-only write falsely acknowledges an earlier failed full checkpoint.
+  Logs: `test_player_save_worker-partial-repro.log` and
+  `test_player_save_pipeline-partial-repro.log` under `bin/tests/issue-870/`.
+- Outcome: retain every queued component and report manual/terminal durability
+  only after failed components have actually been repaired. Files: existing
+  worker, revision state and pipeline plus their existing focused harnesses.
+  No schema, persistence redesign or new framework. A tail replacement requires
+  component coverage; one internal failed-component mask holds the written
+  revision until successful ordered completions cover it. A stale completion
+  does not write payload and cannot clear that failure.
+- Initial worker, pipeline, revision-state and real manual-save feedback tests
+  passed after the fix. Additional stale-completion and manual-feedback legs are
+  being qualified; native build and focused review follow before publishing this
+  separate bug chunk on `branch/issue-870-partial-save-order` after #955.
+- Current binary evidence remains explicitly versioned; do not claim the running
+  pre-ordering-repair binaries include this source change. Aggregate gates have
+  not run yet. No merge, release, deployment or production operation occurred.
+
+- The partial-save worker, pipeline, revision-state and real feedback harnesses
+  all passed, including stale completion and delayed feedback through repair.
+  Changed-line formatting and a native `make -C src -j4` build passed. Build used
+  `SERVER_BIN_DIR=bin/tests/issue-870/partial-save-server` and its corresponding
+  absolute `DMS_BINARY` so the still-running named-set sequence retains its
+  pinned binary. Log `partial-save-build.log`, terminal exit in `.exit`.
+- The deep-repair revised matrix completed all36 openings. Its matching manifest
+  and report are preserved as `assassin-qualified-deep-binaries.json` and
+  `assassin-qualified-deep-results-revised-matrix.json`. The following scenario
+  invocation correctly refused changed runtime/source inputs after this new
+  checkpoint repair. Prepare the current seeded binary, then run those scenarios;
+  never edit the old manifest to pretend it executed the new source.
