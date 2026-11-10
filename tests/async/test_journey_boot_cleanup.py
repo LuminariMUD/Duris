@@ -87,6 +87,6 @@ def check_boot(source_name, takes_arguments, runtime):
 
 with tempfile.TemporaryDirectory(prefix="journey-boot-cleanup-") as temporary:
     runtime = Path(temporary)
-    check_boot("test_flatfile_auction_coin_put_journey.py", False, runtime)
-    check_boot("test_flatfile_locker_journey.py", True, runtime)
+    check_boot("test_mariadb_auction_coin_put_journey.py", False, runtime)
+    check_boot("test_mariadb_locker_journey.py", True, runtime)
 print("auction and locker boots detect appended readiness and reap failed children")

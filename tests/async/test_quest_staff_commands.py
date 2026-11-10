@@ -249,7 +249,10 @@ def main():
         test, binary = Path(temporary) / "test.cpp", Path(temporary) / "test"
         test.write_text("\n".join(parts))
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g", "-O1",
-                        "-fsanitize=address,undefined", "-Isrc", str(test), str(HARNESS_STUBS),
+                        "-fsanitize=address,undefined", "-ffunction-sections", "-fdata-sections",
+                        "-Isrc", str(test), str(ROOT / "src/net/output_links.c"),
+                        str(ROOT / "src/net/ansi.c"), str(ROOT / "src/net/unicode.c"),
+                        str(HARNESS_STUBS), "-Wl,--gc-sections",
                         "-o", str(binary)], cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True)
 
