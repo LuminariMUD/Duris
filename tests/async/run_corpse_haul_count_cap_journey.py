@@ -139,7 +139,7 @@ def run(binary, backend):
                                    "AND vnum=400025 AND parent_item_uid IS NULL")) == 6
                     if not carried_bag:
                         actor.send("drop all.salvagepiece")
-                        actor.expect("You drop a salvagepiece.", timeout=20)
+                        actor.expect("You drop 6 salvagepiece(s).", timeout=20)
                         drain(actor)
                         actor.send("get salvagepiece")
                         actor.expect("You get a salvagepiece.", timeout=20)
@@ -234,7 +234,6 @@ def run(binary, backend):
             except Exception:
                 output.flush()
                 print((runtime / "server.out").read_text(errors="replace")[-2000:])
-                print(journey.runtime_logs(runtime))
                 if actor:
                     print(actor.transcript.decode(errors="replace")[-3000:])
                 raise
