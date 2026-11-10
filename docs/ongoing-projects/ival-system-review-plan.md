@@ -22,8 +22,8 @@ separate authorized operation. Flat-file server persistence is unsupported.
 - F01–F04 circle, packed-average, apply-order, zero and duplicate repairs;
   F08 numeric/config/property bounds and unavailable-score admission; F14 shared
   material quantities and checked XP; F15 dead reset/recovery work removal.
-- Published implementation through [#981](https://github.com/LuminariMUD/Duris/pull/981),
-  commit `0f7e12253`. Publication does not mean every PR has merged.
+- Published implementation through [#982](https://github.com/LuminariMUD/Duris/pull/982),
+  commit `3253eddfa`. Publication does not mean every PR has merged.
 - Native evidence: 19,334 effective templates; 8,720 seeded generated items in
   formula-delta runs; 2,649 unchanged shipped property values. Results apply to
   their recorded revisions, not automatically to future changes. Durable results
@@ -127,8 +127,8 @@ corpus and generated-sample runner before publication.
 
 ## C — finish the existing consumers (F12/F13/F15)
 
-**Implemented and qualified:** `branch/ival-consumers`, based on #981; publication
-follows commit checks. Inspection uses borrowed normalized template views; actual
+**Review-ready:** `3253eddfa`, [PR #982](https://github.com/LuminariMUD/Duris/pull/982)
+(bug label), `branch/ival-consumers`, stacked on #981. Inspection uses borrowed normalized template views; actual
 grants instantiate only selected results. Index publication is atomic, duplicate
 apply locations are indexed once, and tier queries use aggregate totals while
 retaining stored-slot caps. Existing radius/distance and tie preferences remain.
@@ -225,7 +225,7 @@ by the batch. Codec/source-contract tests alone never prove a persistence journe
 
 Local: `C:/Users/apexw/.codex/worktrees/ival-system-improvements/duris`.
 Remote: `duris-staging:/home/staging/duris-worktrees/ival-system-improvements`.
-Latest batch: `branch/ival-consumers` for C, based on `branch/ival-semantics` (#981).
+Latest batch: `branch/ival-consumers` for C (#982), based on `branch/ival-semantics` (#981).
 Synchronize committed work to the remote worktree. A–C are implemented; D remains
 open. Read-only template views deliberately omit native runtime-state initialization;
 eligibility/score parity is qualified, rather than unrelated money/state slots.
