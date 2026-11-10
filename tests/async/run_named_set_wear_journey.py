@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Native wear/cast/reboot gate using a prepared, private full-world authority.
 
-Run from the repository root after building the flat-file server and preparing
+Run from the repository root after building the MariaDB server and preparing
 the runtime described in the named-zone-set implementation plan. The existing
 synthetic account and generated item identities are retained between attempts.
 This is deliberately a full-server journey, not a stubbed spell fixture.
@@ -11,32 +11,15 @@ import json
 import re
 import sys
 import time
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 from named_set_gameplay import NamedSetGame, score, save, selector, expect_max_hp
 
-# Required cases: generation room, maximum tier, primary native name and spell ID.
-CASES = {
-    1325: (132500, 5, "armor", 1),
-    740: (74000, 5, "battletide", 395),
-    827: (82701, 3, "protection from animals", 383),
-    13: (1300, 3, "phantom armor", 400),
-    44: (4401, 3, "globe of darkness", 302),
-    204: (20400, 3, "sense life", 44),
-    808: (80800, 3, "enhance agility", 177),
-    811: (81100, 3, "protection from animals", 383),
-    814: (81400, 3, "vapor strike", 467),
-    990: (99001, 3, "scent of the bloodhound", 517),
-    300: (30000, 3, "globe of darkness", 302),
-    1350: (135001, 3, "phantom armor", 400),
-    87: (8700, 5, "spirit ward", 220),
-    370: (37000, 3, "endurance", 355),
-    676: (67600, 4, "endurance", 355),
-    824: (82400, 6, "vitality", 56),
-}
+from named_set_gameplay import WEAR_CASES as CASES
+
 zone = int(sys.argv[1]) if len(sys.argv) == 2 else 1325
 generation_room, pieces, effect, spell = CASES[zone]
 game = NamedSetGame()
-runtime, state = game.runtime, game.state
+runtime = game.runtime
 client = None
 
 
@@ -75,7 +58,7 @@ try:
     # Validate the synthetic authority and retain all earlier named identities,
     # including gear packed into nested containers by preceding cases.
     prior_origins = {row[0]: row[1] for row in game.items()}
-    journey.make_overlord(state, journey.CHARACTER)
+    game.make_overlord()
     client = game.boot("named-generation")
     client.send("remove all")
     score(client)
@@ -193,8 +176,20 @@ try:
     assert not game.affects(spell), "set effect must not persist as an ordinary affect"
     if zone == 824:
         # A level 22 Vitality potion once replaced this grant and could kill the wearer.
-        client.send("quaff potion")
-        client.expect("Nothing new seems to happen.", timeout=20)
+        deadline = time.monotonic() + 600
+        while True:
+            offset = len(client.transcript)
+            client.send("quaff potion")
+            score(client)
+            output = client.transcript[offset:].decode(errors="replace")
+            # Neither refusal may replace or stack on the set's grant (#943 adds the second).
+            if ("Nothing new seems to happen." in output or
+                    "You are already affected by vitality!" in output):
+                break
+            assert ("another potion would do you any good yet" in output or
+                    "almost ready to try another potion" in output), output
+            assert time.monotonic() < deadline, "the potion cooldown never ended"
+            time.sleep(5)
         expect_set(pieces)
     if zone == 87:
         assert not game.affects(41), "set Haste must not persist as an ordinary affect"
@@ -206,7 +201,9 @@ try:
         save(client)
         if zone == 13:
             # The set's proc rejects Phantom Armor under ordinary Armor, silently.
-            deadline = time.monotonic() + 180
+            # The retained potion timer lasts three normal ticks; cold boots
+            # restart the tick phase. Wait for native expiry without clearing it.
+            deadline = time.monotonic() + 600
             while True:
                 offset = len(client.transcript)
                 client.send("quaff solution")

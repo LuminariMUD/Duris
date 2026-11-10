@@ -190,41 +190,6 @@ void close_other_account_sessions(P_desc d)
 				     "\r\nYour account is being permanently deleted.\r\n");
 }
 
-class account_deletion_drain_guard
-{
-    public:
-	account_deletion_drain_guard()
-	{
-		maintenance_scheduler_quiesce();
-		critical_command_coordinator_quiesce();
-		critical_outbox_quiesce();
-	}
-
-	~account_deletion_drain_guard()
-	{
-		if (player_quiesced_)
-			player_save_pipeline_resume();
-		critical_outbox_resume();
-		critical_command_coordinator_resume();
-		maintenance_scheduler_resume();
-	}
-
-	bool drain()
-	{
-		if (!maintenance_scheduler_drain(3000) ||
-		    !critical_command_coordinator_drain(3000) || !critical_outbox_drain(3000) ||
-		    !persistence_flush_all_character_saves())
-			return false;
-		player_save_pipeline_quiesce();
-		player_quiesced_ = true;
-		return player_save_pipeline_drain(3000) && locker_async_drain(3000) &&
-		       artifact_save_drain(3000);
-	}
-
-    private:
-	bool player_quiesced_ = false;
-};
-
 // The account's characters leave the game. Closing their sessions queued their terminal saves.
 void remove_deleted_account_characters(P_desc deleting_session,
 				       const std::vector<account_deletion_identity> &identities)

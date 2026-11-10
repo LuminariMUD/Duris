@@ -83,7 +83,6 @@ typedef unsigned int uint;
 #define CHAR_RFLAG_DIRTY_EQUIPMENT BIT_1
 #define CHAR_RFLAG_DIRTY_INVENTORY BIT_2
 /* set at creation, cleared once player_data holds a row for this character */
-#define CHAR_RFLAG_NO_DB_BASELINE BIT_3
 /* terminal save owns the items; extraction must only free their memory copies */
 #define CHAR_RFLAG_TERMINAL_ITEMS_SAVED BIT_4
 /* a committed recovery still needs a complete player snapshot before saving */

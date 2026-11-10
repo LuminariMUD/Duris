@@ -27,7 +27,7 @@ import subprocess
 
 save_slots = source[
     source.index("#define PERSISTENCE_DEFERRED_SAVE_SLOTS"):
-    source.index("bool persistence_save_character_terminal")
+    source.index("static void remove_norent_item(")
 ]
 preamble = r'''
 #include <cassert>
@@ -109,7 +109,7 @@ int main() {
     assert(player_revision_acknowledge_durable(1, revision, components));
     persistence_pulse_character_saves();
     assert(messages.empty());
-    assert(player_revision_record_written(1, revision));
+    assert(player_revision_record_written(1, revision, PLAYER_CHECKPOINT_COMPONENT_ALL));
     persistence_pulse_character_saves();
     assert(messages == "Saving Synthetic.\r\n");
     assert(last_feedback_role == OutputRole::Success);
@@ -143,6 +143,22 @@ int main() {
     persistence_pulse_character_saves();
     assert(saves == 3 && !find_deferred_save_slot(1));
     assert(!find_manual_save_status(1));
+
+    player_revision_reset_for_tests();
+    assert(player_revision_hydrate(1, 0));
+    messages.clear();
+    manual_request();
+    now_usec += 500000;
+    persistence_pulse_character_saves();
+    assert(player_revision_record_failed(1, PLAYER_CHECKPOINT_COMPONENT_ALL));
+    assert(player_revision_mark(1, PLAYER_COMPONENT_STATUS, &revision));
+    assert(player_revision_record_written(1, revision, PLAYER_COMPONENT_STATUS));
+    persistence_pulse_character_saves();
+    assert(messages.empty() && find_manual_save_status(1));
+    assert(player_revision_mark(1, PLAYER_CHECKPOINT_COMPONENT_ALL, &revision));
+    assert(player_revision_record_written(1, revision, PLAYER_CHECKPOINT_COMPONENT_ALL));
+    persistence_pulse_character_saves();
+    assert(messages == "Saving Synthetic.\r\n" && !find_manual_save_status(1));
 }
 '''
 # The pre-fix main loop has no save-slot pulse; this fallback lets the same

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Real creation/alignment/save/restart/relogin on disposable persistence.
 
-Run with --backend flatfile or under with_disposable_mariadb.sh for mariadb.
+Run under with_disposable_mariadb.sh with --backend mariadb.
 No checkout environment, shared account, database or running MUD is used.
 """
 import argparse
@@ -16,7 +16,7 @@ import time
 from test_character_stat_choice_journey import WebSocketClient
 from test_flight_network_journey import authority
 from run_world_quest_dual_backend import setup_run_root
-import test_flatfile_combat_journey as journey
+import test_mariadb_combat_journey as journey
 
 ROOT = journey.ROOT
 PASSWORD = journey.PASSWORD
@@ -418,7 +418,7 @@ def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("flatfile", "mariadb"), required=True)
+    parser.add_argument("--backend", choices=("mariadb",), required=True)
     parser.add_argument("--server", type=Path, required=True)
     parser.add_argument("--inspector", type=Path, required=True)
     parser.add_argument("--browser-executable", type=Path, help="use an installed Chromium binary")

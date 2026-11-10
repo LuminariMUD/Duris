@@ -19,6 +19,12 @@
 
 #include <mysql/mysql.h>
 
+// Project committed snapshots into player_items within the caller's transaction.
+// Optional row IDs follow payload.items order for live publication identities.
+bool item_transfer_repository_materialize_player_items(MYSQL *connection,
+						       const item_transfer_payload &payload,
+						       std::vector<uint64_t> *item_ids = nullptr);
+
 bool item_transfer_repository_execute(MYSQL *connection, const critical_command &command,
 				      item_transfer_result *result, unsigned int *result_code,
 				      bool *mutation_applied);
