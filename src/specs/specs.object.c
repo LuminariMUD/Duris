@@ -1581,6 +1581,7 @@ int slot_machine(P_obj obj, P_char ch, int cmd, char *arg)
 		blankpayoff = 0;
 	int coinamt;
 	int64_t payout_value = 0;
+	bool jackpot_coupons = false;
 
 	if (cmd == CMD_SET_PERIODIC)
 		return FALSE;
@@ -1632,6 +1633,13 @@ int slot_machine(P_obj obj, P_char ch, int cmd, char *arg)
 
 	if (obj != object)
 		return FALSE;
+	if (IS_NPC(ch) || currency_transaction_wallet_busy(ch))
+	{
+		send_to_char("The slot machine could not accept that wager.\n", ch);
+		return TRUE;
+	}
+	std::array<int, NUMB_OBJ_VALS> previous_values;
+	std::copy_n(obj->value, previous_values.size(), previous_values.begin());
 
 	//  if (((type == 0) && (GET_COPPER(ch) == 0)) ||
 	//      ((type == 1) && (GET_SILVER(ch) == 0)) ||
@@ -1942,12 +1950,7 @@ int slot_machine(P_obj obj, P_char ch, int cmd, char *arg)
 			if (type == 3)
 			{
 				coins = 50000 * coinamt;
-				act("&+wYou receive &+Ba restring coupon&N.&N", FALSE, ch, 0, 0,
-				    TO_CHAR);
-				act("&+wYou receive &+Ra restring coupon&N.&N", FALSE, ch, 0, 0,
-				    TO_CHAR);
-				obj_to_char(read_object(44, VIRTUAL), ch);
-				obj_to_char(read_object(43, VIRTUAL), ch);
+				jackpot_coupons = true;
 			}
 		}
 
@@ -1974,17 +1977,52 @@ int slot_machine(P_obj obj, P_char ch, int cmd, char *arg)
 	}
 	static const int coin_values[] = { 1, 10, 100, 1000 };
 	const int64_t net_value = payout_value - (int64_t)coinamt * coin_values[type];
-	if (net_value != 0 && !currency_transaction_submit_wallet_value(
-				      ch, net_value,
-				      net_value > 0 ? currency_reason_type::wallet_reward :
-						      currency_reason_type::wallet_spend,
-				      OBJ_VNUM(obj), critical_source_site::command,
-				      critical_deadline_class::interactive, nullptr, nullptr, 0))
+	P_obj coupons[2] = {};
+	uint64_t coupon_uids[2] = {};
+	bool delivered = true;
+	// Prepare the complete live result before applying its net payment. The
+	// player checkpoint below persists the purse and coupon UIDs together.
+	if (jackpot_coupons)
+		for (size_t index = 0; index < ARRAY_SIZE(coupons); ++index)
+		{
+			coupons[index] = read_object(index ? 43 : 44, VIRTUAL);
+			if (!coupons[index])
+			{
+				delivered = false;
+				break;
+			}
+			coupon_uids[index] = coupons[index]->obj_uid;
+			if (!obj_to_char(coupons[index], ch))
+			{
+				delivered = false;
+				break;
+			}
+		}
+	const uint64_t revision = ch->only.pc->wallet_revision;
+	if (!delivered || (net_value != 0 &&
+			   (!currency_transaction_submit_wallet_value(
+				    ch, net_value,
+				    net_value > 0 ? currency_reason_type::wallet_reward :
+						    currency_reason_type::wallet_spend,
+				    OBJ_VNUM(obj), critical_source_site::command,
+				    critical_deadline_class::interactive, nullptr, nullptr, 0) ||
+			    ch->only.pc->wallet_revision == revision)))
 	{
-		logit(LOG_WIZ, "slot_machine: net wallet submission failed for pid %d",
-		      GET_PID(ch));
-		send_to_char("The slot result could not be recorded. Please contact staff.\n", ch);
+		std::copy(previous_values.begin(), previous_values.end(), obj->value);
+		for (size_t index = 0; index < ARRAY_SIZE(coupons); ++index)
+			if (P_obj coupon = find_live_object(coupons[index], coupon_uids[index]))
+				extract_obj(coupon);
+		logit(LOG_WIZ, "slot_machine: result refused for pid %d", GET_PID(ch));
+		send_to_char("The slot result was refused; your wager is unchanged.\n", ch);
+		return TRUE;
 	}
+	if (jackpot_coupons)
+	{
+		act("&+wYou receive &+Ba restring coupon&N.&N", FALSE, ch, 0, 0, TO_CHAR);
+		act("&+wYou receive &+Ra restring coupon&N.&N", FALSE, ch, 0, 0, TO_CHAR);
+	}
+	if ((net_value != 0 || jackpot_coupons) && !do_save_silent(ch, 1))
+		logit(LOG_DEBUG, "Failed to save %s after a slot result.", GET_NAME(ch));
 	return TRUE;
 }
 
