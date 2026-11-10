@@ -49,8 +49,13 @@ replaying the #995 search rule over it.
   Both skip any object whose keyword list contains `_noquest_`; 420 existing
   objects already use it.
 
-The local world files were generated from master's area data, not the stack's.
-The measurement must be repeated on the implementation branch (step 1).
+The boot read world files generated from master's area data, which is slightly
+newer than the stack's: master has two description typo fixes and one extra
+flag bit removed from six objects (#35800, #44824, #402054, #29326, #120015,
+#91526) that the stack has not yet taken. The stack must absorb those before it
+merges, so the measured world is the one expected to ship. The measurement is
+still repeated on the implementation branch (step 1), because each filler must
+land on an exact value and any later value change can move a target.
 
 ## Decisions
 
