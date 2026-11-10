@@ -765,6 +765,11 @@ void removeArtiData(char *name);
 #define SINGING(ch) (IS_ALIVE(ch) && IS_AFFECTED3(ch, AFF3_SINGING))
 
 bool player_bard(P_char ch, int spec, int level);
+P_char dispel_character_affect(P_char ch, P_char victim, int type);
+void spell_hurricane_hit(P_char ch, P_char victim, int damage);
+void spell_single_tempest(int level, P_char ch, char *args, int type, P_char victim, P_obj obj);
+bool bard_spell_echo(P_char ch, int spell, char *args, uint64_t target_id, int room);
+double bard_spell_echo_factor();
 void check_bard_song_rooms(P_char ch, bool followers_may_move);
 P_obj has_instrument(P_char, int song);
 void do_play(P_char, char *, int);
@@ -2448,6 +2453,7 @@ void NukeRedunantSpellcast(P_char);
 void SpellCastProcess(P_char, struct spellcast_datatype *);
 void SpellCastShow(P_char, int);
 void StopCasting(P_char);
+void interrupt_spellcasting(P_char);
 void do_abort(P_char, char *, int);
 bool cmd_allowed_while_casting(P_char, int);
 bool input_allowed_while_casting(P_char, const char *);

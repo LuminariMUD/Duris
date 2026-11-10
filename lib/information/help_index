@@ -4488,6 +4488,13 @@ These permissions apply to an existing character; they do not enable a forbidden
 
 &+W9th Circle: &+cshatter&n
 
+At level 51, player Disharmonists add a 20% per-target Squall/Hurricane proc
+to Storms and a 5-25% opposed casting interruption to Dissonance. Chaos can
+dispel one effect per enemy with skill, Charisma and level scaling; saves halve
+its chance. Successful Chaos/Dissonance targets have 10/25 seconds of immunity.
+From level 56, six damage spells can Echo once: 50% chance, 30-50% damage,
+without a second spell slot. NPC singers receive none of these new bonuses.
+
 ==Innate additions==
 
 *&+cecho&n (obtained at level &+c31&n)
@@ -5127,7 +5134,15 @@ sounds with a resounding echo. This can cause their songs action to
 reverberate and 'echo' the original in a lesser strength. The effectiveness
 of this song echo is affected by their environment and terrain such as a
 mountainous region will enhance the likelihood of an echoed effect, and
-conversely you will never get an echo underwater. 
+song echoes do not occur underwater.
+
+From level 56, a player Disharmonist has a 50% chance for a completed damage
+spell to repeat once at a randomly chosen 30-50% of normal damage. Eligible
+spells are Magic Missile, Burning Hands, Lightning Bolt, Fireball, Bigby's
+Clenched Fist and Shatter. The repeat uses no second spell slot and cannot
+echo again. Ordinary spell defenses and reflection still apply. The target
+must remain alive and in the room. This spell echo is player-only.
+
 ===========================================================================
 See also: DISHARMONIST, BARD
 
@@ -16761,7 +16776,15 @@ Type of song:	Generic
 the bard's group to become confused and distracted. This can cause a
 number of things to happen, such as forcing those not in the bard's group
 out of the room in various ways. A small amount of damage is also bestowed
-upon those not grouped. 
+upon those not grouped.
+
+Player Disharmonists can dispel one random dispellable effect from each enemy
+on a verse. Chance is 5%, plus 1.5 percentage points per 10 song rating above
+50, plus 1 per 10 Charisma above 100, plus 0.25 per level above the target.
+A successful Save Spell halves that chance. Each successful target then has
+10 seconds of immunity to this dispel. Every enemy has its own check and
+immunity. NPC singers cannot provide the new Disharmonist dispel.
+
 ===========================================================================
 See also: SONGS, INSTRUMENT, PLAY, BARD, SKILL_BARD
 
@@ -17036,6 +17059,12 @@ Type of song:	Generic
 "Song of storms" calls the power of nature to create a deadly storm in the
 skies, assisting the bard with bolts of lightning upon those in the room
 not in his/her group.
+
+At level 51, a player Disharmonist has a 1 in 5 chance per enemy per verse,
+after the lightning bolts, to add one Squall or Hurricane hit at the song's
+level. The two are picked evenly and both pass Globe. Squall can throw a
+flying target out of the room. NPC singers receive no new storm proc.
+
 ===========================================================================
 See also: "LIGHTNING BOLT", SONGS, INSTRUMENT, PLAY, BARD, SKILL_BARD
 
@@ -23119,6 +23148,14 @@ connected player from the description tables. No feedback is printed.
 Aggressive:     Yes
 
 "Song of dissonance" turns the bard's horn into an instrument of pure cacophony. While the tune plays, any other performer in the area risks having their song mangled into silence, bested by a contest of presence and skill (those who follow the Disharmonist path blow a far more piercing discord). Enchanted servants and charmed creatures caught listening shudder, quiver, and find their bonds torn apart, sent scurrying back to whatever pit spawned them.
+
+At level 51, a player Disharmonist can interrupt a target that is mid-cast,
+without adding lag. Chance is 5%, plus 1.5 percentage points per 10 song rating
+above 50, plus 1 per 10 Charisma above 100, minus Concentration/20 and one point
+per 10 of the target's higher Intelligence/Wisdom above 100. The final chance
+stays between 5% and 25%. A successful interruption gives that target 25 seconds
+of immunity. NPC singers cannot provide the new casting interruption.
+
 ===========================================================================
 See also: song of discord, empower song, sing
 #
