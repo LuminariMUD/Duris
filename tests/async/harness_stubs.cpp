@@ -475,3 +475,13 @@ HARNESS_STUB void check_bard_song_rooms(P_char ch, bool)
 				     link->affect->type == SONG_NIMBLENESS))
 			std::abort();
 }
+
+// Standalone cast/damage fixtures have no Bard spell Echo scope.
+HARNESS_STUB bool bard_spell_echo(P_char, int, char *, uint64_t, int)
+{
+	return false;
+}
+HARNESS_STUB double bard_spell_echo_factor()
+{
+	return 1.0;
+}

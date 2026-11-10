@@ -88,6 +88,7 @@ static int get_circle_memtime(P_char, int circle, bool stat_only, bool roll_natu
     return 10 * circle;
 }
 P_nevent get_scheduled(P_char ch, event_func_type fn) {
+    if (fn == event_wait) return nullptr; // This fixture has no cast-owned wait.
     assert(fn == event_memorize);
     return ch->nevents;
 }

@@ -17,6 +17,7 @@
 #include "core/utils.h"
 #include <stdio.h>
 #include <string.h>
+#include <vector>
 #include "combat/damage.h"
 #include "combat/justice.h"
 #include "combat/training_dummy.h"
@@ -1957,6 +1958,48 @@ void bard_discord(int l, P_char ch, P_char victim, int /*song*/)
 			spell_dispel_good((int)l, ch, 0, SPELL_TYPE_SPELL, victim, 0);
 }
 
+static int disharmonist_proc_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 4000);
+}
+
+static int disharmonist_song_chance(P_char ch, int song)
+{
+	// 5% base, +0.15% per rating above 50, +0.1% per Charisma above 100.
+	return 200 + 6 * MAX(0, GET_CHAR_SKILL(ch, song) - 50) + 4 * MAX(0, GET_C_CHA(ch) - 100);
+}
+
+static int song_chaos_dispel_chance(P_char ch, P_char victim, bool saved)
+{
+	const int chance = disharmonist_song_chance(ch, SONG_CHAOS) +
+			   10 * MAX(0, GET_LEVEL(ch) - GET_LEVEL(victim));
+	return saved ? chance / 2 : chance;
+}
+
+static int song_dissonance_interrupt_chance(P_char ch, P_char victim)
+{
+	return BOUNDED(200,
+		       disharmonist_song_chance(ch, SONG_DISSONANCE) -
+			       2 * GET_CHAR_SKILL(victim, SKILL_CONCENTRATION) -
+			       4 * MAX(0, MAX(GET_C_INT(victim), GET_C_WIS(victim)) - 100),
+		       1000);
+}
+
+static int song_chaos_dispel_immunity()
+{
+	return 10 * WAIT_SEC;
+}
+
+static int song_dissonance_interrupt_immunity()
+{
+	return 25 * WAIT_SEC;
+}
+
+static int song_storms_extra_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 5);
+}
+
 static int song_storms_most_strikes(int songLevel)
 {
 	return songLevel / 6;
@@ -2016,7 +2059,13 @@ std::string song_storms_facts(P_char ch)
 		facts += fact("Chance of call lightning with empower song",
 			      one_in(song_storms_call_lightning_roll) + ", at level " +
 				      std::to_string(song_storms_call_lightning_level(level)));
-	return facts + song_common_facts(ch, SONG_STORMS);
+	facts += song_common_facts(ch, SONG_STORMS);
+	if (player_bard(ch, SPEC_DISHARMONIST, 51))
+		facts +=
+			fact("Chance per target after the bolts", one_in(song_storms_extra_roll)) +
+			"  It adds one Squall or Hurricane hit, picked evenly, at your song level.\n"
+			"  Both pass globes; Squall can throw a flying target from the room.\n";
+	return facts;
 }
 
 // Song of storms: does lightning bolts on victim.
@@ -2030,6 +2079,19 @@ void bard_storms(int songLevel, P_char ch, P_char victim, int /*song*/)
 	{
 		empower = 100;
 	}
+
+	const uint64_t singer_id = ch->runtime_id, target_id = victim->runtime_id;
+	const uint64_t removals = character_removal_generation;
+	const int singer_room = ch->in_room, target_room = victim->in_room;
+	const auto still_here = [&]()
+	{
+		if (removals != character_removal_generation &&
+		    (find_character_by_runtime_id(singer_id) != ch ||
+		     find_character_by_runtime_id(target_id) != victim))
+			return false;
+		return IS_ALIVE(ch) && IS_ALIVE(victim) && ch->in_room == singer_room &&
+		       victim->in_room == target_room;
+	};
 
 	// For each 6 levels, we have a recursive 1/3 chance to have a lightning bolt.
 	// So, at 56, we have max 9 bolts (1/20K chance) on one character.  Ouch.
@@ -2047,7 +2109,7 @@ void bard_storms(int songLevel, P_char ch, P_char victim, int /*song*/)
 	{
 		spell_lightning_bolt(song_storms_bolt_level(songLevel), ch, 0, SPELL_TYPE_SPELL,
 				     victim, 0);
-		if (!IS_ALIVE(victim) || !char_in_list(victim))
+		if (!still_here())
 		{
 			return;
 		}
@@ -2060,7 +2122,7 @@ void bard_storms(int songLevel, P_char ch, P_char victim, int /*song*/)
 		{
 			spell_cyclone(songLevel, ch, 0, SPELL_TYPE_SPELL, victim, 0);
 		}
-		if (!IS_ALIVE(victim) || !char_in_list(victim))
+		if (!still_here())
 		{
 			return;
 		}
@@ -2070,6 +2132,14 @@ void bard_storms(int songLevel, P_char ch, P_char victim, int /*song*/)
 	    (!song_storms_call_lightning_roll(live_rolls)))
 	{
 		spell_call_lightning(song_storms_call_lightning_level(songLevel), ch, victim, 0);
+	}
+	if (still_here() && player_bard(ch, SPEC_DISHARMONIST, 51) &&
+	    song_storms_extra_roll(live_rolls) == 1)
+	{
+		if (number(0, 1))
+			spell_single_tempest(songLevel, ch, NULL, SPELL_TYPE_SPELL, victim, NULL);
+		else
+			spell_hurricane_hit(ch, victim, hurricane_damage(live_rolls, songLevel));
 	}
 }
 
@@ -2122,6 +2192,16 @@ std::string song_chaos_facts(P_char ch)
 				     std::to_string(song_chaos_spell_rating())) +
 			"  One of fireball, chill touch, lightning bolt, dispel magic, earthquake,\n"
 			"  poison with disease, curse or wither.\n";
+
+	if (player_bard(ch, SPEC_DISHARMONIST, 0))
+		facts += fact("Same-level dispel chance before saves",
+			      share_percent(disharmonist_song_chance(ch, SONG_CHAOS) / 4000.f)) +
+			 "  Base 5%, +1.5 points per 10 rating above 50, +1 per 10 Charisma above\n"
+			 "  100, +0.25 per level above the target. A successful save halves it.\n"
+			 "  It removes one random dispellable effect from each eligible enemy.\n" +
+			 fact("Target immunity after a dispel",
+			      seconds(song_chaos_dispel_immunity())) +
+			 "  NPC singers cannot provide the Disharmonist dispel.\n";
 	return facts + song_common_facts(ch, SONG_CHAOS);
 }
 
@@ -2132,6 +2212,28 @@ void bard_chaos(int l, P_char ch, P_char victim, int song)
 	if (!IS_ALIVE(victim) || !IS_ALIVE(ch))
 	{
 		return;
+	}
+
+	if (player_bard(ch, SPEC_DISHARMONIST, 0) && !affected_by_spell(victim, SONG_CHAOS))
+	{
+		std::vector<int> effects;
+		for (affected_type *af = victim->affected; af; af = af->next)
+			if (!(af->flags & (AFFTYPE_NODISPEL | AFFTYPE_SET_SUSPENDED)) &&
+			    af->type > 0 && get_spell_from_char(victim, af->type) == af)
+				effects.push_back(af->type);
+		if (!effects.empty() &&
+		    disharmonist_proc_roll(live_rolls) <=
+			    song_chaos_dispel_chance(ch, victim, bard_saves(ch, victim, song)))
+		{
+			P_char remaining = dispel_character_affect(
+				ch, victim,
+				effects[number(0, static_cast<int>(effects.size()) - 1)]);
+			if (remaining)
+				set_short_affected_by(remaining, SONG_CHAOS,
+						      song_chaos_dispel_immunity());
+			if (remaining && remaining != victim)
+				return;
+		}
 	}
 
 	if (GET_SPEC(ch, CLASS_BARD, SPEC_MINSTREL))
@@ -2350,19 +2452,29 @@ std::string song_dissonance_facts(P_char ch)
 	int power = song_dissonance_power(ch, GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG));
 	if (GET_SPEC(ch, CLASS_BARD, SPEC_DISHARMONIST))
 		power += song_dissonance_disharmonist_bonus(power);
-	return fact("Your strength", std::to_string(power)) +
-	       (GET_SPEC(ch, CLASS_BARD, SPEC_DISHARMONIST) ?
-			fact("Included disharmonist bonus",
-			     share_percent(song_dissonance_disharmonist_bonus(100) / 100.f)) :
-			"") +
-	       "  Each side adds 0-50. If you beat another singer's strength, worked out\n"
-	       "  the same way, it stops singing.\n" +
-	       fact("That singer's lag", seconds(song_dissonance_target_lag())) +
-	       fact("Chance to free a pet with its master here", chance_under(power, 1, 2000)) +
-	       fact("A freed pet dies after", seconds(song_dissonance_pet_death_delay())) +
-	       "  Only eligible hostile targets in the room, excluding your group and gods.\n"
-	       "  Each verse checks each such target once.\n" +
-	       song_common_facts(ch, SONG_DISSONANCE);
+	std::string facts =
+		fact("Your strength", std::to_string(power)) +
+		(GET_SPEC(ch, CLASS_BARD, SPEC_DISHARMONIST) ?
+			 fact("Included disharmonist bonus",
+			      share_percent(song_dissonance_disharmonist_bonus(100) / 100.f)) :
+			 "") +
+		"  Each side adds 0-50. If you beat another singer's strength, worked out\n"
+		"  the same way, it stops singing.\n" +
+		fact("That singer's lag", seconds(song_dissonance_target_lag())) +
+		fact("Chance to free a pet with its master here", chance_under(power, 1, 2000)) +
+		fact("A freed pet dies after", seconds(song_dissonance_pet_death_delay())) +
+		"  Only eligible hostile targets in the room, excluding your group and gods.\n"
+		"  Each verse checks each such target once.\n" +
+		song_common_facts(ch, SONG_DISSONANCE);
+	if (player_bard(ch, SPEC_DISHARMONIST, 51))
+		facts += "  While a target is casting, you can interrupt it without added lag.\n"
+			 "  Chance: 5%, +1.5 points per 10 rating above 50, +1 per 10 Charisma\n"
+			 "  above 100, minus its Concentration/20 and one point per 10 of its\n"
+			 "  higher Intelligence/Wisdom above 100. The chance stays at 5-25%.\n" +
+			 fact("Target immunity after an interruption",
+			      seconds(song_dissonance_interrupt_immunity())) +
+			 "  NPC singers cannot provide this interruption.\n";
+	return facts;
 }
 
 // The song has two affects. The first breaks pet links and the
@@ -2375,6 +2487,16 @@ void bard_dissonance(int /*l*/, P_char ch, P_char t, int /*song*/)
 
 	if (!should_area_hit(ch, t) || IS_TRUSTED(t) || grouped(ch, t))
 		return;
+
+	if (player_bard(ch, SPEC_DISHARMONIST, 51) && IS_AFFECTED2(t, AFF2_CASTING) &&
+	    !affected_by_spell(t, SONG_DISSONANCE) &&
+	    disharmonist_proc_roll(live_rolls) <= song_dissonance_interrupt_chance(ch, t))
+	{
+		interrupt_spellcasting(t);
+		set_short_affected_by(t, SONG_DISSONANCE, song_dissonance_interrupt_immunity());
+		send_to_char("The Disharmonist's discord tears apart your concentration!\r\n", t);
+		return;
+	}
 
 	int c_roll = song_dissonance_power(ch, GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG));
 	if (GET_SPEC(ch, CLASS_BARD, SPEC_DISHARMONIST))
@@ -2628,19 +2750,79 @@ static int echo_delay(P_char ch)
 	return (get_bard_pulse(ch) / 6);
 }
 
+static int spell_echo_percent;
+
+static int spell_echo_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+static int spell_echo_damage_roll(const Rolls &rolls)
+{
+	return rolls.number(30, 50);
+}
+
+double bard_spell_echo_factor()
+{
+	// The synchronous Echo scope includes reflection and item redirection.
+	return spell_echo_percent ? spell_echo_percent / 100.0 : 1.0;
+}
+
+bool bard_spell_echo(P_char ch, int spell, char *args, uint64_t target_id, int room)
+{
+	if (!player_bard(ch, SPEC_DISHARMONIST, 56) || spell_echo_percent)
+		return false;
+	switch (spell)
+	{
+	case SPELL_MAGIC_MISSILE:
+	case SPELL_BURNING_HANDS:
+	case SPELL_LIGHTNING_BOLT:
+	case SPELL_FIREBALL:
+	case SPELL_BIGBYS_CLENCHED_FIST:
+	case SPELL_SHATTER:
+		break;
+	default:
+		return false;
+	}
+	P_char target = find_character_by_runtime_id(target_id);
+	if (!IS_ALIVE(ch) || !IS_ALIVE(target) || ch->in_room != room || target->in_room != room ||
+	    spell_echo_roll(live_rolls))
+		return false;
+	spell_echo_percent = spell_echo_damage_roll(live_rolls);
+	struct echo_cleanup
+	{
+		~echo_cleanup() { spell_echo_percent = 0; }
+	} cleanup;
+	send_to_char("Your completed spell echoes once more!\r\n", ch);
+	skills[spell].spell_pointer(GET_LEVEL(ch), ch, args, SPELL_TYPE_SPELL, target, NULL);
+	return true;
+}
+
 std::string echo_innate_facts(P_char ch)
 {
 	const auto chance = [](int threshold)
 	{ return chance_under(threshold + 1, echo_roll(lowest_rolls), echo_roll(highest_rolls)); };
-	return fact("Chance of an echo each song beat", chance(echo_chance(SECT_INSIDE))) +
-	       fact("In the mountains", chance(echo_chance(SECT_MOUNTAIN))) +
-	       fact("In the hills", chance(echo_chance(SECT_HILLS))) +
-	       fact("In a forest", chance(echo_chance(SECT_FOREST))) +
-	       fact("It sounds after", seconds(echo_delay(ch))) +
-	       fact("The echo's song level, from a song level of 100",
-		    std::to_string(echo_song_level(100))) +
-	       "  At least 1. It plays in the room you sang in. Not underwater, and not\n"
-	       "  while another echo is waiting.\n";
+	std::string facts =
+		fact("Chance of an echo each song beat", chance(echo_chance(SECT_INSIDE))) +
+		fact("In the mountains", chance(echo_chance(SECT_MOUNTAIN))) +
+		fact("In the hills", chance(echo_chance(SECT_HILLS))) +
+		fact("In a forest", chance(echo_chance(SECT_FOREST))) +
+		fact("It sounds after", seconds(echo_delay(ch))) +
+		fact("The echo's song level, from a song level of 100",
+		     std::to_string(echo_song_level(100))) +
+		"  At least 1. It plays in the room you sang in. Not underwater, and not\n"
+		"  while another echo is waiting.\n";
+	if (player_bard(ch, SPEC_DISHARMONIST, 56))
+		facts +=
+			fact("Chance a completed damage spell echoes", one_in(spell_echo_roll)) +
+			fact("Echo damage", show({ spell_echo_damage_roll(lowest_rolls),
+						   spell_echo_damage_roll(highest_rolls) }) +
+						    "% of normal") +
+			"  Magic missile, burning hands, lightning bolt, fireball, Bigby's clenched\n"
+			"  fist and shatter can repeat once. It uses no second spell slot, cannot\n"
+			"  echo again, and does not follow a dead or departed target.\n"
+			"  Existing spell defenses and reflection still apply. Player singers only.\n";
+	return facts;
 }
 
 void event_bardsong(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)

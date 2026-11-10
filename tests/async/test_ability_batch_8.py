@@ -144,9 +144,10 @@ HANDLER_CALLS = {
                                 "add_event(event_awaken_forest, awaken_forest_interval()"],
         "cast_spike_growth": ["add_event(event_spike_growth, spike_growth_start()"],
         "cast_awaken_forest": ["add_event(event_awaken_forest, awaken_forest_start()"],
-        "cast_hurricane": ["dam = hurricane_damage(live_rolls, level)",
+        "cast_hurricane": ["dam = hurricane_damage(live_rolls, level)", "spell_hurricane_hit(ch, target, dam)"],
+        "spell_hurricane_hit": [
                            "hurricane_miss_roll(live_rolls) < hurricane_miss_below()",
-                           "chance = hurricane_knockdown_chance(IS_AFFECTED(tch, AFF_FLY), GET_LEVEL(ch))",
+                           "chance = hurricane_knockdown_chance(IS_AFFECTED(victim, AFF_FLY), GET_LEVEL(ch))",
                            "affchance = hurricane_knockdown_roll(live_rolls)"],
         "cast_storm_shield": ["af.duration = storm_shield_duration(level)"],
         "cast_bloodstone": ["NewSaves(victim, SAVING_PARA, blood_to_stone_save())", "dur = blood_to_stone_saved(dur)",
