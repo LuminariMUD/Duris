@@ -35,7 +35,7 @@ def run(binary, backend, output):
         configure(runtime)
         critical, boot_log = runtime / "journals/critical", runtime / "boot.out"
         critical.mkdir(parents=True, mode=0o700)
-        clients, history, ids = [], [], {}
+        clients, history, ids, earned_base_hit = [], [], {}, {}
         process = None
         plain, tls, websocket = journey.available_ports()
         properties = runtime / "lib/duris.properties"
@@ -146,6 +146,12 @@ def run(binary, backend, output):
                 ids[name] = int(pid[1])
                 return {"level": int(status[1]), "experience": int(status[2].replace(",", ""))}
 
+            def base_hit(name):
+                text = command(god, "stat char " + name)
+                found = re.search(r"Hits:\s*\[\s*\d+/\s*\d+/\s*(\d+)\+", text)
+                assert found, text
+                return int(found[1])
+
             def saved(name):
                 values = sql(f"SELECT level,exp,save_revision FROM player_data WHERE pid={ids[name]}").split("\t")
                 return dict(zip(("level", "experience", "revision"), map(int, values)))
@@ -246,7 +252,11 @@ def run(binary, backend, output):
                     client = die(client, protocol, name, "in-session 1 to 16")
                     client = die(client, protocol, name, "entered at 16")
                     set_level(name, 30, 0)
+                    earned_base_hit[name] = base_hit(name)
                     client = die(client, protocol, name, "actual delevel", delevel=True)
+                    assert base_hit(name) == earned_base_hit[name] - 1
+                    set_level(name, 30, 0)
+                    assert base_hit(name) == earned_base_hit[name]
                     set_level(name, 17)
                     if isinstance(client, WebSocketClient):
                         returned = client.command("game", "quit", "account")
@@ -269,6 +279,7 @@ def run(binary, backend, output):
                     check(rows if rows is not None else listing(client), name, 17)
                     enter(client, name)
                     assert live(name) == {"level": 17, "experience": 12345}
+                    assert base_hit(name) == earned_base_hit[name]
                     evidence["cases"].append({"case": protocol + " cold restart", "state": saved(name)})
                     print("PASS", backend, protocol, "cold restart", flush=True)
                     if isinstance(client, WebSocketClient):
