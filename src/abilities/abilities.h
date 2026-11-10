@@ -54,6 +54,8 @@ std::string game_hours_range(Range ticks);
 std::string show_signed(Range range);
 std::string show_landing(Range range);
 std::string share_percent(float share);
+// Combined racial attack factor for players, shared by combat and race innates.
+float player_racial_damage_multiplier(int race);
 // A computed passive listing entry; neutral damage multipliers have no entry.
 std::string damage_modifier_innate(float multiplier);
 
@@ -84,6 +86,7 @@ std::string innate_rest_facts(int innate, int duration);
 std::string fireball_facts(char_data *ch);
 std::string bash_facts(char_data *ch);
 std::string reflection_innate_facts(char_data *ch);
+std::string monkey_grip_innate_facts(char_data *ch);
 std::string blindsinging_innate_facts(char_data *ch);
 std::string echo_innate_facts(char_data *ch);
 std::string intercept_innate_facts(char_data *ch);

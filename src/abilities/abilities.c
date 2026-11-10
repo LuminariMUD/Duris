@@ -1874,6 +1874,8 @@ AbilityFacts innate_facts(int innate)
 	{
 	case INNATE_REFLECTION:
 		return reflection_innate_facts;
+	case INNATE_MONKEY_GRIP:
+		return monkey_grip_innate_facts;
 	case INNATE_AURA_BATTLELUST:
 		return aura_battlelust_innate_facts;
 	case INNATE_AURA_ENDURANCE:

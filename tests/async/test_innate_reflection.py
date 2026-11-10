@@ -47,7 +47,11 @@ int ne_event_time(P_nevent) { return rest_left; }
 static std::string reflection_spell_facts(P_char) { return "  Spell line\n"; }
 AbilityFacts ability_facts(int skill) { return skill == SPELL_REFLECTION ? reflection_spell_facts : nullptr; }
 std::string reflection_innate_facts(P_char);
-AbilityFacts innate_facts(int innate) { return innate == INNATE_REFLECTION ? reflection_innate_facts : nullptr; }
+std::string monkey_grip_innate_facts(P_char);
+AbilityFacts innate_facts(int innate) {
+    if (innate == INNATE_MONKEY_GRIP) return monkey_grip_innate_facts;
+    return innate == INNATE_REFLECTION ? reflection_innate_facts : nullptr;
+}
 affected_type *affect_to_char(P_char ch, affected_type *af) {
     auto *copy = new affected_type(*af);
     copy->next = ch->affected; ch->affected = copy; return copy;
@@ -65,6 +69,8 @@ static void clear(P_char ch) {
 }
 '''
 functions = [
+    ('nanny.c', 'void set_char_size('),
+    ('innates.c', 'std::string monkey_grip_innate_facts('),
     ('utility.c', 'int flag2idx('), ('utility.c', 'string strip_ansi('),
     ('interp.c', 'void argument_interpreter('), ('interp.c', 'char *one_argument('),
     ('interp.c', 'bool is_abbrev('),
@@ -173,6 +179,45 @@ int main() {
     // The harness table keeps only Reflection's handler; the others read as always active.
     page = info(&ch, "infravision");
     assert(has(page, "infravision : INNATE INFO") && has(page, "Type: Always active") && !has(page, "Mechanics"));
+    // Monkey Grip is the physical Huge-player hand discount, registered as a passive.
+    assert(INNATE_MONKEY_GRIP == 184 && LAST_INNATE == INNATE_MONKEY_GRIP);
+    assert(!strcmp(innates_data[INNATE_MONKEY_GRIP].name, "monkey grip"));
+    assert(innates_data[INNATE_MONKEY_GRIP].func == nullptr);
+    ch = {}; SET_POS(&ch, STAT_NORMAL + POS_STANDING); ch.player.level = 1;
+    int huge_races = 0;
+    for (int race = 1; race <= RACE_PLAYER_MAX; ++race) {
+        ch.player.race = race; set_char_size(&ch);
+        const bool huge = GET_SIZE(&ch) >= SIZE_HUGE;
+        assert((racial_innates[INNATE_MONKEY_GRIP][race] == 1) == huge);
+        assert(has_innate(&ch, INNATE_MONKEY_GRIP) == huge);
+        assert(has(innate_list(&ch), "*monkey grip\n") == huge);
+        page = info(&ch, "monkey grip");
+        assert(has(page, "monkey grip : INNATE INFO") && has(page, "Type: Always active"));
+        assert(has(page, "You have it (from level 1).") == huge);
+        assert(has(page, "Not available to your race, class or specialization.") == !huge);
+        assert(has(page, "two-handed weapons cost 1 hand instead of 2"));
+        assert(has(page, "normal two-handed weapon damage is retained"));
+        assert(has(page, "Enlarge, Reduce and Titan Form do not change eligibility."));
+        assert(has(page, "Two-handed nonweapon items still require 2 hands."));
+        assert(!has(page, "Status:"));
+        ch.specials.affected_by3 = AFF3_ENLARGE;
+        assert(has_innate(&ch, INNATE_MONKEY_GRIP) == huge);
+        ch.specials.affected_by3 = AFF3_REDUCE;
+        ch.specials.affected_by5 = AFF5_TITAN_FORM;
+        assert(has_innate(&ch, INNATE_MONKEY_GRIP) == huge);
+        ch.specials.affected_by3 = ch.specials.affected_by5 = 0;
+        ch.specials.act = ACT_ISNPC;
+        assert(!has_innate(&ch, INNATE_MONKEY_GRIP));
+        ch.specials.act = 0;
+        huge_races += huge;
+    }
+    assert(huge_races == 5);
+    // Access follows actual stored size, including race disguises with a different body.
+    ch.player.race = RACE_OGRE; GET_SIZE(&ch) = SIZE_MEDIUM;
+    assert(!has_innate(&ch, INNATE_MONKEY_GRIP));
+    ch.player.race = RACE_HUMAN; GET_SIZE(&ch) = SIZE_HUGE;
+    assert(has_innate(&ch, INNATE_MONKEY_GRIP));
+    puts("Monkey Grip: all 37 player races, Huge grants, personal list/info, base-size access, temporary size effects and NPC isolation passed.");
     puts("Reflection: real dispatch, race/level grants, self targeting, configurable cooldown and titan rejection passed.");
 }
 '''

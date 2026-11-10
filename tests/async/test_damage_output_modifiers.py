@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify neutral racial activation, unchanged class values, and damage composition."""
+"""Verify Large player bonuses, NPC isolation, and racial/class damage composition."""
 from pathlib import Path
 import re
 import subprocess
@@ -56,22 +56,37 @@ int main(int argc, char **argv) {
     }
     update_damage_data();
     char_data actor{};
-    // All real races, including NPC-only identities, retain their old neutral
-    // racial output. Class output, racial pulse and damroll-cap tables still load normally.
+    // The player-only bonus follows the creation/login Large size roster.
+    // Shared racial output, class output, pulse and damroll caps retain their settings.
     for (int race = 1; race <= LAST_RACE; ++race) {
         close(combat_by_race[race][1], 1.0f);
         const std::string name = race_names_table[race].no_spaces;
         close(combat_by_race[race][2], get_property(("damage.damrollModifier.racial." + name).c_str(), 1.0));
         close(combat_by_race[race][0], get_property(("damage.pulse.racial." + name).c_str(), double(PULSE_VIOLENCE)));
         actor.player.race = race;
+        set_char_size(&actor);
+        const float racial = race <= RACE_PLAYER_MAX && GET_SIZE(&actor) == SIZE_LARGE ? 1.15f : 1.0f;
+        close(player_racial_damage_multiplier(race), racial);
         for (int cls = 1; cls <= CLASS_COUNT; ++cls) {
             actor.player.m_class = 1u << (cls - 1);
             assign_damage(&actor);
             const float expected = get_property((std::string("damage.totalOutput.class.") + class_names_table[cls].normal).c_str(), 0.0);
             close(combat_by_class[cls][1], expected);
-            close(actor.specials.damage_mod, expected);
+            close(actor.specials.damage_mod, racial * expected);
         }
+        // Even NPCs with a Large player race identity do not receive the player bonus.
+        actor.specials.act = ACT_ISNPC;
+        zones[0].difficulty = 1;
+        assign_damage(&actor); close(actor.specials.damage_mod, 1.0f);
+        zones[0].difficulty = 3;
+        assign_damage(&actor); close(actor.specials.damage_mod, 1.6f);
+        actor.specials.act = 0;
     }
+    // Missing player-only keys are neutral too, and live property changes are read again.
+    properties.erase("damage.totalOutput.playerRacial.Barbarian");
+    close(player_racial_damage_multiplier(RACE_BARBARIAN), 1.0f);
+    properties["damage.totalOutput.playerRacial.Barbarian"] = 1.15f;
+    close(player_racial_damage_multiplier(RACE_BARBARIAN), 1.15f);
     // A missing racial property is neutral, for player and NPC races alike.
     properties.erase("damage.totalOutput.racial.Barbarian");
     properties.erase("damage.totalOutput.racial.Dragon");
@@ -87,12 +102,12 @@ int main(int argc, char **argv) {
     actor.player.race = RACE_BARBARIAN;
     actor.player.m_class = CLASS_MONK;
     actor.player.secondary_class = 0;
-    assign_damage(&actor); close(actor.specials.damage_mod, 1.15f * .825f);
+    assign_damage(&actor); close(actor.specials.damage_mod, 1.15f * 1.15f * .825f);
     actor.player.secondary_class = CLASS_WARRIOR;
-    assign_damage(&actor); close(actor.specials.damage_mod, 1.15f * 1.15f);
+    assign_damage(&actor); close(actor.specials.damage_mod, 1.15f * 1.15f * 1.15f);
     actor.player.m_class = CLASS_WARRIOR;
     actor.player.secondary_class = CLASS_MONK;
-    assign_damage(&actor); close(actor.specials.damage_mod, 1.15f * 1.15f);
+    assign_damage(&actor); close(actor.specials.damage_mod, 1.15f * 1.15f * 1.15f);
     actor.player.race = RACE_DROW;
     assign_damage(&actor); close(actor.specials.damage_mod, .825f * 1.15f);
 
@@ -104,7 +119,7 @@ int main(int argc, char **argv) {
     properties["damage.totalOutput.racial.Dragon"] = 1.0f;
     update_damage_data();
     assign_damage(&actor); close(actor.specials.damage_mod, 1.6f);
-    puts("PASS: neutral race matrix, missing keys, reload, signed factors, multiclass maximum and NPC scaling");
+    puts("PASS: Large player bonuses, class composition, missing keys, reload, multiclass maximum and NPC isolation/scaling");
 }
 '''
 
@@ -113,6 +128,10 @@ def main():
     properties = (ROOT / "lib/duris.properties").read_text()
     racial = re.findall(r"^damage\.totalOutput\.racial\.([^=]+)=(.+)$", properties, re.M)
     assert len(racial) == 93 and all(value == "1.000" for _, value in racial), racial
+    player_racial = {key: float(value) for key, value in re.findall(
+        r"^damage\.totalOutput\.playerRacial\.([^=]+)=(.+)$", properties, re.M)}
+    assert player_racial == dict.fromkeys(
+        ("Barbarian", "Troll", "Centaur", "Drider", "Revenant", "DeathKnight"), 1.15), player_racial
     classes = {key: float(value) for key, value in re.findall(
         r"^damage\.totalOutput\.class\.([^=]+)=(.+)$", properties, re.M)}
     assert classes == CLASS_OUTPUT, (classes, CLASS_OUTPUT)
@@ -121,6 +140,8 @@ def main():
     end = affects.index("\n\t/* For testing..", start)
     composition = "void assign_damage(P_char ch) { const int ch_race = GET_RACE(ch);\n" + affects[start:end] + "\n}"
     production = extract_function("affects.c", "void update_damage_data()")
+    production += "\n" + extract_function("affects.c", "float player_racial_damage_multiplier(")
+    production += "\n" + extract_function("nanny.c", "void set_char_size(")
     production += "\n" + extract_function("utility.c", "int flag2idx(")
     production += "\n" + extract_function("utility.c", "int BOUNDED(") + "\n" + composition
     build = ROOT / "bin/tests"
@@ -135,7 +156,7 @@ def main():
                         "-fsanitize=address,undefined", "-fno-pie", "-no-pie", "-Isrc",
                         str(harness), "src/core/common.c", "-o", str(binary)], cwd=ROOT, check=True)
         subprocess.run([str(binary), str(ROOT / "lib/duris.properties")], check=True)
-    print("PASS: all 93 racial entries neutral and every class setting unchanged")
+    print("PASS: six Large player race bonuses, all 93 shared racial entries neutral and class settings unchanged")
 
 
 if __name__ == "__main__":
