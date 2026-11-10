@@ -183,7 +183,10 @@ def run(binary, baseline, minstrel_only=False):
                     stop()
                 # Same actors, authority and level-56 lyre; switch binaries only while stopped.
                 report["healing_comparison"] = []
-                for label, server, expected in (("before", baseline, (22,23)), ("after", binary, (31,32,33))):
+                versions = [("after", binary, (31,32,33))]
+                if baseline:
+                    versions.insert(0, ("before", baseline, (22,23)))
+                for label, server, expected in versions:
                     pid = sql(f"SELECT pid FROM player_data WHERE name='{BARD}'")
                     sql(f"UPDATE player_data SET spec=3,base_cha=100,act2=act2 | {1 << 20} WHERE pid={pid}")
                     for name in (BARD,FOLLOWER,PEER):
@@ -262,7 +265,7 @@ def run(binary, baseline, minstrel_only=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--server", type=Path, required=True)
-    parser.add_argument("--baseline-server", type=Path, required=True)
+    parser.add_argument("--baseline-server", type=Path, help="Also compare healing with the pre-Minstrel-change binary")
     parser.add_argument("--minstrel-only", action="store_true", help="Reuse a qualified Scoundrel segment and run only the Minstrel comparison")
     args = parser.parse_args()
-    run(args.server.resolve(), args.baseline_server.resolve(), args.minstrel_only)
+    run(args.server.resolve(), args.baseline_server.resolve() if args.baseline_server else None, args.minstrel_only)

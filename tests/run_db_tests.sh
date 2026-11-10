@@ -76,6 +76,8 @@ assassin_combat $DB python3 tests/async/test_assassin_combat_journey.py --server
 conjurer_gameplay $DB python3 tests/async/test_conjurer_gameplay_journey.py --server SERVER_BINARY
 shambler_reflection $DB python3 tests/async/test_shambler_reflection_journey.py --server SERVER_BINARY
 minor_creation_instrument $DB python3 tests/async/test_minor_creation_instrument_journey.py --server SERVER_BINARY
+bard_support $DB python3 tests/async/test_bard_support_journey.py --server SERVER_BINARY
+bard_disharmonist $DB python3 tests/async/test_bard_disharmonist_journey.py --server SERVER_BINARY
 issue904_qol $DB python3 tests/async/run_issue904_qol_journey.py --server SERVER_BINARY
 generated_npc $DB python3 tests/async/test_generated_npc_journey.py --server SERVER_BINARY
 generated_npc_redis $DB python3 tests/async/test_generated_npc_journey.py --server SERVER_BINARY --mode redis
