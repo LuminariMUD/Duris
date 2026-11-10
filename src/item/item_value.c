@@ -12,8 +12,11 @@ bool item_value_material_quantities(int score, double scale, int &high, int &low
 	if (score < 1 || !std::isfinite(scale) || scale <= 0)
 		return false;
 	const auto material_value = static_cast<long long>(score) + 4;
-	const double high_count = std::ceil((material_value / 5) * scale);
-	const double low_count = std::ceil((material_value % 5) * scale);
+	// Round up, but not on float noise: 25 * 2.2 is 55, not 56. A positive need stays positive.
+	const auto units = [scale](long long count)
+	{ return count ? std::max(1.0, std::ceil(count * scale - 1e-9)) : 0.0; };
+	const double high_count = units(material_value / 5);
+	const double low_count = units(material_value % 5);
 	if (!std::isfinite(high_count) || !std::isfinite(low_count) || high_count > INT_MAX ||
 	    low_count > INT_MAX)
 		return false;

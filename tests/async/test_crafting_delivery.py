@@ -159,6 +159,6 @@ with tempfile.TemporaryDirectory(prefix='crafting-delivery-', dir=ROOT / 'bin/te
         'g++', '-std=c++20', '-g', '-O1', '-ffunction-sections', '-fdata-sections',
         '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-pie', '-no-pie',
         '-Isrc', '-I/usr/include/mysql', str(cpp), str(HARNESS_STUBS),
-        'src/core/safe_format.c', '-Wl,--gc-sections', '-lbsd', '-lcrypto', '-o', str(binary),
+        'src/core/safe_format.c', 'src/item/item_value.c', '-Wl,--gc-sections', '-lbsd', '-lcrypto', '-o', str(binary),
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True, timeout=30)
