@@ -1,6 +1,6 @@
 # Race balance: miscellaneous rules and historical rationale
 
-Reviewed 2026-11-08. This page collects specific balance considerations that
+Reviewed 2026-11-10. This page collects specific balance considerations that
 cross the other race references. Historical explanations are distinguished
 from current server behavior and from decisions about future balance.
 
@@ -41,6 +41,13 @@ leveling obstacle does not automatically justify a permanent endgame advantage.
 That last point is balance guidance, not a rule quoted from the historical docs.
 
 ## 2. Huge player races: two-handed weapons in one hand
+
+Formalized 2026-11-10 as the level-1 passive **Monkey Grip**
+(`INNATE_MONKEY_GRIP`). All five Huge player races list it in `race innates`;
+`innate info monkey grip` explains its effect, eligibility and restrictions.
+Equipment hand cost and innate access share `has_monkey_grip()`, which checks
+the player's stored base size. The named innate preserves the existing equipment
+behavior and the separate NPC giant rule.
 
 ### Current hand-cost rule
 
@@ -123,10 +130,15 @@ computed passive feature only when the selected loaded factor differs from
 
 The displayed percentage is `(factor - 1) * 100`, with a sign and fractional
 precision. Warrior currently shows +15%, Berserker -10%, Monk -17.5%, and
-Rogue +10%; shipped racial entries are omitted because their adjustment is zero.
+Rogue +10%. As of 2026-11-10, the six Large player races (Barbarian, Troll,
+Centaur, Drider, Revenant and Death Knight) receive +15% melee and archery
+damage through `damage.totalOutput.playerRacial.*`. Their racial innate listings
+show that bonus. This uses the Large category from player creation/login;
+Huge races remain a separate category.
 Specializations inherit the base class factor: normal Thief and Assassin use
 Rogue's +10%, rather than the retired standalone class IDs. Values come from
-the loaded combat tables, not a duplicate innate grant or the viewer's class.
+the loaded combat tables and player racial properties, not a duplicate innate
+grant or the viewer's class.
 These are descriptive features, with no new innate IDs, unlocks or commands.
 
 The factor multiplies ordinary melee damage, including ordinary unarmed
@@ -140,6 +152,9 @@ Racial and class factors multiply: +15% from each yields `1.15 * 1.15 = 1.3225`,
 or +32.25% at that stage. Multiclass PCs use the **higher** class factor, then
 multiply it by the racial factor. This does not add or multiply both class
 bonuses. NPCs keep their separate zone scaling and do not gain PC class factors.
+The player racial factor multiplies the shared racial factor before the class
+factor. NPCs do not receive the player racial factor, including NPCs with the
+same race ID as a Large player race. Missing player racial keys default to 1.000.
 The existing damage floor, later defenses and rounding still apply.
 
 The output factor is separate from `damage.damrollModifier.racial.*`, which
@@ -159,8 +174,9 @@ Sources: [loading and composition](../../../src/magic/affects.c),
 [shipped properties](../../../lib/duris.properties).
 
 Verification: [damage-output regression](../../../tests/async/test_damage_output_modifiers.py)
-checks all shipped racial/class settings, loader defaults and reloads, the
-race/class composition, multiclass maximum, and NPC zone scaling. The
+checks all shipped racial/class settings, the six Large player bonuses,
+defaults and reloads, race/class composition, multiclass maximum, and NPC
+isolation and zone scaling. The
 [race](../../../tests/async/test_race_command.py) and
 [class](../../../tests/async/test_class_command.py) command fixtures exercise
 positive, negative, fractional and neutral entries and specialization inheritance.

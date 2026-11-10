@@ -1028,7 +1028,7 @@ these isolated timing differences.
 | 22 | Vampire | 4s / 0.800 | Restricted; fast melee and favorable casting. Touch-vamp healing can scale with eligible damage opportunities; the active Bite has a much longer 12s actor lag. |
 | 23 | Death Knight | 4.25s / 1.500 | Restricted; reasonably fast melee but slow 1.5 casting. Innate Firestorm/Fireshield call spells directly with fixed 16s/4s lag, so they do not inherit the ordinary cast-factor penalty. |
 | 24 | Shadow Beast | 3.75s / 1.100 | Restricted; fast melee but slower-than-Human casting. Direct Strength/Enlarge and Project Image have their own costs; undead-style recovery is separate. |
-| 25 | Storm Giant | 4.25s / 1.600 | Restricted; intermediate melee and slow casting despite no racial innate grants. Zero listed innates does not mean neutral timing or no racial differences. |
+| 25 | Storm Giant | 4.25s / 1.600 | Restricted; intermediate melee and slow casting. Monkey Grip names its existing Huge-player ability to use two-handed weapons in one hand. |
 | 26 | Wight | 4.5s / 1.900 | Restricted; Human-equivalent neutral integer melee interval, but the slowest listed PC casting factor, 1.9. Innate Stone Skin instead uses fixed 12s lag/300s rest. |
 | 27 | Phantom | 4.25s / 0.700 | Restricted; moderately fast melee and fast casting. Flight/form access can preserve travel opportunities, while fire/elemental weaknesses affect how long it can exploit its speed. |
 | 28 | Harpy | 3.75s / 0.700 | Restricted; fast melee/casting and passive flight. Harpy selects Tupor unless an earlier resource-model rule wins; its recovery time does not use its .70 cast multiplier. |
@@ -1048,7 +1048,9 @@ these isolated timing differences.
 
 Follow-up on 2026-11-09: `damage.totalOutput.racial.*` now loads with a neutral
 fallback of **1.000**, and all 93 shipped entries are 1.000. It therefore still
-provides no racial compensation for a slow melee timer under shipped settings.
+provides no shared racial compensation for a slow melee timer. Since 2026-11-10,
+the six Large player races receive a separate 1.150 player racial output factor;
+NPCs do not receive it.
 Class damage values are unchanged. Non-neutral race/class output factors are
 shown by their innate listings; see [modifier transparency](race-misc.md#3-visible-racial-and-class-attack-damage-modifiers).
 `damage.damrollModifier.racial.*` controls a racial damroll cap in aggregation;

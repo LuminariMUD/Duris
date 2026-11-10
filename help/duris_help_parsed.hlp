@@ -16979,6 +16979,7 @@ Spell Pulse  : below average
 *ultravision
  charge (obtained at level 11)
 *dayvision
+*monkey grip
 '*' Designates passive ability.
 
 #0
@@ -18624,6 +18625,7 @@ Spell Pulse  : bad
  ogre roar (obtained at level 11)
 *vulnerable to sun
 *magic vulnerability
+*monkey grip
 '*' Designates passive ability.
 
 #0
@@ -26342,7 +26344,8 @@ Spell Pulse  : atrociously bad
 
 ==Innate abilities==
 
-None.
+*monkey grip
+'*' Designates passive ability.
 
 #0
 Wight
@@ -26405,6 +26408,7 @@ Spell Pulse  : atrociously bad
  bodyslam
  stone skin (obtained at level 25)
 *vulnerable to fire
+*monkey grip
 '*' Designates passive ability.
 
 #0
@@ -26891,6 +26895,7 @@ Spell Pulse  : bad
  bodyslam
 *forest sight
 *magic vulnerability
+*monkey grip
 '*' Designates passive ability.
 
 #0

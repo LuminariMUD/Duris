@@ -1,7 +1,7 @@
 # PC racial innates: mechanics and gameplay differences
 
 Source review: 2026-11-08, checkout `b96dcdebbc9eb85a876c6bc64918b7a678d483d9`.
-This reference follows all **37 PC race IDs, 188 racial grants, and 78 distinct
+This reference follows all **37 PC race IDs, 193 racial grants, and 79 distinct
 innates** from assignment through their active handlers, passive checks, applied
 flags, downstream consumers, and expiry. It includes restricted/legacy PC races;
 being in an old source block headed “NPC Races” does not make a PC ID an NPC.
@@ -20,6 +20,14 @@ membership, undead identity, extra arms and native equipment exclusions are
 separate rules. This document includes those where an innate invokes or changes
 them; it does not count every non-innate racial advantage as another innate.
 
+Follow-up on 2026-11-10: **Monkey Grip** (`INNATE_MONKEY_GRIP`, passive from
+level 1) names the existing Huge-player ability to use two-handed weapons in
+one hand. Ogre, Firbolg, Minotaur, Storm Giant and Wight list it in `race innates`.
+The equipment rule and personal innate access share `has_monkey_grip()`: a PC's
+stored base size must be Huge or larger. Enlarge, Reduce and Titan Form do not
+change it. `innate info monkey grip` explains the retained weapon damage and
+normal strength/training restrictions. NPCs keep their separate giant rule.
+
 Navigation: [unlock roster](#2-complete-race-by-race-unlock-roster),
 [senses and concealment](#3-senses-information-and-concealment),
 [travel and bodies](#4-flight-breathing-bodies-and-physical-access),
@@ -35,8 +43,9 @@ Navigation: [unlock roster](#2-complete-race-by-race-unlock-roster),
 
 Follow-up on 2026-11-09: innate catalog listings also show a computed passive
 melee/archery damage modifier when the selected race or class output factor is
-non-neutral. This adds no innate-table grants. All shipped racial output factors
-are 1.000; class factors are unchanged. See
+non-neutral. This adds no innate-table grants. All shipped shared racial output
+factors are 1.000; since 2026-11-10, the six Large player races also receive a
+separate 1.150 player racial factor. Class factors are unchanged. See
 [modifier transparency](race-misc.md#3-visible-racial-and-class-attack-damage-modifiers).
 
 ## 1. Reading the mechanics
@@ -149,7 +158,7 @@ from the race's main block.
 | 6 | Duergar Dwarf | Ordinary | invisibility A1; strength A6; ultravision P1; ud-sneak P31; enlarge A26; battle frenzy P16; battlerage A31; vulnerable to sun P1; magical reduction P1 |
 | 7 | Halfling | Ordinary | burrow A1; perception P11; quick thinker P1; gamblers luck P26 |
 | 8 | Gnome | Ordinary | infravision P1; ultravision P1; farsee P21; reflection A31 |
-| 9 | Ogre | Ordinary | doorbash A1; ultravision P1; bodyslam A1; ogre roar A11; vulnerable to sun P1; magic vulnerability P1 |
+| 9 | Ogre | Ordinary | doorbash A1; ultravision P1; bodyslam A1; ogre roar A11; vulnerable to sun P1; magic vulnerability P1; monkey grip P1 |
 | 10 | Troll | Ordinary | doorbash A1; ultravision P1; bodyslam A1; regeneration P1; troll skin P21; vulnerable to fire P1; vulnerable to sun P1; swamp sneak P11 |
 | 11 | Half-Elf | Restricted | infravision P1; magic resistance P1; quick thinker P30; longsword master P11 |
 | 12 | Illithid | Restricted | levitate A1; ultravision P1; blast A1; shift_astral A1; shift_prime A1; magic resistance P1; vulnerable to sun P1 |
@@ -157,7 +166,7 @@ from the race's main block.
 | 14 | Thri-Kreen | Ordinary | ultravision P1; bite A11; leap P21; dayvision P1; vulnerable to cold P1 |
 | 15 | Centaur | Ordinary | horse body P1; doorkick A1; stampede A21; two-handed sword mastery P31 |
 | 16 | Githyanki | Ordinary | levitate A11; ultravision P1; shift_astral A1; shift_prime A1; magic resistance P1; vulnerable to sun P1 |
-| 17 | Minotaur | Ordinary | doorbash A1; ultravision P1; charge A11; dayvision P1 |
+| 17 | Minotaur | Ordinary | doorbash A1; ultravision P1; charge A11; dayvision P1; monkey grip P1 |
 | 18 | Shade | Restricted | darkness A1; ultravision P1; shade movement A21; vulnerable to fire P1 |
 | 19 | Revenant | Restricted | doorbash A1; ultravision P1; bodyslam A1; regeneration P1; shadow door A25; vulnerable to fire P1 |
 | 20 | Goblin | Ordinary | ultravision P1; disappear A31; summon totem A26 |
@@ -165,8 +174,8 @@ from the race's main block.
 | 22 | Vampire | Restricted | ultravision P1; vampiric touch P1; bite A1; magic resistance P1; vulnerable to sun P1; sacrilegious power P46 |
 | 23 | Death Knight | Restricted | ultravision P1; fireshield A31; firestorm A26; protection from fire P1; vulnerable to sun P1 |
 | 24 | Shadow Beast | Restricted | strength A1; ultravision P1; ud-sneak P1; enlarge A1; project image A1; vulnerable to fire P1 |
-| 25 | Storm Giant | Restricted | **None** |
-| 26 | Wight | Restricted | doorbash A1; ultravision P1; bodyslam A1; stone skin A25; vulnerable to fire P1 |
+| 25 | Storm Giant | Restricted | monkey grip P1 |
+| 26 | Wight | Restricted | doorbash A1; ultravision P1; bodyslam A1; stone skin A25; vulnerable to fire P1; monkey grip P1 |
 | 27 | Phantom | Restricted | ultravision P1; shift_astral A1; shift_prime A1; fly P21; phantasmal form A20; vulnerable to fire P1; magic resistance P1 |
 | 28 | Harpy | Restricted | ultravision P1; fly P1; dayvision P1; perception P1 |
 | 29 | Orog | Restricted | ultravision P1; vulnerable to sun P1; warcallers fury P21 |
@@ -176,14 +185,13 @@ from the race's main block.
 | 33 | Planetbound Illithid | Restricted | levitate A10; ultravision P1; shift_astral A1; shift_prime A1; magic resistance P1; dayblind P1; vulnerable to sun P1 |
 | 34 | Kuo Toa | Restricted | ultravision P1; waterbreath P15; throw lightning A30; vulnerable to sun P1; swamp sneak P1 |
 | 35 | Wood Elf | Restricted | outdoor sneak P11; forest sight P11; magic resistance P1; longsword master P11 |
-| 36 | Firbolg | Ordinary | doorbash A1; bodyslam A1; forest sight P1; magic vulnerability P1 |
+| 36 | Firbolg | Ordinary | doorbash A1; bodyslam A1; forest sight P1; magic vulnerability P1; monkey grip P1 |
 | 37 | Tiefling | Ordinary | infravision P1; ultravision P1; protection from fire P1; magic resistance P1 |
 
 Important roster distinctions:
 
-- **Storm Giant has no assigned innate**, although old commented assignments
-  mention infravision, doorbash and lightning. Its other racial mechanics still
-  exist.
+- **Storm Giant has Monkey Grip from level 1.** Its old commented infravision,
+  doorbash and lightning assignments remain inactive.
 - **Orc has Summon Warg at 16; Goblin does not.** The active Orc assignment is
   physically inside the Goblin block. Goblin has Summon Totem instead.
 - **Thri-Kreen Leap is listed at 21, but actual avoidance is race-based at any
@@ -1709,7 +1717,7 @@ listed advantage. A race with few innates is not thereby a weak race.
 | Vampire | Persistent eligible-hit healing, separate bite/CON/stun attack, shrug and late holy-damage reduction. Sun remains a constraint; current native PC grants have neither Gaze nor fire weakness. Bite is not the unreachable legacy heal/charm code. |
 | Death Knight | Native fire protection plus free-to-reuse Firestorm/Fireshield after 26/31. Fixed command lag still limits throughput; sunlight remains, and the shield creates elemental tradeoffs rather than all-damage immunity. |
 | Shadow Beast | Immediate STR, Enlarge, underworld sneak, night sight and repeatable visual decoys. Fire vulnerability; Project Image is not Reflection's linked pet/disengagement mechanic. |
-| Storm Giant | No racial table innates. Its size/stats/racial factors and class abilities still matter; inactive source comments do not provide doors or lightning. |
+| Storm Giant | Monkey Grip from level 1 permits two-handed weapons in one hand. Its size/stats/racial factors and class abilities still matter; inactive source comments do not provide doors or lightning. |
 | Wight | Early opener/doors/night sight, later finite-charge Stone Skin. Fire weakness; its ordinary class can produce fewer skin charges than a Conjurer with the same level. |
 | Phantom | Early astral travel/night sight/shrug, form at 20 and sustained Fly at 21. Fire weakness combines with the form's separate elemental penalty; form permits recharge healing and selected physical/content exemptions. |
 | Harpy | Continuous Fly, information range/track bonus and night sight from 1. It also receives the race-based leap defense despite no Leap table entry; no native fire/cold/sun weakness is assigned here. |
@@ -1882,7 +1890,7 @@ changed behavior.
 
 ## 13. Evidence, verification and limits
 
-The review enumerated the active PC-range assignments independently of source
+The original 2026-11-08 review enumerated the active PC-range assignments independently of source
 comment headings, matched innate IDs to names/handlers, followed direct checks
 and derived macros/affect bits, read the active command and called-spell paths,
 and compared numeric settings with `lib/duris.properties`. The document's
