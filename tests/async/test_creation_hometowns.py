@@ -74,6 +74,7 @@ void account_format_racewar_denial(const account_racewar_admission *, char *buff
 void ws_send_system(P_desc, const char *, const char *message) { error = message; }
 int websocket_send_text(P_desc, const char *text) { json = text; return 1; }
 void write_to_q(const char *text, txt_q *, int) { output += text; }
+void write_output(const char *text, txt_q *queue) { write_to_q(text, queue, 1); }
 void logit(const char *, const char *, ...) {}
 static void prompt_stat_method(P_desc) { ++prompts; }
 affected_type *apply_achievement(P_char, int tag) {
