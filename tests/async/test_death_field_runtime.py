@@ -355,6 +355,7 @@ def main():
         ('fight.c', 'static int flame_mastery_roll('),
         ('fight.c', 'static int flame_mastery_level_roll('),
         ('fight.c', 'static double flame_mastery_damage('),
+        ('bard.c', 'int song_nimbleness_spell_threshold('),
         ('fight.c', 'int spell_damage(P_char ch,'),
         ('utility.c', 'int dice(int num, int size)'),
         ('psionics.c', 'static int death_field_damage('),
