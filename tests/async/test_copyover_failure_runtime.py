@@ -56,8 +56,8 @@ static std::vector<txt_q *> queued;
 void critical_command_coordinator_resume() { ++resumed; }
 void critical_outbox_resume() { ++resumed; }
 void player_save_pipeline_resume() { ++resumed; }
-void write_to_q(const char *text, txt_q *queue, int wrap) {
-    assert(std::string(text) == "failed" && wrap == 1);
+void write_output(const char *text, txt_q *queue) {
+    assert(std::string(text) == "failed");
     queued.push_back(queue);
 }
 ''' + extract_function(source, 'const char *copyover_state_file()') + '\n' + extract_function(source, 'static void notify_copyover_failure(') + r'''
