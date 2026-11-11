@@ -65,8 +65,8 @@ struct pet_restore_state
 	uint64_t act = 0;
 	uint32_t primary_class = 0, secondary_class = 0;
 	int32_t level = 0, race = 0, sex = 0, size = 0, alignment = 0;
-	// v2: absolute deadlines for Stoneskin, Conjure Elemental, Invigorate.
-	std::array<int64_t, 3> named_set_cooldowns = {};
+	// v2: Stoneskin, Conjure Elemental, Invigorate; v3 appends Ironwood.
+	std::array<int64_t, 4> named_set_cooldowns = {};
 };
 
 // Bounded, endian-independent ASCII payload: safe in SQL text and binary

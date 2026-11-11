@@ -37,70 +37,41 @@ catalog_source = source("named_sets.c").read_text()
 spawn_source = source("random.mob.c").read_text()
 set_rows = aggregate_rows(catalog_source, "named_sets[] =")
 spawn_rows = aggregate_rows(spawn_source, "zones_random_data[] =")
-# Frozen from 878c3a85b, before separating sets from roaming spawns. New sets may
-# be added without changing any old zone/effect/threshold or spawn sampling row.
-BASELINE_IDS = "14 18 20 21 23 24 26 27 35 37 38 40 53 60 67 68 73 87 90 91 93 94 103 106 112 113 124 130 133 140 143 151 152 159 160 162 165 170 183 191 196 197 200 202 213 215 220 222 224 226 229 230 232 238 244 254 257 260 261 262 264 266 270 285 289 294 306 308 311 313 315 318 320 324 328 333 335 342 345 360 367 368 370 371 377 381 383 386 387 391 400 402 412 419 441 448 450 583 662 671 676 700 710 756 758 800 824 857 936 955 960 964 975 987 1325"
-old_ids = set(map(int, BASELINE_IDS.split()))
-assert digest([row for row in set_rows if int(row[1:row.index(',')]) in old_ids]) == "ea4af79fa4b514f3fe4e85a2b099a6e7bde3a8d3cc3906b6de0509adafcec217"
+# The reviewed worksheet snapshot is the assignment authority.
 assert digest(spawn_rows) == "d6651121125ccc52834725a969e5c5d9625396b05cd4aba7c3957b528f9313ed"
 assert len(spawn_rows) == 118
 assert "named_sets" not in extract_function("random.mob.c", "P_char create_random_mob(")
-
-# The reviewed assignment document is the data manifest. Keep every old row and
-# require one exact tier for each addition, with no unclassified active record.
-assignments = (ROOT / "docs/ongoing-projects/named-zone-set-first-pass-assignments.md").read_text()
-sections = [
-    assignments.split("## The 42 proposed assignments")[1].split("## Effect homes after both passes")[0],
-    assignments.split("### The 79 wider-review additions")[1].split("### Excluded active records")[0],
-]
+assignments = (ROOT / "docs/ongoing-projects/named-effects-worksheet-replacement-plan.md").read_text()
+aliases = dict(re.findall(r"\| \x60(SPELL_[^\x60]+)\x60 \| \x60(SPELL_[^\x60]+)\x60 \|", assignments))
+aliases.update(SPELL_AWARENESS="SKILL_AWARENESS", SPELL_SNEAK="SKILL_SNEAK")
 expected = {}
-for section in sections:
-    for line in section.splitlines():
-        if not re.match(r"^\| \d+ \|", line):
-            continue
-        cells = line.split("|")
-        zone, pieces = int(cells[1]), int(cells[4])
-        effect = int(re.search(r"\(#(\d+)\)", cells[3])[1])
+for line in assignments.split("## Appendix: complete worksheet choices")[1].splitlines():
+    if not re.match(r"^\| \d+ \|", line): continue
+    cells = [s.strip() for s in line.split("|")[1:-1]]
+    if int(cells[0]) in {20,73,102,105,131,143,148,165,237}: continue
+    tiers=[]
+    for value in cells[4:7]:
+        if value=="-": continue
+        count,spell=value.split(": ",1)
+        token="SPELL_"+spell
+        tiers.append((int(count),aliases.get(token,token)))
+    for zone in map(int,re.findall(r"\d+",cells[3].split("(")[0])):
         assert zone not in expected
-        expected[zone] = (pieces, effect)
-assert len(expected) == 183 and not old_ids & expected.keys()
-defines = {name: int(number) for name, number in re.findall(
-    r"^#define\s+(\w+)\s+(\d+)\s*(?://[^\n]*)?$", source("spells.h").read_text(), re.M)}
-actual_ids = {int(row[1:row.index(',')]) for row in set_rows}
-assert len(set_rows) == len(actual_ids) == 298
-assert actual_ids == old_ids | expected.keys()
-for row in set_rows:
-    zone = int(row[1:row.index(',')])
-    if zone in old_ids:
-        continue
-    match = re.fullmatch(r"\{\d+,\{\{(\d+),(\w+)\}\}\}", row)
-    assert match and (int(match[1]), defines[match[2]]) == expected[zone], row
-excluded = {int(value) for value in re.findall(r"^\| (-?\d+) \|",
-    assignments.split("### Excluded active records")[1].split("## Implementation handoff")[0], re.M)}
-assert len(excluded) == 56 and not excluded & actual_ids
-loaded = set()
-for line in (ROOT / "areas/AREA").read_text().splitlines():
-    if not line.strip() or line.lstrip().startswith("*"):
-        continue
-    area = line.split()[0]
-    path = ROOT / "areas/zon" / (area + ".zon")
+        expected[zone]=tiers
+actual={int(row[1:row.index(',')]):[(int(n),s) for n,s in re.findall(r"\{(\d+),(\w+)\}",row)] for row in set_rows}
+assert actual==expected and len(actual)==len(set_rows)==306
+assert sum(map(len,actual.values()))==608
+assert collections.Counter(map(len,actual.values()))=={1:5,2:300,3:1}
+assert not {112,480,250,353,670}&actual.keys()
+assert actual[455]==[(3,"SPELL_WARRING_ZEAL"),(5,"SPELL_DIVINE_FURY"),(7,"SPELL_BATTLETIDE")]
+loaded=set()
+for line in (ROOT/"areas/AREA").read_text().splitlines():
+    if not line.strip() or line.lstrip().startswith("*"): continue
+    path=ROOT/"areas/zon"/(line.split()[0]+".zon")
     if path.exists():
-        number = int(re.search(r"^#(-?\d+)", path.read_text(encoding="latin-1"), re.M)[1])
-        loaded.add(number - 2**32 if number > 2**31 - 1 else number)
-assert loaded == actual_ids | excluded, (loaded ^ (actual_ids | excluded))
-assert len(loaded) == 354
-homes = collections.defaultdict(set)
-for row in set_rows:
-    zone = int(row[1:row.index(',')])
-    for pieces, token in re.findall(r"\{(\d+),(\w+)\}", row):
-        if int(pieces) and token in defines:
-            homes[defines[token]].add(zone)
-for line in assignments.split("## Effect homes after both passes")[1].split("\n## ", 1)[0].splitlines():
-    if not re.search(r"\(#\d+\)", line):
-        continue
-    cells = line.split("|")
-    effect = int(re.search(r"\(#(\d+)\)", cells[1])[1])
-    assert int(cells[-2]) == len(homes[effect]), (effect, cells[-2], homes[effect])
+        number=int(re.search(r"^#(-?\d+)",path.read_text(encoding="latin-1"),re.M)[1])
+        loaded.add(number-2**32 if number>2**31-1 else number)
+assert actual.keys()<=loaded and len(loaded)==354
 
 # Use the real registration list for handler availability and names. The callback
 # body is irrelevant to catalog validation; actual effects belong to wear tests.
@@ -181,11 +152,11 @@ int main() {
         for (const auto &tier : named_sets[i].proc_spells)
             if (tier[0]) { ++tiers; effects.insert(tier[1]); }
     }
-    assert(named_set_count == 298 && tiers == 389 && effects.size() == 106);
+    assert(named_set_count == 306 && tiers == 608 && effects.size() == 74);
     assert(validate_named_sets());
     char *notes = generate_named_report();
-    assert(strstr(notes,"Guardian Spirits requires a Shaman wearer"));
-    assert(strstr(notes,"neutral wearers gain no bonus"));
+    assert(strstr(notes,"one piece"));
+    assert(strstr(notes,"matching Magus"));
     assert(strstr(notes,"Globe of Darkness excludes Holy Light and Mage Flame"));
     free(notes);
     assert(real_zone(30) == -1 && real_zone(250) == -1);
@@ -209,7 +180,7 @@ int main() {
     const std::string expected = displayed;
     assert(pages == 1 && cache_generations == 1);
     assert(expected.size() > MAX_STRING_LENGTH * 4);
-    assert(expected.find(" #14 ") != std::string::npos); // zone at table index zero
+    assert(expected.find(" #13 ") != std::string::npos); // zone at table index zero
     assert(expected.find(" #1325 ") != std::string::npos); // beyond old staff cutoff
     assert(expected.find(" #30 ") == std::string::npos);
     size_t rows = 0;

@@ -11442,6 +11442,7 @@ std::string ironwood_facts(P_char ch)
 void spell_ironwood(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		    P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_IRONWOOD);
 	struct affected_type af;
 
 	if (!IS_AFFECTED(victim, AFF_BARKSKIN) && !IS_AFFECTED5(victim, AFF5_THORNSKIN))
@@ -11465,7 +11466,7 @@ void spell_ironwood(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 	int absorb = ironwood_absorb(live_rolls, level, IS_AFFECTED(victim, AFF_BARKSKIN));
 
 	// Stoning the tank equals to heal in exp -Odorf
-	if (GET_OPPONENT(victim))
+	if (GET_OPPONENT(victim) && !named_set_grant::active())
 		gain_exp(ch, victim, absorb, EXP_HEALING);
 
 	bzero(&af, sizeof(af));
@@ -13724,6 +13725,7 @@ std::string earth_form_facts(P_char /*ch*/)
 void spell_earth_form(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		      P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_EARTH_FORM);
 	if (const char *failure = elemental_form_failure_message(ch, victim, SPELL_EARTH_FORM))
 	{
 		send_to_char(failure, ch);
@@ -13784,6 +13786,7 @@ std::string fire_form_facts(P_char /*ch*/)
 void spell_fire_form(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		     P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_FIRE_FORM);
 	if (const char *failure = elemental_form_failure_message(ch, victim, SPELL_FIRE_FORM))
 	{
 		send_to_char(failure, ch);
@@ -13853,6 +13856,7 @@ std::string water_form_facts(P_char /*ch*/)
 void spell_water_form(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		      P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_WATER_FORM);
 	if (const char *failure = elemental_form_failure_message(ch, victim, SPELL_WATER_FORM))
 	{
 		send_to_char(failure, ch);
@@ -13894,6 +13898,7 @@ std::string air_form_facts(P_char /*ch*/)
 void spell_air_form(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		    P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_AIR_FORM);
 	struct affected_type af;
 
 	if (const char *failure = elemental_form_failure_message(ch, victim, SPELL_AIR_FORM))
@@ -16540,6 +16545,7 @@ std::string sanctuary_facts(P_char /*ch*/)
 void spell_sanctuary(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		     P_char /*victim*/, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(ch, SPELL_SANCTUARY);
 	struct affected_type af;
 
 	if (IS_AFFECTED4(ch, AFF4_SANCTUARY))
@@ -17776,6 +17782,7 @@ void spell_coldshield(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unus
 void spell_lightning_shield(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 			    P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_LIGHTNINGSHIELD);
 	struct affected_type af;
 
 	if (!IS_AFFECTED2(victim, AFF2_FIRESHIELD) && !IS_AFFECTED3(victim, AFF3_COLDSHIELD) &&
@@ -25593,6 +25600,7 @@ std::string accel_healing_facts(P_char ch)
 void spell_accel_healing(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			 P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_ACCEL_HEALING);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -30404,4 +30412,17 @@ void spell_draconic_apotheosis(int /*level*/, P_char ch, char * /*arg*/, [[maybe
 		return;
 
 	do_roar_of_heroes(ch);
+}
+
+void spell_ultravision(int /*level*/, P_char /*ch*/, char * /*arg*/, int /*type*/, P_char victim,
+		       P_obj /*obj*/)
+{
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_ULTRAVISION);
+	if (!IS_ALIVE(victim) || affected_by_spell(victim, SPELL_ULTRAVISION))
+		return;
+	affected_type affect{};
+	affect.type = SPELL_ULTRAVISION;
+	affect.duration = -1;
+	affect.bitvector2 = AFF2_ULTRAVISION;
+	affect_to_char(victim, &affect);
 }

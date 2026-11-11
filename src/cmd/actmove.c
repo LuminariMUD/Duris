@@ -1,3 +1,4 @@
+#include "item/named_set_effects.h"
 /*
  * ***************************************************************************
  * File: actmove.c                                          Part of Duris *
@@ -1169,7 +1170,7 @@ char *enter_message(P_char ch, P_char people, int exitnumb, char *amsg, int was_
 			      IS_AFFECTED(people, AFF_SKILL_AWARE)) &&
 			     StatSave(people, APPLY_INT, -4)) ||
 			    (GET_SPEC(ch, CLASS_ROGUE, SPEC_THIEF) &&
-			     affected_by_spell(ch, SKILL_SNEAK) &&
+			     affected_by_spell(ch, SKILL_SNEAK) && !named_set_sneak_active(ch) &&
 			     (number(0, 100) > GET_CHAR_SKILL(ch, SKILL_SNEAK))))
 				strcpy(amsg, tmp);
 			else
@@ -1659,8 +1660,9 @@ revalidate_movement:
 		need_movement += crippled_move_cost();
 	}
 
-	if (sprung_traps.empty() && IS_PC(ch) && GET_CHAR_SKILL(ch, SKILL_SNEAK) > 0 &&
-	    affected_by_spell(ch, SKILL_SNEAK) && !mount && GET_VITALITY(ch) > need_movement)
+	if (sprung_traps.empty() && IS_PC(ch) && !named_set_sneak_active(ch) &&
+	    GET_CHAR_SKILL(ch, SKILL_SNEAK) > 0 && affected_by_spell(ch, SKILL_SNEAK) && !mount &&
+	    GET_VITALITY(ch) > need_movement)
 	{
 		notch_skill(ch, SKILL_SNEAK, 5);
 	}

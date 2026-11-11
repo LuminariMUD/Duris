@@ -225,7 +225,7 @@ static std::map<int, int> modifiers(P_char ch, int type) {
 }
 int main() {
     REGISTER_FORMS
-    assert(SPELL_BLOOD_TITHE == 683 && SPELL_EARTH_FORM == 684 && LAST_SPELL == 686);
+    assert(SPELL_BLOOD_TITHE == 683 && SPELL_EARTH_FORM == 684 && SPELL_WATER_FORM == 686 && SPELL_ULTRAVISION == 687 && LAST_SPELL == SPELL_ULTRAVISION);
     static_assert(LAST_SPELL < FIRST_SKILL && LAST_SPELL < MAX_SKILLS);
     char_data caster{}, other{};
     caster.player.m_class = CLASS_CONJURER;

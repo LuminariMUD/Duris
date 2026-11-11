@@ -2790,6 +2790,7 @@ std::string inertial_barrier_facts(P_char /*ch*/)
 void spell_inertial_barrier(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			    P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_INERTIAL_BARRIER);
 	struct affected_type af;
 
 	if (!(victim && ch))
@@ -3965,6 +3966,7 @@ std::string tower_iron_will_facts(P_char ch)
 void spell_tower_iron_will(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			   P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_TOWER_IRON_WILL);
 	struct affected_type af;
 
 	if (!(victim && ch))

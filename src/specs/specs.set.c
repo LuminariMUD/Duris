@@ -1,3 +1,4 @@
+#include <vector>
 /*****************************************************************************
  *  File: specs.set.c   (Part of Duris)                                      *
  *  Usage: named and random equipment set procedures                         *
@@ -218,6 +219,8 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 	// Automatic refreshes must not repeat the manual spell's class rejection.
 	if (spell == SPELL_GUARDIAN_SPIRITS && !GET_CLASS(ch, CLASS_SHAMAN))
 		return;
+	if (spell == SKILL_SNEAK && (IS_FIGHTING(ch) || IS_RIDING(ch)))
+		return;
 	for (const affected_type *affect = ch->affected; affect; affect = affect->next)
 	{
 		if ((affect->flags & AFFTYPE_SET_AFFECT) && affect->set_owner == ch->runtime_id &&
@@ -246,8 +249,6 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 
 	switch (spell)
 	{
-	case SPELL_REGENERATION:
-	case SPELL_ACCEL_HEALING:
 	case SPELL_PACTUM_SERPENTIS:
 		if (!affected_by_spell(ch, SPELL_REGENERATION) &&
 		    !affected_by_spell(ch, SPELL_PACTUM_SERPENTIS) &&
@@ -257,6 +258,35 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 			(skills[spell].spell_pointer)(MIN(56, count * 10), ch, 0, 0, ch, 0);
 			message = SETMSG_PROTECT;
 		}
+		break;
+	case SKILL_AWARENESS:
+		apply_awareness(ch, MIN(56, count * 10));
+		message = SETMSG_PROTECT;
+		break;
+	case SKILL_SNEAK:
+	{
+		affected_type affect{};
+		affect.type = SKILL_SNEAK;
+		affect.duration = GET_LEVEL(ch);
+		affect.bitvector = AFF_SNEAK;
+		affect_to_char(ch, &affect);
+		message = SETMSG_PROTECT;
+		break;
+	}
+	case SPELL_IRONWOOD:
+		if (!named_set_cooldown_remaining(ch, spell) &&
+		    obj->timer[0] + get_property("timer.stoneskin.generic", 60) < time(NULL))
+		{
+			spell_ironwood(MIN(56, count * 10), ch, nullptr, 0, ch, nullptr);
+			if (grant.created_affects())
+			{
+				obj->timer[0] = time(NULL);
+				start_named_set_cooldown(
+					ch, spell,
+					get_property("timer.stoneskin.generic", 60) * WAIT_SEC);
+			}
+		}
+		message = SETMSG_PROTECT;
 		break;
 	case SPELL_STONE_SKIN:
 		if (!has_skin_spell(ch) && !named_set_cooldown_remaining(ch, spell) &&
@@ -270,8 +300,6 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 		}
 		break;
 	case SPELL_ARMOR:
-	case SPELL_BARKSKIN:
-	case SPELL_THORNSKIN:
 	case SPELL_SPIRIT_ARMOR:
 	case SPELL_FLESH_ARMOR:
 		if (!IS_AFFECTED(ch, AFF_ARMOR))
@@ -405,10 +433,16 @@ void check_zone_spells(P_char ch, P_obj obj, int count, int zone, const char *zo
 			set = &named_sets[i];
 			break;
 		}
+	bool spellsRemoved = false;
+	std::vector<int> owned_spells;
+	for (const affected_type *affect = ch->affected; affect; affect = affect->next)
+		if ((affect->flags & AFFTYPE_SET_AFFECT) && affect->set_owner == ch->runtime_id &&
+		    affect->set_zone == zone)
+			owned_spells.push_back(affect->set_spell);
+	for (int spell : owned_spells)
+		spellsRemoved = reconcile_named_set_spell(ch, spell) || spellsRemoved;
 	if (!set)
 		return;
-
-	bool spellsRemoved = false;
 
 	// For the three possible spellups,
 	for (int i = 0; i < 3; i++)
@@ -460,7 +494,7 @@ int random_set(P_char ch, P_obj obj, int count, int cmd, char * /*arg*/)
 	const char *zone_name = zone_index >= 0 ? zone_table[zone_index].name :
 						  identity.legacy_title.c_str();
 
-	if (count < 2)
+	if (count < 1)
 	{
 		return FALSE;
 	}
@@ -501,13 +535,13 @@ int random_set(P_char ch, P_obj obj, int count, int cmd, char * /*arg*/)
 
 	check_zone_spells(ch, obj, count, identity.zone, zone_name);
 
-	if (afp->modifier > (count - 2) * 5)
+	if (afp->modifier > MAX(0, (count - 2) * 5))
 	{
 		snprintf(buffer, sizeof buffer,
 			 "You feel some of the %s's spirits attention leave you.\n", zone_name);
 		send_to_char(buffer, ch);
 	}
-	else if (afp->modifier < (count - 2) * 5)
+	else if (afp->modifier < MAX(0, (count - 2) * 5))
 	{
 		snprintf(buffer, sizeof buffer,
 			 "You feel invigorated as the spirits of %s bless you.\n", zone_name);
@@ -518,7 +552,7 @@ int random_set(P_char ch, P_obj obj, int count, int cmd, char * /*arg*/)
 		return TRUE;
 	}
 
-	afp->modifier = (count - 2) * 5;
+	afp->modifier = MAX(0, (count - 2) * 5);
 	add_event(event_balance_affects, 0, ch, 0, 0, 0, 0, 0);
 
 	return TRUE;

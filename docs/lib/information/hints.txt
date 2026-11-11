@@ -137,7 +137,7 @@ Want to see the deadliest players? Visit https://duris.sbs/frag-leaderboard to s
 Need a map of the world? Visit https://duris.sbs/wiki/map to see the game maps.
 A frag is a point you earn for killing a player from an enemy side. Type "fraglist" to see the top and lowest fraggers, each side's frag totals and the current level caps.
 Type "leaderboard" to see the top 20 characters in the game. Their scores come from levels, experience, player kills, ship reputation and epic points. Type "leaderboard quests" to see who has completed the most quests.
-Wearing several pieces of random gear from the same zone forms a named set, which can give you extra hit points and spells. Type "namedreport" to see which spells each set gives and how many pieces you need.
+Named gear from the same zone can grant spells starting at one piece, and matching pieces beyond the second add hit points. Keep matching random armor worn and type "namedreport" to see the spells and piece requirements.
 Type "quest" to see your bartender quest, including its target, area and progress.
 Bartender quests ask you to kill monsters or speak to someone. Finishing one earns you experience, coins and an item.
 Can't find the target of your bartender quest? Type "ask bartender map" to buy a map, then type "quest" to see it.

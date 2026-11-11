@@ -1,7 +1,7 @@
 # Named effects: worksheet replacement plan
 
-Status: proposed implementation plan; only Arcorar's identity remains unresolved.
-Date: 2026-11-10.
+Status: implemented and locally qualified in this worktree. Arcorar is omitted.
+Date: planned 2026-11-10; implementation qualified 2026-11-11.
 Source reviewed: `0afba843d9ef5752627435be8ed09b3928ce181b`.
 
 ## Outcome and scope
@@ -13,24 +13,23 @@ accepted worksheet zone, replace its entire old tier list with its one, two, or
 three populated worksheet tiers. Clear every unused slot and retain Celestial
 Plane's explicitly supplied third tier. Do not append choices to old bonuses.
 
-This document is the plan only. Implementation, gameplay qualification, and
-production publication are subsequent work. The worksheet supplies effect choices,
-not operational instructions.
+This document specifies the implementation and its qualification. Production
+publication remains a separate owner operation. The worksheet supplies effect
+choices, not operational instructions.
 
 Use the existing catalog, origin metadata, affect ownership, and report cache.
 Preserve named-drop probabilities, random item modifiers, weapon procs, roaming
 spawn selection, the worn-armor driver, weapon contribution, excluded belt slots,
 and MariaDB item persistence. Preserve matching-set HP as
 `max(0, 5 * (matching_pieces - 2))`, subject to the existing gear HP cap.
-No runtime spreadsheet reader, new configuration service, new persistence format,
+No runtime spreadsheet reader, new configuration service, new persistence table,
 or general effect framework is needed.
 
 **Confirmed missing-choice policy:** zones omitted from the worksheet or left
 without effect choices receive **no named-set spell bonuses**. Preserve the
 existing matching-set HP rules. Remove their old spell tiers rather than keeping
 them as a fallback. A new zone with blank choices gets no spell-catalog entry.
-Rows that supply choices receive an explicit disposition below. Arcorar remains
-unmapped; its choice is preserved without assigning it to a guessed zone.
+Rows that supply choices receive an explicit disposition below. Arcorar is explicitly omitted for now; its choice is preserved for reference.
 
 ## Decisions supplied for the gaps
 
@@ -54,7 +53,7 @@ This resolves all **33 records** in the
 Only **#112** currently has spell bonuses to remove; Guildhalls #480 already has
 no spell-catalog entry. The CSV retains the current effects for comparison,
 updates every worksheet row reference, and records the revised disposition.
-These decisions are recorded in documentation; gameplay has not been changed.
+The implementation follows these decisions; production publication is separate.
 
 Use separate catalog rows for the eight numbered zones. Sharing choices does not
 merge their origins or let pieces from different zones count as one set. Existing
@@ -97,12 +96,12 @@ row was replaced by four explicit Reliquary rows.
   appendix preserves all rows, tiers, original spellings, and source notes so
   implementation does not depend on an untracked Downloads file.
 
-Current [named_sets.c](../../src/item/named_sets.c) contains **298 sets, 389 tiers,
+The pre-replacement [named_sets.c](../../src/item/named_sets.c) baseline contained **298 sets, 389 tiers,
 and 106 distinct effect constants**. Its three-slot structure already accommodates
 the revised worksheet, including its three-tier row.
 
 With the resolutions below, the implementation target is **306 zone definitions
-and 608 tiers**, excluding the unresolved Arcorar row: **300 two-tier sets, five
+and 608 tiers**, excluding the explicitly omitted Arcorar row: **300 two-tier sets, five
 one-tier sets, and one three-tier set**. This replaces **297** current definitions,
 removes spell bonuses from **one** current zone (#112), and adds **9** loaded
 zone definitions. The 306 definitions come from **304 worksheet choice rows**,
@@ -138,7 +137,7 @@ rule. The following are concrete exceptions.
 | 154, 158, 180, 213, 222, 224, 227, 283 | Abbreviated, uncertain, reordered, or misspelled names. | Source-resolved mappings: **#708** Enclave of the Opal Phoenix; **#1382** Mitashi; **#437** Lost City of Tikitzopl; **#337** Miaeril Village; **#886** Morg's Place; **#23** Myconid Mushroom Forest; **#458** Orog Encampment; **#882** Temple of Blibdoolpoolp. |
 | 311–314 | Each Reliquary now has an explicit numeric ID and pair. | **Resolved:** use one source row for each of **#1301–#1304**; do not retain an extra generic Nexus row. **#575** keeps row 267's independent Mountain of Peril Peaks choice despite its `nexus.zon` filename. |
 | 228 | The Underworld matches **#44** and **#300**. | **Resolved:** apply row 228's pair to both; do not merge their item origins. |
-| 237 | Arcorar - The Great King Forest has no matching zone header or authored zone/room/mobile text, including a search with MUD colors removed. | **Only unresolved identity:** obtain its actual zone ID/current name, or explicitly omit it. Preserve Barkskin at 2 / Endurance at 4; do not choose a different forest by similarity. |
+| 237 | Arcorar - The Great King Forest has no matching zone header or authored zone/room/mobile text, including a search with MUD colors removed. | **Explicitly omitted at the user's request.** Preserve the source choice for reference; do not assign another forest by similarity. |
 | 289 | Pirate random equipment uses the room of the kill. Ship interiors use the #600 room pool. | **Resolved:** **#600 The Adventurers Shipyards**, Pantherspeed at 3 / Fly at 4. This applies to named gear from the shared ship-zone origin, not exclusively pirate mobs, and is separate from **#431 The Ship Yards** (row 111). |
 
 Straightforward spelling corrections also include Storm Port Stronhold → #226,
@@ -256,11 +255,10 @@ Do not stack a second active modifier when the player already has the same effec
 
 Use the identity decisions above to record final zone ID(s), canonical effect
 IDs, both thresholds, and disposition: replace, add, HP-only, superseded subarea,
-inactive area, or unresolved Arcorar. Flatten the confirmed groups into separate
+inactive area, or explicitly omitted Arcorar. Flatten the confirmed groups into separate
 zone definitions and check the **306-set / 608-tier** resolved target. Include
 every current catalog zone absent from the accepted replacement list so none disappears by
-accident. Apply the confirmed HP-only policy to those omissions. Revise the counts
-only if the remaining Arcorar decision changes the target.
+accident. Apply the confirmed HP-only policy to those omissions. Arcorar is outside the accepted scope and does not change those counts.
 
 Retain source-row references and the alias map in repository documentation.
 This is the reviewed input to the catalog and its tests; no Excel dependency is
@@ -444,7 +442,10 @@ not a required wait.
 
 Existing gear follows the replacement by its stored zone origin; effect choices
 are not copied into every item's data. No item reroll, item rewrite, or database
-migration is expected for this catalog change. Keep ambiguous legacy-title gear
+migration is required. Pet timer payload v3 appends Ironwood after the three v2
+deadlines; v1/v2 reads and unchanged v2 timer positions are preserved. Pets without
+Ironwood still use the earlier payload versions. A rollback build must retain
+this additive codec even when using the previous catalog. Keep ambiguous legacy-title gear
 on the existing HP-only path.
 
 Verify a normal restart and the supported copyover/reload path rebuild transient
@@ -460,7 +461,7 @@ the repository deployment rules. The implementation handoff should identify the
 revision, final assignments/deferred rows, focused proof, help publication, and
 cache refresh needed for that release.
 
-## Completion criteria and the remaining question
+## Completion criteria and implementation status
 
 The implementation is complete when all worksheet rows have an explicit
 disposition, every accepted tier is reachable at its exact supplied count for
@@ -469,13 +470,9 @@ effects and `namedreport` agree, retired tiers disappear, existing item identiti
 survive reload, and the focused checks above pass. Do not describe a partial
 import that skips the three unsupported effect concepts as a full replacement.
 
-**Only row 237 remains unresolved: Arcorar - The Great King Forest.** Its choices
-are Barkskin at 2 and Endurance at 4, but the current repository supplies no
-matching identity. A search of all authored zone, room, and mobile files, with
-MUD colors removed, found neither “Arcorar” nor “Great King Forest”. To close it,
-provide the actual numeric zone ID/current zone name, or explicitly omit that row.
-Do not substitute an unrelated forest. Keep it outside the 306 resolved
-definitions until that decision is recorded.
+**Row 237, Arcorar - The Great King Forest, is omitted for now at the user's
+request.** Its source choices remain in the appendix for reference and do not
+create a catalog entry. The implementation target is 306 sets and 608 tiers.
 
 All other former questions now have a selected implementation rule: authored
 Ceothia order, exact-zone precedence for shared subareas, inclusion of the nine
@@ -487,11 +484,11 @@ These choices use the user's delegation to resolve
 reasonable defaults; they are distinguished from facts explicitly present in
 the worksheet.
 
-Implementation and gameplay proof are still required. In particular, qualify
-one-piece activation, the new effect paths, ordinary-effect coexistence, cooldowns,
-cache refresh, persistence, and removal of old grants. Those are engineering work,
-not unanswered worksheet choices. Do not describe the whole worksheet replacement
-as complete while Arcorar has no disposition.
+Implementation and local gameplay qualification are complete, including one-piece
+activation, the new effect paths, ordinary-effect coexistence, cooldowns, cache
+refresh, persistence, and removal of old grants. Arcorar has an explicit omitted
+disposition and does not block this implementation. Production publication remains
+separate; no worksheet decisions remain open for this scope.
 
 Planning validation performed: read-only extraction of the entire worksheet,
 counts and effect-token comparison against current source, active zone-header
@@ -501,15 +498,67 @@ piece/effect pairs in all three slots, nine additions, one removal, and the seve
 excluded source-row dispositions. The 33-row gap CSV was reconciled to the revision:
 31 replacement assignments and two explicit blanks. The revised worksheet values,
 including its two explanatory notes, remain intact in the appendix.
-No gameplay code, worksheet, database, or production state was changed. Build
-and gameplay tests are implementation acceptance work, not results of this plan.
+Implementation result (2026-11-11): the 306 definitions, new active effects,
+one-piece ownership/cleanup, native buff coexistence, report/help, and four-timer
+player/pet persistence are present. `make -C src -j4` and `make world` passed.
+The catalog, membership, ownership, invocation-level, cooldown, live Redis cache,
+origin, random-equipment golden, random-mob theme, pet restore, elemental-form,
+and Conjurer Fire regressions passed. Formatting passed with
+`scripts/format.sh --staged --check` using a temporary index; the Windows mount's
+executable mode bits caused a false diff in the unstaged formatter.
+
+The private full-world MariaDB journey passed wear, native effect thresholds,
+save/reload, and removal for #1325, one-piece #159, three-tier #455, HP-only #112,
+Fire Form #883, and Water Form #1424. Native transfer preserved the nested item
+graph and origins across reboot. The report journey verified all 306 rows,
+MariaDB help, warm/cold cache equality, replacement of a stale report on reboot,
+Redis loss, and paginated no-Redis output. The previous-catalog round trip used
+the same four #112 item UIDs: the old three spells returned with the previous
+catalog, disappeared with the replacement, and HP, origins, and the item graph
+remained intact. That compatibility build uses the previous catalog with the
+current persistence/ownership fixes, including the additive pet timer codec.
+Evidence is retained in
+`/home/aiwithapex/.cache/duris-named-effects-01a1c47f/named-replacement-bnm7v8sv`.
+Its `replacement.json` records all nine completed stages and `passed: true`;
+`replacement-transcript.txt`, per-case results, and the private SQL snapshot
+retain the detailed evidence. The separate native report runtime is
+`/home/aiwithapex/.cache/duris-named-effects-01a1c47f/named-report-mariadb-q1db_3hj`.
+The tested server SHA-256 is
+`83b002a916f447c78bb23072f62fdfc5a3b25e03280922e2b637183120f5ae0f`.
+The previous-catalog compatibility binary SHA-256 is
+`d67ef04b89bfd77bb89b37ce78197d3b86971a9a93ded0ea4904cb9d49687387`.
+
+Focused regression commands (all passed): run `python3 tests/async/<name>.py`
+for `test_named_set_catalog`, `test_named_set_membership`,
+`test_named_set_effect_ownership`, `test_named_set_effect_levels`,
+`test_named_set_cooldowns`, `test_named_set_report_cache_live`,
+`test_named_set_origin`, `test_random_equipment_golden`,
+`test_random_mob_theme_runtime`, `test_pet_restore_state`,
+`test_elemental_forms_runtime`, `test_conjurer_fire_runtime`, and
+`test_healing_spell_precedence_runtime`. The ownership regression also executes
+Monastery's two healing tiers in both grant orders, at 1/2/3 pieces and back down,
+while retaining the native Pactum/Regenerate exclusions. The healing precedence
+regression executes native healing calculations in and out of combat.
+
+To run the native qualification from a Windows-backed checkout, set
+`NAMED_SET_ARTIFACT_ROOT` to a private Linux directory, then run
+`tests/async/with_disposable_mariadb.sh python3 tests/async/run_named_set_replacement_journey.py <compatible-previous-catalog-server>`.
+The successful final invocation used `bin/tests/named-compat/dms_previous_catalog`
+and `--resume /home/aiwithapex/.cache/duris-named-effects-01a1c47f/named-replacement-bnm7v8sv`;
+the aggregate result is also in `bin/named-replacement-journey-resume8.log`.
+The mutable runtime needs Linux file modes and directory fsync. Source and all
+compiled artifacts stay in this worktree; tests enforce loopback disposable
+schemas. The failed Windows-directory attempt remains under `bin/tests`.
+Production deployment has not been performed.
+Native qualification used normal restarts and MariaDB reloads. Live copyover or
+hotboot was not exercised; use the qualified normal restart for this release.
 
 ## Appendix: complete worksheet choices
 
 This is a snapshot of the revised workbook, not an executable import.
 Source ID is column A exactly as supplied. Candidate ID records the selected
 mapping and superseded/inactive disposition. Ceothia order remains the selected
-planning inference; Arcorar is the sole unresolved identity.
+planning inference; Arcorar is explicitly omitted.
 Effect tokens omit only the common SPELL_ prefix for readability and otherwise
 preserve the workbook spelling. Each choice is **pieces: effect**. A dash in a
 choice column means that tier is unused; only rows 20 and 73 have no choices.
@@ -752,7 +801,7 @@ The Notes column preserves source column I verbatim.
 | 234 | - | llzazan Ghetto of Arachdrathos | 362 | 2: LEVITATE | 4: THORNSKIN | - | - |
 | 235 | - | Arachdrathos - Drow City | 364 | 2: LEVITATE | 4: THORNSKIN | - | - |
 | 236 | - | Valinhaven | 908 | 2: BLESS | 3: VAPOR_STRIKE | - | - |
-| 237 | - | Arcorar - The Great King Forest | - | 2: BARKSKIN | 4: ENDURANCE | - | - |
+| 237 | - | Arcorar - The Great King Forest | omitted by owner | 2: BARKSKIN | 4: ENDURANCE | - | - |
 | 238 | - | Court of the Muse | 67 | 2: BARKSKIN | 3: PANTHERSPEED | - | - |
 | 239 | - | The Swamp Laboratory of Khul'Lor | 823 | 3: HASTE | 4: FLY | - | - |
 | 240 | - | Myrloch Vale | 264 | 3: FLY | 4: HASTE | - | - |

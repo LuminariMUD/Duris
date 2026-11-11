@@ -735,7 +735,8 @@
 #define SPELL_EARTH_FORM 684
 #define SPELL_FIRE_FORM 685
 #define SPELL_WATER_FORM 686
-#define LAST_SPELL SPELL_WATER_FORM
+#define SPELL_ULTRAVISION 687
+#define LAST_SPELL SPELL_ULTRAVISION
 
 #define FIRST_SKILL 1000 /* should be a decent split point */
 #define SKILL_SNEAK 1000

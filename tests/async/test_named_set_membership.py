@@ -31,6 +31,9 @@ harness = r'''
 #include <vector>
 
 static zone_data zones[] = {
+    {.number=159,.name=const_cast<char *>("Pit of Dragons")},
+    {.number=455,.name=const_cast<char *>("Celestial Plane")},
+    {.number=112,.name=const_cast<char *>("Arena of the Elder Brain")},
     {.number=14,.name=const_cast<char *>("&+WKobold Settlement&n")},
     {.number=1325,.name=const_cast<char *>("&+WTharnadia - City of Humans&n")},
     {.number=13,.name=const_cast<char *>("&+WBraddistock Mansion&n")},
@@ -173,11 +176,24 @@ int main() {
         reset();
         for(int i=0;i<count;++i) wear(i,i+1,1325);
         process(0);
-        assert(count<2 ? !hp(1325) : hp(1325) && hp(1325)->modifier==5*(count-2));
+        assert(hp(1325) && hp(1325)->modifier==MAX(0,5*(count-2)));
         assert(count<2 || (hp(1325)->location==APPLY_HIT && hp(1325)->duration==-1 && (hp(1325)->flags&AFFTYPE_NOSAVE)));
-        assert(spells.size()==static_cast<size_t>((count>=3)+(count>=5)));
+        assert(spells.size()==static_cast<size_t>((count>=3)+(count>=4)));
         if(count>=3) assert(spells[0]==std::make_tuple(SPELL_ARMOR,count,1325));
-        if(count>=5) assert(spells[1]==std::make_tuple(SPELL_ENDURANCE,count,1325));
+        if(count>=4) assert(spells[1]==std::make_tuple(SPELL_BARKSKIN,count,1325));
+    }
+    // One-piece grant owns a cleanup deadline, contributes no HP, and disappears
+    // when the last supporting armor is removed. Re-equipping refreshes the same deadline.
+    reset(); wear(0,WEAR_BODY,159); process(0);
+    assert(hp(159) && hp(159)->modifier==0 && pending(159));
+    assert(spells.size()==1 && std::get<0>(spells[0])==SPELL_INFRAVISION);
+    wearer.equipment[WEAR_BODY]=nullptr; expire(159); assert(!hp(159));
+    // A catalog removal retains identity/HP without any spell; three tiers all dispatch.
+    reset(); for(int i=0;i<4;++i) wear(i,i+1,112); process(0);
+    assert(hp(112)->modifier==10 && spells.empty());
+    for(int count=1;count<=8;++count) {
+        reset(); for(int i=0;i<count;++i) wear(i,i+1,455); process(0);
+        assert(spells.size()==static_cast<size_t>((count>=3)+(count>=5)+(count>=7)));
     }
     // The restored titles retain their existing HP and spell thresholds.
     for(int zone:{87,370,676,824}) for(int count:{2,3,4,5,6}) {
@@ -185,19 +201,18 @@ int main() {
         process(0);
         assert(hp(zone) && hp(zone)->modifier==5*(count-2));
         std::vector<std::tuple<int,int,int>> expected;
-        if(zone==87 && count>=3) expected.emplace_back(SPELL_SPIRIT_WARD,count,zone);
-        if(zone==87 && count>=5) expected.emplace_back(SPELL_HASTE,count,zone);
-        if(zone==370 && count>=3) expected.emplace_back(SPELL_ENDURANCE,count,zone);
-        if(zone==676 && count>=4) expected.emplace_back(SPELL_ENDURANCE,count,zone);
-        if(zone==824 && count>=6) expected.emplace_back(SPELL_VITALITY,count,zone);
+        for(size_t i=0;i<named_set_count;++i) if(named_sets[i].zone==zone)
+            for(const auto &tier:named_sets[i].proc_spells)
+                if(tier[0] && count>=tier[0]) expected.emplace_back(tier[1],count,zone);
         assert(spells==expected);
         for(int slot=1;slot<=count;++slot) wearer.equipment[slot]=nullptr;
         expire(zone); assert(!hp(zone));
     }
     // Catalog row zero is a real nonzero source, not a wildcard.
-    reset(); for(int i=0;i<3;++i) wear(i,i+1,14); process(0);
-    assert(hp(14) && hp(14)->modifier==5 && spells.size()==2);
-    assert(std::get<2>(spells[0])==14);
+    assert(named_sets[0].zone==13);
+    reset(); for(int i=0;i<3;++i) wear(i,i+1,13); process(0);
+    assert(hp(13) && hp(13)->modifier==5 && spells.size()==1);
+    assert(spells[0]==std::make_tuple(SPELL_ARMOR,3,13));
     // Back and first belt count; attachments two/three do not.
     reset(); wear(0,WEAR_BODY,740); wear(1,WEAR_HEAD,740);
     wear(2,WEAR_ATTACH_BELT_2,740); wear(3,WEAR_ATTACH_BELT_3,740); process(0);
@@ -215,7 +230,7 @@ int main() {
         // Ambiguous old gear has HP only and does not join new #808 pieces.
         reset(); for(int i=0;i<3;++i) wear(i,i+1,808,false);
         wear(3,4,808); wear(4,5,808); process(0); process(3);
-        assert(hp(-808) && hp(-808)->modifier==5 && hp(808) && hp(808)->modifier==0 && hp_count()==2 && spells.empty());
+        assert(hp(-808) && hp(-808)->modifier==5 && hp(808) && hp(808)->modifier==0 && hp_count()==2 && spells.size()==1 && std::get<0>(spells[0])==SPELL_BARKSKIN);
         // Retired #150 and new #3000 share a historical title, never a proved origin.
         reset(); for(int i=0;i<3;++i) {wear(i,i+1,3000,false); wear(i+3,i+4,3000);}
         process(0); process(3);
@@ -262,8 +277,8 @@ int main() {
         assert(hp(1325)->modifier==5);
         // Astral Plane, Tiamat never receives the shorter Tiamat row.
         reset(); for(int i=0;i<3;++i) wear(i,i+1,199,false); process(0);
-        assert(hp(199)->modifier==5 && spells.size()==1);
-        assert(spells[0]==std::make_tuple(SPELL_PROTECT_FROM_GAS,3,199));
+        assert(hp(199)->modifier==5 && spells.size()==2);
+        assert(spells[0]==std::make_tuple(SKILL_AWARENESS,3,199));
     }
     // Independent refresh and removal: both orders, without raw affect pointers.
     for(int first : {740,990}) {

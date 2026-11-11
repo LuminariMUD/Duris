@@ -1,3 +1,4 @@
+#include "item/named_set_effects.h"
 
 /*
  * ***************************************************************************
@@ -3040,6 +3041,7 @@ void do_sneak(P_char ch, char *argument, int /*cmd*/)
 		send_to_char("Ok, you'll try to move silently for a while.\r\n", ch);
 	}
 
+	named_set_ordinary_cast ordinary_cast(ch, SKILL_SNEAK);
 	if (affected_by_spell(ch, SKILL_SNEAK))
 	{
 		affect_from_char(ch, SKILL_SNEAK);

@@ -22,6 +22,7 @@ harness = r'''
 #include "item/named_set_origin.h"
 #include "item/named_set_effects.h"
 #include "item/named_sets.h"
+#include "item/objmisc.h"
 #include "item/random_equipment.h"
 #include "magic/spells.h"
 #include "abilities/abilities.h"
@@ -57,6 +58,8 @@ static int output_messages;
 static int alias_calls;
 static bool high_roll;
 static bool innate_eyes;
+static bool riding;
+P_char get_linked_char(P_char,ush_int type) {return riding && type==LNK_RIDING ? &companion : nullptr;}
 static int light_updates,room_light_updates;
 int number(int low,int high) {return high_roll ? high : low;}
 int dice(int count,int sides) {return high_roll ? count*sides : count;}
@@ -333,9 +336,40 @@ harness += "void update_pos(P_char ch) { ch->specials.position=GET_POS(ch)|calcu
 harness += extract_function("magic.c", "void spell_vitality(").replace(
     "void spell_vitality(", "static void cast_native_vitality(", 1) + "\n"
 
+
+# The revised catalog adds these native handlers. Include their actual scalar
+# helpers recursively, so the fixture exercises native prerequisites/modifiers.
+new_native = {
+    'magic/magic.c': ['spell_regeneration', 'spell_accel_healing', 'spell_air_form', 'spell_earth_form',
+        'spell_fire_form', 'spell_water_form', 'spell_ironwood', 'spell_lightning_shield',
+        'spell_sanctuary', 'spell_ultravision'],
+    'classes/psionics.c': ['spell_inertial_barrier', 'spell_tower_iron_will'],
+    'classes/reavers.c': ['spell_ilienzes_flame_sword', 'spell_girilals_granite_hammer',
+        'spell_lliendils_stormshock'],
+    'classes/new_skills.c': ['apply_awareness'],
+}
+included=set()
+for file,names in new_native.items():
+    text=(ROOT/'src'/file).read_text()
+    helpers={m[2]:m[0] for m in re.finditer(r'^static (int|bool|float|double) (\w+)\(',text,re.M)}
+    if file=='magic/magic.c':
+        helpers['elemental_form_failure_message']='const char *elemental_form_failure_message('
+    def include(name,signature):
+        global harness
+        if name in included:return
+        included.add(name)
+        body=extract_function(file,signature)
+        for helper,prefix in helpers.items():
+            if helper!=name and re.search(r'\b'+helper+r'\(',body):include(helper,prefix)
+        harness+=body+'\n'
+    for name in names:include(name,'void '+name+'(')
+harness+=extract_function('objmisc.c','int getWeaponDamType(')+'\n'
+harness+=extract_function('utility.c','// This function converts an attribute (range 0 .. 500')+'\n'
+
 harness += "\n#define SETMSG_NONE 0\n#define SETMSG_PROTECT 1\n#define SETMSG_STRENGTH 2\n"
 harness += extract_function("specs.set.c", "static void grant_dragons_to_group(")
 harness += extract_function("specs.set.c", "void apply_zone_spell(")
+harness += extract_function("specs.set.c", "// Random zone eq spellups (depends on # items worn == count).")
 harness += extract_function("fight.c", "bool decrease_skin_counter(")
 # Run the production character-dispel traversal with a deterministic self-cast
 # save boundary. Object magic, permanent-NPC bits and retaliation are separate.
@@ -369,7 +403,7 @@ static void reset() {
     wearer.only.pc=&wearer_pc; companion.only.pc=&companion_pc;
     wearer.next=&companion; character_list=&wearer;
     wearer.next_in_room=&companion; rooms[0].people=&wearer;
-    grants=0; inherent_armor=false; guardian_rejections=0;
+    grants=0; inherent_armor=false; guardian_rejections=0; riding=false;
 }
 static void wear(int item,int slot,int zone,bool weapon=false) {
     gear[item].R_num=weapon ? 1 : 0;
@@ -728,8 +762,8 @@ int main() {
 
     // Actual ordinary entries after a set create their own nodes and duration,
     // while the original grant remains dormant with no extra numeric benefit.
-    reset(); for(int i=0;i<3;++i) wear(i,i+1,14);
-    apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    reset(); for(int i=0;i<3;++i) wear(i,i+1,20);
+    apply_zone_spell(&wearer,3,"Valley",20,&gear[0],SPELL_ARMOR);
     auto *set_armor=get_spell_from_char(&wearer,SPELL_ARMOR); set_armor->duration=8;
     spell_armor(40,&companion,nullptr,0,&wearer,nullptr);
     auto *cast_armor=get_spell_from_char(&wearer,SPELL_ARMOR);
@@ -746,8 +780,8 @@ int main() {
     assert(grants==1); // no fresh set invocation was needed to resume it
 
     // Removing the set first preserves the ordinary spell's independent lifetime.
-    reset(); for(int i=0;i<3;++i) wear(i,i+1,14);
-    apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    reset(); for(int i=0;i<3;++i) wear(i,i+1,20);
+    apply_zone_spell(&wearer,3,"Valley",20,&gear[0],SPELL_ARMOR);
     spell_armor(40,&companion,nullptr,0,&wearer,nullptr);
     cast_armor=get_spell_from_char(&wearer,SPELL_ARMOR);
     for(auto &item:wearer.equipment) item=nullptr;
@@ -755,7 +789,7 @@ int main() {
     assert(get_spell_from_char(&wearer,SPELL_ARMOR)==cast_armor && cast_armor->duration==20);
 
     // A dormant grant still expires on its original clock, without replacing a cast.
-    reset(); apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    reset(); apply_zone_spell(&wearer,3,"Valley",20,&gear[0],SPELL_ARMOR);
     set_armor=get_spell_from_char(&wearer,SPELL_ARMOR); set_armor->duration=1;
     spell_armor(40,&companion,nullptr,0,&wearer,nullptr);
     cast_armor=get_spell_from_char(&wearer,SPELL_ARMOR);
@@ -763,7 +797,7 @@ int main() {
     assert(!count(&wearer,SPELL_ARMOR,true) && get_spell_from_char(&wearer,SPELL_ARMOR)==cast_armor && cast_armor->duration==18);
 
     // Native refusals restore the old grant; inherent armor remains an exclusion.
-    reset(); apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    reset(); apply_zone_spell(&wearer,3,"Valley",20,&gear[0],SPELL_ARMOR);
     set_armor=get_spell_from_char(&wearer,SPELL_ARMOR); set_armor->duration=7;
     inherent_armor=true;
     spell_armor(40,&companion,nullptr,0,&wearer,nullptr);
@@ -777,7 +811,7 @@ int main() {
     assert(cast_endurance!=set_endurance && cast_endurance->duration==9 && set_endurance->duration==6);
     affect_remove(&wearer,cast_endurance);
     assert(get_spell_from_char(&wearer,SPELL_ENDURANCE)==set_endurance && set_endurance->duration==6);
-    reset(); apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    reset(); apply_zone_spell(&wearer,3,"Valley",20,&gear[0],SPELL_ARMOR);
     set_armor=get_spell_from_char(&wearer,SPELL_ARMOR);
     group_list group{}; group.ch=&wearer; wearer.group=&group;
     spell_miracle(56,&wearer,nullptr,0,nullptr,nullptr);
@@ -787,8 +821,8 @@ int main() {
     // Explicit spell-type dispelling still clears the whole type, independently
     // of which source is at the head; no dormant grant is left to break reveal.
     for(bool source_first : {false,true}) {
-        reset(); for(int i=0;i<3;++i) wear(i,i+1,14);
-        apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+        reset(); for(int i=0;i<3;++i) wear(i,i+1,20);
+        apply_zone_spell(&wearer,3,"Valley",20,&gear[0],SPELL_ARMOR);
         set_armor=get_spell_from_char(&wearer,SPELL_ARMOR); set_armor->duration=9;
         spell_armor(40,&companion,nullptr,0,&wearer,nullptr);
         cast_armor=get_spell_from_char(&wearer,SPELL_ARMOR);
@@ -845,27 +879,27 @@ int main() {
     assert(get_spell_from_char(&wearer,SPELL_ARMOR)==independent && independent->duration==11);
 
     // Two real set rows sharing armor retain a single original buff and its duration.
-    for(int first : {14,1325}) {
-        reset(); for(int i=0;i<3;++i) {wear(i,i+1,14); wear(i+3,i+4,1325);}
-        apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    for(int first : {20,1325}) {
+        reset(); for(int i=0;i<3;++i) {wear(i,i+1,20); wear(i+3,i+4,1325);}
+        apply_zone_spell(&wearer,3,"Valley",20,&gear[0],SPELL_ARMOR);
         owned=get_spell_from_char(&wearer,SPELL_ARMOR);
         owned->duration=9;
         apply_zone_spell(&wearer,3,"Tharnadia",1325,&gear[3],SPELL_ARMOR);
         assert(count(&wearer,SPELL_ARMOR,true)==1 && owned->duration==9);
         for(int slot=1;slot<=6;++slot) if(named_set_origin(wearer.equipment[slot]).zone==first) wearer.equipment[slot]=nullptr;
         assert(!reconcile_named_set_spell(&wearer,SPELL_ARMOR));
-        assert(owned->set_zone==(first==14 ? 1325 : 14) && owned->duration==9);
+        assert(owned->set_zone==(first==20 ? 1325 : 20) && owned->duration==9);
         for(auto &item:wearer.equipment) item=nullptr;
         assert(reconcile_named_set_spell(&wearer,SPELL_ARMOR) && !wearer.affected);
     }
     // Reconciliation uses the same counting exclusions and needs a worn armor driver.
-    reset(); apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    reset(); apply_zone_spell(&wearer,3,"Valley",20,&gear[0],SPELL_ARMOR);
     for(int i=0;i<3;++i) wear(i,i+1,1325,true);
     assert(reconcile_named_set_spell(&wearer,SPELL_ARMOR));
-    reset(); apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    reset(); apply_zone_spell(&wearer,3,"Valley",20,&gear[0],SPELL_ARMOR);
     wear(0,WEAR_BODY,1325); wear(1,WEAR_HEAD,1325); wear(2,WEAR_ATTACH_BELT_2,1325);
     assert(reconcile_named_set_spell(&wearer,SPELL_ARMOR));
-    apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    apply_zone_spell(&wearer,3,"Valley",20,&gear[0],SPELL_ARMOR);
     wear(3,WEAR_ATTACH_BELT_1,1325);
     assert(!reconcile_named_set_spell(&wearer,SPELL_ARMOR));
     // Provenance does not borrow or overwrite native context payloads.
@@ -933,6 +967,121 @@ int main() {
     assert(received && received->set_owner==1 && received->duration==56/3);
     assert(!reconcile_named_set_spell(&companion,SONG_DRAGONS) && get_spell_from_char(&companion,SONG_DRAGONS)==received);
     reset();
+
+    // Every newly assigned native handler creates removable owned nodes and
+    // accepts an ordinary cast without extending or retagging that cast.
+    struct native_case {int spell; void (*cast)(int,P_char,char *,int,P_char,P_obj); int spec; int weapon;};
+    for(const auto entry : {
+        native_case{SPELL_ACCEL_HEALING,spell_accel_healing,0,0},
+        native_case{SPELL_AIR_FORM,spell_air_form,0,0},
+        native_case{SPELL_EARTH_FORM,spell_earth_form,SPEC_EARTH,0},
+        native_case{SPELL_FIRE_FORM,spell_fire_form,SPEC_FIRE,0},
+        native_case{SPELL_WATER_FORM,spell_water_form,SPEC_WATER,0},
+        native_case{SPELL_ILIENZES_FLAME_SWORD,spell_ilienzes_flame_sword,0,WEAPON_LONGSWORD},
+        native_case{SPELL_GIRILALS_GRANITE_HAMMER,spell_girilals_granite_hammer,0,WEAPON_MACE},
+        native_case{SPELL_LLIENDILS_STORMSHOCK,spell_lliendils_stormshock,0,WEAPON_LONGSWORD},
+        native_case{SPELL_INERTIAL_BARRIER,spell_inertial_barrier,0,0},
+        native_case{SPELL_IRONWOOD,spell_ironwood,0,0},
+        native_case{SPELL_LIGHTNINGSHIELD,spell_lightning_shield,0,0},
+        native_case{SPELL_SANCTUARY,spell_sanctuary,0,0},
+        native_case{SPELL_TOWER_IRON_WILL,spell_tower_iron_will,0,0},
+        native_case{SPELL_ULTRAVISION,spell_ultravision,0,0}}) {
+        reset();
+        skills[entry.spell].name="new worksheet effect";skills[entry.spell].spell_pointer=entry.cast;
+        if(entry.spec || entry.weapon) {
+            apply_zone_spell(&wearer,4,"Ineligible",20000+entry.spell,&gear[0],entry.spell);
+            assert(!count(&wearer,entry.spell,true));
+        }
+        if(entry.spec){wearer.player.m_class=CLASS_CONJURER;wearer.player.spec=entry.spec;}
+        if(entry.weapon){gear[10].type=ITEM_WEAPON;gear[10].value[0]=entry.weapon;wearer.equipment[WIELD]=&gear[10];}
+        if(entry.spell==SPELL_IRONWOOD){affected_type bark{};bark.type=SPELL_BARKSKIN;bark.duration=9;bark.bitvector=AFF_BARKSKIN;affect_to_char(&wearer,&bark);}
+        apply_zone_spell(&wearer,4,"Eligible",20000+entry.spell,&gear[0],entry.spell);
+        auto *owned_new=get_spell_from_char(&wearer,entry.spell);
+        assert(owned_new && (owned_new->flags&AFFTYPE_SET_AFFECT));
+        const int nodes=count(&wearer,entry.spell,true), duration=owned_new->duration;
+        if(entry.spell==SPELL_FIRE_FORM) assert(nodes==5);
+        if(entry.spell==SPELL_WATER_FORM) assert(nodes==4);
+        if(entry.spell==SPELL_IRONWOOD) assert(owned_new->modifier==9);
+        apply_zone_spell(&wearer,4,"Eligible",20000+entry.spell,&gear[0],entry.spell);
+        assert(count(&wearer,entry.spell,true)==nodes && owned_new->duration==duration);
+        entry.cast(50,&wearer,nullptr,0,&wearer,nullptr);
+        auto *ordinary_new=get_spell_from_char(&wearer,entry.spell);
+        assert(ordinary_new && !(ordinary_new->flags&AFFTYPE_SET_AFFECT));
+        const int ordinary_duration=ordinary_new->duration;
+        assert(reconcile_named_set_spell(&wearer,entry.spell));
+        assert(get_spell_from_char(&wearer,entry.spell)==ordinary_new && ordinary_new->duration==ordinary_duration);
+        assert(!count(&wearer,entry.spell,true));
+    }
+    // Monastery's native healing pair is reachable at 2/3 pieces, in either
+    // grant order, and loses only the tier whose support was removed.
+    skills[SPELL_REGENERATION].name="regeneration";
+    skills[SPELL_REGENERATION].spell_pointer=spell_regeneration;
+    skills[SPELL_ACCEL_HEALING].name="accelerated healing";
+    skills[SPELL_ACCEL_HEALING].spell_pointer=spell_accel_healing;
+    for(bool regeneration_first : {false,true}) {
+        reset();
+        for(int i=0;i<3;++i) wear(i,i+1,48);
+        for(int spell : {regeneration_first ? SPELL_REGENERATION : SPELL_ACCEL_HEALING,
+                        regeneration_first ? SPELL_ACCEL_HEALING : SPELL_REGENERATION})
+            apply_zone_spell(&wearer,3,"Monastery",48,&gear[0],spell);
+        check_zone_spells(&wearer,&gear[0],3,48,"Monastery");
+        assert(count(&wearer,SPELL_REGENERATION,true)==1 && count(&wearer,SPELL_ACCEL_HEALING,true)==1);
+        wearer.equipment[3]=nullptr;
+        check_zone_spells(&wearer,&gear[0],2,48,"Monastery");
+        assert(!count(&wearer,SPELL_REGENERATION,true) && count(&wearer,SPELL_ACCEL_HEALING,true)==1);
+        wearer.equipment[2]=nullptr;
+        check_zone_spells(&wearer,&gear[0],1,48,"Monastery");
+        assert(!count(&wearer,SPELL_REGENERATION,true) && !count(&wearer,SPELL_ACCEL_HEALING,true));
+    }
+    reset(); wear(0,1,48);
+    check_zone_spells(&wearer,&gear[0],1,48,"Monastery");
+    assert(!wearer.affected);
+    wear(1,2,48);
+    check_zone_spells(&wearer,&gear[0],2,48,"Monastery");
+    assert(count(&wearer,SPELL_ACCEL_HEALING,true)==1 && !count(&wearer,SPELL_REGENERATION,true));
+    wear(2,3,48);
+    check_zone_spells(&wearer,&gear[0],3,48,"Monastery");
+    assert(count(&wearer,SPELL_ACCEL_HEALING,true)==1 && count(&wearer,SPELL_REGENERATION,true)==1);
+    for(int blocker : {SKILL_REGENERATE,SPELL_PACTUM_SERPENTIS}) {
+        reset(); affected_type ordinary{}; ordinary.type=blocker; ordinary.duration=9;
+        auto *original=affect_to_char(&wearer,&ordinary);
+        apply_zone_spell(&wearer,3,"Monastery",48,&gear[0],SPELL_REGENERATION);
+        apply_zone_spell(&wearer,3,"Monastery",48,&gear[0],SPELL_ACCEL_HEALING);
+        assert(wearer.affected==original && !original->next && original->duration==9);
+    }
+
+    // These skills create active affects without learned-skill mutation.
+    reset(); skills[SKILL_AWARENESS].name="awareness"; skills[SKILL_SNEAK].name="sneak";
+    wearer.curr_stats.Int=100; wearer.curr_stats.Dex=100; high_roll=false;
+    apply_zone_spell(&wearer,2,"Awareness",73,&gear[0],SKILL_AWARENESS);
+    assert(get_spell_from_char(&wearer,SKILL_AWARENESS)->modifier==((2*STAT_INDEX(100)+7)*20/75)/2);
+    assert(affected_by_spell(&wearer,SKILL_AWARENESS) && IS_AFFECTED(&wearer,AFF_SKILL_AWARE));
+    auto *set_awareness=get_spell_from_char(&wearer,SKILL_AWARENESS);
+    {named_set_ordinary_cast ordinary_cast(&wearer,SKILL_AWARENESS);apply_awareness(&wearer,50);}
+    auto *manual_awareness=get_spell_from_char(&wearer,SKILL_AWARENESS);
+    assert(manual_awareness!=set_awareness && !(manual_awareness->flags&AFFTYPE_SET_AFFECT));
+    assert(set_awareness->flags&AFFTYPE_SET_SUSPENDED);
+    assert(reconcile_named_set_spell(&wearer,SKILL_AWARENESS));
+    assert(get_spell_from_char(&wearer,SKILL_AWARENESS)==manual_awareness);
+
+    wear(0,WEAR_BODY,196);wear(1,WEAR_HEAD,196);wear(2,WEAR_LEGS,196);
+    apply_zone_spell(&wearer,3,"Sneak",196,&gear[0],SKILL_SNEAK);
+    assert(named_set_sneak_active(&wearer));
+    wearer.specials.fighting=&companion;
+    assert(reconcile_named_set_spell(&wearer,SKILL_SNEAK) && !named_set_sneak_active(&wearer));
+    apply_zone_spell(&wearer,3,"Fighting",196,&gear[0],SKILL_SNEAK);
+    assert(!affected_by_spell(&wearer,SKILL_SNEAK));
+    wearer.specials.fighting=nullptr;
+    apply_zone_spell(&wearer,3,"Idle",196,&gear[0],SKILL_SNEAK);
+    assert(named_set_sneak_active(&wearer));
+    riding=true;
+    assert(reconcile_named_set_spell(&wearer,SKILL_SNEAK));
+    apply_zone_spell(&wearer,3,"Mounted",196,&gear[0],SKILL_SNEAK);
+    assert(!named_set_sneak_active(&wearer));
+    riding=false;
+    apply_zone_spell(&wearer,3,"Dismounted",196,&gear[0],SKILL_SNEAK);
+    assert(named_set_sneak_active(&wearer));
+    reset();
     qualify_expansion_effects();
     {
         // Rejected periodic attempts print nothing, however many procs run.
@@ -987,4 +1136,4 @@ with tempfile.TemporaryDirectory(prefix="named-set-effects-", dir=build) as dire
         str(HARNESS_STUBS), "-Wl,--gc-sections", "-o", str(binary),
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True)
-print("real named-set ownership plus all 50 expansion handlers, power, classes, alignment, exclusions, expiry and dispel: passed")
+print("named-set ownership, 50 legacy handlers, revised native/skill effects, prerequisites, ordinary overlap, expiry and dispel: passed")

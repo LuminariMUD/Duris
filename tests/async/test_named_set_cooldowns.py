@@ -81,6 +81,7 @@ bool grouped(P_char,P_char) { return false; }
 int IS_MORPH(P_char) { return FALSE; }
 P_char un_morph(P_char) { assert(false); return nullptr; }
 void bard_dragons(int,P_char,P_char,int) { assert(false); }
+void apply_awareness(P_char,int) {}
 void spell_haste(int,P_char,char *,int,P_char,P_obj) { assert(false); }
 void spell_fireshield(int,P_char,char *,int,P_char,P_obj) { assert(false); }
 void spell_infernal_fury(int,P_char,char *,int,P_char,P_obj) { assert(false); }
@@ -91,6 +92,9 @@ void spell_stone_skin(int,P_char ch,char *,int,P_char,P_obj) {
     ++casts;
     affected_type skin{}; skin.type=SPELL_STONE_SKIN; skin.duration=50;
     affect_to_char(ch,&skin);
+}
+void spell_ironwood(int,P_char ch,char *,int,P_char,P_obj) {
+    ++casts; affected_type skin{}; skin.type=SPELL_IRONWOOD; skin.duration=50; affect_to_char(ch,&skin);
 }
 enum {SETMSG_NONE,SETMSG_PROTECT,SETMSG_STRENGTH};
 '''
@@ -208,7 +212,13 @@ int main() {
         }
         for(int spell:named_set_cooldown_spells) start_named_set_cooldown(&pet,spell,61);
         std::string encoded; assert(summoned_pet_capture(&pet,&encoded) && !encoded.empty());
-        pet_restore_state state; assert(pet_restore_state_decode(encoded,&state) && state.version==2);
+        pet_restore_state state; assert(pet_restore_state_decode(encoded,&state) && state.version==3);
+        // v2 keeps exactly its original three deadline positions and defaults Ironwood to zero.
+        auto legacy=state; legacy.version=2; legacy.named_set_cooldowns[3]=0;
+        std::string legacy_wire; assert(pet_restore_state_encode(legacy,&legacy_wire));
+        pet_restore_state legacy_read; assert(pet_restore_state_decode(legacy_wire,&legacy_read));
+        assert(legacy_read.version==2 && legacy_read.named_set_cooldowns[3]==0);
+        for(size_t i=0;i<3;++i) assert(legacy_read.named_set_cooldowns[i]==state.named_set_cooldowns[i]);
         assert(summoned_pet_apply(&restored,state));
         for(int spell:named_set_cooldown_spells) {
             const int remaining=named_set_cooldown_remaining(&restored,spell);

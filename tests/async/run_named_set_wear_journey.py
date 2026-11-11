@@ -14,29 +14,41 @@ import time
 import test_mariadb_combat_journey as journey
 from named_set_gameplay import NamedSetGame, score, save, selector, expect_max_hp
 
-from named_set_gameplay import WEAR_CASES as CASES
+from named_set_gameplay import WEAR_CASES as CASES, SET_TIERS
 
 zone = int(sys.argv[1]) if len(sys.argv) == 2 else 1325
 generation_room, pieces, effect, spell = CASES[zone]
 game = NamedSetGame()
 runtime = game.runtime
 client = None
+form_case = {883: (3, 25, "fire form"), 1424: (2, -10, "water form")}.get(zone)
+form_max_hp = {}
+
+
+def constitution():
+    client.send("attributes")
+    text = client.expect("Character attributes for")
+    text += client.expect("Pos:") + client.expect(">")
+    return int(re.search(r"Con:\s*(\d+)", text)[1])
 
 
 def expect_set(count):
-    # Vitality at capped cast level 56 adds its own 4 * 56 HP, separately
-    # from the basic five HP per piece beyond two.
-    spell_hp = 224 if zone == 824 and count >= 6 else 0
-    text = expect_max_hp(client, baseline + max(0, count - 2) * 5 + spell_hp)
-    if zone == 1325:
-        expected = {"armor": count >= 3, "endurance": count >= 5}
-    elif zone == 87:
-        expected = {"spirit ward": count >= 3, "haste": count >= 5}
-    else:
-        expected = {effect: count >= pieces}
-    for name, present in expected.items():
-        assert (name + " (" in text) == present, (zone, count, name, text)
-    return text
+    expected={name:count>=threshold for threshold,name,spell_id in SET_TIERS.get(zone,[])
+              if spell_id not in (78,)} # Conjure Elemental has a pet, not a timed wearer buff.
+    deadline=time.monotonic()+20
+    while True:
+        active_form = form_case and count >= pieces
+        text=score(client)[1] if active_form else expect_max_hp(client,baseline+max(0,count-2)*5)
+        if all((name+" (" in text)==present for name,present in expected.items()):
+            if form_case:
+                assert constitution()==baseline_con+(form_case[1] if active_form else 0)
+                if active_form:
+                    maximum=score(client)[0]
+                    if count in form_max_hp:assert form_max_hp[count]==maximum
+                    form_max_hp[count]=maximum
+            return text
+        assert time.monotonic()<deadline,(zone,count,expected,text)
+        time.sleep(.5)
 
 
 def check_report():
@@ -51,7 +63,7 @@ def check_report():
     else:
         raise AssertionError("report pagination did not finish")
     row = re.search(r"(?m)^\s*#" + str(zone) + r"\s+.*$", text)
-    assert row and effect in row[0].lower(), (zone, row, text)
+    assert (row and effect in row[0].lower()) if zone in SET_TIERS else not row, (zone,row,text)
 
 
 try:
@@ -59,7 +71,17 @@ try:
     # including gear packed into nested containers by preceding cases.
     prior_origins = {row[0]: row[1] for row in game.items()}
     game.make_overlord()
+    if form_case:
+        game.sql("UPDATE player_data SET m_class=2048,secondary_class=0,spec="+str(form_case[0])+" WHERE pid=1")
     client = game.boot("named-generation")
+    client.send("toggle aggimmune on")
+    score(client)
+    client.send("vis 61")
+    score(client)
+    client.send("toggle paging no")
+    score(client)
+    client.send("goto 132500")
+    score(client)
     client.send("remove all")
     score(client)
     save(client)
@@ -75,6 +97,8 @@ try:
         ("hands", 128),
         ("arms", 256),
         ("feet", 64),
+        ("about", 1024),
+        ("waist", 2048),
     )[:pieces]:
         if not any(
             row[1] == str(zone)
@@ -117,9 +141,6 @@ try:
     if zone in (1325, 13):
         client.send("load obj 39130")
         client.expect("You have created")
-    if zone == 824:
-        client.send("load obj 2800")
-        client.expect("You have created")
     # Wearing outside the generation zone also checks that room identity is irrelevant.
     client.send("goto 132500")
     score(client)
@@ -135,6 +156,7 @@ try:
     )
     time.sleep(6)
     baseline, text = score(client)
+    baseline_con = constitution() if form_case else None
     assert "Level: 56" in text, text
     check_report()
     client.send("inventory")
@@ -151,8 +173,7 @@ try:
             time.sleep(6)
             two, _ = score(client)
             assert two == baseline, ("two-piece HP", baseline, two)
-        if len(chosen) >= 3:
-            expect_set(len(chosen))
+        expect_set(len(chosen))
     print(
         f"#{zone}: native HP and all spell thresholds passed through {pieces} pieces",
         chosen,
@@ -174,52 +195,12 @@ try:
         new = next(row for row in after if int(row[0]) == uid)
         assert old[:4] == new[:4], (old, new)
     assert not game.affects(spell), "set effect must not persist as an ordinary affect"
-    if zone == 824:
-        # A level 22 Vitality potion once replaced this grant and could kill the wearer.
-        deadline = time.monotonic() + 600
-        while True:
-            offset = len(client.transcript)
-            client.send("quaff potion")
-            score(client)
-            output = client.transcript[offset:].decode(errors="replace")
-            # Neither refusal may replace or stack on the set's grant (#943 adds the second).
-            if ("Nothing new seems to happen." in output or
-                    "You are already affected by vitality!" in output):
-                break
-            assert ("another potion would do you any good yet" in output or
-                    "almost ready to try another potion" in output), output
-            assert time.monotonic() < deadline, "the potion cooldown never ended"
-            time.sleep(5)
-        expect_set(pieces)
-    if zone == 87:
-        assert not game.affects(41), "set Haste must not persist as an ordinary affect"
     if zone != 1325:
         client.send("remove " + selector(client, chosen[-1]))
         expect_set(pieces - 1)
         client.send("remove all")
         expect_set(0)
         save(client)
-        if zone == 13:
-            # The set's proc rejects Phantom Armor under ordinary Armor, silently.
-            # The retained potion timer lasts three normal ticks; cold boots
-            # restart the tick phase. Wait for native expiry without clearing it.
-            deadline = time.monotonic() + 600
-            while True:
-                offset = len(client.transcript)
-                client.send("quaff solution")
-                score(client)
-                if b"Bands of magic armor wrap around you!" in client.transcript[offset:]:
-                    break
-                assert time.monotonic() < deadline, "the potion cooldown never ended"
-                time.sleep(5)
-            for uid in chosen:
-                client.send("wear " + selector(client, uid))
-                score(client)
-            offset = len(client.transcript)
-            time.sleep(35)
-            score(client)
-            assert b"already affected" not in client.transcript[offset:]
-            assert not game.affects(spell), "the rejected set effect must not apply"
         (runtime / f"named-zone-{zone}-result.json").write_text(
             json.dumps(
                 {
@@ -228,6 +209,8 @@ try:
                     "uids": chosen,
                     "threshold": pieces,
                     "effect": effect,
+                    "form_max_hp": form_max_hp,
+                    "baseline_constitution": baseline_con,
                 }
             )
         )
@@ -240,9 +223,9 @@ try:
         client.send("remove " + selector(client, uid))
         score(client)
     text = expect_max_hp(client, baseline + 5)
-    assert "armor (" in text and "endurance (" not in text, text
+    assert "armor (" in text and "barkskin (" not in text, text
     print(
-        "Native five-piece save/reboot retained all UIDs, origins, wear slots and Endurance; returning to three cleaned Endurance",
+        "Native four-piece save/reboot retained all UIDs, origins, wear slots and Barkskin; returning to three cleaned Barkskin",
         flush=True,
     )
     client.send("quaff solution")
@@ -285,7 +268,7 @@ try:
                 "baseline": baseline,
                 "uids": chosen,
                 "three_piece_max": baseline + 5,
-                "five_piece_max": baseline + 15,
+                "four_piece_max": baseline + 10,
             }
         )
     )

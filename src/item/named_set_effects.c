@@ -57,7 +57,8 @@ void update_named_set_suspension(P_char ch, const affected_type *retiring)
 	for (affected_type *source = ch->affected; source; source = source->next)
 	{
 		if (!(source->flags & AFFTYPE_SET_AFFECT) || source == retiring ||
-		    (source->set_spell >= FIRST_SKILL && source->set_spell != SONG_DRAGONS) ||
+		    (source->set_spell >= FIRST_SKILL && source->set_spell != SONG_DRAGONS &&
+		     source->set_spell != SKILL_AWARENESS && source->set_spell != SKILL_SNEAK) ||
 		    ((source->flags & AFFTYPE_NOAPPLY) && !(source->flags & AFFTYPE_SET_SUSPENDED)))
 			continue;
 		bool ordinary = false;
@@ -134,6 +135,8 @@ named_set_ordinary_cast::~named_set_ordinary_cast()
 
 static int supporting_zone(P_char ch, int spell)
 {
+	if (spell == SKILL_SNEAK && (IS_FIGHTING(ch) || IS_RIDING(ch)))
+		return 0;
 	for (size_t i = 0; i < named_set_count; ++i)
 		for (const auto &tier : named_sets[i].proc_spells)
 		{
@@ -180,4 +183,13 @@ bool reconcile_named_set_spell(P_char ch, int spell)
 		}
 	}
 	return removed;
+}
+
+bool named_set_sneak_active(P_char ch)
+{
+	for (const affected_type *affect = ch->affected; affect; affect = affect->next)
+		if (affect->type == SKILL_SNEAK && (affect->flags & AFFTYPE_SET_AFFECT) &&
+		    !(affect->flags & AFFTYPE_NOAPPLY))
+			return true;
+	return false;
 }

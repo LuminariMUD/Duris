@@ -26986,11 +26986,11 @@ The first belt attachment and back slot can count.
 Each matching piece beyond the second adds 5 hit points: three pieces
 give +5 HP, five give +15 HP, and six give +20 HP. Spell thresholds
 are separate. For example, Tharnadia gives Armor at three pieces and
-Endurance at five. A set without a listed spell can still grant HP.
+Barkskin at four. Some effects begin at one piece; one and two pieces
+give no matching-set HP. A set without a listed effect can still grant HP.
 Spell power when granted depends on the piece count and has a cap.
 Sets granting the same spell do not stack that spell. Ordinary casts
 retain their own durations when a set is equipped or removed.
-A Vitality cast no stronger than the set's grant has no effect.
 
 Sets match their source zone ID, even when two zones have the same
 visible name. Changing an item's visible name does not change its
@@ -27000,10 +27000,13 @@ including Ceothia, Underworld, Braddistock and Misty Vale, retain their
 same-title HP bonus but grant no guessed zone spell. Those unresolved
 pieces do not combine with pieces whose zone identity is known.
 
-Some spells have conditions: Guardian Spirits requires a Shaman.
-Virtue helps good wearers against non-good targets and evil wearers
-against non-evil targets; neutral wearers gain no bonus. Globe of
-Darkness excludes Holy Light and Mage Flame.
+Earth, Fire and Water Form require the matching Magus specialization.
+Forms exclude other elemental forms and auras. Weapon enchantments need
+their native weapon types. Sneak refreshes outside combat while unmounted.
+Globe of Darkness excludes Holy Light and Mage Flame. Armor bonuses do not
+add a second armor-class modifier; skin effects retain their native benefits.
+Ironwood needs Barkskin or Thornskin and shares the generic one-minute
+skin refresh interval. Running timers survive re-equipping and reconnecting.
 The report marks one-minute cooldown spells in green and five-minute
 cooldown spells in yellow. Removing, trading or re-equipping pieces,
 or reconnecting, does not clear your running cooldown.

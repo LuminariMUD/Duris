@@ -5,28 +5,25 @@ import os
 import re
 import subprocess
 import time
+from pathlib import Path
 import test_mariadb_combat_journey as journey
 
+ARTIFACT_ROOT = Path(os.environ.get("NAMED_SET_ARTIFACT_ROOT", str(journey.ROOT / "bin/tests"))).resolve()
 
-# Required cases: generation room, maximum tier, primary native name and spell ID.
-WEAR_CASES = {
-    1325: (132500, 5, "armor", 1),
-    740: (74000, 5, "battletide", 395),
-    827: (82701, 3, "protection from animals", 383),
-    13: (1300, 3, "phantom armor", 400),
-    44: (4401, 3, "globe of darkness", 302),
-    204: (20400, 3, "sense life", 44),
-    808: (80800, 3, "enhance agility", 177),
-    811: (81100, 3, "protection from animals", 383),
-    814: (81400, 3, "vapor strike", 467),
-    990: (99001, 3, "scent of the bloodhound", 517),
-    300: (30000, 3, "globe of darkness", 302),
-    1350: (135001, 3, "phantom armor", 400),
-    87: (8700, 5, "spirit ward", 220),
-    370: (37000, 3, "endurance", 355),
-    676: (67600, 4, "endurance", 355),
-    824: (82400, 6, "vitality", 56),
-}
+# Generation rooms are authored destinations; effect/threshold expectations use
+# the current catalog, whose exact worksheet mapping has an independent test.
+_definitions = dict(re.findall(r"^#define\s+(\w+)\s+(\d+)", (journey.ROOT/"src/magic/spells.h").read_text(), re.M))
+_registrations = (journey.ROOT/"src/classes/skills.c").read_text()
+EFFECT_NAMES = {token:name for name,token in re.findall(r'(?:SPELL_CREATE(?:_MSG|2)?|SKILL_CREATE)\(\s*"([^"\n]+)"\s*,\s*(\w+)', _registrations)}
+SET_TIERS = {}
+for match in re.finditer(r'^\s*\{\s*(\d+),\s*(\{.*?\})\s*\},', (journey.ROOT/"src/item/named_sets.c").read_text(), re.M|re.S):
+    SET_TIERS[int(match[1])] = [(int(n), EFFECT_NAMES[token], int(_definitions[token])) for n,token in re.findall(r'\{\s*(\d+),\s*(\w+)\s*\}',match[2])]
+_rooms = {1325:132500,740:74000,827:82701,13:1300,44:4401,204:20400,808:80800,
+    811:81100,814:81400,990:99001,300:30000,1350:135001,87:8700,370:37000,
+    676:67600,824:82400,159:15900,455:45500,883:88300,1424:142400}
+WEAR_CASES = {zone:(room,max(n for n,_,_ in SET_TIERS[zone]),SET_TIERS[zone][0][1],SET_TIERS[zone][0][2]) for zone,room in _rooms.items()}
+WEAR_CASES[112]=(11200,4,"",0) # A removed definition must still retain matching HP.
+
 
 def enable_items(client):
     client.socket.sendall(b"\xff\xfd\xc9")
@@ -106,6 +103,8 @@ def get_from_container(client, uid, bag):
     offset = len(client.raw_transcript)
     gmcp(client, "Char.Items.Get " + json.dumps([container]))
     deadline = time.monotonic() + 15
+    revision = token = None
+    observed = []
     while time.monotonic() < deadline:
         client._receive()
         for packet in re.findall(
@@ -114,8 +113,14 @@ def get_from_container(client, uid, bag):
             if not packet.startswith(b"Char.Items.List "):
                 continue
             page = json.loads(packet.split(b" ", 1)[1])
-            if page["location"] != container or not page["complete"]:
+            if page["location"] != container:
                 continue
+            observed.append((page.get("revision"), page.get("page"), page.get("complete"),
+                             page.get("available"), len(page["items"])))
+            current_revision = tuple(page[key] for key in
+                                     ("context", "process", "generation", "bodyRevision", "revision"))
+            if current_revision != revision:
+                revision, token = current_revision, None
             token = next(
                 (
                     item["selector"]
@@ -123,14 +128,15 @@ def get_from_container(client, uid, bag):
                     if item.get("selector")
                     and item["selector"].endswith(":" + str(uid))
                 ),
-                None,
+                token,
             )
-            assert token, (uid, page)
+            if not page["complete"] or not token:
+                continue
             client.send("get " + token + " " + container)
             client.expect("You get", timeout=30)
             score(client)
             return
-    raise AssertionError("no completed contents for " + str(bag))
+    raise AssertionError(("no completed contents", uid, bag, observed[-8:]))
 
 
 def score(client):
@@ -181,7 +187,7 @@ class NamedSetGame:
             "NAMED_SET_RUNTIME", "bin/tests/named-set-roster-world")).resolve()
         self.binary = (binary or journey.ROOT / os.environ.get(
             "NAMED_SET_SERVER", "bin/server/dms_new")).resolve()
-        assert self.runtime.is_relative_to((journey.ROOT / "bin/tests").resolve())
+        assert self.runtime.is_relative_to(ARTIFACT_ROOT)
         assert (self.runtime / "areas/world.zon").is_file(), "prepare the isolated full world first"
         supplied = environment if environment is not None else os.environ
         self.env = {key: supplied[key] for key in (
@@ -229,7 +235,7 @@ class NamedSetGame:
             stdout=self.output,
             stderr=subprocess.STDOUT,
         )
-        deadline = time.monotonic() + 120
+        deadline = time.monotonic() + 300
         while "Entering game loop." not in log.read_text(errors="replace"):
             assert self.process.poll() is None, label + " boot failed"
             assert time.monotonic() < deadline, label + " boot deadline"

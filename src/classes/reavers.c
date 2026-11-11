@@ -549,6 +549,7 @@ std::string ilienzes_flame_sword_facts(P_char ch)
 void spell_ilienzes_flame_sword(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 				P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_ILIENZES_FLAME_SWORD);
 	struct affected_type af;
 	bool weapon = false;
 
@@ -1099,6 +1100,7 @@ std::string girilals_granite_hammer_facts(P_char ch)
 void spell_girilals_granite_hammer(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 				   P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_GIRILALS_GRANITE_HAMMER);
 	P_obj weapon = NULL;
 
 	if (!IS_ALIVE(ch))
@@ -1559,6 +1561,7 @@ std::string lliendils_stormshock_facts(P_char ch)
 void spell_lliendils_stormshock(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 				P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_LLIENDILS_STORMSHOCK);
 	struct affected_type af;
 	bool weapon = false;
 

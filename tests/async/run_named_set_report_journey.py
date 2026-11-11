@@ -14,14 +14,14 @@ import tempfile
 import time
 
 import test_mariadb_combat_journey as journey
-from named_set_gameplay import score, save
+from named_set_gameplay import ARTIFACT_ROOT, score, save
 from test_flight_network_journey import authority
 
 ROOT = journey.ROOT
 PLAYER, ACCOUNT = "Reportwarden", "Reportstaff"
 expected_ids = set(map(int, re.findall(
     r"^\s*\{\s*(\d+),\s*\{\s*\{", (ROOT / "src/item/named_sets.c").read_text(), re.M)))
-assert len(expected_ids) == 298
+assert len(expected_ids) == 306
 
 
 def semantic(text):
@@ -32,12 +32,12 @@ def semantic(text):
     text = re.sub(r"&[+-][A-Za-z]|&[nN]", "", text)
     rows = [" ".join(row.split()) for row in re.findall(r"(?m)^\s*#\d+[^\r\n]*", text)]
     ids = [int(re.match(r"#(\d+)", row)[1]) for row in rows]
-    assert len(ids) == 298 and set(ids) == expected_ids, (len(ids), expected_ids - set(ids))
+    assert len(ids) == 306 and set(ids) == expected_ids, (len(ids), expected_ids - set(ids))
     normalized = " ".join(text.split())
     for note in (
-        "Guardian Spirits requires a Shaman wearer.",
-        "Virtue helps good wearers against non-good targets and evil",
-        "wearers against non-evil targets; neutral wearers gain no bonus.",
+        "Listed effects may begin at one piece; one/two pieces give no set HP.",
+        "Earth/Fire/Water Form require the matching Magus specialization.",
+        "Weapon enchantments require their native weapon types.",
         "Globe of Darkness excludes Holy Light and Mage Flame.",
     ):
         assert note in normalized, note
@@ -45,14 +45,13 @@ def semantic(text):
 
 
 def run():
-    runtime = Path(tempfile.mkdtemp(prefix="named-report-mariadb-", dir=ROOT / "bin/tests"))
+    runtime = Path(tempfile.mkdtemp(prefix="named-report-mariadb-", dir=ARTIFACT_ROOT))
     print("Artifacts: " + str(runtime), flush=True)
     (runtime / "areas").symlink_to(Path(os.environ.get("NAMED_SET_RUNTIME", ROOT / "bin/tests/named-set-roster-world")) / "areas", target_is_directory=True)
     (runtime / "docs").symlink_to(ROOT / "docs", target_is_directory=True)
-    archive = subprocess.Popen(["git", "archive", "HEAD", "lib", "help"], cwd=ROOT, stdout=subprocess.PIPE)
-    subprocess.run(["tar", "-x", "-C", str(runtime)], stdin=archive.stdout, check=True)
-    archive.stdout.close()
-    assert archive.wait() == 0
+    import shutil
+    shutil.copytree(ROOT/"lib",runtime/"lib")
+    shutil.copytree(ROOT/"help",runtime/"help")
     for directory in ("logs", "log", "journals/critical"):
         (runtime / directory).mkdir(parents=True, exist_ok=True)
     journey.generate_certificate(runtime)
@@ -159,6 +158,15 @@ def run():
                        REDIS_ALLOWED_TARGETS=f"127.0.0.1:{redis_port}/0",
                        REDIS_WORLD_STATE="FALSE", REDIS_DONATION_SUBSCRIBER="FALSE")
             actor = boot("live-boot")
+            actor.send("toggle paging no")
+            score(actor)
+            actor.send("help named equipment sets")
+            actor.expect("Barkskin at four.")
+            actor.expect("Ironwood needs Barkskin or Thornskin")
+            actor.expect("Pos:"); actor.expect(">")
+            check("MariaDB help contains the revised tiers and Ironwood rules")
+            actor.send("toggle paging yes")
+            score(actor)
             key, = cli("--scan", "--pattern", namespace + ":season:*:cache:named").splitlines()
             evidence["key"] = key
             boot_rows = semantic(cli("GET", key))
@@ -168,7 +176,7 @@ def run():
             before = generations()
             assert report(actor, "warm") == boot_rows
             assert report(actor, "warm-repeat") == boot_rows and generations() == before
-            check("boot warms all 298 native rows with one-day TTL; repeated warm reads do not regenerate")
+            check("boot warms all 306 native rows with one-day TTL; repeated warm reads do not regenerate")
 
             actor.send("redis clear named")
             actor.expect("Queued: named", timeout=30)
@@ -203,7 +211,7 @@ def run():
             score(actor)
             assert report(actor, "redis-disabled-paged") == boot_rows
             assert evidence["redis-disabled-paged_pages"] > 1
-            check("Redis-disabled native fallback paginates all 298 rows in the same order with conditional notes")
+            check("Redis-disabled native fallback paginates all 306 rows in the same order with conditional notes")
             save(actor, PLAYER)
         finally:
             stop()

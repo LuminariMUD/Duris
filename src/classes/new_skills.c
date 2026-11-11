@@ -1,3 +1,4 @@
+#include "item/named_set_effects.h"
 
 /*
  ***************************************************************************
@@ -444,22 +445,10 @@ std::string awareness_facts(P_char ch)
 	       "  It always works. It lasts longer with intelligence, level and rating.\n";
 }
 
-void do_awareness(P_char ch, char * /*argument*/, int /*cmd*/)
+void apply_awareness(P_char ch, int skl_lvl)
 {
 	struct affected_type af, *af_ptr;
 	int duration = 0, lev_aware;
-	int skl_lvl = 0;
-
-	if (IS_PC(ch))
-		skl_lvl = GET_CHAR_SKILL(ch, SKILL_AWARENESS);
-
-	if (!skl_lvl)
-	{
-		act("You wouldn't know where to begin.", TRUE, ch, 0, 0, TO_CHAR);
-		return;
-	}
-	act("You feel aligned with your surroundings.", TRUE, ch, 0, 0, TO_CHAR);
-
 	lev_aware = STAT_INDEX(GET_C_INT(ch)) + STAT_INDEX(GET_C_DEX(ch)) + (GET_LEVEL(ch) >> 3);
 	lev_aware = lev_aware * skl_lvl / 75;
 	if (lev_aware > 0)
@@ -496,6 +485,24 @@ void do_awareness(P_char ch, char * /*argument*/, int /*cmd*/)
 		REMOVE_BIT(ch->specials.affected_by, AFF_SKILL_AWARE);
 	}
 	affect_to_char(ch, &af);
+}
+
+void do_awareness(P_char ch, char * /*argument*/, int /*cmd*/)
+{
+	int skl_lvl = 0;
+
+	if (IS_PC(ch))
+		skl_lvl = GET_CHAR_SKILL(ch, SKILL_AWARENESS);
+
+	if (!skl_lvl)
+	{
+		act("You wouldn't know where to begin.", TRUE, ch, 0, 0, TO_CHAR);
+		return;
+	}
+	act("You feel aligned with your surroundings.", TRUE, ch, 0, 0, TO_CHAR);
+
+	named_set_ordinary_cast ordinary_cast(ch, SKILL_AWARENESS);
+	apply_awareness(ch, skl_lvl);
 	notch_skill(ch, SKILL_AWARENESS, 20);
 }
 

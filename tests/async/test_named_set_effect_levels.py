@@ -25,6 +25,8 @@ bool affected_by_skill(P_char, int) { return false; }
 struct affected_type *get_spell_from_char(P_char, int, void *, int) { return nullptr; }
 struct affected_type *affect_to_char(P_char, struct affected_type *) { return nullptr; }
 void spell_fireshield(int, P_char, char *, int, P_char, P_obj) {}
+void apply_awareness(P_char,int) {}
+void spell_ironwood(int,P_char,char *,int,P_char,P_obj) {}
 void spell_haste(int, P_char, char *, int, P_char, P_obj) {}
 void spell_infernal_fury(int, P_char, char *, int, P_char, P_obj) {}
 enum { SETMSG_NONE, SETMSG_PROTECT, SETMSG_STRENGTH };
@@ -39,10 +41,10 @@ void spell_stone_skin(int level, P_char ch, char *arg, int type, P_char victim, 
 """ + extract_function("specs.set.c", "static void grant_dragons_to_group(") + \
     extract_function("specs.set.c", "void apply_zone_spell(") + r"""
 int main() {
-    for (int spell : {SPELL_CONJURE_ELEMENTAL, SPELL_INVIGORATE, SPELL_ENDURANCE, SPELL_STONE_SKIN}) {
+    for (int spell : {SPELL_CONJURE_ELEMENTAL, SPELL_INVIGORATE, SPELL_ENDURANCE, SPELL_STONE_SKIN, SPELL_ARMOR, SPELL_FARSEE}) {
         skills[spell].spell_pointer = record_cast;
-        const bool floored = spell != SPELL_STONE_SKIN;
-        for (int count : {2, 3, 5, 6, 12, 40}) {
+        const bool floored = spell == SPELL_CONJURE_ELEMENTAL || spell == SPELL_INVIGORATE || spell == SPELL_ENDURANCE;
+        for (int count : {1, 2, 3, 5, 6, 12, 40}) {
             char_data wearer{};
             wearer.points.vitality = 0;
             wearer.points.max_vitality = 100;
@@ -50,7 +52,7 @@ int main() {
             casts = 0;
             apply_zone_spell(&wearer, count, "Test", 1, &item, spell);
             assert(casts == 1);
-            const int raw = floored ? count * 10 : count * 5;
+            const int raw = spell == SPELL_STONE_SKIN ? count * 5 : count * 10;
             const int expected = MIN(56, floored ? MAX(30, raw) : raw);
             assert(cast_level == expected);
         }
