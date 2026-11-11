@@ -83,6 +83,7 @@ class named_set_grant
 
 // Retain one buff while any currently worn set supports it. Returns whether
 // unsupported, wearer-owned effects were removed; ordinary casts are untouched.
+bool named_set_sneak_active(P_char ch);
 bool reconcile_named_set_spell(P_char ch, int spell);
 
 // Temporarily hide only overlapping set nodes from a native ordinary cast.
@@ -114,7 +115,7 @@ void update_named_set_suspension(P_char ch, const affected_type *retiring = null
 
 // Existing short-affect pulses, shared by all sets granting this spell.
 inline constexpr int named_set_cooldown_spells[] = { SPELL_STONE_SKIN, SPELL_CONJURE_ELEMENTAL,
-						     SPELL_INVIGORATE };
+						     SPELL_INVIGORATE, SPELL_IRONWOOD };
 int named_set_cooldown_remaining(P_char ch, int spell);
 void start_named_set_cooldown(P_char ch, int spell, int pulses);
 

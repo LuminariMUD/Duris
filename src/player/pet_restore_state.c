@@ -128,14 +128,17 @@ template <typename IO, typename State> void fields(IO &io, State &s)
 	io.number(s.sex);
 	io.number(s.size);
 	io.number(s.alignment);
-	if (s.version == 2)
-		for (auto &deadline : s.named_set_cooldowns)
-			io.number(deadline);
+	if (s.version >= 2)
+		for (size_t i = 0; i < 3; ++i)
+			io.number(s.named_set_cooldowns[i]);
+	if (s.version >= 3)
+		io.number(s.named_set_cooldowns[3]);
 }
 
 bool valid(const pet_restore_state &s)
 {
-	if ((s.version != 1 && s.version != 2) ||
+	if ((s.version != 1 && s.version != 2 && s.version != 3) ||
+	    (s.version < 3 && s.named_set_cooldowns[3] != 0) ||
 	    !std::all_of(s.named_set_cooldowns.begin(), s.named_set_cooldowns.end(),
 			 [](int64_t v) { return v >= 0 && v <= INT64_MAX / 16; }) ||
 	    (s.version == 1 &&
@@ -143,8 +146,8 @@ bool valid(const pet_restore_state &s)
 			 [](int64_t v) { return v != 0; })))
 		return false;
 	// Ordinary pets retain their existing prototype/resource/charm restore path.
-	// Their v2 payload carries only cooldowns; the summon fields are unused.
-	if (s.version == 2 && s.kind == summoned_pet_kind::ordinary)
+	// Their v2/v3 payload carries only cooldowns; the summon fields are unused.
+	if (s.version >= 2 && s.kind == summoned_pet_kind::ordinary)
 		return true;
 	const auto text_ok = [](const std::string &v)
 	{

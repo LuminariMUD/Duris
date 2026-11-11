@@ -54,7 +54,7 @@ bool summoned_pet_capture(P_char pet, std::string *encoded)
 			named_set_cooldown_remaining(pet, named_set_cooldown_spells[i]);
 		if (remaining > 0)
 		{
-			s.version = 2;
+			s.version = std::max(s.version, static_cast<uint32_t>(i == 3 ? 3 : 2));
 			s.named_set_cooldowns[i] =
 				now + (static_cast<int64_t>(remaining) + WAIT_SEC - 1) / WAIT_SEC;
 		}

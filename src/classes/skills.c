@@ -274,6 +274,8 @@ void initialize_skills()
 		     spell_water_to_life);
 	SPEC_SPELL_ADD(CLASS_CONJURER, 7, SPEC_WATER);
 
+	SPELL_CREATE_MSG("ultravision", SPELL_ULTRAVISION, PULSE_SPELLCAST, TAR_SELF_ONLY,
+			 spell_ultravision, "Your ultravision fades.");
 	SPELL_CREATE_MSG("air form", SPELL_AIR_FORM, PULSE_SPELLCAST * 4, TAR_SELF_ONLY,
 			 spell_air_form, "Your molecules return to normal.");
 	SPEC_SPELL_ADD(CLASS_CONJURER, 10, SPEC_AIR);

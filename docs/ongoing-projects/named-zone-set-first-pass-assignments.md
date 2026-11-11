@@ -1,5 +1,9 @@
 # Named zone sets: complete assignment plan and remaining work
 
+The spell assignments below are historical. Current replacement choices and
+qualification are in [the worksheet replacement plan](named-effects-worksheet-replacement-plan.md);
+retain this document for its area identity and prior eligibility evidence.
+
 Status: 183 reviewed additions (104 original + 79 wider) integrated into the 298-set catalog. Local validation and release status are recorded in [PR #748](https://github.com/LuminariMUD/Duris/pull/748); production publication is pending.
 Date: 2026-11-06.
 Inspected `master`: `2d2a7d48dea91dbe773701790239db76f59806c2`.

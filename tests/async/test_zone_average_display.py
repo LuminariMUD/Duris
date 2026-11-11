@@ -42,14 +42,19 @@ int main() {
         assert(feedback.size() < MAX_STRING_LENGTH);
         return feedback;
     };
-    skills[SPELL_ARMOR].name = "armor";
-    skills[SPELL_ARMOR].spell_pointer = spell;
-    skills[SPELL_BLESS].name = "bless";
-    skills[SPELL_BLESS].spell_pointer = spell;
-    zones[0].number = 14;
+    // Read the first catalog entry rather than pinning a zone's current choices.
+    const auto &set = named_sets[0];
+    const char *names[] = {"first effect", "second effect"};
+    for (int tier = 0; tier < 2; ++tier) {
+        assert(set.proc_spells[tier][1]);
+        skills[set.proc_spells[tier][1]].name = names[tier];
+        skills[set.proc_spells[tier][1]].spell_pointer = spell;
+    }
+    zones[0].number = set.zone;
     auto bonuses = display(10);
-    assert(bonuses.find("armor &+W(&+Y3&+W)") != std::string::npos);
-    assert(bonuses.find("bless &+W(&+Y3&+W)") != std::string::npos);
+    for (int tier = 0; tier < 2; ++tier)
+        assert(bonuses.find(std::string(names[tier]) + " &+W(&+Y" +
+                            std::to_string(set.proc_spells[tier][0]) + "&+W)") != std::string::npos);
     assert(bonuses.find("None listed") == std::string::npos);
     zones[0].number = 0;
     assert(display(10).find("None listed; matching named items still grant hitpoints.") != std::string::npos);

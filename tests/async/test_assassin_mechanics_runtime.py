@@ -146,6 +146,7 @@ def production():
         ("affects.c", "void set_short_affected_by("),
         ("new_skills.c", "static int awareness_max_duration("),
         ("new_skills.c", "static int awareness_rolled_duration("),
+        ("new_skills.c", "void apply_awareness("),
         ("new_skills.c", "void do_awareness("),
         ("actoff.c", "static int backstab_skill("),
         ("actoff.c", "static int circle_rest("),

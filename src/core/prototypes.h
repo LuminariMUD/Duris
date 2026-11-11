@@ -1229,6 +1229,8 @@ void checkFragList(P_char ch);
 
 /* random.mob.c */
 P_char create_random_mob(int theme, int mob_level);
+void apply_awareness(P_char ch, int rating);
+void spell_ultravision(int, P_char, char *, int, P_char, P_obj);
 void do_namedreport(P_char ch, char *argument, int cmd);
 
 /* training_dummy.c */
