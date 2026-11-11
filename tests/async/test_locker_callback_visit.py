@@ -113,7 +113,7 @@ player_save_apply_result locker_snapshot_repository_apply_from_pool(const locker
     written.emplace_back(snapshot.locker_name, std::move(items));
     return {player_save_apply_outcome::applied, 0, 0};
 }
-void extract_char(P_char holder) {
+void extract_char_after_terminal_save(P_char holder) {
     ++extractions;
     for (P_char *link = &character_list; *link; link = &(*link)->next)
         if (*link == holder) { *link = holder->next; break; }
