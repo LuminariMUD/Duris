@@ -916,3 +916,20 @@ mt 14 512 0 -1
 56 0 0 1d1+1 1d1+1
 0.0.0.0 0
 8 8 1
+#37766
+veyrith tiefling master illusionist tutor trainer~
+&+MVeyrith&n, the &+LTiefling master of illusions&n~
+&+MA Tiefling traces shifting images in the air, pausing to guide his students.&n
+~
+&+L   Veyrith's swept-back horns frame a patient face, while his silver eyes
+&+Lfollow movements that no one else can see. Images gather around his hands:
+&+La candle burning without wax, a patch of darkness, a creature made of shadow.
+&+LHe dismisses each illusion with a gesture and turns to explain its workings
+&+Lto anyone willing to learn. The margins of his robes seem to fade into the
+&+Lair, though his welcoming smile remains quite clear.
+~
+32778 0 0 0 0 0 0 0 0 S
+TF 14 4194304 0 -1
+56 0 0 1d1+1 1d1+1
+0.0.0.0 0
+8 8 1

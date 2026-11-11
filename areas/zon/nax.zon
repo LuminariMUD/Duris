@@ -1,6 +1,6 @@
 #377
 &+LNa&+rx&n~
-37944 2 4 20 25 1
+37945 2 4 20 25 1
 *
 * Zone edited with durisEdit v3.02
 *
@@ -383,5 +383,6 @@ G 1 368 999 0 100 0 0 0            *    (object type not in this .obj file)
 G 1 369 999 0 100 0 0 0            *    (object type not in this .obj file)
 M 0 37763 1 37943 100 0 0 0        * A meditating shaman
 M 0 37765 1 37944 100 0 0 0        * Asterion, the minotaur Archmage
+M 0 37766 1 37945 100 0 0 0        * Veyrith, the Tiefling master of illusions
 *
 S
