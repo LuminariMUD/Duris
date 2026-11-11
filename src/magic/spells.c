@@ -3173,7 +3173,7 @@ void cast_awaken_forest(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, 
 /*** STORM DRUID ***/
 
 // One roll sets the damage for the whole cast.
-static int hurricane_damage(const Rolls &rolls, int level)
+int hurricane_damage(const Rolls &rolls, int level)
 {
 	return 40 + level * 6 + rolls.number(1, 30);
 }
@@ -3231,12 +3231,9 @@ std::string hurricane_facts(P_char ch)
 	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
-void cast_hurricane(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*tar_ch*/,
-		    P_obj /*tar_obj*/)
+void spell_hurricane_hit(P_char ch, P_char victim, int dam)
 {
-	int dam, affchance, chance;
-	P_char tch, next;
-
+	int chance, affchance;
 	struct damage_messages messages = {
 		"&+WHurricane&n winds sweep through the room tearing at $N!.",
 		"&+WHurricane&n winds sweep through the room tearing at you.",
@@ -3246,42 +3243,39 @@ void cast_hurricane(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /
 		"&+WHurricane winds lift $N up into the air only to send $M tumbling to $S death."
 	};
 
-	// dam = 40 << 2;
-	//  This new damage below is about 1/2 that of swarm
-	dam = hurricane_damage(live_rolls, level);
+	if (hurricane_miss_roll(live_rolls) < hurricane_miss_below())
+		return;
 
-	tch = world[ch->in_room].people;
+	chance = hurricane_knockdown_chance(IS_AFFECTED(victim, AFF_FLY), GET_LEVEL(ch));
 
-	for (tch = world[ch->in_room].people; tch; tch = next)
+	affchance = hurricane_knockdown_roll(live_rolls);
+	if (OUTSIDE(ch))
 	{
-		next = tch->next_in_room;
-
-		if (tch == ch)
-			continue;
-
-		if (!should_area_hit(ch, tch))
-			continue;
-
-		if (hurricane_miss_roll(live_rolls) < hurricane_miss_below())
-			continue;
-
-		chance = hurricane_knockdown_chance(IS_AFFECTED(tch, AFF_FLY), GET_LEVEL(ch));
-
-		affchance = hurricane_knockdown_roll(live_rolls);
-		if (OUTSIDE(ch))
+		if (affchance <= chance)
 		{
-			if (affchance <= chance)
-			{
-				act("The gail force of your spell sends $N crashing to the ground!",
-				    FALSE, ch, 0, tch, TO_CHAR);
-				act("The gail force of $n's spell sends you crashing to the ground!",
-				    FALSE, ch, 0, tch, TO_VICT);
-				act("The gail force of $n's spell sends $N crashing to the ground!",
-				    FALSE, ch, 0, tch, TO_NOTVICT);
-				SET_POS(tch, POS_SITTING + GET_STAT(tch));
-			}
+			act("The gail force of your spell sends $N crashing to the ground!", FALSE,
+			    ch, 0, victim, TO_CHAR);
+			act("The gail force of $n's spell sends you crashing to the ground!", FALSE,
+			    ch, 0, victim, TO_VICT);
+			act("The gail force of $n's spell sends $N crashing to the ground!", FALSE,
+			    ch, 0, victim, TO_NOTVICT);
+			SET_POS(victim, POS_SITTING + GET_STAT(victim));
 		}
-		spell_damage(ch, tch, dam, SPLDAM_GENERIC, 0, &messages);
+	}
+	spell_damage(ch, victim, dam, SPLDAM_GENERIC, 0, &messages);
+}
+
+void cast_hurricane(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*tar_ch*/,
+		    P_obj /*tar_obj*/)
+{
+	const int dam = hurricane_damage(live_rolls, level);
+	P_char next;
+	for (P_char target = world[ch->in_room].people; target; target = next)
+	{
+		next = target->next_in_room;
+		if (target == ch || !should_area_hit(ch, target))
+			continue;
+		spell_hurricane_hit(ch, target, dam);
 	}
 }
 

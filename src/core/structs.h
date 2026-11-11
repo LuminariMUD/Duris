@@ -460,8 +460,9 @@ struct edit_data
 #define INNATE_WATER_AFFINITY 181
 #define INNATE_FIRE_AFFINITY 182
 #define INNATE_EARTH_AFFINITY 183
+#define INNATE_MONKEY_GRIP 184
 
-#define LAST_INNATE INNATE_EARTH_AFFINITY // LAST means last, not last + 1 or whatever
+#define LAST_INNATE INNATE_MONKEY_GRIP // LAST means last, not last + 1 or whatever
 
 struct extra_descr_data
 {
@@ -573,6 +574,8 @@ struct spellcast_datatype
 	unsigned char flags;
 	// The tick the scheduled segment is due at; zero until the first one is scheduled.
 	unsigned long long due_tick;
+	// Process-local identity of the cast's wait; a later combat wait has a different sequence.
+	unsigned long long wait_sequence;
 };
 
 struct scribing_data_type

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute the production direct/bulk pickup gates at and above the count cap.
+"""Execute money and salvage pickup gates below, at and above the count cap.
 
 Money moving in memory is covered separately by test_currency_in_memory.py;
 this harness checks which objects reach the pickup.
@@ -35,7 +35,7 @@ PRELUDE = r'''
 constexpr int ITEM_MONEY = 20, ITEM_CORPSE = 21, ITEM2_ACCOUNT_BOUND = 1,
               ITEM2_NOLOOT = 2, CORPSE_FLAGS = 1, PC_CORPSE = 1;
 constexpr size_t CURRENCY_DENOMINATION_COUNT = 4;
-constexpr int LOWEST_MAT_VNUM = 100, HIGHEST_MAT_VNUM = 200;
+constexpr int LOWEST_MAT_VNUM = 400000, HIGHEST_MAT_VNUM = 400209;
 constexpr int MAX_STRING_LENGTH = 1024;
 constexpr bool TRUE = true, FALSE = false;
 struct character { int count = 11, cap = 11, weight = 0, max_weight = 100; };
@@ -152,7 +152,92 @@ int main()
             }
         }
     }
-    puts("Money count gates passed: direct, all.coins, mixed bulk; vnums 3/402013; counts 10/11/28.");
+    // Restore the historical inclusive material range for container pickup.
+    // Floor pickup keeps its existing exclusive lower bound.
+    for (int count : {10, 11, 28}) {
+        for (int vnum : {LOWEST_MAT_VNUM - 1, LOWEST_MAT_VNUM,
+                         LOWEST_MAT_VNUM + 1, HIGHEST_MAT_VNUM,
+                         HIGHEST_MAT_VNUM + 1}) {
+            for (bool local : {false, true}) {
+                character actor;
+                actor.count = count;
+                object bag, material;
+                material.type = 1;
+                material.vnum = vnum;
+                material.name = "material";
+                material.weight = 1;
+                const bool is_material = vnum >= LOWEST_MAT_VNUM &&
+                                         vnum <= HIGHEST_MAT_VNUM;
+                const bool fits = count < actor.cap || is_material;
+                const int before = finalized;
+                assert(direct(&actor, &bag, &material, local) == fits);
+                assert(finalized == before + (fits ? 1 : 0));
+                for (const char *filter : {"material", static_cast<const char *>(nullptr)}) {
+                    bulk_get_state state;
+                    int carried = count;
+                    int64_t weight = 0;
+                    bool stop = false;
+                    assert(select_bulk_get_item(&actor, &bag, &material, filter,
+                        local, carried, weight, state, stop) == fits);
+                    assert(!stop);
+                    assert(carried == count + (fits ? 1 : 0));
+                    assert(weight == (fits && !local ? 1 : 0));
+                    assert(state.synchronous_items.size() == (fits ? 1u : 0u));
+                }
+                bulk_get_state floor;
+                int carried = count;
+                int64_t weight = 0;
+                bool stop = false;
+                const bool floor_fits = count < actor.cap ||
+                    (vnum > LOWEST_MAT_VNUM && vnum <= HIGHEST_MAT_VNUM);
+                assert(select_bulk_get_item(&actor, nullptr, &material, nullptr,
+                    false, carried, weight, floor, stop) == floor_fits);
+                assert(carried == count + (floor_fits ? 1 : 0));
+
+                if (!is_material)
+                    continue;
+                // The count exception must not bypass visibility, takeability
+                // or the existing weight check for containers on the ground.
+                material.visible = false;
+                assert(!direct(&actor, &bag, &material));
+                material.visible = true;
+                material.takeable = false;
+                assert(!direct(&actor, &bag, &material));
+                material.takeable = true;
+                material.weight = actor.max_weight + 1;
+                assert(!direct(&actor, &bag, &material));
+                assert(direct(&actor, &bag, &material, true));
+                for (bool carried_bag : {false, true}) {
+                    bulk_get_state state;
+                    carried = count; weight = 0; stop = false;
+                    assert(select_bulk_get_item(&actor, &bag, &material, nullptr,
+                        carried_bag, carried, weight, state, stop) == carried_bag);
+                    assert(stop == !carried_bag);
+                    assert(carried == count + (carried_bag ? 1 : 0));
+                }
+                assert(actor.count == count);
+            }
+        }
+    }
+    // An ordinary rejection must not hide later materials or money in get all.
+    character actor;
+    object bag, ordinary, material, money;
+    ordinary.type = material.type = 1;
+    material.vnum = LOWEST_MAT_VNUM;
+    bulk_get_state state;
+    int carried = actor.cap;
+    int64_t weight = 0;
+    bool stop = false;
+    assert(!select_bulk_get_item(&actor, &bag, &ordinary, nullptr, false,
+                                carried, weight, state, stop));
+    assert(!stop);
+    assert(select_bulk_get_item(&actor, &bag, &material, nullptr, false,
+                               carried, weight, state, stop));
+    assert(select_bulk_get_item(&actor, &bag, &money, nullptr, false,
+                               carried, weight, state, stop));
+    assert(carried == actor.cap + 1 && state.synchronous_items.size() == 2);
+    assert(state.rejections.size() == 1 && !stop);
+    puts("Money and salvage count gates passed: single, filtered/mixed bulk, carried/room containers, floor, material boundaries, weight, counts 10/11/28.");
 }
 '''
 
@@ -160,7 +245,8 @@ int main()
 if __name__ == "__main__":
     harness = "\n".join((PRELUDE, extract("static bool do_get_try_container_item("),
                          extract("static bool select_bulk_get_item("), DRIVER))
-    with tempfile.TemporaryDirectory() as directory:
+    (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=ROOT / "bin/tests") as directory:
         source = Path(directory) / "money_carry_count.cpp"
         binary = Path(directory) / "money_carry_count"
         source.write_text(harness)

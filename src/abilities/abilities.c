@@ -1709,6 +1709,10 @@ AbilityFacts ability_facts(int skill)
 		return song_healing_facts;
 	case SONG_HEROISM:
 		return song_heroism_facts;
+	case SONG_SHADOW_PIPER:
+		return song_shadow_piper_facts;
+	case SONG_NIMBLENESS:
+		return song_nimbleness_facts;
 	case SONG_PEACE:
 		return song_peace_facts;
 	case SONG_REVELATION:
@@ -1874,6 +1878,8 @@ AbilityFacts innate_facts(int innate)
 	{
 	case INNATE_REFLECTION:
 		return reflection_innate_facts;
+	case INNATE_MONKEY_GRIP:
+		return monkey_grip_innate_facts;
 	case INNATE_AURA_BATTLELUST:
 		return aura_battlelust_innate_facts;
 	case INNATE_AURA_ENDURANCE:

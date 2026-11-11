@@ -54,6 +54,8 @@ std::string game_hours_range(Range ticks);
 std::string show_signed(Range range);
 std::string show_landing(Range range);
 std::string share_percent(float share);
+// Combined racial attack factor for players, shared by combat and race innates.
+float player_racial_damage_multiplier(int race);
 // A computed passive listing entry; neutral damage multipliers have no entry.
 std::string damage_modifier_innate(float multiplier);
 
@@ -84,6 +86,7 @@ std::string innate_rest_facts(int innate, int duration);
 std::string fireball_facts(char_data *ch);
 std::string bash_facts(char_data *ch);
 std::string reflection_innate_facts(char_data *ch);
+std::string monkey_grip_innate_facts(char_data *ch);
 std::string blindsinging_innate_facts(char_data *ch);
 std::string echo_innate_facts(char_data *ch);
 std::string intercept_innate_facts(char_data *ch);
@@ -628,6 +631,7 @@ std::string ethereal_grounds_facts(char_data *ch);
 std::string gate_facts(char_data *ch);
 std::string grow_facts(char_data *ch);
 std::string hurricane_facts(char_data *ch);
+int hurricane_damage(const Rolls &rolls, int level);
 std::string life_ward_facts(char_data *ch);
 std::string lightning_curtain_facts(char_data *ch);
 std::string mirage_facts(char_data *ch);
@@ -878,6 +882,10 @@ std::string song_harming_facts(char_data *ch);
 std::string song_harmony_facts(char_data *ch);
 std::string song_healing_facts(char_data *ch);
 std::string song_heroism_facts(char_data *ch);
+std::string song_shadow_piper_facts(char_data *ch);
+std::string song_nimbleness_facts(char_data *ch);
+int song_nimbleness_melee_bonus();
+int song_nimbleness_spell_threshold();
 std::string song_peace_facts(char_data *ch);
 std::string song_revelation_facts(char_data *ch);
 std::string song_storms_facts(char_data *ch);

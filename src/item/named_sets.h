@@ -2,6 +2,7 @@
 #define DURIS_NAMED_SETS_H
 
 #include <cstddef>
+#include <string>
 
 struct named_set_definition
 {
@@ -14,5 +15,6 @@ extern const size_t named_set_count;
 
 bool named_set_effect_supported(int effect);
 bool validate_named_sets();
+std::string named_set_bonuses(int zone);
 
 #endif

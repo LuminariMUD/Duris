@@ -20793,13 +20793,39 @@ std::string dispel_magic_facts(P_char ch)
 							 std::to_string(level));
 }
 
+P_char dispel_character_affect(P_char ch, P_char victim, int type)
+{
+	affected_type *af = get_spell_from_char(victim, type);
+	if (!af || (af->flags & AFFTYPE_NODISPEL))
+		return NULL;
+	for (affected_type *dormant = victim->affected, *next; dormant; dormant = next)
+	{
+		next = dormant->next;
+		if (dormant->type == type && (dormant->flags & AFFTYPE_SET_SUSPENDED))
+			affect_remove(victim, dormant);
+	}
+	wear_off_message(victim, af);
+	if (type == SPELL_CALL_OF_THE_WILD && IS_MORPH(victim))
+	{
+		P_char original = victim->only.npc->orig_char;
+		act("$n suddenly changes shape, reforming into $N.", FALSE, victim, NULL, original,
+		    TO_NOTVICT);
+		send_to_char("You suddenly feel yourself going back to normal.\n", victim);
+		send_to_char("and you succeed!\n", ch);
+		act("and succeeds!", FALSE, ch, 0, victim, TO_NOTVICT);
+		un_morph(victim);
+		return original;
+	}
+	affect_from_char(victim, type);
+	return victim;
+}
+
 void spell_dispel_magic(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj obj)
 {
 	struct affected_type *af;
 	int mod, success = 0, nosave = 0;
 	P_obj temp_wall, next_obj;
-	P_char orig;
 
 	if (!IS_ALIVE(ch))
 	{
@@ -20855,37 +20881,12 @@ void spell_dispel_magic(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 						return;
 					}
 
-					success = 1;
-					// The buff is ending, so a dormant grant must not resume and
-					// silence its message.
-					for (affected_type *dormant = victim->affected, *next;
-					     dormant; dormant = next)
-					{
-						next = dormant->next;
-						if (dormant->type == af->type &&
-						    (dormant->flags & AFFTYPE_SET_SUSPENDED))
-							affect_remove(victim, dormant);
-					}
-					wear_off_message(victim, af);
-					if ((af->type == SPELL_CALL_OF_THE_WILD) &&
-					    IS_MORPH(victim))
-					{
-						orig = victim->only.npc->orig_char;
-
-						act("$n suddenly changes shape, reforming into $N.",
-						    FALSE, victim, NULL, orig, TO_NOTVICT);
-						send_to_char(
-							"You suddenly feel yourself going back to normal.\n",
-							victim);
-
-						send_to_char("and you succeed!\n", ch);
-						act("and succeeds!", FALSE, ch, 0, victim,
-						    TO_NOTVICT);
-
-						un_morph(victim);
+					P_char remaining =
+						dispel_character_affect(ch, victim, affect_type);
+					if (remaining)
+						success = 1;
+					if (remaining && remaining != victim)
 						return;
-					}
-					affect_from_char(victim, af->type);
 				}
 			}
 		}
@@ -22980,9 +22981,17 @@ static int rope_trick_duration()
 	return 5;
 }
 
+static int rope_trick_limit()
+{
+	return 5;
+}
+
 std::string rope_trick_facts(P_char /*ch*/)
 {
-	return fact("Duration", game_hours(rope_trick_duration()));
+	return fact("Duration", game_hours(rope_trick_duration())) +
+	       fact("Hidden people per room", std::to_string(rope_trick_limit())) +
+	       "  One target per cast. You and your group need no consent and skip saves.\n"
+	       "  Others can consent; otherwise they can resist and save.\n";
 }
 
 void spell_rope_trick(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -22992,10 +23001,10 @@ void spell_rope_trick(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]]
 	int howmany = 0;
 	P_char temp_vict;
 
-	if (ch != victim)
-		if (!is_linked_to(ch, victim, LNK_CONSENT))
-			if (resists_spell(ch, victim))
-				return;
+	const bool willing = ch == victim || grouped(ch, victim) ||
+			     is_linked_to(ch, victim, LNK_CONSENT);
+	if (!willing && resists_spell(ch, victim))
+		return;
 
 	temp_vict = victim;
 
@@ -23005,9 +23014,8 @@ void spell_rope_trick(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]]
 		return;
 	}
 
-	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_ROPE_TRICK);
-	if (!NewSaves(victim, SAVING_SPELL, mod) || (ch == victim) ||
-	    is_linked_to(ch, victim, LNK_CONSENT))
+	if (willing || !NewSaves(victim, SAVING_SPELL,
+				 get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_ROPE_TRICK)))
 	{
 		LOOP_THRU_PEOPLE(temp_vict, ch)
 		{
@@ -23015,7 +23023,7 @@ void spell_rope_trick(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]]
 			    IS_AFFECTED(temp_vict, AFF_HIDE))
 				howmany++;
 		}
-		if (howmany > 2)
+		if (howmany >= rope_trick_limit())
 		{
 			act("&+LYou don't seem to be able to to conjure any more &+yropes&n&+L.&n",
 			    TRUE, ch, 0, victim, TO_CHAR);

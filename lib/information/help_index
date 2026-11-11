@@ -711,6 +711,14 @@ the enemy in assorted evil ways.
 ===========================================================================
 
 #
+Area
+Syntax: area
+Shows your current zone's name, average mobile level and danger warning.
+It also lists the zone's named-set spell bonuses and required piece counts.
+Matching named items still grant hitpoints when no spell bonus is listed.
+Use namedreport for the full catalog, cooldowns and wearer restrictions.
+
+#
 ARMOR (Spell)
 ===========================================================================
 Area of effect: <victim>
@@ -4458,6 +4466,12 @@ the fight. Disengage will not work if you are the tank.
 See also: FLEE, RETREAT
 
 #
+Dismiss
+Syntax: dismiss [pet name]
+Dismiss releases your NPC followers. Supply a name to dismiss one controlled
+pet in the same room. You may dismiss pets while sitting or standing.
+
+#
 DISGUISE (Skill)
 ===========================================================================
 With a proper assortment of items, a player may attempt to change their
@@ -4480,12 +4494,20 @@ These permissions apply to an existing character; they do not enable a forbidden
 
 ==Skill changes==
 
+&+W1st Level: &+cmeditate (cap 100%), quick chant (cap 100%)&n
 &+W30th Level: &+criff (cap 100%)&n
 &+W36th Level: &+cshriek (cap 100%)&n
 
 ==Spell changes==
 
 &+W9th Circle: &+cshatter&n
+
+At level 51, player Disharmonists add a 20% per-target Squall/Hurricane proc
+to Storms and a 5-25% opposed casting interruption to Dissonance. Chaos can
+dispel one effect per enemy with skill, Charisma and level scaling; saves halve
+its chance. Successful Chaos/Dissonance targets have 10/25 seconds of immunity.
+From level 56, six damage spells can Echo once: 50% chance, 30-50% damage,
+without a second spell slot. NPC singers receive none of these new bonuses.
 
 ==Innate additions==
 
@@ -5126,7 +5148,15 @@ sounds with a resounding echo. This can cause their songs action to
 reverberate and 'echo' the original in a lesser strength. The effectiveness
 of this song echo is affected by their environment and terrain such as a
 mountainous region will enhance the likelihood of an echoed effect, and
-conversely you will never get an echo underwater. 
+song echoes do not occur underwater.
+
+From level 56, a player Disharmonist has a 50% chance for a completed damage
+spell to repeat once at a randomly chosen 30-50% of normal damage. Eligible
+spells are Magic Missile, Burning Hands, Lightning Bolt, Fireball, Bigby's
+Clenched Fist and Shatter. The repeat uses no second spell slot and cannot
+echo again. Ordinary spell defenses and reflection still apply. The target
+must remain alive and in the room. This spell echo is player-only.
+
 ===========================================================================
 See also: DISHARMONIST, BARD
 
@@ -9482,7 +9512,7 @@ See also: BACKSTAB, SKILL_ASSASSIN
 INSTRUMENT INSTRUMENTS MUSIC (General Information)
 ===========================================================================
 Instruments are a necessity of a bard and needed to create magical affects.
-The bard must first be holding the appropriate instrument and then type
+Equip the appropriate instrument in any slot (all three belt slots work), then type
 'play <songname>'.  The various instruments are as follows:  flute, harp,
 horn, drums, lyre, mandolin.  Unlike spells, the music played by a bard 
 is continuous when the bard begins playing and will continue until he/she
@@ -10575,6 +10605,7 @@ An item in your wield, secondary weapon, hold, shield or light slot limits
 you to one base monk attack. For bare-hand damage, occupying wield,
 secondary weapon, hold or shield also reduces your monk damage dice to 1d1.
 An equipped light limits attacks but does not reduce those damage dice.
+Equipping these items warns you about the affected monk benefits.
 
 ==Weight==
 
@@ -10973,6 +11004,18 @@ None beyond the base-class registrations.
 ==Song changes==
 
 &+W46th Level: &+csong of drifting (cap 100%)&n
+&+W56th Level: &+csong of nimbleness (cap 100%)&n
+
+Player Minstrels add healing from levels above 31, song rating above 50 and
+Charisma above 100. The usual 65% ally share applies before a 45-HP base cap;
+other healing modifiers still apply. Effective healing of other players counts
+toward Salvation, as it does for all Bard healing songs.
+Minstrels make charm saves 10 points harder. Humanoids remain charmed at least
+40-48 game hours (50-60 minutes), or longer at low Intelligence. The highest
+charmable level remains 50 at Bard level 56. Pets cannot sing Drifting.
+Song of Nimbleness uses a mandolin. A level-56 player singer grants players in
+the room and group, including the singer, +5 to melee dodge and a 3.5% chance
+to avoid a damaging spell hit. Pets cannot provide or receive the new song.
 
 ==Innate additions==
 
@@ -12261,7 +12304,7 @@ PLAY (Skill)
 Syntax:         play <song_name>
 Aggressive:     Dependent on s ng sung
 
-To create magical effects, the bard must hold the proper instrument, then 
+To create magical effects, equip a matching instrument in any slot, then
 "play" the appropriate song. A magical song will not work without the 
 proper instrumental accompaniment. To end a song simply type "play."
 ===========================================================================
@@ -14176,14 +14219,20 @@ These permissions apply to an existing character; they do not enable a forbidden
 
 ==Skill changes==
 
-&+W1st Level: &+chide (cap 90%)&n
+&+W1st Level: &+chide (cap 90%), sneak (cap 85%)&n
 &+W30th Level: &+c1h piercing (cap 100%), backstab (cap 95%), circle (cap 80%),&n
-    &+cdouble attack (cap 95%), dual wield (cap 70%), riff (cap 100%)&n
-&+W51st Level: &+cdisguise (cap 55%), trip (cap 90%)&n
+    &+cdouble attack (cap 95%), dual wield (cap 80%), riff (cap 100%)&n
+&+W51st Level: &+cdisguise (cap 70%), trip (cap 75%)&n
+&+W56th Level: &+csong of the shadow piper (cap 100%)&n
+
+At level 56, a player Scoundrel grants Heroism listeners +2 combat and spell
+pulse instead of +1. The singer retains the usual song-level bonus.
+Shadow Piper gives Sneak to grouped player followers in the same room.
+Combat, leaving the group/room, stopping following or the song ends the benefit.
 
 ==Spell changes==
 
-None beyond the base-class registrations.
+&+W10th Circle: &+cinvisibility&n
 
 ==Innate additions==
 
@@ -15420,6 +15469,13 @@ SKILL_BARD (Skillset)
 The following is a list of all skills and spells available to the Bard class:
 These are base-class grants before specialization changes.
 Learning, preparation, equipment, and current ability conditions still apply.
+Bards can train Hide to 80%; Scoundrels retain their 90% cap.
+Riff is specialization-only; an acquired rating survives respecialization.
+Existing Scoundrels above 75% Trip are capped at their next skill update.
+Songs use a matching instrument from any equipment slot, including all three
+belt attachments. Instruments must be equipped; carried instruments do not play.
+Scoundrels already singing can change songs with play or wail while hidden.
+Starting or stopping a song still reveals Hide; later verses preserve it.
 
 ==Innate abilities==
 
@@ -15445,8 +15501,7 @@ None.
 &+W6th Circle: &+cdispel magic, infravision, lightning bolt, ray of enfeeblement&n
 &+W7th Circle: &+cdimension door, fireball, slowness&n
 &+W8th Circle: &+cbigbys clenched fist&n
-&+W9th Circle: &+cfeeblemind&n
-&+W10th Circle: &+cdetect invisibility&n
+&+W9th Circle: &+cdetect invisibility, feeblemind&n
 &+W11th Circle: &+cfreedom of movement, rope trick&n
 &+W12th Circle: &+cenlarge, sirens song&n
 
@@ -16736,23 +16791,28 @@ Type of song:	Generic
 the bard's group to become confused and distracted. This can cause a
 number of things to happen, such as forcing those not in the bard's group
 out of the room in various ways. A small amount of damage is also bestowed
-upon those not grouped. 
+upon those not grouped.
+
+Player Disharmonists can dispel one random dispellable effect from each enemy
+on a verse. Chance is 5%, plus 1.5 percentage points per 10 song rating above
+50, plus 1 per 10 Charisma above 100, plus 0.25 per level above the target.
+A successful Save Spell halves that chance. Each successful target then has
+10 seconds of immunity to this dispel. Every enemy has its own check and
+immunity. NPC singers cannot provide the new Disharmonist dispel.
+
 ===========================================================================
 See also: SONGS, INSTRUMENT, PLAY, BARD, SKILL_BARD
 
 #
 "SONG OF CHARMING" (Song)
 ===========================================================================
-Area of effect:	Room
-Aggressive:	No
-Cumulative:	N/A
-Duration:	Dependant on proficiency of singer
-Type of song:	Enchantment
-
-"Song of charming" is one of the most powerful songs of the bard and
-attempts to charm all those mobs in the bard's room.
+Song of Charming tries to charm eligible mobs in the room. Player Minstrels
+make saves 10 points harder and keep humanoids charmed for at least 40-48 game
+hours (50-60 minutes). Low Intelligence can give a longer duration. The highest
+charmable level remains 50 at Bard level 56, with the existing exclusions and
+three-pet limit.
 ===========================================================================
-See also: SONGS, INSTRUMENT, PLAY, BARD, SKILL_BARD
+See also: BARD, MINSTREL, INSTRUMENT, PLAY, SONGS
 
 #
 "SONG OF COWARDICE" (Song)
@@ -16816,6 +16876,7 @@ See also: SONGS, INSTRUMENT, PLAY, BARD, SKILL_BARD
 #
 "SONG OF DRIFTING" (Song)
 ===========================================================================
+Only player singers can use Drifting; NPC singers cannot teleport a group.
 Area of effect:	Group
 Aggressive:	No
 Cumulative:	N/A	
@@ -16896,18 +16957,17 @@ See also: INSTRUMENT, "SONG OF DISCORD", "DISPEL EVIL", BARD
 #
 "SONG OF HEALING" (Song)
 ===========================================================================
-Area of effect:	Room
-Aggressive:	No
-Cumulative:	Yes
-Duration:	Instantaneous	
-Type of song:	Healing
-
-This song restores the lifeforce of those in the room, including those not
-in the singer's group. The amount it heals is highly dependent on level and
-skill in the song.
-Higher Charisma increases the healing restored each verse.
+Song of Healing restores the singer and grouped listeners in the room. Each
+verse heals Charisma/8 + song level/4 + song level/14, with a 65% ally share.
+A player Minstrel adds (level-31)/5 + (song rating-50)/10 + (Charisma-100)/10,
+each at least zero, before that share. Each target's base amount caps at 45 HP;
+other healing modifiers still apply. Level 56, rating 100, Charisma 150 gives
+45 HP to the Minstrel and 33 HP to an ally before other modifiers.
+Effective healing of another player counts toward the Salvation achievement;
+self-healing, healing NPCs and overhealing do not. Minstrels can also cure
+poison at song rating 50, disease/plague at 70, and blindness at 90.
 ===========================================================================
-See also: SONGS, INSTRUMENT, PLAY, BARD, SKILL_BARD
+See also: BARD, MINSTREL, INSTRUMENT, PLAY, SONGS, SALVATION
 
 #
 "SONG OF HEROISM" (Song)
@@ -17014,6 +17074,12 @@ Type of song:	Generic
 "Song of storms" calls the power of nature to create a deadly storm in the
 skies, assisting the bard with bolts of lightning upon those in the room
 not in his/her group.
+
+At level 51, a player Disharmonist has a 1 in 5 chance per enemy per verse,
+after the lightning bolts, to add one Squall or Hurricane hit at the song's
+level. The two are picked evenly and both pass Globe. Squall can throw a
+flying target out of the room. NPC singers receive no new storm proc.
+
 ===========================================================================
 See also: "LIGHTNING BOLT", SONGS, INSTRUMENT, PLAY, BARD, SKILL_BARD
 
@@ -18544,7 +18610,7 @@ no locate, no level, save notify, ship map, show titles, and hint channel.
 Their single-word commands remain available.
 
 Terminal uses ansi, gen, msp, or msp quiet (manual group display).
-Screensize uses 12-48, default, off, or 0;
+Screensize uses 12-100, default, off, or 0;
 no value resets the default. Color has its own channel and motion settings.
 Automatic fleeing (wimpy), smartprompt and retired specialization placeholders
 are unavailable. Use oldsmartprompt for prompt timing. Divine Boons apply
@@ -18558,7 +18624,8 @@ TOGGLE_AFK (Command)
 Syntax:         toggle afk [on|off]
 
 ON marks you as AFK; OFF clears the marker. Without a value, this command
-flips the marker. Other input clears AFK as soon as it is accepted. Be warned,
+flips the marker. Toggling AFK does not interrupt meditation.
+Other input clears AFK as soon as it is accepted. Be warned,
 if you remain AFK for too long, you will "Void". Be certain you are in a
 safe place (i.e. your guildhall) before you AFK.
 ===========================================================================
@@ -18722,8 +18789,8 @@ Syntax:         toggle screensize <size>
                 toggle screensize default
                 toggle screensize off
 
-This sets the page length to 12-48 lines. No value, default, off, or 0 resets
-it to the default of 24 lines. To disable paging, use "toggle paging off".
+This sets the page length to 12-100 lines. No value, default, off, or 0 resets
+it to the default of 40 lines. To disable paging, use "toggle paging off".
 ===========================================================================
 See also: PAGING, TOGGLE
 
@@ -23097,13 +23164,27 @@ connected player from the description tables. No feedback is printed.
 Aggressive:     Yes
 
 "Song of dissonance" turns the bard's horn into an instrument of pure cacophony. While the tune plays, any other performer in the area risks having their song mangled into silence, bested by a contest of presence and skill (those who follow the Disharmonist path blow a far more piercing discord). Enchanted servants and charmed creatures caught listening shudder, quiver, and find their bonds torn apart, sent scurrying back to whatever pit spawned them.
+
+At level 51, a player Disharmonist can interrupt a target that is mid-cast,
+without adding lag. Chance is 5%, plus 1.5 percentage points per 10 song rating
+above 50, plus 1 per 10 Charisma above 100, minus Concentration/20 and one point
+per 10 of the target's higher Intelligence/Wisdom above 100. The final chance
+stays between 5% and 25%. A successful interruption gives that target 25 seconds
+of immunity. NPC singers cannot provide the new casting interruption.
+
 ===========================================================================
 See also: song of discord, empower song, sing
 #
-"SONG OF SNATCHING" (Skill)
+"SONG OF THE SHADOW PIPER" (Skill)
 ===========================================================================
-"Song of snatching" exists only as a whisper in the bard colleges; its verses were never written into the living repertoire. The song is absent from the known song cycles, and even its masters profess ignorance of what it once did. As it stands, no bard can learn or perform it.
+Level 56 Scoundrel song, played on a flute with 'play shadow piper'. A player
+singer grants Sneak to players who share the group and room and follow them.
+Pets and the singer receive no Sneak. Combat ends it, as do leaving the room
+or group, stopping following, or stopping/changing the song. It cannot renew
+Sneak during combat.
 ===========================================================================
+See also: sneak, scoundrel, instrument, song of heroism
+
 #
 "2H BLUDGEON" (Skill)
 ===========================================================================
@@ -23518,6 +23599,8 @@ Madness           51      100
 These are crafting requirements. Traded vials and coated weapons remain usable;
 the recipient does not inherit the maker's level or need that recipe's mix skill.
 Apply a dose with: apply <vial> <weapon>.
+Use 'skills info mixpoison' for your eligible recipes, ingredients and effects;
+viewing that information does not impose crafting lag.
 ===========================================================================
 See also: mix, poison, forage, assassinate
 #
@@ -26795,7 +26878,11 @@ The reward is Deaths Door, used with 'deathsdoor door'.
 Read 'help deaths door' before using it to recover a corpse.
 #
 Deaths Door
-Syntax: deathsdoor door
+Syntax: deathsdoor
+        deathsdoor door
+From level 20, 'deathsdoor' shows which base attributes still need to reach
+100 if you have not earned the achievement. Opening the door requires
+level 25 as well as the achievement.
 Deaths Door is the corpse-recovery reward from Toughen Up Princess.
 You must be alive and have earned the achievement by reaching 100
 in every base attribute. It brings your most recent available corpse
@@ -27469,12 +27556,14 @@ uses your purse if sufficient, otherwise your bank; short balances are
 not combined.
 
 Use "open <name> [password]" before looking in, putting into, getting
-from, or emptying a private chest. Only one private chest is open at a
-time. "close" revokes access; changing its password, disconnecting or
-leaving also closes it. Locker owners, staff and members of the owning
-guild are managers and can open without a password. Guild chests divide
-shared storage; they are not secret from fellow guild members. Guests
-still need permission to enter the locker and the chest password.
+from, or emptying a private chest. You can keep several private chests open.
+"close <name>" closes one; "close" closes all. Failed opens leave other
+open chests usable. Changing or removing a chest password, deleting a
+chest, disconnecting or leaving closes all private chests for your visit.
+Locker owners, staff and members of the owning guild are managers and
+can open without a password. Guild chests divide shared storage; they
+are not secret from fellow guild members. Guests still need permission
+to enter the locker and the chest password.
 
 Managers can use "eq chest password <name> <password|none>",
 "eq chest delete <name>" (empty chests only; no refund), and "eq log".
@@ -27602,7 +27691,10 @@ replacement. Ordinary donors must have item value at least five below
 the source (guild insignia require at least the source value). Weapons
 need weapon donors or enhancement essences. Ordinary replacement costs
 1 platinum at item value 20 or below, otherwise 10 platinum. Luck affects
-the improvement; not every item has a suitable replacement.
+the improvement, which is 1 to 4 item value. The item you enhance must be
+within your level's item-value limit (three per level); there is no other
+ceiling. Not every item has a suitable replacement: one must exist for its
+slot within that range.
 
 Essences instead add their named property and are consumed on success.
 Their fees are 1, 20 or 100 platinum by essence value (up to 20, up to 30,
@@ -27924,7 +28016,8 @@ spells <class or specialization>
 spells info <spell name>
 
 Bare spells shows your own spells, including for staff. Spells are grouped by
-circle and name. Spells above your maximum circle are dimmed. The header shows
+circle and name. Spells above your maximum circle are dimmed and marked
+[future circle]. The header shows
 your class, specialization, secondary class and maximum circle.
 Your spell interface command appears below the list when applicable.
 Book markers check inventory, hands and belt only for spellbook users.
@@ -27935,6 +28028,8 @@ specialization catalog. An asterisk marks spells gained from the specialization.
 Lost base spells are listed separately. Bard songs and instruments use skills.
 The catalog shows the class's default spell interface when applicable.
 Catalogs are reference information, independent of your race, class and level.
+A [future circle] marker refers to your own current spell access; it does
+not change the catalog's class or specialization requirements.
 
 Use spells info fireball for registered aggression, class/spec circles and
 changes, your personal access, and the existing helpfile. Live definitions
@@ -28694,3 +28789,70 @@ Darkfall is Darkfall Forest, a wilderness zone. Grellinar, the high ranger,
 is an Epic Agility teacher there. Epic training has its own level,
 eligibility and payment rules; finding a teacher does not grant a skill.
 Read 'help epic' and 'help epic agility' before seeking that training.
+#
+Titan Form
+Titan Form is the stronger growth result of 'infuriate', not a separate
+command. You must know Infuriate, be berserk, and be able to act; you cannot
+already be enlarged or in Titan Form. Your Infuriate skill determines the
+chance of Titan Form instead of ordinary enlargement.
+
+The Infuriate effect lasts three game hours. Titan Form adds two size steps,
+subject to the normal size limits. It raises maximum Strength by one tenth
+of base Strength and maximum Constitution by one fifth of base Constitution,
+while reducing Agility and Dexterity by one fifth of their base values.
+Fractions are rounded down. Use 'skills info infuriate' for your values,
+chance and action delay. It does not change your base-size weapon allowance.
+See also: Berserk, Infuriate, Size, Wield.
+#
+Pirate / Pirates
+For NPC pirate ships, read 'help ship npcs'. It describes ambushes, boarding,
+hunters and pirate treasure. Read 'help ship cargo' for cargo and diplomats,
+and 'help ship weapons' for arming your vessel.
+#
+Incarnate / Incarnate of Stone
+The Incarnate of Stone is an elemental creature, seen as a moving pile of
+rocks. Incarnates of Fire, Frost, Air and Mischief also exist. These names
+refer to creatures, not player spell or innate commands. Use 'look stone'
+when the stone creature is present to inspect it.
+#
+Spells Illusionist
+Read 'help illusionist skills' for the base class's spell circles and skill
+levels. Use 'spells illusionist' to browse its spell catalog and
+'spells info <spell>' for mechanics. Specializations can change the grants;
+listed spells still need to be learned and prepared.
+#
+Skill Backstab / Skills Backstab
+Read 'help backstab' for the skill, or use 'skills info backstab' for its
+mechanics. The command to attempt it is 'backstab <target>'.
+#
+Spell Info Elemental Power
+Elemental Power is a passive Elementalist Shaman innate gained at level 35,
+not a spell to cast.
+Read 'help elemental power' or use 'innate info elemental power'.
+#
+Detect Artifact
+Use 'artifacts' for the list of player-held artifacts and 'artifact unique'
+to review unique artifacts. Read 'help artifact' for ownership and limits.
+There is no player spell named Detect Artifact.
+#
+Profession
+For your adventuring profession, read 'help class'. For making equipment,
+read 'help tradeskills'. These are different systems; a crafting trade is
+not a replacement for your character's class.
+#
+Verspin
+Verspin is a town and adventure zone, not a skill or spell. Use 'area' while
+there to inspect the current zone's information, and 'look' to examine your
+surroundings and visible exits.
+
+#
+"SONG OF NIMBLENESS" (Skill)
+===========================================================================
+A level-56 player Minstrel plays this mandolin song to give players in the
+same group and room, including the singer, +5 to melee dodge and a 35 in 1000
+(3.5%) chance to avoid each damaging spell hit. Existing melee dodge conditions
+still apply. Pets cannot sing it successfully or receive its benefits.
+It ends when the song stops/changes or the listener leaves the room.
+===========================================================================
+See also: Minstrel, Bard, Instruments, Play
+#

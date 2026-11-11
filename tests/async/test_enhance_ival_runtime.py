@@ -402,7 +402,7 @@ static void test_replacement()
     wrong_slot.wear_flags = ITEM_TAKE | ITEM_HOLD | ITEM_WEAR_LEGS;
 
     auto &over_cap = fixture(7, 90004, 80);
-    assert(itemvalue(&over_cap) > enhance_ival_cap + enhance_original_max_roll);
+    assert(itemvalue(&over_cap) > 88 + enhance_ival_gain_extreme); // Above the source's gain limit.
     assert(itemvalue(&source) == 88);
     assert(itemvalue(&lower) == 87);
     assert(itemvalue(&higher) == 91);
@@ -518,6 +518,103 @@ static void test_replacement()
     assert(source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
     clear_attempt();
     active_pouch = nullptr;
+}
+
+static obj_data &valued(int slot, int vnum, int target)
+{
+    auto &obj = fixture(slot, vnum);
+    for (int hit = 0; hit <= 200; ++hit)
+        for (int move = 0; move <= 40; ++move)
+        {
+            obj.affected[0] = {APPLY_HIT, static_cast<sbyte>(hit)};
+            obj.affected[1] = {APPLY_MOVE, static_cast<sbyte>(move)};
+            if (itemvalue(&obj) == target)
+                return obj;
+        }
+    assert(!"no fixture reaches the requested item value");
+    return obj;
+}
+
+// The level gate is the only ceiling: a source at 99 upgrades, by at most the largest luck gain.
+static void test_level_gate_is_the_ceiling()
+{
+    for (auto &bucket : enhance_ival_table) bucket = nullptr;
+    auto &source = valued(0, 91000, 99);
+    auto &donor = valued(1, 91001, 94);
+    valued(2, 91002, 102);
+    valued(3, 91003, 104);
+    enhance_index_entry within{}, beyond{};
+    index_entry(beyond, 91003, 104);
+    char_data ch{};
+    ch.player.level = 33;
+    ch.curr_stats.Luk = 10;
+    ch.in_room = NOWHERE;
+    source.name = const_cast<char *>("upgrade");
+    donor.name = const_cast<char *>("donor");
+    source.next_content = &donor;
+    ch.carrying = &source;
+    for (bool force_luck : {false, true})
+    {
+        lucky = force_luck;
+        GET_PLATINUM(&ch) = 20;
+        source.loc_p = donor.loc_p = LOC_CARRIED;
+        enhance(&ch, &source, &donor);
+        assert(!result && loads.empty() && extracted.empty() && charges == 0);
+        clear_attempt();
+    }
+    index_entry(within, 91002, 102);
+    for (bool force_luck : {false, true})
+    {
+        lucky = force_luck;
+        GET_PLATINUM(&ch) = 20;
+        source.loc_p = donor.loc_p = LOC_CARRIED;
+        char command[] = "upgrade donor";
+        do_enhance(&ch, command, 0);
+        assert(result && OBJ_VNUM(result) == 91002 && itemvalue(result) == 102);
+        assert((extracted == std::vector<int>{91000, 91001}) && charges == 1);
+        clear_attempt();
+    }
+    lucky = false;
+    ch.player.level = 32;
+    GET_PLATINUM(&ch) = 20;
+    source.loc_p = donor.loc_p = LOC_CARRIED;
+    enhance(&ch, &source, &donor);
+    assert(!result && loads.empty() && charges == 0);
+    assert(output.find("up to ival 96") != std::string::npos);
+    clear_attempt();
+    for (auto &bucket : enhance_ival_table) bucket = nullptr;
+
+    // Above 99, the same bound follows configured gains and the pouch exception.
+    const int previous_gain = enhance_ival_gain_normal;
+    for (int gain : {4, 9}) {
+        enhance_ival_gain_normal = gain;
+        valued(0, 91000, 120);
+        valued(1, 91001, 115);
+        valued(2, 91002, 120 + gain);
+        valued(3, 91003, 121 + gain);
+        enhance_index_entry valid{}, excessive{};
+        index_entry(excessive, 91003, 121 + gain);
+        ch.player.level = 40;
+        GET_PLATINUM(&ch) = 20;
+        enhance(&ch, &source, &donor);
+        assert(!result && loads.empty() && extracted.empty() && charges == 0);
+        assert(GET_MONEY(&ch) == 20000 && source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
+        clear_attempt();
+        index_entry(valid, 91002, 120 + gain);
+        for (bool pouch : {false, true}) {
+            source.loc_p = donor.loc_p = LOC_CARRIED;
+            GET_PLATINUM(&ch) = 20;
+            active_pouch = pouch ? &fixture(6, VOBJ_CHAOS_CRAFT_POUCH) : nullptr;
+            enhance(&ch, &source, pouch ? active_pouch : &donor);
+            assert(result && itemvalue(result) == 120 + gain);
+            assert(charges == 1 && GET_MONEY(&ch) == 10000);
+            assert(extracted == (pouch ? std::vector<int>{91000} : std::vector<int>{91000, 91001}));
+            clear_attempt();
+            active_pouch = nullptr;
+        }
+        for (auto &bucket : enhance_ival_table) bucket = nullptr;
+    }
+    enhance_ival_gain_normal = previous_gain;
 }
 
 static void test_essence()
@@ -836,7 +933,7 @@ static void restore_config() {
     config_logs.clear(); load_enhance_config();
 }
 static std::vector<int> config_integers() {
-    return {enhance_ival_cap, enhance_material_ival_delta, enhance_guild_insignia_ival_bonus,
+    return {enhance_material_ival_delta, enhance_guild_insignia_ival_bonus,
         enhance_cost_low_ival_threshold, enhance_cost_low_amount, enhance_cost_high_amount,
         enhance_search_vnum_min, enhance_search_vnum_max, enhance_search_max_attempts,
         enhance_wear_skip_mask, enhance_original_max_roll, enhance_original_cascade_down_first,
@@ -853,7 +950,7 @@ static void test_config()
     const auto compiled = config_integers();
     const double cap_default = enhance_stat_cap_multiplier, quantity_default = enhance_stat_material_quantity_multiplier;
     restore_config();
-    auto shipped = compiled; shipped[21] = 1;
+    auto shipped = compiled; shipped[20] = 1;
     assert(config_integers() == shipped && enhance_stat_cap_multiplier == 1.5 && enhance_stat_material_quantity_multiplier == 1);
     assert(config_logs.size() == 1); // Shipped policy has only the successful-load record.
     assert(enhance_allow_mask == 0x3f01ab7e && enhance_allow_mask2 == 0x804b8df && enhance_allow_mask3 == 0xa3e67fe0);
@@ -862,7 +959,7 @@ static void test_config()
     assert(enhance_cost_low_amount == 7 && !config_logged("overlong")); // A NUL does not hide the next line.
     restore_config();
     config_file("  [settings] # comment\n"
-        "enhance.ival.cap=99\nenhance.material.ival.delta=-7\nenhance.guild.insignia.ival.bonus=-3\n"
+        "enhance.material.ival.delta=-7\nenhance.guild.insignia.ival.bonus=-3\n"
         "enhance.cost.low.ival.threshold=22\nenhance.cost.low.amount=1001\nenhance.cost.high.amount=10002\n"
         "enhance.search.vnum.min=10\nenhance.search.vnum.max=20\nenhance.search.max.attempts=44\n"
         "enhance.wear.skip.mask=7\nenhance.original.max.roll=8\nenhance.original.cascade.down.first=0\n"
@@ -878,7 +975,7 @@ static void test_config()
         "[bitvector2]\nAFF2_GLOBE=0,1\n[bitvector3]\nAFF3_REDUCE=0,1\n"
         "[bitvector4]\nAFF4_NOFEAR=0,1\n[bitvector5]\nAFF5_PROT_UNDEAD=0,1\n"
         "[essence_drop_zone]\nzone=42:1:2:3\n[pool_exclude_zone]\nzone=7\n[pool_exclude_vnum]\nvnum=90000");
-    assert((config_integers() == std::vector<int>{99,-7,-3,22,1001,10002,10,20,44,7,8,0,4,6,201,202,203,5,6,7,8,1,1,111,123,0,501,502,3,10,90}));
+    assert((config_integers() == std::vector<int>{-7,-3,22,1001,10002,10,20,44,7,8,0,4,6,201,202,203,5,6,7,8,1,1,111,123,0,501,502,3,10,90}));
     assert(enhance_stat_cap_multiplier == 2.25 && enhance_stat_material_quantity_multiplier == .5);
     assert(config_logs.size() == 1); // Only the successful-load record.
     assert(enhance_allow_mask && enhance_allow_mask2 && enhance_allow_mask3 && enhance_allow_mask4 && enhance_allow_mask5);
@@ -901,7 +998,7 @@ static void test_config()
     assert(config_integers() == compiled && enhance_stat_cap_multiplier == cap_default && enhance_stat_material_quantity_multiplier == quantity_default);
     assert(!enhance_allow_mask && !enhance_allow_mask2 && !enhance_allow_mask3 && !enhance_allow_mask4 && !enhance_allow_mask5);
     assert(!enhance_essence_zone_rule_count && !enhance_pool_excluded_zone_count && !enhance_pool_excluded_vnum_count);
-    config_file("[settings]\nenhance.ival.cap=12junk\nenhance.material.ival.delta=999999999999999999999999\n"
+    config_file("[settings]\nenhance.cost.high.amount=12junk\nenhance.material.ival.delta=999999999999999999999999\n"
         "enhance.cost.low.amount=-1\nenhance.search.max.attempts=0\nenhance.original.cascade.down.first=2\n"
         "enhance.level.gate.multiplier=0\nenhance.mod.max.steps=0\nenhance.luck.extreme.range=0\n"
         "enhance.ival.gain.normal=-1\nenhance.typo=1\n=123\nmissing_equal\n"
@@ -915,13 +1012,13 @@ static void test_config()
     config_file("[enhance_stat]\nenhance_stat.enabled=1\nenhance_stat.enabled=bad\n"
         "enhance_stat.cap.multiplier=2\nenhance_stat.cap.multiplier=1e9999\n");
     assert(enhance_stat_enabled == 1 && enhance_stat_cap_multiplier == 2);
-    config_file("[settings]\nenhance.ival.cap=9" + std::string(1200, ' ') + "junk\nenhance.cost.low.amount=7\n");
-    assert(enhance_ival_cap == 95 && enhance_cost_low_amount == 7 && config_logged("overlong"));
-    config_file("[settings] trailing\nenhance.ival.cap=7\n[unknown]\nenhance.ival.cap=8\n");
-    assert(enhance_ival_cap == 95 && config_logged("Invalid enhancement section") && config_logged("Unsupported enhancement section"));
-    config_file("[spell]\nSPELL_SHADOW_SHIELD=0,0\nenhance.ival.cap=7\n"
-        "[settings]\nenhance.ival.cap=23\n");
-    assert(enhance_ival_cap == 23 && config_logged("Unsupported enhancement section [spell]"));
+    config_file("[settings]\nenhance.cost.high.amount=9" + std::string(1200, ' ') + "junk\nenhance.cost.low.amount=7\n");
+    assert(enhance_cost_high_amount == 10000 && enhance_cost_low_amount == 7 && config_logged("overlong"));
+    config_file("[settings] trailing\nenhance.cost.high.amount=7\n[unknown]\nenhance.cost.high.amount=8\n");
+    assert(enhance_cost_high_amount == 10000 && config_logged("Invalid enhancement section") && config_logged("Unsupported enhancement section"));
+    config_file("[spell]\nSPELL_SHADOW_SHIELD=0,0\nenhance.cost.high.amount=7\n"
+        "[settings]\nenhance.cost.high.amount=23\n");
+    assert(enhance_cost_high_amount == 23 && config_logged("Unsupported enhancement section [spell]"));
     config_file("[settings]\nenhance.search.vnum.min=20\nenhance.search.vnum.max=10\n"
         "[essence_drop]\nenhance.essence_drop.minimum_level=90\nenhance.essence_drop.maximum_level=80\n");
     assert(enhance_search_vnum_min == 1300 && enhance_search_vnum_max == 134000);
@@ -1070,6 +1167,7 @@ int main()
     enhancement_system_ready=true;
     test_donor_floor();
     test_replacement();
+    test_level_gate_is_the_ceiling();
     test_essence();
     test_superior();
     test_superior(superior_case::packed);

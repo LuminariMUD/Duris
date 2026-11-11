@@ -289,23 +289,7 @@ char *generate_named_report(void)
 			continue;
 		output += " #" + std::to_string(set.zone) + " " +
 			  pad_ansi(zone_table[zone].name, 45, FALSE) + "    &+W|&n ";
-		bool first = true;
-		for (const auto &tier : set.proc_spells)
-		{
-			if (!tier[0] || !named_set_effect_supported(tier[1]))
-				continue;
-			if (!first)
-				output += "&+W,&n ";
-			first = false;
-			const char *color = "&+B";
-			if (tier[1] == SPELL_STONE_SKIN || tier[1] == SPELL_IRONWOOD ||
-			    tier[1] == SPELL_INVIGORATE)
-				color = "&+G";
-			else if (tier[1] == SPELL_CONJURE_ELEMENTAL)
-				color = "&+y";
-			output += std::string(color) + skills[tier[1]].name + " &+W(&+Y" +
-				  std::to_string(tier[0]) + "&+W)&n";
-		}
+		output += named_set_bonuses(set.zone);
 		output += "\n";
 	}
 	return strdup(output.c_str());

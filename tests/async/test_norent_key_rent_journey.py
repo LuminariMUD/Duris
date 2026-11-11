@@ -177,7 +177,9 @@ def run(binary, backend, evidence_dir):
                 process.send_signal(signal.SIGUSR1)
                 result, output_text = client.expect_any(
                     ("Copyover complete!", "Copyover FAILED", "Copyover cancelled"), timeout=180)
-                assert result == "Copyover complete!", output_text + journey.runtime_logs(runtime)
+                if result != "Copyover complete!":
+                    status = command(client, "world persistence", timeout=30)
+                    raise AssertionError(output_text + status + journey.runtime_logs(runtime))
 
             def enter_locker():
                 deadline = time.monotonic() + 90
@@ -400,16 +402,37 @@ def run(binary, backend, evidence_dir):
                 evidence["checks"].append("a locker hands back a no-rent item from a chest")
 
                 enter_locker()
-                for line, reply in (("eq chest create vault norent-secret", "Private chest 'vault' created"),
-                                    ("open vault", "You open the 'vault' chest"),
-                                    ("put ticket vault", "Ok.")):
+                for name in ("vault", "other", "sealed"):
+                    client.send("eq chest create " + name + " norent-secret")
+                    client.expect("Private chest '" + name + "' created", timeout=60)
+                # Seed a normally rentable ticket, then mark that disposable saved
+                # row no-rent before a new visit that never authorizes its chest.
+                command(client, "load obj " + str(TICKET))
+                command(client, "setbit obj ticket extra NORENT 0")
+                for line, reply in (("open sealed", "You open the 'sealed' chest"),
+                                    ("put ticket sealed", "Ok.")):
                     client.send(line)
                     client.expect(reply, timeout=60)
+                leave_locker()
+                sealed_uid = sql("SELECT i.obj_uid FROM locker_items i JOIN private_chests c ON c.id=i.chest_id "
+                                 "WHERE c.chest_name='sealed' AND i.vnum=" + str(TICKET))
+                assert sealed_uid.isdigit(), sealed_uid
+                sql("UPDATE locker_items SET extra_flags=extra_flags | " + str(NORENT) + " WHERE obj_uid=" + sealed_uid)
+                enter_locker()
+                for line, reply in (("open vault", "You open the 'vault' chest"),
+                                    ("put ticket vault", "Ok."),
+                                    ("close vault", "You close the chest"),
+                                    ("open other", "You open the 'other' chest")):
+                    client.send(line)
+                    client.expect(reply, timeout=60)
+                assert "must open" in command(client, "look in vault")
+                assert "must open" in command(client, "look in sealed")
                 command(client, "score")
                 leave_locker()
-                assert "ticket" in command(client, "inventory").lower(), "private chest ticket was not handed back"
-                assert stored_in_lockers(TICKET) == 0
-                evidence["checks"].append("a locker hands back a no-rent item from an open private chest")
+                assert "ticket" in command(client, "inventory").lower(), "closed private chest ticket was not handed back"
+                assert stored_in_lockers(TICKET) == 1
+                assert sql("SELECT obj_uid FROM locker_items WHERE obj_uid=" + sealed_uid) == sealed_uid
+                evidence["checks"].append("a previously opened, now closed chest returns no-rent items; a never-opened chest retains its exact UID")
 
                 enter_locker()
                 assert "Leave first" in command(client, "camp"), "camp must stay refused inside a locker"

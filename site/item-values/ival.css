@@ -1,0 +1,369 @@
+.ival-content {
+  --up: #7dceb2;
+  --down: #ef956a;
+  --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 32px var(--gutter) 64px;
+
+  h1,
+  h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    text-wrap: balance;
+    margin: 0;
+  }
+  h1 {
+    font-size: clamp(44px, 6vw, 78px);
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+  }
+  h2 {
+    font-size: clamp(30px, 3vw, 42px);
+    line-height: 1.2;
+  }
+  p {
+    margin: 0;
+  }
+  section {
+    display: grid;
+    gap: 18px;
+    padding-top: 48px;
+    scroll-margin-top: 20px;
+  }
+  .up {
+    color: var(--up);
+  }
+  .down {
+    color: var(--down);
+  }
+
+  .ival-mast {
+    display: grid;
+    gap: 16px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--line);
+  }
+  .ival-intro,
+  .ival-story,
+  .ival-section-intro {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(24px, 4vw, 52px);
+  }
+  .ival-section-intro {
+    grid-template-columns: minmax(0, 1fr) 28%;
+  }
+  .ival-list-intro {
+    grid-template-columns: minmax(0, 1fr) 240px;
+  }
+  .ival-copy {
+    display: grid;
+    gap: 16px;
+  }
+  .ival-art {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 3 / 2;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--surface);
+  }
+  .ival-eyebrow {
+    font: 500 12px/1.4 var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gold);
+  }
+  .ival-lede {
+    font-size: 18px;
+    line-height: 1.55;
+    max-width: 62ch;
+    color: #d4dbd5;
+  }
+  .ival-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 40px;
+    margin: 8px 0 0;
+  }
+  .ival-facts dt {
+    font: 500 11px/1.3 var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .ival-facts dd {
+    margin: 0;
+    font: 400 34px/1.2 var(--serif);
+    font-variant-numeric: lining-nums;
+  }
+  .ival-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px 28px;
+    margin-top: 8px;
+    font-size: 14px;
+  }
+  .ival-actions a:not(.button) {
+    color: var(--gold);
+    text-decoration: underline;
+  }
+
+  .ival-prose {
+    display: grid;
+    gap: 12px;
+    max-width: 68ch;
+    color: #ccd6ce;
+  }
+  .ival-reasons {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+    gap: 22px 32px;
+  }
+  .ival-reasons li {
+    display: grid;
+    gap: 4px;
+    align-content: start;
+    padding-top: 14px;
+    border-top: 1px solid var(--gold);
+  }
+  .ival-reasons b {
+    font: 400 24px/1.25 var(--serif);
+  }
+  .ival-reasons .count {
+    font: 500 11px/1.4 var(--mono);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .ival-reasons p {
+    margin-top: 6px;
+    font-size: 14px;
+    color: #ccd6ce;
+  }
+
+  .ival-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px 28px;
+  }
+  .ival-controls .search-field {
+    flex: 1 1 280px;
+    max-width: 420px;
+  }
+  .ival-controls .filters {
+    margin: 0;
+    gap: 8px;
+    border: 0;
+  }
+  .ival-field {
+    display: grid;
+    gap: 4px;
+    font: 500 11px/1.4 var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .ival-field :is(select, input) {
+    width: 9.5em;
+    height: 49px;
+    padding: 0 12px;
+    border: 1px solid #65766c;
+    border-radius: 3px;
+    background: var(--surface);
+    color: var(--text);
+    font: 400 13px/1 var(--sans, inherit);
+    letter-spacing: 0;
+  }
+  .ival-field :is(select, input):focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 3px;
+  }
+  .ival-status,
+  .ival-note {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .ival-note {
+    max-width: 68ch;
+  }
+
+  .table-scroll {
+    max-height: min(78vh, 900px);
+    overflow: auto;
+  }
+  .ival-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  .ival-table th,
+  .ival-table td {
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+  }
+  .ival-table tbody tr:last-child > * {
+    border-bottom: 0;
+  }
+  .ival-table tbody tr:hover {
+    background: #15231f;
+  }
+  .ival-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--surface);
+    font: 500 11px/1.4 var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .ival-table thead button {
+    all: unset;
+    cursor: pointer;
+    color: var(--text);
+  }
+  .ival-table thead button:hover {
+    color: var(--gold);
+  }
+  .ival-table thead button:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 4px;
+  }
+  .ival-table thead button::after {
+    content: " ↕";
+    color: var(--muted);
+  }
+  .ival-table [aria-sort="ascending"] button::after {
+    content: " ↑";
+    color: var(--gold);
+  }
+  .ival-table [aria-sort="descending"] button::after {
+    content: " ↓";
+    color: var(--gold);
+  }
+  .ival-table tbody th {
+    font-weight: 400;
+    min-width: 240px;
+  }
+  .ival-table .item-meta {
+    display: block;
+    margin-top: 2px;
+    font: 400 11px/1.4 var(--mono);
+    color: var(--muted);
+  }
+  .ival-table td.zone {
+    min-width: 170px;
+    font-size: 13px;
+  }
+  .ival-table .num {
+    text-align: right;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .ival-table td.old {
+    color: var(--muted);
+  }
+  .ival-table td.delta {
+    font-weight: 600;
+  }
+  .ival-table td.why {
+    font-size: 12px;
+    color: #ccd6ce;
+    white-space: nowrap;
+  }
+
+  /* In-game colour codes, lightened where needed to stay readable on the dark page. */
+  .mc-l,
+  .mc-L {
+    color: #8e9a94;
+  }
+  .mc-r {
+    color: #d0675c;
+  }
+  .mc-R {
+    color: #f58b80;
+  }
+  .mc-g {
+    color: #62ad72;
+  }
+  .mc-G {
+    color: #8fe09b;
+  }
+  .mc-y {
+    color: #c2a257;
+  }
+  .mc-Y {
+    color: #f2dc82;
+  }
+  .mc-b {
+    color: #6f9ee0;
+  }
+  .mc-B {
+    color: #9cc3f8;
+  }
+  .mc-m {
+    color: #be7fc3;
+  }
+  .mc-M {
+    color: #e8a6ee;
+  }
+  .mc-c {
+    color: #56b3b7;
+  }
+  .mc-C {
+    color: #97e6e6;
+  }
+  .mc-w {
+    color: #c9d0ca;
+  }
+  .mc-W {
+    color: #fff;
+  }
+}
+@media (max-width: 700px) {
+  .ival-content :is(.ival-intro, .ival-story, .ival-section-intro) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+}
+/* On narrow screens the zone moves under the item name so the values fit. */
+.ival-content .meta-zone {
+  display: none;
+}
+@media (max-width: 800px) {
+  .ival-content .ival-table :is(th, td):is(:nth-child(2), :nth-child(7)) {
+    display: none;
+  }
+  .ival-content .meta-zone {
+    display: inline;
+  }
+  .ival-content .ival-table th,
+  .ival-content .ival-table td {
+    padding: 10px 6px;
+  }
+  .ival-content .ival-table thead th {
+    letter-spacing: 0;
+  }
+  .ival-content .ival-table th:not([aria-sort]) button::after {
+    content: none;
+  }
+  .ival-content .ival-table tbody th {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}

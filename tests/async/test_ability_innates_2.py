@@ -19,7 +19,7 @@ from _source_contract import function_bodies, strip_comments
 # Shared functions and their pages, by file. Order matters: later ones call earlier ones.
 SHARED = {
     "economy/tradeskill.c": [],
-    "classes/bard.c": "echo_song_level bard_pulse hasted_bard_pulse get_bard_pulse bard_blind_play_rating echo_chance echo_roll echo_delay".split(),
+    "classes/bard.c": "player_bard spell_echo_roll spell_echo_damage_roll echo_song_level bard_pulse hasted_bard_pulse get_bard_pulse bard_blind_play_rating echo_chance echo_roll echo_delay".split(),
     "classes/drannak.c": "intercept_luck_roll intercept_attack_roll intercept_duration".split(),
     "combat/fight.c": """acid_blood_min_hit acid_blood_dodge_base acid_blood_dodge_divisor spell_absorb_damage_divisor leap_chance_floor leap_chance_top intercept_attack_share rapier_dirk_chance rapier_dirk_more_hits_roll rapier_dirk_more_hits
         two_daggers_riposte_roll rrakkma_ac_step spell_absorb_damage_roll spell_absorb_threshold aura_absorb_healing aura_absorb_cap

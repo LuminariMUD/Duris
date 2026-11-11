@@ -52,7 +52,7 @@ def test_gnomes_and_kobolds_gain_reflection_at_31() -> None:
 
     structs = source("core/structs.h").read_text()
     assert re.search(r"#define INNATE_REFLECTION \d+", structs)
-    assert "#define LAST_INNATE INNATE_EARTH_AFFINITY" in structs
+    assert "#define LAST_INNATE INNATE_MONKEY_GRIP" in structs
 
     innates = source("classes/innates.c").read_text()
     assert '{ "reflection", do_innate_reflection },' in innates

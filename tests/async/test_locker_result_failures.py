@@ -24,8 +24,8 @@ assert "password_work_submit(arg2, hash.c_str(), nullptr, 1, 1)" in opening
 assert "current->GetPasswordHash() == hash" in opening
 assert "finish(completed_desc, valid && same, nullptr);" in opening
 assert "locker_chest_id(locker, name.c_str()) != chest_id" in opening
-assert opening.index("if (!valid)") < opening.index("locker->SetCurrentChestId(is_public ? 0 : chest_id, manager)")
-failed = opening[opening.index("if (!valid)"):opening.index("locker->SetCurrentChestId(is_public ? 0 : chest_id, manager)")]
+assert opening.index("if (!valid)") < opening.index("locker->OpenChest(chest_id, manager)")
+failed = opening[opening.index("if (!valid)"):opening.index("locker->OpenChest(chest_id, manager)")]
 assert "CHEST_ACTION_FAIL" in failed and "return;" in failed
 assert "if (!submitted)" in opening
 assert "Password service is busy; try again later." in opening

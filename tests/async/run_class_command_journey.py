@@ -185,14 +185,17 @@ def run(binary, backend):
                 for name in ("thief", "assassin"):
                     assert "Melee and archery damage: +10% (passive)" in command(player, "class innates " + name)
                 assert "Melee and archery damage" not in command(player, "class innates paladin")
-                assert "Melee and archery damage" not in command(player, "race innates barbarian")
+                assert "Melee and archery damage: +15% (passive)" in command(player, "race innates barbarian")
                 for value, expected in (("1.150", "+15%"), ("0.825", "-17.5%")):
-                    command(god, "properties set damage.totalOutput.racial.Barbarian " + value)
+                    command(god, "properties set damage.totalOutput.playerRacial.Barbarian " + value)
                     text = command(player, "race innate barbarian")
                     assert "Melee and archery damage: " + expected + " (passive)" in text, text
-                command(god, "properties set damage.totalOutput.racial.Barbarian 1.000")
+                command(god, "properties set damage.totalOutput.playerRacial.Barbarian 1.000")
                 assert "Melee and archery damage" not in command(player, "race innates barbarian")
-                assert "Max damroll (gear + buffs): 72" in command(player, "race innates storm giant")
+                assert "Gear/buff damroll cap: 72 (Strength and mastery bonuses can exceed this)" in command(player, "race innates storm giant")
+                command(god, "properties set damage.totalOutput.playerRacial.Barbarian 1.150")
+                assert "Melee and archery damage: +15% (passive)" in command(player, "race innates barbarian")
+                assert "*monkey grip" in command(player, "race innates storm giant")
                 command(god, "properties set damage.totalOutput.racial.StormGiant 1.100")
                 text = command(player, "race innates storm giant")
                 assert "Melee and archery damage: +10% (passive)" in text and "None." not in text

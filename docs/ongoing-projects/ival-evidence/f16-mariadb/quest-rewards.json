@@ -1,0 +1,212 @@
+{
+  "backend": "mariadb",
+  "journey": "rewards",
+  "scope": "quest reward commands and restart",
+  "complete": true,
+  "binary_sha256": "2dfe4f4cc8ca416cf20331c43a08d58ecccec6d997511927cf0aff6d871b714e",
+  "formula_revision": "ival-v8-proc-semantics",
+  "world_sha256": {
+    "areas/world.tab": "77a99c72343976491d97b1ba1faead7287490159e96fcfbfe74b6fee61940706",
+    "areas/world.justice": "dae08bd242e13c337c0d0472dfe8d0c2600a7fc2fd886c9e697616973fb4dfb2",
+    "areas/world.trg": "83ee73d82a513766a5c999d4455bea35de75e7f082db700f76fb12149c8405c2",
+    "areas/world.obj": "6ab3b8e04e21b4321fed4e91edaad59bf884f2ca2a7998d38ee852c9d5bf7049",
+    "areas/world.wld": "af2c1e6233ed3211f5b69cbaf8318cbff1df675aa047427f1fabe8f00ed8dde2",
+    "areas/world.shp": "0704b8010c0eafdb0a734890ef67fe8b8b9007cafaace4b1d0e65767e093c3a1",
+    "areas/world.qst": "1e53f8b7b361174b61c3cdde8ea2ff376523d78e099d57e99bafc40ee5a4f148",
+    "areas/world.zon": "6d66ed5ec43042e63961525a5fc32b6caa10d0c0299e1d5b2383d2f00aeb048d",
+    "areas/world.mob": "9edf4176f59797707defd0e0a4bf4f2b19493cb75295d5f9ae4bf5aba623c6eb"
+  },
+  "catalog_ready_count": 7,
+  "database_zone_flags": {
+    "zone_rows": 353,
+    "quest_enabled_rows": 0
+  },
+  "command": "python3 tests/async/run_ival_system_journey.py --quest-rewards",
+  "existing_journey": "run_world_quest_dual_backend.perform_reward_cases, MariaDB only",
+  "existing_probe": "tests/async/world_quest_journey_probe.cpp; controls route/level/quota/bonus rolls, leaves production valuation and reward execution active",
+  "cases": [
+    {
+      "level": 11,
+      "kind": 2,
+      "expected_items": 1,
+      "rewards": [
+        {
+          "uid": "34584",
+          "vnum": 16315,
+          "name": "scimitar"
+        }
+      ],
+      "accepted": {
+        "accepted_level": 11,
+        "type": 2,
+        "mob": 16312,
+        "zone": 163,
+        "quota": 0,
+        "frozen_item_count": 0,
+        "bonus_rolls": 0,
+        "xp": 1,
+        "progress_xp": 75001,
+        "remaining": 8,
+        "active": 1,
+        "history_done": 0,
+        "reward_uids": []
+      },
+      "completed": {
+        "accepted_level": 0,
+        "type": 0,
+        "mob": 0,
+        "zone": -1,
+        "quota": 0,
+        "frozen_item_count": 0,
+        "bonus_rolls": 0,
+        "xp": 3900,
+        "progress_xp": 78900,
+        "remaining": 7,
+        "active": 0,
+        "history_done": 1,
+        "reward_uids": [
+          "34584"
+        ]
+      },
+      "restored": {
+        "accepted_level": 0,
+        "type": 0,
+        "mob": 0,
+        "zone": -1,
+        "quota": 0,
+        "frozen_item_count": 0,
+        "bonus_rolls": 0,
+        "xp": 3900,
+        "progress_xp": 458678900,
+        "remaining": 1,
+        "active": 0,
+        "history_done": 0,
+        "reward_uids": []
+      }
+    },
+    {
+      "level": 30,
+      "kind": 1,
+      "expected_items": 1,
+      "rewards": [
+        {
+          "uid": "2038613",
+          "vnum": 22020,
+          "name": "cloak storm winds"
+        }
+      ],
+      "accepted": {
+        "accepted_level": 30,
+        "type": 1,
+        "mob": 22010,
+        "zone": 220,
+        "quota": 9,
+        "frozen_item_count": 0,
+        "bonus_rolls": 0,
+        "xp": 3900,
+        "progress_xp": 10678900,
+        "remaining": 8,
+        "active": 1,
+        "history_done": 0,
+        "reward_uids": []
+      },
+      "completed": {
+        "accepted_level": 0,
+        "type": 0,
+        "mob": 0,
+        "zone": -1,
+        "quota": 0,
+        "frozen_item_count": 0,
+        "bonus_rolls": 8,
+        "xp": 616114,
+        "progress_xp": 11291114,
+        "remaining": 7,
+        "active": 0,
+        "history_done": 1,
+        "reward_uids": [
+          "2038613"
+        ]
+      },
+      "restored": {
+        "accepted_level": 0,
+        "type": 0,
+        "mob": 0,
+        "zone": -1,
+        "quota": 0,
+        "frozen_item_count": 0,
+        "bonus_rolls": 0,
+        "xp": 616114,
+        "progress_xp": 459291114,
+        "remaining": 0,
+        "active": 0,
+        "history_done": 0,
+        "reward_uids": []
+      }
+    },
+    {
+      "level": 31,
+      "kind": 1,
+      "expected_items": 2,
+      "rewards": [
+        {
+          "uid": "4038656",
+          "vnum": 69014,
+          "name": "tail tailpiece"
+        },
+        {
+          "uid": "4038655",
+          "vnum": 69010,
+          "name": "halp sword longsword"
+        }
+      ],
+      "accepted": {
+        "accepted_level": 31,
+        "type": 1,
+        "mob": 69000,
+        "zone": 690,
+        "quota": 9,
+        "frozen_item_count": 0,
+        "bonus_rolls": 0,
+        "xp": 616114,
+        "progress_xp": 14291114,
+        "remaining": 8,
+        "active": 1,
+        "history_done": 0,
+        "reward_uids": []
+      },
+      "completed": {
+        "accepted_level": 0,
+        "type": 0,
+        "mob": 0,
+        "zone": -1,
+        "quota": 0,
+        "frozen_item_count": 0,
+        "bonus_rolls": 8,
+        "xp": 1193019,
+        "progress_xp": 14868019,
+        "remaining": 7,
+        "active": 0,
+        "history_done": 1,
+        "reward_uids": [
+          "4038655",
+          "4038656"
+        ]
+      },
+      "restored": {
+        "accepted_level": 0,
+        "type": 0,
+        "mob": 0,
+        "zone": -1,
+        "quota": 0,
+        "frozen_item_count": 0,
+        "bonus_rolls": 0,
+        "xp": 1193019,
+        "progress_xp": 459868019,
+        "remaining": 0,
+        "active": 0,
+        "history_done": 0,
+        "reward_uids": []
+      }
+    }
+  ]
+}

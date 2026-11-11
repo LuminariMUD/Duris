@@ -105,6 +105,29 @@ def run(binary, backend):
                 assert "(Anti-Paladin)" in command(player, "skills dark knight")
                 bard = command(player, "skills bard")
                 assert "drums" in bard and "song of heroism" in bard
+                # Issue #707: production registrations through the mortal browser.
+                assert re.search(r"\b1\s+80\s+hide\b", bard), bard
+                assert "riff" not in bard
+                for spec, rows in (
+                    ("scoundrel", ((1, 90, "hide"), (1, 85, "sneak"),
+                                   (30, 80, "dual wield"), (51, 75, "trip"),
+                                   (51, 70, "disguise"), (30, 100, "riff"))),
+                    ("disharmonist", ((1, 100, "quick chant"), (1, 100, "meditate"),
+                                      (30, 100, "riff"))),
+                    ("minstrel", ((1, 75, "meditate"), (1, 90, "quick chant"),
+                                  (30, 100, "riff"))),
+                ):
+                    text = command(player, "skills " + spec)
+                    for level, cap, name in rows:
+                        assert re.search(rf"\b{level}\s+{cap}\s+{name}\b", text), text
+                for spec in ("bard", "scoundrel", "disharmonist", "minstrel"):
+                    text = command(player, "spells " + spec)
+                    ninth = re.search(r"Circle 9\r?\n(.*?)(?:\r?\n\r?\n|$)", text, re.S)
+                    assert ninth and "detect invisibility" in ninth[1], text
+                    tenth = re.search(r"Circle 10\r?\n(.*?)(?:\r?\n\r?\n|$)", text, re.S)
+                    invisible = tenth and re.search(r"(?m)^  (?:\* )?invisibility\r?$", tenth[1])
+                    assert bool(invisible) == (spec == "scoundrel"), text
+
                 assert "Matching names:" in command(player, "skills s")
                 assert "Provide a known skill name" in command(player, "skills info")
                 assert "Provide a known skill name" in command(player, "skills info charge cooldown.")
@@ -152,6 +175,40 @@ def run(binary, backend):
                 assert b"\x1b[" in player.raw_transcript
                 (ROOT / "bin/tests" / ("skills-info-" + backend + ".txt")).write_text(info)
                 (ROOT / "bin/tests" / ("skills-levels-" + backend + ".txt")).write_text(table)
+                # Login uses the same update path as unspecializing/respecializing.
+                # Seed only the disposable authority while the server is stopped.
+                stop()
+                header = (ROOT / "src/magic/spells.h").read_text()
+                ids = {key: int(re.search(r"^#define " + key + r" (\d+)", header, re.M)[1])
+                       for key in ("SKILL_RIFF", "TAG_MEMORIZE", "SPELL_DETECT_INVISIBLE")}
+                pid = sql(f"SELECT pid FROM player_data WHERE name='{PLAYER}'")
+                sql(f"UPDATE player_data SET m_class={1 << 15},secondary_class=0,spec=0,"
+                    f"level=56,highest_level=56,played_time=200000 WHERE pid={pid}")
+                sql(f"REPLACE INTO player_skills(pid,skill_id,learned,taught) "
+                    f"VALUES({pid},{ids['SKILL_RIFF']},87,100)")
+                sql(f"INSERT INTO player_affects(pid,type,duration,flags,modifier,level) "
+                    f"VALUES({pid},{ids['TAG_MEMORIZE']},-1,16,{ids['SPELL_DETECT_INVISIBLE']},56)")
+                for spec in (0, 0, 1, 2, 3):
+                    sql(f"UPDATE player_data SET spec={spec} WHERE pid={pid}")
+                    process = boot()
+                    player = login(PLAYER, ACCOUNT)
+                    text = command(player, "skills info riff")
+                    assert "Learned: 87" in text and "Taught: 100" in text, text
+                    if not spec:
+                        assert "specialize" in command(player, "riff healing"), text
+                    memorized = command(player, "mem")
+                    assert "detect invisibility" in memorized.lower(), memorized
+                    command(player, "save")
+                    player.send("quit")
+                    player.expect("ACCOUNT MENU", timeout=30)
+                    stop()
+                    assert sql(f"SELECT learned,taught FROM player_skills WHERE pid={pid} "
+                               f"AND skill_id={ids['SKILL_RIFF']}") == "87\t100"
+                # Keep the normal cleanup path's server ownership simple.
+                process = None
+                print("PASS: Bard Riff rating and memorized Detect Invisibility survive "
+                      "unspecialized logins, all three specs, SQL saves and reloads", flush=True)
+
                 print("PASS: " + backend + " real staff/mortal dispatcher, catalogs/spec differences, "
                       "live info/help, permissions, color and paging", flush=True)
             except BaseException:

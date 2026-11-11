@@ -16,11 +16,15 @@ PRELUDE = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "abilities/abilities.h"
+#include "net/comm.h"
+#include <string>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
 
 static int warnings, martial_rating = 100;
+static std::string equipment_feedback;
+static bool equip_succeeds = true;
 static P_char rider;
 int GET_CLASS(P_char ch, unsigned int cls) { return ch->player.m_class & cls; }
 int GET_CHAR_SKILL_P(P_char, int) { return martial_rating; }
@@ -31,9 +35,16 @@ const Rolls live_rolls = {roll_dice, number};
 int BOUNDED(int low, int value, int high) { return std::min(high, std::max(low, value)); }
 P_char get_linking_char(P_char, unsigned short) { return rider; }
 void send_to_char(const char *message, P_char) {
-    assert(strstr(message, "reduces your base monk attacks"));
-    ++warnings;
+    if (strstr(message, "reduces your base monk attacks")) ++warnings;
+    else equipment_feedback += message;
 }
+
+void perform_wear(P_char, P_obj, int) {}
+void obj_from_char(P_obj) {}
+void equip_char(P_char ch, P_obj obj, int slot, int) {
+    if (equip_succeeds) ch->equipment[slot] = obj;
+}
+EQUIP_FUNCTION
 
 WEIGHT_FUNCTIONS
 
@@ -47,6 +58,32 @@ MONK_BRANCH
 
 int main() {
     char_data monk{}, opponent{}, passenger{};
+    pc_only_data feedback_pc{};
+    char_data feedback_monk{};
+    feedback_monk.only.pc = &feedback_pc;
+    feedback_monk.player.m_class = CLASS_MONK;
+    obj_data equipped{};
+    for (int slot : {WIELD, SECONDARY_WEAPON, HOLD, WEAR_SHIELD, WEAR_LIGHT, WEAR_BODY}) {
+        equipment_feedback.clear();
+        execute_wear(&feedback_monk, &equipped, slot, 0, true);
+        assert(feedback_monk.equipment[slot] == &equipped);
+        const bool blocks = slot != WEAR_BODY;
+        assert((equipment_feedback.find("one base attack") != std::string::npos) == blocks);
+        assert((equipment_feedback.find("damage dice") != std::string::npos) == (blocks && slot != WEAR_LIGHT));
+        feedback_monk.equipment[slot] = nullptr;
+    }
+    for (bool monk_class : {false, true}) {
+        feedback_monk.player.m_class = monk_class ? CLASS_MONK : CLASS_WARRIOR;
+        equipment_feedback.clear();
+        execute_wear(&feedback_monk, &equipped, HOLD, 0, false);
+        assert(equipment_feedback.empty());
+        feedback_monk.equipment[HOLD] = nullptr;
+    }
+    equip_succeeds = false;
+    equipment_feedback.clear();
+    execute_wear(&feedback_monk, &equipped, HOLD, 0, true);
+    assert(equipment_feedback.empty() && !feedback_monk.equipment[HOLD]);
+    equip_succeeds = true;
     pc_only_data pc{}, other_pc{};
     obj_data bag{}, second_item{}, inventory{}, contents{}, hand_item{};
     monk.only.pc = &pc;
@@ -230,7 +267,7 @@ with tempfile.TemporaryDirectory(prefix="monk-weight-", dir=directory) as tempor
     cpp = Path(temporary) / "monk_weight.cpp"
     binary = Path(temporary) / "monk_weight"
     cpp.write_text(
-        PRELUDE.replace("MONK_BRANCH", monk_branch).replace("WEIGHT_FUNCTIONS", "\n".join([
+        PRELUDE.replace("EQUIP_FUNCTION", extract_function("actobj.c", "void execute_wear(")).replace("MONK_BRANCH", monk_branch).replace("WEIGHT_FUNCTIONS", "\n".join([
             extract_function("utility.c", "int total_carried_weight("),
             extract_function("handler.c", "static void encumbrance_adjust("),
             extract_function("handler.c", "void add_weight(P_obj obj, int weight)\n{"),

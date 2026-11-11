@@ -13,6 +13,7 @@
 extern const struct race_names race_names_table[];
 extern const struct class_names class_names_table[];
 extern const struct stat_data stat_factor[];
+extern const char *size_types[];
 extern float combat_by_race[][3];
 extern float spell_pulse_data[];
 
@@ -186,7 +187,7 @@ static void show_race_info(P_char ch, int race)
 	if (!description.empty())
 		send_to_char_f(ch, "\n%s\n", description.c_str());
 
-	send_to_char("\n&+W  Valid classes (current character creation rules)&n\n", ch);
+	send_to_char("\n&+W  Valid classes : Specializations&n\n", ch);
 	int shown = 0;
 	for (int cls = 1; cls <= CLASS_COUNT; ++cls)
 	{
@@ -215,10 +216,7 @@ static void show_race_info(P_char ch, int race)
 		       stats.Str, stats.Pow, stats.Dex, stats.Int, stats.Agi, stats.Wis, stats.Con,
 		       stats.Cha, stats.Luk, stats.Kar, combat_by_race[race][0],
 		       spell_pulse_data[race]);
-	send_to_char_f(ch,
-		       "\n  Abilities: &+Wrace innates %s&n\n"
-		       "  More lore and racial traits: &+Whelp %s&n\n",
-		       race_names_table[race].normal, race_names_table[race].normal);
+	send_to_char_f(ch, "\n  Abilities: &+Wrace innates %s&n\n", race_names_table[race].normal);
 }
 
 void do_race(P_char ch, char *argument, int /*cmd*/)
@@ -252,9 +250,14 @@ void do_race(P_char ch, char *argument, int /*cmd*/)
 		show_race_info(ch, race);
 	else
 	{
-		send_to_char_f(ch, "\n&+C  >====[ %s&+C : RACIAL INNATES ]====<&n\n\n",
-			       race_display_name(race).c_str());
+		char_data profile{};
+		GET_RACE(&profile) = race;
+		set_char_size(&profile);
+		send_to_char_f(ch,
+			       "\n&+C  >====[ %s&+C : RACIAL INNATES ]====<&n\n"
+			       "  Race size: &+c%s&n\n\n",
+			       race_display_name(race).c_str(), size_types[GET_SIZE(&profile)]);
 		send_to_char(list_innates(race, 0, 0).c_str(), ch);
-		send_to_char("\n  Use &+Whelp <ability name>&n for details about an innate.\n", ch);
+		send_to_char("  Use &+Winnate info <ability/innate name>&n for details\n", ch);
 	}
 }

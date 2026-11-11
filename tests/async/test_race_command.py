@@ -20,15 +20,22 @@ HARNESS = r'''
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <string>
 extern const struct race_names race_names_table[];
 extern const struct class_names class_names_table[];
+extern const char *size_types[];
 static std::string output;
 static int innate_race;
 float combat_by_race[LAST_RACE + 1][3];
 float combat_by_class[CLASS_COUNT + 1][2];
 int damroll_cap = 50;
+static std::map<std::string, float> properties;
+float get_property(const char *key, double fallback) {
+    auto entry = properties.find(key);
+    return entry == properties.end() ? float(fallback) : entry->second;
+}
 char racial_innates[LAST_INNATE + 1][LAST_RACE + 1];
 char class_innates[LAST_INNATE + 2][CLASS_COUNT][5];
 void active(P_char, char *, int) {}
@@ -73,7 +80,10 @@ static void check_classes(int race) {
     assert(text.find("[ " + std::string(race_names_table[race].normal) + " ]") != std::string::npos);
     assert(text.find("    Combat speed : 18.250 pulses\n") != std::string::npos);
     assert(text.find("    Spell speed  : 0.875x casting time\n") != std::string::npos);
-    const auto start = text.find("Valid classes (current character creation rules)\n");
+    assert(text.find("  Abilities: race innates " + std::string(race_names_table[race].normal) + "\n") !=
+           std::string::npos);
+    assert(text.find("More lore and racial traits:") == std::string::npos);
+    const auto start = text.find("Valid classes : Specializations\n");
     const auto end = text.find("Racial stat factors", start);
     assert(start != std::string::npos && end != std::string::npos);
     const auto classes = text.substr(start, end - start);
@@ -86,7 +96,8 @@ static void check_classes(int race) {
     }
     assert((classes.find("None.") != std::string::npos) == (expected == 0));
 }
-int main() {
+int main(int argc, char **argv) {
+    assert(argc == 2);
     for (int race = 1; race <= RACE_PLAYER_MAX; ++race) {
         combat_by_race[race][1] = 1.0f;
         combat_by_race[race][2] = 1.0f;
@@ -184,13 +195,26 @@ int main() {
         check_classes(race);
         const auto innates = run("innates " + std::string(race_names_table[race].normal));
         assert(innate_race == race);
-        assert(innates.find("*Max damroll (gear + buffs): 50\n") != std::string::npos);
+        assert(innates.find("*Gear/buff damroll cap: 50 (Strength and mastery bonuses can exceed this)\n") != std::string::npos);
+        char_data profile{};
+        GET_RACE(&profile) = race;
+        set_char_size(&profile);
+        assert(innates.find("  Race size: " + std::string(size_types[GET_SIZE(&profile)]) + "\n\n") !=
+               std::string::npos);
+        assert(innates.find("\n\n'*' Designates passive ability.\n"
+                            "  Use innate info <ability/innate name> for details\n") != std::string::npos);
+        assert(output.find("&+Winnate info <ability/innate name>&n") != std::string::npos);
     }
+    assert(run("innates barbarian").find("  Race size: large\n\n") != std::string::npos);
+    assert(run("innates death knight").find("  Race size: large\n\n") != std::string::npos);
+    assert(run("innates storm giant").find("  Race size: huge\n\n") != std::string::npos);
+    assert(run("innates shadow beast").find("  Race size: medium\n\n") != std::string::npos);
+    assert(run("innates harpy").find("  Race size: small\n\n") != std::string::npos);
     combat_by_race[RACE_OGRE][2] = 1.5f;
-    assert(run("innates ogre").find("*Max damroll (gear + buffs): 75\n") != std::string::npos);
+    assert(run("innates ogre").find("*Gear/buff damroll cap: 75 (Strength and mastery bonuses can exceed this)\n") != std::string::npos);
     // The listing matches the enforced cap, including its float truncation.
     combat_by_race[RACE_TROLL][2] = 1.18f;
-    assert(run("innates troll").find("*Max damroll (gear + buffs): 58\n") != std::string::npos);
+    assert(run("innates troll").find("*Gear/buff damroll cap: 58 (Strength and mastery bonuses can exceed this)\n") != std::string::npos);
     // Runtime table changes are displayed without changing innate grants.
     assert(run("innates barbarian").find("Melee and archery damage") == std::string::npos);
     combat_by_race[RACE_BARBARIAN][1] = 1.15f;
@@ -210,7 +234,7 @@ int main() {
     assert(modifier_only.find("help attack damage modifiers") != std::string::npos);
     combat_by_race[RACE_SGIANT][1] = 1.0f;
     const auto cap_only = run("innates storm giant");
-    assert(cap_only.find("Max damroll") != std::string::npos && cap_only.find("None.") == std::string::npos);
+    assert(cap_only.find("Gear/buff damroll cap") != std::string::npos && cap_only.find("None.") == std::string::npos);
     spell_pulse_data[RACE_BARBARIAN] = 1.22f;
     assert(run("info barbarian").find("    Spell speed  : 1.220x casting time\n") != std::string::npos);
     spell_pulse_data[RACE_ILLITHID] = 0.025f;
@@ -262,6 +286,25 @@ int main() {
     setenv("CREATION_ALL_RACES", "TRUE", 1);
     assert(run("list").find("*Lich") != std::string::npos);
     assert(output.find("&+L*" + race_display_name(RACE_LICH)) != std::string::npos);
+    // The shipped player-only factors appear through the actual command for every Large race.
+    std::ifstream file(argv[1]); assert(file.good());
+    for (std::string line; std::getline(file, line);) {
+        char key[256]; float value;
+        if (std::sscanf(line.c_str(), "%255[^=]=%f", key, &value) == 2)
+            properties[key] = value;
+    }
+    int large_races = 0;
+    for (int race = 1; race <= RACE_PLAYER_MAX; ++race) {
+        char_data profile{};
+        GET_RACE(&profile) = race;
+        set_char_size(&profile);
+        const bool large = GET_SIZE(&profile) == SIZE_LARGE;
+        const auto innates = run("innates " + std::string(race_names_table[race].normal));
+        assert((innates.find("*Melee and archery damage: +15% (passive)\n") != std::string::npos) == large);
+        assert((innates.find("Melee and archery damage:") != std::string::npos) == large);
+        large_races += large;
+    }
+    assert(large_races == 6);
     puts("PASS: all 37 race profiles/innate routes, numeric racial timing, race-specific specializations, "
          "creation restrictions and overrides, faction colors, ASCII panels and name resolution");
 }
@@ -280,15 +323,17 @@ def main():
     parser += "\n" + extract_function("sparser.c", "char *skip_spaces(")
     parser += "\n" + extract_function("utility.c", "string strip_ansi(")
     parser += "\n" + extract_function("utility.c", "string pad_ansi(")
+    parser += "\n" + extract_function("nanny.c", "void set_char_size(")
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="race-command-", dir=build) as temporary:
         directory = Path(temporary)
         harness = directory / "race.cpp"
         listing = extract_function("abilities.c", "std::string damage_modifier_innate(") + "\n"
+        listing += extract_function("affects.c", "float player_racial_damage_multiplier(") + "\n"
         listing += extract_function("innates.c", "string list_innates(").replace("string list_innates(", "string production_list_innates(", 1)
         harness.write_text(HARNESS.replace("// PRODUCTION_LIST_INNATES", listing)
-                           .replace("int main() {", parser + "\nint main() {", 1))
+                           .replace("int main(int argc, char **argv) {", parser + "\nint main(int argc, char **argv) {", 1))
         for backend in ("mariadb", "flatfile"):
             binary = directory / backend
             flags = ["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else []
@@ -299,7 +344,7 @@ def main():
                             str(harness), "src/cmd/race.c", "src/core/common.c", "src/core/constant.c",
                             "src/account/creation_availability_config.c", "src/classes/specializations.c",
                             "-o", str(binary)], cwd=ROOT, check=True)
-            subprocess.run([str(binary)], cwd=directory, check=True)
+            subprocess.run([str(binary), str(ROOT / "lib/duris.properties")], cwd=directory, check=True)
 
 
 if __name__ == "__main__":

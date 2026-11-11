@@ -1738,6 +1738,10 @@ std::vector<newbie_kit_item> make_newbie_kit_plan(const newbie_kit_input &input)
 		append(blighter_stuff);
 	}
 
+	if (input.main_class == CLASS_ETHERMANCER)
+		result.push_back(
+			{ 256, true }); // Plain one-handed piercing dagger, usable by every race.
+
 	if (input.main_class == CLASS_RANGER || input.main_class == CLASS_ROGUE)
 		append(archery_stuff);
 
@@ -1755,7 +1759,7 @@ std::vector<newbie_kit_item> make_newbie_kit_plan(const newbie_kit_input &input)
 
 std::vector<int> newbie_kit_template_vnums()
 {
-	std::vector<int> result = { 29319, 91519, 393, 458 };
+	std::vector<int> result = { 29319, 91519, 393, 458, 256 };
 	const auto append = [&result](const int *items)
 	{
 		for (int i = 0; items && items[i] != -1; ++i)

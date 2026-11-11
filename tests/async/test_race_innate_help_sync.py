@@ -31,7 +31,8 @@ class RaceInnateHelpTest(unittest.TestCase):
             with self.subTest(race=race):
                 self.assertIn(line, lists[race])
         self.assertNotIn("*dayblind", lists["duergar dwarf"])
-        self.assertEqual(lists["storm giant"], ["None."])
+        for race in ("ogre", "firbolg", "minotaur", "storm giant", "wight"):
+            self.assertIn("*monkey grip", lists[race])
 
     def test_unresolved_or_unsupported_calls_fail_before_writing(self):
         original_read = sync.read

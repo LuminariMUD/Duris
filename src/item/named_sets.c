@@ -384,3 +384,31 @@ bool validate_named_sets()
 	}
 	return valid;
 }
+
+// Shared by AREA and the complete named-set report. Zone is an authored vnum.
+std::string named_set_bonuses(int zone)
+{
+	std::string result;
+	for (const auto &set : named_sets)
+	{
+		if (set.zone != zone)
+			continue;
+		for (const auto &tier : set.proc_spells)
+		{
+			if (!tier[0] || !named_set_effect_supported(tier[1]))
+				continue;
+			if (!result.empty())
+				result += "&+W,&n ";
+			const char *color = "&+B";
+			if (tier[1] == SPELL_STONE_SKIN || tier[1] == SPELL_IRONWOOD ||
+			    tier[1] == SPELL_INVIGORATE)
+				color = "&+G";
+			else if (tier[1] == SPELL_CONJURE_ELEMENTAL)
+				color = "&+y";
+			result += std::string(color) + skills[tier[1]].name + " &+W(&+Y" +
+				  std::to_string(tier[0]) + "&+W)&n";
+		}
+		break;
+	}
+	return result;
+}

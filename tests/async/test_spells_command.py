@@ -109,13 +109,13 @@ int main() {
     auto text = run(&ch, "");
     assert(text == ">====[ Scholar | Conjurer | Max Circle 1 ]====<\n"
                    "\n1st CIRCLE:\nburning hands\n"
-                   "\n3rd CIRCLE:\nfireball [in spellbook]\nZeta spell\n"
-                   "\n12th CIRCLE:\nmirror image\n"
+                   "\n3rd CIRCLE:\nfireball [in spellbook] [future circle]\nZeta spell [future circle]\n"
+                   "\n12th CIRCLE:\nmirror image [future circle]\n"
                    "\nmemorize is your spell interface\n"
                    "See: spells <class or specialization> | spells info <spell name>\n");
     assert(lookups == 0 && book_target == &ch);
     assert(output.find("&+B1st CIRCLE:&n\nburning hands\n") != std::string::npos);
-    assert(output.find("&+B3rd CIRCLE:&n\n&+Lfireball [in spellbook]&n\n") != std::string::npos);
+    assert(output.find("&+B3rd CIRCLE:&n\n&+Lfireball [in spellbook] [future circle]&n\n") != std::string::npos);
     assert(output.ends_with("&+Wmemorize&n is your spell interface\n"
                             "See: &+Wspells <class or specialization>&n | "
                             "&+Wspells info <spell name>&n\n"));
@@ -128,7 +128,7 @@ int main() {
     text = run(&ch, "fire magus");
     assert(text.find("Circle 10\n  * fire form\n") != std::string::npos);
     assert(text.find("Circle 1\n  burning hands\n") != std::string::npos);
-    assert(text.find("Circle 2\n  fireball\n") != std::string::npos);
+    assert(text.find("Circle 2\n  fireball [future circle]\n") != std::string::npos);
     assert(text.find("\n  * indicates spells gained from spec.\n") != std::string::npos);
     assert(text.find("memorize is the default spell interface") != std::string::npos);
     text = run(&ch, "conjurer");
@@ -168,6 +168,8 @@ int main() {
     assert(text.find("Circle requirement: not yet met") != std::string::npos);
     ch.player.level = 11;
     assert(run(&ch, "info fireball").find("Circle requirement: met") != std::string::npos);
+    assert(run(&ch, "info fireball").find("future circle") == std::string::npos);
+    assert(run(&ch, "").find("fireball [in spellbook]\n") != std::string::npos);
     ch.player.spec = SPEC_WATER;
     assert(run(&ch, "info fireball").find("Not available through") != std::string::npos);
     ch.player.spec = SPEC_FIRE;

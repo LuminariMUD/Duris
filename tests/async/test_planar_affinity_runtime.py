@@ -45,6 +45,7 @@ Skill skills[MAX_SKILLS];
 float combat_by_race[LAST_RACE + 1][3];
 float combat_by_class[CLASS_COUNT + 1][2];
 int damroll_cap;
+float player_racial_damage_multiplier(int) { assert(false); return 1.0f; }
 static int attacks;
 int GET_CLASS(P_char ch, unsigned int cls) { return (ch->player.m_class & cls) != 0; }
 bool affected_by_spell(P_char, int) { return false; }
@@ -128,7 +129,8 @@ int main() {
         {CLASS_CONJURER, SPEC_EARTH, INNATE_EARTH_AFFINITY, EARTHSTART, EARTHEND, "earth affinity"},
         {CLASS_PSIONICIST, SPEC_PSYCHEPORTER, INNATE_ASTRAL_NATIVE, ASTRALSTART, ASTRALEND, "astral affinity"},
     };
-    assert(INNATE_REFLECTION == 179 && INNATE_AIR_AFFINITY == 180 && LAST_INNATE == 183);
+    assert(INNATE_REFLECTION == 179 && INNATE_AIR_AFFINITY == 180 && INNATE_EARTH_AFFINITY == 183);
+    assert(INNATE_MONKEY_GRIP == 184 && LAST_INNATE == INNATE_MONKEY_GRIP);
     for (const auto &g : grants) {
         player.player.m_class = g.cls; player.player.spec = g.spec;
         auto listing = list_innates(0, flag2idx(g.cls), g.spec);

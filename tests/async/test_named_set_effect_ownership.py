@@ -376,9 +376,10 @@ harness += extract_function("fight.c", "bool decrease_skin_counter(")
 magic_source = (ROOT / "src/magic/magic.c").read_text()
 dispel_start = magic_source.index("// Select active types before removal:")
 dispel_end = magic_source.index("\n\t\tsuccess = CheckMobRemoveableSpellBits", dispel_start)
-harness += "\nstatic void dispel_active(P_char victim) { P_char ch=victim,orig=nullptr; affected_type *af; int nosave=1,mod=0,success=0;\n"
+harness += extract_function('magic.c', 'P_char dispel_character_affect(')
+harness += "\nstatic void dispel_active(P_char victim) { P_char ch=victim; affected_type *af; int nosave=1,mod=0,success=0;\n"
 harness += magic_source[dispel_start:dispel_end]
-harness += "\n(void)orig; (void)success; }\n"
+harness += "\n(void)success; }\n"
 harness += "\nstatic int hit_sphere(P_char victim) { P_char ch=&companion; affected_type *af;\n"
 harness += extract_function("fight.c", "if (IS_AFFECTED4(victim, AFF4_STORNOGS_SPHERES))")
 harness += "\nreturn 99; }\n"

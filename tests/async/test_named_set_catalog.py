@@ -154,6 +154,9 @@ int main() {
     }
     assert(named_set_count == 306 && tiers == 608 && effects.size() == 74);
     assert(validate_named_sets());
+    assert(named_set_bonuses(112).empty());
+    assert(named_set_bonuses(230).find("&+Gironwood &+W(&+Y3&+W)&n") != std::string::npos);
+    assert(named_set_bonuses(455).find("battletide &+W(&+Y7&+W)&n") != std::string::npos);
     char *notes = generate_named_report();
     assert(strstr(notes,"one piece"));
     assert(strstr(notes,"matching Magus"));

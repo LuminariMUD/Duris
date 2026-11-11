@@ -330,6 +330,7 @@ const struct innate_data innates_data[LAST_INNATE + 1] = {
 	{ "water affinity", NULL },
 	{ "fire affinity", NULL },
 	{ "earth affinity", NULL },
+	{ "monkey grip", NULL },
 };
 
 string list_innates(int race, int cls, int spec)
@@ -343,12 +344,13 @@ string list_innates(int race, int cls, int spec)
 		debug("list_innates called with no race or class.");
 		return return_str;
 	}
-	return_str =
-		damage_modifier_innate(race ? combat_by_race[race][1] : combat_by_class[cls][1]);
+	return_str = damage_modifier_innate(race ? player_racial_damage_multiplier(race) :
+						   combat_by_class[cls][1]);
 	// Same calculation apply_affs() uses to enforce the cap.
 	if (race)
-		return_str += "*&+cMax damroll (gear + buffs):&n " +
-			      std::to_string((int)(damroll_cap * combat_by_race[race][2])) + "\n";
+		return_str += "*&+cGear/buff damroll cap:&n " +
+			      std::to_string((int)(damroll_cap * combat_by_race[race][2])) +
+			      " (Strength and mastery bonuses can exceed this)\n";
 	found = !return_str.empty();
 	for (innate = 0; innate <= LAST_INNATE; innate++)
 	{
@@ -383,7 +385,11 @@ string list_innates(int race, int cls, int spec)
 		return_str += "&nNone.\n";
 	}
 	else
+	{
+		if (race)
+			return_str += "\n";
 		return_str += "'*' Designates passive ability.\n";
+	}
 
 	return return_str;
 }
@@ -417,6 +423,9 @@ static int innate_char_race(P_char ch)
  */
 static int innate_unlock_level(P_char ch, int innate)
 {
+	if (innate == INNATE_MONKEY_GRIP)
+		return has_monkey_grip(ch) ? 1 : 0;
+
 	int i, race, req, minlevel = 0;
 
 	if (class_innates_at_all[innate] & ch->player.m_class)
@@ -510,6 +519,7 @@ void assign_innates()
 	ADD_RACIAL_INNATE(INNATE_SPELL_ABSORB, RACE_ELADRIN, 21);
 	ADD_RACIAL_INNATE(INNATE_PROT_COLD, RACE_ELADRIN, 1);
 	/* List of Firbolg Innates        */
+	ADD_RACIAL_INNATE(INNATE_MONKEY_GRIP, RACE_FIRBOLG, 1);
 	ADD_RACIAL_INNATE(INNATE_BODYSLAM, RACE_FIRBOLG, 1);
 	ADD_RACIAL_INNATE(INNATE_DOORBASH, RACE_FIRBOLG, 1);
 	ADD_RACIAL_INNATE(INNATE_FOREST_SIGHT, RACE_FIRBOLG, 1);
@@ -641,6 +651,7 @@ void assign_innates()
 	ADD_RACIAL_INNATE(INNATE_CALL_GRAVE, RACE_LICH, 1);
 	ADD_RACIAL_INNATE(INNATE_UNDEAD_FEALTY, RACE_LICH, 1);
 	/* List of Ogre Innates            */
+	ADD_RACIAL_INNATE(INNATE_MONKEY_GRIP, RACE_OGRE, 1);
 	ADD_RACIAL_INNATE(INNATE_ULTRAVISION, RACE_OGRE, 1);
 	ADD_RACIAL_INNATE(INNATE_DOORBASH, RACE_OGRE, 1);
 	ADD_RACIAL_INNATE(INNATE_OGREROAR, RACE_OGRE, 11);
@@ -677,6 +688,7 @@ void assign_innates()
 	/* Neutral Races */
 
 	/* List of Minotaur Innates        */
+	ADD_RACIAL_INNATE(INNATE_MONKEY_GRIP, RACE_MINOTAUR, 1);
 	ADD_RACIAL_INNATE(INNATE_ULTRAVISION, RACE_MINOTAUR, 1);
 	ADD_RACIAL_INNATE(INNATE_CHARGE, RACE_MINOTAUR, 11);
 	ADD_RACIAL_INNATE(INNATE_DOORBASH, RACE_MINOTAUR, 1);
@@ -742,9 +754,11 @@ void assign_innates()
 	ADD_RACIAL_INNATE(INNATE_PROJECT_IMAGE, RACE_PSBEAST, 1);
 	ADD_RACIAL_INNATE(INNATE_VULN_FIRE, RACE_PSBEAST, 1);
 	// ADD_RACIAL_INNATE(INNATE_INFRAVISION, RACE_SGIANT, 1);
+	ADD_RACIAL_INNATE(INNATE_MONKEY_GRIP, RACE_SGIANT, 1);
 	// ADD_RACIAL_INNATE(INNATE_DOORBASH, RACE_SGIANT, 1);
 	// ADD_RACIAL_INNATE(INNATE_THROW_LIGHTNING, RACE_SGIANT, 20);
 	ADD_RACIAL_INNATE(INNATE_ULTRAVISION, RACE_WIGHT, 1);
+	ADD_RACIAL_INNATE(INNATE_MONKEY_GRIP, RACE_WIGHT, 1);
 	ADD_RACIAL_INNATE(INNATE_DOORBASH, RACE_WIGHT, 1);
 	ADD_RACIAL_INNATE(INNATE_BODYSLAM, RACE_WIGHT, 1);
 	ADD_RACIAL_INNATE(INNATE_STONE, RACE_WIGHT, 25);
@@ -1187,6 +1201,16 @@ static std::string innate_status(P_char ch, int innate)
 		       (uses_left == 1 ? " use" : " uses") + " left; all uses return in &+W" +
 		       real_time(pulses) + "&n";
 	return "&+Yresting&n; ready in &+W" + real_time(pulses) + "&n";
+}
+
+std::string monkey_grip_innate_facts(P_char /*ch*/)
+{
+	return fact("Effect", "two-handed weapons cost 1 hand instead of 2") +
+	       fact("Requires", "a player character with Huge or larger base size") +
+	       fact("Damage", "normal two-handed weapon damage is retained") +
+	       "  Enlarge, Reduce and Titan Form do not change eligibility.\n"
+	       "  Strength, weapon training and dual-wield restrictions still apply.\n"
+	       "  Two-handed nonweapon items still require 2 hands.\n";
 }
 
 // innate info <name>: what an innate is, the viewer's access, its rest, and its mechanics.

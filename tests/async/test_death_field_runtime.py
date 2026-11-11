@@ -44,6 +44,16 @@ void telemetry_runtime_game_combat_cast_attempt(P_char, int) {}
 void telemetry_runtime_game_combat_cast_complete(P_char) {}
 void telemetry_runtime_game_combat_cast_abort(P_char) {}
 unsigned long long ne_event_tick; // the scheduler's tick, which the cast helpers read
+P_nevent get_scheduled(P_char ch, event_func_type fn) {
+    P_nevent event;
+    LOOP_EVENTS_CH(event, ch->nevents)
+        if (event->func == fn) return event;
+    return nullptr;
+}
+P_char find_character_by_runtime_id(uint64_t) {
+    assert(false); // No Bard Echo in this NPC Death Field fixture.
+    return nullptr;
+}
 /* fight.c and sparser.c are lifted without the production training-dummy
  * translation unit. Keep this harness focused on death-field behavior by
  * providing the ordinary-world predicate stubs it needs. */
@@ -355,6 +365,7 @@ def main():
         ('fight.c', 'static int flame_mastery_roll('),
         ('fight.c', 'static int flame_mastery_level_roll('),
         ('fight.c', 'static double flame_mastery_damage('),
+        ('bard.c', 'int song_nimbleness_spell_threshold('),
         ('fight.c', 'int spell_damage(P_char ch,'),
         ('utility.c', 'int dice(int num, int size)'),
         ('psionics.c', 'static int death_field_damage('),

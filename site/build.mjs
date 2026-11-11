@@ -221,6 +221,7 @@ await build({
   entryPoints: {
     app: path.join(here, "app.js"),
     atlas: path.join(here, "power-atlas/atlas.js"),
+    ival: path.join(here, "item-values/ival.js"),
   },
   outdir: path.join(out, "assets"),
   bundle: true,
@@ -231,7 +232,7 @@ await build({
   logLevel: "warning",
 });
 
-const index = `<main id="main"><section class="hero"><img class="hero-art" src="${base}assets/citadel.webp" alt="A warm-lit stone citadel above a misty lake and an ancient arched bridge" width="1942" height="809" fetchpriority="high"><div class="hero-copy"><h1>A world worth<br>understanding.</h1><p>Explore the code, systems, and craft behind DurisMUD.</p><a class="button" href="#documentation">Explore documentation ${external}</a></div></section><section class="explore" id="explore" aria-labelledby="explore-title"><h2 id="explore-title">Explore the project</h2><div class="categories"><a href="#documentation"><span class="category-number">01 /</span><div><h3>Documentation</h3><p>Guides to the world behind the game.</p></div>${arrow}</a><a href="${base}diagrams/"><span class="category-number">02 /</span><div><h3>Diagrams</h3><p>See how the systems fit together.</p></div>${arrow}</a><a href="${base}power-atlas/"><span class="category-number">03 /</span><div><h3>Power Atlas</h3><p>Compare races, classes, and builds.</p></div>${arrow}</a><a href="${github}"><span class="category-number">04 /</span><div><h3>Source code</h3><p>The engine, tools, and world data.</p></div>${arrow}</a><a href="${github}/pulls"><span class="category-number">05 /</span><div><h3>Development</h3><p>Follow changes and contribute.</p></div>${arrow}</a></div></section><section class="library" id="documentation" aria-labelledby="library-title"><div class="library-heading"><div><h2 id="library-title">The documentation library</h2><p>Find your way in. Then go deeper.</p></div><form class="search-form" role="search" hidden><label class="search-field">${search}<span class="sr-only">Search documentation</span><input type="search" name="q" id="search" placeholder="Search documentation" autocomplete="off"></label></form></div><div class="filters" role="group" aria-label="Filter guides" hidden>${["All guides", ...groups].map((group, i) => `<button type="button" data-filter="${group}" aria-pressed="${i === 0}">${group}</button>`).join("")}</div><p class="search-status sr-only" role="status" aria-live="polite"></p><div class="guide-list">${catalog.map(guideRow).join("")}</div><div class="empty-state" hidden><h3>No guides found</h3><p>Try a different search or browse all guides.</p><button type="button" class="button" id="clear-search">Clear search & filters</button></div><a class="complete-index" href="${routes.get("docs/README_docs.md")}">Open the complete repository index ${arrow}</a></section></main>`;
+const index = `<main id="main"><section class="hero"><img class="hero-art" src="${base}assets/citadel.webp" alt="A warm-lit stone citadel above a misty lake and an ancient arched bridge" width="1942" height="809" fetchpriority="high"><div class="hero-copy"><h1>A world worth<br>understanding.</h1><p>Explore the code, systems, and craft behind DurisMUD.</p><a class="button" href="#documentation">Explore documentation ${external}</a></div></section><section class="explore" id="explore" aria-labelledby="explore-title"><h2 id="explore-title">Explore the project</h2><div class="categories"><a href="#documentation"><span class="category-number">01 /</span><div><h3>Documentation</h3><p>Guides to the world behind the game.</p></div>${arrow}</a><a href="${base}diagrams/"><span class="category-number">02 /</span><div><h3>Diagrams</h3><p>See how the systems fit together.</p></div>${arrow}</a><a href="${base}power-atlas/"><span class="category-number">03 /</span><div><h3>Power Atlas</h3><p>Compare races, classes, and builds.</p></div>${arrow}</a><a href="${base}item-values/"><span class="category-number">04 /</span><div><h3>Item values</h3><p>See which item values changed.</p></div>${arrow}</a><a href="${github}"><span class="category-number">05 /</span><div><h3>Source code</h3><p>The engine, tools, and world data.</p></div>${arrow}</a><a href="${github}/pulls"><span class="category-number">06 /</span><div><h3>Development</h3><p>Follow changes and contribute.</p></div>${arrow}</a></div></section><section class="library" id="documentation" aria-labelledby="library-title"><div class="library-heading"><div><h2 id="library-title">The documentation library</h2><p>Find your way in. Then go deeper.</p></div><form class="search-form" role="search" hidden><label class="search-field">${search}<span class="sr-only">Search documentation</span><input type="search" name="q" id="search" placeholder="Search documentation" autocomplete="off"></label></form></div><div class="filters" role="group" aria-label="Filter guides" hidden>${["All guides", ...groups].map((group, i) => `<button type="button" data-filter="${group}" aria-pressed="${i === 0}">${group}</button>`).join("")}</div><p class="search-status sr-only" role="status" aria-live="polite"></p><div class="guide-list">${catalog.map(guideRow).join("")}</div><div class="empty-state" hidden><h3>No guides found</h3><p>Try a different search or browse all guides.</p><button type="button" class="button" id="clear-search">Clear search & filters</button></div><a class="complete-index" href="${routes.get("docs/README_docs.md")}">Open the complete repository index ${arrow}</a></section></main>`;
 await writeFile(
   path.join(out, "index.html"),
   layout(
@@ -286,6 +287,109 @@ await writeFile(
   ),
 );
 
+// A fixed before/after list for one item value update, rendered without scripting.
+const ivalRoute = `${base}item-values/`;
+const ivalItems = JSON.parse(
+  await readFile(path.join(here, "item-values/data.json"), "utf8"),
+);
+const mudCode = /(&\+[a-zA-Z]|&[nN])/;
+const plain = (text) => text.split(mudCode).filter((part, i) => i % 2 === 0).join("");
+function mudColor(text) {
+  let html = "";
+  let open = false;
+  text.split(mudCode).forEach((part, i) => {
+    if (i % 2 === 0) return (html += esc(part));
+    if (open) html += "</span>";
+    open = part[1] === "+";
+    if (open) html += `<span class="mc-${part[2]}">`;
+  });
+  return html + (open ? "</span>" : "");
+}
+const ivalRows = ivalItems
+  .map((item) => ({
+    ...item,
+    plainName: plain(item.name),
+    plainZone: plain(item.zone),
+    delta: item.new - item.old,
+  }))
+  .sort(
+    (a, b) =>
+      a.plainZone.localeCompare(b.plainZone) ||
+      a.plainName.localeCompare(b.plainName),
+  );
+const statList = (item) =>
+  Object.entries(item.stats)
+    .map(
+      ([stat, amount]) =>
+        `${stat} ${amount > 0 ? "+" : "−"}${Math.abs(amount)}`,
+    )
+    .join(", ");
+const options = (values) =>
+  [...new Set(values)]
+    .sort()
+    .map((value) => `<option>${esc(value)}</option>`)
+    .join("");
+const signed = (delta) =>
+  `${delta > 0 ? "▲ +" : "▼ −"}${Math.abs(delta).toLocaleString("en-US")}`;
+await mkdir(path.join(out, "item-values"), { recursive: true });
+await cp(
+  path.join(here, "item-values/ival.css"),
+  path.join(out, "assets/ival.css"),
+);
+await writeFile(
+  path.join(out, "item-values/item-value-changes.csv"),
+  `number,item,zone,type,old value,new value,change,reason,level,stats\n${ivalRows
+    .map((item) =>
+      [
+        item.vnum,
+        item.plainName,
+        item.plainZone,
+        item.type,
+        item.old,
+        item.new,
+        item.delta,
+        item.why.join("; "),
+        item.level,
+        statList(item),
+      ]
+        .map((value) => `"${String(value).replaceAll('"', '""')}"`)
+        .join(","),
+    )
+    .join("\n")}\n`,
+);
+const ivalContent = (
+  await readFile(path.join(here, "item-values/content.html"), "utf8")
+)
+  .replaceAll("{{BASE}}", base)
+  .replaceAll("{{COUNT}}", ivalRows.length)
+  .replaceAll("{{UP}}", ivalRows.filter((item) => item.delta > 0).length)
+  .replaceAll("{{DOWN}}", ivalRows.filter((item) => item.delta < 0).length)
+  .replace(
+    "{{STATS}}",
+    options(ivalRows.flatMap((item) => Object.keys(item.stats))),
+  )
+  .replace("{{TYPES}}", options(ivalRows.map((item) => item.type)))
+  .replace(
+    "{{ROWS}}",
+    ivalRows
+      .map(
+        (item) =>
+          `<tr data-name="${esc(item.plainName.toLowerCase())}" data-zone="${esc(item.plainZone.toLowerCase())}" data-old="${item.old}" data-new="${item.new}" data-delta="${item.delta}" data-level="${item.level}" data-type="${item.type}" data-stats='${JSON.stringify(item.stats)}' data-search="${esc(`${item.plainName} ${item.plainZone} ${item.vnum} ${item.type} ${statList(item)}`.toLowerCase())}"><th scope="row">${mudColor(item.name)}<span class="item-meta">#${item.vnum} · ${item.type}<span class="meta-zone"> · ${esc(item.plainZone)}</span></span><span class="item-meta">${statList(item)}</span></th><td class="zone">${mudColor(item.zone)}</td><td class="num">${item.level}</td><td class="num old">${item.old.toLocaleString("en-US")}</td><td class="num">${item.new.toLocaleString("en-US")}</td><td class="num delta ${item.delta > 0 ? "up" : "down"}">${signed(item.delta)}</td><td class="why">${item.why.join(", ")}</td></tr>`,
+      )
+      .join(""),
+  );
+await writeFile(
+  path.join(out, "item-values/index.html"),
+  layout(
+    "Item value changes",
+    `See the ${ivalRows.length} Duris items whose item value changed in the November 2026 update, with old and new values and the reason for each.`,
+    ivalRoute,
+    ivalContent,
+    false,
+    `<link rel="stylesheet" href="${base}assets/ival.css"><script type="module" src="${base}assets/ival.js"></script>`,
+  ),
+);
+
 const searchIndex = [];
 const slugs = new Set();
 for (const doc of catalog) {
@@ -335,7 +439,7 @@ await writeFile(
 await writeFile(path.join(out, ".nojekyll"), "");
 await writeFile(
   path.join(out, "sitemap.xml"),
-  `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${[base, diagramsRoute, atlasRoute, ...routes.values()].map((url) => `<url><loc>${origin}${url}</loc></url>`).join("")}</urlset>`,
+  `<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${[base, diagramsRoute, atlasRoute, ivalRoute, ...routes.values()].map((url) => `<url><loc>${origin}${url}</loc></url>`).join("")}</urlset>`,
 );
 await writeFile(
   path.join(out, "404.html"),

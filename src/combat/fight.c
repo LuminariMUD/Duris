@@ -4418,6 +4418,17 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 	// Just making sure.
 	if (!ch || !victim)
 		return DAM_NONEDEAD;
+	// Nested defensive procs start new spells; reflections retain the incoming flags.
+	static unsigned int depth;
+	const bool initial_hit = depth++ == 0;
+	struct damage_depth_cleanup
+	{
+		unsigned int &value;
+		~damage_depth_cleanup() { --value; }
+	} cleanup{ depth };
+	if (initial_hit && bard_spell_echo_factor() != 1.0)
+		flags |= SPLDAM_ECHO;
+
 	// A target killed earlier in the same effect has already lost its NPC data.
 	if (!IS_ALIVE(victim))
 		return DAM_VICTDEAD;
@@ -4508,6 +4519,14 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 			    0, ch, TO_ROOM);
 			return DAM_NONEDEAD;
 		}
+	}
+	if (dam > 0 && ch != victim && affected_by_spell(victim, SONG_NIMBLENESS) &&
+	    number(1, 1000) <= song_nimbleness_spell_threshold())
+	{
+		send_to_char("You dance clear of the harmful magic with the Minstrel's tune!\r\n",
+			     victim);
+		act("$N dances clear of your harmful magic.", FALSE, ch, 0, victim, TO_CHAR);
+		return DAM_NONEDEAD;
 	}
 	// globes check
 	if (ch != victim)
@@ -4844,7 +4863,8 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 
 	dam = (damProf.baseDamage + BOUNDEDF(-100.0, damProf.addedMod, 100.0)) *
 	      BOUNDEDF(0.05, damProf.increasedMod, 4.0) * BOUNDEDF(0.1, damProf.moreMod, 2.0);
-	dam = MAX(1, dam);
+	// Scale after profile caps, including reflected echoes, so caps cannot absorb it.
+	dam = MAX(1, dam * ((flags & SPLDAM_ECHO) ? bard_spell_echo_factor() : 1.0));
 
 	// Server-wide mob spell dial. It sits outside the modifier profile so the profile's
 	// 2.0 cap on "more" multipliers cannot absorb it.
@@ -4870,7 +4890,8 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 	damage_messages delivery = *messages;
 	delivery.damage_kind = type;
 	delivery.critical_known = false;
-	result = raw_damage(ch, victim, dam, (RAWDAM_DEFAULT ^ flags) | RAWDAM_NOWARD, &delivery,
+	result = raw_damage(ch, victim, dam,
+			    (RAWDAM_DEFAULT ^ (flags & ~SPLDAM_ECHO)) | RAWDAM_NOWARD, &delivery,
 			    damAccumulator);
 
 	if (type == SPLDAM_ACID && !number(0, 3))
@@ -8965,6 +8986,8 @@ void set_fighting(P_char ch, P_char vict)
 	if (IS_AFFECTED(ch, AFF_SLEEP))
 		REMOVE_BIT(ch->specials.affected_by, AFF_SLEEP);
 
+	if (affected_by_spell(ch, SONG_SHADOW_PIPER))
+		affect_from_char(ch, SONG_SHADOW_PIPER);
 	if (IS_AFFECTED(ch, AFF_SNEAK))
 	{
 		if (affected_by_spell(ch, SKILL_SNEAK))
@@ -9304,6 +9327,11 @@ std::string dodge_facts(P_char ch)
 		low += dodge_specialist_bonus();
 		high += dodge_specialist_bonus();
 	}
+	if (affected_by_spell(ch, SONG_NIMBLENESS))
+	{
+		low += song_nimbleness_melee_bonus();
+		high += song_nimbleness_melee_bonus();
+	}
 	std::string text =
 		"  Your rating doesn't matter: dodging uses your agility.\n" +
 		fact("Your agility score", std::to_string(dodge_agility_score(ch))) +
@@ -9429,6 +9457,9 @@ int dodgeSucceed(P_char char_dodger, P_char attacker, P_obj wpn)
 
 	if (IS_STUNNED(attacker))
 		percent = (int)(percent * 1.10);
+
+	if (affected_by_spell(char_dodger, SONG_NIMBLENESS))
+		percent += song_nimbleness_melee_bonus();
 
 	bool dragoon_dodge = false;
 

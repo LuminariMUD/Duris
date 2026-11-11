@@ -125,7 +125,7 @@ def run(binary, backend):
                 assert header in own_lines and own_lines[own_lines.index(header) + 2] == "1st CIRCLE:"
                 assert footer in own_lines and "magic missile [in spellbook]" in own_lines
                 assert "12th CIRCLE:" in own_lines
-                assert "(circle accessible)" not in own and "(future circle)" not in own
+                assert "[future circle]" in own and "magic missile [in spellbook] [future circle]" not in own
                 assert own_lines[own_lines.index(footer) - 1] == "memorize is your spell interface"
                 assert b"\x1b[0;1;30mburning hands" in raw_own
                 assert b"\x1b[0;1;37mmemorize\x1b[0m is your spell interface" in raw_own

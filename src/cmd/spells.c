@@ -172,7 +172,7 @@ void personal_spells(P_char ch, P_char target)
 		if (circle <= maximum)
 			out << name << "\n";
 		else
-			out << "&+L" << name << "&n\n";
+			out << "&+L" << name << " [future circle]&n\n";
 		previous = circle;
 	}
 	if (entries.empty())
@@ -210,7 +210,10 @@ void catalog(P_char ch, int cls, int spec)
 		for (int spell : entries)
 		{
 			const bool added = spec && !reference_circle(spell, cls, 0);
-			out << (added ? "  * " : "  ") << skills[spell].name << "\n";
+			out << (added ? "  * " : "  ") << skills[spell].name;
+			if (personal_circle(ch, spell) > get_max_circle(ch))
+				out << "&+L [future circle]&n";
+			out << "\n";
 			gained |= added;
 		}
 		out << "\n";
@@ -296,8 +299,9 @@ void spell_info(P_char ch, int spell)
 	if (circle)
 	{
 		out << info_field("Your required Circle", white(circle))
-		    << info_field("Circle requirement",
-				  circle <= maximum ? "&+Gmet&n" : "&+Ynot yet met&n");
+		    << info_field("Circle requirement", circle <= maximum ?
+								"&+Gmet&n" :
+								"&+Ynot yet met [future circle]&n");
 		if (shows_book(ch))
 			out << info_field("Spellbook (inventory, hands, belt)",
 					  in_book(ch, spell) ? "&+Gpresent&n" : "&+Ynot found&n");

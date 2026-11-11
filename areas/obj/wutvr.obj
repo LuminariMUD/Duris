@@ -3,7 +3,7 @@ map newbie note~
 &+wa small map of the newbie area&n~
 &+wA small insignificant map lies here.&n~
 ~
-16 29 1 0 7 0 8912904 8404993 0 0 0
+16 29 1 0 7 0 524296 8404993 0 0 0
 0 0 0 0 0 0 0 0
 1 0 100
 E
@@ -1836,3 +1836,591 @@ vine thick frayed stalk~
 13 42 1 0 7 0 8 16385 32768 0 0
 0 0 0 0 0 0 0 0
 0 0 100
+#91534
+pair squire's sleeves stitched knighting _noquest_~
+&+wa pair of squire's sleeves stitched for a knighting&n~
+&+wA pair of squire's sleeves stitched for a knighting lies here, its workmanship unfinished.&n~
+~
+9 15 3 0 7 0 0 257 0 0 0
+5 0 0 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+pair squire's sleeves stitched knighting~
+&+wPlain tharnadian cloth still covers one sleeve. Across the other, silver
+&+wstitches outline the armband a knight might one day wear; the needle hangs
+&+wfrom a loose thread.&n
+~
+A
+13 14
+A
+2 2
+#91535
+blackened stud set sapphire chip _noquest_~
+&+ba blackened stud set with a sapphire chip&n~
+&+bA blackened stud set with a sapphire chip lies here, its workmanship unfinished.&n~
+~
+9 15 3 0 7 0 0 524289 0 0 0
+2 0 0 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+blackened stud set sapphire chip~
+&+wOne edge of the blackened spike remains rough. The other has been polished
+&+winto a setting for a sapphire chip, with an empty claw waiting for a
+&+wlarger stone.&n
+~
+A
+13 22
+A
+1 3
+#91536
+jeweled eyepatch stitched from shed python skin _noquest_~
+&+La jeweled eyepatch stitched from shed python skin&n~
+&+LA jeweled eyepatch stitched from shed python skin lies here, its workmanship unfinished.&n~
+~
+9 3 3 0 7 0 0 131073 0 0 0
+4 0 0 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+jeweled eyepatch stitched from shed python skin~
+&+wBoyard's tiny jewels border one half of the patch. A strip of shed python
+&+wskin covers the other, its empty eye scale held in place by an unfinished
+&+wseam.&n
+~
+A
+13 14
+A
+3 3
+#91537
+black knight's monocle smoked glass _noquest_~
+&+La black knight's monocle of smoked glass&n~
+&+LA black knight's monocle of smoked glass lies here, its workmanship unfinished.&n~
+~
+9 11 2 0 7 0 0 131073 0 0 0
+5 0 0 0 0 0 0 0
+3 0 100 0 0 0 0
+E
+black knight's monocle smoked glass~
+&+wA strip cut from a black knight's visor frames the smoked lens. The inner
+&+wrim has been polished for a finer eyepiece, but the work stops at a ragged
+&+whinge.&n
+~
+A
+13 14
+A
+3 4
+#91538
+slit pupiled lens black glass _noquest_~
+&+La slit-pupiled lens of black glass&n~
+&+LA slit-pupiled lens of black glass lies here, its workmanship unfinished.&n~
+~
+9 7 3 0 7 0 0 131073 0 0 0
+5 0 0 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+slit pupiled lens black glass~
+&+wA lizard's slit pupil has been traced into the glass. Half the lens is
+&+wglossy black; the other still bears the scratches of the tool that shaped
+&+wit.&n
+~
+A
+13 10
+A
+3 7
+#91539
+diver's half mask lacquered reed _noquest_~
+&+ya diver's half-mask of lacquered reed&n~
+&+yA diver's half-mask of lacquered reed lies here, its workmanship unfinished.&n~
+~
+9 43 3 0 7 0 0 262145 0 0 0
+5 0 0 0 0 0 0 0
+0 0 100 0 0 0 0
+E
+diver's half mask lacquered reed~
+&+wA piece of Xlorkortor's mask has been lacquered into a reed frame. A short
+&+wbreathing pipe rises from one side, ending where its maker left the reed
+&+wuncut.&n
+~
+A
+13 13
+A
+1 3
+#91540
+pair orog hide boots dyed unwise crimson _noquest_~
+&+ra pair of orog-hide boots dyed an unwise crimson&n~
+&+rA pair of orog-hide boots dyed an unwise crimson lies here, its workmanship unfinished.&n~
+~
+9 12 2 0 7 0 0 65 0 0 0
+5 0 0 0 0 0 0 0
+2 0 100 0 0 0 0
+E
+pair orog hide boots dyed unwise crimson~
+&+wOne boot keeps the dull grain of orog hide. The other blazes crimson, with
+&+wan extravagant curled toe pinned in place for a fitting that never
+&+whappened.&n
+~
+A
+13 23
+A
+2 2
+#91541
+pair dented tin horn caps _noquest_~
+&+wa pair of dented tin horn caps&n~
+&+wA pair of dented tin horn caps lies here, its workmanship unfinished.&n~
+~
+9 10 3 4 7 0 0 134217729 0 0 0
+1 0 0 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+pair dented tin horn caps~
+&+wThe battered caps retain the blunt outline of the eviscerator. One has
+&+wbeen hammered toward an iron horn's curve; the other still bears the first
+&+wchalk mark.&n
+~
+A
+13 1
+A
+1 1
+#91542
+chrome horn ring chipped nightstone _noquest_~
+&+wa chrome horn ring chipped with nightstone&n~
+&+wA chrome horn ring chipped with nightstone lies here, its workmanship unfinished.&n~
+~
+9 22 3 0 7 0 0 134217729 0 0 0
+6 0 0 0 0 0 0 0
+0 0 100 0 0 0 0
+E
+chrome horn ring chipped nightstone~
+&+wOne half of the chrome ring shines smoothly. Dark nightstone chips bite
+&+winto the other, stopping at an empty groove where the next chip should
+&+whave gone.&n
+~
+A
+13 17
+A
+1 3
+#91543
+devil's horn sheath fingerbone hide _noquest_~
+&+wa devil's horn sheath of fingerbone and hide&n~
+&+wA devil's horn sheath of fingerbone and hide lies here, its workmanship unfinished.&n~
+~
+9 15 3 1 7 0 0 134217729 0 0 0
+5 0 0 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+devil's horn sheath fingerbone hide~
+&+wSmall fingerbones still stud one side of the devil's sheath. Soft hide
+&+wcovers the other, its leather tip only half stitched around the last
+&+wexposed bone.&n
+~
+A
+13 16
+A
+1 7
+#91544
+rune etched saddle mended girth _noquest_~
+&+wa rune-etched saddle with a mended girth&n~
+&+wA rune-etched saddle with a mended girth lies here, its workmanship unfinished.&n~
+~
+9 15 3 0 7 0 0 16777217 0 0 0
+1 0 0 0 0 0 0 0
+0 0 100 0 0 0 0
+E
+rune etched saddle mended girth~
+&+wFaded runes survive on one flap of this old leather saddle. A fresh girth
+&+whas been sewn beneath it, but a saddler's pin still holds the last sturdy
+&+wbuckle.&n
+~
+A
+13 1
+A
+1 5
+#91545
+woven saddle blanket trimmed gold studs _noquest_~
+&+wa woven saddle blanket trimmed with gold studs&n~
+&+wA woven saddle blanket trimmed with gold studs lies here, its workmanship unfinished.&n~
+~
+9 15 3 0 7 0 0 16777217 0 0 0
+1 0 0 0 0 0 0 0
+0 0 100 0 0 0 0
+E
+woven saddle blanket trimmed gold studs~
+&+wA finely woven blanket forms one side of the saddle cloth. Gold studs
+&+wreinforce the other, leaving a row of bare holes where the trim was
+&+wabandoned.&n
+~
+A
+13 16
+A
+1 3
+#91546
+hardened saddle clouded glass leather _noquest_~
+&+wa hardened saddle of clouded glass-leather&n~
+&+wA hardened saddle of clouded glass-leather lies here, its workmanship unfinished.&n~
+~
+9 15 3 0 7 0 0 16777217 0 0 0
+5 0 0 0 0 0 0 0
+4 0 100 0 0 0 0
+E
+hardened saddle clouded glass leather~
+&+wHard brown leather supports one stirrup. Around the other it thins into
+&+wcloudy glass, with the boundary left rough beneath a saddler's scraping
+&+wknife.&n
+~
+A
+13 16
+A
+1 4
+#91547
+king's tag carved coiled serpent _noquest_~
+&+ca king's tag carved with a coiled serpent&n~
+&+cA king's tag carved with a coiled serpent lies here, its workmanship unfinished.&n~
+~
+9 3 2 1 7 0 0 2097153 0 0 0
+6 0 0 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+king's tag carved coiled serpent~
+&+wThe king's old mark remains on one face of the tag. A pale serpent curls
+&+wacross the other, its final coil still a square of uncarved stone.&n
+~
+A
+13 1
+A
+4 2
+#91548
+royal field surgeon's badge _noquest_~
+&+ca royal field-surgeon's badge&n~
+&+cA royal field-surgeon's badge lies here, its workmanship unfinished.&n~
+~
+9 10 3 0 7 0 0 2097153 0 0 0
+5 0 0 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+royal field surgeon's badge~
+&+wA royal crest occupies half the badge. Beside it a surgeon's open hand has
+&+wbeen engraved, but the fine lines of its healing emblem stop at the wrist.&n
+~
+A
+13 6
+A
+4 2
+#91549
+guildmaster's seal hammer scale _noquest_~
+&+ca guildmaster's seal of hammer and scale&n~
+&+cA guildmaster's seal of hammer and scale lies here, its workmanship unfinished.&n~
+~
+11 23 3 0 7 0 0 2097153 0 0 0
+0 0 0 0 0 0 0 0
+0 0 100 0 0 0 0
+E
+guildmaster's seal hammer scale~
+&+wA hammer and anvil stand in relief on one side of the seal. A balance
+&+wrises on the other, its unfinished arm waiting to weigh an Atlantan
+&+wmeasure of strength.&n
+~
+A
+13 10
+A
+4 3
+#91550
+diamond dust sigil glows faintly blue _noquest_~
+&+ca diamond-dust sigil that glows faintly blue&n~
+&+cA diamond-dust sigil that glows faintly blue lies here, its workmanship unfinished.&n~
+~
+9 8 1 0 7 0 0 2097153 0 0 0
+4 0 0 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+diamond dust sigil glows faintly blue~
+&+wDiamond dust traces half of a tattoo's tiny outline. Within it a blue
+&+wcrystal has begun to form, leaving the other half as loose grit in a
+&+wshallow groove.&n
+~
+A
+13 10
+A
+4 3
+#91551
+shanatar signet furred glowing moss _noquest_~
+&+ca Shanatar signet furred with glowing moss&n~
+&+cA Shanatar signet furred with glowing moss lies here, its workmanship unfinished.&n~
+~
+9 18 1 0 7 0 0 2097153 0 0 0
+1 0 0 0 0 0 0 0
+0 0 100 0 0 0 0
+E
+shanatar signet furred glowing moss~
+&+wThe Shanatar crest is clear on one face of the signet. Glowing moss has
+&+wbeen pressed into the other, beside an empty setting shaped for Torg's
+&+wpendant.&n
+~
+A
+13 10
+A
+4 6
+#91552
+six sided pendant trapped glow _noquest_~
+&+ca six-sided pendant of trapped glow&n~
+&+cA six-sided pendant of trapped glow lies here, its workmanship unfinished.&n~
+~
+9 16 3 0 7 0 0 2097153 0 0 0
+1 0 0 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+six sided pendant trapped glow~
+&+wThe rounded edge of Torg's pendant survives on one side. Five new facets
+&+wtrap its pale glow; the sixth remains a rough plane awaiting the final
+&+wcut.&n
+~
+A
+13 11
+A
+4 6
+#91553
+copper nose ring washed silver _noquest_~
+&+wa copper nose ring washed in silver&n~
+&+wA copper nose ring washed in silver lies here, its workmanship unfinished.&n~
+~
+9 21 3 1 7 0 0 67108865 0 0 0
+4 0 0 0 0 0 0 0
+2 0 100 0 0 0 0
+E
+copper nose ring washed silver~
+&+wHeavy copper shows through one half of the ring. A thin silver wash covers
+&+wthe other, stopping in a frozen drip just short of a smooth silver hoop.&n
+~
+A
+13 1
+A
+1 3
+#91554
+durethium nose stud shaped nautilus shell _noquest_~
+&+wa durethium nose stud shaped like a nautilus shell&n~
+&+wA durethium nose stud shaped like a nautilus shell lies here, its workmanship unfinished.&n~
+~
+11 16 4 0 7 0 0 67108865 0 0 0
+0 0 0 0 0 0 0 0
+0 0 100 0 0 0 0
+E
+durethium nose stud shaped nautilus shell~
+&+wOne side is the plain band of a durethium nose ring. The other has been
+&+wbeaten into a nautilus coil, its final curl still attached to a jeweller's
+&+wshaping wire.&n
+~
+A
+13 8
+A
+1 2
+#91555
+woodsman's quiver patched single dragon scale _noquest_~
+&+wa woodsman's quiver patched with a single dragon scale&n~
+&+wA woodsman's quiver patched with a single dragon scale lies here, its workmanship unfinished.&n~
+~
+30 14 3 1 7 0 0 1048577 0 0 0
+72 1 1 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+woodsman's quiver patched single dragon scale~
+&+wA woodsman's worn stitching holds most of the quiver together. One faded
+&+wdragon scale has been sewn over a tear, with thread left ready for a
+&+wsecond scale.&n
+~
+A
+13 5
+A
+2 2
+#91556
+fringed quiver strung bard's chime _noquest_~
+&+wa fringed quiver strung with a bard's chime&n~
+&+wA fringed quiver strung with a bard's chime lies here, its workmanship unfinished.&n~
+~
+30 14 3 5 7 0 0 1048577 0 0 0
+50 1 1 45 0 0 0 0
+5 0 100 0 0 0 0
+E
+fringed quiver strung bard's chime~
+&+wA fringed leather quiver has been fitted with a bard's small chime. Its
+&+wpolished tongue hangs beside an empty loop, awaiting the charm that would
+&+wmake it glow.&n
+~
+A
+13 6
+A
+17 -3
+#91557
+marble capped quiver lifting strap _noquest_~
+&+wa marble-capped quiver on a lifting strap&n~
+&+wA marble-capped quiver on a lifting strap lies here, its workmanship unfinished.&n~
+~
+30 38 2 0 7 0 0 1048577 0 0 0
+181 0 1 0 0 0 0 0
+0 0 100 0 0 0 0
+E
+marble capped quiver lifting strap~
+&+wOne end of the quiver is still solid marble. A broad lifting strap cradles
+&+wthe other, its new leather left untrimmed where it meets the heavy stone
+&+wcap.&n
+~
+A
+13 15
+A
+2 2
+#91558
+bloodstained quiver branded vile sigil _noquest_~
+&+wa bloodstained quiver branded with a vile sigil&n~
+&+wA bloodstained quiver branded with a vile sigil lies here, its workmanship unfinished.&n~
+~
+30 13 3 0 7 0 0 1048577 0 0 0
+50 0 2 0 0 0 0 0
+-10 0 100 0 0 0 0
+E
+bloodstained quiver branded vile sigil~
+&+wOld blood darkens one side of the quiver. A vile sigil has been branded
+&+winto the other, but its last stroke is only a charcoal line across the
+&+wstained hide.&n
+~
+A
+13 12
+A
+2 6
+#91559
+gale scoured shield faced shed dragon scale _noquest_~
+&+wa gale-scoured shield faced with a shed dragon scale&n~
+&+wA gale-scoured shield faced with a shed dragon scale lies here, its workmanship unfinished.&n~
+~
+37 15 3 0 7 0 0 513 0 0 0
+1 3 4 95 0 0 0 0
+0 0 100 0 0 0 0
+E
+gale scoured shield faced shed dragon scale~
+&+wThe gale's blackened crest remains on half the shield. A shed dragon scale
+&+wcovers the rest, its shadowy edge held by clamps where the last rivets are
+&+wmissing.&n
+~
+A
+13 9
+A
+17 -3
+#91560
+lashed shield wrapped lizard hide _noquest_~
+&+wa lashed shield wrapped in lizard hide&n~
+&+wA lashed shield wrapped in lizard hide lies here, its workmanship unfinished.&n~
+~
+37 46 2 0 7 0 0 513 0 0 0
+1 3 4 7 0 0 0 0
+2 0 100 0 0 0 0
+E
+lashed shield wrapped lizard hide~
+&+wLashed boards show beneath one half of the rim. Fresh lizard hide
+&+wstretches over the other, with a loose flap waiting to be pulled taut and
+&+wtied down.&n
+~
+A
+13 12
+A
+17 -4
+#91561
+storm crested shield studded raxian spikes _noquest_~
+&+wa storm-crested shield studded with raxian spikes&n~
+&+wA storm-crested shield studded with raxian spikes lies here, its workmanship unfinished.&n~
+~
+37 37 3 0 7 0 0 513 0 0 0
+1 3 5 192 0 0 0 0
+0 0 100 0 0 0 0
+E
+storm crested shield studded raxian spikes~
+&+wA storm crest is cut into the granite face. Raxian spikes march around
+&+whalf its rim, ending at a mason's chalk line and an empty socket.&n
+~
+A
+13 20
+A
+17 -4
+#91562
+bone tail ring bound rawhide _noquest_~
+&+wa bone tail ring bound in rawhide&n~
+&+wA bone tail ring bound in rawhide lies here, its workmanship unfinished.&n~
+~
+9 10 1 0 7 0 0 33554433 0 0 0
+3 0 0 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+bone tail ring bound rawhide~
+&+wHalf the ring is pale human bone. Braided rawhide binds the other half,
+&+wwith a loose end waiting to hide the last bare joint.&n
+~
+A
+13 2
+A
+2 4
+#91563
+tail guard tied blue ribbon _noquest_~
+&+wa tail guard tied with a blue ribbon&n~
+&+wA tail guard tied with a blue ribbon lies here, its workmanship unfinished.&n~
+~
+9 15 3 0 7 0 0 33554433 0 0 0
+5 0 0 0 0 0 0 0
+3 0 100 0 0 0 0
+E
+tail guard tied blue ribbon~
+&+wA rigid tail guard supports one side of this piece. Blue ribbon runs
+&+wthrough the other, with silver thread stopping at a needle still caught in
+&+wthe weave.&n
+~
+A
+13 8
+A
+2 4
+#91564
+mithral tail ring set sandstone _noquest_~
+&+wa mithral tail ring set in sandstone&n~
+&+wA mithral tail ring set in sandstone lies here, its workmanship unfinished.&n~
+~
+9 18 1 0 7 0 0 33554433 0 0 0
+5 0 0 0 0 0 0 0
+0 0 100 0 0 0 0
+E
+mithral tail ring set sandstone~
+&+wFine mithral strands form half of the ring. Sandstone encloses the rest,
+&+wits rough outer face only partly rounded by an abandoned file.&n
+~
+A
+13 14
+A
+2 3
+#91565
+war ribbon knotted through snakeskin band _noquest_~
+&+wa war ribbon knotted through a snakeskin band&n~
+&+wA war ribbon knotted through a snakeskin band lies here, its workmanship unfinished.&n~
+~
+9 43 2 0 7 0 0 33554433 0 0 0
+5 0 0 0 0 0 0 0
+2 0 100 0 0 0 0
+E
+war ribbon knotted through snakeskin band~
+&+wA bloodstained war ribbon knots around one side of the band. Snakeskin
+&+wcovers the other, its last overlapping scale pinned down beside an
+&+wunfinished knot.&n
+~
+A
+13 20
+A
+2 2
+#91566
+karthian tail spike capped dragon scale _noquest_~
+&+wa Karthian tail spike capped in dragon scale&n~
+&+wA Karthian tail spike capped in dragon scale lies here, its workmanship unfinished.&n~
+~
+9 35 3 0 7 0 0 33554433 0 0 0
+3 0 0 0 0 0 0 0
+1 0 100 0 0 0 0
+E
+karthian tail spike capped dragon scale~
+&+wThe Karthian spike remains bare along one edge. A severed dragon's tail
+&+wscale caps the other, with a scored line showing where the smith meant to
+&+wfinish the join.&n
+~
+A
+13 25
+A
+2 4

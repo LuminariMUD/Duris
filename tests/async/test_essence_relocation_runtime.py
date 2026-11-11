@@ -75,6 +75,7 @@ void event_conjure_water(P_char, P_char, P_obj, void *) {}
 void event_water_crossing(P_char, P_char, P_obj, void *) {}
 void disarm_char_nevents(P_char, event_func_type) {}
 void item_actions_character_leaving(P_char) {}
+void check_bard_song_rooms(P_char, bool) {} // No Bard songs in these Essence cases.
 void gmcp_mark_room_dirty(int) {}
 void DelCharFromZone(P_char) {}
 void StopCasting(P_char) {}

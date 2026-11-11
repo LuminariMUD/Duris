@@ -42,7 +42,8 @@ def check_boot(source_name, takes_arguments, runtime):
             # Start the synthetic boot deadline only after the child has installed
             # its signal disposition, so the kill fallback is exercised reliably.
             deadline = time.monotonic() + 5
-            while b"CHILD_READY" not in output_path.read_bytes():
+            marker = b"Entering game loop." if ready else b"CHILD_READY"
+            while marker not in output_path.read_bytes():
                 assert child.poll() is None and time.monotonic() < deadline
                 time.sleep(.01)
             actual_wait = child.wait

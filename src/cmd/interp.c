@@ -2282,7 +2282,11 @@ void command_interpreter(P_char ch, char *argument)
 				if (((cmd != CMD_LOOK) && (cmd != CMD_LISTEN) &&
 				     (cmd != CMD_SNEAK) && (cmd != CMD_GLANCE) &&
 				     (cmd != CMD_READ) && (cmd != CMD_STEAL) && (cmd != CMD_SCAN) &&
-				     IS_SET(exec_char->specials.affected_by, AFF_HIDE)))
+				     IS_SET(exec_char->specials.affected_by, AFF_HIDE)) &&
+				    !((cmd == CMD_PLAY || cmd == CMD_WAIL) &&
+				      *skip_spaces(argument + begin + look_at) &&
+				      player_bard(exec_char, SPEC_SCOUNDREL, 30) &&
+				      IS_AFFECTED3(exec_char, AFF3_SINGING)))
 				{
 					// Ambush.. allows one to stay hidden through tackle/backstab/headbutt?
 					if (affected_by_spell(exec_char, SKILL_AMBUSH))
@@ -2505,6 +2509,11 @@ void command_interpreter(P_char ch, char *argument)
 
 				((*cmd_info[cmd].command_pointer)(exec_char,
 								  argument + begin + look_at, cmd));
+
+				// A failed song switch may stop singing; only a continuing song keeps Hide.
+				if ((cmd == CMD_PLAY || cmd == CMD_WAIL) && IS_ALIVE(exec_char) &&
+				    !IS_AFFECTED3(exec_char, AFF3_SINGING))
+					REMOVE_BIT(exec_char->specials.affected_by, AFF_HIDE);
 
 				// If mobs should and can aggro the executor of the above command.
 				if ((cmd_info[cmd].check_aggro) && IS_ALIVE(exec_char) &&
@@ -3172,7 +3181,7 @@ void assign_command_pointers(void)
 	CMD_N(CMD_APPLY, STAT_RESTING + POS_PRONE, do_apply_poison, 0, TRUE);
 	CMD_N(CMD_ARTIFACTS, STAT_SLEEPING + POS_PRONE, do_artifact_sql, 0, FALSE);
 	CMD_N(CMD_RAID, STAT_SLEEPING + POS_PRONE, do_raid, 0, FALSE); // Raidable?
-	CMD_N(CMD_DISMISS, STAT_NORMAL + POS_STANDING, do_dismiss, 0, TRUE);
+	CMD_N(CMD_DISMISS, STAT_NORMAL + POS_SITTING, do_dismiss, 0, TRUE);
 	CMD_N(CMD_DISAPPEAR, STAT_RESTING + POS_SITTING, do_disappear, 0, TRUE);
 	CMD_N(CMD_ASSIST, STAT_NORMAL + POS_STANDING, do_assist, 0, TRUE);
 	CMD_N(CMD_DICE, STAT_NORMAL + POS_STANDING, do_dice, 0, TRUE);
@@ -3339,7 +3348,8 @@ void assign_command_pointers(void)
 	CMD_N(CMD_INFUSE, STAT_NORMAL + POS_PRONE, do_infuse, 0, TRUE);
 	CMD_N(CMD_GATHER, STAT_NORMAL + POS_PRONE, do_gather, 0, TRUE);
 	CMD_N(CMD_AREA, STAT_RESTING + POS_PRONE, do_area, 0, FALSE);
-	CMD_N(CMD_DEATHS_DOOR, STAT_NORMAL + POS_PRONE, do_deaths_door, 25, FALSE);
+	CMD_N(CMD_DEATHS_DOOR, STAT_NORMAL + POS_PRONE, do_deaths_door, MIN_LEVEL_FOR_ATTRIBUTES,
+	      FALSE);
 	CMD_N(CMD_SMOKE, STAT_RESTING + POS_PRONE, do_smoke, 1, TRUE);
 	CMD_N(CMD_MIXPOISON, STAT_NORMAL + POS_STANDING, do_mixpoison, 0, TRUE);
 	/*

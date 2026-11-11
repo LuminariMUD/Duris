@@ -25,9 +25,13 @@ PRELUDE = r'''
 #include "world/vnum.obj.h"
 #include "item/objmisc.h"
 #include "classes/salchemist.h"
+#include "world/object_template.h"
+#include "abilities/abilities.h"
+#include "net/gmcp.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <map>
 #include <set>
 #include <string>
@@ -46,8 +50,11 @@ static std::string output;
 const char *fill_words[] = {"in", "from", "with", "the", "on", "at", "to", "\n"};
 
 int GET_CHAR_SKILL_P(P_char, int skill) {
-    return skill == SKILL_MIXPOISON ? mixing : skill == SKILL_APPLY_POISON ? applying : 0;
+    return skill == SKILL_MIXPOISON || skill == SKILL_MIX ? mixing : skill == SKILL_APPLY_POISON ? applying : 0;
 }
+int number(int low, int) { return low; }
+static int fixture_dice(int count, int) { return count; }
+const Rolls live_rolls = {fixture_dice, number};
 bool notch_skill(P_char, int, float) { return false; }
 void CharWait(P_char, int duration) { waits += duration; }
 void send_to_char(const char *text, P_char) { output += text; }
@@ -58,9 +65,7 @@ char *str_dup(const char *text) {
 static void release_string(const char *text) {
     if (owned_strings.erase(text)) std::free(const_cast<char *>(text));
 }
-void set_short_description(P_obj obj, const char *text) {
-    release_string(obj->short_description); obj->short_description = str_dup(text);
-}
+void __free(void *text, const char *, int) { release_string(static_cast<char *>(text)); }
 void obj_from_char(P_obj obj) {
     if (!carrying.count(obj)) return;
     auto *ch = carrying[obj];
@@ -76,7 +81,9 @@ bool obj_to_char(P_obj obj, P_char ch) {
 }
 void extract_obj(P_obj obj, int) {
     assert(live_objects.erase(obj)); obj_from_char(obj);
-    release_string(obj->name); release_string(obj->short_description); delete obj; ++extracted;
+    if (obj->str_mask & STRUNG_KEYS) release_string(obj->name);
+    if (obj->str_mask & STRUNG_DESC2) release_string(obj->short_description);
+    delete obj; ++extracted;
 }
 void weight_change_object(P_obj obj, int difference) { obj->weight += difference; }
 void name_from_drinkcon(P_obj) {}
@@ -92,6 +99,16 @@ int get_id_for(P_obj obj) { return OBJ_VNUM(obj); }
 
 
 SUPPORT = r'''
+const object_template *find_object_template(int vnum) {
+    if (!vnum || vnum == fail_vnum) return nullptr;
+    static std::map<int, object_template> templates;
+    auto &obj = templates[vnum];
+    obj.short_description = vial_prototypes.count(vnum) ?
+        vial_prototypes.at(vnum).description : "ingredient" + std::to_string(vnum);
+    return &obj;
+}
+std::string fact(const std::string &label, const std::string &text) { return label + ": " + text + "\n"; }
+std::string seconds(int pulses) { return std::to_string(pulses); }
 P_obj read_object(int vnum, int) {
     if (!vnum || vnum == fail_vnum) return nullptr;
     auto *obj = new obj_data{}; live_objects.insert(obj);
@@ -102,6 +119,7 @@ P_obj read_object(int vnum, int) {
     if (vnum == VOBJ_POISON_VIALS) {
         obj->type = ITEM_DRINKCON; obj->name = const_cast<char *>("vial");
     }
+    if (vnum == VOBJ_POTION_BOTTLES) obj->name = const_cast<char *>("bottle");
     for (auto &entry : poison_data) if (vnum == entry.vnum) {
         const auto &prototype = vial_prototypes.at(vnum);
         obj->type = ITEM_DRINKCON; obj->name = const_cast<char *>(prototype.name);
@@ -131,8 +149,10 @@ def production():
         values = ",".join(block[5].split())
         weight = block[6].split()[0]
         code += "{" + str(vnum) + ",{" + json.dumps(block[0][:-1]) + "," + json.dumps(block[1][:-1]) + ",{" + values + "}," + weight + "}},\n"
-    code += "};\n" + SUPPORT
+    code += "};\nstruct potion potion_data[] = {{SPELL_ARMOR, 1, {GARLIC}, FIRST_POTION_VIRTUAL}, {}};\n" + SUPPORT
     code += "\n".join(extract_function(file, signature) for file, signature in [
+        ("salchemist.c", "void set_keywords("),
+        ("salchemist.c", "void set_short_description("),
         ("handler.c", "bool isname(const char *str, const char *namelist)"),
         ("utility.c", "int strn_cmp("),
         ("interp.c", "int search_block("),
@@ -141,9 +161,17 @@ def production():
         ("interp.c", "void argument_interpreter("),
         ("salchemist.c", "bool collect_required_objects("),
         ("salchemist.c", "P_obj get_vial("),
-        ("salchemist.c", "char *print_poison_ingredients("),
+        ("salchemist.c", "P_obj get_bottle("),
+        ("salchemist.c", "std::string print_poison_ingredients("),
         ("salchemist.c", "static int mixpoison_lag("),
+        ("salchemist.c", "std::string mixpoison_facts("),
         ("salchemist.c", "void do_mixpoison("),
+        ("salchemist.c", "static int mix_start_lag("),
+        ("salchemist.c", "static int mix_lag("),
+        ("salchemist.c", "static int mix_potion_threshold("),
+        ("salchemist.c", "static int mix_bottle_roll("),
+        ("salchemist.c", "static int mix_ingredients_top("),
+        ("salchemist.c", "void do_mix("),
         ("actobj.c", "void do_apply_poison("),
     ])
     return code
@@ -187,13 +215,25 @@ static void boundaries() {
         for (int skill : {entry.skill-1, entry.skill, entry.skill+1}) {
             if (skill > 100) continue;
             reset(level, skill); inputs(*recipe); int before = count(&crafter);
-            mix("list");
             bool eligible = level >= entry.level && skill >= entry.skill;
+            const int before_waits = waits, before_extracted = extracted;
+            output = mixpoison_facts(&crafter);
+            assert(waits == before_waits && extracted == before_extracted && count(&crafter) == before);
+            assert((output.find(vial_prototypes.at(recipe->vnum).description) != std::string::npos) == eligible);
+            if (eligible) {
+                assert(output.find(recipe->effect) != std::string::npos);
+                for (int ingredient : recipe->ingredients) if (ingredient)
+                    assert(output.find("ingredient" + std::to_string(ingredient)) != std::string::npos);
+                assert(output.find("Apply Poison") != std::string::npos);
+            }
+            output.clear(); mix("list");
             assert((output.find(vial_prototypes.at(recipe->vnum).description) != std::string::npos) == eligible);
             assert(count(&crafter) == before);
             output.clear(); mix();
             if (eligible) {
                 assert(count(&crafter) == 1 && OBJ_VNUM(crafter.carrying) == recipe->vnum);
+                assert(crafter.carrying->str_mask & STRUNG_KEYS);
+                assert(isname("Crafter", crafter.carrying->name));
                 assert(extracted >= before && crafter.carrying->value[1] == 3);
                 assert(crafter.carrying->value[3] == recipe->poison_type);
                 assert(output.find("finish mixing") != std::string::npos);
@@ -245,8 +285,20 @@ static void transfer_and_apply() {
     do_apply_poison(&crafter, last, 0);
     assert(!live_objects.count(vial) && weapon->value[4] == POISON_WEAKNESS);
 }
+static void potion_keywords() {
+    reset();
+    crafter.curr_stats.Wis = crafter.curr_stats.Dex = 100;
+    supply(VOBJ_POTION_BOTTLES); supply(GARLIC);
+    char argument[] = "";
+    do_mix(&crafter, argument, 0);
+    assert(output.find("finish mixing the potion") != std::string::npos);
+    assert(count(&crafter) == 1 && OBJ_VNUM(crafter.carrying) == FIRST_POTION_VIRTUAL);
+    assert(crafter.carrying->str_mask & STRUNG_KEYS);
+    assert(isname("Crafter", crafter.carrying->name));
+    reset(); // Production ownership bits must release every private string.
+}
 int main() {
-    boundaries(); conservation(); transfer_and_apply(); reset();
+    boundaries(); conservation(); transfer_and_apply(); potion_keywords(); reset();
     puts("Poison crafting progression, conservation, transfer and apply regressions passed");
 }
 '''

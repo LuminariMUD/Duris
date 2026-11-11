@@ -125,7 +125,7 @@ orb onyx~
 &+Lan onyx orb&N~
 A small orb rests here on the floor.~
 ~
-11 16 1 2 7 0 8421376 16385 64 0 0
+11 16 1 2 7 0 32768 16385 64 0 0
 0 0 0 10 0 0 0 0
 1 1 100
 E

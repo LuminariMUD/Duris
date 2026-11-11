@@ -108,8 +108,9 @@ functions += extract_function('specs.set.c', 'void apply_zone_spell(')
 magic = source('magic.c').read_text()
 start = magic.index('// Select active types before removal:')
 end = magic.index('\n\t\tsuccess = CheckMobRemoveableSpellBits', start)
-functions += '\nstatic void dispel_active(P_char victim) { P_char ch=victim,orig=nullptr; affected_type *af; int nosave=1,mod=0,success=0;\n'
-functions += magic[start:end] + '\n(void)orig; (void)success; }\n'
+functions += extract_function('magic.c', 'P_char dispel_character_affect(')
+functions += '\nstatic void dispel_active(P_char victim) { P_char ch=victim; affected_type *af; int nosave=1,mod=0,success=0;\n'
+functions += magic[start:end] + '\n(void)success; }\n'
 capture = source('player_snapshot_capture.c').read_text()
 functions += capture[capture.index('struct capture_budget'):capture.index('template <typename T> bool add_status_integer')]
 functions += extract_function('player_snapshot_capture.c', 'player_snapshot_capture_result capture_affects(')
