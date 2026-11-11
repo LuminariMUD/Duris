@@ -46,6 +46,10 @@ HARNESS_STUB void write_output(const char *text, txt_q *queue)
 // the real implementation, which replaces these empty ownership boundaries.
 HARNESS_STUB named_set_ordinary_cast::named_set_ordinary_cast(P_char, P_char, int) {}
 HARNESS_STUB named_set_ordinary_cast::~named_set_ordinary_cast() {}
+HARNESS_STUB bool named_set_sneak_active(P_char)
+{
+	return false;
+}
 HARNESS_STUB void update_named_set_suspension(P_char, const affected_type *) {}
 HARNESS_STUB int named_set_cooldown_remaining(P_char, int)
 {

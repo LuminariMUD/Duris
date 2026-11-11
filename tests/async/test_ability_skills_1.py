@@ -214,7 +214,7 @@ OTHER_CALLS = {
     ("melee_damage", "fight.c", "int melee_damage("): ["flank_damage_modifier()", "circle_damage_modifier()", "dreadnaught_attack_factor(paf)",
                                                        "dreadnaught_melee_defense(live_rolls, paf)"],
     ("do_mount", "mount.c", "void do_mount("): ["mounted_combat_mount_threshold(ch) < number(0, 100)"],
-    ("do_awareness", "new_skills.c", "void do_awareness("): ["duration = awareness_max_duration(ch, skl_lvl)", "duration = awareness_rolled_duration(live_rolls, duration)"],
+    ("apply_awareness", "new_skills.c", "void apply_awareness("): ["duration = awareness_max_duration(ch, skl_lvl)", "duration = awareness_rolled_duration(live_rolls, duration)"],
     ("berserk", "actoth.c", "void berserk("): ["berserk_str_max(live_rolls, ch, berserk_quality)", "berserk_con_max(live_rolls, ch, berserk_quality)",
                                                "berserk_int(ch)", "berserk_wis(ch, berserk_quality)", "berserk_combat_pulse(ch, berserk_quality)",
                                                "berserk_pow_max(live_rolls, ch, berserk_quality)", "berserk_hit_points(ch)"],
