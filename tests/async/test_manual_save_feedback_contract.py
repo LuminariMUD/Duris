@@ -180,8 +180,9 @@ int main() {
 
     // A private chest still being written is an expected wait: logged, not alerted,
     // and not reported to the player. The retry's queued revision is then watched
-    // until it is written.
+    // until it is written. Revisions restart with the registry, so do the watches.
     player_revision_reset_for_tests();
+    memset(deferred_save_recoveries, 0, sizeof(deferred_save_recoveries));
     assert(player_revision_hydrate(1, 0));
     reports.clear(); messages.clear();
     fail_save = true;
@@ -205,6 +206,9 @@ int main() {
     persistence_pulse_character_saves();
     assert(!reported("deferred_save_recovered_written", persistence_severity::ok));
     assert(player_revision_record_written(1, revision, components));
+    deferred_save_recovery_written(1, revision - 1); // An older write does not count.
+    assert(!reported("deferred_save_recovered_written", persistence_severity::ok));
+    deferred_save_recovery_written(1, revision); // The writer's completion path.
     persistence_pulse_character_saves();
     assert(reported("deferred_save_recovered_written", persistence_severity::ok));
     assert(messages == "Saving Synthetic.\r\n");
@@ -238,6 +242,53 @@ int main() {
     now_usec += 60000000;
     persistence_pulse_character_saves();
     assert(reported("deferred_save_recovered_unwritten", persistence_severity::alert));
+
+    // A player who logs out has its revision state retired in the same pulse that
+    // records the write; the completion still confirms the recovery.
+    reports.clear();
+    fail_save = true;
+    persistence_schedule_character_save(&player, 1, 2, "autosave");
+    now_usec += 60000000;
+    persistence_pulse_character_saves();
+    fail_save = false;
+    now_usec += 60000000;
+    persistence_pulse_character_saves();
+    assert(reported("deferred_save_recovered_queued", persistence_severity::info));
+    struct player_revision_snapshot queued = {};
+    assert(player_revision_snapshot_copy(1, &queued));
+    player_revision_forget(1);
+    deferred_save_recovery_written(1, queued.current_revision);
+    now_usec += 60000000;
+    persistence_pulse_character_saves();
+    assert(reported("deferred_save_recovered_written", persistence_severity::ok));
+    assert(!reported("deferred_save_recovered_unwritten", persistence_severity::alert));
+    assert(player_revision_hydrate(1, 0));
+
+    // A second recovery for the same player keeps the first deadline.
+    reports.clear();
+    for (int round = 0; round < 2; ++round) {
+        fail_save = true;
+        persistence_schedule_character_save(&player, 1, 2, "autosave");
+        now_usec += 40000000;
+        persistence_pulse_character_saves();
+        fail_save = false;
+        now_usec += 1000000;
+        persistence_pulse_character_saves();
+    }
+    now_usec += 20000000;
+    persistence_pulse_character_saves();
+    assert(reported("deferred_save_recovered_unwritten", persistence_severity::alert));
+
+    // Watches beyond the table's capacity alert rather than vanish.
+    reports.clear();
+    for (int pid = 2; pid <= PERSISTENCE_DEFERRED_RECOVERY_SLOTS + 2; ++pid) {
+        deferred_save_slot pending{};
+        pending.pid = pid;
+        assert(player_revision_hydrate(pid, 0));
+        assert(player_revision_mark(pid, PLAYER_CHECKPOINT_COMPONENT_ALL, nullptr));
+        begin_deferred_save_recovery_watch(&pending);
+    }
+    assert(reported("deferred_save_recovery_untracked", persistence_severity::alert));
 }
 '''
 # The pre-fix main loop has no save-slot pulse; this fallback lets the same

@@ -131,8 +131,11 @@ void finish_completion(const player_save_completion &completion)
 			// A stale capture did not write its components and cannot repair a
 			// previous failed checkpoint merely because its revision was superseded.
 			if (completion.outcome != player_save_apply_outcome::stale_revision)
+			{
 				player_revision_record_written(completion.pid, completion.revision,
 							       completion.components);
+				deferred_save_recovery_written(completion.pid, completion.revision);
+			}
 			std::lock_guard<std::mutex> lock(pipeline_mutex);
 			auto pending = pending_world_quests.find(completion.pid);
 			if (pending != pending_world_quests.end() &&

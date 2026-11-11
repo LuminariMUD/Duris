@@ -2174,36 +2174,52 @@ static void begin_deferred_save_recovery_watch(const struct deferred_save_slot *
 	if (!revision.current_revision)
 		return;
 	for (struct deferred_save_recovery_slot &slot : deferred_save_recoveries)
-		if (slot.pid == pending->pid || (!watch && !slot.pid))
+	{
+		// An outstanding watch keeps its revision and deadline; a later write covers both.
+		if (slot.pid == pending->pid)
+			return;
+		if (!watch && !slot.pid)
 			watch = &slot;
+	}
 	if (!watch)
+	{
+		persistence_alert(AVATAR, "player_save", "redacted", "none", "none",
+				  "deferred_save_recovery_untracked", "pid=%d revision=%llu",
+				  pending->pid, (unsigned long long)revision.current_revision);
 		return;
+	}
 	watch->pid = pending->pid;
 	watch->revision = revision.current_revision;
 	watch->queued_usec = persistence_observability_now_usec();
 }
 
-/** Report a watched recovery once its revision is written, or alert if it never is. */
+/** Called by the writer's completion path, before an ended player's revision state retires. */
+void deferred_save_recovery_written(int pid, player_revision_t revision)
+{
+	for (struct deferred_save_recovery_slot &watch : deferred_save_recoveries)
+		if (watch.pid == pid && revision >= watch.revision)
+		{
+			persistence_report(
+				persistence_severity::ok, AVATAR, "player_save", "redacted", "none",
+				"none", "deferred_save_recovered_written",
+				"pid=%d revision=%llu write_ms=%llu", pid,
+				(unsigned long long)revision,
+				(unsigned long long)((persistence_observability_now_usec() -
+						      watch.queued_usec) /
+						     1000ULL));
+			memset(&watch, 0, sizeof(watch));
+		}
+}
+
+/** Alert on a watched recovery that has not been written in time. */
 static void check_deferred_save_recovery(struct deferred_save_recovery_slot *watch)
 {
-	struct player_revision_snapshot revision = {};
-	const uint64_t waited = persistence_observability_now_usec() - watch->queued_usec;
-
-	if (player_revision_snapshot_copy(watch->pid, &revision) &&
-	    revision.written_revision >= watch->revision)
-		persistence_report(persistence_severity::ok, AVATAR, "player_save", "redacted",
-				   "none", "none", "deferred_save_recovered_written",
-				   "pid=%d revision=%llu write_ms=%llu", watch->pid,
-				   (unsigned long long)watch->revision,
-				   (unsigned long long)(waited / 1000ULL));
-	else if (waited >= PERSISTENCE_DEFERRED_RECOVERY_TIMEOUT_USEC)
-		persistence_alert(AVATAR, "player_save", "redacted", "none", "none",
-				  "deferred_save_recovered_unwritten",
-				  "pid=%d revision=%llu written=%llu", watch->pid,
-				  (unsigned long long)watch->revision,
-				  (unsigned long long)revision.written_revision);
-	else
+	if (persistence_observability_now_usec() - watch->queued_usec <
+	    PERSISTENCE_DEFERRED_RECOVERY_TIMEOUT_USEC)
 		return;
+	persistence_alert(AVATAR, "player_save", "redacted", "none", "none",
+			  "deferred_save_recovered_unwritten", "pid=%d revision=%llu", watch->pid,
+			  (unsigned long long)watch->revision);
 	memset(watch, 0, sizeof(*watch));
 }
 
