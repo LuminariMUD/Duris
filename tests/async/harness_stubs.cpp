@@ -116,6 +116,7 @@ HARNESS_STUB bool account_creation_owner_pending(const char *)
 	return false;
 }
 HARNESS_STUB void account_creation_saved(const player_save_completion &) {}
+HARNESS_STUB void deferred_save_recovery_written(int, player_revision_t) {}
 HARNESS_STUB void account_creation_pulse() {}
 // Fixtures without the player-save pipeline have no pending quest transition.
 HARNESS_STUB bool player_save_pipeline_world_quest_pending(int)

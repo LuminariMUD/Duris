@@ -40,6 +40,8 @@ enum class player_save_pipeline_result : uint8_t
 	invalid,
 	capture_failed,
 	unavailable,
+	// A private chest destination is not yet written; retry once it lands.
+	destination_pending,
 };
 
 enum class player_save_terminal_result : uint8_t
@@ -88,6 +90,8 @@ player_save_pipeline_result player_save_pipeline_request(P_char ch,
 player_save_terminal_result player_save_pipeline_terminal(P_char ch, int save_intent, int room_vnum,
 							  uint64_t timeout_msec);
 void player_save_pipeline_pulse(void);
+// Defined with the deferred save scheduler; reports a retried checkpoint written.
+void deferred_save_recovery_written(int pid, player_revision_t revision);
 void player_save_pipeline_quiesce(void);
 void player_save_pipeline_resume(void);
 // Stop taking new saves and wait for the writer to write everything queued.

@@ -4639,10 +4639,11 @@ static void show_world_persistence(P_char ch)
 	send_to_char(line, ch);
 
 	snprintf(line, sizeof(line),
-		 "deferred state=%s pending=%llu scheduled=%llu failed_unscheduled=%llu "
-		 "attempts=%llu failures=%llu oldest_age_ms=%llu\n",
+		 "deferred state=%s pending=%llu scheduled=%llu waiting_destination=%llu "
+		 "failed_unscheduled=%llu attempts=%llu failures=%llu oldest_age_ms=%llu\n",
 		 deferred.pending == 0 ? "empty" : "pending", (unsigned long long)deferred.pending,
 		 (unsigned long long)deferred.scheduled,
+		 (unsigned long long)deferred.waiting_destination,
 		 (unsigned long long)deferred.failed_unscheduled,
 		 (unsigned long long)deferred.attempts, (unsigned long long)deferred.failures,
 		 (unsigned long long)deferred.oldest_age_msec);

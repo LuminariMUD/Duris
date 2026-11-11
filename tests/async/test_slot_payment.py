@@ -58,7 +58,7 @@ bool obj_to_char(P_obj object,P_char ch) {
     object->next_content=ch->carrying; ch->carrying=object;
     object->loc_p=LOC_CARRIED; object->loc.carrying=ch; return true;
 }
-bool do_save_silent(P_char ch,int) {
+bool do_save_silent(P_char ch,int,player_save_pipeline_result *) {
     ++saves; saved_uids.clear();
     for(P_obj obj=ch->carrying;obj;obj=obj->next_content) saved_uids.push_back(obj->obj_uid);
     saved_money=GET_COPPER(ch)+10LL*GET_SILVER(ch)+100LL*GET_GOLD(ch)+1000LL*GET_PLATINUM(ch);

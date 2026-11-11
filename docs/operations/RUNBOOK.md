@@ -993,6 +993,10 @@ Interpret explicit states as follows:
 - Failed deferred work normally remains in `scheduled` while its bounded retry is
   pending. `failed_unscheduled` should remain zero; a non-zero value means scheduling
   invariants were violated and requires investigation.
+- Deferred `waiting_destination` counts checkpoints held back only because a private
+  chest the character is using has not been written yet. A brief non-zero value is
+  normal; a value that stays up while `oldest_age_ms` keeps growing is a stuck chest
+  write, so check the locker log.
 - `registry_overflow` greater than zero means additional source sites were not
   retained; recorded totals remain bounded and should not be treated as a full
   site inventory.
@@ -1057,9 +1061,25 @@ path data.
 
 ### Save alerts
 
-`deferred_save_retry_scheduled` means the live character remains the recovery source;
-the alert includes only delay and aggregate counters. Let the bounded retry run and
-watch `world persistence` for pending age and failure growth.
+`deferred_save_retry_<result>` records a checkpoint that could not be queued and will
+be retried. The live character remains the recovery source. The detail carries the
+player ID, `delay_ms` until the next attempt, this checkpoint's `attempts` and
+`failures`, and `age_ms` since it was first requested. Retries back off from about one
+second to one minute and continue until one succeeds.
+
+- `destination_pending`: a private chest the character is using has not been written
+  yet. The player save waits on purpose, so it never drops inventory rows before the
+  chest holds them. The first two waits are logged as `outcome=info` only. The third in
+  a row raises an alert, because the chest write is stuck; check the locker log.
+- `capture_failed`, `unavailable`, `invalid`, `unchanged`: the snapshot could not be
+  built or queued. These always alert. Let the retry run and watch `world persistence`
+  for pending age and failure growth.
+
+A retry that later succeeds logs `deferred_save_recovered_queued` with the player ID and
+revision it queued. Being queued is not the same as being written to the database:
+`deferred_save_recovered_written` follows once that revision has been written. If it
+has not been written within 60 seconds, `deferred_save_recovered_unwritten` raises an
+alert. Never take the absence of later errors as proof that a save landed.
 
 Camp, rent, death cleanup and ghost extraction never keep a character for its save. A
 `terminal` alert with `queue_failed` means a leaving character's save could not be
