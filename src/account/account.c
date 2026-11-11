@@ -1979,7 +1979,7 @@ void display_character_list(P_desc d, P_acct account)
 		"&+y|===========================================================================|&n\r\n",
 		d);
 	SEND_TO_Q(
-		"&+y|&n # &+y|&n Character    &+y|&n Level &+y|&n Race         &+y|&n Class        &+y|&n Last Room        &+y|&n\r\n",
+		"&+y|&n # &+y|&n Character    &+y|&n Lvl &+y|&n Race        &+y|&n Class        &+y|&n Last Room    &+y|&n Rest &+y|&n\r\n",
 		d);
 	SEND_TO_Q(
 		"&+y|---------------------------------------------------------------------------|&n\r\n",
@@ -2033,8 +2033,8 @@ void display_character_list(P_desc d, P_acct account)
 		// truncate strings if too long for table
 		if (strlen(name_capitalized) > 12)
 			name_capitalized[12] = '\0';
-		if (strlen(race_str) > 12)
-			race_str[12] = '\0';
+		if (strlen(race_str) > 11)
+			race_str[11] = '\0';
 		if (strlen(class_str) > 12)
 			class_str[12] = '\0';
 
@@ -2051,10 +2051,10 @@ void display_character_list(P_desc d, P_acct account)
 			room_name_src = "Unknown";
 		}
 
-		// truncate room name to fit column (16 visible chars) while preserving ansi codes
+		// truncate room name to fit column (12 visible chars) while preserving ansi codes
 		size_t src_idx = 0, dst_idx = 0;
 		int visible_count = 0;
-		int max_visible = 16;
+		int max_visible = 12;
 		while (room_name_src[src_idx] && dst_idx + 1 < sizeof room_display)
 		{
 			if (room_name_src[src_idx] == '&' && room_name_src[src_idx + 1])
@@ -2080,11 +2080,29 @@ void display_character_list(P_desc d, P_acct account)
 			}
 		}
 		room_display[dst_idx] = '\0';
+		// The room column is padded by visible width since names carry color codes.
+		for (; visible_count < max_visible && dst_idx + 1 < sizeof room_display;
+		     visible_count++)
+			room_display[dst_idx++] = ' ';
+		room_display[dst_idx] = '\0';
+
+		// Rested status on entering the game, as in check_rested_bonus().
+		const int offline_hours = (time(0) - ch->last_save) / 3600;
+		char rest_str[16];
+		if (ch->level == 0)
+			strlcpy(rest_str, "New", sizeof rest_str);
+		else if (offline_hours >= 20)
+			strlcpy(rest_str, "Well", sizeof rest_str);
+		else if (offline_hours >= 9)
+			strlcpy(rest_str, "Yes", sizeof rest_str);
+		else
+			snprintf(rest_str, sizeof rest_str, "%dh", 9 - offline_hours);
 
 		snprintf(
 			line_buf, 512,
-			"&+y|&n %d &+y|&n %-12s &+y|&n %-5s &+y|&n %-12s &+y|&n %-12s &+y|&n %s &+y|&n\r\n",
-			i + 1, name_capitalized, level_str, race_str, class_str, room_display);
+			"&+y|&n %d &+y|&n %-12s &+y|&n %-3s &+y|&n %-11s &+y|&n %-12s &+y|&n %s &+y|&n %-4s &+y|&n\r\n",
+			i + 1, name_capitalized, level_str, race_str, class_str, room_display,
+			rest_str);
 		SEND_TO_Q(line_buf, d);
 	}
 
