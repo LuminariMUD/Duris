@@ -523,7 +523,7 @@ Its `replacement.json` records all nine completed stages and `passed: true`;
 `replacement-transcript.txt`, per-case results, and the private SQL snapshot
 retain the detailed evidence. The separate native report runtime is
 `/home/aiwithapex/.cache/duris-named-effects-01a1c47f/named-report-mariadb-q1db_3hj`.
-The tested server SHA-256 is
+The server used for those nine stages has SHA-256
 `83b002a916f447c78bb23072f62fdfc5a3b25e03280922e2b637183120f5ae0f`.
 The previous-catalog compatibility binary SHA-256 is
 `d67ef04b89bfd77bb89b37ce78197d3b86971a9a93ded0ea4904cb9d49687387`.
@@ -552,6 +552,26 @@ schemas. The failed Windows-directory attempt remains under `bin/tests`.
 Production deployment has not been performed.
 Native qualification used normal restarts and MariaDB reloads. Live copyover or
 hotboot was not exercised; use the qualified normal restart for this release.
+
+Publication integration (2026-11-11): merged `master`
+`6917352f31e51a1505887288384eaed6f40a6aec` into this branch as
+`a997a2675c1bb778e8a98ce36ad7bf0753bc55b0`. The report conflict was resolved by
+keeping master's shared `named_set_bonuses` renderer for AREA and `namedreport`,
+including Ironwood's green cooldown marker in that renderer. The rebuilt
+integration passed all 13 focused regressions listed above and a repeat native
+report/help/cache/fallback journey. Its report evidence is in
+`/home/aiwithapex/.cache/duris-named-effects-01a1c47f/named-report-mariadb-vmv0y943`
+and `bin/named-publication-report-native.log`; its server SHA-256 is
+`82c8d5724da7b80a921dbf9487a984cd3accdbc3123ccd85f355ac090d711f13`.
+The nine-stage equipment/rollback evidence above predates this master integration;
+the complete nine-stage journey was not repeated afterward.
+
+Both implementation and integration commits passed the formatting and clang-tidy
+hooks. Clang-tidy used the installed GCC 13 headers through
+`--extra-arg=--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13`; the default GCC 16
+headers caused parser errors. No diagnostics were disabled. Build output is in
+`bin/named-publication-build-integrated.log`; the repeated focused regression logs
+use the `bin/named-integrated-test_` prefix.
 
 ## Appendix: complete worksheet choices
 
