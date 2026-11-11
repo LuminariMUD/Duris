@@ -193,6 +193,11 @@ def run(binary: pathlib.Path) -> None:
             walk_out(client)
             reenter_locker(client, 1, "guild.1")
             walk_out(client)
+            # Locker holders wait in room 65201. Once a terminal save has landed, its
+            # holder's items are freed, not dropped on that room's floor.
+            held = command(client, "at 65201 look")
+            journey.require("banana" not in held and "mace" not in held,
+                            "a saved locker's items were left in the holding room:\n" + held)
             reenter_locker(client, 1, "guild")
             leave(client)
             stop(process)

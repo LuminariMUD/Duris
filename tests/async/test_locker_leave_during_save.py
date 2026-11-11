@@ -69,7 +69,7 @@ player_save_apply_result locker_snapshot_repository_apply_from_pool(const locker
     written.push_back(locker.items.size());
     return {player_save_apply_outcome::applied, 0, 0};
 }
-void extract_char(P_char ch)
+void extract_char_after_terminal_save(P_char ch)
 {
     extracted = true;
     for (P_char *link = &character_list; *link; link = &(*link)->next)

@@ -283,7 +283,7 @@ extern "C" void locker_async_restore_snapshot_view(P_char, P_char)
 {
 	abort();
 }
-void extract_char(P_char)
+void extract_char_after_terminal_save(P_char)
 {
 	abort();
 }

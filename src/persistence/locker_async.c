@@ -397,11 +397,12 @@ static void apply_result(struct locker_async_result *r)
 	if (s->terminal)
 	{
 		/* A save that landed while a newer one waits (the user left during an
-		 * in-stay save) is not the one holding what the locker character carries. */
+		 * in-stay save) is not the one holding what the locker character carries.
+		 * The saved items are freed with the holder, not dropped in its room. */
 		if (r->ok && chLocker && !s->rebuild_objects)
 		{
 			chLocker->specials.timer = 0;
-			extract_char(chLocker);
+			extract_char_after_terminal_save(chLocker);
 		}
 	}
 	else if (chLocker && chUser)
