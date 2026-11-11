@@ -84,6 +84,29 @@ ok &= check(
     and "dst_idx + 1 < sizeof room_display" in character_list,
 )
 
+
+def visible(literal):
+    return len(re.sub(r"&[+-].|&n|\\r\\n", "", literal))
+
+
+header = re.search(r'"(&\+y\|&n # .*?)",', character_list).group(1)
+border = re.search(r'"(&\+y\|=+\|&n\\r\\n)"', character_list).group(1)
+ok &= check(
+    "character list shows each character's rested status",
+    "Rest &+y|" in header
+    and "offline_hours >= 20" in character_list
+    and "offline_hours >= 9" in character_list
+    and "9 - offline_hours" in character_list,
+)
+ok &= check(
+    "character list header still fits the 77-column border",
+    visible(header) == visible(border) == 77,
+)
+ok &= check(
+    "room column is padded to its visible width before the rested column",
+    "visible_count < max_visible" in character_list,
+)
+
 if not ok:
     raise SystemExit(1)
 
