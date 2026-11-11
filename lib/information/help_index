@@ -3071,6 +3071,7 @@ Type of spell:  Summoning
 "Conjure Air" summons an elemental from the air plane which will follow 
 the player as though charmed for a limited period of time. If the elemental 
 is aggressive when the charm wears off, it will attack you and others.
+It may be conjured even in the midst of combat.
 ===========================================================================
 
 #
@@ -24310,7 +24311,7 @@ Cumulative:     No
 Duration:       Bound service until released or the bond lapses
 Type of spell:  Summoning 
 
-"Conjure ice" draws a biting gust together into a solid Ice Elemental, a warrior-servant of medium stature gifted with darkseeing eyes. Its power is drawn from the caster's own, rising higher under the Frostmagus's craft along with vastly greater hardiness, and the caster's bearing decides whether the creature serves sulkily or resents its forced existence. An ethermancer can bind no more than one elemental at a time, and certain places forbid the conjuring altogether.
+"Conjure ice" draws a biting gust together into a solid Ice Elemental, a warrior-servant of medium stature gifted with darkseeing eyes. Its power is drawn from the caster's own, rising higher under the Frostmagus's craft along with vastly greater hardiness, and the caster's bearing decides whether the creature serves sulkily or resents its forced existence. An ethermancer can bind no more than one elemental at a time, and certain places forbid the conjuring altogether. It may be conjured even in the midst of combat.
 ===========================================================================
 See also: conjure air, conjure void, iceflow armor
 #
@@ -24322,7 +24323,7 @@ Cumulative:     No
 Duration:       Bound service until released or the bond lapses
 Type of spell:  Summoning 
 
-"Conjure void" coalesces negative energies into a Void Elemental, a grim servant formed from emptiness itself and given eyes for the darkness. Under the Starmagus's craft it attains the caster's full strength and far greater vigor, but a weak-willed summoner may find the creature displeased at its forcible calling. Like all elementals, only one may answer a caster at a time, and hallowed grounds bar the way.
+"Conjure void" coalesces negative energies into a Void Elemental, a grim servant formed from emptiness itself and given eyes for the darkness. Under the Starmagus's craft it attains the caster's full strength and far greater vigor, but a weak-willed summoner may find the creature displeased at its forcible calling. Like all elementals, only one may answer a caster at a time, and hallowed grounds bar the way. It may be conjured even in the midst of combat.
 ===========================================================================
 See also: conjure air, conjure ice, ethereal discharge
 #

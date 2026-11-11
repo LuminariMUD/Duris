@@ -821,6 +821,14 @@ def check_sources():
                      "conjured_elemental_late_death_roll(live_rolls)",
                      "conjured_elemental_death_delay("):
             assert call in body, f"{handler} does not call {call}"
+    # Ethermancer summons may be cast in combat (#1003); timing and specialization stay.
+    skills = re.sub(r"\s+", " ", strip_comments(source("skills.c").read_text(encoding="utf-8", errors="replace")))
+    for name, spell, handler, circle, spec in (
+            ("conjure air", "SPELL_CONJURE_AIR", "spell_conjure_air", 5, "SPEC_TEMPESTMAGUS"),
+            ("conjure void", "SPELL_CONJURE_VOID", "spell_conjure_void_elemental", 7, "SPEC_STARMAGUS"),
+            ("conjure ice", "SPELL_CONJURE_ICE", "spell_conjure_ice_elemental", 7, "SPEC_FROSTMAGUS")):
+        assert (f'SPELL_CREATE("{name}", {spell}, PULSE_SPELLCAST * 3, TAR_IGNORE, {handler}); '
+                f"SPEC_SPELL_ADD(CLASS_ETHERMANCER, {circle}, {spec});") in skills, name
     # Each property reads its own key.
     for function, key in (("tempest_player_damage", "spell.area.damage.to.pc"),
                           ("tempest_area_damage", "spell.area.damage.factor.squallTempest"),

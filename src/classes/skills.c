@@ -3333,16 +3333,16 @@ void initialize_skills()
 		     spell_purge);
 	SPELL_ADD(CLASS_ETHERMANCER, 10);
 
-	SPELL_CREATE("conjure air", SPELL_CONJURE_AIR, PULSE_SPELLCAST * 3,
-		     TAR_IGNORE | TAR_NOCOMBAT, spell_conjure_air);
+	SPELL_CREATE("conjure air", SPELL_CONJURE_AIR, PULSE_SPELLCAST * 3, TAR_IGNORE,
+		     spell_conjure_air);
 	SPEC_SPELL_ADD(CLASS_ETHERMANCER, 5, SPEC_TEMPESTMAGUS);
 
-	SPELL_CREATE("conjure void", SPELL_CONJURE_VOID, PULSE_SPELLCAST * 3,
-		     TAR_IGNORE | TAR_NOCOMBAT, spell_conjure_void_elemental);
+	SPELL_CREATE("conjure void", SPELL_CONJURE_VOID, PULSE_SPELLCAST * 3, TAR_IGNORE,
+		     spell_conjure_void_elemental);
 	SPEC_SPELL_ADD(CLASS_ETHERMANCER, 7, SPEC_STARMAGUS);
 
-	SPELL_CREATE("conjure ice", SPELL_CONJURE_ICE, PULSE_SPELLCAST * 3,
-		     TAR_IGNORE | TAR_NOCOMBAT, spell_conjure_ice_elemental);
+	SPELL_CREATE("conjure ice", SPELL_CONJURE_ICE, PULSE_SPELLCAST * 3, TAR_IGNORE,
+		     spell_conjure_ice_elemental);
 	SPEC_SPELL_ADD(CLASS_ETHERMANCER, 7, SPEC_FROSTMAGUS);
 
 	SPELL_CREATE_MSG("iceflow armor", SPELL_ICE_ARMOR, PULSE_SPELLCAST * 4 / 3, TAR_SELF_ONLY,
