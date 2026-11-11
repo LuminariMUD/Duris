@@ -10,6 +10,7 @@
 #include "abilities/abilities.h"
 #include <algorithm>
 #include <ctype.h>
+#include <errno.h>
 #include <list>
 #include <stdio.h>
 #include <string.h>
@@ -6779,7 +6780,7 @@ int changelog(P_obj obj, P_char ch, int cmd, char *args)
 	if (!args)
 	{
 		send_to_char(
-			"The book of files contain: src, areas, bugs, typos, ideas, cheats, cheaters, donations.\n",
+			"The book of files contain: bugs, typos, ideas, cheats, cheaters, donations.\n",
 			ch);
 		return TRUE;
 	}
@@ -6787,37 +6788,29 @@ int changelog(P_obj obj, P_char ch, int cmd, char *args)
 	o_buf[0] = '\0';
 
 	half_chop(args, arg, arg2);
-	if (!str_cmp(arg, "src"))
+	if (!str_cmp(arg, "bugs"))
 	{
-		f = fopen("lib/information/changelog.src", "r");
-	}
-	else if (!str_cmp(arg, "bugs"))
-	{
-		f = fopen("lib/reports/bugs", "r");
+		f = fopen(BUG_FILE, "r");
 	}
 	else if (!str_cmp(arg, "typos"))
 	{
-		f = fopen("lib/reports/typos", "r");
+		f = fopen(TYPO_FILE, "r");
 	}
 	else if (!str_cmp(arg, "ideas"))
 	{
-		f = fopen("lib/reports/ideas", "r");
+		f = fopen(IDEA_FILE, "r");
 	}
 	else if (!str_cmp(arg, "cheats"))
 	{
-		f = fopen("lib/reports/cheats", "r");
+		f = fopen(BUG_CHEAT, "r");
 	}
 	else if (!str_cmp(arg, "cheaters"))
 	{
-		f = fopen("lib/reports/cheaters", "r");
-	}
-	else if (!str_cmp(arg, "areas"))
-	{
-		f = fopen("lib/information/changelog.areas", "r");
+		f = fopen(CHEATERS_FILE, "r");
 	}
 	else if (!str_cmp(arg, "donations"))
 	{
-		f = fopen("logs/log/donation", "r");
+		f = fopen(LOG_DONATION, "r");
 	}
 	else
 	{
@@ -6826,9 +6819,10 @@ int changelog(P_obj obj, P_char ch, int cmd, char *args)
 
 	if (!f)
 	{
-		send_to_char(
-			"Could not open file.\nThe book of files contain: src, areas, bugs, typos, ideas, cheats, cheaters, donations.\n",
-			ch);
+		if (errno == ENOENT)
+			send_to_char("Nothing has been recorded there yet.\n", ch);
+		else
+			send_to_char("Could not open file.\n", ch);
 		return TRUE;
 	}
 
@@ -6851,9 +6845,15 @@ int changelog(P_obj obj, P_char ch, int cmd, char *args)
 			}
 		}
 	} while (ret);
-	strcat(o_buf, "\n");
-
 	fclose(f);
+
+	if (!o_buf[0])
+	{
+		send_to_char("Nothing has been recorded there yet.\n", ch);
+		return TRUE;
+	}
+
+	strcat(o_buf, "\n");
 	page_string(ch->desc, o_buf, 1);
 	return TRUE;
 }

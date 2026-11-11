@@ -8621,13 +8621,12 @@ E
 files book~
 Usage: read <file>
 file is one of;
-  src "lib/information/changelog.src"
-  areas "lib/information/changelog.areas"
   typos "lib/reports/typos"
   ideas "lib/reports/ideas"
   bugs "lib/reports/bugs"
   cheats "lib/reports/cheats"
   cheaters "lib/reports/cheaters"
+  donations "logs/log/donation"
 ~
 #1279
 book standard god~
