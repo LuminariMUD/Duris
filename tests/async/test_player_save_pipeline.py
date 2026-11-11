@@ -588,7 +588,7 @@ int main()
     assert(player_revision_hydrate(49, 0));
     locker_ready = false;
     assert(player_save_pipeline_request(&custody.ch, PLAYER_COMPONENT_INVENTORY,
-                                        RENT_CRASH, 3001) == player_save_pipeline_result::capture_failed);
+                                        RENT_CRASH, 3001) == player_save_pipeline_result::destination_pending);
     assert(player_revision_snapshot_copy(49, &revision));
     assert(revision.unacknowledged_components ==
            (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY));

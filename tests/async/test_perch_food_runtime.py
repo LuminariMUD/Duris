@@ -73,7 +73,7 @@ int GET_CLASS(P_char, uint) { return 0; }
 int GET_PRIME_CLASS(P_char, uint) { return 0; }
 int GET_SECONDARY_CLASS(P_char, uint) { return 0; }
 void advance_level(P_char) { assert(false); }
-bool do_save_silent(P_char, int) { assert(false); return false; }
+bool do_save_silent(P_char, int, player_save_pipeline_result *) { assert(false); return false; }
 void arti_clear_sql(P_char, char *) { assert(false); }
 int char_light(P_char) { return 0; }
 int room_light(int, int) { return 0; }

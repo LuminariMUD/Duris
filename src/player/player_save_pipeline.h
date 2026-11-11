@@ -40,6 +40,8 @@ enum class player_save_pipeline_result : uint8_t
 	invalid,
 	capture_failed,
 	unavailable,
+	// A private chest destination is not yet written; retry once it lands.
+	destination_pending,
 };
 
 enum class player_save_terminal_result : uint8_t

@@ -29,7 +29,7 @@ FUNCTIONS = "\n\n".join(
     extract_function(ACTOTH, signature)
     for signature in (
         "static P_ship owned_player_ship(P_char ch)",
-        "bool do_save_silent(P_char ch, int type)",
+        "bool do_save_silent(P_char ch, int type, player_save_pipeline_result *result)",
     )
 )
 

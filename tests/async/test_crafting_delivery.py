@@ -35,7 +35,7 @@ int gain_exp(P_char,P_char,int amount,int) { experience+=amount; return amount; 
 void set_keywords(P_obj,const char *) {}
 void set_short_description(P_obj,const char *) {}
 void set_obj_extra_flags(P_obj obj,unsigned flags) { obj->extra_flags=flags; }
-bool do_save_silent(P_char,int) { ++saves; return true; }
+bool do_save_silent(P_char,int,player_save_pipeline_result *) { ++saves; return true; }
 int fill_word(char *) { return 0; }
 bool sql_add_player_recipe(int,int) { std::abort(); }
 int real_object(int vnum) { return fixture_rnums.count(vnum) ? fixture_rnums.at(vnum) : -1; }

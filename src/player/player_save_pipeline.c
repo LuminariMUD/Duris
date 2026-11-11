@@ -298,7 +298,7 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 	// destination first, including item captures added by a pending quest reward.
 	if ((components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) &&
 	    !locker_private_contents_durable(ch))
-		return player_save_pipeline_result::capture_failed;
+		return player_save_pipeline_result::destination_pending;
 	player_snapshot snapshot;
 	if (player_snapshot_capture(ch, queued_revision, components, save_intent, room_vnum,
 				    &snapshot) != player_snapshot_capture_result::ok)

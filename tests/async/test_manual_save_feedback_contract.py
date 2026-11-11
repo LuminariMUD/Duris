@@ -29,6 +29,10 @@ save_slots = source[
     source.index("#define PERSISTENCE_DEFERRED_SAVE_SLOTS"):
     source.index("static void remove_norent_item(")
 ]
+snapshot_copy = source[
+    source.index("struct persistence_deferred_save_snapshot persistence_deferred_save_snapshot_copy(void)\n{"):
+    source.index("static P_ship owned_player_ship(")
+]
 preamble = r'''
 #include <cassert>
 #include <cstdint>
@@ -37,11 +41,12 @@ preamble = r'''
 #include <string>
 #include "net/output_style.h"
 #include "player/player_revision_state.h"
+#include "player/player_save_pipeline.h"
+#include "persistence/persistence_observability.h"
+#include <vector>
 #include "persistence/deferred_save_policy.h"
-struct character { int pid; uint64_t runtime_id; character *next; };
-using P_char = character *;
-using P_obj = void *;
-character player{1, 100, nullptr};
+struct char_data { int pid; uint64_t runtime_id; char_data *next; };
+char_data player{1, 100, nullptr};
 P_char character_list = &player;
 #define IS_NPC(ch) false
 #define IS_PC(ch) true
@@ -70,15 +75,28 @@ P_char find_character_by_runtime_id(uint64_t id) {
 }
 void persistence_counter_saturating_add(uint64_t *value, uint64_t amount) { *value += amount; }
 enum class persistence_severity { ok, info, alert };
-void persistence_report(persistence_severity, int, const char *, const char *, const char *, const char *, const char *, const char *, ...) {}
-void persistence_alert(int, const char *, const char *, const char *, const char *, const char *, ...) {}
+struct report { persistence_severity severity; std::string action; };
+std::vector<report> reports;
+void persistence_report(persistence_severity severity, int, const char *, const char *, const char *, const char *, const char *action, const char *, ...) {
+    reports.push_back({severity, action});
+}
+void persistence_alert(int, const char *, const char *, const char *, const char *, const char *action, const char *, ...) {
+    reports.push_back({persistence_severity::alert, action});
+}
+bool reported(const char *action, persistence_severity severity) {
+    for (const auto &entry : reports)
+        if (entry.action == action && entry.severity == severity) return true;
+    return false;
+}
 void logit(int, const char *, ...) {}
 void sql_update_level(P_char) {}
 void send_to_char_f(P_char, const char *format, ...) { messages += format; }
 void add_event(void (*)(P_char, P_char, P_obj, void *), int, P_char, int, int, int, void *, size_t) {}
-bool do_save_silent(P_char ch, int) {
+player_save_pipeline_result fail_result = player_save_pipeline_result::capture_failed;
+bool do_save_silent(P_char ch, int, player_save_pipeline_result *result = nullptr) {
     ++saves;
-    if (fail_save) return false;
+    if (fail_save) { if (result) *result = fail_result; return false; }
+    if (result) *result = player_save_pipeline_result::queued;
     return player_revision_mark(ch->pid, PLAYER_CHECKPOINT_COMPONENT_ALL, nullptr);
 }
 '''
@@ -159,6 +177,67 @@ int main() {
     assert(player_revision_record_written(1, revision, PLAYER_CHECKPOINT_COMPONENT_ALL));
     persistence_pulse_character_saves();
     assert(messages == "Saving Synthetic.\r\n" && !find_manual_save_status(1));
+
+    // A private chest still being written is an expected wait: logged, not alerted,
+    // and not reported to the player. The retry's queued revision is then watched
+    // until it is written.
+    player_revision_reset_for_tests();
+    assert(player_revision_hydrate(1, 0));
+    reports.clear(); messages.clear();
+    fail_save = true;
+    fail_result = player_save_pipeline_result::destination_pending;
+    manual_request();
+    now_usec += 500000;
+    persistence_pulse_character_saves();
+    assert(reported("deferred_save_retry_destination_pending", persistence_severity::info));
+    assert(!reported("deferred_save_retry_destination_pending", persistence_severity::alert));
+    assert(messages.empty());
+    assert(persistence_deferred_save_snapshot_copy().waiting_destination == 1);
+    fail_save = false;
+    now_usec += 1000000;
+    persistence_pulse_character_saves();
+    assert(!find_deferred_save_slot(1));
+    assert(persistence_deferred_save_snapshot_copy().waiting_destination == 0);
+    assert(reported("deferred_save_recovered_queued", persistence_severity::info));
+    assert(!reported("deferred_save_recovered_written", persistence_severity::ok));
+    assert(player_revision_queue(1, &revision, &components));
+    assert(player_revision_acknowledge_durable(1, revision, components));
+    persistence_pulse_character_saves();
+    assert(!reported("deferred_save_recovered_written", persistence_severity::ok));
+    assert(player_revision_record_written(1, revision, components));
+    persistence_pulse_character_saves();
+    assert(reported("deferred_save_recovered_written", persistence_severity::ok));
+    assert(messages == "Saving Synthetic.\r\n");
+
+    // A destination that stays unwritten escalates to an alert.
+    reports.clear();
+    fail_save = true;
+    persistence_schedule_character_save(&player, 1, 2, "autosave");
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        now_usec += 60000000;
+        persistence_pulse_character_saves();
+    }
+    assert(reported("deferred_save_retry_destination_pending", persistence_severity::alert));
+
+    // Any other failure alerts at once with its own reason.
+    reports.clear();
+    fail_result = player_save_pipeline_result::capture_failed;
+    now_usec += 60000000;
+    persistence_pulse_character_saves();
+    assert(reported("deferred_save_retry_capture_failed", persistence_severity::alert));
+    auto deferred = persistence_deferred_save_snapshot_copy();
+    assert(deferred.waiting_destination == 0 && deferred.scheduled == 1);
+    assert(deferred.failed_unscheduled == 0);
+
+    // A recovered save that is never written alerts after the watch expires.
+    reports.clear();
+    fail_save = false;
+    now_usec += 60000000;
+    persistence_pulse_character_saves();
+    assert(!find_deferred_save_slot(1) && reported("deferred_save_recovered_queued", persistence_severity::info));
+    now_usec += 60000000;
+    persistence_pulse_character_saves();
+    assert(reported("deferred_save_recovered_unwritten", persistence_severity::alert));
 }
 '''
 # The pre-fix main loop has no save-slot pulse; this fallback lets the same
@@ -171,7 +250,7 @@ build_dir = ROOT / "bin/tests/manual-save-feedback"
 build_dir.mkdir(parents=True, exist_ok=True)
 harness_path = build_dir / "regression.cpp"
 binary = build_dir / "regression"
-harness_path.write_text(preamble + save_slots + main)
+harness_path.write_text(preamble + save_slots + snapshot_copy + main)
 subprocess.run([
     "g++", "-std=c++20", "-Isrc", str(harness_path),
     "src/player/player_revision_state.c", "src/persistence/deferred_save_policy.c",

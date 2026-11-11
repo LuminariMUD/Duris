@@ -358,7 +358,7 @@ void extract_char(P_char mob)
 	delete mob->only.npc;
 	delete mob;
 }
-bool do_save_silent(P_char, int)
+bool do_save_silent(P_char, int, player_save_pipeline_result *)
 {
 	++saves;
 	return true;

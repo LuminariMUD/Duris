@@ -1944,6 +1944,10 @@ void event_autosave(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/
 #define PERSISTENCE_DEFERRED_SAVE_SLOTS 512
 #define PERSISTENCE_MANUAL_SAVE_STATUS_SLOTS 512
 #define PERSISTENCE_MANUAL_SAVE_TIMEOUT_USEC (30ULL * 1000000ULL)
+// A private chest write normally lands within a pulse; this many waits in a row alerts.
+#define PERSISTENCE_DEFERRED_DESTINATION_ALERT_FAILURES 3
+#define PERSISTENCE_DEFERRED_RECOVERY_SLOTS 32
+#define PERSISTENCE_DEFERRED_RECOVERY_TIMEOUT_USEC (60ULL * 1000000ULL)
 
 struct deferred_save_slot
 {
@@ -1957,6 +1961,7 @@ struct deferred_save_slot
 	uint64_t attempts;
 	uint64_t failures;
 	int retry_delay;
+	bool waiting_destination;
 	char reason[64];
 };
 
@@ -1971,6 +1976,17 @@ struct manual_save_status_slot
 };
 
 static struct manual_save_status_slot manual_save_statuses[PERSISTENCE_MANUAL_SAVE_STATUS_SLOTS];
+
+// A checkpoint queued after failed attempts, watched until its revision is written.
+struct deferred_save_recovery_slot
+{
+	int pid;
+	player_revision_t revision;
+	uint64_t queued_usec;
+};
+
+static struct deferred_save_recovery_slot
+	deferred_save_recoveries[PERSISTENCE_DEFERRED_RECOVERY_SLOTS];
 
 /** Find the pending manual-save feedback slot for a player ID, or return null. */
 static struct manual_save_status_slot *find_manual_save_status(int pid)
@@ -2095,6 +2111,102 @@ static void schedule_deferred_save(struct deferred_save_slot *slot, P_char ch, i
 			 (uint64_t)(delay > 0 ? delay : 1) * (1000000ULL / WAIT_SEC);
 }
 
+static const char *checkpoint_result_name(player_save_pipeline_result result)
+{
+	switch (result)
+	{
+	case player_save_pipeline_result::queued:
+		return "queued";
+	case player_save_pipeline_result::coalesced:
+		return "coalesced";
+	case player_save_pipeline_result::unchanged:
+		return "unchanged";
+	case player_save_pipeline_result::invalid:
+		return "invalid";
+	case player_save_pipeline_result::capture_failed:
+		return "capture_failed";
+	case player_save_pipeline_result::unavailable:
+		return "unavailable";
+	case player_save_pipeline_result::destination_pending:
+		return "destination_pending";
+	}
+	return "unknown";
+}
+
+/** Milliseconds since this checkpoint was first requested. */
+static unsigned long long deferred_save_age_msec(const struct deferred_save_slot *slot)
+{
+	const uint64_t now = persistence_observability_now_usec();
+	return now > slot->first_pending_usec ? (now - slot->first_pending_usec) / 1000ULL : 0;
+}
+
+/** Log a retained checkpoint: a brief private-chest wait is routine, anything else alerts. */
+static void report_deferred_save_retry(const struct deferred_save_slot *slot,
+				       player_save_pipeline_result result)
+{
+	const bool routine = result == player_save_pipeline_result::destination_pending &&
+			     slot->failures < PERSISTENCE_DEFERRED_DESTINATION_ALERT_FAILURES;
+	char action[64];
+
+	snprintf(action, sizeof(action), "deferred_save_retry_%s", checkpoint_result_name(result));
+	persistence_report(routine ? persistence_severity::info : persistence_severity::alert,
+			   AVATAR, "player_save", "redacted", "none", "none", action,
+			   "pid=%d delay_ms=%llu attempts=%llu failures=%llu age_ms=%llu",
+			   slot->pid, (unsigned long long)slot->retry_delay * (1000ULL / WAIT_SEC),
+			   (unsigned long long)slot->attempts, (unsigned long long)slot->failures,
+			   deferred_save_age_msec(slot));
+}
+
+/** Log a retried checkpoint reaching the writer and watch for its revision to be written. */
+static void begin_deferred_save_recovery_watch(const struct deferred_save_slot *pending)
+{
+	struct player_revision_snapshot revision = {};
+	struct deferred_save_recovery_slot *watch = NULL;
+
+	if (!player_revision_snapshot_copy(pending->pid, &revision))
+		revision.current_revision = 0;
+	persistence_report(persistence_severity::info, AVATAR, "player_save", "redacted", "none",
+			   "none", "deferred_save_recovered_queued",
+			   "pid=%d revision=%llu attempts=%llu failures=%llu age_ms=%llu",
+			   pending->pid, (unsigned long long)revision.current_revision,
+			   (unsigned long long)pending->attempts,
+			   (unsigned long long)pending->failures, deferred_save_age_msec(pending));
+	if (!revision.current_revision)
+		return;
+	for (struct deferred_save_recovery_slot &slot : deferred_save_recoveries)
+		if (slot.pid == pending->pid || (!watch && !slot.pid))
+			watch = &slot;
+	if (!watch)
+		return;
+	watch->pid = pending->pid;
+	watch->revision = revision.current_revision;
+	watch->queued_usec = persistence_observability_now_usec();
+}
+
+/** Report a watched recovery once its revision is written, or alert if it never is. */
+static void check_deferred_save_recovery(struct deferred_save_recovery_slot *watch)
+{
+	struct player_revision_snapshot revision = {};
+	const uint64_t waited = persistence_observability_now_usec() - watch->queued_usec;
+
+	if (player_revision_snapshot_copy(watch->pid, &revision) &&
+	    revision.written_revision >= watch->revision)
+		persistence_report(persistence_severity::ok, AVATAR, "player_save", "redacted",
+				   "none", "none", "deferred_save_recovered_written",
+				   "pid=%d revision=%llu write_ms=%llu", watch->pid,
+				   (unsigned long long)watch->revision,
+				   (unsigned long long)(waited / 1000ULL));
+	else if (waited >= PERSISTENCE_DEFERRED_RECOVERY_TIMEOUT_USEC)
+		persistence_alert(AVATAR, "player_save", "redacted", "none", "none",
+				  "deferred_save_recovered_unwritten",
+				  "pid=%d revision=%llu written=%llu", watch->pid,
+				  (unsigned long long)watch->revision,
+				  (unsigned long long)revision.written_revision);
+	else
+		return;
+	memset(watch, 0, sizeof(*watch));
+}
+
 /** Attempt one due checkpoint, retaining failed saves with bounded exponential backoff. */
 static void process_deferred_character_save(struct deferred_save_slot *slot)
 {
@@ -2127,23 +2239,27 @@ static void process_deferred_character_save(struct deferred_save_slot *slot)
 	if (pending.level_dirty)
 		sql_update_level(ch);
 
-	if (do_save_silent(ch, pending.type ? pending.type : 1))
+	player_save_pipeline_result result = player_save_pipeline_result::invalid;
+	if (do_save_silent(ch, pending.type ? pending.type : 1, &result))
 	{
+		pending.attempts = slot->attempts;
 		memset(slot, 0, sizeof(*slot));
 		begin_manual_save_status_wait(ch);
+		if (pending.failures)
+			begin_deferred_save_recovery_watch(&pending);
 	}
 	else
 	{
 		persistence_counter_saturating_add(&slot->failures, 1);
-		if (find_manual_save_status(pid) && slot->failures == 1)
+		slot->waiting_destination = result ==
+					    player_save_pipeline_result::destination_pending;
+		// The private chest wait is expected; the player hears only of a real failure.
+		if (find_manual_save_status(pid) && slot->failures == 1 &&
+		    !slot->waiting_destination)
 			send_to_char_f(ch, "Save attempt failed for %s; retrying.\r\n",
 				       GET_NAME(ch));
 		slot->retry_delay = deferred_save_next_retry_delay(slot->retry_delay);
-		persistence_alert(AVATAR, "player_save", "deferred_save", "none", "none",
-				  "deferred_save_retry_scheduled",
-				  "delay=%d attempts=%llu failures=%llu", slot->retry_delay,
-				  (unsigned long long)slot->attempts,
-				  (unsigned long long)slot->failures);
+		report_deferred_save_retry(slot, result);
 		schedule_deferred_save(slot, ch, slot->retry_delay);
 	}
 }
@@ -2169,6 +2285,9 @@ void persistence_pulse_character_saves(void)
 	for (struct manual_save_status_slot &status : manual_save_statuses)
 		if (status.pid)
 			check_manual_character_save_status(&status);
+	for (struct deferred_save_recovery_slot &watch : deferred_save_recoveries)
+		if (watch.pid)
+			check_deferred_save_recovery(&watch);
 }
 
 /** Coalesce save intent and refresh character identity without postponing an existing deadline. */
@@ -2480,6 +2599,8 @@ struct persistence_deferred_save_snapshot persistence_deferred_save_snapshot_cop
 			persistence_counter_saturating_add(&snapshot.scheduled, 1);
 		else if (slot->failures > 0)
 			persistence_counter_saturating_add(&snapshot.failed_unscheduled, 1);
+		if (slot->waiting_destination)
+			persistence_counter_saturating_add(&snapshot.waiting_destination, 1);
 		persistence_counter_saturating_add(&snapshot.attempts, slot->attempts);
 		persistence_counter_saturating_add(&snapshot.failures, slot->failures);
 		if (slot->first_pending_usec && (!oldest || slot->first_pending_usec < oldest))
@@ -2503,8 +2624,9 @@ static P_ship owned_player_ship(P_char ch)
 	return ship && !IS_NPC_SHIP(ship) && SHIP_LOADED(ship) ? ship : NULL;
 }
 
-/** Request an ordinary checkpoint or compatibility save and report admission or save failure. */
-bool do_save_silent(P_char ch, int type)
+/** Request an ordinary checkpoint or compatibility save and report admission or save failure.
+ *  A checkpoint also stores the pipeline's result in `result`, when given. */
+bool do_save_silent(P_char ch, int type, player_save_pipeline_result *result)
 {
 	FILE *f;
 	char tmp_buf[MAX_STRING_LENGTH], tmp_buf2[MAX_STRING_LENGTH];
@@ -2532,6 +2654,8 @@ bool do_save_silent(P_char ch, int type)
 		P_ship ship = owned_player_ship(ch);
 		if (ship)
 			queue_ship_save(ship, "player checkpoint");
+		if (result)
+			*result = queued;
 		return queued == player_save_pipeline_result::queued ||
 		       queued == player_save_pipeline_result::coalesced;
 	}

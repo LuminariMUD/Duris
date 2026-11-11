@@ -84,7 +84,7 @@ void gmcp_char_vitals(P_char ch)
 	refreshed_at_vitals = refreshes;
 	++vitals;
 }
-bool do_save_silent(P_char ch, int)
+bool do_save_silent(P_char ch, int, player_save_pipeline_result *)
 {
 	assert(ch == &pupil);
 	refreshed_at_save = refreshes;

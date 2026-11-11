@@ -98,6 +98,8 @@ struct persistence_deferred_save_snapshot
 {
 	uint64_t pending;
 	uint64_t scheduled;
+	// Retained because a private chest destination had not been written yet.
+	uint64_t waiting_destination;
 	uint64_t failed_unscheduled;
 	uint64_t attempts;
 	uint64_t failures;

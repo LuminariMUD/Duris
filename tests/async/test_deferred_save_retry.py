@@ -100,7 +100,7 @@ bool do_save_silent(P_char, int) { return true; }
 void logit(int, const char *) {}
 ''' + slot_definition + r'''
 deferred_save_slot deferred_saves[1] = {};
-''' + section("static struct deferred_save_slot *find_deferred_save_slot(", "static void process_deferred_character_save(") + schedule_checkpoint + r'''
+''' + section("static struct deferred_save_slot *find_deferred_save_slot(", "static const char *checkpoint_result_name(") + schedule_checkpoint + r'''
 int main() {
     char_data player{1, 11};
     persistence_schedule_checkpoint(&player, 1, 4, "initial", 0);
