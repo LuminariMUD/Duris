@@ -5181,6 +5181,7 @@ S
 &+Lthose who are not their kin, only pain awaits for intruders are not tolerated.
 &+LA large open area lays to the east, with many glass display cases and a number
 &+Lof items strewn about.
+&+LFlickering images shimmer through an open archway to the west.
 ~
 377 142639177 1
 D0
@@ -5191,6 +5192,10 @@ D1
 ~
 ~
 0 0 37942
+D3
+~
+~
+0 0 37945
 D5
 ~
 ~
@@ -5241,6 +5246,21 @@ S
 ~
 377 142639177 1
 D2
+~
+~
+0 0 37941
+S
+#37945
+&+LChamber of &+MShifting Images&n~
+&+L   Reflections drift across polished obsidian walls, showing landscapes that
+&+Lchange whenever the eye turns away. A ring of pale crystals casts a steady
+&+Llight over a writing desk, where diagrams of shadow creatures lie beside
+&+Lopen spellbooks. Phantom figures move silently between the shelves, their
+&+Lforms dissolving as they approach the desk. An open archway to the east
+&+Lleads back to the second level of the tower.
+~
+377 142639177 1
+D1
 ~
 ~
 0 0 37941

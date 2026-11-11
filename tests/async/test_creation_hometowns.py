@@ -194,6 +194,18 @@ int main() {
     ch.player.racewar = RACEWAR_GOOD;
     find_starting_location(&ch, HOME_NAXVARAN);
     assert(GET_HOME(&ch) == guild_locations[HOME_NAXVARAN][flag2idx(CLASS_WARRIOR)]);
+    ch.player.m_class = CLASS_ILLUSIONIST;
+    for (int home : {0, HOME_NAXVARAN}) {
+        find_starting_location(&ch, home);
+        assert(GET_HOME(&ch) == 37945);
+    }
+    ch.player.racewar = RACEWAR_EVIL;
+    find_starting_location(&ch, 0);
+    assert(GET_HOME(&ch) == 36329);
+    ch.player.racewar = RACEWAR_GOOD;
+    ch.player.m_class = CLASS_SORCERER;
+    find_starting_location(&ch, HOME_NAXVARAN);
+    assert(GET_HOME(&ch) == 37944);
     // The unlocked legacy roster retains its existing good tutorial rows;
     // the approved additions do not give every nominally-good legacy race
     // new towns. The outer creation admission still owns the unlock toggle.
