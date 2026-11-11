@@ -28857,3 +28857,153 @@ It ends when the song stops/changes or the listener leaves the room.
 ===========================================================================
 See also: Minstrel, Bard, Instruments, Play
 #
+
+#
+CHEST_LOCKERS
+===========================================================================
+For private locker chests, read [[eq chest]] and [[locker]].
+Inside your locker, use 'eq chest list' or
+'eq chest create <name> [password]'. Open a chest before using it.
+Read the linked help for prices, access rules and saved storage.
+===========================================================================
+
+#
+SKILL INFO BACKSTAB / SKILLS DUAL WIELD / SKILL KICK / SKILL HIDE
+===========================================================================
+Use 'skills info <ability>' as a command, without putting 'help' first.
+Examples: skills info backstab, skills info dual wield,
+skills info kick, and skills info hide.
+To read a help page directly, use 'help backstab', 'help dual wield',
+'help kick' or 'help hide'. See [[Skills]] for catalog browsing.
+===========================================================================
+
+#
+MSP
+===========================================================================
+MSP is a terminal output mode. Use 'toggle terminal msp' for tagged
+prompts, maps and group output, or 'toggle terminal msp quiet' to show
+group status only when requested. Quiet mode lasts for the connection.
+Use 'toggle terminal ansi' for ordinary colored text or
+'toggle terminal gen' for plain text. Read [[Terminal]].
+===========================================================================
+
+#
+TOGGLE SCREEN
+===========================================================================
+Use 'toggle screensize <lines>' to set the page length, or
+'toggle screensize default' to restore the default. Paging is controlled
+separately with 'toggle paging on' or 'toggle paging off'.
+Read [[toggle_screen size]] and [[Toggle]] for the supported settings.
+===========================================================================
+
+#
+NECROMANCER SPELLS / NECROMANCER SPELL
+===========================================================================
+Use 'spells necromancer' to browse the base-class spell catalog and
+'spells info <spell>' for details. Read [[Necromancer Skills]] for
+progression and your specialization's page for its changes.
+A catalog entry does not waive level, learning or preparation requirements.
+===========================================================================
+
+#
+AREAS
+===========================================================================
+Adventuring areas are listed under [[Zones]]. Use 'area' for information
+about your current zone and 'map' to orient yourself. [[Area Making]] concerns
+building areas, rather than choosing a place to adventure.
+===========================================================================
+
+#
+HULLS
+===========================================================================
+At a dock, 'list' shows available ship hulls and other purchases.
+To buy your first hull, use 'buy <number> <shipname>'. Choose the name
+carefully: later hull upgrades keep it. Read [[ship hull]] and
+[[ship list]] before buying.
+===========================================================================
+
+#
+HIRELING HIRELINGS
+===========================================================================
+At a pet shop, type 'list' to see available hirelings and their prices.
+Use 'buy <number>' or 'buy <name>' to purchase one. You must be at least
+five levels higher than the hireling and have fewer than two pets.
+The listed price is paid from carried money. The purchased creature
+follows you as a pet. This is separate from hiring a ship's crew.
+See [[Order]], [[Pets]] and [[Ship Crews]].
+===========================================================================
+
+#
+DISMISS
+===========================================================================
+Syntax: dismiss [pet]
+
+For a non-Bard, bare 'dismiss' removes all non-player followers.
+'dismiss <pet>' removes your linked pet in the same room.
+This destroys the dismissed creature; it does not stable it for later.
+Bards use dismiss only to remove their mirror images; use 'play' to
+stop singing. Player followers are not dismissed.
+See [[Order]], [[Follow]] and [[Play]].
+===========================================================================
+
+#
+NAMED SETS
+===========================================================================
+Read [[Named Equipment Sets]] for matching named gear, piece thresholds,
+hit-point bonuses and effect restrictions. Use 'namedreport' to browse
+the available set effects and 'score' to see your active effects.
+The name on equipment alone does not override its actual set identity.
+===========================================================================
+
+#
+EQUIPMENT SLOTS
+===========================================================================
+Use 'equipment' (or 'eq') to see your worn items and their slots.
+'wear <item>' uses an allowed slot; 'wear <item> <location>' selects a
+location where supported. 'wield <weapon>' equips a weapon and
+'remove <item>' takes it off. Item type, size and character restrictions
+still apply. Read [[Equipment]], [[Wear]], [[Wield]] and [[Remove]].
+===========================================================================
+
+#
+BULWARK / GUARDIANS BULWARK
+===========================================================================
+Guardian's Bulwark is a passive Guardian innate gained at level 41.
+With a shield worn, it reduces ordinary incoming melee damage by 15%
+with the current settings. Hits that ignore reductions bypass it.
+It needs no activation command. Use 'innate info bulwark' to inspect
+its current facts; read [[Guardian]] for specialization progression.
+===========================================================================
+
+#
+GREYELF
+===========================================================================
+The race is written Grey Elf. Read [[Grey elf]], or use
+'race grey elf' and 'race innates grey elf' to inspect its current
+profile and racial abilities.
+===========================================================================
+
+#
+WOODELF
+===========================================================================
+The race is written Wood Elf. Read [[Wood Elf]], or use
+'race wood elf' and 'race innates wood elf' to inspect its current
+profile and racial abilities.
+===========================================================================
+
+#
+ENCRUST STONE
+===========================================================================
+Encrust stones are used by the Encrust skill. Read [[Encrust]] for
+requirements and syntax before using a stone: the procedure consumes
+materials and its eligibility restrictions still apply.
+Use 'skills info encrust' for your current ability facts.
+===========================================================================
+
+#
+TENTRO
+===========================================================================
+Tentro is the Mountain Village of Tentro, an adventuring area.
+Use 'area' for your current zone and 'map' to orient yourself.
+Read [[Zones]] for the area list.
+===========================================================================

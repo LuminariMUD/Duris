@@ -4,11 +4,110 @@
 &+R                   PWIPE HAPPENED &+YOCT 28TH 1800 UTC!&n
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
 &+W======================================================================&n
-&+WUpdated: November 10, 2026&n
+&+WUpdated: November 11, 2026&n
 
-Welcome back! Explore revised item values, smoother enhancement paths,
-independent locker chests and clickable help in supported clients.
+Welcome back! New Bard songs, revised named sets and clearer information.
 Newest first; later updates replace older rules. Longer archive on web.
+
+&+R11/10/26 - 11/11/26&n &+L-&n &+YSongs, shadows and new set choices&n
+&+W----------------------------------------------------------------------&n
+
+&+CBards take the stage&n
+&+Y-&n Bards can play equipped instruments from any slot, including all three
+  belt attachments. Carried instruments do not count. Rope Trick hides one
+  person per cast, up to five in a room; grouped targets need no consent.
+&+Y-&n Base Bard Hide rises to &+Y80&n; Detect Invisibility moves to circle &+Y9&n.
+  Acquired Riff proficiency survives respecialization, but using Riff still
+  requires specialization. Read &+C'help bard skills'&n.
+&+Y-&n Scoundrels gain Dual Wield &+Y80&n, Sneak &+Y85&n, Disguise &+Y70&n and
+  circle-10 Invisibility. Trip falls to &+Y75&n, including existing higher
+  ratings when skills update. Hide remains 90. While already singing,
+  Scoundrels can change songs without revealing Hide; starting or stopping
+  still reveals them, and combat and song-specific reveals still apply.
+&+Y-&n At level &+Y56&n, Scoundrel Heroism gives listeners +2 combat and spell
+  pulse; the singer keeps the usual song-level bonus. With a flute,
+  &+C'play shadow piper'&n grants Sneak to grouped player followers in the
+  same room. Combat, leaving, stopping following or ending the song removes
+  it; the singer and pets do not receive this Sneak.
+
+&+CDisharmonist disruption&n
+&+Y-&n Disharmonist Quick Chant and Meditate caps rise to &+Y100&n. From level
+  &+Y51&n, Storms has a 20% chance per enemy per verse to add Squall or
+  Hurricane after its lightning; those extra hits pass Globe.
+&+Y-&n Chaos can dispel one effect per enemy per verse. Chance starts at 5%,
+  improves with song rating, Charisma and level advantage, and is halved
+  by a successful Save Spell. A successful target has &+Y10 seconds&n of
+  protection from another Chaos dispel. Read &+C'help song of chaos'&n.
+&+Y-&n From level &+Y51&n, Dissonance has a &+Y5-25%&n opposed chance to stop
+  a spell in progress without adding lag. Song skill and Charisma oppose
+  Concentration and casting stats; success grants &+Y25 seconds&n of
+  protection from another interruption. These new song bonuses exclude pets.
+&+Y-&n At level &+Y56&n, spell Echo has a 50% chance to repeat Magic Missile,
+  Burning Hands, Lightning Bolt, Fireball, Bigby's Clenched Fist or Shatter
+  once at &+Y30-50%&n damage, without a second slot. Normal defenses and
+  reflection apply; the target must remain alive and present. Player-only.
+
+&+CMinstrel support&n
+&+Y-&n Minstrel Healing improves with levels above 31, song rating above 50
+  and Charisma above 100. Base healing caps at &+Y45 HP&n per recipient;
+  the ally share and other modifiers still apply. Bard songs now credit
+  effective healing of other players toward Salvation, excluding overheal.
+&+Y-&n Minstrels make charm saves 10 points harder and retain humanoid charms
+  for at least &+Y50-60 minutes&n, potentially longer with low Intelligence.
+  The level-50 charm ceiling and pet limit remain. Pets cannot sing Drifting.
+&+Y-&n At level &+Y56&n, &+C'play nimbleness'&n with a mandolin grants grouped
+  players in the room +5 melee dodge and a &+Y3.5%&n chance to avoid each
+  damaging spell hit. The singer benefits; pets cannot provide or receive
+  it. Leaving the group/room or ending the song removes the benefit.
+
+&+CNamed gear gets new choices&n
+&+Y-&n Named sets have new effects and piece requirements across &+Y306 zones&n.
+  Existing gear follows its origin's new list, including losing retired
+  bonuses; old lists are not preserved. Use &+C'namedreport'&n for the
+  full catalog and restrictions, or &+C'area'&n for your current zone.
+&+Y-&n Some effects start at one piece; matching-set HP still begins at
+  three pieces. Arena of the Elder Brain and Guildhalls provide matching-set
+  HP only. Added choices include Awareness, Sneak and Ultravision.
+&+Y-&n Set Sneak refreshes only outside combat while unmounted. Elemental
+  forms need their matching Magus and exclude conflicting forms/auras;
+  weapon enchantments need the right weapon type. Globe of Darkness
+  excludes Holy Light and Mage Flame. Armor bonuses do not double up.
+&+Y-&n Set Ironwood requires Barkskin or Thornskin and shares the one-minute
+  skin refresh interval. Re-equipping or reconnecting does not reset running
+  timers. Ordinary casts keep their own effects when set gear changes.
+  Read &+C'help named equipment sets'&n before changing equipment.
+
+&+CRaces, summons and starting out&n
+&+Y-&n Barbarians, Trolls, Centaurs, Driders, Revenants and Death Knights gain
+  &+Y15%&n damage on ordinary melee and archery attacks. This does not add
+  attacks or affect spells/backstab. &+C'race innates <race>'&n shows size,
+  attack modifiers and the gear/buff damroll cap; Monkey Grip now appears
+  explicitly for races with the existing one-hand two-handed-weapon benefit.
+&+Y-&n Ethermancers can conjure Air, Ice and Void elementals during combat.
+  The one-elemental limit, access, cast time and costs remain. New Ethermancer
+  kits include a usable dagger. Pets can be dismissed while sitting.
+&+Y-&n Nax Illusionists start in the Chamber of Shifting Images and can train
+  with Veyrith, west of the tower's second level.
+&+Y-&n Character selection shows Rest status: Yes after nine offline hours,
+  Well after twenty, New for a new character, or hours until Rested.
+  From level &+Y20&n, &+C'deathsdoor'&n shows missing attribute requirements;
+  opening the door still needs level 25 and the achievement.
+
+&+CClearer information and saved belongings&n
+&+Y-&n &+C'toggle screensize'&n accepts &+Y12-100&n lines; default/off/0 restore
+  the new &+Y40-line&n default. Paging itself uses &+C'toggle paging off'&n.
+  Spell listings mark future circles, and &+C'skills info mixpoison'&n
+  shows eligible recipes, ingredients and effects without crafting lag.
+&+Y-&n Monks get a warning when equipped hand items restrict Martial Arts;
+  a light limits base attacks but keeps bare-hand damage dice. Supported
+  clients refresh room information after looking or finding a secret exit.
+&+Y-&n Crafted potions and poisons retain their identifying keywords through
+  saves. Saved locker items no longer spill into the holding room when
+  their temporary holder is removed.
+&+Y-&n New help covers &+C'dismiss'&n, &+C'hireling'&n, &+C'bulwark'&n,
+  &+C'equipment slots'&n, &+C'encrust stone'&n and &+C'tentro'&n, with easier
+  lookups for named sets, ship hulls, race names, terminal modes and
+  Necromancer spells. Use &+C'skills info <ability>'&n for ability details.
 
 &+R11/10/26&n &+L-&n &+YBetter gear paths and easier discovery&n
 &+W----------------------------------------------------------------------&n+
