@@ -307,9 +307,19 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="list discovered tests without running them",
     )
+    parser.add_argument(
+        "--shard",
+        metavar="K/N",
+        help="run only part K of N; parts take every Nth test, so CI can split the suite across jobs",
+    )
     args = parser.parse_args()
     if args.jobs < 0:
         parser.error("--jobs must be zero or greater")
+    if args.shard:
+        part, _, parts = args.shard.partition("/")
+        if not (part.isdigit() and parts.isdigit() and 1 <= int(part) <= int(parts)):
+            parser.error("--shard must be K/N with 1 <= K <= N")
+        args.shard = (int(part), int(parts))
     return args
 
 
@@ -343,6 +353,9 @@ def write_history(results: list[TestResult], started: str, match: str | None,
 def main() -> int:
     args = parse_args()
     tests = discover_tests(args.match)
+    if args.shard:
+        part, parts = args.shard
+        tests = tests[part - 1::parts]
 
     if args.list:
         for path in tests:
