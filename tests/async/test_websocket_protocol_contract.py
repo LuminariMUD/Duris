@@ -207,7 +207,7 @@ def test_authorization_state_fails_closed_for_service_and_player_commands():
         'websocket_send_all(d->descriptor'
     )
     assert 'ws_compressed_message' in SOURCE
-    assert 'if (rsv1 || d->ws_compressed_message)' in SOURCE
+    assert 'if (rsv1 || (d->ws_compressed_message && op < WS_OPCODE_CLOSE))' in SOURCE
     assert 'out_size = WS_MAX_MESSAGE_SIZE - d->ws_message_len' in SOURCE
     assert 'compressed fragments failed through aggregate message processing' in HARNESS
     assert 'd->ws_compressed_message = 0;' in SOURCE
@@ -260,8 +260,8 @@ def test_authorization_state_fails_closed_for_service_and_player_commands():
     assert 'websocket_input_error(d, WS_CLOSE_PROTOCOL_ERROR)' in SOURCE
     assert 'Clear service authorization before descriptor reuse.' in COMM
     assert '#define WS_MAX_FLUSH_BYTES 65536' in HEADER
-    assert 'size_t flushed = 0' in SOURCE
-    assert 'size_t budget = WS_MAX_FLUSH_BYTES - flushed' in SOURCE
+    assert 'size_t budget = WS_MAX_FLUSH_BYTES;' in SOURCE
+    assert 'control frame was inserted inside a partially transmitted data frame' in HARNESS
     assert 'websocket_flush_queue(d, d->ws_control_output_buffer' in SOURCE
     assert 'd->ws_deflate_requested = 0;' in SOURCE
     assert 'd->ws_compressed_message = 0;' in SOURCE
@@ -292,6 +292,8 @@ def test_authorization_state_fails_closed_for_service_and_player_commands():
     assert 'queued close frame did not survive state transition' in HARNESS
     assert '#define WS_MAX_FRAMES_PER_READ 64' in HEADER
     assert 'frames_processed < WS_MAX_FRAMES_PER_READ' in SOURCE
+    assert '(point->websocket && websocket_has_pending(point))' in COMM
+    assert 'retained pong was stranded until more bytes arrived' in HARNESS
     assert '#define WS_AUTH_MAX_FAILURES 5' in HEADER
     assert '#define WS_AUTH_FAILURE_WINDOW 60' in HEADER
     assert 'ws_durisweb_auth_limited' in WS_HANDLERS
