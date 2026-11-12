@@ -728,20 +728,24 @@ void do_qlist(P_char ch, char *argument, int /*cmd*/)
 	quest_staff_output(ch, output);
 }
 
-// True when this gift counts toward a completion whose reward item no longer
-// exists: taking it would cost the player their goods for nothing.
+// True when this gift counts only toward completions that can never pay: one
+// that needs an item which no longer exists, or whose every reward is such an
+// item. Taking the gift would cost the player their goods for nothing.
 static bool quest_give_unrewarded(int quester_id, P_char mob, P_char pl, const char *item)
 {
 	P_obj obj = item ? get_obj_in_list_vis(pl, item, pl->carrying) : NULL;
+	bool dead = false;
 
 	if (item && !obj)
 		return false;
 	for (const quest_complete_data *qcp = quest_index[quester_id].quest_complete; qcp;
 	     qcp = qcp->next)
 	{
-		bool wanted = false;
+		bool wanted = false, unobtainable = false, missing = false, pays = false;
 		for (const goal_data *gp = qcp->give; gp; gp = gp->next)
 		{
+			if (gp->goal_type == QUEST_GOAL_ITEM && real_object(gp->number) < 0)
+				unobtainable = true;
 			if (!obj)
 				wanted |= gp->goal_type == QUEST_GOAL_COINS;
 			else
@@ -750,17 +754,24 @@ static bool quest_give_unrewarded(int quester_id, P_char mob, P_char pl, const c
 					  (gp->goal_type == QUEST_GOAL_ITEM_TYPE &&
 					   gp->number == obj->type);
 		}
-		for (const goal_data *gp = qcp->receive; wanted && gp; gp = gp->next)
+		for (const goal_data *gp = qcp->receive; gp; gp = gp->next)
 		{
 			if (gp->goal_type == QUEST_GOAL_ITEM && real_object(gp->number) < 0)
-			{
-				logit(LOG_DEBUG, "quester(): mob %d rewards missing obj %d",
-				      GET_VNUM(mob), gp->number);
-				return true;
-			}
+				missing = true;
+			else
+				pays = true;
 		}
+		if (!wanted)
+			continue;
+		// A sound completion wants it too, so the gift is not wasted.
+		if (!unobtainable && (!missing || pays))
+			return false;
+		dead = true;
 	}
-	return false;
+	if (dead)
+		logit(LOG_DEBUG, "quester(): mob %d has a completion that cannot pay",
+		      GET_VNUM(mob));
+	return dead;
 }
 
 int quester(P_char ch, P_char pl, int cmd, char *arg)

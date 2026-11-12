@@ -44,7 +44,9 @@ PH 0 0 -1
 8 8 0
 """
 
-# A banana earns an item that does not exist; a mace earns a real dagger.
+# A banana earns only an item that does not exist; a mace earns a real dagger; a
+# silver star earns a real mace beside a missing item; a gold star is wanted
+# only together with an item that does not exist.
 QUEST = """#22811
 M
 delivery~
@@ -58,6 +60,16 @@ Q
 ~
 R I 256
 G I 677
+Q
+~
+R I 677
+R I 29998
+G I 24
+Q
+~
+R I 256
+G I 23
+G I 29997
 S
 """
 
@@ -206,20 +218,28 @@ def run(binary):
                 assert "appears to be Human and is in excellent condition" in text, text
                 passed("B4: a creature authored without a race shows its condition, not 'Bogus race!'")
 
-                for vnum, keyword in ((15, "banana"), (677, "mace")):
+                for vnum, keyword in ((15, "banana"), (677, "mace"), (23, "gold")):
                     assert "You have created" in do(staff, f"load obj {vnum}")
                     assert "Ok." in do(staff, f"give {keyword} {THIEF}")
                 text = do(thief, "give banana questgiver")
                 assert "has no reward to offer for that right now, so you keep it." in text, text
                 assert "banana" in do(thief, "inventory")
+                text = do(thief, "give gold questgiver")
+                assert "has no reward to offer for that right now, so you keep it." in text, text
+                assert "gold star" in do(thief, "inventory")
                 text = do(thief, "give mace questgiver")
                 # A full pack puts the reward at the player's feet.
                 assert re.search(r"questgiver (gives you|places) a steel dagger", text), text
                 assert "mace" not in do(thief, "inventory")
-                passed("B5: a hand-in whose reward item is missing is refused and kept; a sound one still pays")
+                assert "You have created" in do(staff, "load obj 24")
+                assert "Ok." in do(staff, f"give silver {THIEF}")
+                text = do(thief, "give silver questgiver")
+                assert re.search(r"questgiver (gives you|places) a small wooden mace", text), text
+                passed("B5: hand-ins toward completions that cannot pay are refused and kept; sound ones pay")
 
-                # A blow can leave Raoul mortally wounded; keep attacking until he dies.
-                deadline = time.monotonic() + 40
+                # A blow can leave Raoul mortally wounded; stay vicious and keep attacking.
+                do(necro, "toggle vicious on")
+                deadline = time.monotonic() + 150
                 while "corpse of raoul" not in do(necro, "look"):
                     assert time.monotonic() < deadline, "Raoul never died"
                     do(necro, "kill raoul")
@@ -275,6 +295,27 @@ def run(binary):
                 classic = group_list(necro)
                 assert classic.index("raceless wisp") < classic.index(NECRO) and "(Human)" in classic, classic
                 passed("I11: toggle groupsort lists players before pets for its owner only; classic stays the default")
+
+                warning = "You hold more than one artifact of the same type."
+                for vnum, keyword in ((900, "blue"), (901, "red")):
+                    assert "You have created" in do(staff, f"load obj {vnum}")
+                    do(staff, "drop " + keyword)
+                deadline = time.monotonic() + 30
+                while sql("SELECT COUNT(*) FROM artifacts WHERE vnum IN (900,901)") != "2":
+                    assert time.monotonic() < deadline, "the two artifacts were never recorded"
+                    time.sleep(.2)
+                # The starter kit fills the pack; make room before lifting the stones.
+                do(necro, "wear all")
+                do(necro, "drop all")
+                text = do(necro, "get blue")
+                assert "You get" in text and warning not in text, text
+                text = do(necro, "get red")
+                assert "You get" in text and warning in text, text
+                # Parting with one ends it; the half-hourly sweep is covered by its own test.
+                do(necro, "drop red")
+                text = do(necro, "wear blue")
+                assert warning not in text, text
+                passed("I8: picking up a second artifact of one type warns at once; one of a type does not")
 
                 do(staff, f"cast 'concealment' {BARD}")
                 until(staff, "stat char " + BARD, "'concealment'")

@@ -2253,7 +2253,7 @@ void artifact_update_sql(P_obj arti, char owned, time_t timer)
 
 	int type, locType, location, vnum = arti ? OBJ_VNUM(arti) : -1;
 	bool new_owned;
-	P_char owner;
+	P_char owner = NULL;
 	P_obj obj1;
 
 	if (!updateArtis)
@@ -2419,7 +2419,25 @@ void artifact_update_sql(P_obj arti, char owned, time_t timer)
 		      "arti_update_sql: WARNING: timer was %ld, resetting to 10 days for vnum %d",
 		      (long)0, vnum);
 	}
+	const bool arrived = locType == ARTIFACT_ON_PC &&
+			     (found == artifact_rows.end() ||
+			      found->second.locType != ARTIFACT_ON_PC ||
+			      found->second.location != location);
 	artifact_row_store(vnum, { new_owned, locType, location, timer, type });
+
+	// The artifact-war sweep strips every artifact from a player who holds two of
+	// one type. Say so when one arrives, while they can still part with it.
+	if (arrived)
+	{
+		int held = 0;
+		for (const auto &entry : artifact_rows)
+			held += entry.second.locType == ARTIFACT_ON_PC &&
+				entry.second.location == location && entry.second.type == type;
+		if (held > 1)
+			send_to_char(
+				"&+RYou hold more than one artifact of the same type. Part with one at once, or every artifact you wear or carry will fall to the ground.&n\r\n",
+				owner);
+	}
 }
 
 bool artifact_reconcile_player_owner(P_obj object)

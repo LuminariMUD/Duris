@@ -1878,10 +1878,14 @@ void monolith_cases() {
   command_output=="&+RYou feel a sense of satisfaction from above.&n\r\n");
  owner.player.level=62; use(); assert(monolith.value[0]==2 && artifact_rows.at(900).timer==initial+14400 &&
   command_output.find("satisfaction")==std::string::npos); owner.player.level=51;
- // Stale tracking repairs from the live wearer before the monolith feeds it.
+ // Stale tracking repairs from the live wearer before the monolith feeds it. The
+ // repair is an arrival, and 902 is tracked on the same holder as a second major,
+ // so it warns once; the feeds above, which move nothing, stayed silent.
  artifact_rows.at(900).location=77; use(); assert(monolith.value[0]==1 &&
   artifact_rows.at(900).location==55 && artifact_rows.at(900).timer==initial+21600 &&
-  command_output=="&+RYou feel a sense of satisfaction from above.&n\r\n");
+  command_output=="&+RYou hold more than one artifact of the same type. Part with one at once, "
+   "or every artifact you wear or carry will fall to the ground.&n\r\n"
+   "&+RYou feel a sense of satisfaction from above.&n\r\n");
  monolith.value[0]=0; use(); assert(artifact_rows.at(900).timer==initial+21600 &&
   command_output.find("satisfaction")==std::string::npos);
  // Clamping an over-cap artifact keeps its negative feedback, without a false positive.
