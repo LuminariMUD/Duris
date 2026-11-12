@@ -35,7 +35,7 @@
 #include "core/mm.h"
 #include "item/objmisc.h"
 #include "item/random_equipment.h"
-#include "kingdom/kingdom_craft_bind.h"
+#include "kingdom/kingdom_store_piece.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
@@ -1232,6 +1232,13 @@ void do_encrust(P_char ch, char *argument, int /*cmd*/)
 	if (IS_ARTIFACT(item))
 	{
 		act("You are unable to encrust an artifact.", FALSE, ch, 0, 0, TO_CHAR);
+		return;
+	}
+	if (kingdom_store_piece(item) && !kingdom_craft_binding_present(item->action_description))
+	{
+		send_to_char(
+			"This guild-store item's buyer mark is missing; it cannot be encrusted.\r\n",
+			ch);
 		return;
 	}
 
