@@ -4232,41 +4232,35 @@ decay
 #0
 
 Cast
-Cast - Last Edited: 2022-10-08 22:04:20 by ashyel
-=================================================
-Syntax: cast "<spell>" [<object>|<victim>]
-"Cast" is a command used to indicate that a spell is being created. It is
-the act of invoking the gods or calling upon magical powers inside the
-individual. Some spells may only be cast on the caster, and therefore you
-do not need to indicate a target for the spell. If you are casting a spell
-upon yourself, you may substitute for your name "me" or "self." All spell
-names must be enclosed by " ". For Magic-User subclasses, you must have a
-spellbook containing the spell you want to cast in order to memorize it.
-For Priest sub-classes, you may simply pray for your spells. Undeads,
-except for Gargoyles, must assimilate spells. Finally, Druids regain their
-spells by communing them.
-Examples:       cast "burning hands" <victim>
-                cast "teleport"
-                cast "strength" me
-If you are casting an offensive spell while in combat, and the target is
-the enemy you are fighting, the spell will automatically be directed at the
-enemy without having to define a target.
-There is help available for each individual spell (see examples below).
-Examples:      	help "cure light"
-                help "minor creation"
-                help "energy drain"
-NOTE:  You can abbreviate the spell name when casting it.  For example,
-                > cast "lightning bolt" <monster>
-                could be abbreviated as:
-                > cast "ligh" <monster>
-You must be careful however when abbreviating to insure that the correct
-spell is cast because many spells have similar names and the abbreviations
-may not be obvious at once. Experimentation in a safe forum is the best
-idea to insure that no disasters occur.
+Cast - Last Edited: 2026-11-12
+============================================================
+Invoke a spell you can use with the cast interface. Read spells first
+to find your class's actual spell interface; psionicists use will.
+
+==Syntax and examples==
+
+  cast '<spell name>' [target]
+  cast 'burning hands' <victim>
+  cast 'strength' me
+  cast 'teleport'
+
+Use single apostrophes around the spell name. me and self can target you
+when the spell permits it. An offensive spell can default to your current
+opponent in combat; other defaults depend on that spell. Full spell names
+avoid selecting an unintended abbreviation. Targets and effects vary by spell.
+
+You must have access and the required prepared spell or circle reserve.
+Casting takes time and consumes the applicable spell resource. A reference
+entry or a spell in a book is not a prepared cast. Check spells and the
+spell's help for its actual target, costs, aggression and restrictions.
+Silence, binding, unsuitable forms, no-magic rooms and lost concentration
+can stop casting. Read the failure message before trying again.
 
 ==See also==
 
-spellsystem, spellslot, spellcircle, spellfailure, magic, memorize, pray, assimilate, tupor, commune, caster
+[[Spells]], [[Memorize]], [[Practice]], [[Class]], [[Innate]], [[Index]]
+Type spells info fireball for access and help fireball for instructions.
+For psionic powers use will; preparation depends on class and form.
 
 #0
 
@@ -4887,7 +4881,7 @@ Emote, Social Actions, commands
 #0
 
 Class
-Class - Last Edited: 2026-11-02
+Class - Last Edited: 2026-11-12
 ============================================================
 Browse classes, specializations, and their abilities.
 
@@ -4909,11 +4903,11 @@ Specialization profiles show the skills, spells, and innate abilities added,
 changed, or lost compared with the base class. For the complete ability lists,
 use skills <class or specialization> and spells <class or specialization>.
 
-Use specialize at level 30. See help specialization for requirements.
+Use specialize at level 30. See [[Specialization]] for requirements.
 Class innates lists inherited abilities, unlock levels, and active/passive
 markers. Nonzero melee and archery damage bonuses or penalties are also
-shown; see help attack damage modifiers. Use help <ability name> for usage, or race innates <race> for racial
-abilities.
+shown; see [[Attack Damage Modifiers]]. Use help <ability name> for usage,
+or race innates <race> for racial abilities.
 
 Names accept case-insensitive full names, spaces/hyphens and unique prefixes.
 Ambiguous names list candidates. Assassin and Thief resolve to Rogue
@@ -4930,9 +4924,14 @@ The roster labels the retired standalone Assassin and Thief classes.
   spells fire magus
   spells info fireball
 
+Browsing costs no lessons and does not select a class or specialization.
+For an unknown or ambiguous name, use class to browse and enter a full name.
+Type innate info reflection for personal access/status before activation.
+
 ==See also==
 
-Classes, Class Guides, Race, Skills, Spells, Specialization, Multiclass
+[[Classes]], [[Class Guides]], [[Race]], [[Skills]], [[Spells]],
+[[Innate]], [[Specialization]], [[Multiclass]], [[Index]]
 
 #0
 
@@ -5681,18 +5680,23 @@ group, gsay, channel, follow
 #0
 
 Consider
-Consider - Last Edited: 2007-04-19 19:17:10 by Unknown
-======================================================
-Syntax:         consider <opponent>
-This command will compare your character's level with that of the monster's
-or player's and give you a rough estimate of your chances of defeating it.
-This estimate is by no means exact and does not take hit points, special
-attacks or damage into consideration.
-Example:        consider dog
+Consider - Last Edited: 2026-11-12
+============================================================
+Compare your level with a visible opponent in the same room before
+choosing whether to fight.
+
+Syntax: consider <opponent>       Example: consider dog
+
+This is a rough level comparison. It does not account for hit points,
+equipment, shields, special attacks or damage. It does not start combat,
+but the target and others in the room can see you sizing the target up.
+If told "Consider killing who?", check visibility and the target's keyword.
+Use look <opponent> as well, and plan an escape before attacking.
 
 ==See also==
 
-commands, experience, level
+[[Look]], [[Flee]], [[Death]], [[Skills]], [[Index]]
+Type skills info bash to inspect skill access before planning an attack.
 
 #0
 
@@ -5820,10 +5824,33 @@ Weather
 #0
 
 Corpse
-Corpse - Last Edited: 2007-04-22 22:12:53 by Unknown
-====================================================
-A corpse is a cadaver left behind after a mob or person has been killed.  A corpse will decay after a small amount of time, and the spell "preserve" is used to delay such action.  Corpses often contain coins and gear, and sometimes can contain hidden items found by "search corpse".  A PC's corpse can be resurrected by the cleric spell "resurrection" allowing the player to return to the spot of the corpse, and retain some of the exp lost upon death.  Corpses are the main tool that necromancers utilize upon raising inanimate beings.
-Also see:  Help search, Help resurrection, Help necromancer, Help preserve
+Corpse - Last Edited: 2026-11-12
+============================================================
+A corpse is the remains of a dead creature or player. It may contain
+belongings and coins; it decays over time. Preserve can delay decay.
+
+==Inspection and recovery==
+
+  look in corpse          inspect a visible corpse in your room
+  get all corpse          recover its accessible contents
+  get sword corpse        take a particular item
+  look in 2.corpse        distinguish multiple matching corpses
+
+Check whose remains you are opening before taking anything. Carry limits,
+visibility, corpse-looting restrictions, combat and your condition can block
+recovery. Read the failure message and [[Get]]; do not assume every failure
+means the corpse is empty. Taking the whole player corpse can require its
+owner's consent. Recovering items does not automatically equip them.
+
+Search corpse can reveal hidden items on suitable remains. A player's corpse
+may support resurrection, returning the player to it and restoring some lost
+experience. Necromancers also use corpses to raise servants. Read the specific
+spell or ability for requirements; browsing it does not perform the action.
+
+==See also==
+
+[[Death]], [[Get]], [[Wear]], [[Wield]], [[Resurrection]], [[Preserve]],
+[[Search]], [[Necromancer]], [[Index]]
 
 #0
 
@@ -6559,21 +6586,37 @@ See also: blindness
 #0
 
 Death
-Death - Last Edited: 2007-04-22 22:12:53 by Unknown
-===================================================
-When you die, you re-enter the game at your birthplace (where you started
-the game). You can retrieve your corpse by traveling to where you died and
-getting the items from inside. Below level 30, all races and sides are protected
-from losing experience or levels through death. At level 30, death can cost a
-percentage of experience for your level. You receive a warning when you reach
-this level. Hardcore characters still follow their permanent-death rules.
-It is wise to be careful to avoid death when you
-have recently gained a level. If the experience lost due to death is more
-than you have gained in your current level, you will "lose a level" and the
-maximum hitpoint difference between the two levels. If you were killed by
-another player of an opposite racewar side, it is possible that you will
-also lose "Frags".
-	See also:decay ,experience ,drag ,consent ,get ,resurrect ,frag ,raid
+Death - Last Edited: 2026-11-12
+============================================================
+Death can leave your belongings and coins in a corpse where you fell.
+Outside special arena rules, ordinary death saves and removes the character
+from play. Re-enter through your account to begin recovery. You normally
+return at your birthplace; a death waiting area can delay that return.
+Hardcore characters follow their separate final-death rules.
+
+==Recovery steps==
+
+1. Read your death messages and check your character after re-entering.
+2. Arrange a return to the death location; the danger may still be there.
+3. Use look in corpse to inspect the correct remains, then get all corpse
+   to recover available belongings. With several corpses, use numbered
+   keywords, such as look in 2.corpse. Read [[Corpse]] and [[Get]].
+4. Check inventory and equipment, then wear or wield recovered items.
+   Ask for help rather than repeatedly returning into the same danger.
+
+All races and sides are protected from ordinary death experience loss below
+level 30 under the current rules. At level 30 and above, death can cost
+experience and can lower your level if the loss crosses its boundary.
+Hardcore final death is separate from that protection. Opposite-side PvP
+can also affect frags. Equipment and corpse recovery are separate from XP.
+A suitable resurrection may recover some lost experience; see [[Resurrection]].
+
+Corpses can be looted or decay. Do not assume your belongings will remain
+until you return. Duris includes PvP and corpse looting; follow [[rules]].
+
+==See also==
+
+[[Consider]], [[Flee]], [[Inventory]], [[Equipment]], [[Newbie]], [[Index]]
 
 #0
 
@@ -9246,20 +9289,28 @@ epic, level, experience, zones
 #0
 
 Equipment
-Equipment - Last Edited: 2014-07-25 17:29:24 by lohrr
-=====================================================
-Typing "equipment" will allow you to view what items you are wearing and
-where you are wearing them. For example:
-> equipment
+Equipment - Last Edited: 2026-11-12
+============================================================
+See the items you are wearing or wielding and their body slots.
+
+Syntax: equipment (short form: eq)
+        equipment slots | equipment list
+Example: eq slots
+
+The slots/list form also shows unused slots. Ordinary output can include:
 <worn around neck>      a shiny black cape
 <worn on finger>        a red ring
 <wielded>               a sword
-This command can be shorted to simply "eq".
-There is now an option to show unused slots with 'eq slots' or 'eq list'.
+
+Equipment lists worn items; inventory lists loose carried items. If an
+expected item is absent, check inventory and containers. Use wear or wield
+to equip it. Free hands, body shape, binding and item restrictions still
+apply; a class or race reference does not grant permission to equip an item.
 
 ==See also==
 
-* Inventory
+[[Inventory]], [[Look]], [[Wear]], [[Wield]], [[Class]], [[Race]], [[Index]]
+Type class info warrior or race info grey elf for current character traits.
 
 #0
 
@@ -9630,13 +9681,20 @@ the ground with the "exhume" command.
 #0
 
 Exits
-Exits - Last Edited: 2007-04-19 19:17:11 by Unknown
-===================================================
-Typing "exits" will display a list of all the obvious exits in the room as well as their current state and keywords.  The more obscure routes, if any, won't be seen. A little searching will be needed to locate those.
+Exits - Last Edited: 2026-11-12
+============================================================
+Use exits to list the obvious routes from your current room, including
+visible door states and keywords. Example: exits
+Choose a direction separately, such as north or n; exits does not move you.
+
+You must be awake and able to see. If blinded, recover your sight first.
+Hidden routes may be absent, and a listed exit can still be blocked or
+unsafe. Use look north to inspect a direction and check doors before moving.
+Movement may cost vitality and can fail when exhausted or unable to move.
 
 ==See also==
 
-close, open
+[[Look]], [[Flee]], [[Newbie]], [[Index]]
 
 #0
 
@@ -10314,26 +10372,32 @@ socials, commands, moon
 #0
 
 Flee
-Flee - Last Edited: 2008-04-14 16:13:49 by Blaize
-=================================================
-Syntax:         flee
-If, for instance, the minor daemon you so carefully considered turns out to
-be a little more than you bargained for, you can attempt to escape by using
-the "Flee" command. This command, if successful, will allow you to leave
-the room via the nearest exit, if there is one. However, some monsters will
-hunt you down in various manners to try and continue the fight, so be
-warned.
-Fleeing is not an effortless action. Extracting yourself from a life or
-death struggle takes energy, so you will eat up your personal stamina in
-such attempts. You will lose a significant amount of moves on a flee.
+Flee - Last Edited: 2026-11-12
+============================================================
+Try to escape your current room, especially when a fight becomes dangerous.
+
+Syntax: flee                     Example: flee
+Trained rogues with control flee may try: flee <direction>
+Example for that skill: flee north
+
+Ordinary flee chooses a random eligible exit, not the nearest exit.
+More eligible exits improve the escape chance while engaged. A requested
+direction requires control flee; losing control can choose another exit.
+A successful escape can still be followed by a pursuing enemy.
+
+On leaving, ordinary non-rogue players without improved flee lose 20-30
+vitality; rogues lose 5-15. Improved flee removes the ordinary non-rogue
+surcharge. Movement and special effects can have additional costs.
+
+A hold, immobility, blocked exits or a failed escape roll can stop you.
+If you are not standing, an attempt may only scramble you to your feet;
+try again when able. Stun and special room effects can interfere too.
+A failure message means you have not escaped; check your location.
 
 ==See also==
 
-* Consider
-* Disengage
-* Retreat
-* Wimpy
-* Wordofrecall
+[[Consider]], [[Exits]], [[Death]], [[Skills]], [[Innate]], [[Index]]
+Type skills info control flee or innate info improved flee for reference.
 
 #0
 
@@ -11109,29 +11173,39 @@ guild, toggle
 #0
 
 Get
-Get - Last Edited: 2007-04-19 19:17:12 by Unknown
-=================================================
-Syntax:        get <object> | take <object>
-If you are in a hurry, or if you feel greedy, you can type get all. You can
-also use "get" and "take" to extract objects from containers.
-Example:  "get dagger from bag" or more simply, "get dagger bag".
-When there is more than one object of the same name in the container or room
-and you wish to get a particular one, use the following example as a
-guideline:
-You are in a room and you see:
-        A shiny box is lying in the dirt here.
-        A shiny box is lying in the dirt here.
-If you wished to get the second box, you would type:
-        "get 2.box"
-If you wish to get all of a single type of item:
-        "get all.box"
-       See also:drop ,put
+Get - Last Edited: 2026-11-12
+============================================================
+Take a visible object from the ground or from a container.
+Take is another name for get.
 
-Join full object keywords with hyphens: "get fire-sword" matches an object
-with both fire and sword keywords. "get 2.fire-sword" picks the second match,
-and "get all.fire-sword" takes all matching objects. Existing keywords such
-as two-handed still work. Use full keywords in each combined part; leading,
+==Syntax and examples==
+
+  get <object>                  example: get dagger
+  get <object> [from] <bag>      example: get dagger from bag
+  get all                       take available room objects
+  get all <container>           example: get all corpse
+  get 2.box                     take the second matching box
+  get all.box                   take matching boxes
+
+Join full object keywords with hyphens: get fire-sword matches an object
+with both fire and sword keywords. get 2.fire-sword picks the second match;
+get all.fire-sword takes matching objects. Existing keywords such as
+two-handed still work. Use full keywords in each combined part; leading,
 trailing or doubled hyphens do not form a combination.
+
+The item must be visible, takeable and within your item/weight limits.
+Containers must be accessible and open where required. Corpse recovery
+also follows looting restrictions and can impose recovery time. Immobility
+or an intangible form can prevent taking items. If it fails, check keywords,
+container state, your inventory load and the exact failure message.
+Bulk requests may stop before taking every item; inspect what remains.
+
+==See also==
+
+[[Look]], [[Corpse]], [[Inventory]], [[Equipment]], [[Wear]], [[Wield]],
+[[Class]], [[Race]], [[Index]]
+Read class info warrior or race info grey elf for character reference;
+these browsers do not override an item's equipment restrictions.
 
 #0
 
@@ -13640,24 +13714,35 @@ No entries found.
 #0
 
 Help
-Help - Last Edited: 2011-10-09 20:56:58 by Jexni
-================================================
-The "help" command lets you access things like this entry. Type "help"
-alone to see a list of major topics.
-                      Duris DikuMUD - Main Help Menu
-  Type:                   Produces:
-  HELP..............This screen
-  HELP INDEX........Help File Index
-  HELP POLICIES.....Master list of Duris Policies and rules. These are a
-  and HELP RULES    *must* read for all players.
-  HELP <keyword>....Information on a policy, command, skill or spell
-  HELP COMMANDS.....List of the most frequently used commands
-  NEWS..............Up to date information on Duris
-  COMMANDS..........List of *all* available commands, including SOCIAL ACTIONS
-  FAQ.....* NEW! *........The FAQ (Duris"s Frequently Asked Questions)
-  Help topics can be reached by using the entire spell/skill name, race/class name,
-  or by short form query.  If you cannot find help for a term using short form, use
-  the entire name.
+Help - Last Edited: 2026-11-12
+============================================================
+Find instructions for a command, spell, skill, race, class or innate.
+
+==Search==
+
+Type: help <topic>       Example: help fireball
+Use the full title to open that page. A partial name may list several
+matches; choose a title and type help followed by it. On clients with help
+links, you can select the title instead. A miss may offer a short "Did you
+mean" list: help firball suggests Fireball. A suggestion only opens help.
+If nothing useful appears, try a longer name or browse [[Index]].
+
+==Start here==
+
+* [[Newbie]] - an ordered first-session guide.
+* [[Index]] - movement, combat, recovery, equipment, talking and learning.
+* [[Policies]] - where to find policy guidance. Read [[rules]] before play.
+
+==Current ability reference==
+
+* [[Innate]] - personal abilities and readiness. Type: innate info reflection
+* [[Class]] - classes and specializations. Type: class info warrior
+* [[Race]] - race traits and creation choices. Type: race info grey elf
+* [[Skills]] - proficiency and unlocks. Type: skills info bash
+* [[Spells]] - spell circles and access. Type: spells info fireball
+
+Browsing explains an ability; it does not learn, prepare or activate it.
+Type news for announcements and commands for the available command list.
 
 #0
 
@@ -14630,22 +14715,52 @@ amounts of damage to those affected by it.
 #0
 
 Index
-Index - Last Edited: 2026-10-28
+Index - Last Edited: 2026-11-12
 ============================================================
-Use 'help <topic>' to search topic titles. Try a command, class, race,
-spell or ability name. A partial name can list several matching topics.
+Choose the task you are trying to do. Type help <title>, or select a
+linked title on a client that supports help links. Example: help look
+If a search is too broad, use its full title; [[Help]] explains searching.
 
-==Starting points==
+==Movement and looking==
 
-* 'help policies' for the policies index; 'help rules' for current rules.
-* 'help duris information' for general game information.
-* 'help communications utilities' for channels and communication.
-* 'help warfare' for combat topics.
-* 'help mystics' for magic topics.
-* 'help mundane life' for everyday activities.
+* [[Look]] - inspect the room, a person, an object or a container.
+* [[Exits]] - check visible routes before choosing a direction.
 
-'help commands' offers a command overview. For a class progression,
-use its full name followed by skills, such as 'help psionicist skills'.
+==Combat and escape==
+
+* [[Consider]] - compare levels before attacking; it is only a rough guide.
+* [[Flee]] - try to leave a fight and understand escape costs and failures.
+
+==Death and corpse recovery==
+
+* [[Death]] - what happens after death and how to begin recovery.
+* [[Corpse]] - inspect remains and recover belongings before they decay.
+* [[Get]] - take items from the ground, a bag or a corpse.
+
+==Equipment==
+
+* [[Inventory]] - see carried items; [[Equipment]] shows worn items and slots.
+* [[Wear]] - put on armor; [[Wield]] explains weapons and free hands.
+
+==Communication==
+
+* [[COMMUNICATIONS UTILITIES CHANNELS]] - choose who receives your message.
+* [[Say]] - talk in your room; [[Nchat]] is for questions on your racewar side.
+
+==Learning abilities==
+
+* [[Practice]] - teachers, skill training and scribing.
+* [[Cast]] - spell syntax; [[Memorize]] explains preparation and other interfaces.
+* [[Innate]] - personal grants and readiness. Type: innate info reflection
+* [[Class]] - class/spec choices. Type: class info warrior
+* [[Race]] - race traits and availability. Type: race info grey elf
+* [[Skills]] - personal proficiency and catalogs. Type: skills info bash
+* [[Spells]] - circles and spell details. Type: spells info fireball
+
+==Rules and conduct==
+
+* [[rules]] - current rules; [[Policies]] points to policy guidance.
+* [[Newbie]] - follow the first-session steps before setting out.
 
 #0
 
@@ -14766,23 +14881,34 @@ have to wait a few minutes before being allowed to rent at an inn.
 #0
 
 Innate
-Innate - Last Edited: 2015-11-07 06:20:34 by lohrr
-==================================================
-Typing "innate" provides a list of your innate abilities, if any. Innate
-abilities are those skills or spells which all members of your race or class
-know instinctively. To use an innate ability, use the proper syntax for the
-given skill or spell. To get more information on a particular skill or spell,
-type "help <skill>" or "help <spell>", respectively. The innate abilities for
-each race or class are listed under their help entry.
-Note: Many racial and class specific innates only become available at higher
-levels.
-You can now "innate list player" and "innate list all" to show innates
-available to players or all innates in game.
+Innate - Last Edited: 2026-11-12
+============================================================
+Browse inherited racial, class and specialization abilities, then read
+an ability's instructions before activating it.
+
+==Syntax and examples==
+
+  innate                        personal grants, unlocks and readiness
+  innate info <name>            example: innate info reflection
+  innate list player            wider reference for player innates
+  innate list all               includes non-player innates as well
+  innate <name> [arguments]     activate an eligible active ability
+
+An asterisk marks an always-active passive innate. Future grants show their
+unlock level; active abilities can show that they are too tired to use again.
+Innate info reports your access and status plus mechanics where a detailed
+provider exists. It does not activate the ability, start a timer or spend
+resources. Reference visibility does not mean your character can use it.
+
+Activation can require an unlock level, an available use, a target, a
+suitable form or other conditions specific to the ability. Use its full name,
+check innate info <name>, and read help <ability> for syntax and failures.
+Not every innate has a detailed mechanics panel. Some use their own command.
 
 ==See also==
 
-Classes
-Races
+[[Innates]], [[Class]], [[Race]], [[Skills]], [[Spells]], [[Index]]
+Type class innates warrior or race innates grey elf for grant references.
 
 #0
 
@@ -14913,12 +15039,21 @@ rareload, unique, Myrabolus, Jotunheim, Desolate, The Hunt, zone, credits
 #0
 
 Inventory
-Inventory - Last Edited: 2007-04-19 19:17:13 by Unknown
-=======================================================
-This command allows you to see what you are currently carrying. It will not
-show you items that are stored inside containers, nor undetectable items
-(invisible items, for example).
-	See also:equipment
+Inventory - Last Edited: 2026-11-12
+============================================================
+See the loose items you are carrying.
+
+Syntax: inventory (short form: i)       Example: inventory
+
+This does not list worn equipment or the contents of your bags. It also
+omits objects you cannot detect, such as invisible objects without the
+needed sight. Use equipment for worn items and look in bag for contents.
+If an item seems missing, check those places and your ability to see it.
+Inventory only displays items; it does not move or equip them.
+
+==See also==
+
+[[Look]], [[Get]], [[Equipment]], [[Wear]], [[Wield]], [[Index]]
 
 #0
 
@@ -15873,28 +16008,31 @@ Image:longhollow.jpg
 #0
 
 Look
-Look - Last Edited: 2007-04-19 19:17:13 by Unknown
-==================================================
-"Look" is used for studying your surroundings and is more often used in its
-short form variation of "l."
-Eg : look
-     l
-     look dragon
-     look at board
-     look board
-     l at board
-     look in bag
-     l in bag
-     l in 2.bag (if you have more than one bag)
-     l south
-     l candle (if there"s an extra description of a candle in a room)
-Note that if you type "look at <container>" you will not see its contents.
-To see what"s inside a container (e.g., a corpse), use the syntax "look IN
-<object>." For this type of inspection, it"s best to use the command
-"examine."
-"Look" is also used when utilizing one of Duris"s many ships, although with
-different syntax.
-	See also:examine ,glance ,read ,ships
+Look - Last Edited: 2026-11-12
+============================================================
+Inspect your surroundings, a visible person or object, or a container.
+
+==Syntax and examples==
+
+  look                    show the room (short form: l)
+  look <target>           example: look dragon
+  look at <target>        example: look at board
+  look in <container>     example: look in bag
+  look in 2.bag           inspect the second matching bag
+  look <direction>        example: look south
+
+Looking at a container describes it; look in shows its contents. Examine
+can also inspect an object. Room details may have keywords, such as candle.
+Ship viewing has additional forms; read [[SHIP SHIPS]] when aboard one.
+
+You must be awake and able to see the target. Darkness, blindness,
+invisibility, a closed container or a wrong keyword can prevent inspection.
+Check the room, use the item's keywords and open containers when appropriate.
+Looking does not take the object or walk through the exit.
+
+==See also==
+
+[[Exits]], [[Get]], [[Inventory]], [[Equipment]], [[Corpse]], [[Index]]
 
 #0
 
@@ -16664,20 +16802,37 @@ Emote, Social Actions, commands
 #0
 
 Memorize
-Memorize - Last Edited: 2022-10-08 21:57:50 by ashyel
-=====================================================
-Syntax:  <memorize|pray> (while resting)
-Syntax:  <memorize|pray> 'spellname' (while resting)
-Syntax:  forget 'spellname'
-"Memorize" and "Pray" lets you put a spell in your active repertoire. To
-successfully memorize or pray for a spell, you must be holding, wearing or have in
-your inventory a spellbook which contains the scribed spell to
-successfully memorize it.
-Memorizing or praying without specifying a spellname allows you to
-resume your studies/prayers and lists the time remaining to complete
-each spell.
-"Forget" lets you purge a spell from your active repertoire.
-	See also:spellslot ,cast ,practice ,meditate
+Memorize - Last Edited: 2026-11-12
+============================================================
+Prepare spells using the interface appropriate to your class and form.
+Type spells to see your personal list and applicable interface.
+
+==Syntax and examples==
+
+  memorize                      view or resume book-class preparation
+  memorize <spell name>         example: memorize magic missile
+  pray                          view or resume a praying class's preparation
+  pray <spell name>             example: pray cure light
+  forget <spell name>           remove a spell from your repertoire
+
+Rest while sitting or kneeling to start or resume preparation. Book classes
+normally need the spell in an available spellbook (inventory, hands, belt or
+on the ground); specific innate exceptions exist. Praying classes do not
+need a spellbook simply to pray. Your class/spec and maximum circle must
+permit the spell, and its circle must have room for another prepared spell.
+Preparation takes time; standing or other interruptions can stop progress.
+
+If told you are untrained, check your class's interface instead of repeatedly
+using memorize. Commune, assimilate, tupor and focus serve other classes or
+forms; psionicists use will for their powers. Read the applicable article.
+For missing-book or full-circle messages, check your books and prepared list.
+Scribing into a book and preparing from it are separate actions.
+
+==See also==
+
+[[Spells]], [[Practice]], [[Cast]], [[Class]], [[Race]], [[Innate]], [[Index]]
+Type spells info fireball or class info warrior for reference access;
+browsing does not prepare a spell or spend an innate use.
 
 #0
 
@@ -18350,30 +18505,47 @@ piece of equipment from that zone at random and experience.
 #0
 
 Newbie
-Newbie - Last Edited: 2014-09-15 19:33:27 by ashyel
-===================================================
-The term "newbie" is given to a player who is new to Duris.
-Quick Guide -
-1. We STRONGLY suggest that you play a good race character to get accustomed to the Duris environment.
-2. This is a FULL PVP/PK game. You will die. You will be looted.
-3. Ask a Guide for pointers by typing 'tell <playername>message.. They can be identified by typing 'who'. They are here to help, but are also playing, so may require a little patience for a response.
-4. Immortals and Forgers are here to help you as well.  Feel free to contact them by typing ptell <godname> message, or in a private message (like with guides.
-5. You can find our rules by typing help rules.  Please read them...
-Quick Start Info -
-1. Type list in shops to see their wares or services.
-2.. Consider opponents before engaging by typing con <mobname>
-3. Look at opponents before engaging them. They might have shields that prevent and/or reduce your offensive capabilities. (e.g. stone skin, barkskin, globe of invulnerability)
-4. Your starting set equipment is passable for levels 1-5. While you are a newbie, you will spawn a new set of gear with each death, so don't panic if you end up dead and naked!!
-5. Remember to loot corpses of any gear or coins that you might be able to use.  You can check corpses by typing 'look in corpse' and loot them by typing 'get all corpse' or 'get all.coin corpse'.
-A full list of available commands can be found by typing 'help commands'
-See also:
-* Display
-* Group
-* Index
-* Nchat
-* Raidable
-* Rules
-* Toggle
+Newbie - Last Edited: 2026-11-12
+============================================================
+New to Duris? Follow these steps, using help <title> for details.
+Example: help look. [[Help]] explains searching and typo suggestions;
+[[Index]] groups instructions by task.
+
+==Your first session==
+
+1. Type look, then exits. Move with north, east, south, west, up or down
+   (n, e, s, w, u, d); diagonal exits also exist. Check the room after each
+   move. Closed routes, exhaustion or your condition may stop movement.
+   Read [[Look]] and [[Exits]]. A visible exit does not promise safety.
+2. Type inventory and equipment. Use look in bag to inspect a container.
+   Read [[Inventory]], [[Equipment]], [[Get]], [[Wear]] and [[Wield]] before
+   changing gear. Item restrictions and available hands still apply.
+3. Ask for help with nchat Where should I begin? It reaches your own
+   racewar side with the channel on. Type say Hello to talk in your room.
+   Read [[Nchat]], [[Say]] and [[COMMUNICATIONS UTILITIES CHANNELS]]. Players
+   may be busy; allow time for answers.
+4. Before a fight, try consider <opponent>, for example consider dog, and
+   look at the opponent. Level comparison does not account for equipment
+   or dangerous abilities. Learn [[Consider]] and [[Flee]] before attacking.
+5. Read [[Death]] and [[Corpse]]. Recover with look in corpse and
+   get all corpse when you can reach the correct remains. Death and corpse
+   looting are part of this PvP game; replacement gear is not a recovery plan.
+6. Type skills, spells and innate for your own abilities. Reference entries
+   do not grant or ready them. Read [[Practice]], [[Cast]] and [[Memorize]]
+   for learning and preparation appropriate to your class.
+7. Read [[rules]] and [[Policies]] before playing. Duris includes player
+   killing and looting. Follow the racewar, conduct and character rules.
+
+==Reference without activation==
+
+* [[Innate]]: innate info reflection explains access and available mechanics.
+* [[Class]]: class info warrior and class specs warrior browse class choices.
+* [[Race]]: race info grey elf explains traits and creation availability.
+* [[Skills]]: skills info bash explains a skill and your progress.
+* [[Spells]]: spells info fireball explains a spell and your access.
+
+Use commands to browse command names. If you cannot find an instruction,
+try the full title through help or return to [[Index]].
 
 #0
 
@@ -19548,10 +19720,21 @@ Emote, Social Actions, commands
 #0
 
 Policies
-Policies - Last Edited: 2007-04-22 22:12:53 by Unknown
-======================================================
-The following is a list of all HELP available that deals with Duris
-policies and laws. It is See also:index ,commands
+Policies - Last Edited: 2026-11-12
+============================================================
+Read the current [[rules]] before playing. They cover fair play, conduct,
+characters, racewars, automation and staff responsibilities. The rules page
+is the current rules collection; use help rules to open it directly.
+
+Example: help rules
+For unclear rules or misconduct, use petition <message> to ask staff.
+Example: petition Please clarify the rule on character sharing.
+Reading help does not grant an exception to a rule. Check the full rules
+and their linked guidance rather than relying on a remembered summary.
+
+==See also==
+
+[[LAWS RULES]], [[Newbie]], [[Index]], [[Help]]
 
 #0
 
@@ -20019,38 +20202,35 @@ Power
 #0
 
 Practice
-Practice - Last Edited: 2008-03-14 19:13:12 by Blaize
-=====================================================
-This is the means to learn new spells or pay a teacher mob to
-increase your skill proficiency
-Spells:
-Syntax: practice (to see a list of spells that may be scribed)
-practice <spell> (while holding both a spellbook and quill
-and resting)
-practice all (this will scribe all spells into the book
-currently held by the player if there is enough room left)
-Practice is a method of scribing your spells. This is done with
-the help of a teacher in the room. For this to be done, you must
-have a spellbook and quill in hand and resting comfortably. You
-can then "practice <spell>" to add a spell to your spellbook. If
-this command is typed without any parameters and you are in the
-presence of a teacher it will show your list of spells.
-Skills:
-Practicing skills can be done by either two options. The first
-is passively "notching" skills by using them in or out of battle.
-For instance a rogue may wish to practice 'hide' by attempting
-to hide over and over. A second way to "notch" skills is by
-finding the teacher mobs on the continent maps or in a Hometown,
-and practicing skills at them by spending money.
-Note: Skills will notch automatically to 40 as you gain levels.
+Practice - Last Edited: 2026-11-12
+============================================================
+Learn from a teacher: train eligible skills or scribe spells for a
+spellbook class. Other classes may receive spells through different rules.
+
+==Syntax and examples==
+
+  practice                      list a present teacher's available lessons
+  practice <skill or spell>      example: practice bash
+  practice all                  scribe eligible spells for a book class
+
+A suitable teacher must be present and able to teach the ability. Your
+class/spec, level or spell circle must permit it. Skill lessons cost money;
+the teacher's list shows the current skill prices. Teachers have training
+limits, so you may need levels, a better teacher or improvement through use.
+Skills can also improve through use when their notching rules permit it.
+
+For spell scribing, rest sitting or kneeling with a spellbook and quill in
+your hands. The book needs enough free pages and must not already contain
+the spell. A missing teacher, wrong implements, busy state or insufficient
+circle can stop the lesson. Scribing adds a spell to the book; preparation
+is a separate step. Practice all is for book spells, not every skill.
 
 ==See also==
 
-Scribe
-Spell Circle
-Spell Slot
-Spell System
-Teachers
+[[Skills]], [[Spells]], [[Class]], [[Race]], [[Innate]], [[Memorize]], [[Cast]],
+[[Teachers]], [[Scribe]], [[Index]]
+Type skills info bash or spells info fireball for definitions and access.
+Type class info warrior or innate info reflection for other reference paths.
 
 #0
 
@@ -22647,9 +22827,21 @@ Autosaving...
 #0
 
 Say
-Say - Last Edited: 2007-04-19 19:17:14 by Unknown
-=================================================
-Syntax:         say <text> See also:toggle ,toggletell
+Say - Last Edited: 2026-11-12
+============================================================
+Talk to people in your current room.
+
+Syntax: say <message>                  Example: say Hello everyone
+
+Do not put quote marks around the message. Nearby listeners receive speech
+according to language and hearing rules; it is not a private tell.
+You need text to say and a condition/form that can speak. Silence, throat
+injury, underwater speech and some forms can prevent ordinary speech.
+If no words come out, check the message and your current condition.
+
+==See also==
+
+[[COMMUNICATIONS UTILITIES CHANNELS]], [[Nchat]], [[Newbie]], [[Index]]
 
 #0
 
@@ -24395,7 +24587,7 @@ Disharmonist, Scoundrel, Minstrel
 #0
 
 Skills
-Skills - Last Edited: 2026-11-02
+Skills - Last Edited: 2026-11-12
 ============================================================
 Use skills to see your own skill proficiency and future unlock levels.
 Staff also see their own skills when no argument is supplied.
@@ -24421,6 +24613,12 @@ values. A proficiency rating is not a guaranteed chance of success.
 Epic skills use their separate acquisition rules. Instruments and bard
 songs are included where applicable; spells use the spell commands.
 
+Example: skills info bash
+Browsing does not train the skill or activate it. If a name is unknown or
+ambiguous, try the full skill name or browse skills warrior. For training
+failures, check your level, teacher, money and the skill's instructions.
+Type innate info reflection for inherited abilities rather than lessons.
+
 ==Staff inspection==
 
 skills <target>
@@ -24434,10 +24632,8 @@ The obsolete skills reset option has been removed.
 
 ==See also==
 
-* Practice
-* Teachers
-* Specialization
-* Race
+[[Practice]], [[Teachers]], [[Specialization]], [[Race]], [[Class]],
+[[Spells]], [[Innate]], [[Index]]
 
 #0
 
@@ -29487,7 +29683,7 @@ no new dedicated cooldown. Its existing target restrictions remain.
 #0
 
 Spells
-Spells - Last Edited: 2026-11-04
+Spells - Last Edited: 2026-11-12
 ============================================================
 Browse your spells, class spell circles, and individual spell details.
 
@@ -29502,19 +29698,28 @@ circle and name. Spells above your maximum circle are dimmed. The header shows
 your class, specialization, secondary class and maximum circle.
 Your spell interface command appears below the list when applicable.
 Book markers check inventory, hands and belt only for spellbook users.
-Circle access and book presence do not mean a spell is prepared or ready to cast.
+Circle access and book presence do not mean a spell is prepared or ready
+to cast.
 
 Use spells cleric for base grants or spells fire magus for a complete effective
-specialization catalog. An asterisk marks spells gained from the specialization.
+specialization catalog. An asterisk marks spells gained from the
+specialization.
 Lost base spells are listed separately. Bard songs and instruments use skills.
 The catalog shows the class's default spell interface when applicable.
 Catalogs are reference information, independent of your race, class and level.
 
 Use spells info fireball for registered aggression, class/spec circles and
 changes, your personal access, and the existing helpfile. Live definitions
-supply circles; authored help explains casting syntax, effects and restrictions.
+supply circles; authored help explains casting syntax, effects and
+restrictions.
 Names accept case-insensitive full names and unique abbreviations, with spaces
 or hyphens. Ambiguous names list choices.
+
+Browsing does not learn, prepare or cast a spell. If a name is unknown or
+ambiguous, use its full name or browse spells cleric. A casting failure may
+mean missing preparation, circle reserves or an invalid target even when
+the reference shows access. Read the spell and your interface instructions.
+Type innate info reflection for an inherited ability's status.
 
 ==Staff==
 
@@ -29524,13 +29729,15 @@ spells all
 
 Staff can inspect a visible character. Class/spec names take precedence;
 use spells target <name> for collisions with catalogs or reserved words.
-Spells all lists spell IDs, aggression and base-class circles, with a class-code
+Spells all lists spell IDs, aggression and base-class circles, with a
+class-code
 legend. Use info or a specialization catalog for specialization access.
 
 ==See also==
 
-Skills, Race, Classes, Specialization, Multiclass, Spell circle, Cast,
-Memorize, Pray, Scribe
+[[Skills]], [[Race]], [[Class]], [[Classes]], [[Specialization]],
+[[Multiclass]], [[Spell circle]], [[Cast]], [[Memorize]], [[Pray]],
+[[Scribe]], [[Innate]], [[Index]]
 
 #0
 
@@ -29607,4 +29814,198 @@ of immunity. NPC singers cannot provide the new casting interruption.
 
 Disharmonist, Bard, Instrument, Play
 
+#0
+
+Wear
+Wear - Last Edited: 2026-11-12
+============================================================
+Put a carried item on an appropriate body slot.
+
+==Syntax and examples==
+
+  wear <object> [location]       example: wear ring
+  wear all                      try eligible inventory items
+  remove <item>                 example: remove ring
+  wear 2.ring                   select another matching ring
+
+Use inventory to find the object's keywords and equipment slots to inspect
+body locations. The last item removed or picked up appears first in inventory.
+The item must fit a supported slot and your body, and its binding and other
+restrictions must allow you to equip it. Some slots conflict with other gear.
+If it fails, check the message, slot, item keywords and restrictions; use
+remove when you deliberately want to free a slot. Use wield for weapons.
+
+==See also==
+
+[[Wield]], [[Equipment]], [[Inventory]], [[Class]], [[Race]], [[Index]]
+Type class info warrior or race info grey elf for reference. Neither command
+changes equipment or bypasses an item's requirements.
+#0
+
+Wield
+Wield - Last Edited: 2026-11-12
+============================================================
+Equip a carried weapon in an available weapon hand.
+
+Syntax: wield <weapon>                 Example: wield sword
+
+You need an appropriate weapon, enough strength for its weight and enough
+free hands. Two-handed weapons normally need two hands. Wielding a second
+weapon normally requires dual wield training; four-handed bodies have their
+own hand rules. An offhand weapon also has weight and weapon-type limits.
+Double attack applies to the primary weapon; it is separate from dual wield.
+
+Ogres, Firbolgs, Minotaurs, Storm Giants and Wights can use a two-handed
+weapon in one hand because of their Huge natural size. Enlarge, Reduce and
+Titan Form do not change this benefit. Weapon weight limits and dual-wield
+training still apply; two-handed held items that are not weapons still
+need two hands. The weapon keeps its two-handed damage and proficiency.
+
+If it fails, check inventory, equipment and the message: free a hand, choose
+a lighter eligible weapon, or wait for disarm effects to pass as appropriate.
+Item binding and equipment restrictions still apply.
+
+==See also==
+
+[[Wear]], [[Equipment]], [[Inventory]], [[Skills]], [[Class]], [[Race]], [[Index]]
+Type skills info dual wield for training; class info warrior and
+race info grey elf explain character reference without equipping anything.
+#0
+
+Nchat
+Nchat - Last Edited: 2026-11-12
+============================================================
+Ask questions about Duris or help other players on your racewar side.
+
+Syntax: nchat <message> (short form: nc)
+Example: nchat Where can I find a teacher?
+
+Listeners on your own racewar side must have the channel on. New characters
+start with it on; toggle nchat turns it off or back on at any level.
+Illithids cannot use it. Silence, an altered/disguised shape or a silent
+location can also block it. If told the channel is off, turn it on first.
+
+Repeating the same message too often temporarily removes channel access.
+The newbie channel is logged for staff review. Ask clearly, avoid repeated
+messages and allow other players time to answer.
+
+==See also==
+
+[[Newbie]], [[Say]], [[COMMUNICATIONS UTILITIES CHANNELS]], [[Index]]
+#0
+
+LAWS RULES
+LAWS RULES - Last Edited: 2026-11-12
+============================================================
+The current Duris rules are collected in [[rules]].
+Type help rules to open them; read them before playing, including fair
+play, conduct, racewars and the separation of immortal duties from mortal
+play. For clarification, use petition <message> to ask staff.
+
+Example: petition Please clarify a racewar rule.
+
+==See also==
+
+[[Policies]], [[Help]], [[Index]]
+#0
+
+Innates
+Innates - Last Edited: 2026-11-12
+============================================================
+Innates are inherited abilities; [[Innate]] explains their command.
+
+Syntax: innate
+        innate info <name>            Example: innate info reflection
+        innate list player | all
+        innate <name> [arguments]
+
+Bare innate lists personal grants, unlock levels, passive markers and
+readiness. Info is a read-only reference; the activation form can use an
+active ability. If unavailable or too tired, check the unlock/status and
+that ability's requirements. Passive abilities do not need activation.
+
+==See also==
+
+[[Innate]], [[Class]], [[Race]], [[Skills]], [[Spells]], [[Index]]
+#0
+
+Race
+Race - Last Edited: 2026-11-12
+============================================================
+Syntax: race
+        race list
+        race info <race name>
+        race innates <race name>
+
+Browse the races of Duris. The roster separates Good, Evil and Neutral races
+with distinct colors. Neutral races choose their racewar side during creation.
+An asterisk marks a race disabled in character creation. Special and legacy
+races appear separately, with their normal restrictions or descent paths.
+
+Race info shows the race's description, racewar side, creation availability,
+valid classes and their available specializations, racial stat factors and
+combat/spell speed. Its class list uses the current character creation
+restrictions, including enabled classes.
+
+Race innates lists that race's abilities, including abilities gained at
+later levels. A nonzero melee and archery damage bonus or penalty is also
+shown as a passive feature; see [[Attack Damage Modifiers]]. An asterisk
+marks a passive ability. Type innate info <name> for personal access/status
+and available mechanics, or help <race name> for racial lore.
+
+Multiword race names work without quotes, such as race info mountain dwarf.
+Unique abbreviations work; ambiguous names ask you to be more specific.
+
+Example: race info grey elf
+Browsing does not change your race or unlock a disabled creation choice.
+For a missing or ambiguous name, use race list and enter the full race name.
+
+==See also==
+
+[[Innate]], [[Class]], [[Skills]], [[Spells]], [[Races]], [[Index]]
+#0
+
+COMMUNICATIONS UTILITIES CHANNELS
+COMMUNICATIONS UTILITIES CHANNELS - Last Edited: 2026-11-12
+============================================================
+The ways to talk to other players, from the closest to the widest reach.
+Type "help <entry>" for more on each one, and "help toggle" to turn a
+channel off or back on.
+
+  Command        Who hears it                               Help
+  say  '         everyone in your room                      SAY
+  emote  :       everyone in your room                      EMOTE
+  whisper, ask   one person in your room                    SAY
+  tell, reply    one person, anywhere                       SAY
+  project        one person, by thought                     PROJECT
+  beep           one person on your side (no words)         BEEP
+  gsay           your group                                 GSAY
+  gcc            your guild                                 GCC
+  acc            your guild and its allies                  ACC
+  nchat          your racewar side: questions and help      NCHAT
+  jchat          your racewar side: general chat            JCHAT
+  shout          your zone, or nearby on the world map      SHOUT
+  petition       the gods                                   PETITION
+
+What is logged: what players say to each other is not written to the
+game's logs, on any of these channels. Three things are: petitions, which
+go to the gods; the newbie channel, which the staff read to make the game
+better for new players; and what the gods do. If a god snoops you to sort
+out a problem, you are told when it starts and when it ends, and no god
+can read your tells with recall. Your network address is kept 30 days.
+
+Other utilities: BUG IDEA TYPO, CONSENT, DISPLAY, IGNORE, LANGUAGES,
+PASSWORD, READ, BOARD, DELETE REPEAT, SCORE ATTRIBUTES, TOGGLE, WRITE
+
+==Examples and failures==
+
+Type say Hello for the room, or nchat Where can I find a teacher? for your
+racewar side. Use the recipient form for private tells: tell <name> <text>.
+A missing recipient, disabled channel, silence, language barrier or altered
+form can prevent delivery; read the message and check toggle as appropriate.
+Avoid repeating messages when nobody answers immediately.
+
+==See also==
+
+[[Say]], [[Nchat]], [[Newbie]], [[Index]], [[Help]]
 #0

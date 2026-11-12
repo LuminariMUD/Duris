@@ -1,7 +1,7 @@
 # Help improvements implementation plan
 
 Date: 2026-11-12
-Status: implementation in progress; delivery A is being validated. No deployment authorized.
+Status: A is review-ready in PR #1033; B content is being validated. No deployment authorized.
 Source baseline: Duris `f8919ad27dd71ddb2e322feb31529c61d84384b7`;
 Luminari-Source `77d9b032db04c6b0e6c80ba32e4178c8a63ecba5`.
 
@@ -410,13 +410,13 @@ in place of native tests and required review.
   wildcards, redirects, bounded alternatives, and overflow wording work.
 - [x] Misses offer at most five deterministic, useful suggestions; selecting
   one opens its title, with readable plain output and valid semantic links.
-- [ ] Help, Index, and Newbie cover movement, combat/fleeing, death/corpse
+- [x] Help, Index, and Newbie cover movement, combat/fleeing, death/corpse
   recovery, equipment, communication, ability learning, and rules through
   working imported destinations.
-- [ ] Every page in the defined initial batch has been reviewed for practical
+- [x] Every page in the defined initial batch has been reviewed for practical
   purpose, usable syntax/examples, applicable requirements/costs, failure
   guidance, and related reading; concept pages use appropriate recovery steps.
-- [ ] Innate, class, race, skills, and spells guidance matches their real
+- [x] Innate, class, race, skills, and spells guidance matches their real
   commands, distinguishes browsing from activation/readiness, and is reachable
   from all three hubs. Existing prose and progression consumers remain correct.
 - [ ] Focused executable checks, formatting, native build, complete disposable
@@ -470,3 +470,49 @@ Delivery A validation update:
 - Native `make -C src -j4` and reported-latency contract passed. Cache and output
   regressions include suggestions, generic/MXP delivery, following returned help
   targets, and frozen suggestion paging with no duplicate miss logging.
+
+Delivery A: commit `a05bb19f4`, pushed on `branch/help-improvements-plan`;
+[PR #1033](https://github.com/LuminariMUD/Duris/pull/1033), labels `bug`,
+`enhancement`. No CI wait, merge, tag or deployment; no release is being made.
+
+Delivery B is on `branch/help-player-navigation`, based on #1033. Its outcome
+is the 28 selected pages, mirrored sources and startup Help, plus a focused
+actual-import-parser contract in the existing test. No general audit framework.
+All 28 pages were reviewed. Class, Race, Skills, Spells and the communications
+overview already contained useful reference descriptions/staff syntax/privacy
+rules: retained those bodies and added examples, failure/access guidance and
+working links. The other selected pages needed practical rewriting or expansion.
+No class/race/spec grant tables or Rules policy text were changed.
+
+Mechanics traced: interpreter registrations; actinf new_look/exits/consider and
+inventory/equipment; actmove movement failures; actoff flee including random
+eligible exits, control-flee, 20-30 ordinary/5-15 rogue vitality surcharges;
+actobj container preflight/get/wear/wield and hand/training rules; actcomm say;
+actwiz nchat; guild practice and scribing checks; memorize preparation/book
+requirements; sparser parse_spell/do_cast; fight corpse/death and limits XP
+threshold; nanny RENT_DEATH birthplace routing. Corrected double quotes in Cast
+(single apostrophes required), book requirements in Memorize (not for prayer),
+nearest-exit claim in Flee, obsolete startup info split, incomplete Policies,
+and unsupported newcomer race/gear promises. Keep innate info read-only and
+separate from activation, without changing any ability implementation.
+
+Pending B: parser/link and content contracts, help formatting, dry-run import,
+diff review, commit/push and stacked labeled PR. C remains required afterward.
+
+Delivery B validation passed: `test_help_import_live_parser.py` (all 28
+mirrors, actual imported link destinations, three hubs and Rules ownership),
+`test_help_layout.py`, `format_help_topics.py`, `test_class_helpfiles_contract.py`,
+`test_race_helpfiles_complete.py`, `test_race_innate_help_sync.py`,
+`format.sh --check`, and `git diff --check`. Full importer dry run passed with
+explicit dummy `help_preview` settings on loopback port 1 (no checkout .env,
+no DB access or publication). Fixed two inferred links to actual imported
+names/plain command text: SHIP SHIPS and will. The parser test also caught a
+missing delimiter before the first newly mirrored index entry; repaired it.
+Four retained Spells lines were wrapped to terminal width. Death includes the
+source-verified waiting-area exception to birthplace return.
+
+Next required chunk: add/run the native disposable MariaDB help navigation
+journey on a branch stacked on B; test import, all destinations, both plain/MXP
+and pager modes, selected suggestions, five reference commands, innate read-only
+state for an active owner and non-owner, catalog refresh, broad-match exact
+lookup and two-client responsiveness. No browser click claim is required.
