@@ -124,7 +124,9 @@ void send_to_char(const char *text,P_char ch) {
 }
 int attack_back(P_char,P_char,int) {return 0;}
 void act(const char *,int,P_char,P_obj,void *,int) {}
-void die(P_char,P_char) {assert(false);}
+static int deaths;
+static P_char last_dead,last_killer;
+void die(P_char victim,P_char killer) {++deaths; last_dead=victim; last_killer=killer;}
 int is_char_in_room(const P_char ch,int room) {return ch->in_room==room;}
 bool isname(const char *name,const char *list) {return strcmp(name,list)==0;}
 nevent_schedule_result add_event(event_func,int,P_char,P_char,P_obj,int,const void *,int) {return {};}
@@ -423,6 +425,7 @@ static void reset() {
     wearer.next=&companion; character_list=&wearer;
     wearer.next_in_room=&companion; rooms[0].people=&wearer;
     grants=0; inherent_armor=false; guardian_rejections=0; riding=false;
+    deaths=0; last_dead=nullptr; last_killer=nullptr;
 }
 static void wear(int item,int slot,int zone,bool weapon=false) {
     gear[item].R_num=weapon ? 1 : 0;
@@ -740,6 +743,65 @@ int main() {
         fresh->duration=0; affect_update(0);
         assert(!affected_by_spell(&wearer,SPELL_VITALITY));
     }
+    // Victim drain strips only ordinary timed Vitality, preserves set/linked/permanent
+    // grants, and checks post-removal HP after any suspended set grant resumes.
+    for(uint flags:{uint(AFFTYPE_SET_AFFECT),uint(AFFTYPE_LINKED_OBJ),
+                    uint(AFFTYPE_LINKED_CH),uint(AFFTYPE_NOAPPLY),uint(0)})
+        for(bool overlap:{false,true}) {
+            reset(); track_hit_points=true;
+            wear(0,WEAR_FACE,0); wearer.specials.fighting=&companion;
+            affected_type grant{}; grant.type=SPELL_VITALITY; grant.location=APPLY_HIT;
+            grant.flags=flags; grant.modifier=200; grant.duration=flags?17:-1;
+            affected_type *protected_affect;
+            if(flags&AFFTYPE_SET_AFFECT) {
+                named_set_grant source(&companion,&companion,824,SPELL_VITALITY);
+                protected_affect=affect_to_char(&companion,&grant);
+            } else protected_affect=affect_to_char(&companion,&grant);
+            all_affects(&companion,TRUE);
+            if(overlap) {
+                if(flags&AFFTYPE_SET_AFFECT) {
+                    cast_native_vitality(56,&companion,nullptr,0,&companion,nullptr);
+                    assert(companion.affected==protected_affect && (protected_affect->flags&AFFTYPE_SET_SUSPENDED));
+                } else {
+                    affected_type timed{}; timed.type=SPELL_VITALITY; timed.location=APPLY_HIT;
+                    timed.modifier=224; timed.duration=14;
+                    affect_to_char(&companion,&timed);
+                    all_affects(&companion,TRUE);
+                }
+            }
+            const int start_hp=(!overlap || (flags&AFFTYPE_SET_AFFECT)) ? 100 : 300;
+            GET_HIT(&companion)=start_hp;
+            const affected_type before=*protected_affect;
+            skip_mask_flavor=true; vigor_mask(&gear[0],nullptr,0,nullptr);
+            assert(deaths==0 && GET_STAT(&companion)==STAT_NORMAL);
+            assert(protected_affect->modifier==200 && protected_affect->duration==(flags?17:-1));
+            assert(protected_affect->flags==(before.flags&~(AFFTYPE_SET_SUSPENDED|((flags&AFFTYPE_SET_AFFECT)?AFFTYPE_NOAPPLY:0u))));
+            assert(protected_affect->set_zone==before.set_zone && protected_affect->set_owner==before.set_owner);
+            assert(protected_affect->set_spell==before.set_spell);
+            assert(count(&companion,SPELL_VITALITY,false)+count(&companion,SPELL_VITALITY,true)==1);
+            assert(GET_HIT(&companion)==(overlap ? 76 : 100));
+            protected_affect->flags&=~(AFFTYPE_LINKED_OBJ|AFFTYPE_LINKED_CH);
+        }
+    for(bool with_set:{false,true})
+        for(bool lethal:{false,true}) {
+            reset(); track_hit_points=true;
+            wear(0,WEAR_FACE,0); wearer.specials.fighting=&companion;
+            if(with_set) {
+                affected_type grant{}; grant.type=SPELL_VITALITY; grant.location=APPLY_HIT;
+                grant.modifier=200; grant.duration=17;
+                named_set_grant source(&companion,&companion,824,SPELL_VITALITY);
+                affect_to_char(&companion,&grant);
+                all_affects(&companion,TRUE);
+            }
+            cast_native_vitality(56,&companion,nullptr,0,&companion,nullptr);
+            const int loss=with_set ? 24 : 224;
+            GET_HIT(&companion)=loss-(lethal ? 10 : 9);
+            skip_mask_flavor=true; vigor_mask(&gear[0],nullptr,0,nullptr);
+            assert(GET_HIT(&companion)==(lethal ? -10 : -9));
+            assert(deaths==(lethal ? 1 : 0));
+            if(lethal) assert(last_dead==&companion && last_killer==&wearer);
+            else assert(GET_STAT(&companion)==STAT_DYING);
+        }
     // Item and scripted casts can bypass the learned spell's minimum circle.
     // Check the real handler and affect expiry, including the old permanent sentinel.
     for(const auto [level,duration]:{std::pair{3,0},{4,0},{1,0},{2,0},{5,1},{36,32},{56,52}}) {

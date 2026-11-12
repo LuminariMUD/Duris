@@ -3964,15 +3964,19 @@ int vigor_mask(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		send_to_char(
 			"&+WThe essence of Bahamut streams out of your mask and attacks your victim!&N\n",
 			ch);
+		const auto ordinary_vitality = [](const affected_type *affect)
+		{
+			return affect->type == SPELL_VITALITY && affect->duration >= 0 &&
+			       !(affect->flags & (AFFTYPE_SET_AFFECT | AFFTYPE_LINKED_OBJ |
+						  AFFTYPE_LINKED_CH | AFFTYPE_NOAPPLY));
+		};
 		bool has_vitality = false;
 		for (af = ch->affected; af; af = af->next)
 		{
 			if (af->type != SPELL_VITALITY)
 				continue;
 			has_vitality = true;
-			if (af->duration < 0 ||
-			    (af->flags & (AFFTYPE_SET_AFFECT | AFFTYPE_LINKED_OBJ |
-					  AFFTYPE_LINKED_CH | AFFTYPE_NOAPPLY)))
+			if (!ordinary_vitality(af))
 				continue;
 			send_to_char("&+Byou feel revitalized.\n", ch);
 			if (af->modifier < GET_LEVEL(vict) * 4)
@@ -3992,7 +3996,9 @@ int vigor_mask(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		{
 			spell_vitality(GET_LEVEL(vict), ch, NULL, 0, ch, 0);
 		}
-		if (affected_by_spell(vict, SPELL_VITALITY))
+		for (af = vict->affected; af && !ordinary_vitality(af); af = af->next)
+			;
+		if (af)
 		{
 			send_to_char("&+L   /\\             /\\\n", vict);
 			send_to_char("&+L   \\ \\           / /\n", vict);
@@ -4017,25 +4023,15 @@ int vigor_mask(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 				vict);
 			send_to_char("&+L         \\___/&N\n", vict);
 
-			for (af = vict->affected; af; af = af->next)
+			// Removing ordinary Vitality can unsuspend a set grant; check the net HP after.
+			affect_remove(vict, af);
+			if (GET_HIT(vict) <= -10)
 			{
-				if (af->type == SPELL_VITALITY)
-				{
-					break;
-				}
+				die(vict, ch);
 			}
-			if (af)
+			else
 			{
-				// will removing vit kill the victim?
-				if (af->modifier >= (GET_HIT(vict) + 10))
-				{
-					die(vict, ch);
-				}
-				else
-				{
-					affect_remove(vict, af);
-					update_pos(vict);
-				}
+				update_pos(vict);
 			}
 		}
 		else
