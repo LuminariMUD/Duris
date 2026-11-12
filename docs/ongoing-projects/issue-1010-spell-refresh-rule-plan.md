@@ -1,7 +1,8 @@
 # Issue #1010: one refresh rule for buffs, with a generous setting (Vitality first)
 
-Status: implemented on `feature/1010-spell-refresh-rule`; focused tests, build and
-format pass. The two-mode local gameplay journey is next (see Progress).
+Status: implemented and qualified; ready for review in
+[PR #1031](https://github.com/LuminariMUD/Duris/pull/1031). Leave #1010 open
+until it lands.
 Date: 2026-11-12.
 Issue: [#1010](https://github.com/LuminariMUD/Duris/issues/1010).
 Related: [#941](https://github.com/LuminariMUD/Duris/issues/941),
@@ -213,8 +214,8 @@ Until a spell is converted it behaves as it does today.
 3. **The checked-in value is on.** Players get the favorable outcome as
    shipped; the strict rule is the code's default and one `properties set`
    away. At deploy, confirm production's properties file carries the key at
-   1 (`properties show spell.generousRefresh`); a file that lacks the key
-   runs the strict rule.
+   1 (`properties show spell.generousRefresh.enabled`; the pattern must match
+   the whole key); a file that lacks the key runs the strict rule.
 4. **Tsunami stays as it is.** On a stronger existing Vitality it keeps the
    strength and sets 15 hours, a deliberate artifact power from PR #225.
 5. **The Bahamut mask is not part of this change.** Its own problems are
@@ -222,10 +223,11 @@ Until a spell is converted it behaves as it does today.
 
 ## Progress
 
-- Steps 1 to 5 are done. The rule is `spell_refresh_rule()` returning
+- Steps 1 to 6 are done. The rule is `spell_refresh_rule()` returning
   `spell_refresh::{replace, renew, nothing}`, declared in `prototypes.h`
-  and defined above `vitality_hit_points()` in `magic.c`. Vitality's refresh
-  branch now uses `get_spell_from_char()` on the one ordinary node.
+  and defined above `vitality_hit_points()` in `magic.c`. `spell_vitality()`
+  looks up the ordinary node once with `get_spell_from_char()` and branches
+  on it, so the refresh branch can never see a null node.
 - Simplified: the six rule combinations are proven through the real spell
   (`test_named_set_effect_ownership.py`, setting missing, 0, 2 and 1 against
   power 22, 56 and 60 casts) instead of a separate direct rule test.
@@ -237,7 +239,23 @@ Until a spell is converted it behaves as it does today.
   `test_sword_actions_runtime.py`, `test_dragon_roar_room_targets.py` and
   `test_medium_spell_decisions.py`; `./scripts/format.sh --check`;
   `make -C src`; `git diff --check`.
-- Remaining: the two-mode local gameplay journey, then mark the PR ready.
+- Journey: instead of the shared local server (other sessions use it), the
+  steps run as `tests/async/run_vitality_refresh_journey.py` on a disposable
+  MariaDB with the freshly built `bin/server/dms_new`:
+
+  ```sh
+  cd tests/async && ./with_disposable_mariadb.sh python3 run_vitality_refresh_journey.py ../../bin/server/dms_new
+  ```
+
+  A level-56 player, wounded by 100, recites a power-22 then a power-56
+  Vitality scroll: maximum and current hit points rise by 88 then 136, saved
+  as +224 for 14 hours. With the saved timer cut to 3, re-entry keeps +224;
+  a power-22 potion renews the timer to 14 (shipped setting). Staff then run
+  `properties set spell.generousRefresh.enabled 0`; another power-22 potion
+  is consumed, says `Nothing new seems to happen.`, and leaves +224 for 3
+  hours. All three phases pass.
+- Nothing remains open in this change. Later spells follow "Bringing other
+  spells under the rule" as separate changes.
 
 ## Review and completion
 

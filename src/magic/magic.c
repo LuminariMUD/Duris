@@ -13242,8 +13242,9 @@ void spell_vitality(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 	}
 
 	duration = vitality_duration(ch, victim);
+	struct affected_type *af1 = get_spell_from_char(victim, SPELL_VITALITY);
 
-	if (!affected_by_spell(victim, SPELL_VITALITY))
+	if (!af1)
 	{
 		send_to_char("&+BYou feel vitalized.\n", victim);
 		act("$N looks vitalized.&n", TRUE, ch, 0, victim, TO_NOTVICT);
@@ -13265,7 +13266,6 @@ void spell_vitality(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 	}
 	else
 	{
-		struct affected_type *af1 = get_spell_from_char(victim, SPELL_VITALITY);
 		const spell_refresh refresh = spell_refresh_rule(healpoints, af1->modifier);
 
 		if (refresh == spell_refresh::nothing)
