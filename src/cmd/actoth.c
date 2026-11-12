@@ -5088,7 +5088,7 @@ void do_quaff(P_char ch, char *argument, int /*cmd*/)
 
 		for (i = 1; i < 4; i++)
 		{
-			if (bottle->value[i] >= 1)
+			if (bottle->value[i] >= 1 && bottle->value[i] < MAX_SKILLS)
 			{
 				j = bottle->value[i];
 				if ((j != -1) && (skills[j].spell_pointer != NULL))
@@ -5178,7 +5178,7 @@ void do_recite(P_char ch, char *argument, int /*cmd*/)
 	{
 		for (i = 1; i < 4; i++)
 		{
-			if ((scroll->value[i] >= 1))
+			if (scroll->value[i] >= 1 && scroll->value[i] < MAX_SKILLS)
 			{
 				target_data.ttype = j = scroll->value[i];
 				if (!parse_spell_arguments(ch, &target_data, argument))
@@ -5283,6 +5283,12 @@ void do_use(P_char ch, char *argument, int /*cmd*/)
 	}
 	if (begin_device_action(stick, ch, argument) != item_action_start::legacy)
 		return;
+	if ((stick->type == ITEM_STAFF || stick->type == ITEM_WAND) &&
+	    (stick->value[3] <= 0 || stick->value[3] >= MAX_SKILLS))
+	{
+		send_to_char("This item's spell is invalid; it has no effect.\r\n", ch);
+		return;
+	}
 	if (stick->type == ITEM_STAFF)
 	{
 		act("$n taps $p three times on the ground.", TRUE, ch, stick, 0, TO_ROOM);

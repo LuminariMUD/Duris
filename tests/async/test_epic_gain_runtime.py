@@ -45,6 +45,7 @@ int errand_notch = 500;
 static int consumed, waits, unequips, potion_effects, artifacts, ledger_rows, tasks;
 static int spell_calls, damage_calls, rolls;
 static bool fail_id, potion_timer;
+static bool low_roll;
 static critical_submit_result admission;
 static std::string output;
 static affected_type total, task;
@@ -73,7 +74,7 @@ char *one_argument(const char *text, char *out) {
 }
 P_obj get_obj_in_list_vis(P_char, const char *, P_obj list, bool) { return list; }
 bool isname(const char *a, const char *b) { return !strcmp(a, b); }
-int number(int, int high) { ++rolls; return high; }
+int number(int low, int high) { ++rolls; return low_roll ? low : high; }
 void CharWait(P_char, int) { ++waits; }
 P_obj unequip_char(P_char ch, int slot, bool) {
     ++unequips;
@@ -193,7 +194,8 @@ static void potion_spell(int, P_char ch, char *, int type, P_char victim, P_obj)
     assert(type == SPELL_TYPE_POTION && ch == victim);
     ++spell_calls;
 }
-static void check_vitality_quaff(bool held, bool mixed, int slot, bool vitalized, int power) {
+static void check_vitality_quaff(bool held, bool mixed, int slot, bool vitalized, int power,
+                                 int combat) {
     char_data ch{};
     obj_data bottle{};
     index_data index[1]{};
@@ -204,6 +206,8 @@ static void check_vitality_quaff(bool held, bool mixed, int slot, bool vitalized
     index[0].virtual_number = 2800;
     ch.specials.position = STAT_NORMAL;
     ch.player.level = 56;
+    if (combat) ch.specials.fighting = &ch;
+    low_roll = combat == 1;
     vitality.type = SPELL_VITALITY;
     vitality.modifier = 224;
     vitality.duration = 1;
@@ -225,6 +229,12 @@ static void check_vitality_quaff(bool held, bool mixed, int slot, bool vitalized
     do_quaff(&ch, argument, 0);
     assert(vitality.modifier == 224 && vitality.duration == 1);
     assert(ch.affected == (vitalized ? &vitality : nullptr));
+    if (combat == 2) {
+        assert(consumed == 1 && !waits && !unequips && !potion_effects);
+        assert(!spell_calls && !damage_calls && rolls == 2);
+        assert(output.find("spilled it") != std::string::npos);
+        return;
+    }
     // Vitality's own refresh rule decides the outcome; the potion never refuses.
     assert(consumed == 1 && waits == 1 && unequips == (held ? 1 : 0));
     assert(potion_effects == 1 && spell_calls == (mixed ? 3 : 1));
@@ -298,7 +308,8 @@ int main() {
             for (int slot : {0, 1, 2, 3})
                 for (bool vitalized : {false, true})
                     for (int power : {22, 56, 60})
-                        check_vitality_quaff(held, mixed, slot, vitalized, power);
+                        for (int combat : {0, 1, 2})
+                            check_vitality_quaff(held, mixed, slot, vitalized, power, combat);
     std::puts("Epic awards and quaff: success/failure, held/inventory, Vitality holders and score passed.");
 }
 '''
