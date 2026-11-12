@@ -311,6 +311,7 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 	SET_BIT(newch->specials.act2, PLR2_WEBINFO);
 	SET_BIT(newch->specials.act2, PLR2_SHOW_QUEST);
 	SET_BIT(newch->specials.act2, PLR2_BOON);
+	SET_BIT(newch->specials.act2, PLR2_NEWBIEEQ);
 	SET_BIT(newch->specials.act2, PLR2_SHIPMAP);
 	if (!GET_CLASS(newch, CLASS_PALADIN))
 		SET_BIT(newch->specials.act, PLR_VICIOUS);

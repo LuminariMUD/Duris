@@ -5930,6 +5930,7 @@ static void do_start_impl(P_char ch, int nomsg, bool grant_newbie_kit)
 			GET_PLAYER_LOG(ch)->reset_export_window();
 		SET_BIT(ch->specials.act2, PLR2_SHOW_QUEST);
 		SET_BIT(ch->specials.act2, PLR2_BOON);
+		SET_BIT(ch->specials.act2, PLR2_NEWBIEEQ);
 		SET_BIT(ch->specials.act2, PLR2_SHIPMAP);
 		if (!GET_CLASS(ch, CLASS_PALADIN))
 		{

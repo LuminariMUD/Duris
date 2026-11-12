@@ -139,6 +139,8 @@ def run(binary, chaos, class_name="Warrior"):
                                              alignment="n" if class_name == "Rogue" else "g")
                 actor.expect("Pos: standing >")
                 initial = save_and_wait(actor, sql, lambda items: len(items) > 10)
+                journey.require(int(sql("SELECT act2 FROM player_data WHERE pid=1")) & (1 << 17),
+                                "newbie equipment toggle was not enabled by default")
 
                 observer = ObserverClient(plain)
                 original = journey.ACCOUNT, journey.CHARACTER, chaos_kit.ACCOUNT, chaos_kit.CHARACTER
@@ -176,12 +178,6 @@ def run(binary, chaos, class_name="Warrior"):
 
                 worker = threading.Thread(target=observe)
                 worker.start()
-                actor.send("toggle newbie")
-                response = actor.expect("Pos: standing >")
-                if "will not load with newbie EQ" in response:
-                    actor.send("toggle newbie")
-                    actor.expect("will now load with newbie EQ")
-                    actor.expect("Pos: standing >")
                 expected = None
                 prior_uids = set(initial)
                 for attempt in range(2):
@@ -241,6 +237,27 @@ def run(binary, chaos, class_name="Warrior"):
                 actor.expect("Pos: standing >")
                 journey.require(saved_items(sql) == saved_snapshot,
                                 "saved item flags or spellbook contents changed across reload")
+
+                # Opting out must survive a reconnect with no saved inventory.
+                actor.send("toggle newbie off")
+                actor.expect("will not load with newbie EQ")
+                actor.expect("Pos: standing >")
+                actor.send("remove all")
+                actor.expect("Pos: standing >")
+                actor.send("drop all")
+                actor.expect("Pos: standing >", timeout=30)
+                save_and_wait(actor, sql, lambda items: not items)
+                actor.send("quit")
+                actor.expect("ACCOUNT MENU", timeout=40)
+                actor.send("0")
+                actor.close()
+                actor = journey.reconnect_character(plain, expected_room=None)
+                text = actor.expect("Pos: standing >", timeout=20)
+                journey.require("starter kit is being prepared" not in text,
+                                "disabled newbie equipment toggle still regranted a kit")
+                journey.require(not held(sql) and
+                                not int(sql("SELECT act2 FROM player_data WHERE pid=1")) & (1 << 17),
+                                "disabled newbie equipment preference did not survive reload")
                 stop.set()
                 worker.join(timeout=12)
                 journey.require(not errors and not worker.is_alive(), f"observer failed: {errors}")
