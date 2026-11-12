@@ -728,6 +728,41 @@ void do_qlist(P_char ch, char *argument, int /*cmd*/)
 	quest_staff_output(ch, output);
 }
 
+// True when this gift counts toward a completion whose reward item no longer
+// exists: taking it would cost the player their goods for nothing.
+static bool quest_give_unrewarded(int quester_id, P_char mob, P_char pl, const char *item)
+{
+	P_obj obj = item ? get_obj_in_list_vis(pl, item, pl->carrying) : NULL;
+
+	if (item && !obj)
+		return false;
+	for (const quest_complete_data *qcp = quest_index[quester_id].quest_complete; qcp;
+	     qcp = qcp->next)
+	{
+		bool wanted = false;
+		for (const goal_data *gp = qcp->give; gp; gp = gp->next)
+		{
+			if (!obj)
+				wanted |= gp->goal_type == QUEST_GOAL_COINS;
+			else
+				wanted |= (gp->goal_type == QUEST_GOAL_ITEM &&
+					   gp->number == OBJ_VNUM(obj)) ||
+					  (gp->goal_type == QUEST_GOAL_ITEM_TYPE &&
+					   gp->number == obj->type);
+		}
+		for (const goal_data *gp = qcp->receive; wanted && gp; gp = gp->next)
+		{
+			if (gp->goal_type == QUEST_GOAL_ITEM && real_object(gp->number) < 0)
+			{
+				logit(LOG_DEBUG, "quester(): mob %d rewards missing obj %d",
+				      GET_VNUM(mob), gp->number);
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 int quester(P_char ch, P_char pl, int cmd, char *arg)
 {
 	P_char vict;
@@ -792,15 +827,25 @@ int quester(P_char ch, P_char pl, int cmd, char *arg)
 		 */
 		for (temparg = arg; isspace(*temparg); temparg++)
 			; /* skip whitespaces */
-		if (isdigit(*temparg))
+		const bool coins = isdigit(*temparg);
+		if (coins)
 			temparg = one_argument(arg, name);
 
-		temparg = one_argument(temparg, name);
+		char item[MAX_INPUT_LENGTH];
+		temparg = one_argument(temparg, item);
 		one_argument(temparg, name);
 		if (!(vict = get_char_room_vis(pl, name)) || vict != ch)
 			return (FALSE);
+		quester_id = find_quester_id(GET_RNUM(ch));
+		if (quester_id >= 0 &&
+		    quest_give_unrewarded(quester_id, ch, pl, coins ? NULL : item))
+		{
+			act("$N has no reward to offer for that right now, so you keep it.", FALSE,
+			    pl, 0, ch, TO_CHAR);
+			return (TRUE);
+		}
 		do_give(pl, arg, -4); /* give item to mob */
-		if ((quester_id = find_quester_id(GET_RNUM(ch))) < 0)
+		if (quester_id < 0)
 			return (TRUE);
 
 		for (qcp = quest_index[quester_id].quest_complete; qcp; qcp = qcp->next)

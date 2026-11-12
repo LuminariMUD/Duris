@@ -56,6 +56,7 @@ using namespace std;
 #include "economy/currency_transaction.h"
 #include "economy/boon_reward_transaction.h"
 #include "item/objmisc.h"
+#include "classes/necromancy.h"
 #include "classes/paladins.h"
 #include "persistence/persistence_checkpoint.h"
 #include "persistence/persistence_observability.h"
@@ -830,6 +831,12 @@ char *show_obj_to_char(P_obj object, P_char ch, int mode, bool print, const Outp
 		{
 			strcat(buf, "Ye roll up yer sleeves, and examine the dead...");
 			ageCorpse(ch, object, buf);
+			// Those who raise the dead can judge what a corpse was in life.
+			if ((GET_CLASS(ch, CLASS_NECROMANCER) || GET_CLASS(ch, CLASS_THEURGIST)) &&
+			    object->value[CORPSE_LEVEL])
+				checked_snprintf(buf + strlen(buf), MAX_STRING_LENGTH - strlen(buf),
+						 "\nIn life this was a creature of level %d.",
+						 abs(object->value[CORPSE_LEVEL]));
 		}
 		else if (object->type == ITEM_DRINKCON)
 		{
@@ -1050,21 +1057,22 @@ void show_visual_status(P_char ch, P_char tar_char)
 	//   snprintf(buf, 256, "$N %%s");
 	// }
 	// else
-	if (!racewar(ch, tar_char) || IS_ILLITHID(ch) /* || IS_TRUSTED(ch)*/)
+	if (!GET_RACE(tar_char))
+	{
+		// A creature authored without a race shows only its condition.
+		snprintf(buf, 256, "$N %%s");
+	}
+	else if (!racewar(ch, tar_char) || IS_ILLITHID(ch) /* || IS_TRUSTED(ch)*/)
 	{
 		if (ch != tar_char)
 		{
 			snprintf(buf, 256, "$N appears to be %s and %%s",
-				 GET_RACE(tar_char) ?
-					 race_names_table[(int)GET_RACE1(tar_char)].ansi :
-					 "&=LRBogus race!&n");
+				 race_names_table[(int)GET_RACE1(tar_char)].ansi);
 		}
 		else
 		{
 			snprintf(buf, 256, "You appear to be %s and %%s",
-				 GET_RACE(tar_char) ?
-					 race_names_table[(int)GET_RACE1(tar_char)].ansi :
-					 "&=LRBogus race!&n");
+				 race_names_table[(int)GET_RACE1(tar_char)].ansi);
 		}
 	}
 	else
@@ -6287,6 +6295,11 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 		hardcorepts = (hardcorepts / (float)hardcore_config_get()->score_display_divisor);
 		snprintf(buf, MAX_STRING_LENGTH, "&nHardCore pts:   &+R%+6.2f&n\n", hardcorepts);
 		send_to_char(buf, ch);
+		if (hardcore_config_get()->death_permadeath)
+			send_to_char_f(ch, "&nHardCore lives: &+R%ld&n of %d remaining\n",
+				       MAX(0L, hardcore_config_get()->death_max_count -
+						       (long)ch->only.pc->numb_deaths),
+				       hardcore_config_get()->death_max_count);
 	}
 	/* frags */
 #ifdef STANCES_ALLOWED

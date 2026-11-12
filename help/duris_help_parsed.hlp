@@ -778,6 +778,8 @@ Age Corpse - Last Edited: 2007-04-20 14:02:09 by Unknown
 
 "Age Corpse" is the ability to determine the length of time a corpse has left until it rots away by examining it.
 
+Necromancers and Theurgists who examine a corpse also learn the level the creature had in life, whether or not they know this skill.
+
 ==See also==
 
 * Examine
@@ -9734,7 +9736,8 @@ Syntax:         inn faerie <victim> (for Drow Elf)
 "Faerie Fire" causes the target's armor class to increase for a limited
 time, making it easier to hit. The Faeries being fey in their way may
 sometimes accidentally reveal more than should be seen when this spell is
-cast.
+cast. It strips the Concealment spell from its target, and nobody outlined
+by the flames can use the hide command until they fade.
 
 ==See also==
 
@@ -12669,7 +12672,8 @@ the group, Fizzwig will be kicked out of the group. If a group member, including
 the group leader, types "group me", they will be removed from the group and the
 next player down the group list will automatically become the leader. Typing
 "group" with no argument will show you a list of people in the group and their
-health and movement.
+health and movement. Toggle groupsort lists players before pets in that list;
+read 'help toggle groupsort'.
 Grouping offers important benefits like the following:
 1. When grouped, frags are divided among the grouped players. This allows classes
    that are primarily defensive in nature, cleric for instance, to benefit from
@@ -13191,7 +13195,7 @@ from the normal one-level Good/Evil cap gap. Read HELP LEVEL CAP for the race.
 Hardcore characters have three lives. Deaths one and two follow the ordinary
 death rules; the third counted death permanently deletes the character.
 This test policy remains open to balance discussion.
-Arena deaths do not consume a life.
+Arena deaths do not consume a life. Score shows how many lives remain.
 
 #0
 

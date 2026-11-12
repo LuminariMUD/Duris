@@ -430,12 +430,97 @@ void send_msp_group(P_char ch, bool force)
 	}
 }
 
+// The color of a hit point or movement percentage in the group list.
+static char group_vital_ansi(int percent)
+{
+	if (percent >= 100)
+		return 'g';
+	if (percent >= 90)
+		return 'y';
+	if (percent >= 75)
+		return 'Y';
+	if (percent >= 50)
+		return 'M';
+	if (percent >= 30)
+		return 'm';
+	if (percent >= 15)
+		return 'R';
+	return 'r';
+}
+
+// One line of the group list. The sorted layout (toggle groupsort) lines every
+// member's vitals up in one column and leaves out the race and aura tags.
+static void show_group_member(P_char ch, P_char member, bool head, bool sorted)
+{
+	char vitals[MAX_STRING_LENGTH], who[MAX_STRING_LENGTH], line[MAX_STRING_LENGTH];
+	const bool same_room = ch->in_room == member->in_room;
+	const int hp_percent =
+		(int)(((float)GET_HIT(member) / (float)GET_MAX_HIT(member)) * 100.0f);
+	const int mv_percent =
+		(int)(((float)GET_VITALITY(member) / (float)GET_MAX_VITALITY(member)) * 100.0f);
+
+	snprintf(vitals, MAX_STRING_LENGTH, "%5d/%-5dH (&+%c%3d&n%%), %5d/%-5dV (&+%c%3d&n%%)",
+		 GET_HIT(member), GET_MAX_HIT(member), group_vital_ansi(hp_percent), hp_percent,
+		 GET_VITALITY(member), GET_MAX_VITALITY(member), group_vital_ansi(mv_percent),
+		 mv_percent);
+
+	if (!CAN_SEE_Z_CORD(ch, member))
+		strcpy(who, "Someone");
+	else if (IS_NPC(member))
+		strcpy(who, member->player.short_descr);
+	else if (racewar(ch, member))
+		strcpy(who, race_names_table[GET_RACE(member)].ansi);
+	else
+		snprintf(who, MAX_STRING_LENGTH, "&n[&+w%2d&n%s%s&n] %s", GET_LEVEL(member),
+			 (IS_TRUSTED(member) && IS_SET(member->specials.act, PLR_ANONYMOUS)) ? "*" :
+											       " ",
+			 pad_ansi(get_class_name(member, ch), 16, TRUE).c_str(),
+			 pad_ansi(GET_NAME(member), MAX_NAME_LENGTH, TRUE).c_str());
+
+	// A racewar opponent other than the head shows vitals only while disguised.
+	const bool show_vitals = same_room && (IS_NPC(member) || head || !racewar(ch, member) ||
+					       IS_DISGUISE(member));
+	if (sorted)
+	{
+		// As wide as a player's "[level class] name" column.
+		checked_snprintf(line, MAX_STRING_LENGTH, "%s %s\n",
+				 pad_ansi(who, 22 + MAX_NAME_LENGTH, TRUE).c_str(),
+				 show_vitals ? vitals : "");
+		send_to_char(line, ch);
+		return;
+	}
+
+	if (IS_NPC(member))
+		checked_snprintf(line, MAX_STRING_LENGTH, "%-39s %-30s", who,
+				 show_vitals ? vitals : "");
+	else
+		checked_snprintf(line, MAX_STRING_LENGTH, "%s %-30s", who,
+				 show_vitals ? vitals : "");
+	if (!racewar(ch, member) && !IS_NPC(member) && CAN_SEE_Z_CORD(ch, member))
+	{
+		strcat(line, " &n(");
+		strcat(line, race_names_table[get_real_race(member)].ansi);
+		strcat(line, "&n)");
+	}
+	if (same_room)
+	{
+		const bool ophidian = has_innate(ch, INNATE_OPHIDIAN_EYES) &&
+				      GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_LANCER);
+		if ((ophidian || IS_AFFECTED2(ch, AFF2_DETECT_EVIL)) && IS_EVIL(member))
+			strcat(line, " (&+rRed Aura&n)");
+		if ((ophidian || IS_AFFECTED2(ch, AFF2_DETECT_GOOD)) && IS_GOOD(member))
+			strcat(line, " (&+YGold Aura&n)");
+	}
+	strcat(line, "\n");
+	send_to_char(line, ch);
+}
+
 void do_group(P_char ch, char *argument, int /*cmd*/)
 {
 	char name[MAX_INPUT_LENGTH], rank[MAX_INPUT_LENGTH];
 	struct follow_type *f;
 	bool found;
-	char Gbuf1[MAX_STRING_LENGTH], Gbuf2[MAX_STRING_LENGTH], Gbuf3[MAX_STRING_LENGTH];
+	char Gbuf1[MAX_STRING_LENGTH];
 	struct group_list *gl;
 	P_char victim;
 	int maxsize, counter;
@@ -497,242 +582,15 @@ void do_group(P_char ch, char *argument, int /*cmd*/)
 				 counter, maxsize);
 			send_to_char(Gbuf1, ch);
 
-			gl = ch->group;
-			/*      if (GET_CLASS(gl->ch, CLASS_PSIONICIST) ||
-			          GET_CLASS(gl->ch, CLASS_MINDFLAYER))
-			        snprintf(Gbuf2, MAX_STRING_LENGTH, "%5d/%-5d hit, %4d/%-4d move, %4d/%-4d mana",
-			                GET_HIT(gl->ch), GET_MAX_HIT(gl->ch), GET_VITALITY(gl->ch),
-			                GET_MAX_VITALITY(gl->ch), GET_MANA(gl->ch),
-			                GET_MAX_MANA(gl->ch));
-			      else*/
-
-			char hp_ansi_char = 'g';
-			int hp_percent =
-				(int)(((float)GET_HIT(gl->ch) / (float)GET_MAX_HIT(gl->ch)) *
-				      100.0f);
-			if (hp_percent >= 100)
-				hp_ansi_char = 'g';
-			else if (hp_percent >= 90)
-				hp_ansi_char = 'y';
-			else if (hp_percent >= 75)
-				hp_ansi_char = 'Y';
-			else if (hp_percent >= 50)
-				hp_ansi_char = 'M';
-			else if (hp_percent >= 30)
-				hp_ansi_char = 'm';
-			else if (hp_percent >= 15)
-				hp_ansi_char = 'R';
-			else
-				hp_ansi_char = 'r';
-
-			char mv_ansi_char = 'g';
-			int mv_percent = (int)(((float)GET_VITALITY(gl->ch) /
-						(float)GET_MAX_VITALITY(gl->ch)) *
-					       100.0f);
-			if (mv_percent >= 100)
-				mv_ansi_char = 'g';
-			else if (mv_percent >= 90)
-				mv_ansi_char = 'y';
-			else if (mv_percent >= 75)
-				mv_ansi_char = 'Y';
-			else if (mv_percent >= 50)
-				mv_ansi_char = 'M';
-			else if (mv_percent >= 30)
-				mv_ansi_char = 'm';
-			else if (mv_percent >= 15)
-				mv_ansi_char = 'R';
-			else
-				mv_ansi_char = 'r';
-
-			snprintf(Gbuf2, MAX_STRING_LENGTH,
-				 "%5d/%-5dH (&+%c%3d&n%%), %5d/%-5dV (&+%c%3d&n%%)",
-				 GET_HIT(gl->ch), GET_MAX_HIT(gl->ch), hp_ansi_char, hp_percent,
-				 GET_VITALITY(gl->ch), GET_MAX_VITALITY(gl->ch), mv_ansi_char,
-				 mv_percent);
-
-			if (IS_NPC(gl->ch))
-				strcpy(Gbuf3, gl->ch->player.short_descr);
-			else
-			{
-				if (racewar(ch, gl->ch))
-					strcpy(Gbuf3, race_names_table[GET_RACE(gl->ch)].ansi);
-				else
-				{
-					snprintf(Gbuf3, MAX_STRING_LENGTH, "&n[&+w%2d&n%s%s&n] %s",
-						 GET_LEVEL(gl->ch),
-						 (IS_TRUSTED(gl->ch) &&
-								  (IS_SET(gl->ch->specials.act,
-									  PLR_ANONYMOUS)) ?
-							  "*" :
-							  " "),
-						 pad_ansi(get_class_name(gl->ch, ch), 16, TRUE)
-							 .c_str(),
-						 pad_ansi(GET_NAME(gl->ch), MAX_NAME_LENGTH, TRUE)
-							 .c_str());
-				}
-			}
-			if (IS_NPC(gl->ch))
-			{
-				checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "%-39s %-30s",
-						 (!CAN_SEE_Z_CORD(ch, gl->ch)) ? "Someone" : Gbuf3,
-						 (ch->in_room == gl->ch->in_room) ? Gbuf2 : "");
-			}
-			else
-			{
-				checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "%s %-30s",
-						 (!CAN_SEE_Z_CORD(ch, gl->ch)) ? "Someone" : Gbuf3,
-						 (ch->in_room == gl->ch->in_room) ? Gbuf2 : "");
-			}
-
-			if (!racewar(ch, gl->ch) && !IS_NPC(gl->ch) && CAN_SEE_Z_CORD(ch, gl->ch))
-			{
-				strcat(Gbuf1, " &n(");
-				strcat(Gbuf1, race_names_table[get_real_race(gl->ch)].ansi);
-				strcat(Gbuf1, "&n)");
-			}
-
-			if (ch->in_room == gl->ch->in_room)
-			{
-				if (((has_innate(ch, INNATE_OPHIDIAN_EYES) &&
-				      GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_LANCER)) ||
-				     IS_AFFECTED2(ch, AFF2_DETECT_EVIL)) &&
-				    IS_EVIL(gl->ch))
-					strcat(Gbuf1, " (&+rRed Aura&n)");
-
-				if (((has_innate(ch, INNATE_OPHIDIAN_EYES) &&
-				      GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_LANCER)) ||
-				     IS_AFFECTED2(ch, AFF2_DETECT_GOOD)) &&
-				    IS_GOOD(gl->ch))
-					strcat(Gbuf1, " (&+YGold Aura&n)");
-			}
-
-			strcat(Gbuf1, "\n");
-
-			send_to_char(Gbuf1, ch);
-
-			for (gl = gl->next; gl; gl = gl->next)
-			{
-				/*if (GET_CLASS(gl->ch, CLASS_PSIONICIST) ||
-				    GET_CLASS(gl->ch, CLASS_MINDFLAYER))
-				  snprintf(Gbuf2, MAX_STRING_LENGTH, "%5d/%-5d hit, %4d/%-4d move, %4d/%-4d mana",
-				          GET_HIT(gl->ch), GET_MAX_HIT(gl->ch), GET_VITALITY(gl->ch),
-				          GET_MAX_VITALITY(gl->ch), GET_MANA(gl->ch),
-				          GET_MAX_MANA(gl->ch));
-				else*/
-
-				char member_hp_ansi = 'g';
-				int member_hp_percent = (int)(((float)GET_HIT(gl->ch) /
-							       (float)GET_MAX_HIT(gl->ch)) *
-							      100.0f);
-				if (member_hp_percent >= 100)
-					member_hp_ansi = 'g';
-				else if (member_hp_percent >= 90)
-					member_hp_ansi = 'y';
-				else if (member_hp_percent >= 75)
-					member_hp_ansi = 'Y';
-				else if (member_hp_percent >= 50)
-					member_hp_ansi = 'M';
-				else if (member_hp_percent >= 30)
-					member_hp_ansi = 'm';
-				else if (member_hp_percent >= 15)
-					member_hp_ansi = 'R';
-				else
-					member_hp_ansi = 'r';
-
-				char member_mv_ansi = 'g';
-				int member_mv_percent = (int)(((float)GET_VITALITY(gl->ch) /
-							       (float)GET_MAX_VITALITY(gl->ch)) *
-							      100.0f);
-				if (member_mv_percent >= 100)
-					member_mv_ansi = 'g';
-				else if (member_mv_percent >= 90)
-					member_mv_ansi = 'y';
-				else if (member_mv_percent >= 75)
-					member_mv_ansi = 'Y';
-				else if (member_mv_percent >= 50)
-					member_mv_ansi = 'M';
-				else if (member_mv_percent >= 30)
-					member_mv_ansi = 'm';
-				else if (member_mv_percent >= 15)
-					member_mv_ansi = 'R';
-				else
-					member_mv_ansi = 'r';
-
-				snprintf(Gbuf2, MAX_STRING_LENGTH,
-					 "%5d/%-5dH (&+%c%3d&n%%), %5d/%-5dV (&+%c%3d&n%%)",
-					 GET_HIT(gl->ch), GET_MAX_HIT(gl->ch), member_hp_ansi,
-					 member_hp_percent, GET_VITALITY(gl->ch),
-					 GET_MAX_VITALITY(gl->ch), member_mv_ansi,
-					 member_mv_percent);
-
+			const bool sorted = IS_PC(ch) && PLR3_FLAGGED(ch, PLR3_GROUP_SORTED);
+			show_group_member(ch, ch->group->ch, true, sorted);
+			// The sorted layout lists players before pets; the classic one keeps join order.
+			for (gl = ch->group->next; gl; gl = gl->next)
+				if (!sorted || IS_PC(gl->ch))
+					show_group_member(ch, gl->ch, false, sorted);
+			for (gl = ch->group->next; sorted && gl; gl = gl->next)
 				if (IS_NPC(gl->ch))
-					strcpy(Gbuf3, gl->ch->player.short_descr);
-				else
-				{
-					if (racewar(ch, gl->ch))
-						strcpy(Gbuf3,
-						       race_names_table[GET_RACE(gl->ch)].ansi);
-					else
-					{
-						snprintf(Gbuf3, MAX_STRING_LENGTH,
-							 "&n[&+w%2d&n%s%s&n] %s", GET_LEVEL(gl->ch),
-							 (IS_TRUSTED(gl->ch) &&
-									  (IS_SET(gl->ch->specials
-											  .act,
-										  PLR_ANONYMOUS)) ?
-								  "*" :
-								  " "),
-							 pad_ansi(get_class_name(gl->ch, ch), 16,
-								  TRUE)
-								 .c_str(),
-							 pad_ansi(GET_NAME(gl->ch), MAX_NAME_LENGTH,
-								  TRUE)
-								 .c_str());
-					}
-				}
-
-				if (IS_NPC(gl->ch))
-				{
-					checked_snprintf(
-						Gbuf1, MAX_STRING_LENGTH, "%-39s %-30s",
-						(!CAN_SEE_Z_CORD(ch, gl->ch)) ? "Someone" : Gbuf3,
-						(ch->in_room == gl->ch->in_room) ? Gbuf2 : "");
-				}
-				else
-				{
-					checked_snprintf(
-						Gbuf1, MAX_STRING_LENGTH, "%s %-30s",
-						(!CAN_SEE_Z_CORD(ch, gl->ch)) ? "Someone" : Gbuf3,
-						((ch->in_room == gl->ch->in_room) &&
-						 (!racewar(ch, gl->ch) || IS_DISGUISE(gl->ch))) ?
-							Gbuf2 :
-							"");
-				}
-
-				if (!racewar(ch, gl->ch) && !IS_NPC(gl->ch) &&
-				    CAN_SEE_Z_CORD(ch, gl->ch))
-				{
-					strcat(Gbuf1, " &n(");
-					strcat(Gbuf1, race_names_table[get_real_race(gl->ch)].ansi);
-					strcat(Gbuf1, "&n)");
-				}
-				if (ch->in_room == gl->ch->in_room)
-				{
-					if (((has_innate(ch, INNATE_OPHIDIAN_EYES) &&
-					      GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_LANCER)) ||
-					     IS_AFFECTED2(ch, AFF2_DETECT_EVIL)) &&
-					    IS_EVIL(gl->ch))
-						strcat(Gbuf1, " (&+rRed Aura&n)");
-
-					if (((has_innate(ch, INNATE_OPHIDIAN_EYES) &&
-					      GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_LANCER)) ||
-					     IS_AFFECTED2(ch, AFF2_DETECT_GOOD)) &&
-					    IS_GOOD(gl->ch))
-						strcat(Gbuf1, " (&+YGold Aura&n)");
-				}
-				strcat(Gbuf1, "\n");
-				send_to_char(Gbuf1, ch);
-			}
+					show_group_member(ch, gl->ch, false, sorted);
 		}
 		return;
 	}

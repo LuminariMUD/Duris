@@ -228,7 +228,7 @@ int main() {
 def main():
     source = (ROOT / "src/world/quest.c").read_text()
     start = source.index("namespace\n{\nvoid quest_staff_output")
-    handlers = source[start:source.index("int quester(", start)]
+    handlers = source[start:source.index("static bool quest_give_unrewarded(", start)]
     interp = (ROOT / "src/cmd/interp.c").read_text()
     header = (ROOT / "src/cmd/interp.h").read_text()
     names = re.findall(r'"([^\"]+)"', interp.split("const char *command[MAX_CMD] = {")[1].split("};")[0])

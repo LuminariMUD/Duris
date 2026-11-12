@@ -3237,6 +3237,12 @@ void do_riff(P_char ch, char *arg, int /*cmd*/)
 		return;
 	}
 
+	if (GET_CHAR_SKILL(ch, SKILL_RIFF) < 1)
+	{
+		send_to_char("You have not learned how to riff.\r\n", ch);
+		return;
+	}
+
 	if (affected_by_spell(ch, SKILL_RIFF))
 	{
 		send_to_char("You havent recovered yet from that last wild &+Criff&n!\n", ch);

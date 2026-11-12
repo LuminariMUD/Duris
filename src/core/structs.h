@@ -965,6 +965,7 @@ struct room_data
 #define PLR3_APPROVAL_PENDING BIT_24 /* staff decision survives disconnect/restart */
 #define PLR3_STARTER_KIT_PENDING BIT_25 /* first entry owes its bound kit */
 #define PLR3_CHAOS_STARTER_KIT BIT_26 /* kit policy decided at first entry */
+#define PLR3_GROUP_SORTED BIT_27 /* group list: players before pets, no race or aura tags */
 
 /* For players : Prompt flags (16 bits max) */
 #define PROMPT_NONE BIT_1
