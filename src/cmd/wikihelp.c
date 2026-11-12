@@ -21,6 +21,7 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include "classes/specializations.h"
 #include "sql/sql.h"
 #include "string.h"
@@ -135,11 +136,29 @@ string wiki_help(string str)
 }
 
 // Only the narrow distance band can contribute to a one/two-edit suggestion.
-static int help_spelling_distance(const string &query, const string &title, int limit)
+static int help_spelling_distance(std::string_view query, std::string_view title, int limit)
 {
 	if (title.size() > 256 || query.size() > title.size() + limit ||
 	    title.size() > query.size() + limit)
 		return limit + 1;
+	// Equal ends cannot contribute edits. Long catalog prefixes otherwise make
+	// even the narrow band repeat the same comparison hundreds of times.
+	while (!query.empty() && !title.empty() &&
+	       std::tolower(static_cast<unsigned char>(query.front())) ==
+		       std::tolower(static_cast<unsigned char>(title.front())))
+	{
+		query.remove_prefix(1);
+		title.remove_prefix(1);
+	}
+	while (!query.empty() && !title.empty() &&
+	       std::tolower(static_cast<unsigned char>(query.back())) ==
+		       std::tolower(static_cast<unsigned char>(title.back())))
+	{
+		query.remove_suffix(1);
+		title.remove_suffix(1);
+	}
+	if (query.empty() || title.empty())
+		return query.size() + title.size();
 	int rows[2][257];
 	std::fill(rows[0], rows[0] + 257, limit + 1);
 	std::fill(rows[1], rows[1] + 257, limit + 1);

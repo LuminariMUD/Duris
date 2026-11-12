@@ -1,6 +1,8 @@
 """Run the production cache state machine and actual help lookup/render bodies."""
 from pathlib import Path
 import re
+import os
+import ast
 import subprocess
 import tempfile
 from _paths import HARNESS_STUBS, extract_function
@@ -37,6 +39,7 @@ prefix = r'''
 #include <cstdlib>
 #include <iostream>
 #include <chrono>
+#include <string_view>
 #include <cstdarg>
 using namespace std;
 #include "cmd/wikihelp.h"
@@ -177,21 +180,48 @@ int main() {
    }
    for(int limit:{1,2}) assert(min(help_spelling_distance(q,t,limit),limit+1)==min(row.back(),limit+1));
   }
+
  if(getenv("HELP_BENCHMARK")) {
+  auto measure=[&](const string &query,const char *label) {
+   vector<double> times;
+   for(int i=0;i<101;++i) { auto start=chrono::steady_clock::now(); wiki_help(query); times.push_back(chrono::duration<double,milli>(chrono::steady_clock::now()-start).count()); }
+   sort(times.begin(),times.end());
+   size_t shortest=256,longest=0;
+   for(const auto &page:pages) { shortest=min(shortest,page.fields[0].size()); longest=max(longest,page.fields[0].size()); }
+   cout << "title bytes " << shortest << "-" << longest << "; " << label << ": " << pages.size() << " titles, query bytes=" << query.size() << ": median=" << times[50] << " p95=" << times[95] << " p99=" << times[99] << " max=" << times[100] << " ms\n";
+  };
+  pages.clear(); string title;
+  while(getline(cin,title)) add(title,"body");
+  measure("firball","Maintained imported titles");
   for(bool worst:{false,true}) {
    pages.clear();
    if(worst) for(int i=0;i<20000;++i) add(string(250,'a')+to_string(100000+i),"body");
    else for(int i=0;i<20000;++i) add("Ability "+to_string(100000+i),"body");
-   const string query=worst ? string(250,'a')+"zzzzzz" : "Abiliti 123456";
-   vector<double> times;
-   for(int i=0;i<101;++i) { auto start=chrono::steady_clock::now(); wiki_help(query); times.push_back(chrono::duration<double,milli>(chrono::steady_clock::now()-start).count()); }
-   sort(times.begin(),times.end());
-   cout << "20000 titles, query/title bytes " << query.size() << "/" << pages[0].fields[0].size() << ": median=" << times[50] << " p95=" << times[95] << " p99=" << times[99] << " max=" << times[100] << " ms\n";
+   measure(worst ? string(250,'a')+"zzzzzz" : "Abiliti 123456", worst ? "256-byte common-prefix titles" : "14-byte titles");
   }
  }
+
  cout << "help matching, redirects, dynamic content, metadata and repeated reads passed\n";
 }
 '''
+# Benchmark the effective maintained catalog using the actual import parsers.
+benchmark_titles = ""
+if os.environ.get("HELP_BENCHMARK"):
+    scope = {"re": re}
+    importer = (ROOT / "scripts/import_help_to_prod.sh").read_text()
+    for block in re.findall(r"python3 <<'PYTHON_SCRIPT'\n(.*?)\nPYTHON_SCRIPT", importer, re.S):
+        for node in ast.parse(block).body:
+            if isinstance(node, ast.FunctionDef) and node.name in (
+                "help_index_entries", "parse_help_index", "parse_parsed_help"
+            ):
+                exec(compile(ast.Module(body=[node], type_ignores=[]), "importer-parser", "exec"), scope)
+    files = re.search(r"declare -A HELP_FILES=\((.*?)\n\)", importer, re.S)[1]
+    titles = {title.casefold(): title for filename, title in re.findall(r'\["([^\"]+)"\]="([^\"]+)"', files)
+              if (ROOT / "lib/information" / filename).is_file()}
+    titles.update({title.casefold(): title for title, _ in scope["parse_help_index"](ROOT / "lib/information/help_index")})
+    titles.update({title.casefold(): title for title, _ in scope["parse_parsed_help"](ROOT / "help/duris_help_parsed.hlp")})
+    benchmark_titles = "\n".join(titles.values()) + "\n"
+
 (ROOT / 'bin').mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory(dir=ROOT / 'bin') as temp:
     temp = Path(temp)
@@ -218,4 +248,4 @@ int main() {
         subprocess.run(['g++','-O2','-std=c++20','-Wall','-Wextra','-Werror','-pthread',
                         '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections',
                         '-Isrc', *map(str,files), *dependencies, '-o',str(binary)],cwd=ROOT,check=True)
-        subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=30)
+        subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=30, input=benchmark_titles if name == "help" else "", text=True)

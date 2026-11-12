@@ -1,7 +1,7 @@
 # Help improvements implementation plan
 
 Date: 2026-11-12
-Status: A is review-ready in PR #1033; B content is being validated. No deployment authorized.
+Status: complete; all implementation and required validation passed. Review-ready stack: #1033 -> #1034 -> #1036. No deployment authorized.
 Source baseline: Duris `f8919ad27dd71ddb2e322feb31529c61d84384b7`;
 Luminari-Source `77d9b032db04c6b0e6c80ba32e4178c8a63ecba5`.
 
@@ -28,7 +28,7 @@ categories, a general help-provider framework, new metrics, website editing
 changes, and a general help-quality platform are separate ideas. None is needed
 to complete these five improvements. No schema or protocol change is expected.
 
-## Current implementation facts
+## Baseline facts (before implementation)
 
 - [`wiki_help()`](../../src/cmd/wikihelp.c) collects up to 101 title matches and
   then searches that subset for an exact title. The cap can hide an exact match.
@@ -419,11 +419,11 @@ in place of native tests and required review.
 - [x] Innate, class, race, skills, and spells guidance matches their real
   commands, distinguishes browsing from activation/readiness, and is reachable
   from all three hubs. Existing prose and progression consumers remain correct.
-- [ ] Focused executable checks, formatting, native build, complete disposable
+- [x] Focused executable checks, formatting, native build, complete disposable
   MariaDB journey, and bounded-search measurements pass. Report any unrun client
   validation and do not claim broader coverage than was exercised.
 
-## Plan verification
+## Original planning verification
 
 The planning task checked the current lookup/cache/link code, innate and other
 reference-command dispatchers, authored hubs, actual importer parsers and topic
@@ -433,86 +433,140 @@ for this plan. The acceptance boxes intentionally describe future implementation
 
 ## Implementation handoff (2026-11-12)
 
-Working checkout: `/home/aiwithapex/projects/duris-help-improvements` in WSL,
-on `branch/help-improvements-plan`. The original Windows checkout disappeared
-externally during read-only discovery; its last native status was clean. The
-branch was recovered with `git worktree add --force` into this separate checkout.
-The source plan and ideas remain in Git; no user changes were discarded.
+Working checkout: `/home/aiwithapex/projects/duris-help-improvements` in WSL.
+Current branch: `branch/help-navigation-journey`. The original Windows checkout
+in the request disappeared externally during read-only discovery; its last
+native Git status was clean. The same branch was recovered into this separate
+checkout with `git worktree add --force`. No user changes were discarded.
 
-Ablation before implementation: outcomes A-C and their acceptance proof remain
-required. Keep helpers local to wikihelp.c and reuse existing executable harnesses,
-links, parser, fixture/account helpers, and disposable DB authority. No schema,
-index, service, cache, protocol, or new command-link permission is needed. Use a
-narrow edit-distance band because the specified 20,000 x 256-byte worst case
-makes a full distance matrix unnecessary game-loop work.
+Review stack (merge in this order; do not deploy):
 
-Delivery A files: wikihelp.c; existing cache/output harnesses; HELP_SYSTEM.md;
-help-cache.md; this plan. Proof: full-catalog late exact match, boundaries,
-production wildcard matcher, typo ranking and bypasses, real output and frozen
-pager, optimized maximum-size measurements, formatting and native build.
-Pending next: finish A validation, commit/push and open labeled PR; then B
-content/source audit and C native MariaDB journey. Do not deploy or merge.
+1. [PR #1033](https://github.com/LuminariMUD/Duris/pull/1033),
+   `branch/help-improvements-plan` -> `master`, commit `a05bb19f4`;
+   labels `bug`, `enhancement`. Full-catalog exact lookup, 100 alternatives,
+   overflow notice, whitespace handling and five deterministic typo suggestions.
+2. [PR #1034](https://github.com/LuminariMUD/Duris/pull/1034),
+   `branch/help-player-navigation` -> `branch/help-improvements-plan`, commit
+   `698eb3317`; labels `documentation`, `enhancement`. All 28 selected topics,
+   mirrored catalogs, startup Help, live reference guidance and parser contracts.
+3. [PR #1036](https://github.com/LuminariMUD/Duris/pull/1036),
+   `branch/help-navigation-journey` -> `branch/help-player-navigation`, implementation
+   commit `e222187ad`; labels `enhancement`, `documentation`. Native journey,
+   complete catalog benchmarks and the common-prefix distance optimization.
+   All three PRs are pushed and open for review; no required work remains.
 
-Delivery A validation update:
-- Production wildcard matcher now rejects retries whose remaining literal/underscore
-  tokens cannot fit. The initial 20,000-title common-prefix benchmark exceeded
-  its 30-second harness deadline before this repair. An independent LIKE matrix
-  checks all query strings up to four characters from `aA%_` against all titles
-  up to four characters from `abA`, preserving wildcard/case behavior.
-- Optimized harness: GCC 13.3.0, C++20 `-O2`, no sanitizer; WSL2 Ubuntu on Intel
-  Core Ultra 9 285H (16 exposed CPUs), 101 samples per catalog of 20,000 titles.
-  14-byte query/titles: median 5.52 ms, p95 7.11, p99 8.08, max 8.32 ms.
-  256-byte query/titles with a 250-byte common prefix: median 86.07 ms,
-  p95 98.38, p99 129.92, max 130.68 ms. These are complete wiki_help misses,
-  including ordinary lookup, fuzzy scan, and formatting (logger stubbed).
-  The maximum stays below one default 250 ms game pulse on this machine;
-  this does not yet establish two-player runtime latency (delivery C).
-- Native `make -C src -j4` and reported-latency contract passed. Cache and output
-  regressions include suggestions, generic/MXP delivery, following returned help
-  targets, and frozen suggestion paging with no duplicate miss logging.
+### Scope and source audit
 
-Delivery A: commit `a05bb19f4`, pushed on `branch/help-improvements-plan`;
-[PR #1033](https://github.com/LuminariMUD/Duris/pull/1033), labels `bug`,
-`enhancement`. No CI wait, merge, tag or deployment; no release is being made.
+Ablation retained A-C and all acceptance proof. The existing immutable catalog,
+semantic links, pager, authoring formats and transactional import remain the
+only production path. No schema, index, service, query cache, protocol change,
+new command permission or general content-audit framework was added. Local
+bounded spelling helpers have one production caller. Qualification found two
+necessary performance repairs: reject wildcard retries whose remaining tokens
+cannot fit, and strip equal prefix/suffix spans before bounded edit distance.
 
-Delivery B is on `branch/help-player-navigation`, based on #1033. Its outcome
-is the 28 selected pages, mirrored sources and startup Help, plus a focused
-actual-import-parser contract in the existing test. No general audit framework.
-All 28 pages were reviewed. Class, Race, Skills, Spells and the communications
-overview already contained useful reference descriptions/staff syntax/privacy
-rules: retained those bodies and added examples, failure/access guidance and
-working links. The other selected pages needed practical rewriting or expansion.
-No class/race/spec grant tables or Rules policy text were changed.
+All 28 selected pages were reviewed. Class, Race, Skills, Spells and the
+communications overview already had useful mechanics/reference descriptions,
+staff syntax and privacy guidance; those were retained and completed with
+examples, failure/access guidance and links. Other selected pages needed
+rewriting or expansion. No class/spec progression tables or Rules policy text
+were changed. The actual importer parsers check the complete selected manifest,
+mirrored bodies, hub reference examples, imported link targets and Rules owner.
 
 Mechanics traced: interpreter registrations; actinf new_look/exits/consider and
-inventory/equipment; actmove movement failures; actoff flee including random
-eligible exits, control-flee, 20-30 ordinary/5-15 rogue vitality surcharges;
-actobj container preflight/get/wear/wield and hand/training rules; actcomm say;
-actwiz nchat; guild practice and scribing checks; memorize preparation/book
-requirements; sparser parse_spell/do_cast; fight corpse/death and limits XP
-threshold; nanny RENT_DEATH birthplace routing. Corrected double quotes in Cast
-(single apostrophes required), book requirements in Memorize (not for prayer),
-nearest-exit claim in Flee, obsolete startup info split, incomplete Policies,
-and unsupported newcomer race/gear promises. Keep innate info read-only and
-separate from activation, without changing any ability implementation.
+inventory/equipment; actmove movement failures; actoff eligible random flee
+exits, control flee and vitality costs; actobj get/container/wear/wield and
+hand/training rules; actcomm say; actwiz nchat; guild practice and scribing;
+memorize preparation/books; sparser parse_spell/do_cast; fight corpse/death,
+limits XP threshold and nanny RENT_DEATH routing/waiting-area exceptions.
+Corrected Cast's double quotes (single apostrophes required), Memorize's prayer
+book claim, Flee's nearest-exit claim, obsolete startup Help split, incomplete
+Policies and unsupported newcomer race/gear promises. Reference commands are
+visible text beside help links, never automatically executed.
 
-Pending B: parser/link and content contracts, help formatting, dry-run import,
-diff review, commit/push and stacked labeled PR. C remains required afterward.
+### Verification and measurements
 
-Delivery B validation passed: `test_help_import_live_parser.py` (all 28
-mirrors, actual imported link destinations, three hubs and Rules ownership),
-`test_help_layout.py`, `format_help_topics.py`, `test_class_helpfiles_contract.py`,
-`test_race_helpfiles_complete.py`, `test_race_innate_help_sync.py`,
-`format.sh --check`, and `git diff --check`. Full importer dry run passed with
-explicit dummy `help_preview` settings on loopback port 1 (no checkout .env,
-no DB access or publication). Fixed two inferred links to actual imported
-names/plain command text: SHIP SHIPS and will. The parser test also caught a
-missing delimiter before the first newly mirrored index entry; repaired it.
-Four retained Spells lines were wrapped to terminal width. Death includes the
-source-verified waiting-area exception to birthplace return.
+Passed commands:
 
-Next required chunk: add/run the native disposable MariaDB help navigation
-journey on a branch stacked on B; test import, all destinations, both plain/MXP
-and pager modes, selected suggestions, five reference commands, innate read-only
-state for an active owner and non-owner, catalog refresh, broad-match exact
-lookup and two-client responsiveness. No browser click claim is required.
+- `python3 tests/async/test_help_cache.py` (production matcher/lookup/render;
+  late exact title, 0/1/100/101 boundaries, ranking, deduplication, bypasses,
+  256-byte titles and bounded-distance comparison with a reference matrix).
+- `python3 tests/async/test_word_output_integration.py` (real command/output,
+  generic/MXP suggestions and returned targets, frozen paging and miss logging;
+  existing Unicode/large-page/redirect/metadata coverage retained).
+- `python3 tests/async/test_reported_latency_contract.py`.
+- `python3 tests/async/test_help_layout.py` and
+  `python3 tests/async/test_help_import_live_parser.py`.
+- `python3 scripts/format_help_topics.py`, `./scripts/format.sh --check`,
+  `git diff --check`, and `make -C src -j4`.
+- `python3 tests/async/test_class_helpfiles_contract.py`,
+  `python3 tests/async/test_race_helpfiles_complete.py`, and
+  `python3 tests/async/test_race_innate_help_sync.py`.
+- Full `import_help_to_prod.sh --dry-run` with explicit dummy `help_preview`
+  settings at loopback port 1; no checkout .env, DB connection or publication.
+
+Wildcard equivalence uses an independent LIKE matrix for every query up to four
+characters over `aA%_` against every title up to four characters over `abA`.
+The original long-prefix benchmark exceeded its 30-second harness deadline
+before the remaining-length repair. A later loaded-host run approached a
+250 ms pulse before the equal-end distance optimization; the final measurements
+below supersede the intermediate numbers.
+
+Reproduce: `HELP_BENCHMARK=1 python3 tests/async/test_help_cache.py`.
+GCC 13.3.0, C++20 `-O2`, no sanitizer, WSL2 Ubuntu, Intel Core Ultra 9 285H
+(16 exposed CPUs), shared host load, 101 samples per complete lookup/miss.
+The logger is stubbed; ordinary lookup, fuzzy selection and formatting are timed.
+
+- Effective maintained import: 2,458 titles, title lengths 2-69 bytes, query
+  `firball` (7 bytes): median 0.204 ms, p95 1.849, p99 6.431, max 11.051 ms.
+- 20,000 14-byte titles/query: median 11.989 ms, p95 32.917, p99 48.846,
+  max 51.687 ms.
+- 20,000 256-byte titles/query with a 250-byte common prefix: median 67.822 ms,
+  p95 120.878, p99 135.363, max 142.361 ms (below the default 250 ms pulse).
+
+### Native player journey: passed
+
+Run:
+`bash tests/async/with_disposable_mariadb.sh python3 tests/async/run_help_navigation_journey.py --server bin/server/dms_new`
+
+It imports copied sources into a newly migrated disposable schema, boots the
+native minimal world and creates its own accounts. A Human/Warrior lacks
+reflection; a Gnome/Warrior owns it at level 31 (innates.c). Staff exists only
+inside the fixture. The first native runs passed hubs/destinations, help/info
+exact-boundary checks, plain/MXP suggestion follow, paging and reference/state
+checks, then exposed test expectations that confused a bounded wildcard list
+and a single substring match with exact/fuzzy output. Those assertions were
+corrected without changing working product behavior. The final full run passed after those assertion corrections. Saved state waits for the real writer's
+`Saving` acknowledgement; a first active use proves info consumed no readiness.
+
+The complete final run passed with 2,610 fixture pages and catalog generation 2.
+It exercised all three hubs plus 26 destinations (including the single-owner
+Rules page), help/info late exact lookup, wildcard output, generic/MXP suggestion
+following, enabled/disabled paging, the five live reference command paths,
+reflection owner/non-owner state, actual catalog refresh, and simultaneous clients.
+The Gnome's first active reflection use still succeeded after info; subsequent
+info calls left the saved effect/innate-use projection unchanged and kept resting
+status. The non-owner received mechanics without acquiring the ability.
+
+On the native development build (`-Og`, normal 250 ms pulse), another client's
+`look` plus ordered `score` response fence measured:
+
+- Baseline (8 samples): median 504.73 ms, p95 517.64, max 523.62 ms.
+- Concurrent repeated typo misses (16 samples): median 508.25 ms,
+  p95 525.02, max 535.05 ms.
+- The miss client's own command/fence (16 samples): median 505.84 ms,
+  p95 523.38, max 525.80 ms.
+
+Those wall times include two input/pulse turns, socket delivery and the score
+fence; they are not handler CPU time. Loaded maximum rose 11.43 ms over baseline
+on this run, below the journey's three-pulse material-delay allowance. Search
+helpers/command checks confirm no command-time SQL or character wait. Evidence
+is reproducible through the command above; the last JSON is in ignored
+`bin/tests/help-navigation-evidence.json`. Disposable server/schema/container
+cleanup completed. No live accounts or credentials were used.
+
+No browser/client UI click test has been run; MXP and structured-output checks
+prove the server contract only. All planned implementation outcomes and checks
+are complete. Leave the PR stack for review; no CI wait or merge is needed.
+No live publication, deployment, release or tag was performed. Publication still
+requires separately authorized import/refresh and source/database reconciliation.
