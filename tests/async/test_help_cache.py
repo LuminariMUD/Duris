@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-from _paths import HARNESS_STUBS
+from _paths import HARNESS_STUBS, extract_function
 
 ROOT = Path(__file__).resolve().parents[2]
 source = (ROOT / 'src/cmd/wikihelp.c').read_text()
@@ -21,7 +21,7 @@ def function(signature, start=0):
 markup = '\n'.join(function(signature) for signature in (
     'string str_replace(', 'static void append_help_link(',
     'static string dewikify(', 'string dewikify(string str)'))
-lookup = function('string wiki_help(string str)') + '\n' + function('string wiki_help(string str,')
+lookup = function('static int help_spelling_distance(') + '\n' + function('static void append_help_suggestions(') + '\n' + function('string wiki_help(string str)') + '\n' + function('string wiki_help(string str,')
 render = function('string wiki_help_single(string str)') + '\n' + function('string wiki_help_single(string str,')
 race_description = function('string wiki_help_prose(') + '\n' + function('string wiki_race_description(')
 assert 'qry(' not in lookup + render and 'mysql_' not in lookup + render
@@ -36,18 +36,22 @@ prefix = r'''
 #include <cstring>
 #include <cstdlib>
 #include <iostream>
+#include <chrono>
+#include <cstdarg>
 using namespace std;
 #include "cmd/wikihelp.h"
 const char *LOG_HELP="help";
-void logit(const char *, const char *, ...) {}
+int misses=0;
+string last_miss;
+void logit(const char *, const char *fmt, ...) {
+ ++misses; char text[1024]; va_list args; va_start(args,fmt); vsnprintf(text,sizeof(text),fmt,args); va_end(args); last_miss=text;
+}
 int ansi_strlen(const char *s) { return strlen(s); }
 void one_argument(const char *s, char *out) { auto n=strcspn(s," "); memcpy(out,s,n); out[n]=0; }
 help_catalog pages;
 bool ready=false;
 const help_catalog *help_cache_get() { return ready ? &pages : nullptr; }
-bool help_title_equal(const string &a,const string &b) { return strcasecmp(a.c_str(),b.c_str())==0; }
-bool help_title_matches(const string &a,const string &b) {
- return search(a.begin(),a.end(),b.begin(),b.end(),[](unsigned char x,unsigned char y){return tolower(x)==tolower(y);}) != a.end(); }
+''' + extract_function('help_cache.c', 'bool help_title_equal(') + '\n' + extract_function('help_cache.c', 'bool help_title_matches(') + r'''
 string trim(const string &s,const char *chars) {
  auto begin=s.find_first_not_of(chars); return begin==string::npos ? "" : s.substr(begin,s.find_last_not_of(chars)-begin+1); }
 int dynamic_version=1;
@@ -60,6 +64,24 @@ main = r'''
 void add(string title,string text,string category="1") {
  pages.push_back({{title,text,category,"2026-09-10","Editor"}}); }
 int main() {
+
+ // Exhaust the small wildcard space against an independent LIKE matrix.
+ vector<string> queries{""}, titles{""};
+ for(int length=1;length<=4;++length) {
+  auto oldq=queries, oldt=titles;
+  for(const auto &s:oldq) if(s.size()==size_t(length-1)) for(char c:string("aA%_")) queries.push_back(s+c);
+  for(const auto &s:oldt) if(s.size()==size_t(length-1)) for(char c:string("abA")) titles.push_back(s+c);
+ }
+ for(const auto &q:queries) for(const auto &t:titles) {
+  const string pattern="%"+q+"%";
+  vector<vector<bool>> dp(t.size()+1,vector<bool>(pattern.size()+1)); dp[0][0]=true;
+  for(size_t j=1;j<=pattern.size();++j) {
+   if(pattern[j-1]=='%') dp[0][j]=dp[0][j-1];
+   for(size_t i=1;i<=t.size();++i)
+    dp[i][j]=pattern[j-1]=='%' ? dp[i][j-1]||dp[i-1][j] : dp[i-1][j-1]&&(pattern[j-1]=='_'||tolower(pattern[j-1])==tolower(t[i-1]));
+  }
+  assert(help_title_matches(t,q)==dp.back().back());
+ }
  assert(wiki_help("help").find("unavailable")!=string::npos);
  assert(wiki_help_single("Fire").find("unavailable")!=string::npos);
  assert(wiki_race_description("Human").empty());
@@ -95,11 +117,78 @@ int main() {
  assert(wiki_help_prose("No opening prose", "").empty());
  add("Empty mechanics", "A class.\n\n==Class mechanics==\n\n==Skill changes==\nStale grants.");
  assert(wiki_help_prose("Empty mechanics", "Class mechanics").empty());
- for(int i=0;i<150;++i) add("bulk"+to_string(i),"text");
- auto result=wiki_help("bulk");
- assert(result.find("bulk100\n")!=string::npos);
- assert(result.find("bulk101\n")==string::npos);
+
+ assert(wiki_help(" \t\n").find("welcome")!=string::npos);
+ assert(wiki_help("  fIrE \t").find("burn")!=string::npos);
+ assert(help_title_matches("Fire", "F_re"));
+ assert(wiki_help("F_re").find("Fire")!=string::npos);
+ assert(wiki_help("Fi%ld").find("protect")!=string::npos);
  for(int i=0;i<10000;++i) assert(wiki_help("Fire").find("burn")!=string::npos);
+ pages.clear();
+ for (int count : {0,1,100,101}) {
+  pages.clear(); for(int i=0;i<count;++i) add("bulk"+to_string(i),"unique body");
+  OutputLinks links; auto result=wiki_help("bulk", &links);
+  if(count==0) assert(result.find("no help topics")!=string::npos);
+  else if(count==1) assert(result.find("unique body")!=string::npos);
+  else assert(links.size()==100);
+  assert((result.find("More topics matched")!=string::npos)==(count>100));
+ }
+ pages.clear();
+ for(int i=0;i<150;++i) add("A bulk "+to_string(i),"text");
+ add("bulk", "exact late article [[Fireball]]");
+ OutputLinks links;
+ auto result=wiki_help(" BULK ", &links);
+ assert(result.find("exact late article")<result.find("also matched"));
+ assert(links.size()==101 && links[0].target=="help Fireball");
+ assert(result.find("A bulk 99\n")!=string::npos && result.find("A bulk 100\n")==string::npos);
+ for(const auto &link:links) assert(link.target!="help bulk");
+ assert(result.find("More topics matched")!=string::npos);
+ pages.clear(); add("Fireball","spell body"); add("Score","score body"); add("Grey Elf","race body");
+ for(const char *query:{"firball","firebaall","fireboll","FiRbAlL","scroe","gry elf"}) {
+  auto before=misses; result=wiki_help(query,&links);
+  assert(result.find("Did you mean:")!=string::npos && links.size()==1);
+  assert(misses==before+1 && last_miss==query);
+  assert(wiki_help(links[0].target.substr(5)).find("body")!=string::npos);
+  assert(misses==before+1);
+ }
+ for(const string &query:vector<string>{"zzzzzzzzzz", "fi", "f%rbol", "f_rbol", string(257,'x'), "fírball"}) {
+  result=wiki_help(query,&links); assert(result.find("Did you mean:")==string::npos && links.empty());
+ }
+ result=wiki_help("  firball  ",&links); assert(last_miss=="  firball  " && links.size()==1);
+ pages.clear();
+ for(const char *title:{"sat","rat","pat","mat","hat","fat","cat","CAT"}) add(title,"body");
+ result=wiki_help("bat",&links);
+ assert(links.size()==5);
+ const char *ordered[]={"help CAT","help fat","help hat","help mat","help pat"};
+ for(size_t i=0;i<5;++i) assert(links[i].target==ordered[i]);
+ reverse(pages.begin(),pages.end()); assert(wiki_help("bat")==result);
+ pages.clear(); add("café","body"); assert(wiki_help("cafe",&links).find("Did you mean:")==string::npos);
+ add("Fireball","new generation"); assert(wiki_help("firball",&links).find("Fireball")!=string::npos);
+ pages.clear(); assert(wiki_help("firball",&links).find("Did you mean:")==string::npos);
+ string long_title(256,'a'); long_title[128]='b'; add(long_title,"long body");
+ assert(wiki_help(string(256,'a'),&links).find("Did you mean:")!=string::npos);
+ assert(links.size()==1 && links[0].target=="help "+long_title);
+ // Compare the bounded algorithm with a full reference matrix, including band edges.
+ for(const string &q:vector<string>{"abc","abcd","abcde","aaaaab",string(256,'a')})
+  for(const string &t:vector<string>{"ab","abc","acb","abcd","abxde","baaaab",long_title}) {
+   vector<int> row(t.size()+1); for(size_t j=0;j<row.size();++j) row[j]=j;
+   for(size_t i=1;i<=q.size();++i) { int diagonal=row[0]; row[0]=i;
+    for(size_t j=1;j<=t.size();++j) { int old=row[j]; row[j]=min({row[j]+1,row[j-1]+1,diagonal+(q[i-1]!=t[j-1])}); diagonal=old; }
+   }
+   for(int limit:{1,2}) assert(min(help_spelling_distance(q,t,limit),limit+1)==min(row.back(),limit+1));
+  }
+ if(getenv("HELP_BENCHMARK")) {
+  for(bool worst:{false,true}) {
+   pages.clear();
+   if(worst) for(int i=0;i<20000;++i) add(string(250,'a')+to_string(100000+i),"body");
+   else for(int i=0;i<20000;++i) add("Ability "+to_string(100000+i),"body");
+   const string query=worst ? string(250,'a')+"zzzzzz" : "Abiliti 123456";
+   vector<double> times;
+   for(int i=0;i<101;++i) { auto start=chrono::steady_clock::now(); wiki_help(query); times.push_back(chrono::duration<double,milli>(chrono::steady_clock::now()-start).count()); }
+   sort(times.begin(),times.end());
+   cout << "20000 titles, query/title bytes " << query.size() << "/" << pages[0].fields[0].size() << ": median=" << times[50] << " p95=" << times[95] << " p99=" << times[99] << " max=" << times[100] << " ms\n";
+  }
+ }
  cout << "help matching, redirects, dynamic content, metadata and repeated reads passed\n";
 }
 '''
@@ -126,7 +215,7 @@ int main() {
         binary = temp / name
         dependencies = (['src/net/output_links.c', 'src/net/ansi.c', 'src/net/unicode.c', str(HARNESS_STUBS)]
                         if name == 'help' else [])
-        subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-pthread',
+        subprocess.run(['g++','-O2','-std=c++20','-Wall','-Wextra','-Werror','-pthread',
                         '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections',
                         '-Isrc', *map(str,files), *dependencies, '-o',str(binary)],cwd=ROOT,check=True)
         subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=30)

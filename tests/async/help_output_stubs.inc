@@ -4,6 +4,12 @@
 static help_catalog output_help_pages;
 static bool output_help_ready = true;
 static unsigned attribute_help_calls;
+static unsigned help_miss_count;
+void logit(const char *filename, const char *, ...)
+{
+ if (!strcmp(filename, LOG_HELP))
+  ++help_miss_count;
+}
 const help_catalog *help_cache_get()
 {
 	return output_help_ready ? &output_help_pages : nullptr;

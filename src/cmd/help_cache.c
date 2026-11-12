@@ -149,12 +149,19 @@ bool help_title_matches(const std::string &title, const std::string &query)
 	// Preserve the old LIKE '%query%' wildcard syntax without database work.
 	const std::string pattern = "%" + query + "%";
 	size_t input = 0, token = 0, star = std::string::npos, retry = 0;
+	size_t required =
+		std::count_if(pattern.begin(), pattern.end(), [](char c) { return c != '%'; });
+	size_t star_required = required;
 	while (input < title.size())
 	{
+		// A retry cannot match if the remaining literal/_ tokens no longer fit.
+		if (title.size() - input < required)
+			return false;
 		if (token < pattern.size() && pattern[token] == '%')
 		{
 			star = token++;
 			retry = input;
+			star_required = required;
 		}
 		else if (token < pattern.size() &&
 			 (pattern[token] == '_' ||
@@ -163,11 +170,13 @@ bool help_title_matches(const std::string &title, const std::string &query)
 		{
 			++input;
 			++token;
+			--required;
 		}
 		else if (star != std::string::npos)
 		{
 			token = star + 1;
 			input = ++retry;
+			required = star_required;
 		}
 		else
 			return false;

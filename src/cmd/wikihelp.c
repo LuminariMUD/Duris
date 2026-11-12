@@ -134,6 +134,100 @@ string wiki_help(string str)
 	return wiki_help(std::move(str), nullptr);
 }
 
+// Only the narrow distance band can contribute to a one/two-edit suggestion.
+static int help_spelling_distance(const string &query, const string &title, int limit)
+{
+	if (title.size() > 256 || query.size() > title.size() + limit ||
+	    title.size() > query.size() + limit)
+		return limit + 1;
+	int rows[2][257];
+	std::fill(rows[0], rows[0] + 257, limit + 1);
+	std::fill(rows[1], rows[1] + 257, limit + 1);
+	int *previous = rows[0], *current = rows[1];
+	for (size_t j = 0; j <= std::min(title.size(), size_t(limit)); ++j)
+		previous[j] = j;
+	for (size_t i = 1; i <= query.size(); ++i)
+	{
+		current[0] = i <= size_t(limit) ? i : limit + 1;
+		int best = limit + 1;
+		const size_t first = i > size_t(limit) ? i - limit : 1;
+		const size_t last = std::min(title.size(), i + limit);
+		if (first > 1)
+			current[first - 1] = limit + 1;
+		if (last < title.size())
+			current[last + 1] = limit + 1;
+		for (size_t j = first; j <= last; ++j)
+		{
+			const int cost = std::tolower(static_cast<unsigned char>(query[i - 1])) !=
+					 std::tolower(static_cast<unsigned char>(title[j - 1]));
+			current[j] = std::min(
+				{ previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost });
+			best = std::min(best, current[j]);
+		}
+		if (best > limit)
+			return limit + 1;
+		std::swap(previous, current);
+	}
+	return previous[title.size()];
+}
+
+static void append_help_suggestions(string &output, const help_catalog &catalog,
+				    const string &query, OutputLinks *links)
+{
+	const auto non_ascii = [](unsigned char c) { return c >= 128; };
+	if (query.size() < 3 || query.size() > 256 || query.find_first_of("%_") != string::npos ||
+	    std::any_of(query.begin(), query.end(), non_ascii))
+		return;
+	const int limit = query.size() < 5 ? 1 : 2;
+	using candidate = std::pair<int, const help_page *>;
+	const auto less = [](const candidate &a, const candidate &b)
+	{
+		if (a.first != b.first)
+			return a.first < b.first;
+		const auto &left = a.second->fields[0];
+		const auto &right = b.second->fields[0];
+		if (help_title_equal(left, right))
+			return left < right;
+		return std::lexicographical_compare(left.begin(), left.end(), right.begin(),
+						    right.end(),
+						    [](unsigned char x, unsigned char y)
+						    { return std::tolower(x) < std::tolower(y); });
+	};
+	std::vector<candidate> best;
+	best.reserve(6);
+	for (const auto &page : catalog)
+	{
+		const auto &title = page.fields[0];
+		if (std::any_of(title.begin(), title.end(), non_ascii))
+			continue;
+		const int distance = help_spelling_distance(query, title, limit);
+		if (distance > limit)
+			continue;
+		const candidate next{ distance, &page };
+		auto duplicate =
+			std::find_if(best.begin(), best.end(), [&](const candidate &entry)
+				     { return help_title_equal(entry.second->fields[0], title); });
+		if (duplicate != best.end())
+		{
+			if (!less(next, *duplicate))
+				continue;
+			best.erase(duplicate);
+		}
+		best.insert(std::lower_bound(best.begin(), best.end(), next, less), next);
+		if (best.size() > 5)
+			best.pop_back();
+	}
+	if (best.empty())
+		return;
+	output += "\nDid you mean:\n";
+	for (const auto &entry : best)
+	{
+		output += " &+c";
+		append_help_link(output, entry.second->fields[0], links);
+		output += "&n\n";
+	}
+}
+
 string wiki_help(string str, OutputLinks *links)
 {
 	if (links)
@@ -141,43 +235,51 @@ string wiki_help(string str, OutputLinks *links)
 	const auto *catalog = help_cache_get();
 	if (!catalog)
 		return "&+GHelp is temporarily unavailable while its catalog loads. Please try again shortly.";
+	const string original = str;
+	str = trim(str, " \t\r\n");
 	if (str.empty())
 		return wiki_help_single("help", links);
 	std::vector<const help_page *> matches;
+	const help_page *exact = nullptr;
+	bool overflow = false;
 	for (const auto &page : *catalog)
-		if (help_title_matches(page.fields[0], str))
+		if (help_title_equal(page.fields[0], str))
 		{
-			matches.push_back(&page);
-			if (matches.size() == WIKIHELP_RESULTS_LIMIT + 1)
-				break;
+			if (!exact)
+				exact = &page;
 		}
-	if (matches.empty())
+		else if (help_title_matches(page.fields[0], str))
+		{
+			if (matches.size() < WIKIHELP_RESULTS_LIMIT)
+				matches.push_back(&page);
+			else
+				overflow = true;
+		}
+	if (!exact && matches.empty())
 	{
-		logit(LOG_HELP, "%s", str.c_str());
-		return "&+GSorry, but there are no help topics that match your search.";
+		logit(LOG_HELP, "%s", original.c_str());
+		string result = "&+GSorry, but there are no help topics that match your search.";
+		append_help_suggestions(result, *catalog, str, links);
+		return result;
 	}
-	if (matches.size() == 1)
+	if (exact && matches.empty())
+		return wiki_help_single(exact->fields[0], links);
+	if (!exact && matches.size() == 1)
 		return wiki_help_single(matches.front()->fields[0], links);
 	std::string result;
-	const help_page *exact = nullptr;
-	for (const auto *page : matches)
-		if (help_title_equal(page->fields[0], str))
-		{
-			exact = page;
-			break;
-		}
 	if (exact)
 		result = wiki_help_single(exact->fields[0], links) +
 			 "\n\n&+GThe following help topics also matched your search:\n";
 	else
 		result = "&+GThe following help topics matched your search:\n";
 	for (const auto *page : matches)
-		if (page != exact)
-		{
-			result += " &+c";
-			append_help_link(result, page->fields[0], links);
-			result += "\n";
-		}
+	{
+		result += " &+c";
+		append_help_link(result, page->fields[0], links);
+		result += "\n";
+	}
+	if (overflow)
+		result += "&+GMore topics matched; use a longer name.\n";
 	return result;
 }
 

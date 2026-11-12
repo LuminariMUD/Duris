@@ -38,6 +38,7 @@ for filename, signatures in [
     ("alliances.c", ["void do_acc("]),
     ("wikihelp.c", ["string trim(", "string str_replace(", "static void append_help_link(",
                     "static string dewikify(", "string dewikify(string str)",
+                    "static int help_spelling_distance(", "static void append_help_suggestions(",
                     "string wiki_help(string str)", "string wiki_help(string str,",
                     "string wiki_help_single(string str)", "string wiki_help_single(string str,"]),
     ("help_cache.c", ["bool help_title_equal(", "bool help_title_matches("]),

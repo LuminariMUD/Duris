@@ -72,7 +72,30 @@ static void help_output_matrix()
 			       terminal_output[&d].find("[7z") == string::npos);
 	}
 
-	// Every result in the existing 101-title search fits the metadata budget,
+	// A typo emits semantic links in MXP and readable text in generic terminals.
+	for (bool enabled : { false, true })
+	{
+		d.mxp_state = enabled ? MXP_ENABLED : MXP_OFF;
+		d.term_type = enabled ? TERM_ANSI : TERM_GENERIC;
+		terminal_output.clear();
+		char typo[] = "Weathr";
+		do_help(&player, typo, 0);
+		assert(process_output(&d) == 1);
+		const auto [text, tags] = observe_mxp(terminal_output[&d]);
+		assert(text.find("Did you mean:") != string::npos && text.find("Weather") != string::npos);
+		assert(enabled ? tags.size() == 2 && tags[0] == "SEND HREF=\"help Weather\"" : tags.empty());
+		// Follow the returned command through the real help dispatcher.
+		wiki_help("Weathr", &links);
+		assert(links.size() == 1 && links[0].target == "help Weather");
+		string selected = links[0].target.substr(5);
+		terminal_output.clear();
+		do_help(&player, selected.data(), 0);
+		assert(process_output(&d) == 1);
+		assert(observe_mxp(terminal_output[&d]).first.find("The weather changes.") != string::npos);
+	}
+	d.term_type = TERM_ANSI;
+
+	// Every result in the bounded 100-title search fits the metadata budget,
 	// including the catalog's maximum title width. Real delivery spans chunks.
 	for (int i = 0; i < WIKIHELP_RESULTS_LIMIT + 1; ++i)
 	{
@@ -81,7 +104,7 @@ static void help_output_matrix()
 						"1", "2026-11-09", "Editor" } });
 	}
 	const auto titles = wiki_help("bulk", &links);
-	assert(links.size() == WIKIHELP_RESULTS_LIMIT + 1 &&
+	assert(links.size() == WIKIHELP_RESULTS_LIMIT &&
 	       valid_output_links(links, titles.size()));
 	char bulk[] = "bulk";
 	terminal_output.clear();
@@ -170,6 +193,37 @@ static void help_output_matrix()
 			assert(tags[i] == "SEND HREF=\"help Weather\"" && tags[i + 1] == "/SEND");
 	}
 	assert(logged.size() == original_logs);
+	// Freeze a suggestion miss too: refresh replays its original links without
+	// logging the miss again, while a new lookup sees the refreshed catalog.
+	for (const auto &title : { "bat" + string(250, 'x'), "cat" + string(250, 'x'), "fat" + string(250, 'x'), "hat" + string(250, 'x'), "mat" + string(250, 'x') })
+		output_help_pages.push_back({ { title, "body", "1", "2026-11-12", "Editor" } });
+	pc.screen_length = 6;
+	command_action = [&](P_char recipient)
+	{
+		string query = "dat" + string(250, 'x');
+		do_help(recipient, query.data(), 0);
+	};
+	char typo_command[] = "help dat";
+	terminal_output.clear();
+	process_with_paging(&player, typo_command);
+	assert(d.showstr_count > 1 && process_output(&d) == 1);
+	const auto frozen_miss = observe_mxp(terminal_output[&d]);
+	const auto miss_logs = help_miss_count;
+	output_help_pages.clear();
+	assert(wiki_help("dat" + string(250, 'x')).find("Did you mean:") == string::npos);
+	const auto refreshed_logs = help_miss_count;
+	assert(refreshed_logs == miss_logs + 1);
+	terminal_output.clear();
+	show_string(&d, "r");
+	assert(process_output(&d) == 1 && observe_mxp(terminal_output[&d]) == frozen_miss);
+	while (d.showstr_count)
+	{
+		terminal_output.clear();
+		show_string(&d, "");
+		assert(process_output(&d) == 1);
+	}
+	assert(help_miss_count == refreshed_logs);
+
 	assert(!d.showstr_head && !d.showstr_links && !d.output.head);
 	command_action = {};
 	delete GET_PLAYER_LOG(&player);
