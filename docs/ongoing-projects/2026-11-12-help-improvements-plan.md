@@ -160,12 +160,12 @@ query-result cache, service, or configurable scoring system is required.
 Use these as behavior and algorithm references, adapting them to Duris's cache
 and output ownership:
 
-- [Bounded edit distance](/home/aiwithapex/projects/Luminari-Source/src/core/help.c:1653).
-- [Ranking and combining suggestion lists](/home/aiwithapex/projects/Luminari-Source/src/core/help.c:1698).
-- [Suggestion lookup and clickable output](/home/aiwithapex/projects/Luminari-Source/src/core/help.c:1834).
-- [Suggestion regression cases](/home/aiwithapex/projects/Luminari-Source/unittests/CuTest/test_help_suggestions.c:1).
+- Bounded edit distance (`Luminari-Source/src/core/help.c:1653`).
+- Ranking and combining suggestion lists (`Luminari-Source/src/core/help.c:1698`).
+- Suggestion lookup and clickable output (`Luminari-Source/src/core/help.c:1834`).
+- Suggestion regression cases (`Luminari-Source/unittests/CuTest/test_help_suggestions.c:1`).
 
-These full paths refer to the sibling checkout at the baseline revision above.
+These paths refer to the sibling checkout at the baseline revision above.
 Do not port its database queries, keyword schema, handler chain, or file fallback.
 
 ### Proof
@@ -266,8 +266,8 @@ general reference, and actions. Use these source-verified forms:
   player reference; describe `innate list all` separately. Explain that
   `innate <name> [arguments]` can activate an ability. Update both Innate and the
   existing Innates pointer. Source:
-  [`innate_info()`](/home/aiwithapex/projects/duris/src/classes/innates.c:1217),
-  [`do_innate()`](/home/aiwithapex/projects/duris/src/classes/innates.c:4462).
+  [`innate_info()`](../../src/classes/innates.c),
+  [`do_innate()`](../../src/classes/innates.c).
 - **Class:** `class`, `class list <race>`, `class info <class or specialization>`,
   `class specs <class>`, and `class innates <class or specialization>`.
   Examples: `class info warrior`, `class specs warrior`. Source:
