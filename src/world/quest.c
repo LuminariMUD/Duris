@@ -117,8 +117,27 @@ void questcheck(P_char ch)
 	}
 }
 
+// A broken completion must neither accept a hand-in nor consume earlier gifts.
+static bool quest_completion_possible(const quest_complete_data *qcp)
+{
+	for (const goal_data *gp = qcp->give; gp; gp = gp->next)
+		if (gp->goal_type == QUEST_GOAL_ITEM && real_object(gp->number) < 0)
+			return false;
+	bool missing = false, pays = false;
+	for (const goal_data *gp = qcp->receive; gp; gp = gp->next)
+	{
+		if (gp->goal_type == QUEST_GOAL_ITEM && real_object(gp->number) < 0)
+			missing = true;
+		else
+			pays = true;
+	}
+	return !missing || pays;
+}
+
 bool quest_completion(struct quest_complete_data *qcp, P_char mob, P_char pl)
 {
+	if (!quest_completion_possible(qcp))
+		return false;
 	struct goal_data *gp, *gp2;
 	P_obj obj;
 	int num_needed, count;
@@ -741,11 +760,9 @@ static bool quest_give_unrewarded(int quester_id, P_char mob, P_char pl, const c
 	for (const quest_complete_data *qcp = quest_index[quester_id].quest_complete; qcp;
 	     qcp = qcp->next)
 	{
-		bool wanted = false, unobtainable = false, missing = false, pays = false;
+		bool wanted = false;
 		for (const goal_data *gp = qcp->give; gp; gp = gp->next)
 		{
-			if (gp->goal_type == QUEST_GOAL_ITEM && real_object(gp->number) < 0)
-				unobtainable = true;
 			if (!obj)
 				wanted |= gp->goal_type == QUEST_GOAL_COINS;
 			else
@@ -754,17 +771,10 @@ static bool quest_give_unrewarded(int quester_id, P_char mob, P_char pl, const c
 					  (gp->goal_type == QUEST_GOAL_ITEM_TYPE &&
 					   gp->number == obj->type);
 		}
-		for (const goal_data *gp = qcp->receive; gp; gp = gp->next)
-		{
-			if (gp->goal_type == QUEST_GOAL_ITEM && real_object(gp->number) < 0)
-				missing = true;
-			else
-				pays = true;
-		}
 		if (!wanted)
 			continue;
 		// A sound completion wants it too, so the gift is not wasted.
-		if (!unobtainable && (!missing || pays))
+		if (quest_completion_possible(qcp))
 			return false;
 		dead = true;
 	}
