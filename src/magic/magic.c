@@ -13162,6 +13162,17 @@ void spell_death_blessing(int /*level*/, P_char ch, char * /*args*/, int /*type*
 	}
 }
 
+// A stronger cast takes over the buff and an equal one renews its timer. A weaker one
+// does nothing, unless spell.generousRefresh.enabled is 1, when it renews the timer only.
+spell_refresh spell_refresh_rule(int incoming, int existing)
+{
+	if (incoming > existing)
+		return spell_refresh::replace;
+	if (incoming == existing || get_property("spell.generousRefresh.enabled", 0.0) == 1)
+		return spell_refresh::renew;
+	return spell_refresh::nothing;
+}
+
 // Vitality raises maximum hit points by this much.
 static int vitality_hit_points(int level)
 {
@@ -13254,16 +13265,29 @@ void spell_vitality(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 	}
 	else
 	{
-		struct affected_type *af1;
+		struct affected_type *af1 = get_spell_from_char(victim, SPELL_VITALITY);
+		const spell_refresh refresh = spell_refresh_rule(healpoints, af1->modifier);
 
-		for (af1 = victim->affected; af1; af1 = af1->next)
-			if (af1->type == SPELL_VITALITY)
-			{
-				send_to_char(
-					"&+WYou feel a slight &+cmagical surge&+W that reinforces and refreshes your &+Bvitality.\r\n&n",
-					victim);
-				af1->duration = duration;
-			}
+		if (refresh == spell_refresh::nothing)
+		{
+			send_to_char("Nothing new seems to happen.\r\n", ch);
+			return;
+		}
+		send_to_char(
+			"&+WYou feel a slight &+cmagical surge&+W that reinforces and refreshes your &+Bvitality.\r\n&n",
+			victim);
+		if (refresh == spell_refresh::replace)
+		{
+			// Raise in place, finishing the HP recalculation before observing position.
+			all_affects(victim, FALSE);
+			af1->modifier = healpoints;
+			all_affects(victim, TRUE);
+			update_pos(victim);
+			update_group_vitals(victim);
+			gmcp_char_vitals(victim);
+		}
+		af1->duration = duration;
+		gmcp_char_affects(victim);
 	}
 }
 

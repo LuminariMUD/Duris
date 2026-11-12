@@ -4963,13 +4963,6 @@ void do_quaff(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	for (i = 1; i < 4; ++i)
-		if (bottle->value[i] == SPELL_VITALITY && affected_by_spell(ch, SPELL_VITALITY))
-		{
-			send_to_char("You are already affected by vitality!\r\n", ch);
-			return;
-		}
-
 	if (affected_by_spell(ch, TAG_POTION_TIMER))
 	{
 		// gellz added potion messages for timer durations  070316

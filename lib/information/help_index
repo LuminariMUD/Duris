@@ -19584,8 +19584,14 @@ Duration:       Dependent on proficiency of caster
 Type of spell:  Enchantment
 
 This spell expands the lifeforce capacity of the victim by a significant 
-amount for a limited period of time, with the amount dependent on the 
+amount for a limited period of time, with the amount dependent on the
 proficiency of the caster.
+
+Vitality landing on someone who already has it follows one rule, whether
+it comes from a caster, a potion, a wand or an item. One at least as
+strong replaces the Vitality they have and restarts its duration. A
+weaker one does nothing, unless the realm runs generous refresh, when it
+restarts the duration and keeps the stronger amount.
 ===========================================================================
 See also: "ESHABALAS VITALITY", "UNHOLY STRENGTH"
 

@@ -1,6 +1,7 @@
 # Issue #1010: one refresh rule for buffs, with a generous setting (Vitality first)
 
-Status: plan only; nothing is implemented.
+Status: implemented on `feature/1010-spell-refresh-rule`; focused tests, build and
+format pass. The two-mode local gameplay journey is next (see Progress).
 Date: 2026-11-12.
 Issue: [#1010](https://github.com/LuminariMUD/Duris/issues/1010).
 Related: [#941](https://github.com/LuminariMUD/Duris/issues/941),
@@ -218,6 +219,25 @@ Until a spell is converted it behaves as it does today.
    strength and sets 15 hours, a deliberate artifact power from PR #225.
 5. **The Bahamut mask is not part of this change.** Its own problems are
    tracked in [#1028](https://github.com/LuminariMUD/Duris/issues/1028).
+
+## Progress
+
+- Steps 1 to 5 are done. The rule is `spell_refresh_rule()` returning
+  `spell_refresh::{replace, renew, nothing}`, declared in `prototypes.h`
+  and defined above `vitality_hit_points()` in `magic.c`. Vitality's refresh
+  branch now uses `get_spell_from_char()` on the one ordinary node.
+- Simplified: the six rule combinations are proven through the real spell
+  (`test_named_set_effect_ownership.py`, setting missing, 0, 2 and 1 against
+  power 22, 56 and 60 casts) instead of a separate direct rule test.
+- Found while testing: `test_native_artifact_runtime.py` did not link
+  `get_spell_from_char()`; it now extracts it from `affects.c`.
+  `test_sword_actions_runtime.py` also embeds the spell but never runs it, so
+  it needs no change.
+- Passing: the six focused tests in step 6, plus
+  `test_sword_actions_runtime.py`, `test_dragon_roar_room_targets.py` and
+  `test_medium_spell_decisions.py`; `./scripts/format.sh --check`;
+  `make -C src`; `git diff --check`.
+- Remaining: the two-mode local gameplay journey, then mark the PR ready.
 
 ## Review and completion
 
