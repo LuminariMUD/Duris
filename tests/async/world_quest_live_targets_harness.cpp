@@ -1669,22 +1669,26 @@ int main(int argc, char **argv)
 				mob->only.npc->aggro_flags = 0;
 				SET_POS(mob.get(), STAT_NORMAL | POS_STANDING);
 			}
-		// Earlier live checks cleared maps from busy targets; restore the entrance.
+		// A map cleared by earlier live checks, or left stale by a content
+		// change, returns to the entrance selection gives.
 		descriptor_data session{};
 		player.desc = &session;
-		session.gmcp_quest_map_sent = 1;
-		pc.quest_map_room = 0;
-		assert(world_quest_refresh(&player) == status::valid);
-		assert(pc.quest_map_room == accepted.quest_map_room &&
-		       !session.gmcp_quest_map_sent && dirty_marks == 1);
+		for (int stale : { 0, 500002 })
+		{
+			session.gmcp_quest_map_sent = 1;
+			pc.quest_map_room = stale;
+			dirty_marks = 0;
+			assert(world_quest_refresh(&player) == status::valid);
+			assert(pc.quest_map_room == accepted.quest_map_room &&
+			       !session.gmcp_quest_map_sent && dirty_marks == 1);
+		}
 		player.desc = nullptr;
 		if (level <= WORLD_QUEST_LOCAL_MAX_LEVEL)
 		{
-			// Without a provable local entrance the quest stays mapless.
+			// Without a provable local entrance the quest is mapless.
 			pc.quest_origin_room = 0;
-			pc.quest_map_room = 0;
 			assert(world_quest_refresh(&player) == status::valid);
-			assert(pc.quest_map_room == 0 && dirty_marks == 1);
+			assert(pc.quest_map_room == 0 && dirty_marks == 2);
 		}
 		pc = accepted;
 		dirty_marks = 0;

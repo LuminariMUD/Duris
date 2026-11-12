@@ -943,19 +943,17 @@ world_quest_target_status world_quest_refresh(P_char ch)
 		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 		return status::unavailable;
 	}
-	// Earlier live checks cleared maps while a target was busy; restore the entrance
-	// selection gave. A quest accepted without a local entrance stays mapless.
-	if (quest.quest_map_room <= 0)
+	// Keep the map on the entrance selection gives this quest: content can move an
+	// entrance, and earlier live checks cleared maps while a target was busy.
+	const int map_room = world_quest_policy_map_room(quest.quest_origin_room, quest.quest_level,
+							 quest.quest_zone_number);
+	const int map = map_room >= 0 ? world[map_room].number : 0;
+	if (quest.quest_map_room != map)
 	{
-		const int map = world_quest_policy_map_room(
-			quest.quest_origin_room, quest.quest_level, quest.quest_zone_number);
-		if (map >= 0)
-		{
-			quest.quest_map_room = world[map].number;
-			if (ch->desc)
-				ch->desc->gmcp_quest_map_sent = 0;
-			mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
-		}
+		quest.quest_map_room = map;
+		if (ch->desc)
+			ch->desc->gmcp_quest_map_sent = 0;
+		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 	}
 	return status::valid;
 }

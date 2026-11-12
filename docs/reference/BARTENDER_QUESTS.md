@@ -321,10 +321,10 @@ An incomplete quest becomes inactive with `quest_replacement_due=1` only when
 its content is gone: the target prototype or zone no longer exists, the zone is
 closed or private or no longer eligible at the accepted level, or the target no
 longer has an ordinary reset in that zone. Completed legacy work remains
-claimable. An active quest with no map entrance gets back the entrance
-selection would give its saved origin and level; earlier versions cleared it
-while a target was temporarily unusable. A local quest with no entrance in its
-own region stays mapless.
+claimable. An active quest's map entrance is kept on the one selection gives
+its saved origin and level, so it follows content changes and recovers from
+earlier versions that cleared it while a target was temporarily unusable. A
+local quest with no entrance in its own region stays mapless.
 
 The availability results are `valid`, `unavailable` (replacement due), and
 `unproven` (the quest history save is still pending).
