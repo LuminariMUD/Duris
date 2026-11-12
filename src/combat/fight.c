@@ -7095,7 +7095,7 @@ bool monk_critic(P_char ch, P_char victim, int *damAccumulator)
 			}
 		}
 		if (af->modifier == 6)
-			affect_from_char(ch, TAG_PRESSURE_POINTS);
+			affect_from_char(victim, TAG_PRESSURE_POINTS);
 	}
 	return FALSE;
 }
