@@ -88,10 +88,23 @@ assert step(40706, "some angelic wings") == ["the dark heart of Relazier"]
 assert step(66021, "a silver ring set with a small gem") == ["a lustrous diamond", "a silver ring"]
 assert step(66021, "a lustrous diamond") == ["a raw gem"]
 assert step(66040, "a necklace of fine silver") == ["a bar of pure silver"] * 5
-shops = (AREAS / "shp/ashrumite.shp").read_text(encoding="latin-1")
-bartender = shops.split("#66041~\n")[1].split("\n0\n")[0].split("\n")[1:]
-assert [names[int(vnum)] for vnum in bartender] == [
-    "a bottle of gnome spirits", "a barrel of gnomish beer", "a bottle of ale"], bartender
+stock = {}  # shopkeeper -> the objects its shop lists
+for block in re.split(r"(?m)^(?=#\d+~$)", (AREAS / "shp/ashrumite.shp").read_text(encoding="latin-1")):
+    lines = block.split("\n")
+    if re.fullmatch(r"#\d+~", lines[0]):
+        stock[int(lines[0][1:-1])] = [int(vnum) for vnum in lines[2:lines.index("0", 2)]]
+assert [names[vnum] for vnum in stock[66041]] == [
+    "a bottle of gnome spirits", "a barrel of gnomish beer", "a bottle of ale"], stock[66041]
+# The zone resets had gained the current numbers without losing the old ones.
+keeper, strays = None, []
+for line in (AREAS / "zon/ashrumite.zon").read_text(encoding="latin-1").split("\n"):
+    fields = line.split()
+    if fields[:1] == ["M"]:
+        keeper = int(fields[2])
+    elif fields[:1] == ["G"] and keeper in stock and 66000 <= int(fields[2]) <= 66099:
+        if int(fields[2]) not in stock[keeper]:
+            strays.append((keeper, names[int(fields[2])]))
+assert not strays, f"Ashrumite shopkeepers are given goods they do not stock: {strays}"
 # Masha's cookbook wants the renumbered Tharnadia book and Ashrumite jerky.
 assert {"a large blank book", "a large strip of beef jerky"} <= set(step(97006, "a map of Icecrag Castle"))
 
