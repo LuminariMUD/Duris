@@ -29,6 +29,7 @@ harness = r'''
 #include "classes/disguise.h"
 #include "world/falling.h"
 #include "combat/damage.h"
+#include "cmd/interp.h"
 #include <cassert>
 #include <cstdlib>
 #include <optional>
@@ -59,11 +60,15 @@ static int output_messages;
 static std::string said;
 static int alias_calls;
 static bool high_roll;
+static bool skip_mask_flavor;
 static bool innate_eyes;
 static bool riding;
 P_char get_linked_char(P_char,ush_int type) {return riding && type==LNK_RIDING ? &companion : nullptr;}
 static int light_updates,room_light_updates;
-int number(int low,int high) {return high_roll ? high : low;}
+int number(int low,int high) {
+    if(skip_mask_flavor) {skip_mask_flavor=false; return high;}
+    return high_roll ? high : low;
+}
 int dice(int count,int sides) {return high_roll ? count*sides : count;}
 const Rolls live_rolls={dice,number};
 int GET_CLASS(P_char ch,uint cls) {return (ch->player.m_class&cls)!=0;}
@@ -119,6 +124,9 @@ void send_to_char(const char *text,P_char ch) {
 }
 int attack_back(P_char,P_char,int) {return 0;}
 void act(const char *,int,P_char,P_obj,void *,int) {}
+void die(P_char,P_char) {assert(false);}
+int is_char_in_room(const P_char ch,int room) {return ch->in_room==room;}
+bool isname(const char *name,const char *list) {return strcmp(name,list)==0;}
 nevent_schedule_result add_event(event_func,int,P_char,P_char,P_obj,int,const void *,int) {return {};}
 void disarm_char_nevents(P_char,event_func_type) {}
 nevent_handle nevent_handle_from_event(P_nevent event) {return {event,event->sequence};}
@@ -343,6 +351,8 @@ harness += "void update_pos(P_char ch) { ch->specials.position=GET_POS(ch)|calcu
 # Vitality body for the wounded ordinary/set transition.
 harness += extract_function("magic.c", "void spell_vitality(").replace(
     "void spell_vitality(", "static void cast_native_vitality(", 1) + "\n"
+harness += extract_function("specs.object.c", "int vigor_mask(").replace(
+    "spell_vitality(", "cast_native_vitality(") + "\n"
 
 
 # The revised catalog adds these native handlers. Include their actual scalar
@@ -662,6 +672,74 @@ int main() {
     skills[SPELL_STONE_SKIN].name="stone skin"; skills[SPELL_STONE_SKIN].spell_pointer=spell_stone_skin;
     skills[SPELL_STORNOGS_SPHERES].name="spheres"; skills[SPELL_STORNOGS_SPHERES].spell_pointer=spell_stornogs_spheres;
     skills[SONG_DRAGONS].name="song of dragons"; skills[SKILL_EPIC_STRENGTH].name="epic strength";
+    // Invoke the real mask proc with a guaranteed combat roll. HP recalculation
+    // models the server's missing-HP preservation; position uses its native body.
+    for(int opponent_level:{20,56,60}) {
+        reset(); track_hit_points=true;
+        wear(0,WEAR_FACE,0);
+        wearer.specials.fighting=&companion; companion.player.level=opponent_level;
+        cast_native_vitality(56,&wearer,nullptr,0,&wearer,nullptr);
+        auto *ordinary=get_spell_from_char(&wearer,SPELL_VITALITY);
+        ordinary->duration=2; GET_HIT(&wearer)=10;
+        skip_mask_flavor=true; vigor_mask(&gear[0],nullptr,0,nullptr);
+        const int bonus=4*std::max(56,opponent_level);
+        assert(ordinary->modifier==bonus && ordinary->duration==24);
+        assert(GET_MAX_HIT(&wearer)==1000+bonus && GET_HIT(&wearer)==10+bonus-224);
+        assert(GET_STAT(&wearer)==STAT_NORMAL && IS_ALIVE(&wearer));
+        // An unrelated recalc cannot reveal a delayed HP loss.
+        affect_total(&wearer,FALSE); update_pos(&wearer);
+        assert(GET_HIT(&wearer)==10+bonus-224 && GET_STAT(&wearer)==STAT_NORMAL);
+        for(const char *name:{"mask","bahamut","vigor","unique","all","2.mask"}) {
+            vigor_mask(&gear[0],&wearer,CMD_REMOVE,const_cast<char *>(name));
+            assert(get_spell_from_char(&wearer,SPELL_VITALITY)==ordinary);
+            assert(ordinary->modifier==bonus && ordinary->duration==24);
+        }
+    }
+    // Active and suspended set grants, object/character links, and permanent
+    // affects are never rewritten, alone or alongside ordinary Vitality.
+    for(uint flags:{uint(AFFTYPE_SET_AFFECT),uint(AFFTYPE_LINKED_OBJ),
+                    uint(AFFTYPE_LINKED_CH),uint(AFFTYPE_NOAPPLY),uint(0)})
+        for(bool overlap:{false,true}) {
+            reset(); track_hit_points=true;
+            wear(0,WEAR_FACE,0); wearer.specials.fighting=&companion;
+            companion.player.level=60;
+            affected_type grant{}; grant.type=SPELL_VITALITY; grant.location=APPLY_HIT;
+            grant.flags=flags; grant.modifier=200; grant.duration=flags?17:-1;
+            affected_type *protected_affect;
+            if(flags&AFFTYPE_SET_AFFECT) {
+                named_set_grant source(&wearer,&wearer,824,SPELL_VITALITY);
+                protected_affect=affect_to_char(&wearer,&grant);
+            } else protected_affect=affect_to_char(&wearer,&grant);
+            affected_type *ordinary=nullptr;
+            if(overlap) {
+                affected_type timed{}; timed.type=SPELL_VITALITY; timed.location=APPLY_HIT;
+                timed.modifier=224; timed.duration=2;
+                ordinary=affect_to_char(&wearer,&timed);
+            }
+            all_affects(&wearer,TRUE); GET_HIT(&wearer)=10;
+            const affected_type before=*protected_affect;
+            skip_mask_flavor=true; vigor_mask(&gear[0],nullptr,0,nullptr);
+            vigor_mask(&gear[0],&wearer,CMD_REMOVE,const_cast<char *>("mask"));
+            assert(protected_affect->modifier==200 && protected_affect->duration==(flags?17:-1));
+            assert(protected_affect->flags==before.flags && protected_affect->set_zone==before.set_zone);
+            assert(protected_affect->set_owner==before.set_owner && protected_affect->set_spell==before.set_spell);
+            assert(count(&wearer,SPELL_VITALITY,false)+count(&wearer,SPELL_VITALITY,true)==(overlap?2:1));
+            assert(GET_HIT(&wearer)==(overlap?26:10) && GET_STAT(&wearer)==STAT_NORMAL);
+            if(ordinary) assert(ordinary->modifier==240 && ordinary->duration==24);
+            // These flags stand in for unrelated links; their lifecycle has its own tests.
+            protected_affect->flags&=~(AFFTYPE_LINKED_OBJ|AFFTYPE_LINKED_CH);
+        }
+    {
+        reset(); track_hit_points=true; wear(0,WEAR_FACE,0);
+        wearer.specials.fighting=&companion; companion.player.level=20;
+        skip_mask_flavor=true; vigor_mask(&gear[0],nullptr,0,nullptr);
+        auto *fresh=get_spell_from_char(&wearer,SPELL_VITALITY);
+        assert(fresh && fresh->modifier==80 && fresh->duration==14);
+        vigor_mask(&gear[0],&wearer,CMD_REMOVE,const_cast<char *>("mask"));
+        assert(get_spell_from_char(&wearer,SPELL_VITALITY)==fresh);
+        fresh->duration=0; affect_update(0);
+        assert(!affected_by_spell(&wearer,SPELL_VITALITY));
+    }
     // Item and scripted casts can bypass the learned spell's minimum circle.
     // Check the real handler and affect expiry, including the old permanent sentinel.
     for(const auto [level,duration]:{std::pair{3,0},{4,0},{1,0},{2,0},{5,1},{36,32},{56,52}}) {
@@ -1166,4 +1244,4 @@ with tempfile.TemporaryDirectory(prefix="named-set-effects-", dir=build) as dire
         str(HARNESS_STUBS), "-Wl,--gc-sections", "-o", str(binary),
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True)
-print("named-set ownership, 50 legacy handlers, revised native/skill effects, prerequisites, ordinary overlap, expiry and dispel: passed")
+print("named-set ownership, Bahamut mask, 50 legacy handlers, revised native/skill effects, prerequisites, ordinary overlap, expiry and dispel: passed")
