@@ -77,6 +77,8 @@ void logit(const char *,const char *format,...) {
  ++reports; audit+=buf;
 }
 bool account_bound_reward_owner(P_char,P_obj) { return false; }
+bool artifact_second_of_type(P_char, P_obj) { return false; }
+bool artifact_second_of_type(P_char, P_obj, P_obj) { return false; }
 int total_carried_weight(P_char) { return 0; }
 int number(int low,int) { return low; }
 int STAT_INDEX(int) { return 0; }

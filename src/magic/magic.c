@@ -18826,7 +18826,7 @@ std::string faerie_fire_facts(P_char /*ch*/)
 void spell_faerie_fire(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
-	struct affected_type af, *af2, *af3;
+	struct affected_type af;
 	int a;
 
 	if (GET_STAT(ch) == STAT_DEAD)
@@ -18840,13 +18840,7 @@ void spell_faerie_fire(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]
 	act("$n points at $N.", TRUE, ch, 0, victim, TO_NOTVICT);
 	act("You point at $N.", TRUE, ch, 0, victim, TO_CHAR);
 	act("$n points at you.", TRUE, ch, 0, victim, TO_VICT);
-	if (affected_by_spell(ch, SPELL_CONCEALMENT))
-		for (af2 = victim->affected; af2; af2 = af3)
-		{
-			af3 = af2->next;
-			if (af2->type == SPELL_CONCEALMENT)
-				affect_remove(victim, af2);
-		}
+	affect_from_char(victim, SPELL_CONCEALMENT);
 	a = 0;
 	if (IS_SET(victim->specials.affected_by, AFF_INVISIBLE) ||
 	    IS_AFFECTED2(victim, AFF2_CONCEALMENT))

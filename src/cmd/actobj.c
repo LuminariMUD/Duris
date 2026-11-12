@@ -522,6 +522,13 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 		return;
 	}
 
+	if (artifact_second_of_type(ch, o_obj))
+	{
+		act("$p stays where it is: you already hold an artifact of that type.", FALSE, ch,
+		    o_obj, 0, TO_CHAR);
+		return;
+	}
+
 	if (o_obj->condition <= 0)
 	{
 		GETDBG_LOG(
@@ -1549,6 +1556,17 @@ static bool select_bulk_get_item(P_char actor, P_obj container, P_obj object, co
 		state.rejections.emplace_back(
 			"You may not take that account-bound reward; it belongs to another account.\r\n");
 		state.failed = true;
+		return false;
+	}
+	// One artifact of a type per player, counting those already chosen in this batch.
+	bool second_artifact = artifact_second_of_type(actor, object);
+	for (const auto &chosen : state.synchronous_items)
+		second_artifact |= artifact_second_of_type(actor, object, chosen.object);
+	if (second_artifact)
+	{
+		reject_bulk_get_object(
+			state, object,
+			"stays where it is: you already hold an artifact of that type.");
 		return false;
 	}
 	const bool scrap = object->condition <= 0;
@@ -4341,6 +4359,12 @@ void do_give(P_char ch, char *argument, int cmd)
 	    (cmd != -4) && (!IS_TRUSTED(ch)))
 	{
 		act("$E must consent to you before you can overload $M.", 0, ch, 0, vict, TO_CHAR);
+		return;
+	}
+	if (artifact_second_of_type(vict, obj))
+	{
+		act("$N already holds an artifact of that type and cannot take $p.", FALSE, ch, obj,
+		    vict, TO_CHAR);
 		return;
 	}
 	if (IS_ARTIFACT(obj) && racewar(ch, vict))

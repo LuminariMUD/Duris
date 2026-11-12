@@ -23,8 +23,8 @@ shoot a powerful rainbow spell, to smite your enemies. Unfortunately, the
 gems are rather small, and thus would only hold a few charges. But, I think
 you will still be pleased with it!
 ~
-R I 66051
-G I 66050
+R I 66049
+G I 66048
 G I 4372
 G C 25000
 S
@@ -57,6 +57,18 @@ To cut a gem? 2 silver.
 Q
 Here ya go. A real beauty, that one is!
 ~
+R I 66042
+G I 66037
+G C 20
+Q
+Here ya go. A real beauty, that one is!
+~
+R I 66043
+G I 66038
+G C 20
+Q
+Here ya go. A real beauty, that one is!
+~
 R I 66044
 G I 66039
 G C 20
@@ -73,42 +85,30 @@ R I 66046
 G I 66041
 G C 20
 Q
-Here ya go. A real beauty, that one is!
-~
-R I 66047
-G I 66042
-G C 20
-Q
-Here ya go. A real beauty, that one is!
-~
-R I 66048
-G I 66043
-G C 20
-Q
 Wear this earring with pride! Nothing finer, than true Ashrumite craftsmanship!
 ~
-R I 66067
-G I 66065
-G I 66048
+R I 66065
+G I 66063
+G I 66046
 G C 100
 Q
 A real lovely ring, should make the womanfolk green with envy!
 ~
-R I 66066
-G I 66064
-G I 66048
+R I 66064
+G I 66062
+G I 66046
 G C 100
 Q
 Truely a beautiful necklace, don't you agree? Almost magical it is, the way
 those gems sparkle. Wonder if the wizard could do something with it? Hmmm...
 ~
-R I 66050
-G I 66049
+R I 66048
+G I 66047
+G I 66042
+G I 66043
 G I 66044
 G I 66045
 G I 66046
-G I 66047
-G I 66048
 G C 1000
 S
 #66040
@@ -132,19 +132,19 @@ and 25 gold, and I'll set ya right up.
 Q
 Here ya go! Enjoy, and may the mines be happy for ya today!
 ~
-R I 66033
-G I 66032
+R I 66031
+G I 66030
 G C 10
 Q
 Ooh, I do hope you like this necklace. It is such a treasure, I almost
 didn't want to give it up.
 ~
-R I 66049
-G I 66033
-G I 66033
-G I 66033
-G I 66033
-G I 66033
+R I 66047
+G I 66031
+G I 66031
+G I 66031
+G I 66031
+G I 66031
 G C 2500
 S
 #66041

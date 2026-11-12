@@ -18,6 +18,7 @@
 #include "cmd/interp.h"
 #include "core/files.h"
 #include "combat/combat_outcome_command.h"
+#include "classes/necromancy.h"
 #include "guild/alliances.h"
 #include <cjson/cJSON.h>
 #include <cassert>

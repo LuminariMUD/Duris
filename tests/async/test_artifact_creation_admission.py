@@ -336,6 +336,27 @@ int main() {
  indexes[0].virtual_number=900; indexes[1].virtual_number=901; indexes[2].virtual_number=902; indexes[3].virtual_number=903; rooms[0].number=2300;
  indexes[0].func.obj=periodic;
  artifact_cache_loaded=true;
+ {
+  char_data player{}; pc_only_data pc{}; player.only.pc=&pc; pc.pid=77;
+  obj_data incoming{}, taking{}; incoming.R_num=2; taking.R_num=0;
+  incoming.name=taking.name=const_cast<char *>("ordinary artifact");
+  incoming.extra_flags=taking.extra_flags=ITEM_ARTIFACT;
+  artifact_rows[900]={true,ARTIFACT_ON_PC,77,100,ARTIFACT_MAJOR};
+  assert(artifact_second_of_type(&player,&incoming));
+  assert(artifact_second_of_type(&player,&incoming,&taking));
+  incoming.name=const_cast<char *>("unique");
+  assert(!artifact_second_of_type(&player,&incoming));
+  assert(!artifact_second_of_type(&player,&incoming,&taking));
+  incoming.wear_flags=ITEM_WEAR_IOUN;
+  assert(!artifact_second_of_type(&player,&incoming));
+  incoming.wear_flags=0; incoming.name=const_cast<char *>("ordinary artifact");
+  artifact_rows[902]={true,ARTIFACT_ON_PC,77,100,ARTIFACT_MAJOR};
+  assert(!artifact_second_of_type(&player,&incoming)); // Moving one's own artifact is legal.
+  artifact_rows.erase(902); player.player.level=IMMORTAL;
+  assert(!artifact_second_of_type(&player,&incoming));
+  assert(!artifact_second_of_type(&player,&incoming,&taking));
+  artifact_rows.clear();
+ }
  owner_reconciliation_cases();
  const std::vector<artifact_population_template> prototypes={{900,ITEM_ARTIFACT},{901,0},{902,ITEM_ARTIFACT}};
  const auto stage=[&](bool complete) {
@@ -1878,10 +1899,14 @@ void monolith_cases() {
   command_output=="&+RYou feel a sense of satisfaction from above.&n\r\n");
  owner.player.level=62; use(); assert(monolith.value[0]==2 && artifact_rows.at(900).timer==initial+14400 &&
   command_output.find("satisfaction")==std::string::npos); owner.player.level=51;
- // Stale tracking repairs from the live wearer before the monolith feeds it.
+ // Stale tracking repairs from the live wearer before the monolith feeds it. The
+ // repair is an arrival, and 902 is tracked on the same holder as a second major,
+ // so it warns once; the feeds above, which move nothing, stayed silent.
  artifact_rows.at(900).location=77; use(); assert(monolith.value[0]==1 &&
   artifact_rows.at(900).location==55 && artifact_rows.at(900).timer==initial+21600 &&
-  command_output=="&+RYou feel a sense of satisfaction from above.&n\r\n");
+  command_output=="&+RYou hold more than one artifact of the same type. Part with one at once, "
+   "or every artifact you wear or carry will fall to the ground.&n\r\n"
+   "&+RYou feel a sense of satisfaction from above.&n\r\n");
  monolith.value[0]=0; use(); assert(artifact_rows.at(900).timer==initial+21600 &&
   command_output.find("satisfaction")==std::string::npos);
  // Clamping an over-cap artifact keeps its negative feedback, without a false positive.

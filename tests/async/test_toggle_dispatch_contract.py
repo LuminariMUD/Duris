@@ -114,6 +114,7 @@ class ToggleDispatchContractTest(unittest.TestCase):
             63: ("guildname", "PLR3_GUILDNAME"),
             64: ("gmcp", "PLR3_NOGMCP"),
             65: ("jchat", "PLR3_JESTROS"),
+            67: ("groupsort", "PLR3_GROUP_SORTED"),
         }
         self.assertEqual({index: self.names[index] for index in expected}, {
             index: name for index, (name, _) in expected.items()

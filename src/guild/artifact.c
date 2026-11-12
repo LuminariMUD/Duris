@@ -2239,6 +2239,12 @@ void artifact_switch_check(P_char ch, P_obj arti)
 	}
 }
 
+// The limit an artifact counts against: one major, one unique and one ioun per player.
+static int artifact_type(P_obj arti)
+{
+	return IS_IOUN(arti) ? ARTIFACT_IOUN : IS_UNIQUE(arti) ? ARTIFACT_UNIQUE : ARTIFACT_MAJOR;
+}
+
 // Update the DB with new artifact data.
 // arti    : The artifact passed.  Should always be a valid arti, in a valid location.
 //             Some error handling is done for invalid locations (mostly move to Limbo).
@@ -2253,7 +2259,7 @@ void artifact_update_sql(P_obj arti, char owned, time_t timer)
 
 	int type, locType, location, vnum = arti ? OBJ_VNUM(arti) : -1;
 	bool new_owned;
-	P_char owner;
+	P_char owner = NULL;
 	P_obj obj1;
 
 	if (!updateArtis)
@@ -2268,7 +2274,7 @@ void artifact_update_sql(P_obj arti, char owned, time_t timer)
 	}
 
 	// Figure out the new info.
-	type = IS_IOUN(arti) ? ARTIFACT_IOUN : IS_UNIQUE(arti) ? ARTIFACT_UNIQUE : ARTIFACT_MAJOR;
+	type = artifact_type(arti);
 
 	// Set location and locType here.
 	// If we have it in a container, need to get the outer-most one and go from there.
@@ -2419,7 +2425,52 @@ void artifact_update_sql(P_obj arti, char owned, time_t timer)
 		      "arti_update_sql: WARNING: timer was %ld, resetting to 10 days for vnum %d",
 		      (long)0, vnum);
 	}
+	const bool arrived = locType == ARTIFACT_ON_PC &&
+			     (found == artifact_rows.end() ||
+			      found->second.locType != ARTIFACT_ON_PC ||
+			      found->second.location != location);
 	artifact_row_store(vnum, { new_owned, locType, location, timer, type });
+
+	// The artifact-war sweep strips every artifact from a player who holds two of
+	// one type. Say so when one arrives, while they can still part with it.
+	if (arrived)
+	{
+		int held = 0;
+		for (const auto &entry : artifact_rows)
+			held += entry.second.locType == ARTIFACT_ON_PC &&
+				entry.second.location == location && entry.second.type == type;
+		if (held > 1)
+			send_to_char(
+				"&+RYou hold more than one artifact of the same type. Part with one at once, or every artifact you wear or carry will fall to the ground.&n\r\n",
+				owner);
+	}
+}
+
+// True when taking this artifact would give a player a second one of its type.
+// Staff are exempt, and so is an artifact the player is already tracked as holding.
+bool artifact_second_of_type(P_char ch, P_obj arti)
+{
+	if (!ch || !arti || IS_NPC(ch) || IS_TRUSTED(ch) || !IS_ARTIFACT(arti))
+		return false;
+
+	bool other = false;
+	for (const auto &entry : artifact_rows)
+	{
+		if (entry.second.locType != ARTIFACT_ON_PC || entry.second.location != GET_PID(ch))
+			continue;
+		if (entry.first == OBJ_VNUM(arti))
+			return false;
+		other |= entry.second.type == artifact_type(arti);
+	}
+	return other;
+}
+
+// The same test against an artifact the player is taking in the same batch.
+bool artifact_second_of_type(P_char ch, P_obj arti, P_obj also_taking)
+{
+	return ch && arti && also_taking && arti != also_taking && !IS_NPC(ch) && !IS_TRUSTED(ch) &&
+	       IS_ARTIFACT(arti) && IS_ARTIFACT(also_taking) &&
+	       artifact_type(arti) == artifact_type(also_taking);
 }
 
 bool artifact_reconcile_player_owner(P_obj object)

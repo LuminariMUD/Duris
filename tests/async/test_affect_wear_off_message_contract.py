@@ -17,4 +17,12 @@ message = body.index("send_to_char(skills[af->type].wear_off_char[idx], ch)")
 
 assert duplicate_guard < message
 
+# Issue #1021: Monk Regenerate tells its owner when it ends, and observers see a
+# blinded creature regain its sight. Both go through wear_off_message() above.
+skills = " ".join((SRC / "skills.c").read_text().split())
+assert ('SKILL_CREATE_WITH_MESSAGES("regenerate", SKILL_REGENERATE, TAR_PHYS, '
+        '"Your body stops healing faster.", NULL);') in skills
+assert '"$n blinks as $s sight returns.");' in skills.split('SPELL_CREATE2("blindness", SPELL_BLINDNESS,')[1][:260]
+assert "act(skills[af->type].wear_off_room[idx], FALSE, ch, 0, 0, TO_ROOM)" in body
+
 print("multi-part affect wear-off message contract passed")

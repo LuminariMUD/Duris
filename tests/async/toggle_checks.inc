@@ -80,6 +80,8 @@ static void toggle_matrix()
 		{ "gmcp", 2, PLR3_NOGMCP, true, "GMCP", "disabled", "enabled" },
 		{ "jchat", 2, PLR3_JESTROS, true, "Jchat", "OFF", "ON" },
 		{ "abort", 2, PLR3_ABORT_CASTING, false, "AbortCast", "disabled", "enabled" },
+		{ "groupsort", 2, PLR3_GROUP_SORTED, false, "GroupSorted", "classic layout",
+		  "players before pets" },
 	};
 	unsigned *banks[] = { &ch.specials.act, &ch.specials.act2, &ch.specials.act3 };
 	const std::array<unsigned, 3> unrelated{ PLR_MAIL, PLR2_HARDCORE_CHAR,

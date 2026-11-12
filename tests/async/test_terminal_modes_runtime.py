@@ -455,11 +455,13 @@ def main():
     reset_end = entry.index("\n\tP_desc i;", reset_start)
     entry_reset = "void reset_msp_entry(P_desc d) {\n" + entry[reset_start:reset_end] + "\n}\n"
     group = extract_function("group.c", "void do_group(")
+    member_line = (extract_function("group.c", "static char group_vital_ansi(") +
+                   extract_function("group.c", "static void show_group_member("))
     display = group[group.index("\tif (!*name)"):group.index("\n\tif (ch->group)\n")]
     group_wrapper = r'''
 void do_group(P_char ch, char *, int) {
     const char *name = "";
-    char Gbuf1[MAX_STRING_LENGTH], Gbuf2[MAX_STRING_LENGTH], Gbuf3[MAX_STRING_LENGTH];
+    char Gbuf1[MAX_STRING_LENGTH];
     group_list *gl;
     int maxsize, counter;
 ''' + display + "\n}\n"
@@ -485,7 +487,7 @@ void do_group(P_char ch, char *, int) {
               extract_function("group.c", "void update_groupies("),
               extract_function("group.c", "void update_group_vitals("),
               extract_function("gmcp.c", "void gmcp_char_vitals("),
-              group_wrapper, pending, death_menu,
+              member_line, group_wrapper, pending, death_menu,
               extract_function("limits.c", "int death_exp_loss_level_threshold("),
               extract_function("limits.c", "static void notify_level_advancement("),
               extract_function("limits.c", "static void advance_level_impl(P_char ch, bool notify_player, bool process_boons,\n\t\t\t       std::uint64_t threshold_xp)\n{"),

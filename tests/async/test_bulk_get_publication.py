@@ -82,6 +82,8 @@ struct synchronous_get_item { uint64_t item_uid; P_obj object; bool scrap;
 static std::string output;
 static bool isname(const char *filter, const char *name) { return !strcmp(filter, name); }
 static bool account_bound_reward_owner(P_char, P_obj) { return false; }
+static bool artifact_second_of_type(P_char, P_obj) { return false; }
+static bool artifact_second_of_type(P_char, P_obj, P_obj) { return false; }
 static bool item_command_object_is_takeable(P_char, P_obj object)
 {
     return object->weight >= 0;

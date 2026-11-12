@@ -1374,9 +1374,10 @@ void initialize_skills()
 	//  SPELL_ADD(CLASS_RANGER, 3);
 	SPELL_ADD(CLASS_AVENGER, 4);
 
-	SPELL_CREATE_MSG("blindness", SPELL_BLINDNESS, PULSE_SPELLCAST * 3 / 2,
-			 TAR_CHAR_ROOM | TAR_FIGHT_VICT | TAR_AGGRO, spell_blindness,
-			 "You feel a &+Lcloak &nof &+Lblindness &ndissolve.");
+	SPELL_CREATE2("blindness", SPELL_BLINDNESS, PULSE_SPELLCAST * 3 / 2,
+		      TAR_CHAR_ROOM | TAR_FIGHT_VICT | TAR_AGGRO, spell_blindness,
+		      "You feel a &+Lcloak &nof &+Lblindness &ndissolve.",
+		      "$n blinks as $s sight returns.");
 	SPELL_ADD(CLASS_CLERIC, 2);
 	SPELL_ADD(CLASS_ANTIPALADIN, 6);
 	SPELL_ADD(CLASS_ILLUSIONIST, 3);
@@ -3596,7 +3597,8 @@ void initialize_skills()
 	SPEC_SKILL_ADD(CLASS_DRAGOON, 31, 90, SPEC_DRAGON_HUNTER);
 	//  SKILL_ADD(CLASS_REAVER, 41, 100);
 
-	SKILL_CREATE("regenerate", SKILL_REGENERATE, TAR_PHYS);
+	SKILL_CREATE_WITH_MESSAGES("regenerate", SKILL_REGENERATE, TAR_PHYS,
+				   "Your body stops healing faster.", NULL);
 	SKILL_ADD(CLASS_MONK, 20, 100);
 
 	SKILL_CREATE("chi purge", SKILL_CHI_PURGE, TAR_PHYS);

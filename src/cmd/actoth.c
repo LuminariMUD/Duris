@@ -5543,7 +5543,8 @@ void show_toggles(P_char ch)
 		 "&+r     Jchat       :&+g %-3s    &+y|"
 		 "&+r     Abort Cast  :&+g %-3s    &+y|&n\r\n"
 		 "&+r   Experience  :&+g %-3s    &+y|&N"
-		 "&+r     AllianceChat:&+g %-3s    &+y|&N\r\n"
+		 "&+r     AllianceChat:&+g %-3s    &+y|&N"
+		 "&+r     Group Sorted:&+g %-3s    &+y|&N\r\n"
 		 "&+y-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
 		 "-=-=-=-=-=-=-=-=-=-=-=-=-=-&N\r\n",
 		 ONOFF(!PLR_FLAGGED(ch, PLR_NOTELL)), ONOFF(PLR_FLAGGED(ch, PLR_BRIEF)),
@@ -5569,7 +5570,7 @@ void show_toggles(P_char ch)
 		 ONOFF(!PLR3_FLAGGED(ch, PLR3_NOGMCP)), ONOFF(PLR2_FLAGGED(ch, PLR2_HEAL)),
 		 ONOFF(!PLR3_FLAGGED(ch, PLR3_JESTROS)),
 		 ONOFF(PLR3_FLAGGED(ch, PLR3_ABORT_CASTING)), ONOFF(PLR2_FLAGGED(ch, PLR2_EXP)),
-		 ONOFF(PLR2_FLAGGED(ch, PLR2_ACC)));
+		 ONOFF(PLR2_FLAGGED(ch, PLR2_ACC)), ONOFF(PLR3_FLAGGED(ch, PLR3_GROUP_SORTED)));
 	send_to_char(Gbuf1, send_ch);
 
 	if (GET_LEVEL(ch) >= AVATAR)
@@ -5668,6 +5669,7 @@ static const char *toggles_list[] = { "?", // 0
 				      "gmcp",
 				      "jchat", // 65
 				      "abort", // 66
+				      "groupsort",
 				      "\n" };
 
 static const char *tog_messages[][2] = {
@@ -5761,7 +5763,9 @@ static const char *tog_messages[][2] = {
 	  "You turn on the display of your guild name.\r\n" },
 	{ "&+WGMCP&N data streaming disabled.\r\n", "&+WGMCP&N data streaming enabled.\r\n" },
 	{ "Jchat channel: -=&+ROFF&n=-\r\n", "Jchat channel: -=&+GON&n=-\r\n" },
-	{ "Spell abort is disabled.\r\n", "Spell abort is enabled.\r\n" }
+	{ "Spell abort is disabled.\r\n", "Spell abort is enabled.\r\n" },
+	{ "Your group list uses the classic layout.\r\n",
+	  "Your group list shows players before pets, without race or aura tags.\r\n" }
 };
 
 void do_more(P_char ch, char *arg, int /*cmd*/)
@@ -6360,6 +6364,9 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		break;
 	case 66: // abort
 		result = PLR3_TOG(PLR3_ABORT_CASTING);
+		break;
+	case 67: // groupsort
+		result = PLR3_TOG(PLR3_GROUP_SORTED);
 		break;
 	default:
 		break;

@@ -172,6 +172,9 @@ Syntax:         examine corpse
 
 "Age Corpse" is the ability to determine the length of time a corpse has
 left until it rots away by examining it.
+
+Necromancers and Theurgists who examine a corpse also learn the level the
+creature had in life, whether or not they know this skill.
 ===========================================================================
 See also: EXAMINE
 
@@ -745,6 +748,9 @@ hold two or more of any one type, the periodic artifact check makes all
 artifacts you wear or carry fall to the ground, including other types.
 Inventory counts as well as equipment, and even a brief overlap can trigger
 the check. The forced drop causes no damage or loss of remaining feeding time.
+You cannot pick up or be given a second artifact of a type you already hold.
+If one reaches you another way, you are warned at once, so you can part with
+it before the check.
 
 &+LAvernus the life stealer&n
 ---------------------------------------------------------------------------
@@ -6024,7 +6030,8 @@ Type of spell:  Enchantment
 "Faerie Fire" causes the target's armor class to increase for a limited
 time, making it easier to hit. The Faeries being fey in their way may 
 sometimes accidentally reveal more than should be seen when this spell is
-cast.
+cast. It strips the Concealment spell from its target, and nobody outlined
+by the flames can use the hide command until they fade.
 ===========================================================================
 
 #
@@ -6115,6 +6122,9 @@ hold two or more of any one type, the periodic artifact check makes all
 artifacts you wear or carry fall to the ground, including other types.
 Inventory counts as well as equipment, and even a brief overlap can trigger
 the check. The forced drop causes no damage or loss of remaining feeding time.
+You cannot pick up or be given a second artifact of a type you already hold.
+If one reaches you another way, you are warned at once, so you can part with
+it before the check.
 ===========================================================================
 See also: ARTIFACT, UNIQUE, IOUN
 
@@ -8199,7 +8209,8 @@ will be kicked out of the group. If a group member, including the group
 leader, types 'group me', they will be removed from the group and the next 
 player down the group list will automatically become the leader. Typing 
 'group' with no argument will show you a list of people in the group and 
-their condition.
+their condition. Toggle groupsort lists players before pets in that list;
+see 'help toggle groupsort'.
 
 Groups are comprised of the group leader and people in front and rear ranks.  
 Type 'group <playername> front' to send a group member to the front ranks, 
@@ -8596,7 +8607,7 @@ beyond the faction cap, bounded by 56; see HELP LEVEL CAP.
 Hardcore characters have three lives. Deaths one and two follow the ordinary
 death rules; the third counted death permanently deletes the character.
 This test policy remains open to balance discussion.
-Arena deaths do not consume a life.
+Arena deaths do not consume a life. Score shows how many lives remain.
 ===========================================================================
 
 #
@@ -16529,6 +16540,10 @@ List of subcommands
 &+Wsociety&n
 soc -displays a list of members and various info about them depending
       on your rank. Members higher in rank than you are only shown if online.
+      Each member's line shows an online mark, level and class, name, race,
+      HC for a Hardcore character, rank title and any debt you may see.
+      Level, class and race are as of the member's last save; a member who
+      is anonymous shows no level or class to anyone else.
       Also displays some info on the association to higher ranks.
       Finally it gives a list of people ostracized by your association.
 
@@ -18692,6 +18707,24 @@ You would see:
 See also: TOGGLE
 
 #
+TOGGLE_GROUPSORT (Command)
+===========================================================================
+Syntax:         toggle groupsort [on|off]
+
+OFF, the default, keeps the classic group list: members in the order they
+joined, each player followed by race and any aura you can detect.
+
+ON lists the leader first, then the other players, then pets and other
+creatures. It leaves out the race and aura tags and lines every member's
+hit points and movement up in one column. Level, class or specialization,
+name and the percentages stay.
+
+This changes only what the group command prints for you. It does not change
+the group's order, its leader or who owns a pet.
+===========================================================================
+See also: TOGGLE, GROUP
+
+#
 "TOGGLE_GROUP NEEDED" (Command)
 ===========================================================================
 Syntax:         toggle group needed
@@ -18870,9 +18903,14 @@ TOGGLE_TERSE (Command)
 ===========================================================================
 Syntax:         toggle terse
 
-This option condenses all physical hits during battle into one line per 
-character, with the number of hits in parentheses (). It helps to
-cut down on spam.
+This option hides the line for each ordinary melee hit, miss, dodge and
+parry, yours and everyone else's, and instead shows one line per attacker
+each round with its number of hits and total damage, such as
+"You attack an orc. [2 hits] [31 damage]". Critical hits and the messages
+of skills such as kick still show in full. It helps to cut down on spam.
+
+If your ordinary attacks seem to be missing from a fight, type toggle and
+check the Terse Battle row.
 ===========================================================================
 See also: TOGGLE
 
@@ -19286,6 +19324,9 @@ hold two or more of any one type, the periodic artifact check makes all
 artifacts you wear or carry fall to the ground, including other types.
 Inventory counts as well as equipment, and even a brief overlap can trigger
 the check. The forced drop causes no damage or loss of remaining feeding time.
+You cannot pick up or be given a second artifact of a type you already hold.
+If one reaches you another way, you are warned at once, so you can part with
+it before the check.
 ===========================================================================
 See also: ARTIFACT, IOUN, FEEDING
 
