@@ -686,8 +686,9 @@ def test_account_c() -> None:
             ordered(body, "write_account(", "account_recovery_invalidate("),
             f"{function} invalidates the outstanding token after its write_account",
         )
-    delete = body_of(account, r"\bvoid\s+verify_delete_account\s*\(", "verify_delete_account")
-    check("account_recovery_forget(" in delete, "verify_delete_account forgets the entry")
+    delete = body_of(account, r"\bvoid\s+complete_account_deletion\s*\(",
+                     "complete_account_deletion")
+    check("account_recovery_forget(" in delete, "complete_account_deletion forgets the entry")
     for function in ("ws_cmd_change_password",):
         body = body_of(ws, r"\bvoid\s+" + function + r"\s*\(", function)
         check(
@@ -803,7 +804,8 @@ def test_attempt_counter_ownership() -> None:
 def test_connection_states() -> None:
     for name, value in (("CON_ACCT_RESET_CODE", 90), ("CON_ACCT_RESET_NEWPW", 91),
                         ("CON_ACCT_RESET_NEWPW2", 92), ("CON_STAT_METHOD", 93),
-                        ("CON_CREATION_SAVE", 94), ("TOTAL_CON", 94)):
+                        ("CON_CREATION_SAVE", 94), ("CON_ACCT_FINAL_DELETE_ACCT", 95),
+                        ("TOTAL_CON", 95)):
         check(
             re.search(r"#define\s+" + name + r"\s+" + str(value) + r"\b", structs) is not None,
             f"structs.h defines {name} {value}",
@@ -823,8 +825,8 @@ def test_connection_states() -> None:
         f"names={len(names) - 1} TOTAL_CON+1={total_con + 1}",
     )
     check(
-        names[-7:-1] == ["PLAYER_LOAD", "ACCT_RESET_CODE", "ACCT_RESET_NEWPW", "ACCT_RESET_NEWPW2",
-                         "STAT_METHOD", "CREATION_SAVE"],
+        names[-8:-1] == ["PLAYER_LOAD", "ACCT_RESET_CODE", "ACCT_RESET_NEWPW", "ACCT_RESET_NEWPW2",
+                         "STAT_METHOD", "CREATION_SAVE", "ACCT_FINAL_DELETE_ACCT"],
         "the three reset states follow PLAYER_LOAD before STAT_METHOD in connected_types",
     )
     check('#include "account/account_recovery.h"' in nanny_c, "nanny.c includes account_recovery.h")

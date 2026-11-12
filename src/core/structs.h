@@ -1708,12 +1708,13 @@ struct txt_q
 #define CON_ACCT_RESET_NEWPW2 92 // account recovery: waiting for the confirmation
 #define CON_STAT_METHOD 93 // choose starting stat distribution before rolling
 #define CON_CREATION_SAVE 94 // waiting for a kept-character save or cancellation
+#define CON_ACCT_FINAL_DELETE_ACCT 95 // account deletion: the last YES warning
 
 #define PLAYER_LOAD_MODE_NONE 0
 #define PLAYER_LOAD_MODE_ACCOUNT 1
 #define PLAYER_LOAD_MODE_ACCOUNT_DELETE 3
 
-#define TOTAL_CON 94
+#define TOTAL_CON 95
 
 enum ws_chargen_phase
 {

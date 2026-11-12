@@ -94,6 +94,7 @@ void account_delete_char_loaded(P_desc);
 void account_display_info(P_desc, char *);
 void delete_account(P_desc, char *);
 void verify_delete_account(P_desc, char *);
+void final_delete_account(P_desc, char *);
 void display_account_information(P_desc d, P_acct account = NULL);
 void display_account_information_to_char(P_char ch, P_acct account);
 void clear_account(P_acct);

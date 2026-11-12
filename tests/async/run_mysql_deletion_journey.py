@@ -188,9 +188,20 @@ def run(server):
                     # The restart did not give the deleted character's pid out again.
                     assert erased > pid, (erased, pid)
                     sql("CREATE TRIGGER deletion_fixture_refusal BEFORE DELETE ON accounts FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic deletion refusal'")
-                    client.send('7'); client.expect('Re-enter your account password')
-                    client.send(journey.PASSWORD); client.expect('PERMANENT ACCOUNT DELETION', timeout=30)
-                    client.send('Erasedacct'); client.expect('Account deletion did not complete.', timeout=30)
+                    # The matching name only reaches the last warning: anything but an
+                    # exact YES there keeps the account, unfenced.
+                    def reach_last_warning():
+                        client.send('7'); client.expect('Re-enter your account password')
+                        client.send(journey.PASSWORD); client.expect('PERMANENT ACCOUNT DELETION', timeout=30)
+                        client.send('Erasedacct'); client.expect('UNRECOVERABLE', timeout=30)
+                        client.expect('to cancel: ')
+                    reach_last_warning()
+                    client.send('yes'); client.expect('Account deletion cancelled.', timeout=30)
+                    client.expect('ACCOUNT MENU')
+                    assert number("SELECT blocked FROM accounts WHERE account_name='Erasedacct'") == 0
+                    assert number(f'SELECT COUNT(*) FROM player_data WHERE pid={erased}') == 1
+                    reach_last_warning()
+                    client.send('YES'); client.expect('Account deletion did not complete.', timeout=30)
                     client.expect('to retry completion')
                     assert number(f'SELECT COUNT(*) FROM player_data WHERE pid={erased}') == 1
                     assert number("SELECT blocked FROM accounts WHERE account_name='Erasedacct'") == 2
