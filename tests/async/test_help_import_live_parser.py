@@ -2,6 +2,7 @@
 """Source contracts for the local/live help content importer."""
 
 import re
+import ast
 from pathlib import Path
 
 
@@ -65,3 +66,51 @@ assert "~535" not in source
 for missing_source in ("helpguild1", "helpguild2", '["info"]'):
     assert missing_source not in source
 print("help import live parser contracts passed")
+
+# Execute the importer's actual pure parser functions, preserving compound titles
+# and the last-source-wins order. No SQL or shell from the importer is executed.
+parser_scope = {"re": re}
+for block in live_blocks:
+    for node in ast.parse(block).body:
+        if isinstance(node, ast.FunctionDef) and node.name in (
+            "help_index_entries", "parse_help_index", "parse_parsed_help"
+        ):
+            exec(compile(ast.Module(body=[node], type_ignores=[]), "importer-parser", "exec"), parser_scope)
+index_entries = parser_scope["parse_help_index"](ROOT / "lib/information/help_index")
+parsed_entries = parser_scope["parse_parsed_help"](ROOT / "help/duris_help_parsed.hlp")
+index_pages = {title.casefold(): body for title, body in index_entries}
+parsed_pages = {title.casefold(): body for title, body in parsed_entries}
+effective = {"rules": (ROOT / "lib/information/rules").read_text()}
+effective.update(index_pages)
+effective.update(parsed_pages)
+
+BATCH = (
+    "Help", "Index", "Newbie", "Exits", "Look", "Consider", "Flee", "Death",
+    "Corpse", "Get", "Equipment", "Inventory", "Wear", "Wield",
+    "COMMUNICATIONS UTILITIES CHANNELS", "Nchat", "Say", "Practice", "Cast",
+    "Memorize", "Policies", "LAWS RULES", "Innate", "Innates", "Class", "Race",
+    "Skills", "Spells",
+)
+for title in BATCH:
+    key = title.casefold()
+    assert key in index_pages and key in parsed_pages, title
+    # Parsed import preserves its edit header and separator in the body.
+    body = "\n".join(parsed_pages[key].splitlines()[2:]).strip()
+    assert body == index_pages[key].strip(), f"Divergent selected topic: {title}"
+    assert "2026-11-12" in parsed_pages[key].splitlines()[0], title
+    assert "==See also==" in body or title in ("Help", "Index", "Newbie"), title
+    for target in re.findall(r"\[\[([^]\n]+)\]\]", body):
+        assert target.casefold() in effective, f"Broken imported help link: {title} -> {target}"
+
+for hub in ("Help", "Index", "Newbie"):
+    body = effective[hub.casefold()]
+    for target in ("Innate", "Class", "Race", "Skills", "Spells", "rules", "Policies"):
+        assert f"[[{target}]]" in body, (hub, target)
+    for example in ("innate info reflection", "class info warrior", "race info grey elf",
+                    "skills info bash", "spells info fireball"):
+        assert example in body, (hub, example)
+for target in BATCH[3:21]:
+    assert f"[[{target}]]" in effective["index"], target
+assert "rules" not in index_pages and "rules" not in parsed_pages
+assert (ROOT / "lib/information/help").read_text().strip() == index_pages["help"].strip()
+print("28 selected help pages: actual import titles, precedence, mirrors and navigation passed")

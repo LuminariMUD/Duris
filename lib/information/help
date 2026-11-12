@@ -1,21 +1,27 @@
-                    ░ Duris DikuMUD - Main Help Menu░
+Find instructions for a command, spell, skill, race, class or innate.
 
-  Type:                   Produces:
-  HELP....................This screen
-  HELP INDEX..............Help File Index
-  HELP POLICIES and.......Master list of Duris Policies and rules. These
-  HELP RULES              are a *must* read for all players.
-  HELP <keyword>..........Information on a policy, command, skill or spell
-  HELP COMMANDS...........List of the most frequently used commands (on most
-                          Dikus, the original HELP screen)
-  NEWS....................Up to date information on Duris
-  COMMANDS................List of *all* available commands, including SOCIAL
-                          ACTIONS
-  INFO....* NEW! *........The INFO help screen.
-  FAQ.....* NEW! *........The FAQ (Duris's Frequently Asked Questions)
-  ───────────────────────────────────────────────────────────────────────────
-  Duris help is divided into two sections: HELP and INFO.  The HELP section
-  deals with the everyday functions, policies and stuff you need to know in
-  order to play successfully here on Duris.  The INFO section gives you the
-  background on each of the gods here, and will be expanded to include the
-  general background on each of the mobs (monsters) you may encounter here.
+==Search==
+
+Type: help <topic>       Example: help fireball
+Use the full title to open that page. A partial name may list several
+matches; choose a title and type help followed by it. On clients with help
+links, you can select the title instead. A miss may offer a short "Did you
+mean" list: help firball suggests Fireball. A suggestion only opens help.
+If nothing useful appears, try a longer name or browse [[Index]].
+
+==Start here==
+
+* [[Newbie]] - an ordered first-session guide.
+* [[Index]] - movement, combat, recovery, equipment, talking and learning.
+* [[Policies]] - where to find policy guidance. Read [[rules]] before play.
+
+==Current ability reference==
+
+* [[Innate]] - personal abilities and readiness. Type: innate info reflection
+* [[Class]] - classes and specializations. Type: class info warrior
+* [[Race]] - race traits and creation choices. Type: race info grey elf
+* [[Skills]] - proficiency and unlocks. Type: skills info bash
+* [[Spells]] - spell circles and access. Type: spells info fireball
+
+Browsing explains an ability; it does not learn, prepare or activate it.
+Type news for announcements and commands for the available command list.

@@ -77,6 +77,16 @@ are also the player's syntax. State stat dependencies only after checking the
 handler and its relevant helper calls; command attribute metadata is a separate
 maintained input, not an automatic analysis of the implementation.
 
+## Navigation and reference commands
+
+Use explicit `[[topic]]` links with an actual imported title; compound headings
+are single titles, not collections of aliases. Check links after applying import
+precedence. Keep examples as readable command text beside the help link:
+`Read [[Innate]]. Type: innate info reflection`. Help links only open help;
+other command examples are typed separately. Distinguish personal access,
+reference catalogs, preparation/readiness and activation. Do not duplicate live
+grant tables on general command articles when the browser already owns them.
+
 ## Classes, races, and specializations
 
 [CLASSES.md](../reference/CLASSES.md) maps the authoritative tables and current
