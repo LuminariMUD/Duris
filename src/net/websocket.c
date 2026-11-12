@@ -1033,6 +1033,14 @@ int websocket_flush_output(struct descriptor_data *d)
 				d->ws_control_output_len = 0;
 				d->ws_control_output_offset = 0;
 			}
+			/* A queued ping is on the wire now; its pong must count from here. */
+			if (d->ws_ping_queued && d->ws_state == WS_STATE_OPEN)
+			{
+				d->ws_ping_queued = 0;
+				d->ws_ping_outstanding = 1;
+				d->ws_pong_received = 0;
+				d->ws_last_ping = time(0);
+			}
 			if (start >= d->ws_output_len)
 			{
 				if (d->ws_output_len > 0)

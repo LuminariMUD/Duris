@@ -1000,6 +1000,48 @@ int main()
 	close(failed_pair[0]);
 	close(failed_pair[1]);
 
+	/* A ping queued under backpressure and drained by later game output accepts its pong. */
+	int ping_pair[2];
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, ping_pair) != 0)
+		return fail("queued-ping socketpair");
+	int ping_flags = fcntl(ping_pair[0], F_GETFL, 0);
+	if (ping_flags < 0 || fcntl(ping_pair[0], F_SETFL, ping_flags | O_NONBLOCK) < 0 ||
+	    fcntl(ping_pair[1], F_SETFL, fcntl(ping_pair[1], F_GETFL, 0) | O_NONBLOCK) < 0)
+		return fail("set nonblocking queued-ping socket");
+	setsockopt(ping_pair[0], SOL_SOCKET, SO_SNDBUF, &small_send_buffer,
+		   sizeof(small_send_buffer));
+	while (write(ping_pair[0], fill, sizeof(fill)) > 0)
+	{
+	}
+	descriptor_data heartbeat{};
+	heartbeat.descriptor = ping_pair[0];
+	heartbeat.websocket = 1;
+	heartbeat.ws_state = WS_STATE_OPEN;
+	heartbeat.ws_handshake_done = 1;
+	if (websocket_send_ping(&heartbeat) != 0 || heartbeat.ws_control_output_len == 0)
+		return fail("ping was not queued under backpressure");
+	heartbeat.ws_ping_queued = 1; /* as the session-input phase records it */
+	while (read(ping_pair[1], drained, sizeof(drained)) > 0)
+	{
+	}
+	if (websocket_send_text(&heartbeat, "game output") != 0 ||
+	    heartbeat.ws_control_output_len != 0 || heartbeat.ws_ping_queued ||
+	    !heartbeat.ws_ping_outstanding || heartbeat.ws_last_ping == 0)
+		return fail("queued ping drained by game output did not become outstanding");
+	const char masked_pong[] = { (char)0x8a, (char)0x80, 0, 0, 0, 0 };
+	char *pong_payload = nullptr;
+	size_t pong_payload_len = 0;
+	int pong_opcode = 0;
+	int pong_fin = 0;
+	if (websocket_parse_frame(&heartbeat, masked_pong, sizeof(masked_pong), &pong_payload,
+				  &pong_payload_len, &pong_opcode,
+				  &pong_fin) != (int)sizeof(masked_pong) ||
+	    !heartbeat.ws_pong_received || heartbeat.ws_ping_outstanding)
+		return fail("pong for a ping drained by game output was ignored");
+	websocket_free(&heartbeat);
+	close(ping_pair[0]);
+	close(ping_pair[1]);
+
 	d.ws_compressed_message = 1;
 	d.ws_error_code = WS_CLOSE_MESSAGE_TOO_BIG;
 	const char oversized_handshake = 'x';
