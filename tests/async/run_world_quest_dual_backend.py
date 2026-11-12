@@ -1806,7 +1806,8 @@ def verify_mariadb_player_state(environment: dict[str, str], *, active: int = 1,
     require(quest_level == QUEST_LEVEL, "MariaDB player row has the wrong accepted quest level; " + detail)
     require(int(fields[15]) == BARTENDER_ROOM, "MariaDB row lost the accepted origin; " + detail)
     require(int(fields[16]) == replacement_due, "wrong replacement entitlement; " + detail)
-    require((int(fields[13]) > 0) == bool(active), "wrong verified map state; " + detail)
+    # The entrance survives a pending replacement along with the purchased map.
+    require(int(fields[13]) > 0, "MariaDB row lost the quest map entrance; " + detail)
     require(int(fields[14]) == map_bought, "wrong purchased-map entitlement; " + detail)
     require(quest_zone_number not in {0, 292, 536},
             "MariaDB player row persisted an explicitly denied quest zone")
