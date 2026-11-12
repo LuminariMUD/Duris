@@ -4,6 +4,7 @@
 #include "core/defines.h"
 #include "magic/spells.h"
 #include "player/pet_restore_state.h"
+#include <algorithm>
 #include <cassert>
 #include <ctime>
 #include <iostream>
@@ -71,7 +72,8 @@ int main(int argc, char **argv)
 		{
 			assert(mode == "arm-cooldowns");
 			state.version = 2;
-			state.named_set_cooldowns.fill(time(nullptr) + 300);
+			// A v2 payload carries three cooldowns; the fourth needs v3.
+			std::fill_n(state.named_set_cooldowns.begin(), 3, time(nullptr) + 300);
 		}
 	}
 	std::string encoded;
