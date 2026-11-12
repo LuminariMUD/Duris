@@ -16,8 +16,7 @@ RACELESS = {20305, 26100, 51800, 52200}
 # (quest mobile, G for given or R for reward, object). The quest giver refuses
 # these hand-ins. Shrink this list; never add a reference a change has broken.
 NEVER_EXISTED = {
-    (17, "R", 0), (17, "G", 0), (4224, "R", 35708), (13030, "G", 0), (24021, "G", 1515),
-    (27082, "R", 25000), (66017, "G", 4372), (74250, "G", 0),
+    (17, "R", 0), (17, "G", 0), (4224, "R", 35708), (27082, "R", 25000), (66017, "G", 4372),
 }
 
 zones = [line.split()[0] for line in (AREAS / "AREA").read_text().splitlines()
@@ -105,6 +104,8 @@ for line in (AREAS / "zon/ashrumite.zon").read_text(encoding="latin-1").split("\
         if int(fields[2]) not in stock[keeper]:
             strays.append((keeper, names[int(fields[2])]))
 assert not strays, f"Ashrumite shopkeepers are given goods they do not stock: {strays}"
+# Haz'on'wyz wants the goblet his master Draknah wears.
+assert step(24021, "a half of an ancient amulet") == ["a golden goblet"]
 # Masha's cookbook wants the renumbered Tharnadia book and Ashrumite jerky.
 assert {"a large blank book", "a large strip of beef jerky"} <= set(step(97006, "a map of Icecrag Castle"))
 
