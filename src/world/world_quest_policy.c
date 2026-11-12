@@ -226,6 +226,15 @@ bool quest_local_match(int origin, int destination)
 	       (first.underdark > 0 && first.underdark == second.underdark);
 }
 
+// The entrance a quest's map shows: local tasks only get one in their own region.
+int quest_map_entrance(int zone, int origin_room, int level)
+{
+	for (int entrance : quest_geography[zone].entrances)
+		if (level > WORLD_QUEST_LOCAL_MAX_LEVEL || quest_local_match(origin_room, entrance))
+			return entrance;
+	return NOWHERE;
+}
+
 bool quest_target_location(int room)
 {
 	if (!quest_valid_room(room))
@@ -766,12 +775,7 @@ struct quest_target_request
 
 	int map_room(P_char mob) const
 	{
-		const auto &entrances = quest_geography[world[mob->in_room].zone].entrances;
-		for (int entrance : entrances)
-			if (level > WORLD_QUEST_LOCAL_MAX_LEVEL ||
-			    quest_local_match(origin_room, entrance))
-				return entrance;
-		return NOWHERE;
+		return quest_map_entrance(world[mob->in_room].zone, origin_room, level);
 	}
 
 	bool common(P_char mob)
@@ -1028,6 +1032,15 @@ bool world_quest_policy_target_exists(int accepted_level, int zone_number, int m
 			return true;
 	}
 	return false;
+}
+
+int world_quest_policy_map_room(int origin_vnum, int accepted_level, int zone_number)
+{
+	const int zone = real_zone(zone_number);
+	if (!world_quest_policy_bootstrap() || zone < 0)
+		return NOWHERE;
+	return quest_map_entrance(zone, origin_vnum > 0 ? real_room(origin_vnum) : NOWHERE,
+				  accepted_level);
 }
 
 world_quest_region world_quest_policy_region(int room)

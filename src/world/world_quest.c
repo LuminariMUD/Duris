@@ -943,10 +943,12 @@ world_quest_target_status world_quest_refresh(P_char ch)
 		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 		return status::unavailable;
 	}
-	// Earlier live checks cleared maps while a target was busy; restore the zone entrance.
+	// Earlier live checks cleared maps while a target was busy; restore the entrance
+	// selection gave. A quest accepted without a local entrance stays mapless.
 	if (quest.quest_map_room <= 0)
 	{
-		const int map = get_map_room(real_zone(quest.quest_zone_number));
+		const int map = world_quest_policy_map_room(
+			quest.quest_origin_room, quest.quest_level, quest.quest_zone_number);
 		if (map >= 0)
 		{
 			quest.quest_map_room = world[map].number;

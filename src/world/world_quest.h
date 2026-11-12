@@ -23,7 +23,6 @@ enum class world_quest_target_status
 };
 
 world_quest_target_status world_quest_refresh(P_char ch);
-int get_map_room(int zone_id);
 bool world_quest_replace(P_char ch, P_char giver);
 void world_quest_describe(P_char ch, world_quest_target_status status);
 

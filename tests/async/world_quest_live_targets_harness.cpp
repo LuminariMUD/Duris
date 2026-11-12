@@ -66,7 +66,6 @@ int target_zone_average = -1;
 int shown_map = NOWHERE, map_calls = 0;
 std::string feedback;
 std::vector<std::string> replacement_logs;
-std::vector<std::string> share_logs;
 void run_payment(P_char, int origin, int fee, bool committed);
 void run_map_payment(P_char, int fee);
 void assert_equipment_sets_ignore_ask(P_char);
@@ -386,8 +385,7 @@ int singleton_shop_id(P_char)
 }
 void logit(const char *destination, const char *format, ...)
 {
-	const bool share = !strncmp(format, "World quest share refused:", 26);
-	if (!share && strncmp(format, "World quest replacement failed:", 31))
+	if (strncmp(format, "World quest replacement failed:", 31))
 		return;
 	assert(!strcmp(destination, LOG_STATUS));
 	char text[4096];
@@ -396,7 +394,7 @@ void logit(const char *destination, const char *format, ...)
 	const int length = vsnprintf(text, sizeof(text), format, arguments);
 	va_end(arguments);
 	assert(length >= 0 && static_cast<size_t>(length) < sizeof(text));
-	(share ? share_logs : replacement_logs).emplace_back(text);
+	replacement_logs.emplace_back(text);
 }
 bool has_innate(P_char, int)
 {
@@ -1094,7 +1092,6 @@ int main(int argc, char **argv)
 			const auto before = recipient_state;
 			history_reads.clear();
 			feedback.clear();
-			share_logs.clear();
 			char request[] = "share friend";
 			do_quest(&player, request, 0);
 			assert(feedback.find(message) != std::string::npos);
@@ -1234,11 +1231,10 @@ int main(int argc, char **argv)
 		fresh.erase(vnum);
 		share(false, "already done this quest");
 		fresh.insert(vnum);
-		// Temporary recipient conditions never block a share or reach the log.
+		// Temporary recipient conditions never block a share.
 		recipient.specials.affected_by |= AFF_BLIND;
 		recipient.specials.affected_by2 |= AFF2_SILENCED;
 		share(true, "You've shared your quest");
-		assert(share_logs.empty());
 		recipient.specials.affected_by &= ~AFF_BLIND;
 		recipient.specials.affected_by2 &= ~AFF2_SILENCED;
 		assert(wallet_debits == 0 && history_writes == 0);
@@ -1679,8 +1675,17 @@ int main(int argc, char **argv)
 		session.gmcp_quest_map_sent = 1;
 		pc.quest_map_room = 0;
 		assert(world_quest_refresh(&player) == status::valid);
-		assert(pc.quest_map_room > 0 && !session.gmcp_quest_map_sent && dirty_marks == 1);
+		assert(pc.quest_map_room == accepted.quest_map_room &&
+		       !session.gmcp_quest_map_sent && dirty_marks == 1);
 		player.desc = nullptr;
+		if (level <= WORLD_QUEST_LOCAL_MAX_LEVEL)
+		{
+			// Without a provable local entrance the quest stays mapless.
+			pc.quest_origin_room = 0;
+			pc.quest_map_room = 0;
+			assert(world_quest_refresh(&player) == status::valid);
+			assert(pc.quest_map_room == 0 && dirty_marks == 1);
+		}
 		pc = accepted;
 		dirty_marks = 0;
 

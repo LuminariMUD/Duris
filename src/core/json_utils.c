@@ -1260,6 +1260,8 @@ char *json_build_quest_status(struct char_data *ch, world_quest_target_status st
 					"Your task is no longer available. Ask a bartender for a free replacement." :
 				ch->only.pc->quest_accomplished ?
 					"Task complete. Return to your quest giver." :
+				status == availability::unproven ?
+					"Your quest history is still being secured." :
 					"Ask a bartender to check your task.";
 			snprintf(target_buf, MAX_STRING_LENGTH, "%s", message);
 		}

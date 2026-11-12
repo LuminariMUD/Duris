@@ -2639,6 +2639,8 @@ int main()
 		const std::string state = payload(&ad, "Quest.Status");
 		assert(state.find("\"zoneNumber\"") == std::string::npos);
 		assert(state.find("bronze guardian") == std::string::npos);
+		assert((state.find("still being secured") != std::string::npos) ==
+		       (status == world_quest_target_status::unproven));
 		assert(state.find("\"mapBought\":true") != std::string::npos);
 		assert(payload(&ad, "Quest.Map") == "{\"map\":\"\",\"zoneNumber\":0}");
 		assert(ad.gmcp_quest_map_sent == 0);

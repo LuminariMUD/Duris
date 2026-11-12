@@ -49,6 +49,8 @@ quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vn
 
 // False only when boot content proves the accepted target can never be met.
 bool world_quest_policy_target_exists(int accepted_level, int zone_number, int mob_vnum);
+// The map entrance selection would give this accepted quest, or NOWHERE.
+int world_quest_policy_map_room(int origin_vnum, int accepted_level, int zone_number);
 
 bool world_quest_policy_bootstrap();
 void refresh_world_quest_item_values();
