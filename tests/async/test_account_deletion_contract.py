@@ -32,6 +32,8 @@ password = function_body(ACCOUNT, "void get_account_password(")
 password_completion = function_body(ACCOUNT, "static void finish_account_password(")
 begin_delete = function_body(ACCOUNT, "void delete_account(")
 confirm_delete = function_body(ACCOUNT, "void verify_delete_account(")
+last_warning = function_body(ACCOUNT, "void final_delete_account(")
+complete_delete = function_body(ACCOUNT, "static void complete_account_deletion(")
 sql_delete = function_body(SQL_PLAYER, "bool sql_delete_account(const char *name", last=True)
 finish_delete = function_body(ACCOUNT, "static void finish_account_deletion(")
 guild_forget = function_body(GUILD, "void forget_deleted_guild_member(")
@@ -52,11 +54,26 @@ assert begin_delete.index("echo_off(d)") < begin_delete.index("password_login_su
 assert "strcmp(arg, d->account->acct_name)" in confirm_delete
 assert "strcasecmp(arg, d->account->acct_name)" not in confirm_delete
 
+# The matching name alone deletes nothing: it leads to the last warning, where only an
+# exact YES goes on and anything else returns to the menu. A fenced retry skips the warning.
+assert "acct_blocked = ACCOUNT_BLOCK_DELETION" not in confirm_delete
+assert "sql_delete_account(" not in confirm_delete
+retry = confirm_delete.index("if (fenced)\n\t{\n\t\tcomplete_account_deletion(d);\n\t\treturn;")
+assert retry < confirm_delete.index("STATE(d) = CON_ACCT_FINAL_DELETE_ACCT;")
+assert "display_account_deletion_last_warning(d);" in confirm_delete
+refusal = last_warning.index('if (strcmp(arg, "YES"))')
+cancelled = last_warning.index("STATE(d) = CON_DISPLAY_ACCT_MENU;", refusal)
+assert cancelled < last_warning.index("return;", cancelled) < last_warning.index(
+    "complete_account_deletion(d);"
+)
+warning = function_body(ACCOUNT, "void display_account_deletion_last_warning(")
+assert "UNRECOVERABLE" in warning and "YES" in warning
+
 # The durable, non-cancellable fence precedes disconnection, drains, and backend mutation.
-fence = confirm_delete.index("d->account->acct_blocked = ACCOUNT_BLOCK_DELETION")
-fence_write = confirm_delete.index("write_account(d->account)", fence)
-disconnect = confirm_delete.index("close_other_account_sessions(d)")
-backend = confirm_delete.index("sql_delete_account(")
+fence = complete_delete.index("d->account->acct_blocked = ACCOUNT_BLOCK_DELETION")
+fence_write = complete_delete.index("write_account(d->account)", fence)
+disconnect = complete_delete.index("close_other_account_sessions(d)")
+backend = complete_delete.index("sql_delete_account(")
 assert fence < fence_write < disconnect < backend
 assert "if (fenced)" in confirm_delete and "cannot be cancelled" in confirm_delete
 assert "acct_blocked == ACCOUNT_BLOCK_DELETION" in password_completion
@@ -64,7 +81,7 @@ assert "display_account_deletion_confirmation(d, true)" in password_completion
 assert password_completion.index("if (!password_valid)") < password_completion.index(
     "display_account_deletion_confirmation(d, true)"
 )
-assert "account_deletion_locker_runtime_active(account_name, identities)" in confirm_delete
+assert "account_deletion_locker_runtime_active(account_name, identities)" in complete_delete
 
 runtime_remove = function_body(ACCOUNT, "void remove_deleted_account_characters(")
 detach_character = runtime_remove.index("character->desc = NULL")
@@ -126,7 +143,7 @@ assert sql_delete.index("UPDATE guilds g JOIN guild_members gm") < sql_delete.in
 
 # The account's characters leave the game before the deletion is queued, so no save of
 # theirs lands after it; the session waits for the reply with its input held.
-mariadb = confirm_delete
+mariadb = complete_delete
 assert mariadb.index("remove_deleted_account_characters(d, identities)") < mariadb.index(
     "sql_delete_account("
 )

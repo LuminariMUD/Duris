@@ -125,6 +125,35 @@ void display_account_deletion_confirmation(P_desc d, bool retry)
 	d->prompt_mode = TRUE;
 }
 
+void display_account_deletion_last_warning(P_desc d)
+{
+	// clang-format off
+	SEND_TO_Q(
+		"\r\n"
+		"&=RW   !!!  STOP  !!!   THIS IS YOUR LAST CHANCE TO TURN BACK   !!!  STOP  !!!   &n\r\n"
+		"\r\n"
+		"&+W  .-----.    &+Y#     #    #    ######  #     # ### #     #  #####   &+W  .-----.&n\r\n"
+		"&+W /       \\   &+Y#  #  #   # #   #     # ##    #  #  ##    # #     #  &+W /       \\&n\r\n"
+		"&+W|  &+RX   X&+W  |  &+R#  #  #  #   #  #     # # #   #  #  # #   # #        &+W|  &+RX   X&+W  |&n\r\n"
+		"&+W|    ^    |  &+R#  #  # #     # ######  #  #  #  #  #  #  # #  ####  &+W|    ^    |&n\r\n"
+		"&+W \\ ,---, /   &+R#  #  # ####### #   #   #   # #  #  #   # # #     #  &+W \\ ,---, /&n\r\n"
+		"&+W  |IIIII|    &+r#  #  # #     # #    #  #    ##  #  #    ## #     #  &+W  |IIIII|&n\r\n"
+		"&+W  '-----'    &+r ## ##  #     # #     # #     # ### #     #  #####   &+W  '-----'&n\r\n"
+		"\r\n"
+		"&=RW                 YOU ARE ABOUT TO DESTROY THIS ENTIRE ACCOUNT                &n\r\n"
+		"\r\n"
+		"           &+YIF YOU TYPE &=RW YES &n&+Y THIS ACCOUNT WILL BE &+RDELETED FOREVER&+Y.&n\r\n"
+		"         &+REVERY CHARACTER. EVERY LEVEL. EVERY ITEM. EVERYTHING. GONE.&n\r\n"
+		"\r\n"
+		"   &+WTHIS IS UNRECOVERABLE. THERE ARE NO RESTORES. THERE ARE NO EXCEPTIONS.&n\r\n"
+		"  &+RNO GOD, NO IMMORTAL, AND NO ADMIN CAN BRING IT BACK. NOT EVEN IF YOU BEG.&n\r\n"
+		"\r\n"
+		"Type &+RYES&n in capitals to delete forever, or &+Ganything else&n to cancel: ",
+		d);
+	// clang-format on
+	d->prompt_mode = TRUE;
+}
+
 bool capture_account_deletion_identities(P_desc d,
 					 std::vector<account_deletion_identity> *identities)
 {
@@ -3166,44 +3195,11 @@ static void finish_account_deletion(P_desc d, bool deleted, size_t characters)
 	STATE(d) = CON_FLUSH;
 }
 
-void verify_delete_account(P_desc d, char *arg)
+/* Fences the account, then deletes it on the writer while the session waits in
+ * CON_ACCT_VERIFY_DELETE_ACCT, where a failure asks for the account name again. */
+static void complete_account_deletion(P_desc d)
 {
-	if (!d || !d->account || !d->account->acct_name)
-		return;
-	const bool fenced = d->account->acct_blocked == ACCOUNT_BLOCK_DELETION;
-	if (!arg)
-	{
-		display_account_deletion_confirmation(d, fenced);
-		return;
-	}
-	while (isspace(static_cast<unsigned char>(*arg)))
-		arg++;
-	char *end = arg + strlen(arg);
-	while (end > arg && isspace(static_cast<unsigned char>(end[-1])))
-		*--end = '\0';
-	if (!strcasecmp(arg, "cancel"))
-	{
-		if (fenced)
-		{
-			SEND_TO_Q("\r\nDeletion has already started and cannot be cancelled. "
-				  "Retry the exact account name or contact an immortal.\r\n",
-				  d);
-			display_account_deletion_confirmation(d, true);
-			return;
-		}
-		SEND_TO_Q("\r\nAccount deletion cancelled.\r\n", d);
-		STATE(d) = CON_DISPLAY_ACCT_MENU;
-		display_account_menu(d, NULL);
-		return;
-	}
-	if (strcmp(arg, d->account->acct_name))
-	{
-		SEND_TO_Q("\r\nThe account name did not match exactly.\r\n", d);
-		display_account_deletion_confirmation(d, fenced);
-		return;
-	}
-
-	if (!fenced)
+	if (d->account->acct_blocked != ACCOUNT_BLOCK_DELETION)
 	{
 		const char previous_block = d->account->acct_blocked;
 		d->account->acct_blocked = ACCOUNT_BLOCK_DELETION;
@@ -3270,6 +3266,67 @@ void verify_delete_account(P_desc d, char *arg)
 		writer_replied(id);
 		finish_account_deletion(d, false, identities.size());
 	}
+}
+
+void verify_delete_account(P_desc d, char *arg)
+{
+	if (!d || !d->account || !d->account->acct_name)
+		return;
+	const bool fenced = d->account->acct_blocked == ACCOUNT_BLOCK_DELETION;
+	if (!arg)
+	{
+		display_account_deletion_confirmation(d, fenced);
+		return;
+	}
+	while (isspace(static_cast<unsigned char>(*arg)))
+		arg++;
+	char *end = arg + strlen(arg);
+	while (end > arg && isspace(static_cast<unsigned char>(end[-1])))
+		*--end = '\0';
+	if (!strcasecmp(arg, "cancel"))
+	{
+		if (fenced)
+		{
+			SEND_TO_Q("\r\nDeletion has already started and cannot be cancelled. "
+				  "Retry the exact account name or contact an immortal.\r\n",
+				  d);
+			display_account_deletion_confirmation(d, true);
+			return;
+		}
+		SEND_TO_Q("\r\nAccount deletion cancelled.\r\n", d);
+		STATE(d) = CON_DISPLAY_ACCT_MENU;
+		display_account_menu(d, NULL);
+		return;
+	}
+	if (strcmp(arg, d->account->acct_name))
+	{
+		SEND_TO_Q("\r\nThe account name did not match exactly.\r\n", d);
+		display_account_deletion_confirmation(d, fenced);
+		return;
+	}
+	if (fenced)
+	{
+		complete_account_deletion(d);
+		return;
+	}
+	STATE(d) = CON_ACCT_FINAL_DELETE_ACCT;
+	display_account_deletion_last_warning(d);
+}
+
+/* The last warning: only an exact YES deletes; anything else keeps the account. */
+void final_delete_account(P_desc d, char *arg)
+{
+	if (!d || !d->account || !d->account->acct_name)
+		return;
+	if (strcmp(arg, "YES"))
+	{
+		SEND_TO_Q("\r\nAccount deletion cancelled.\r\n", d);
+		STATE(d) = CON_DISPLAY_ACCT_MENU;
+		display_account_menu(d, NULL);
+		return;
+	}
+	STATE(d) = CON_ACCT_VERIFY_DELETE_ACCT;
+	complete_account_deletion(d);
 }
 
 /* Gives `to` a copy of what `from` holds. */

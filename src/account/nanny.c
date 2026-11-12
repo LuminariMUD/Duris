@@ -4528,6 +4528,10 @@ void nanny(P_desc d, char *arg)
 		verify_delete_account(d, arg);
 		break;
 
+	case CON_ACCT_FINAL_DELETE_ACCT:
+		final_delete_account(d, arg);
+		break;
+
 	case CON_ACCT_NEW_CHAR_NAME:
 		account_new_char_name(d, arg);
 		break;

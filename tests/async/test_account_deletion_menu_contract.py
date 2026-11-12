@@ -26,6 +26,7 @@ menu = body("void display_account_menu(")
 case_7 = menu[menu.index("case 7:") : menu.index("case 8:")]
 delete = body("void delete_account(")
 verify = body("void verify_delete_account(")
+complete = body("static void complete_account_deletion(")
 
 assert "Delete this account" in menu
 assert "case 7:" in menu
@@ -34,8 +35,10 @@ assert contains(case_7, "STATE(d) = CON_ACCT_DELETE_ACCT;")
 assert contains(case_7, "delete_account(d, NULL);")
 assert contains(delete, "password_login_submit(arg, d->account->acct_password, 0)")
 assert contains(delete, "STATE(completed_desc) = CON_ACCT_VERIFY_DELETE_ACCT;")
-assert contains(verify, "d->account->acct_blocked = ACCOUNT_BLOCK_DELETION")
-assert contains(verify, "sql_delete_account(account_name.c_str(),")
+assert contains(verify, "STATE(d) = CON_ACCT_FINAL_DELETE_ACCT;")
+assert contains(body("void final_delete_account("), "complete_account_deletion(d);")
+assert contains(complete, "d->account->acct_blocked = ACCOUNT_BLOCK_DELETION")
+assert contains(complete, "sql_delete_account(account_name.c_str(),")
 
 # Character deletion waits for the writer's reply with the confirmed character held.
 delete_char = body("void account_delete_char(")
