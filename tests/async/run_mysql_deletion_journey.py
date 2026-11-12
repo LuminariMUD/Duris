@@ -195,11 +195,22 @@ def run(server):
                         client.send(journey.PASSWORD); client.expect('PERMANENT ACCOUNT DELETION', timeout=30)
                         client.send('Erasedacct'); client.expect('UNRECOVERABLE', timeout=30)
                         client.expect('to cancel: ')
+                    for answer in ('yes', '', 'Yes', 'YES ', ' YES'):
+                        reach_last_warning()
+                        client.send(answer); client.expect('Account deletion cancelled.', timeout=30)
+                        client.expect('ACCOUNT MENU')
+                        assert number("SELECT blocked FROM accounts WHERE account_name='Erasedacct'") == 0
+                        assert number(f'SELECT COUNT(*) FROM player_data WHERE pid={erased}') == 1
                     reach_last_warning()
-                    client.send('yes'); client.expect('Account deletion cancelled.', timeout=30)
-                    client.expect('ACCOUNT MENU')
+                    client.close()
+                    stop(); process = boot()
                     assert number("SELECT blocked FROM accounts WHERE account_name='Erasedacct'") == 0
                     assert number(f'SELECT COUNT(*) FROM player_data WHERE pid={erased}') == 1
+                    client = journey.MudClient(plain)
+                    client.expect('Please enter your account name:'); client.send('Erasedacct')
+                    client.expect('Please enter your password:'); client.send(journey.PASSWORD)
+                    client.expect('PRESS RETURN'); client.send(''); client.expect('ACCOUNT MENU')
+                    print('last warning: lowercase, blank, mixed-case, padded YES and disconnect/restart preserved the unfenced account', flush=True)
                     reach_last_warning()
                     client.send('YES'); client.expect('Account deletion did not complete.', timeout=30)
                     client.expect('to retry completion')
