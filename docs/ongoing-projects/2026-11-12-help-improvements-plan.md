@@ -1,7 +1,7 @@
 # Help improvements implementation plan
 
 Date: 2026-11-12
-Status: all implementation and required validation complete; A/B are review-ready in PRs #1033/#1034, C is being submitted. No deployment authorized.
+Status: complete; all implementation and required validation passed. Review-ready stack: #1033 -> #1034 -> #1036. No deployment authorized.
 Source baseline: Duris `f8919ad27dd71ddb2e322feb31529c61d84384b7`;
 Luminari-Source `77d9b032db04c6b0e6c80ba32e4178c8a63ecba5`.
 
@@ -449,9 +449,11 @@ Review stack (merge in this order; do not deploy):
    `branch/help-player-navigation` -> `branch/help-improvements-plan`, commit
    `698eb3317`; labels `documentation`, `enhancement`. All 28 selected topics,
    mirrored catalogs, startup Help, live reference guidance and parser contracts.
-3. Delivery C on `branch/help-navigation-journey`, based on #1034: native journey
-   and the common-prefix distance optimization. All validation passed; submitting
-   this branch as a labeled PR is the only remaining implementation workflow step.
+3. [PR #1036](https://github.com/LuminariMUD/Duris/pull/1036),
+   `branch/help-navigation-journey` -> `branch/help-player-navigation`, implementation
+   commit `e222187ad`; labels `enhancement`, `documentation`. Native journey,
+   complete catalog benchmarks and the common-prefix distance optimization.
+   All three PRs are pushed and open for review; no required work remains.
 
 ### Scope and source audit
 
