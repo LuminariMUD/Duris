@@ -226,6 +226,15 @@ bool quest_local_match(int origin, int destination)
 	       (first.underdark > 0 && first.underdark == second.underdark);
 }
 
+// The entrance a quest's map shows: local tasks only get one in their own region.
+int quest_map_entrance(int zone, int origin_room, int level)
+{
+	for (int entrance : quest_geography[zone].entrances)
+		if (level > WORLD_QUEST_LOCAL_MAX_LEVEL || quest_local_match(origin_room, entrance))
+			return entrance;
+	return NOWHERE;
+}
+
 bool quest_target_location(int room)
 {
 	if (!quest_valid_room(room))
@@ -766,12 +775,7 @@ struct quest_target_request
 
 	int map_room(P_char mob) const
 	{
-		const auto &entrances = quest_geography[world[mob->in_room].zone].entrances;
-		for (int entrance : entrances)
-			if (level > WORLD_QUEST_LOCAL_MAX_LEVEL ||
-			    quest_local_match(origin_room, entrance))
-				return entrance;
-		return NOWHERE;
+		return quest_map_entrance(world[mob->in_room].zone, origin_room, level);
 	}
 
 	bool common(P_char mob)
@@ -1009,123 +1013,34 @@ struct quest_target_request
 
 } // namespace
 
-world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_vnum,
-							 int accepted_level, int zone_number,
-							 int mob_vnum, int type, int needed)
+bool world_quest_policy_target_exists(int accepted_level, int zone_number, int mob_vnum)
 {
-	using status = world_quest_target_status;
-	world_quest_target_check result;
-	if (!ch || IS_NPC(ch) || !world_quest_policy_bootstrap() ||
-	    accepted_level < WORLD_QUEST_MIN_LEVEL || accepted_level >= TOTALLVLS ||
-	    (type != FIND_AND_ASK && type != FIND_AND_KILL) || needed < 1)
-		return result;
+	// Only boot content is consulted. Live NPCs, players and rooms never
+	// cancel accepted work, so a dead or busy target cannot reveal activity.
+	if (!world_quest_policy_bootstrap())
+		return true;
 	const int zone = real_zone(zone_number);
-	if (zone < 0 || !static_zone_eligibility(zone, accepted_level) || real_mobile(mob_vnum) < 0)
+	const auto sources = quest_sources.find(real_mobile(mob_vnum));
+	if (zone < 0 || !static_zone_eligibility(zone, accepted_level) ||
+	    IS_SET(zone_table[zone].flags, ZONE_CLOSED | ZONE_PRIVATE) ||
+	    sources == quest_sources.end())
+		return false;
+	for (const auto &[birthplace, source] : sources->second)
 	{
-		result.status = status::unavailable;
-		return result;
+		(void)birthplace;
+		if (source.ordinary && !source.conditional && world[source.room].zone == zone)
+			return true;
 	}
+	return false;
+}
 
-	quest_target_request request(ch, origin_vnum, accepted_level, mob_vnum);
-	auto finish = [&](status value)
-	{
-		result.status = value;
-		result.work = request.work.work;
-		if (value != status::valid)
-			result.rejections = request.rejections();
-		return result;
-	};
-	if (request.work.exhausted)
-		return finish(status::unproven);
-	struct candidate
-	{
-		P_char mob;
-		status interaction;
-	};
-	std::vector<candidate> candidates;
-	const auto found = request.mobs.find(zone);
-	if (found != request.mobs.end())
-		for (const auto &[rnum, instances] : found->second)
-		{
-			(void)rnum;
-			for (P_char mob : instances)
-			{
-				if (!quest_spend_work(request.work))
-					return finish(status::unproven);
-				if (!request.ordinary_instance(mob) ||
-				    !request.world_type_eligible(mob, type))
-					continue;
-				status interaction = status::valid;
-				if (request.controlled(mob) ||
-				    (type == FIND_AND_ASK &&
-				     (!request.actor_can_ask() || !IS_AWAKE(mob) ||
-				      IS_AFFECTED2(mob, AFF2_SILENCED))))
-					interaction = status::blocked;
-				else if (type == FIND_AND_ASK && !request.handlers_eligible(mob))
-					interaction = status::unproven;
-				else
-				{
-					if (!quest_spend_work(
-						    request.work,
-						    8 * (request.population.at(mob->in_room) + 1)))
-						return finish(status::unproven);
-					if (!ac_can_see_from(ch, mob, mob->in_room))
-					{
-						request.reject(rejected_visibility, GET_VNUM(mob));
-						interaction = status::blocked;
-					}
-					else if (type == FIND_AND_ASK &&
-						 aggressive_to_at(mob, ch, mob->in_room))
-					{
-						// Aggression can depend on memory, faction or random
-						// player protection. It cannot alone authorize a reroll.
-						request.reject(rejected_aggression, GET_VNUM(mob));
-						interaction = status::unproven;
-					}
-				}
-				candidates.push_back({ mob, interaction });
-			}
-		}
-	if (request.work.exhausted)
-		return finish(status::unproven);
-	if (static_cast<int>(candidates.size()) < needed)
-		return finish(status::unavailable);
-	if (origin_vnum <= 0)
-		return finish(status::needs_origin);
-	if (real_room(origin_vnum) < 0)
-		return finish(status::unavailable);
-
-	const auto region = quest_region_for_room(request.origin_room);
-	if (accepted_level <= WORLD_QUEST_LOCAL_MAX_LEVEL && !region.surface && !region.underdark)
-		return finish(status::unproven);
-	int valid = 0, blocked = 0, uncertain = 0;
-	for (const auto &candidate : candidates)
-	{
-		if (!request.local(candidate.mob))
-		{
-			const auto destination = quest_region_for_room(candidate.mob->in_room);
-			if (region.uncertain || destination.uncertain ||
-			    (!destination.surface && !destination.underdark))
-				++uncertain;
-			continue;
-		}
-		if (candidate.interaction == status::valid)
-		{
-			if (valid++ == 0)
-				result.map_room = request.map_room(candidate.mob);
-		}
-		else if (candidate.interaction == status::blocked)
-			++blocked;
-		else
-			++uncertain;
-	}
-	if (valid >= needed)
-		return finish(status::valid);
-	if (valid + blocked >= needed)
-		return finish(status::blocked);
-	if (valid + blocked + uncertain >= needed)
-		return finish(status::unproven);
-	return finish(status::unavailable);
+int world_quest_policy_map_room(int origin_vnum, int accepted_level, int zone_number)
+{
+	const int zone = real_zone(zone_number);
+	if (!world_quest_policy_bootstrap() || zone < 0)
+		return NOWHERE;
+	return quest_map_entrance(zone, origin_vnum > 0 ? real_room(origin_vnum) : NOWHERE,
+				  accepted_level);
 }
 
 world_quest_region world_quest_policy_region(int room)

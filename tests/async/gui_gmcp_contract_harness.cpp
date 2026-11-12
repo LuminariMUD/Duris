@@ -317,7 +317,7 @@ const char *contra_type_name(int)
 
 static world_quest_target_status quest_availability = world_quest_target_status::valid;
 static int quest_checks = 0;
-world_quest_target_status world_quest_refresh(P_char, int)
+world_quest_target_status world_quest_refresh(P_char)
 {
 	++quest_checks;
 	return quest_availability;
@@ -2630,8 +2630,7 @@ int main()
 	const auto saved_quest = apc;
 	const int checks_before = quest_checks;
 	for (auto status :
-	     { world_quest_target_status::blocked, world_quest_target_status::unproven,
-	       world_quest_target_status::needs_origin, world_quest_target_status::unavailable })
+	     { world_quest_target_status::unproven, world_quest_target_status::unavailable })
 	{
 		wire.clear();
 		gmcp_quest_status(&a, status);
@@ -2640,6 +2639,8 @@ int main()
 		const std::string state = payload(&ad, "Quest.Status");
 		assert(state.find("\"zoneNumber\"") == std::string::npos);
 		assert(state.find("bronze guardian") == std::string::npos);
+		assert((state.find("still being secured") != std::string::npos) ==
+		       (status == world_quest_target_status::unproven));
 		assert(state.find("\"mapBought\":true") != std::string::npos);
 		assert(payload(&ad, "Quest.Map") == "{\"map\":\"\",\"zoneNumber\":0}");
 		assert(ad.gmcp_quest_map_sent == 0);

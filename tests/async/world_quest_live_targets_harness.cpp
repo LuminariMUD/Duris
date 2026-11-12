@@ -66,7 +66,6 @@ int target_zone_average = -1;
 int shown_map = NOWHERE, map_calls = 0;
 std::string feedback;
 std::vector<std::string> replacement_logs;
-std::vector<std::string> share_logs;
 void run_payment(P_char, int origin, int fee, bool committed);
 void run_map_payment(P_char, int fee);
 void assert_equipment_sets_ignore_ask(P_char);
@@ -386,8 +385,7 @@ int singleton_shop_id(P_char)
 }
 void logit(const char *destination, const char *format, ...)
 {
-	const bool share = !strncmp(format, "World quest share refused:", 26);
-	if (!share && strncmp(format, "World quest replacement failed:", 31))
+	if (strncmp(format, "World quest replacement failed:", 31))
 		return;
 	assert(!strcmp(destination, LOG_STATUS));
 	char text[4096];
@@ -396,7 +394,7 @@ void logit(const char *destination, const char *format, ...)
 	const int length = vsnprintf(text, sizeof(text), format, arguments);
 	va_end(arguments);
 	assert(length >= 0 && static_cast<size_t>(length) < sizeof(text));
-	(share ? share_logs : replacement_logs).emplace_back(text);
+	replacement_logs.emplace_back(text);
 }
 bool has_innate(P_char, int)
 {
@@ -1047,7 +1045,6 @@ int main(int argc, char **argv)
 #ifndef WORLD_QUEST_SQL_HISTORY
 	if (mode == "proc_share")
 	{
-		using status = world_quest_target_status;
 		const int vnum = preferred_type == FIND_AND_ASK ? 1003 : 1002;
 		pc.quest_active = 1;
 		pc.quest_type = preferred_type;
@@ -1085,14 +1082,6 @@ int main(int argc, char **argv)
 		blocker.R_num = 1;
 		objects[1].func.obj = burbul_map_obj;
 		const auto empty = recipient_state;
-		auto check = [&](status expected)
-		{
-			const auto before = recipient_state;
-			assert(world_quest_policy_check_target(&recipient, 1000, level, 20, vnum,
-							       preferred_type, 1)
-				       .status == expected);
-			assert(!memcmp(&before, &recipient_state, sizeof(before)));
-		};
 		auto share = [&](bool succeeds, const char *message)
 		{
 			pc = owner;
@@ -1103,7 +1092,6 @@ int main(int argc, char **argv)
 			const auto before = recipient_state;
 			history_reads.clear();
 			feedback.clear();
-			share_logs.clear();
 			char request[] = "share friend";
 			do_quest(&player, request, 0);
 			assert(feedback.find(message) != std::string::npos);
@@ -1135,7 +1123,6 @@ int main(int argc, char **argv)
 			assert(!memcmp(&delivered, &recipient_state, sizeof(delivered)) &&
 			       pc.quest_shares_left == 1);
 		};
-		const char *refused = "cannot currently use this task's target";
 		for (const auto &[item_vnum, proc] :
 		     { std::pair<int, obj_proc_type>{ 67262, mace_of_sea },
 		       { 67237, serpent_blade },
@@ -1168,18 +1155,12 @@ int main(int argc, char **argv)
 				move(&recipient, 0);
 				assert(!memcmp(&item, &item_before, sizeof(item)) &&
 				       recipient.specials.affected_by == affects_before);
-				check(status::valid);
 				share(true, "You've shared your quest");
-				// A genuine ASK consumer remains rejected alongside safe gear.
+				// Sharing never audits the recipient's gear, even a real ASK consumer.
 				recipient.equipment[WEAR_BODY] = &blocker;
 				const int reads = object_reads;
-				check(preferred_type == FIND_AND_ASK ? status::unproven :
-								       status::valid);
-				share(preferred_type == FIND_AND_KILL,
-				      preferred_type == FIND_AND_ASK ? refused :
-								       "You've shared your quest");
-				assert(object_reads ==
-				       reads); // Validation never invokes the handler.
+				share(true, "You've shared your quest");
+				assert(object_reads == reads); // Sharing never invokes the handler.
 				move(&recipient, 3);
 				char intercepted[] = "burbul map";
 				assert(special(&recipient, CMD_ASK, intercepted));
@@ -1187,18 +1168,12 @@ int main(int argc, char **argv)
 				recipient.equipment[WEAR_BODY] = nullptr;
 				objects[1].func.obj = unknown_object;
 				recipient.equipment[WEAR_BODY] = &blocker;
-				check(preferred_type == FIND_AND_ASK ? status::unproven :
-								       status::valid);
-				share(preferred_type == FIND_AND_KILL,
-				      preferred_type == FIND_AND_ASK ? refused :
-								       "You've shared your quest");
+				share(true, "You've shared your quest");
 				recipient.equipment[WEAR_BODY] = nullptr;
 				objects[1].func.obj = burbul_map_obj;
 			}
 		}
-		// Portable gear never decides ASK eligibility: its owner can bag, drop or
-		// swap it, as with the reported dagger. A fixed object running an actual or
-		// unknown interceptor still refuses ASK until it is out of special()'s reach.
+		// Neither portable nor fixed interceptors on the recipient block a share.
 		for (const auto &[item_vnum, proc] :
 		     { std::pair<int, obj_proc_type>{ 3833, glades_dagger },
 		       { 29328, burbul_map_obj },
@@ -1222,22 +1197,7 @@ int main(int argc, char **argv)
 											    nullptr;
 					container.contains = location == LOC_INSIDE ? &item :
 										      nullptr;
-					const bool allowed = preferred_type == FIND_AND_KILL ||
-							     portable || location == LOC_INSIDE;
-					check(allowed ? status::valid : status::unproven);
-					share(allowed,
-					      allowed ? "You've shared your quest" : refused);
-					if (!allowed)
-					{
-						const std::string example =
-							"actor_object_handler=1(example=" +
-							std::to_string(item_vnum) + ")";
-						assert(share_logs.size() == 1 &&
-						       share_logs[0].find("status=unproven") !=
-							       std::string::npos &&
-						       share_logs[0].find(example) !=
-							       std::string::npos);
-					}
+					share(true, "You've shared your quest");
 					if (proc == burbul_map_obj)
 					{
 						move(&recipient, 3);
@@ -1247,20 +1207,11 @@ int main(int argc, char **argv)
 						move(&recipient, 0);
 					}
 				}
-				// The dagger cannot hide a genuine interceptor in the target's scene.
-				if (portable && proc == glades_dagger)
-				{
-					rooms[3].contents = &blocker;
-					check(preferred_type == FIND_AND_ASK ? status::unproven :
-									       status::valid);
-					rooms[3].contents = nullptr;
-				}
 			}
 		objects[0].func.obj = nullptr;
 		recipient.carrying = nullptr;
 		recipient.equipment[WIELD] = nullptr;
 		container.contains = nullptr;
-		check(status::valid); // A recipient without the dagger.
 		share(true, "You've shared your quest");
 
 		consent = false;
@@ -1280,20 +1231,12 @@ int main(int argc, char **argv)
 		fresh.erase(vnum);
 		share(false, "already done this quest");
 		fresh.insert(vnum);
-		const char *blocked = "temporarily blocked from this task's target";
+		// Temporary recipient conditions never block a share.
 		recipient.specials.affected_by |= AFF_BLIND;
-		share(false, blocked);
-		assert(share_logs.size() == 1 &&
-		       share_logs[0].find("pid=42 recipient=88") != std::string::npos &&
-		       share_logs[0].find("status=blocked") != std::string::npos &&
-		       share_logs[0].find("visibility=") != std::string::npos);
+		recipient.specials.affected_by2 |= AFF2_SILENCED;
+		share(true, "You've shared your quest");
 		recipient.specials.affected_by &= ~AFF_BLIND;
-		if (preferred_type == FIND_AND_ASK)
-		{
-			recipient.specials.affected_by2 |= AFF2_SILENCED;
-			share(false, blocked);
-			recipient.specials.affected_by2 &= ~AFF2_SILENCED;
-		}
+		recipient.specials.affected_by2 &= ~AFF2_SILENCED;
 		assert(wallet_debits == 0 && history_writes == 0);
 		std::cout << "combat-proc sharing level " << level << ' ' << argv[3]
 			  << ": passed\n";
@@ -1353,9 +1296,9 @@ int main(int argc, char **argv)
 			       daily_remaining == 0 && wallet_debits == 0 && history_writes == 0);
 			assert(world_quest_refresh(&player) == world_quest_target_status::valid);
 			assert(replacement_logs.empty());
-			// Safe armor must not hide a genuine interceptor in the same scene.
+			// A live interceptor never cancels accepted work, but still blocks new selection.
 			rooms[3].contents = &blocker;
-			assert(world_quest_refresh(&player) == world_quest_target_status::unproven);
+			assert(world_quest_refresh(&player) == world_quest_target_status::valid);
 			pc.quest_active = 0;
 			pc.quest_replacement_due = 1;
 			const auto pending = pc;
@@ -1637,34 +1580,8 @@ int main(int argc, char **argv)
 			&player, geographic_origin, level, target, preferred_type);
 		assert((failure == QUEST_CREATION_NO_FAILURE) == expected);
 		const int vnum = preferred_type == FIND_AND_ASK ? 1003 : 1002;
-		const auto accepted = world_quest_policy_check_target(
-			&player, geographic_origin, level, 20, vnum, preferred_type, 1);
-		const auto expected_status = expected ? world_quest_target_status::valid :
-					     std::string(geographic_family) == "ambiguous_surface" ?
-							world_quest_target_status::unproven :
-							world_quest_target_status::unavailable;
-		assert(accepted.status == expected_status);
-		if (expected_status == world_quest_target_status::unproven)
-		{
-			pc.quest_active = 1;
-			pc.quest_level = level;
-			pc.quest_origin_room = geographic_origin;
-			pc.quest_type = preferred_type;
-			pc.quest_zone_number = 20;
-			pc.quest_mob_vnum = vnum;
-			pc.quest_kill_original = preferred_type == FIND_AND_KILL ? 1 : 0;
-			assert(world_quest_refresh(&player) == expected_status);
-			assert(pc.quest_active && !pc.quest_replacement_due &&
-			       pc.quest_level == level);
-		}
 		if (expected)
-		{
-			assert(target.mob_vnum == vnum && target.map_room == accepted.map_room);
-			player.player.level = 30;
-			assert(world_quest_policy_check_target(&player, geographic_origin, level,
-							       20, vnum, preferred_type, 1)
-				       .status == accepted.status);
-		}
+			assert(target.mob_vnum == vnum);
 		std::cout << level << ' ' << mode << ' ' << argv[3]
 			  << " assignment geography passed\n";
 		return 0;
@@ -1687,10 +1604,6 @@ int main(int argc, char **argv)
 		assert((failure == QUEST_CREATION_NO_FAILURE) == expected);
 		if (expected)
 			assert(target.mob_vnum == vnum && target.type == preferred_type);
-		const auto accepted = world_quest_policy_check_target(&player, 1000, level, 20,
-								      vnum, preferred_type, 1);
-		assert(accepted.status == (expected ? world_quest_target_status::valid :
-						      world_quest_target_status::unavailable));
 		assert(zones[1].avg_mob_level ==
 			       (zone_average_case ? target_zone_average : level) &&
 		       dirty_marks == 0);
@@ -1701,220 +1614,6 @@ int main(int argc, char **argv)
 	{
 		using status = world_quest_target_status;
 		const int vnum = preferred_type == FIND_AND_KILL ? 1002 : 1003;
-		auto check = [&](status expected_status, int needed = 1, int origin = 1000)
-		{
-			const auto before_actor = player;
-			const auto before_pc = pc;
-			const int before_dirty = dirty_marks;
-			const std::vector<room_data> before_rooms(world, world + top_of_world + 1);
-			const auto actual = world_quest_policy_check_target(
-				&player, origin, level, 20, vnum, preferred_type, needed);
-			if (actual.status != expected_status)
-				std::cerr << "expected status " << static_cast<int>(expected_status)
-					  << " got " << static_cast<int>(actual.status) << '\n';
-			assert(actual.status == expected_status);
-			assert(actual.work <= WORLD_QUEST_MAX_TARGET_WORK);
-			assert(!memcmp(&before_actor, &player, sizeof(player)));
-			assert(!memcmp(&before_pc, &pc, sizeof(pc)));
-			assert(!memcmp(before_rooms.data(), world,
-				       before_rooms.size() * sizeof(room_data)));
-			assert(history_reads.empty() && dirty_marks == before_dirty);
-			assert(probe_reads == boot_probes && object_reads == boot_objects);
-			return actual;
-		};
-		assert(check(status::valid).map_room == 5);
-		obj_data trace{};
-		trace.R_num = 0;
-		rooms[5].contents = &trace;
-		for (auto procedure : { tracks, blood_stains })
-		{
-			objects[0].func.obj = procedure;
-			check(status::valid);
-		}
-		rooms[5].contents = nullptr;
-		objects[0].func.obj = nullptr;
-
-		rooms[0].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
-		check(status::valid); // A locked outward exit is irrelevant.
-		rooms[0].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
-		if (level <= WORLD_QUEST_LOCAL_MAX_LEVEL)
-		{
-			rooms[5].continent = 0;
-			check(status::valid); // Boot geography does not depend on current map conditions.
-			rooms[5].continent = CONT_GC;
-		}
-		check(status::needs_origin, 1, 0);
-		check(status::unavailable, 1, 999999);
-		move(&player, 2);
-		check(status::valid); // The accepted origin survives ordinary player travel.
-		move(&player, 0);
-		player.specials.affected_by |= AFF_BLIND;
-		check(status::blocked);
-		player.specials.affected_by &= ~AFF_BLIND;
-		SET_POS(&player, STAT_SLEEPING | POS_PRONE);
-		check(status::blocked);
-		SET_POS(&player, STAT_NORMAL | POS_STANDING);
-		hide_artifact.R_num = 0;
-		objects[0].func.obj = unknown_object;
-		player.carrying = &hide_artifact;
-		check(preferred_type == FIND_AND_ASK ? status::unproven : status::valid);
-		player.carrying = nullptr;
-		objects[0].func.obj = nullptr;
-		rooms[3].funct = unknown_room;
-		check(preferred_type == FIND_AND_ASK ? status::unproven : status::valid);
-		rooms[3].funct = nullptr;
-		// An unrelated unknown branch cannot conceal a definitive final lock.
-		two_way(0, DIR_NORTH, 1, DIR_SOUTH);
-		rooms[1].funct = unknown_room;
-		rooms[5].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
-		check(status::valid);
-		rooms[5].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
-		check(status::valid);
-		rooms[1].funct = nullptr;
-		rooms[3].dir_option[DIR_WEST]->exit_info |= EX_LOCKED;
-		check(status::valid); // A return path is not required.
-		rooms[3].dir_option[DIR_WEST]->exit_info &= ~EX_LOCKED;
-		const int sector = rooms[3].sector_type;
-		rooms[3].sector_type = SECT_NO_GROUND;
-		if (level >= 30)
-		{
-			check(status::valid); // Travel capabilities do not gate the target.
-			player.specials.affected_by |= AFF_FLY;
-			check(status::valid);
-			player.specials.affected_by &= ~AFF_FLY;
-		}
-		else
-			check(status::valid); // Locality is independent of gear.
-		rooms[3].sector_type = sector;
-		if (preferred_type == FIND_AND_KILL)
-		{
-			check(status::valid,
-			      2); // Remaining work, without the new-quest minus-one rule.
-			check(status::unavailable, 3);
-			move(ordinary[0], 2);
-			check(status::valid, 1);
-			check(status::unavailable, 2);
-			move(ordinary[1], 2);
-			check(status::unavailable);
-			move(ordinary[0], 3);
-			move(ordinary[1], 3);
-			rooms[3].room_flags |= ROOM_SAFE;
-			check(status::unavailable);
-			rooms[3].room_flags &= ~ROOM_SAFE;
-			for (auto mob : ordinary)
-				mob->specials.affected_by |= AFF_CHARM;
-			check(status::blocked);
-			for (auto mob : ordinary)
-				mob->specials.affected_by &= ~AFF_CHARM;
-		}
-		else
-		{
-			player.specials.affected_by2 |= AFF2_SILENCED;
-			check(status::blocked);
-			player.specials.affected_by2 &= ~AFF2_SILENCED;
-			mobiles[1].qst_func = world_quest;
-			check(status::unproven); // Known travel-safe does not mean ASK-safe.
-			mobiles[1].qst_func = nullptr;
-			// Execute the real command dispatcher to prove each blocker consumes ASK.
-			auto intercepted = [&]
-			{
-				const int calls = interceptor_calls;
-				check(status::unproven);
-				assert(interceptor_calls ==
-				       calls); // Policy must not run procedures.
-				world_quest_target rejected;
-				assert(world_quest_policy_select_target(&player, 1000, level,
-									rejected, FIND_AND_ASK) !=
-				       QUEST_CREATION_NO_FAILURE);
-				history_reads.clear();
-				move(&player, 3);
-				char message[] = "target message";
-				assert(special(&player, CMD_ASK, message));
-				assert(interceptor_calls > calls);
-				move(&player, 0);
-			};
-			mobiles[0].func.mob = blocking_mobile;
-			intercepted();
-			mobiles[0].func.mob = nullptr;
-			mobiles[0].qst_func = blocking_mobile;
-			intercepted();
-			mobiles[0].qst_func = nullptr;
-			rooms[3].funct = blocking_room;
-			intercepted();
-			rooms[3].funct = nullptr;
-			obj_data blocker{};
-			blocker.R_num = 0;
-			objects[0].func.obj = blocking_object;
-			player.carrying = &blocker;
-			intercepted();
-			player.carrying = nullptr;
-			player.equipment[0] = &blocker;
-			intercepted();
-			player.equipment[0] = nullptr;
-			rooms[3].contents = &blocker;
-			intercepted();
-			// Audited fixed objects still allow ASK, including the fixed portal
-			// outline (object 12410) bound to artifact_hide.
-			for (auto procedure : { tracks, artifact_hide })
-			{
-				objects[0].func.obj = procedure;
-				check(status::valid);
-			}
-			rooms[3].contents = nullptr;
-			objects[0].func.obj = nullptr;
-			check(status::valid);
-			P_char ask = live.back().get();
-			pc.quest_active = 1;
-			pc.quest_level = level;
-			pc.quest_origin_room = 1000;
-			pc.quest_zone_number = 20;
-			pc.quest_mob_vnum = vnum;
-			pc.quest_type = FIND_AND_ASK;
-			for (bool sleep : { true, false })
-			{
-				if (sleep)
-					SET_POS(ask, STAT_SLEEPING | POS_PRONE);
-				else
-					ask->specials.affected_by2 |= AFF2_SILENCED;
-				check(status::blocked);
-				assert(world_quest_refresh(&player) == status::blocked);
-				assert(pc.quest_active && !pc.quest_replacement_due);
-				if (sleep)
-					SET_POS(ask, STAT_NORMAL | POS_STANDING);
-				else
-					ask->specials.affected_by2 &= ~AFF2_SILENCED;
-				assert(world_quest_refresh(&player) == status::valid);
-				assert(pc.quest_active && !pc.quest_replacement_due);
-			}
-			resetQuest(&player);
-			dirty_marks = 0;
-			move(ask, 2);
-			check(status::unavailable);
-			move(ask, 3);
-			ask->specials.affected_by |= AFF_INVISIBLE;
-			check(level < 31 ? status::unavailable : status::blocked);
-			ask->specials.affected_by &= ~AFF_INVISIBLE;
-			rooms[3].room_flags |= ROOM_SILENT;
-			check(status::unavailable);
-			rooms[3].room_flags &= ~ROOM_SILENT;
-		}
-		// The accepted-target API does not traverse a large unrelated graph.
-		std::vector<room_data> oversized(65536 + 8);
-		std::copy(std::begin(rooms), std::end(rooms), oversized.begin());
-		world = oversized.data();
-		top_of_world = static_cast<int>(oversized.size()) - 1;
-		for (int room = 7; room <= top_of_world; ++room)
-		{
-			world[room].number = 500000 + room;
-			world[room].continent = CONT_GC;
-			edge(room == 7 ? 5 : room - 1, DIR_NORTH, room);
-			edge(room, DIR_SOUTH, room == 7 ? 5 : room - 1);
-		}
-		check(status::valid);
-		world = rooms;
-		top_of_world = 6;
-
-		// Exercise the durable transition, not only its policy verdict.
 		pc.quest_active = 1;
 		pc.quest_type = preferred_type;
 		pc.quest_mob_vnum = vnum;
@@ -1931,53 +1630,89 @@ int main(int argc, char **argv)
 		pc.quest_started = 12345;
 		dirty_marks = 0;
 		const auto accepted = pc;
-		// The oversized graph's added branch is no longer part of this world.
-		rooms[5].dir_option[DIR_NORTH] = nullptr;
+		// Live world state never cancels, hides or alters accepted work: a dead or
+		// busy target must not reveal who is in the zone or void the task.
+		auto kept = [&]
+		{
+			history_reads.clear();
+			assert(world_quest_refresh(&player) == status::valid);
+			assert(!memcmp(&pc, &accepted, sizeof(pc)) && dirty_marks == 0);
+			assert(history_reads.empty() && probe_reads == boot_probes &&
+			       object_reads == boot_objects);
+		};
+		kept();
+		for (auto &mob : live)
+			if (GET_VNUM(mob.get()) == vnum)
+				move(mob.get(), 2);
+		kept(); // Every target killed or wandered off.
+		for (auto &mob : live)
+			if (GET_VNUM(mob.get()) == vnum)
+				move(mob.get(), 3);
+		player.specials.affected_by |= AFF_BLIND;
+		player.specials.affected_by2 |= AFF2_SILENCED;
+		kept();
+		player.specials.affected_by &= ~AFF_BLIND;
+		player.specials.affected_by2 &= ~AFF2_SILENCED;
+		rooms[3].funct = unknown_room;
+		kept(); // An unknown handler at the target.
+		rooms[3].funct = nullptr;
+		for (auto &mob : live)
+			if (GET_VNUM(mob.get()) == vnum)
+			{
+				mob->only.npc->aggro_flags = AGGR_ALL;
+				SET_POS(mob.get(), STAT_SLEEPING | POS_PRONE);
+			}
+		kept(); // Aggressive or sleeping targets.
+		for (auto &mob : live)
+			if (GET_VNUM(mob.get()) == vnum)
+			{
+				mob->only.npc->aggro_flags = 0;
+				SET_POS(mob.get(), STAT_NORMAL | POS_STANDING);
+			}
+		// A map cleared by earlier live checks, or left stale by a content
+		// change, returns to the entrance selection gives.
 		descriptor_data session{};
 		player.desc = &session;
-		pc.quest_map_room = 500002; // Previously published entrance is now stale.
-		session.gmcp_quest_map_sent = 1;
-		assert(world_quest_refresh(&player) == status::valid);
-		assert(pc.quest_map_room == 500001 && !session.gmcp_quest_map_sent &&
-		       dirty_marks == 1);
-		session.gmcp_quest_map_sent = 1;
-		dirty_marks = 0;
-		assert(world_quest_refresh(&player) == status::valid);
-		assert(!memcmp(&pc, &accepted, sizeof(pc)) && dirty_marks == 0);
-		assert(session.gmcp_quest_map_sent == 1); // Unchanged maps keep the cache.
+		for (int stale : { 0, 500002 })
+		{
+			session.gmcp_quest_map_sent = 1;
+			pc.quest_map_room = stale;
+			dirty_marks = 0;
+			assert(world_quest_refresh(&player) == status::valid);
+			assert(pc.quest_map_room == accepted.quest_map_room &&
+			       !session.gmcp_quest_map_sent && dirty_marks == 1);
+		}
 		player.desc = nullptr;
-		pc.quest_origin_room = 0;
-		pc.quest_map_room = 0;
-		assert(world_quest_refresh(&player) == status::needs_origin);
-		assert(!pc.quest_replacement_due && !pc.quest_origin_room);
-		assert(world_quest_refresh(&player, 1000) == status::valid);
-		assert(pc.quest_origin_room == 1000 && pc.quest_map_room == 500001);
+		if (level <= WORLD_QUEST_LOCAL_MAX_LEVEL)
+		{
+			// Without a provable local entrance the quest is mapless.
+			pc.quest_origin_room = 0;
+			assert(world_quest_refresh(&player) == status::valid);
+			assert(pc.quest_map_room == 0 && dirty_marks == 2);
+		}
+		pc = accepted;
 		dirty_marks = 0;
-		for (auto &mob : live)
-			if (GET_VNUM(mob.get()) == vnum && mob->in_room == 3)
-				move(mob.get(), 2);
+
+		// Only content can invalidate accepted work, and recovery keeps progress.
+		zones[1].flags |= ZONE_CLOSED;
 		assert(world_quest_refresh(&player) == status::unavailable);
 		assert(pc.quest_active == 0 && pc.quest_replacement_due == 1 && dirty_marks == 1);
 		assert(pc.quest_level == accepted.quest_level &&
 		       pc.quest_type == accepted.quest_type);
 		assert(pc.quest_kill_original == accepted.quest_kill_original &&
 		       pc.quest_kill_how_many == accepted.quest_kill_how_many);
-		assert(pc.quest_map_bought == 1 && pc.quest_map_room == 0 &&
+		assert(pc.quest_map_bought == 1 && pc.quest_map_room == accepted.quest_map_room &&
 		       pc.quest_shares_left == 2 && pc.quest_receiver == 999 &&
-		       pc.quest_started == 12345 && pc.quest_origin_room == 1000);
-		assert(history_reads.empty());
+		       pc.quest_started == 12345);
 		const auto due = pc;
 		assert(world_quest_refresh(&player) == status::unavailable);
 		assert(!memcmp(&pc, &due, sizeof(pc)) && dirty_marks == 1);
+		zones[1].flags &= ~ZONE_CLOSED;
 		auto giver = spawn(2, 0, 0);
 		fresh.clear();
 		history_reads.clear();
 		assert(!world_quest_replace(&player, giver));
 		assert(!memcmp(&pc, &due, sizeof(pc)));
-		// The original work can be restored without charging or replaying XP.
-		for (auto &mob : live)
-			if (GET_VNUM(mob.get()) == vnum && mob->in_room == 2)
-				move(mob.get(), 3);
 		fresh.insert(vnum);
 		history_reads.clear();
 		assert(world_quest_replace(&player, giver));
@@ -2053,17 +1788,6 @@ int main(int argc, char **argv)
 		assert(pc.quest_map_bought == 1 && GET_MONEY(&player) == 10000 - 10 * level &&
 		       wallet_debits == 1 && map_calls == 1);
 		const int paid_wallet = GET_MONEY(&player);
-		player.specials.affected_by |= AFF_BLIND;
-		for (int bought : { 0, 1 })
-		{
-			pc.quest_map_bought = bought;
-			ask("map");
-			assert(pc.quest_active && !pc.quest_replacement_due &&
-			       pc.quest_map_bought == bought && GET_MONEY(&player) == paid_wallet &&
-			       wallet_debits == 1);
-			assert((published_statuses == std::vector{ status::blocked }));
-		}
-		player.specials.affected_by &= ~AFF_BLIND;
 		zones[1].flags |= ZONE_CLOSED;
 		ask("abandon confirm");
 		assert(!pc.quest_active && !pc.quest_replacement_due &&
@@ -2138,11 +1862,6 @@ int main(int argc, char **argv)
 		command_recipient = &recipient;
 		share_limit = 2;
 		std::string sharing = "share friend";
-		recipient.specials.affected_by |= AFF_BLIND;
-		history_reads.clear();
-		do_quest(&player, sharing.data(), 0);
-		assert(!recipient_state.quest_active && pc.quest_shares_left == 2);
-		recipient.specials.affected_by &= ~AFF_BLIND;
 		recipient_state.quest_replacement_due = 1;
 		history_reads.clear();
 		do_quest(&player, sharing.data(), 0);
@@ -2180,20 +1899,19 @@ int main(int argc, char **argv)
 			{ actor->specials.affected_by |= AFF_BLIND; };
 			ask("map");
 			during_payment = nullptr;
-			assert(GET_MONEY(&player) == (change == 1 ? 10000 - 10 * level : 10000) &&
+			// Only the closed zone (content) refunds; live conditions do not.
+			const bool bought = change != 2;
+			assert(GET_MONEY(&player) == (bought ? 10000 - 10 * level : 10000) &&
 			       wallet_debits == debits_before + 1);
-			assert(pc.quest_map_bought == (change == 1) && map_calls == (change == 1));
-			assert(pc.quest_map_room == (change == 1 ? accepted.quest_map_room : 0));
-			assert(pc.quest_active == (change != 2) &&
-			       pc.quest_replacement_due == (change == 2));
+			assert(pc.quest_map_bought == bought && map_calls == bought);
+			assert(pc.quest_map_room == accepted.quest_map_room);
+			assert(pc.quest_active == bought && pc.quest_replacement_due == !bought);
 			assert(pc.quest_kill_how_many == accepted.quest_kill_how_many &&
 			       pc.quest_kill_original == accepted.quest_kill_original);
 			assert((published_statuses ==
-				std::vector{ change == 1 ? status::valid :
-					     change == 2 ? status::unavailable :
-							   status::blocked }));
+				std::vector{ bought ? status::valid : status::unavailable }));
 			assert((feedback.find("You get your money back") != std::string::npos) ==
-			       (change != 1));
+			       !bought);
 			player.specials.affected_by &= ~AFF_BLIND;
 			rooms[5].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
 			zones[1].flags &= ~ZONE_CLOSED;
@@ -2282,10 +2000,11 @@ int main(int argc, char **argv)
 								      shop_keeper;
 				mobiles[1].qst_func = dispatch == 1 ? procedure : nullptr;
 				shops[0].func = dispatch == 2 ? procedure : nullptr;
-				assert(world_quest_policy_check_target(
-					       &player, 1000, level, zones[1].number,
-					       mobiles[1].virtual_number, FIND_AND_ASK, 1)
-					       .status == world_quest_target_status::valid);
+				history_reads.clear();
+				world_quest_target target;
+				assert(world_quest_policy_select_target(&player, 1000, level,
+									target, FIND_AND_ASK) ==
+				       QUEST_CREATION_NO_FAILURE);
 			}
 		}
 		for (auto procedure :
@@ -2293,10 +2012,11 @@ int main(int argc, char **argv)
 		{
 			mobiles[1].func.mob = procedure;
 			shops[0].func = nullptr;
-			assert(world_quest_policy_check_target(
-				       &player, 1000, level, zones[1].number,
-				       mobiles[1].virtual_number, FIND_AND_ASK, 1)
-				       .status != world_quest_target_status::valid);
+			history_reads.clear();
+			world_quest_target target;
+			assert(world_quest_policy_select_target(&player, 1000, level, target,
+								FIND_AND_ASK) !=
+			       QUEST_CREATION_NO_FAILURE);
 		}
 		mobiles[1].func.mob = bs_wino;
 	}

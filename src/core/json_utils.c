@@ -1189,11 +1189,9 @@ char *json_build_quest_status(struct char_data *ch, world_quest_target_status st
 		cJSON_AddNumberToObject(root, "remaining", remaining);
 
 	using availability = world_quest_target_status;
-	const char *state = status == availability::valid	 ? "available" :
-			    status == availability::unavailable	 ? "unavailable" :
-			    status == availability::blocked	 ? "temporarilyBlocked" :
-			    status == availability::needs_origin ? "needsBartender" :
-								   "unproven";
+	const char *state = status == availability::valid	? "available" :
+			    status == availability::unavailable ? "unavailable" :
+								  "unproven";
 	cJSON_AddStringToObject(root, "availability", state);
 	cJSON_AddBoolToObject(root, "replacementDue", ch->only.pc->quest_replacement_due != 0);
 
@@ -1262,8 +1260,8 @@ char *json_build_quest_status(struct char_data *ch, world_quest_target_status st
 					"Your task is no longer available. Ask a bartender for a free replacement." :
 				ch->only.pc->quest_accomplished ?
 					"Task complete. Return to your quest giver." :
-				status == availability::blocked ?
-					"Your task is temporarily blocked." :
+				status == availability::unproven ?
+					"Your quest history is still being secured." :
 					"Ask a bartender to check your task.";
 			snprintf(target_buf, MAX_STRING_LENGTH, "%s", message);
 		}

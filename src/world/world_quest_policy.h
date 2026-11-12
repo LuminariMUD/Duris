@@ -47,17 +47,10 @@ quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vn
 							world_quest_target &target,
 							int required_type = 0, int needed = 0);
 
-struct world_quest_target_check
-{
-	world_quest_target_status status = world_quest_target_status::unproven;
-	int map_room = NOWHERE;
-	size_t work = 0;
-	std::string rejections; // Diagnostic summary when status is not valid.
-};
-
-world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_vnum,
-							 int accepted_level, int zone_number,
-							 int mob_vnum, int type, int needed);
+// False only when boot content proves the accepted target can never be met.
+bool world_quest_policy_target_exists(int accepted_level, int zone_number, int mob_vnum);
+// The map entrance selection would give this accepted quest, or NOWHERE.
+int world_quest_policy_map_room(int origin_vnum, int accepted_level, int zone_number);
 
 bool world_quest_policy_bootstrap();
 void refresh_world_quest_item_values();

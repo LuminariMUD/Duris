@@ -54,6 +54,7 @@ extern "C" void quest_journey_invalidate(P_char ch)
 #include <unordered_map>
 #include <unordered_set>
 #include <map>
+#include <set>
 #include <string>
 #include <unistd.h>
 #include <dlfcn.h>
@@ -78,6 +79,7 @@ extern "C"
 	int quest_gameplay_fixture_vnum = 0;
 	int quest_gameplay_fixture_selected = 0;
 	int quest_gameplay_fixture_suggested = 0;
+	int quest_gameplay_last_target = 0;
 	int quest_gameplay_reward_quota = 0;
 	int quest_gameplay_bonus_successes = -1;
 	int quest_gameplay_bonus_rolls = 0;
@@ -530,6 +532,12 @@ extern "C" void quest_gameplay_choose_fixture(P_char ch, const void *source_look
 {
 	using lookup_type = const void *(*)(P_char);
 	const auto source = reinterpret_cast<lookup_type>(const_cast<void *>(source_lookup));
+	// Production's live checks decide whether a suggested fixture is usable.
+	// One it passed over is skipped, so the next purchase tries another.
+	static std::set<std::pair<int, int>> refused;
+	if (quest_gameplay_fixture_suggested &&
+	    quest_gameplay_last_target != quest_gameplay_fixture_vnum)
+		refused.insert({ quest_gameplay_kind, quest_gameplay_fixture_vnum });
 	quest_gameplay_fixture_zone = -1;
 	quest_gameplay_fixture_vnum = 0;
 	quest_gameplay_fixture_selected = quest_gameplay_fixture_suggested = 0;
@@ -570,33 +578,32 @@ extern "C" void quest_gameplay_choose_fixture(P_char ch, const void *source_look
 	for (const auto &[key, zone] : candidates)
 	{
 		const int vnum = key.second;
-		if (!checked.insert(vnum).second || sql_world_quest_done_already(ch, vnum) != 0)
+		if (!checked.insert(vnum).second || refused.count({ quest_gameplay_kind, vnum }) ||
+		    sql_world_quest_done_already(ch, vnum) != 0)
 			continue;
 		bool walkable = true;
+		int supply = 0;
 		for (P_char mob = character_list; mob; mob = mob->next)
 			if (IS_NPC(mob) && GET_VNUM(mob) == vnum && source(mob) &&
 			    mob->in_room >= 0 && mob->in_room <= top_of_world &&
-			    zone_table[world[mob->in_room].zone].number == zone &&
-			    (!returns.count(mob->in_room) ||
-			     !returns.count(real_room(GET_BIRTHPLACE(mob)))))
-				walkable = false;
+			    zone_table[world[mob->in_room].zone].number == zone)
+			{
+				++supply;
+				if (!returns.count(mob->in_room) ||
+				    !returns.count(real_room(GET_BIRTHPLACE(mob))))
+					walkable = false;
+			}
 		const int needed =
 			quest_gameplay_kind == FIND_AND_ASK ? 1 :
 			quest_gameplay_reward_quota > 0	    ? quest_gameplay_reward_quota + 1 :
 			quest_gameplay_level == 29	    ? 3 :
 							      2;
-		const auto check =
-			walkable ? world_quest_policy_check_target(ch, quest_gameplay_origin,
-								   quest_gameplay_level, zone, vnum,
-								   quest_gameplay_kind, needed) :
-				   world_quest_target_check{};
-		if (!walkable || check.status != world_quest_target_status::valid)
+		if (!walkable || supply < needed ||
+		    !world_quest_policy_target_exists(quest_gameplay_level, zone, vnum))
 		{
 			// Explains an eventual "no eligible fixture" failure.
-			fprintf(stderr,
-				"quest fixture %d zone %d distance %d rejected: %s status=%d\n",
-				vnum, zone, key.first, walkable ? "policy" : "off-route",
-				static_cast<int>(check.status));
+			fprintf(stderr, "quest fixture %d zone %d distance %d rejected: %s\n", vnum,
+				zone, key.first, walkable ? "policy" : "off-route");
 			continue;
 		}
 		quest_gameplay_fixture_zone = real_zone(zone);
@@ -619,9 +626,8 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 	}
 	static unsigned sequence = 0;
-	static int last_target = 0;
 	if (q.quest_active)
-		last_target = q.quest_mob_vnum;
+		quest_gameplay_last_target = q.quest_mob_vnum;
 	cJSON *root = cJSON_CreateObject();
 	cJSON_AddStringToObject(root, "request", request);
 	number(root, "sequence", ++sequence);
@@ -633,7 +639,7 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 	number(root, "fixture_zone",
 	       quest_gameplay_fixture_zone >= 0 ? zone_table[quest_gameplay_fixture_zone].number :
 						  -1);
-	number(root, "history_target", last_target);
+	number(root, "history_target", quest_gameplay_last_target);
 	number(root, "items_busy", item_movement_transaction_player_busy(ch));
 
 	number(root, "room", world[ch->in_room].number);
@@ -718,7 +724,9 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 
 	number(root, "remaining", sql_world_quest_can_do_another(ch));
 	number(root, "history_done",
-	       last_target ? sql_world_quest_done_already(ch, last_target) : 0);
+	       quest_gameplay_last_target ?
+		       sql_world_quest_done_already(ch, quest_gameplay_last_target) :
+		       0);
 	if (FILE *ready = fopen("quest-history-ready.txt", "r"))
 	{
 		fclose(ready);
@@ -978,25 +986,12 @@ extern "C" void quest_world_audit(P_char ch)
 			// from a prototype interval or a sampled successful assignment.
 			for (int level = WORLD_QUEST_MIN_LEVEL; level < TOTALLVLS; ++level)
 			{
-				const auto kill = world_quest_policy_check_target(
-					ch, 16633, level,
-					zone_table[world[mob->in_room].zone].number, vnum,
-					FIND_AND_KILL, 2);
-				world_quest_target_check ask;
-				if (level < 50)
-					ask = world_quest_policy_check_target(
-						ch, 16633, level,
-						zone_table[world[mob->in_room].zone].number, vnum,
-						FIND_AND_ASK, 1);
-				if (kill.status != world_quest_target_status::unavailable ||
-				    (level < 50 &&
-				     ask.status != world_quest_target_status::unavailable))
+				if (world_quest_policy_target_exists(
+					    level, zone_table[world[mob->in_room].zone].number,
+					    vnum))
 				{
 					cJSON *result = cJSON_CreateObject();
 					number(result, "level", level);
-					number(result, "kill", static_cast<int>(kill.status));
-					if (level < 50)
-						number(result, "ask", static_cast<int>(ask.status));
 					cJSON_AddItemToArray(levels, result);
 				}
 			}

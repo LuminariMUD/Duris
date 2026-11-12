@@ -270,7 +270,7 @@ connections: its staff shortcuts must not make unrelated areas local. Multiple
 entrances in the same region agree; tied boundaries in different regions remain
 unresolved for that family. Surface and Underdark
 attachments do not conflict. Interiors cannot merge Underdark components.
-Ambiguous geography preserves accepted work as unproven; a known matching
+Ambiguous geography refuses new assignment; a known matching
 family still permits the task even if the other family is ambiguous.
 Geographic membership applies to a target's actual zone, including disconnected
 rooms, without requiring a path to either its reset or current room.
@@ -295,12 +295,13 @@ persisted by the player's save.
 If catalog construction throws, it fails closed and latches the failure for
 that process. Requests do not rebuild the catalog or scan prototypes to bypass
 it. Content, reset provenance, reward-policy, and map-cache changes require a
-new boot catalog; live actor locations and target interactions are rechecked per request.
+new boot catalog; live actor locations and target interactions are checked only
+when selecting a new or replacement target.
 
 ASK checks the command interceptors at the target room: its room procedure,
 other awake NPC handlers, room objects, and the player's carried/equipped
-objects. Unknown handlers make an accepted task unproven and prevent new
-assignment until the interaction can be verified. Audited passive handlers
+objects. Unknown handlers prevent new assignment of that target; they never
+affect work already accepted. Audited passive handlers
 remain eligible, including carried or worn random armor and master-set items:
 their set-bonus handler ignores ASK. This bounded audit never executes a procedure
 or checks the travel route.
@@ -309,32 +310,24 @@ or checks the travel route.
 
 ### Availability and free replacement
 
-`world_quest_refresh()` revalidates accepted work for `quest`, bartender
-interactions, and no-argument GMCP status sends, including the initial status.
-A proven world-invalid incomplete quest becomes inactive with
-`quest_replacement_due=1`. Temporary player limitations,
-unknown ASK handlers, and exhausted target-check budgets do not alone cancel an assignment.
-Completed legacy work remains claimable. Old assignments without an origin need
-rebinding at a real bartender to establish their accepted local scope.
+`world_quest_refresh()` runs for `quest`, bartender interactions, kill
+progress, and no-argument GMCP status sends. It consults only boot content, never
+live NPCs, players, or rooms: accepted work stays active while targets are dead,
+asleep, aggressive, blocked by handlers, or killed by other players, and the
+player can wait for the repop or pay to abandon. This also means quest status
+never reveals activity in the target zone.
 
-The availability results distinguish:
+An incomplete quest becomes inactive with `quest_replacement_due=1` only when
+its content is gone: the target prototype or zone no longer exists, the zone is
+closed or private or no longer eligible at the accepted level, or the target no
+longer has an ordinary reset in that zone. Completed legacy work remains
+claimable. An active quest's map entrance is kept on the one selection gives
+its saved origin and level, so it follows content changes and recovers from
+earlier versions that cleared it while a target was temporarily unusable. A
+local quest with no entrance in its own region stays mapless.
 
-- `valid`: enough suitable targets meet the accepted scope and interaction rules.
-- `blocked`: current player/target conditions such as blindness, sleep or silence
-  prevent interaction; the accepted task remains.
-- `unproven`: an ASK handler, aggression-dependent interaction, unresolved geography,
-  or target-check bound prevents a reliable verdict; the task remains.
-- `needs_origin`: suitable work exists but the legacy task has no recorded
-  origin. Ask a bartender to check it; a valid check binds that room as origin.
-- `unavailable`: the world cannot support the remaining work under this
-  contract, for example a removed target, inadequate qualifying supply, or a
-  geographic mismatch. Refresh grants replacement entitlement. Route changes
-  never grant replacement.
-
-Accepted KILL supply is checked against remaining kills; the new-purchase
-minus-one rule is not applied again. Scope uses the saved accepted level and
-origin even after the character travels or levels. Validation uses one target
-check, with no capability-dependent route passes.
+The availability results are `valid`, `unavailable` (replacement due), and
+`unproven` (the quest history save is still pending).
 
 Ask any real bartender for `quest` to redeem a replacement without a new fee or
 daily penalty, before the new-purchase level and allowance gates. Replacement
@@ -395,8 +388,7 @@ entrance, in which case the bartender refuses the map without charging.
 A failed post-payment map check refunds the fee. Maps are a paid, repeatable
 view of the geographic entrance, not a step-by-step route to the NPC. After buying
 one, type `quest` to view it again without another fee. The purchase flag survives
-temporary interaction blockage and free replacement; hints are withheld until
-a later valid refresh.
+free replacement.
 
 ### Sharing and kill credit
 
@@ -407,9 +399,9 @@ Sharing has no money fee. The accepted level must be within the configured
 high/low bounds of the recipient's current level (inclusive ±6 in this checkout).
 There is no separate recipient level-11 check in the sharing branch.
 
-The recipient needs remaining daily allowance, no retained completion for that
-target VNUM, and a suitable target checked against the original accepted scope
-using the accepted level and remaining KILL count. An active assignment or
+The recipient needs remaining daily allowance and no retained completion for that
+target VNUM. The target's live state and the recipient's condition are not
+checked, and the recipient receives the sharer's map entrance. An active assignment or
 replacement entitlement cannot be overwritten. Sharing copies the original
 giver, receiver, start time, type, level, target, origin, quota, and already
 earned kills. Each recipient then progresses independently; later progress,
@@ -444,8 +436,7 @@ The serializer in `json_build_quest_status()` supplies:
 - `zoneNumber` only for a verified, active, incomplete task with known target
   and zone labels. Otherwise `target` is a recovery/completion message or empty.
 
-Availability strings map `valid` to `available`, `blocked` to
-`temporarilyBlocked`, `needs_origin` to `needsBartender`, and preserve
+Availability strings map `valid` to `available` and preserve
 `unavailable`/`unproven`. `available` is a validity result, not a promise that
 another quest can be bought: idle and completed legacy states also return it.
 Use `active`, `replacementDue`, and known `remaining` alongside it.
@@ -560,9 +551,9 @@ For a refusal or missing reward, distinguish these cases:
   receive the combined "No suitable local task" refusal; higher-level feedback
   distinguishes no eligible zone from no suitable live target. A failed paid
   selection refunds the fee and publishes no new assignment.
-- Blocked/unproven/legacy origin: read `quest` and the availability result before
-  clearing work. The progress and map purchase are retained. A proved world
-  invalidation offers the free replacement path instead of paid abandonment.
+- Replacement due: the target's content is gone. Progress and map purchase are
+  retained, and any bartender offers the free replacement instead of paid
+  abandonment.
 - Missing reward item: check the ownership-service rejection/publication logs
   and quest completion history. A committed completion saves the reward item
   and a recovery marker together; ask a bartender to claim remaining rewards

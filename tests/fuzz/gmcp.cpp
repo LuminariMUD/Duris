@@ -120,7 +120,7 @@ char *json_build_quest_status(struct char_data *, world_quest_target_status)
 {
 	return nullptr;
 }
-world_quest_target_status world_quest_refresh(P_char, int)
+world_quest_target_status world_quest_refresh(P_char)
 {
 	return world_quest_target_status::unproven;
 }
