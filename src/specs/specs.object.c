@@ -27,6 +27,7 @@
 #include "item/native_artifact_actions.h"
 #include "core/structs.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include "world/db.h"
 #include "world/events.h"
 #include "cmd/interp.h"
@@ -3906,7 +3907,7 @@ int sunblade(P_obj obj, P_char ch, int cmd, char *arg)
 	return FALSE;
 }
 
-int vigor_mask(P_obj obj, P_char ch, int cmd, char *arg)
+int vigor_mask(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 {
 	P_char vict;
 	struct affected_type *af;
@@ -3919,15 +3920,7 @@ int vigor_mask(P_obj obj, P_char ch, int cmd, char *arg)
 	if (!OBJ_WORN_POS(obj, WEAR_FACE))
 		return (FALSE);
 
-	// Taking the mask off takes its vitality with it; the remove itself goes ahead.
-	if (cmd == CMD_REMOVE && OBJ_WORN_BY(obj, ch) && arg)
-	{
-		if (isname(arg, "mask") || isname(arg, "bahamut") || isname(arg, "vigor") ||
-		    isname(arg, "unique"))
-			affect_from_char(ch, SPELL_VITALITY);
-		return FALSE;
-	}
-
+	// Vitality is a timed spell, not a worn grant; removing the mask leaves it alone.
 	if (ch || cmd)
 		return (FALSE);
 
@@ -3971,23 +3964,41 @@ int vigor_mask(P_obj obj, P_char ch, int cmd, char *arg)
 		send_to_char(
 			"&+WThe essence of Bahamut streams out of your mask and attacks your victim!&N\n",
 			ch);
-		if (affected_by_spell(ch, SPELL_VITALITY))
+		const auto ordinary_vitality = [](const affected_type *affect)
 		{
+			return affect->type == SPELL_VITALITY && affect->duration >= 0 &&
+			       !(affect->flags & (AFFTYPE_SET_AFFECT | AFFTYPE_LINKED_OBJ |
+						  AFFTYPE_LINKED_CH | AFFTYPE_NOAPPLY));
+		};
+		bool has_vitality = false;
+		for (af = ch->affected; af; af = af->next)
+		{
+			if (af->type != SPELL_VITALITY)
+				continue;
+			has_vitality = true;
+			if (!ordinary_vitality(af))
+				continue;
 			send_to_char("&+Byou feel revitalized.\n", ch);
-			for (af = ch->affected; af; af = af->next)
+			if (af->modifier < GET_LEVEL(vict) * 4)
 			{
-				if (af->type == SPELL_VITALITY)
-				{
-					af->duration = 24;
-					af->modifier = GET_LEVEL(vict) * 4;
-				}
+				// Keep missing HP unchanged, and classify position only after reapplying.
+				all_affects(ch, FALSE);
+				af->modifier = GET_LEVEL(vict) * 4;
+				all_affects(ch, TRUE);
+				update_pos(ch);
 			}
+			af->duration = 24;
+			update_group_vitals(ch);
+			gmcp_char_vitals(ch);
+			gmcp_char_affects(ch);
 		}
-		else
+		if (!has_vitality)
 		{
 			spell_vitality(GET_LEVEL(vict), ch, NULL, 0, ch, 0);
 		}
-		if (affected_by_spell(vict, SPELL_VITALITY))
+		for (af = vict->affected; af && !ordinary_vitality(af); af = af->next)
+			;
+		if (af)
 		{
 			send_to_char("&+L   /\\             /\\\n", vict);
 			send_to_char("&+L   \\ \\           / /\n", vict);
@@ -4012,25 +4023,15 @@ int vigor_mask(P_obj obj, P_char ch, int cmd, char *arg)
 				vict);
 			send_to_char("&+L         \\___/&N\n", vict);
 
-			for (af = vict->affected; af; af = af->next)
+			// Removing ordinary Vitality can unsuspend a set grant; check the net HP after.
+			affect_remove(vict, af);
+			if (GET_HIT(vict) <= -10)
 			{
-				if (af->type == SPELL_VITALITY)
-				{
-					break;
-				}
+				die(vict, ch);
 			}
-			if (af)
+			else
 			{
-				// will removing vit kill the victim?
-				if (af->modifier >= (GET_HIT(vict) + 10))
-				{
-					die(vict, ch);
-				}
-				else
-				{
-					affect_remove(vict, af);
-					update_pos(vict);
-				}
+				update_pos(vict);
 			}
 		}
 		else
