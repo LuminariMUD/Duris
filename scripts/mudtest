@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Drive the real server from the shell. See tests/scenarios/README.md.
+#   scripts/mudtest smoke
+#   scripts/mudtest scenario FILE.scn [FILE.scn...]
+# Uses bin/server/dms_new (override with DURIS_SERVER_BINARY) and a disposable
+# MariaDB container per run.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+server=${DURIS_SERVER_BINARY:-bin/server/dms_new}
+[[ -x "$server" ]] || { echo "error: $server is missing; run make -C src" >&2; exit 2; }
+
+case "${1:-}" in
+smoke) files=(tests/scenarios/smoke.scn) ;;
+scenario)
+	shift
+	(($#)) || { echo "usage: scripts/mudtest scenario FILE.scn..." >&2; exit 2; }
+	files=("$@")
+	;;
+*)
+	echo "usage: scripts/mudtest smoke | scenario FILE.scn..." >&2
+	exit 2
+	;;
+esac
+exec tests/async/with_disposable_mariadb.sh python3 tests/scenarios/run_scenarios.py --server "$server" "${files[@]}"
