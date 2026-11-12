@@ -17,6 +17,7 @@
 #include <memory>
 
 struct sql_write_receipt;
+struct sql_row;
 
 /* DEFINES for assocs.c */
 
@@ -360,6 +361,7 @@ class Guild
 	~Guild();
 
     protected:
+	void display_roster(P_char member, const std::vector<sql_row> &rows);
 	static bool load_guild(int guild_num);
 	void remove_member_from_list(P_char ch);
 	void write_transaction_to_ledger(const char *name, const char *trans_type,

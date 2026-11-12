@@ -1305,6 +1305,9 @@ struct roster_entry
 // The class label WHO prints for these class fields.
 const char *roster_class(const roster_entry &entry, bool show_spec)
 {
+	const int class_index = flag2idx(entry.m_class);
+	if (class_index < 1 || class_index > CLASS_COUNT || (entry.m_class & (entry.m_class - 1)))
+		return class_names_table[0].ansi;
 	if (entry.secondary_class > 0 && entry.secondary_class != BIT_32)
 		for (int i = 0; multiclass_names[i].cls1 != -1; i++)
 			if ((multiclass_names[i].cls1 == static_cast<int>(entry.m_class) &&
@@ -1312,42 +1315,29 @@ const char *roster_class(const roster_entry &entry, bool show_spec)
 			    (multiclass_names[i].cls2 == static_cast<int>(entry.m_class) &&
 			     multiclass_names[i].cls1 == static_cast<int>(entry.secondary_class)))
 				return multiclass_names[i].mc_name;
-	if (entry.spec && show_spec)
-		return GET_SPEC_NAME(entry.m_class, entry.spec - 1);
-	return class_names_table[flag2idx(entry.m_class)].ansi;
+	if (entry.spec > 0 && entry.spec <= MAX_SPEC && show_spec)
+		return specdata[class_index][entry.spec - 1];
+	return class_names_table[class_index].ansi;
 }
 
 // Every member's last saved state, replaced by live state for those in the game.
-std::map<std::string, roster_entry> roster_entries(P_Guild guild)
+std::map<std::string, roster_entry> roster_entries(P_Guild guild, const sql_rows &rows)
 {
 	std::map<std::string, roster_entry> entries;
-
-	MYSQL_RES *res = NULL;
-
-	if (qry("SELECT name, level, m_class, secondary_class, spec, race, act, act2 "
-		"FROM player_data WHERE assoc_id = %u",
-		guild->get_id()))
-		res = mysql_store_result(DB);
-	if (res != NULL)
+	for (const sql_row &row : rows)
 	{
-		MYSQL_ROW row;
-
-		while ((row = mysql_fetch_row(res)))
-		{
-			if (!row[0])
-				continue;
-			const auto number = [row](int column)
-			{ return row[column] ? strtoul(row[column], NULL, 10) : 0UL; };
-			roster_entry &entry = entries[row[0]];
-			entry.level = number(1);
-			entry.m_class = number(2);
-			entry.secondary_class = number(3);
-			entry.spec = number(4);
-			entry.race = number(5);
-			entry.anonymous = number(6) & PLR_ANONYMOUS;
-			entry.hardcore = number(7) & PLR2_HARDCORE_CHAR;
-		}
-		mysql_free_result(res);
+		if (!row[0])
+			continue;
+		const auto number = [&row](int column)
+		{ return row[column] ? strtoul(row[column], NULL, 10) : 0UL; };
+		roster_entry &entry = entries[row[0]];
+		entry.level = number(1);
+		entry.m_class = number(2);
+		entry.secondary_class = number(3);
+		entry.spec = number(4);
+		entry.race = number(5);
+		entry.anonymous = number(6) & PLR_ANONYMOUS;
+		entry.hardcore = number(7) & PLR2_HARDCORE_CHAR;
 	}
 	for (P_char ch = character_list; ch; ch = ch->next)
 	{
@@ -1367,6 +1357,24 @@ std::map<std::string, roster_entry> roster_entries(P_Guild guild)
 } // namespace
 
 void Guild::display(P_char member)
+{
+	const unsigned int guild_id = get_id();
+	sql_read_for(
+		member,
+		sql_format("SELECT name, level, m_class, secondary_class, spec, race, act, act2 "
+			   "FROM player_data WHERE assoc_id = %u",
+			   guild_id),
+		[guild_id](P_char viewer, const sql_rows &rows)
+		{
+			// Re-resolve the guild and authority after the asynchronous read.
+			P_Guild guild = get_guild_from_id(guild_id);
+			if (!guild || GET_ASSOC(viewer) != guild || !IS_MEMBER(GET_A_BITS(viewer)))
+				return;
+			guild->display_roster(viewer, rows);
+		});
+}
+
+void Guild::display_roster(P_char member, const std::vector<sql_row> &rows)
 {
 	char buf[MAX_STRING_LENGTH], Gbuf2[MAX_STR_NORMAL], *current_title;
 	P_Alliance alliance;
@@ -1433,7 +1441,7 @@ void Guild::display(P_char member)
 	if (members != NULL)
 	{
 		update_online_members();
-		const auto entries = roster_entries(this);
+		const auto entries = roster_entries(this, rows);
 		int title_width = 0;
 		for (int i = 0; i < ASC_NUM_RANKS - 1; i++)
 			title_width =
@@ -1455,6 +1463,10 @@ void Guild::display(P_char member)
 									   roster_entry() :
 									   found->second;
 					char level_class[MAX_STR_NORMAL];
+					const int race = entry.race >= 0 &&
+									 entry.race <= LAST_RACE ?
+								 entry.race :
+								 0;
 
 					if (!entry.level)
 						snprintf(level_class, sizeof(level_class), "%21s",
@@ -1479,9 +1491,8 @@ void Guild::display(P_char member)
 							"&+y+&n" :
 							" ",
 						level_class, pMembers->name,
-						pad_ansi(entry.level ?
-								 race_names_table[entry.race].ansi :
-								 "",
+						pad_ansi(entry.level ? race_names_table[race].ansi :
+								       "",
 							 12, TRUE)
 							.c_str(),
 						entry.hardcore ? "&+rH&+RC&n" : "  ",
