@@ -35,6 +35,7 @@
 #include "core/mm.h"
 #include "item/objmisc.h"
 #include "item/random_equipment.h"
+#include "kingdom/kingdom_craft_bind.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
@@ -1399,6 +1400,13 @@ void do_encrust(P_char ch, char *argument, int /*cmd*/)
 	set_long_description(new_item, buf1);
 	snprintf(buf1, MAX_STRING_LENGTH, "%s %s", item->name, "encrust");
 	set_keywords(new_item, buf1);
+	/* Guild-store gear stays wearable only by its buyer (#677). The binding is
+	 * the token in its action description, so the replacement carries it on. */
+	if (kingdom_craft_binding_present(item->action_description))
+	{
+		new_item->action_description = str_dup(item->action_description);
+		SET_BIT(new_item->str_mask, STRUNG_DESC3);
+	}
 
 	if (OBJ_VNUM(jewel) == RANDOM_OBJ_VNUM) // old encrustables
 		set_encrust_affect(new_item, jewel->value[6]);
