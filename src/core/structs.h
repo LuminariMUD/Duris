@@ -1843,6 +1843,7 @@ struct descriptor_data
 	unsigned char *ws_output_buffer;
 	size_t ws_output_len;
 	size_t ws_output_offset;
+	size_t ws_output_frame_left; /* unsent bytes of a data frame already started */
 	unsigned char *ws_control_output_buffer;
 	size_t ws_control_output_len;
 	size_t ws_control_output_offset;

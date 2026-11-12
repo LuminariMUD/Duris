@@ -1898,7 +1898,9 @@ static bool run_connection_phase(game_loop_pulse_context &ctx)
 			logit(LOG_COMM, "Closing socket with exception.  FIXME!");
 			close_socket(point);
 		}
-		else if (FD_ISSET(point->descriptor, &input_set))
+		/* Frames retained by the per-read frame budget need no new bytes to be parsed. */
+		else if (FD_ISSET(point->descriptor, &input_set) ||
+			 (point->websocket && websocket_has_pending(point)))
 		{
 			int input_result = 0;
 			if (point->connected != CON_SSLNEGO)

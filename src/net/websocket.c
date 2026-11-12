@@ -954,24 +954,23 @@ static int websocket_queue_output(struct descriptor_data *d, const unsigned char
 	return 0;
 }
 
-static int websocket_flush_queue(struct descriptor_data *d, unsigned char *buffer,
-				 size_t *queued_len, size_t *offset)
+/* Send buffer[*offset, end) within the shared per-flush byte budget. */
+static int websocket_flush_queue(struct descriptor_data *d, unsigned char *buffer, size_t end,
+				 size_t *offset, size_t *budget)
 {
-	size_t flushed = 0;
-	while (*offset < *queued_len)
+	while (*offset < end)
 	{
-		size_t remaining = *queued_len - *offset;
-		size_t budget = WS_MAX_FLUSH_BYTES - flushed;
+		size_t remaining = end - *offset;
 		ssize_t sent;
-		if (budget == 0)
+		if (*budget == 0)
 			return 0;
-		if (remaining > budget)
-			remaining = budget;
+		if (remaining > *budget)
+			remaining = *budget;
 		sent = send(d->descriptor, buffer + *offset, remaining, MSG_NOSIGNAL);
 		if (sent > 0)
 		{
 			*offset += (size_t)sent;
-			flushed += (size_t)sent;
+			*budget -= (size_t)sent;
 		}
 		else if (sent < 0 && errno == EINTR)
 			continue;
@@ -990,34 +989,71 @@ static int websocket_flush_queue(struct descriptor_data *d, unsigned char *buffe
 	return 1;
 }
 
+/* Wire length of a complete server frame queued at a frame boundary. */
+static size_t websocket_queued_frame_len(const unsigned char *frame)
+{
+	size_t len = frame[1] & 0x7F;
+	if (len == 126)
+		return 4 + (((size_t)frame[2] << 8) | frame[3]);
+	if (len == 127)
+	{
+		uint64_t wire_len = 0;
+		for (int i = 2; i < 10; i++)
+			wire_len = (wire_len << 8) | frame[i];
+		return 10 + (size_t)wire_len;
+	}
+	return 2 + len;
+}
+
+/*
+ * Controls take priority, but only between data frames: once a data frame has
+ * started on the wire it must finish before any control byte (RFC 6455 5.4).
+ */
 int websocket_flush_output(struct descriptor_data *d)
 {
+	size_t budget = WS_MAX_FLUSH_BYTES;
 	int result;
 	if (!d || d->descriptor < 0)
 		return -1;
-	result = websocket_flush_queue(d, d->ws_control_output_buffer, &d->ws_control_output_len,
-				       &d->ws_control_output_offset);
-	if (result <= 0)
-		return result;
-	if (d->ws_control_output_len > 0)
+	for (;;)
 	{
-		free(d->ws_control_output_buffer);
-		d->ws_control_output_buffer = NULL;
-		d->ws_control_output_len = 0;
-		d->ws_control_output_offset = 0;
+		size_t frame_left = d->ws_output_frame_left;
+		size_t start = d->ws_output_offset;
+		if (frame_left == 0)
+		{
+			result = websocket_flush_queue(d, d->ws_control_output_buffer,
+						       d->ws_control_output_len,
+						       &d->ws_control_output_offset, &budget);
+			if (result <= 0)
+				return result;
+			if (d->ws_control_output_len > 0)
+			{
+				free(d->ws_control_output_buffer);
+				d->ws_control_output_buffer = NULL;
+				d->ws_control_output_len = 0;
+				d->ws_control_output_offset = 0;
+			}
+			if (start >= d->ws_output_len)
+			{
+				if (d->ws_output_len > 0)
+				{
+					free(d->ws_output_buffer);
+					d->ws_output_buffer = NULL;
+					d->ws_output_len = 0;
+					d->ws_output_offset = 0;
+				}
+				return 0;
+			}
+			frame_left = websocket_queued_frame_len(d->ws_output_buffer + start);
+		}
+		result = websocket_flush_queue(d, d->ws_output_buffer, start + frame_left,
+					       &d->ws_output_offset, &budget);
+		/* A frame counts as started only once some of its bytes were sent. */
+		if (d->ws_output_offset > start || d->ws_output_frame_left > 0)
+			d->ws_output_frame_left = frame_left - (d->ws_output_offset - start);
+		if (result <= 0)
+			return result;
 	}
-	result = websocket_flush_queue(d, d->ws_output_buffer, &d->ws_output_len,
-				       &d->ws_output_offset);
-	if (result <= 0)
-		return result;
-	if (d->ws_output_len > 0)
-	{
-		free(d->ws_output_buffer);
-		d->ws_output_buffer = NULL;
-		d->ws_output_len = 0;
-		d->ws_output_offset = 0;
-	}
-	return 0;
 }
 
 /* build and send a frame */
@@ -1416,7 +1452,8 @@ int websocket_parse_frame(struct descriptor_data *d, const char *buf, size_t len
 			}
 		}
 
-		if (rsv1 || d->ws_compressed_message)
+		/* Control frames are never compressed (RFC 7692 6.1), even mid-message. */
+		if (rsv1 || (d->ws_compressed_message && op < WS_OPCODE_CLOSE))
 		{
 			if (!d->ws_inflate_stream ||
 			    (rsv1 && op != WS_OPCODE_TEXT && op != WS_OPCODE_BINARY) ||
@@ -1596,6 +1633,7 @@ void websocket_free(struct descriptor_data *d)
 		d->ws_output_len = 0;
 		d->ws_output_offset = 0;
 	}
+	d->ws_output_frame_left = 0;
 
 	if (d->ws_message_buffer)
 	{
@@ -1758,6 +1796,7 @@ int websocket_process_input(struct descriptor_data *d)
 	int opcode, fin;
 	size_t offset;
 	unsigned int frames_processed = 0;
+	int failed = 0;
 	char *new_buf;
 
 	if (!d || d->descriptor < 0)
@@ -1777,21 +1816,22 @@ int websocket_process_input(struct descriptor_data *d)
 
 	if (bytes_read < 0)
 	{
-		if (errno == EAGAIN
+		if (errno != EAGAIN
 #if EWOULDBLOCK != EAGAIN
-		    || errno == EWOULDBLOCK
+		    && errno != EWOULDBLOCK
 #endif
 		)
-		{
+			return -1;
+		/* Nothing new to read; still parse complete frames retained by the frame budget. */
+		if (!d->ws_handshake_done || d->ws_fragment_len == 0)
 			return 0;
-		}
-		return -1;
+		bytes_read = 0;
 	}
-
-	if (bytes_read == 0)
+	else if (bytes_read == 0)
 	{
 		return -1;
 	}
+
 	read_len = static_cast<size_t>(bytes_read);
 
 	if (d->character && d->character->only.pc)
@@ -1891,7 +1931,8 @@ int websocket_process_input(struct descriptor_data *d)
 		if (consumed < 0)
 		{
 			/* protocol error - close connection */
-			return -1;
+			failed = 1;
+			break;
 		}
 
 		if (consumed == 0)
@@ -1933,7 +1974,8 @@ int websocket_process_input(struct descriptor_data *d)
 		{
 			if (payload)
 				free(payload);
-			return -1;
+			failed = 1;
+			break;
 		}
 
 		/*
@@ -1949,7 +1991,8 @@ int websocket_process_input(struct descriptor_data *d)
 				/* got continuation without initial frame - protocol error */
 				if (payload)
 					free(payload);
-				return -1;
+				failed = 1;
+				break;
 			}
 			if (payload && payload_len > 0)
 			{
@@ -1957,14 +2000,18 @@ int websocket_process_input(struct descriptor_data *d)
 				    payload_len > WS_MAX_MESSAGE_SIZE - d->ws_message_len)
 				{
 					free(payload);
-					return websocket_input_error(d, WS_CLOSE_MESSAGE_TOO_BIG);
+					websocket_input_error(d, WS_CLOSE_MESSAGE_TOO_BIG);
+					failed = 1;
+					break;
 				}
 				new_buf = (char *)realloc(d->ws_message_buffer,
 							  d->ws_message_len + payload_len + 1);
 				if (!new_buf)
 				{
 					free(payload);
-					return websocket_input_error(d, WS_CLOSE_INTERNAL_ERROR);
+					websocket_input_error(d, WS_CLOSE_INTERNAL_ERROR);
+					failed = 1;
+					break;
 				}
 				d->ws_message_buffer = new_buf;
 				memcpy(d->ws_message_buffer + d->ws_message_len, payload,
@@ -1994,13 +2041,16 @@ int websocket_process_input(struct descriptor_data *d)
 				/* already have a fragmented message in progress - protocol error */
 				if (payload)
 					free(payload);
-				return -1;
+				failed = 1;
+				break;
 			}
 			if (payload_len > WS_MAX_MESSAGE_SIZE)
 			{
 				if (payload)
 					free(payload);
-				return websocket_input_error(d, WS_CLOSE_MESSAGE_TOO_BIG);
+				websocket_input_error(d, WS_CLOSE_MESSAGE_TOO_BIG);
+				failed = 1;
+				break;
 			}
 			d->ws_message_opcode = opcode;
 			d->ws_message_buffer = payload; /* take ownership */
@@ -2017,6 +2067,14 @@ int websocket_process_input(struct descriptor_data *d)
 				payload = NULL;
 			}
 		}
+	}
+	/* A failed connection handles no further input, including frames already parsed. */
+	if (failed)
+	{
+		free(d->ws_fragment_buffer);
+		d->ws_fragment_buffer = NULL;
+		d->ws_fragment_len = 0;
+		return -1;
 	}
 
 	/* remove consumed data from buffer */
