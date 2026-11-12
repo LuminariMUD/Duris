@@ -181,8 +181,10 @@ def main():
             extra = ['--mysqlx=OFF', '--default-authentication-plugin=mysql_native_password']
         else:
             daemon = 'mariadbd'
+            # Parallel installs collide on temporary tables in a shared /tmp.
             initialize = ['mariadb-install-db', '--no-defaults', f'--datadir={work}/data',
-                          '--auth-root-authentication-method=normal', '--skip-test-db']
+                          f'--tmpdir={work}', '--auth-root-authentication-method=normal',
+                          '--skip-test-db']
             extra = []
         if os.geteuid() == 0:
             initialize.append('--user=root')

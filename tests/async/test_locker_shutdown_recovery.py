@@ -70,8 +70,10 @@ with tempfile.TemporaryDirectory(prefix='duris-locker-shutdown-') as td:
     work = Path(td)
     socket = str(work / 'mysql.sock')
     with (work / 'setup.log').open('w') as log:
+        # Parallel installs collide on temporary tables in a shared /tmp.
         subprocess.run(['mariadb-install-db', '--no-defaults', f'--datadir={work}/data',
-                        '--auth-root-authentication-method=normal', '--skip-test-db'],
+                        f'--tmpdir={work}', '--auth-root-authentication-method=normal',
+                        '--skip-test-db'],
                        stdout=log, stderr=subprocess.STDOUT, check=True)
     with (work / 'daemon.log').open('w') as log:
         server = subprocess.Popen(['mariadbd', '--no-defaults', f'--datadir={work}/data',
