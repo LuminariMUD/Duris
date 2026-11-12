@@ -73,6 +73,10 @@ int main()
 	monk.player.spec = SPEC_WAYOFSNAKE;
 	monk.player.name = victim.player.name = const_cast<char *>("fixture");
 	victim.player.race = RACE_HUMAN;
+	affected_type incoming{};
+	incoming.type = TAG_PRESSURE_POINTS;
+	incoming.modifier = 3;
+	affect_to_char(&monk, &incoming);
 
 	for (int strike = 1; strike <= 5; strike++)
 	{
@@ -83,12 +87,19 @@ int main()
 
 	monk_critic(&monk, &victim, nullptr);
 	assert(stack(&victim) == 0);
+	assert(stack(&monk) == 3);
 
-	monk_critic(&monk, &victim, nullptr);
-	assert(stack(&victim) == 1);
+	for (int strike = 1; strike <= 6; strike++)
+	{
+		monk_critic(&monk, &victim, nullptr);
+		assert(stack(&victim) == strike % 6);
+		assert(stack(&monk) == 3);
+	}
+	assert(damage_calls == 2);
 
 	affect_from_char(&victim, TAG_PRESSURE_POINTS);
 	affect_from_char(&victim, SPELL_SLOW);
+	affect_from_char(&monk, TAG_PRESSURE_POINTS);
 	std::puts("pressure points reset on the victim at stack six");
 }
 '''
