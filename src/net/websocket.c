@@ -1796,6 +1796,7 @@ int websocket_process_input(struct descriptor_data *d)
 	int opcode, fin;
 	size_t offset;
 	unsigned int frames_processed = 0;
+	int failed = 0;
 	char *new_buf;
 
 	if (!d || d->descriptor < 0)
@@ -1930,7 +1931,8 @@ int websocket_process_input(struct descriptor_data *d)
 		if (consumed < 0)
 		{
 			/* protocol error - close connection */
-			return -1;
+			failed = 1;
+			break;
 		}
 
 		if (consumed == 0)
@@ -1972,7 +1974,8 @@ int websocket_process_input(struct descriptor_data *d)
 		{
 			if (payload)
 				free(payload);
-			return -1;
+			failed = 1;
+			break;
 		}
 
 		/*
@@ -1988,7 +1991,8 @@ int websocket_process_input(struct descriptor_data *d)
 				/* got continuation without initial frame - protocol error */
 				if (payload)
 					free(payload);
-				return -1;
+				failed = 1;
+				break;
 			}
 			if (payload && payload_len > 0)
 			{
@@ -1996,14 +2000,18 @@ int websocket_process_input(struct descriptor_data *d)
 				    payload_len > WS_MAX_MESSAGE_SIZE - d->ws_message_len)
 				{
 					free(payload);
-					return websocket_input_error(d, WS_CLOSE_MESSAGE_TOO_BIG);
+					websocket_input_error(d, WS_CLOSE_MESSAGE_TOO_BIG);
+					failed = 1;
+					break;
 				}
 				new_buf = (char *)realloc(d->ws_message_buffer,
 							  d->ws_message_len + payload_len + 1);
 				if (!new_buf)
 				{
 					free(payload);
-					return websocket_input_error(d, WS_CLOSE_INTERNAL_ERROR);
+					websocket_input_error(d, WS_CLOSE_INTERNAL_ERROR);
+					failed = 1;
+					break;
 				}
 				d->ws_message_buffer = new_buf;
 				memcpy(d->ws_message_buffer + d->ws_message_len, payload,
@@ -2033,13 +2041,16 @@ int websocket_process_input(struct descriptor_data *d)
 				/* already have a fragmented message in progress - protocol error */
 				if (payload)
 					free(payload);
-				return -1;
+				failed = 1;
+				break;
 			}
 			if (payload_len > WS_MAX_MESSAGE_SIZE)
 			{
 				if (payload)
 					free(payload);
-				return websocket_input_error(d, WS_CLOSE_MESSAGE_TOO_BIG);
+				websocket_input_error(d, WS_CLOSE_MESSAGE_TOO_BIG);
+				failed = 1;
+				break;
 			}
 			d->ws_message_opcode = opcode;
 			d->ws_message_buffer = payload; /* take ownership */
@@ -2056,6 +2067,14 @@ int websocket_process_input(struct descriptor_data *d)
 				payload = NULL;
 			}
 		}
+	}
+	/* A failed connection handles no further input, including frames already parsed. */
+	if (failed)
+	{
+		free(d->ws_fragment_buffer);
+		d->ws_fragment_buffer = NULL;
+		d->ws_fragment_len = 0;
+		return -1;
 	}
 
 	/* remove consumed data from buffer */

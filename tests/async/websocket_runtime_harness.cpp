@@ -973,6 +973,33 @@ int main()
 	close(budget_pair[0]);
 	close(budget_pair[1]);
 
+	/* Frames handled before a protocol error are not replayed by a later service. */
+	int failed_pair[2];
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, failed_pair) != 0)
+		return fail("failed-input socketpair");
+	int failed_flags = fcntl(failed_pair[0], F_GETFL, 0);
+	if (failed_flags < 0 || fcntl(failed_pair[0], F_SETFL, failed_flags | O_NONBLOCK) < 0)
+		return fail("set nonblocking failed-input socket");
+	descriptor_data failed_input{};
+	failed_input.descriptor = failed_pair[0];
+	failed_input.websocket = 1;
+	failed_input.ws_state = WS_STATE_OPEN;
+	failed_input.ws_handshake_done = 1;
+	const unsigned char ping_then_rsv2[] = { 0x89, 0x80, 0, 0, 0, 0, 0xa1, 0x80, 0, 0, 0, 0 };
+	if (write(failed_pair[1], ping_then_rsv2, sizeof(ping_then_rsv2)) !=
+	    (ssize_t)sizeof(ping_then_rsv2))
+		return fail("write failed-input frames");
+	if (websocket_process_input(&failed_input) != -1)
+		return fail("RSV2 frame after a ping was accepted");
+	websocket_process_input(&failed_input);
+	unsigned char failed_reply[16];
+	if (websocket_has_pending(&failed_input) ||
+	    read(failed_pair[1], failed_reply, sizeof(failed_reply)) != 2)
+		return fail("frames handled before a protocol error were replayed");
+	websocket_free(&failed_input);
+	close(failed_pair[0]);
+	close(failed_pair[1]);
+
 	d.ws_compressed_message = 1;
 	d.ws_error_code = WS_CLOSE_MESSAGE_TOO_BIG;
 	const char oversized_handshake = 'x';
