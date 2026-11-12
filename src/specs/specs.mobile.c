@@ -11091,7 +11091,7 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 			send_to_char("Your quest history is still being secured.\r\n", pl);
 			return TRUE;
 		}
-		const auto availability = world_quest_refresh(pl, world[ch->in_room].number);
+		const auto availability = world_quest_refresh(pl);
 		if (pl->only.pc->quest_replacement_due)
 		{
 			if (abandoning)

@@ -799,36 +799,6 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 				send_to_char("They've already done this quest!\r\n", ch);
 				return;
 			}
-			const int remaining = ch->only.pc->quest_type == FIND_AND_KILL ?
-						      ch->only.pc->quest_kill_original -
-							      ch->only.pc->quest_kill_how_many :
-						      1;
-			const auto recipient = world_quest_policy_check_target(
-				victim, ch->only.pc->quest_origin_room, ch->only.pc->quest_level,
-				ch->only.pc->quest_zone_number, ch->only.pc->quest_mob_vnum,
-				ch->only.pc->quest_type, remaining);
-			if (recipient.status != world_quest_target_status::valid)
-			{
-				using status = world_quest_target_status;
-				const bool blocked = recipient.status == status::blocked;
-				const char *state =
-					blocked					 ? "blocked" :
-					recipient.status == status::unavailable	 ? "unavailable" :
-					recipient.status == status::needs_origin ? "needs_origin" :
-										   "unproven";
-				logit(LOG_STATUS,
-				      "World quest share refused: pid=%d recipient=%d type=%d "
-				      "target=%d status=%s work=%zu rejections={%s}",
-				      GET_PID(ch), GET_PID(victim), ch->only.pc->quest_type,
-				      ch->only.pc->quest_mob_vnum, state, recipient.work,
-				      recipient.rejections.c_str());
-				send_to_char(
-					blocked ?
-						"Your fellow adventurer is temporarily blocked from this task's target.\r\n" :
-						"Your fellow adventurer cannot currently use this task's target.\r\n",
-					ch);
-				return;
-			}
 			resetQuest(victim);
 
 			ch->only.pc->quest_shares_left--;
@@ -849,12 +819,11 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 			victim->only.pc->quest_receiver = ch->only.pc->quest_receiver;
 			victim->only.pc->quest_kill_how_many = ch->only.pc->quest_kill_how_many;
 			victim->only.pc->quest_kill_original = ch->only.pc->quest_kill_original;
-			victim->only.pc->quest_map_room =
-				recipient.map_room >= 0 ? world[recipient.map_room].number : 0;
+			victim->only.pc->quest_map_room = ch->only.pc->quest_map_room;
 			mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 			mark_player_dirty_components(GET_PID(victim), PLAYER_COMPONENT_STATUS);
-			world_quest_describe(victim, recipient.status);
-			gmcp_quest_status(victim, recipient.status);
+			world_quest_describe(victim, world_quest_target_status::valid);
+			gmcp_quest_status(victim, world_quest_target_status::valid);
 
 			return;
 		}
@@ -888,14 +857,7 @@ void world_quest_describe(P_char ch, world_quest_target_status availability)
 	}
 	if (availability != status::valid)
 	{
-		const char *message =
-			availability == status::blocked ?
-				"Your task is temporarily blocked by your current condition." :
-			availability == status::needs_origin ?
-				"This older task needs a bartender to check its local scope." :
-				"I cannot prove that your task is usable right now. Ask a bartender to check it.";
-		send_to_char(message, ch);
-		send_to_char("\r\nYour task and earned progress have been kept.\r\n", ch);
+		send_to_char("Your quest history is still being secured.\r\n", ch);
 		return;
 	}
 	char buf[MAX_STRING_LENGTH];
@@ -959,7 +921,7 @@ void world_quest_describe(P_char ch, world_quest_target_status availability)
 		ch);
 }
 
-world_quest_target_status world_quest_refresh(P_char ch, int bartender_origin)
+world_quest_target_status world_quest_refresh(P_char ch)
 {
 	using status = world_quest_target_status;
 	if (!ch || IS_NPC(ch))
@@ -973,39 +935,27 @@ world_quest_target_status world_quest_refresh(P_char ch, int bartender_origin)
 		return status::unavailable;
 	if (!quest.quest_active)
 		return status::valid;
-	const int remaining = quest.quest_type == FIND_AND_KILL ?
-				      quest.quest_kill_original - quest.quest_kill_how_many :
-				      1;
-	const int origin = quest.quest_origin_room > 0 ? quest.quest_origin_room : bartender_origin;
-	const auto checked = world_quest_policy_check_target(ch, origin, quest.quest_level,
-							     quest.quest_zone_number,
-							     quest.quest_mob_vnum, quest.quest_type,
-							     remaining);
-	bool changed = false;
-	if (checked.status == status::unavailable)
+	if (!world_quest_policy_target_exists(quest.quest_level, quest.quest_zone_number,
+					      quest.quest_mob_vnum))
 	{
 		quest.quest_active = 0;
 		quest.quest_replacement_due = 1;
-		changed = true;
-	}
-	const int map = checked.status == status::valid && checked.map_room >= 0 ?
-				world[checked.map_room].number :
-				0;
-	if (quest.quest_map_room != map)
-	{
-		quest.quest_map_room = map;
-		if (ch->desc)
-			ch->desc->gmcp_quest_map_sent = 0;
-		changed = true;
-	}
-	if (checked.status == status::valid && quest.quest_origin_room <= 0 && origin > 0)
-	{
-		quest.quest_origin_room = origin;
-		changed = true;
-	}
-	if (changed)
 		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
-	return checked.status;
+		return status::unavailable;
+	}
+	// Earlier live checks cleared maps while a target was busy; restore the zone entrance.
+	if (quest.quest_map_room <= 0)
+	{
+		const int map = get_map_room(real_zone(quest.quest_zone_number));
+		if (map >= 0)
+		{
+			quest.quest_map_room = world[map].number;
+			if (ch->desc)
+				ch->desc->gmcp_quest_map_sent = 0;
+			mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+		}
+	}
+	return status::valid;
 }
 
 bool world_quest_replace(P_char ch, P_char giver)

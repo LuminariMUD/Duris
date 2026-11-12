@@ -97,8 +97,7 @@ int sql_world_quest_done_already(P_char, int) { std::abort(); }
 void mark_player_dirty_components(int, player_component_mask_t) { std::abort(); }
 void gmcp_quest_status(P_char) { std::abort(); }
 void gmcp_quest_status(P_char, world_quest_target_status) {}
-world_quest_target_status world_quest_refresh(P_char, int) { return world_quest_target_status::valid; }
-world_quest_target_check world_quest_policy_check_target(P_char, int, int, int, int, int, int) { std::abort(); }
+world_quest_target_status world_quest_refresh(P_char) { return world_quest_target_status::valid; }
 void show_map_at(P_char, int) { std::abort(); }
 namespace zone_story_quest_runtime {
 zone_story_quest_feature::service *service() { return nullptr; }

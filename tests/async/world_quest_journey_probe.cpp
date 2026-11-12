@@ -573,30 +573,28 @@ extern "C" void quest_gameplay_choose_fixture(P_char ch, const void *source_look
 		if (!checked.insert(vnum).second || sql_world_quest_done_already(ch, vnum) != 0)
 			continue;
 		bool walkable = true;
+		int supply = 0;
 		for (P_char mob = character_list; mob; mob = mob->next)
 			if (IS_NPC(mob) && GET_VNUM(mob) == vnum && source(mob) &&
 			    mob->in_room >= 0 && mob->in_room <= top_of_world &&
-			    zone_table[world[mob->in_room].zone].number == zone &&
-			    (!returns.count(mob->in_room) ||
-			     !returns.count(real_room(GET_BIRTHPLACE(mob)))))
-				walkable = false;
+			    zone_table[world[mob->in_room].zone].number == zone)
+			{
+				++supply;
+				if (!returns.count(mob->in_room) ||
+				    !returns.count(real_room(GET_BIRTHPLACE(mob))))
+					walkable = false;
+			}
 		const int needed =
 			quest_gameplay_kind == FIND_AND_ASK ? 1 :
 			quest_gameplay_reward_quota > 0	    ? quest_gameplay_reward_quota + 1 :
 			quest_gameplay_level == 29	    ? 3 :
 							      2;
-		const auto check =
-			walkable ? world_quest_policy_check_target(ch, quest_gameplay_origin,
-								   quest_gameplay_level, zone, vnum,
-								   quest_gameplay_kind, needed) :
-				   world_quest_target_check{};
-		if (!walkable || check.status != world_quest_target_status::valid)
+		if (!walkable || supply < needed ||
+		    !world_quest_policy_target_exists(quest_gameplay_level, zone, vnum))
 		{
 			// Explains an eventual "no eligible fixture" failure.
-			fprintf(stderr,
-				"quest fixture %d zone %d distance %d rejected: %s status=%d\n",
-				vnum, zone, key.first, walkable ? "policy" : "off-route",
-				static_cast<int>(check.status));
+			fprintf(stderr, "quest fixture %d zone %d distance %d rejected: %s\n", vnum,
+				zone, key.first, walkable ? "policy" : "off-route");
 			continue;
 		}
 		quest_gameplay_fixture_zone = real_zone(zone);
@@ -978,25 +976,12 @@ extern "C" void quest_world_audit(P_char ch)
 			// from a prototype interval or a sampled successful assignment.
 			for (int level = WORLD_QUEST_MIN_LEVEL; level < TOTALLVLS; ++level)
 			{
-				const auto kill = world_quest_policy_check_target(
-					ch, 16633, level,
-					zone_table[world[mob->in_room].zone].number, vnum,
-					FIND_AND_KILL, 2);
-				world_quest_target_check ask;
-				if (level < 50)
-					ask = world_quest_policy_check_target(
-						ch, 16633, level,
-						zone_table[world[mob->in_room].zone].number, vnum,
-						FIND_AND_ASK, 1);
-				if (kill.status != world_quest_target_status::unavailable ||
-				    (level < 50 &&
-				     ask.status != world_quest_target_status::unavailable))
+				if (world_quest_policy_target_exists(
+					    level, zone_table[world[mob->in_room].zone].number,
+					    vnum))
 				{
 					cJSON *result = cJSON_CreateObject();
 					number(result, "level", level);
-					number(result, "kill", static_cast<int>(kill.status));
-					if (level < 50)
-						number(result, "ask", static_cast<int>(ask.status));
 					cJSON_AddItemToArray(levels, result);
 				}
 			}

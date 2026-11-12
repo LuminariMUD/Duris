@@ -19,12 +19,11 @@ enum class world_quest_target_status
 {
 	valid,
 	unavailable,
-	blocked,
-	unproven,
-	needs_origin,
+	unproven, // Quest history is still being saved.
 };
 
-world_quest_target_status world_quest_refresh(P_char ch, int bartender_origin = 0);
+world_quest_target_status world_quest_refresh(P_char ch);
+int get_map_room(int zone_id);
 bool world_quest_replace(P_char ch, P_char giver);
 void world_quest_describe(P_char ch, world_quest_target_status status);
 
