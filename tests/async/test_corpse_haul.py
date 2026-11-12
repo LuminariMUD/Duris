@@ -136,6 +136,8 @@ static void obj_to_char(P_obj o,P_char ch) {
 static bool item_movement_transaction_player_busy(P_char) { return false; }
 static bool isname(const char *a,const char *b) { return !strcmp(a,b); }
 static bool account_bound_reward_owner(P_char,P_obj) { return false; }
+static bool artifact_second_of_type(P_char, P_obj) { return false; }
+static bool artifact_second_of_type(P_char, P_obj, P_obj) { return false; }
 static bool item_command_object_is_takeable(P_char,P_obj o) { return o->weight>=0; }
 static bool checkgetput(P_char ch,P_obj obj) {
  if(trap_calls) ++checked_after_trap;

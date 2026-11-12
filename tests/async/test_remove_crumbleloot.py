@@ -110,6 +110,7 @@ void obj_to_room(P_obj object, int room) {
 void obj_from_obj(P_obj) { assert(false); }
 void obj_to_obj(P_obj, P_obj) { assert(false); }
 void artifact_update_location_sql(P_obj) {}
+bool artifact_second_of_type(P_char, P_obj) { return false; }
 void mark_char_or_owner_dirty(P_char) {}
 int char_light(P_char) { return 0; }
 int room_light(int, int) { return 0; }

@@ -1739,8 +1739,9 @@ hold two or more of any one type, the periodic artifact check makes all
 artifacts you wear or carry fall to the ground, including other types.
 Inventory counts as well as equipment, and even a brief overlap can trigger
 the check. The forced drop causes no damage or loss of remaining feeding time.
-You are warned the moment you hold two of one type, so you can part with one
-before the check.
+You cannot pick up or be given a second artifact of a type you already hold.
+If one reaches you another way, you are warned at once, so you can part with
+it before the check.
 
 #0
 
@@ -9853,8 +9854,9 @@ hold two or more of any one type, the periodic artifact check makes all
 artifacts you wear or carry fall to the ground, including other types.
 Inventory counts as well as equipment, and even a brief overlap can trigger
 the check. The forced drop causes no damage or loss of remaining feeding time.
-You are warned the moment you hold two of one type, so you can part with one
-before the check.
+You cannot pick up or be given a second artifact of a type you already hold.
+If one reaches you another way, you are warned at once, so you can part with
+it before the check.
 
 #0
 
@@ -14966,8 +14968,9 @@ hold two or more of any one type, the periodic artifact check makes all
 artifacts you wear or carry fall to the ground, including other types.
 Inventory counts as well as equipment, and even a brief overlap can trigger
 the check. The forced drop causes no damage or loss of remaining feeding time.
-You are warned the moment you hold two of one type, so you can part with one
-before the check.
+You cannot pick up or be given a second artifact of a type you already hold.
+If one reaches you another way, you are warned at once, so you can part with
+it before the check.
 
 #0
 

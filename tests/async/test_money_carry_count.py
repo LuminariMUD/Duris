@@ -83,6 +83,8 @@ bool do_get_finalize_container_item_or_reject(P_char, P_char, P_obj, P_obj obj,
 bool isname(const char *filter, const char *name) { return !strcmp(filter, name); }
 bool item_command_object_is_takeable(P_char, P_obj obj) { return obj->takeable; }
 bool account_bound_reward_owner(P_char, P_obj) { return true; }
+bool artifact_second_of_type(P_char, P_obj) { return false; }
+bool artifact_second_of_type(P_char, P_obj, P_obj) { return false; }
 bool checkgetput(P_char, P_obj) { return false; }
 P_obj find_live_object(P_obj obj, uint64_t uid) {
     return obj && obj->obj_uid == uid ? obj : nullptr;

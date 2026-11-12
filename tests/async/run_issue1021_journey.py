@@ -296,7 +296,6 @@ def run(binary):
                 assert classic.index("raceless wisp") < classic.index(NECRO) and "(Human)" in classic, classic
                 passed("I11: toggle groupsort lists players before pets for its owner only; classic stays the default")
 
-                warning = "You hold more than one artifact of the same type."
                 for vnum, keyword in ((900, "blue"), (901, "red")):
                     assert "You have created" in do(staff, f"load obj {vnum}")
                     do(staff, "drop " + keyword)
@@ -307,15 +306,29 @@ def run(binary):
                 # The starter kit fills the pack; make room before lifting the stones.
                 do(necro, "wear all")
                 do(necro, "drop all")
-                text = do(necro, "get blue")
-                assert "You get" in text and warning not in text, text
+                assert "You get" in do(necro, "get blue")
                 text = do(necro, "get red")
-                assert "You get" in text and warning in text, text
-                # Parting with one ends it; the half-hourly sweep is covered by its own test.
+                assert "ioun stone stays where it is: you already hold an artifact of that type." in text, text
+                assert "A bright red stone floats here." in do(necro, "look")
+                assert "red ioun stone" not in do(necro, "inventory")
+                # A bulk pickup refuses the stone by name and still takes the rest.
+                text = do(necro, "get all")
+                assert "ioun stone stays where it is: you already hold an artifact of that type." in text, text
+                assert "A bright red stone floats here." in do(necro, "look")
+                do(staff, "get red")
+                text = do(staff, "give red " + NECRO)
+                assert "already holds an artifact of that type and cannot take" in text, text
+                # Their own stone still moves freely, and parting with it lifts the refusal.
+                assert "stays where it is" not in do(necro, "wear blue")
+                do(necro, "remove blue")
+                do(necro, "drop blue")
+                assert "Ok." in do(staff, "give red " + NECRO)
+                # With both on the ground and none held, one bulk pickup takes only one.
                 do(necro, "drop red")
-                text = do(necro, "wear blue")
-                assert warning not in text, text
-                passed("I8: picking up a second artifact of one type warns at once; one of a type does not")
+                text = do(necro, "get all")
+                assert text.count("stays where it is: you already hold an artifact of that type.") == 1, text
+                assert do(necro, "inventory").count("ioun stone") == 1
+                passed("I8: a second artifact of one type is refused on pickup, bulk pickup and give")
 
                 do(staff, f"cast 'concealment' {BARD}")
                 until(staff, "stat char " + BARD, "'concealment'")
