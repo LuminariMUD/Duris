@@ -58,6 +58,10 @@ R I 29998
 G I 15
 Q
 ~
+R I 29998
+G I 677
+Q
+~
 R I 256
 G I 677
 Q
@@ -147,8 +151,15 @@ def run(binary):
             def do(client, text):
                 return plain(command(client, text))
 
+            def guild_roster(client):
+                start = len(client.transcript)
+                client.send("society")
+                client.expect("Members:", timeout=30)
+                client.expect(">", timeout=30)
+                return plain(bytes(client.transcript[start:]).decode(errors="replace"))
+
             def roster_row(client, name):
-                members = do(client, "society").split("Members:")[1]
+                members = guild_roster(client).split("Members:")[1]
                 return next(line for line in members.splitlines() if name in line)
 
             def group_list(client):
@@ -254,7 +265,7 @@ def run(binary):
                 for name, client in ((NECRO, necro), (BARD, bard)):
                     do(client, "society apply " + THIEF)
                     do(thief, "society enroll " + name)
-                roster = do(thief, "society")
+                roster = guild_roster(thief)
                 rows = {name: next(line for line in roster.split("Members:")[1].splitlines()
                                    if name in line) for name in (THIEF, NECRO, BARD)}
                 assert re.search(r"\[30 Necromancer +\] " + NECRO + r" +Human", rows[NECRO]), roster
@@ -269,6 +280,11 @@ def run(binary):
                 clients.remove(necro)
                 row = roster_row(thief, NECRO)
                 assert re.search(r"^   \[30 Necromancer +\] " + NECRO, row), row
+                saved = sql(f"SELECT m_class,spec,race FROM player_data WHERE name='{NECRO}'").split()
+                sql(f"UPDATE player_data SET m_class=1073741824,spec=99,race=127 WHERE name='{NECRO}'")
+                assert "Unknown Class" in roster_row(thief, NECRO)
+                sql(f"UPDATE player_data SET m_class={saved[0]},spec={saved[1]},race={saved[2]} "
+                    f"WHERE name='{NECRO}'")
                 necro = login(NECRO)
                 do(staff, "transfer " + NECRO)
                 assert "Anonymous" in do(necro, "toggle anonymous")
@@ -356,6 +372,11 @@ def run(binary):
                 assert re.search(r"Group Sorted:\s*ON", do(thief, "toggle")), do(thief, "toggle")
                 assert "classic layout" in do(thief, "toggle groupsort")
                 passed("I11: the groupsort preference survives a save and server restart")
+                roster_queries = [line for path in (runtime / "logs/log").rglob("*") if path.is_file()
+                                  for line in path.read_text(errors="replace").splitlines()
+                                  if "game loop query site" in line and "assocs.c" in line
+                                  and ("roster_entries" in line or "display" in line)]
+                assert not roster_queries, roster_queries
                 stop()
             except BaseException:
                 for client in clients:
