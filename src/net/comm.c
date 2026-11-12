@@ -2235,6 +2235,8 @@ static void run_output_phase(game_loop_pulse_context &ctx)
 		    point->telnet_output_len == 0 && point->ws_output_len == 0 &&
 		    point->ws_control_output_len == 0)
 		{
+			if (!point->ws_close_cause)
+				point->ws_close_cause = "Logout";
 			close_socket(point);
 			continue;
 		}
@@ -3687,6 +3689,22 @@ void close_socket(struct descriptor_data *d)
 
 	if (d->sslses)
 		ssl_close(d->sslses);
+	/* One bounded summary per WebSocket close; no host, account, character or payload. */
+	if (d->websocket && d->ws_handshake_done)
+	{
+		const time_t closed_at = time(0);
+		statuslog(56,
+			  "WebSocket closed: cause=%s open=%lds ping=%s ping_age=%lds "
+			  "out=%zu ctrl=%zu partial=%zu write_failed=%d",
+			  d->ws_close_cause ? d->ws_close_cause : "unknown",
+			  (long)(closed_at - d->ws_handshake_started),
+			  d->ws_ping_outstanding ? "outstanding" :
+						   (d->ws_ping_queued ? "queued" : "idle"),
+			  d->ws_last_ping > 0 ? (long)(closed_at - d->ws_last_ping) : -1L,
+			  d->ws_output_len - d->ws_output_offset,
+			  d->ws_control_output_len - d->ws_control_output_offset,
+			  d->ws_output_frame_left, d->write_failed);
+	}
 	if (d->descriptor)
 	{
 		close(d->descriptor);

@@ -1924,6 +1924,7 @@ struct descriptor_data
 
 	/* ping/pong for dead connection detection */
 	time_t ws_last_ping;
+	const char *ws_close_cause; /* static first close cause, for the close summary */
 	int ws_pong_received;
 
 	/* message fragmentation (rfc 6455 fin=0 frames) */

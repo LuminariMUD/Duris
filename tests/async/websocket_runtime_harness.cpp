@@ -1000,6 +1000,26 @@ int main()
 	close(failed_pair[0]);
 	close(failed_pair[1]);
 
+	/* The close summary keeps the first cause: an abrupt peer EOF is not a protocol error. */
+	int eof_pair[2];
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, eof_pair) != 0)
+		return fail("peer-EOF socketpair");
+	descriptor_data eof_peer{};
+	eof_peer.descriptor = eof_pair[0];
+	eof_peer.websocket = 1;
+	eof_peer.ws_state = WS_STATE_OPEN;
+	eof_peer.ws_handshake_done = 1;
+	close(eof_pair[1]);
+	if (websocket_process_input(&eof_peer) != -1)
+		return fail("peer EOF was not reported");
+	websocket_close(&eof_peer, WS_CLOSE_PROTOCOL_ERROR, "Protocol error");
+	if (!eof_peer.ws_close_cause || strcmp(eof_peer.ws_close_cause, "Peer EOF") != 0)
+		return fail("peer EOF close cause was overwritten or missing");
+	websocket_free(&eof_peer);
+	if (eof_peer.ws_close_cause)
+		return fail("websocket_free left a stale close cause");
+	close(eof_pair[0]);
+
 	/* A ping queued under backpressure and drained by later game output accepts its pong. */
 	int ping_pair[2];
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, ping_pair) != 0)
