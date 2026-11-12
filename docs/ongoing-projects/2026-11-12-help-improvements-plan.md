@@ -1,7 +1,7 @@
 # Help improvements implementation plan
 
 Date: 2026-11-12
-Status: planned; implementation, validation, and publication remain to be done.
+Status: implementation in progress; delivery A is being validated. No deployment authorized.
 Source baseline: Duris `f8919ad27dd71ddb2e322feb31529c61d84384b7`;
 Luminari-Source `77d9b032db04c6b0e6c80ba32e4178c8a63ecba5`.
 
@@ -406,9 +406,9 @@ in place of native tests and required review.
 
 ## Acceptance checklist
 
-- [ ] Exact titles open first across the full catalog; partial matching,
+- [x] Exact titles open first across the full catalog; partial matching,
   wildcards, redirects, bounded alternatives, and overflow wording work.
-- [ ] Misses offer at most five deterministic, useful suggestions; selecting
+- [x] Misses offer at most five deterministic, useful suggestions; selecting
   one opens its title, with readable plain output and valid semantic links.
 - [ ] Help, Index, and Newbie cover movement, combat/fleeing, death/corpse
   recovery, equipment, communication, ability learning, and rules through
@@ -430,3 +430,43 @@ reference-command dispatchers, authored hubs, actual importer parsers and topic
 ownership, existing tests, and the Luminari reference locations. No gameplay or
 content implementation, build, runtime test, import, or deployment was performed
 for this plan. The acceptance boxes intentionally describe future implementation.
+
+## Implementation handoff (2026-11-12)
+
+Working checkout: `/home/aiwithapex/projects/duris-help-improvements` in WSL,
+on `branch/help-improvements-plan`. The original Windows checkout disappeared
+externally during read-only discovery; its last native status was clean. The
+branch was recovered with `git worktree add --force` into this separate checkout.
+The source plan and ideas remain in Git; no user changes were discarded.
+
+Ablation before implementation: outcomes A-C and their acceptance proof remain
+required. Keep helpers local to wikihelp.c and reuse existing executable harnesses,
+links, parser, fixture/account helpers, and disposable DB authority. No schema,
+index, service, cache, protocol, or new command-link permission is needed. Use a
+narrow edit-distance band because the specified 20,000 x 256-byte worst case
+makes a full distance matrix unnecessary game-loop work.
+
+Delivery A files: wikihelp.c; existing cache/output harnesses; HELP_SYSTEM.md;
+help-cache.md; this plan. Proof: full-catalog late exact match, boundaries,
+production wildcard matcher, typo ranking and bypasses, real output and frozen
+pager, optimized maximum-size measurements, formatting and native build.
+Pending next: finish A validation, commit/push and open labeled PR; then B
+content/source audit and C native MariaDB journey. Do not deploy or merge.
+
+Delivery A validation update:
+- Production wildcard matcher now rejects retries whose remaining literal/underscore
+  tokens cannot fit. The initial 20,000-title common-prefix benchmark exceeded
+  its 30-second harness deadline before this repair. An independent LIKE matrix
+  checks all query strings up to four characters from `aA%_` against all titles
+  up to four characters from `abA`, preserving wildcard/case behavior.
+- Optimized harness: GCC 13.3.0, C++20 `-O2`, no sanitizer; WSL2 Ubuntu on Intel
+  Core Ultra 9 285H (16 exposed CPUs), 101 samples per catalog of 20,000 titles.
+  14-byte query/titles: median 5.52 ms, p95 7.11, p99 8.08, max 8.32 ms.
+  256-byte query/titles with a 250-byte common prefix: median 86.07 ms,
+  p95 98.38, p99 129.92, max 130.68 ms. These are complete wiki_help misses,
+  including ordinary lookup, fuzzy scan, and formatting (logger stubbed).
+  The maximum stays below one default 250 ms game pulse on this machine;
+  this does not yet establish two-player runtime latency (delivery C).
+- Native `make -C src -j4` and reported-latency contract passed. Cache and output
+  regressions include suggestions, generic/MXP delivery, following returned help
+  targets, and frozen suggestion paging with no duplicate miss logging.

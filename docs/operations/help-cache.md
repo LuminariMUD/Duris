@@ -22,7 +22,7 @@ before the database pool shuts down. Pool acquisition and database socket timeou
 remain the existing pool defaults.
 
 Limits: 20,000 pages, 256-byte titles, 128 KiB per complete page record, 32 MiB
-total source data, 101 search results, and eight redirect lookups. Invalid,
+total source data, 100 alternative search results (plus an exact article), five typo suggestions, and eight redirect lookups. Invalid,
 empty, oversized, or incomplete catalogs (including a missing default `help`
 page) do not replace working content. Source content and edit metadata are
 cached; pages in dynamic race/class/spec/skill categories append current code

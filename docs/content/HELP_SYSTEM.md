@@ -17,8 +17,18 @@ The `help` command (`do_help`, `src/cmd/actinf.c`) does two things:
 
    Titles match case-insensitively by substring, with `%` and `_` wildcards
    (`WIKIHELP_RESULTS_LIMIT` is 100, `src/cmd/wikihelp.h`). One match renders
-   the full entry; multiple matches render the exact match plus "see also"
-   links. Misses are logged to `lib/etc/help`
+   the full entry. Exact titles are resolved across the whole catalog before
+   listing at most 100 other matches, with an overflow notice. Surrounding
+   whitespace is ignored; empty input opens Help. Other matches retain catalog
+   order and wildcard behavior.
+
+   A miss can offer up to five clickable "Did you mean" titles, ordered by
+   case-insensitive Levenshtein distance, then title (original spelling breaks
+   ties). Queries of 3-4 characters allow one edit; longer queries allow two.
+   Transpositions count as two edits. Short, wildcard, non-ASCII, and over-256-byte
+   queries do not get spelling guesses. Only zero-result searches invoke this
+   bounded local comparison; a suggestion never opens or activates anything.
+   Misses are logged to `lib/etc/help`
    (`logit(LOG_HELP, ...)`), which is useful for spotting missing topics.
    Entries are stored wiki-formatted; `dewikify()` converts valid `[[topic]]`
    references to cyan labels. `do_help()` attaches the target `help topic` as
