@@ -2085,6 +2085,8 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
 				if (point->wait > LOGIN_PROMPT_TIMEOUT)
 				{
 					write_to_descriptor(point, "Idle Timeout\n");
+					if (!point->ws_close_cause)
+						point->ws_close_cause = "Idle timeout";
 					close_socket(point);
 					continue;
 				}
@@ -2096,6 +2098,8 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
 				if (point->wait > 240)
 				{
 					write_to_descriptor(point, "Idle Timeout\n");
+					if (!point->ws_close_cause)
+						point->ws_close_cause = "Idle timeout";
 					close_socket(point);
 					continue;
 				}
@@ -2125,6 +2129,8 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
 				if (point->wait > 2400)
 				{
 					write_to_descriptor(point, "Idle Timeout\n");
+					if (!point->ws_close_cause)
+						point->ws_close_cause = "Idle timeout";
 					close_socket(point);
 					continue;
 				}
@@ -2137,6 +2143,8 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
 				if (point->wait > 3600)
 				{
 					write_to_descriptor(point, "Idle Timeout\n");
+					if (!point->ws_close_cause)
+						point->ws_close_cause = "Idle timeout";
 					close_socket(point);
 					continue;
 				}
@@ -2235,8 +2243,9 @@ static void run_output_phase(game_loop_pulse_context &ctx)
 		    point->telnet_output_len == 0 && point->ws_output_len == 0 &&
 		    point->ws_control_output_len == 0)
 		{
+			/* CON_FLUSH also ends bans, failed logins and errors, not only logouts. */
 			if (!point->ws_close_cause)
-				point->ws_close_cause = "Logout";
+				point->ws_close_cause = "Server ended session";
 			close_socket(point);
 			continue;
 		}
