@@ -236,6 +236,8 @@ def test_authorization_state_fails_closed_for_service_and_player_commands():
     assert 'point->ws_ping_outstanding = 1' in COMM
     assert '!point->ws_ping_queued && !point->ws_ping_outstanding' in COMM
     assert 'queued ping drained by game output did not become outstanding' in HARNESS
+    assert 'WebSocket closed: cause=%s open=%lds ping=%s ping_age=%lds' in COMM
+    assert 'peer EOF close cause was overwritten or missing' in HARNESS
     assert 'if (d->ws_ping_outstanding)' in SOURCE
     assert 'd->ws_ping_outstanding = 0' in SOURCE
     assert 'd->ws_last_ping = 0' in SOURCE

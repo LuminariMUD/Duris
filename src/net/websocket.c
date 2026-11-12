@@ -983,6 +983,8 @@ static int websocket_flush_queue(struct descriptor_data *d, unsigned char *buffe
 		else
 		{
 			d->write_failed = 1;
+			if (!d->ws_close_cause)
+				d->ws_close_cause = "Write error";
 			return -1;
 		}
 	}
@@ -1569,6 +1571,8 @@ int websocket_parse_frame(struct descriptor_data *d, const char *buf, size_t len
 				     (unsigned char)(*payload)[1];
 			close_reason = *payload_len > 2 ? *payload + 2 : NULL;
 		}
+		if (!d->ws_close_cause)
+			d->ws_close_cause = "Peer close";
 		if (d->ws_state == WS_STATE_OPEN)
 		{
 			if (websocket_send_close(d, close_code, close_reason) == 0)
@@ -1606,6 +1610,9 @@ void websocket_close(struct descriptor_data *d, int code, const char *reason)
 {
 	if (!d)
 		return;
+	/* Callers pass static reason literals. */
+	if (!d->ws_close_cause)
+		d->ws_close_cause = reason ? reason : "Server close";
 
 	if (d->ws_state == WS_STATE_OPEN)
 	{
@@ -1679,6 +1686,7 @@ void websocket_free(struct descriptor_data *d)
 	d->ws_pong_received = 0;
 	d->ws_ping_queued = 0;
 	d->ws_ping_outstanding = 0;
+	d->ws_close_cause = NULL;
 
 	d->websocket = 0;
 	d->ws_state = WS_STATE_CLOSED;
@@ -1829,7 +1837,11 @@ int websocket_process_input(struct descriptor_data *d)
 		    && errno != EWOULDBLOCK
 #endif
 		)
+		{
+			if (!d->ws_close_cause)
+				d->ws_close_cause = "Read error";
 			return -1;
+		}
 		/* Nothing new to read; still parse complete frames retained by the frame budget. */
 		if (!d->ws_handshake_done || d->ws_fragment_len == 0)
 			return 0;
@@ -1837,6 +1849,8 @@ int websocket_process_input(struct descriptor_data *d)
 	}
 	else if (bytes_read == 0)
 	{
+		if (!d->ws_close_cause)
+			d->ws_close_cause = "Peer EOF";
 		return -1;
 	}
 
