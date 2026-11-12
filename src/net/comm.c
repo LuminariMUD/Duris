@@ -2040,7 +2040,7 @@ static void run_session_input_phase(game_loop_pulse_context &ctx)
 				continue;
 			}
 
-			/* Send one periodic ping at a time.  A queued ping becomes outstanding only after control output drains. */
+			/* Send one periodic ping at a time.  A queued ping becomes outstanding when websocket_flush_output() drains it. */
 			if (!point->ws_ping_queued && !point->ws_ping_outstanding &&
 			    (point->ws_last_ping == 0 ||
 			     (now - point->ws_last_ping) >= WS_PING_INTERVAL))
@@ -2237,14 +2237,6 @@ static void run_output_phase(game_loop_pulse_context &ctx)
 		{
 			close_socket(point);
 			continue;
-		}
-		if (point->websocket && point->ws_state == WS_STATE_OPEN && point->ws_ping_queued &&
-		    point->ws_control_output_len == 0)
-		{
-			point->ws_ping_queued = 0;
-			point->ws_ping_outstanding = 1;
-			point->ws_pong_received = 0;
-			point->ws_last_ping = time(0);
 		}
 		if (point->websocket && point->ws_state == WS_STATE_CLOSING &&
 		    point->ws_output_len == 0 && point->ws_control_output_len == 0)
