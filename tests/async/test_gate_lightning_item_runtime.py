@@ -64,6 +64,7 @@ production = planes + "\n".join(extract_function(path, signature) + (";" if sign
 
 HARNESS = r'''
 #include "abilities/abilities.h"
+#include <climits>
 static zone_data zones[2]{};
 zone_data *zone_table = zones;
 int portal_id=1;
@@ -100,7 +101,11 @@ int spell_damage(P_char,P_char,double damage,int type,uint,damage_messages *,int
     return DAM_NONEDEAD;
 }
 bool has_innate(P_char,int) { return false; }
-int chance_throw_potion(P_char,P_char) { assert(false); return 0; }
+int GET_CHAR_SKILL_P(P_char,int) { return 0; }
+void set_short_affected_by(P_char,int,int) {}
+void obj_from_char(P_obj) {}
+static bool allow_throw;
+int chance_throw_potion(P_char,P_char) { assert(allow_throw); return 1; }
 bool gain_epic(P_char,int,int,int) { return true; }
 affected_type *affect_to_char(P_char,affected_type *af) {
     assert(af->type==TAG_POTION_TIMER); ++potion_timers; return nullptr;
@@ -255,9 +260,41 @@ static void potions() {
         assert(said("it fades"));
     }
 }
+static void invalid_magic_items() {
+    for(int bad:{INT_MAX,MAX_SKILLS,MAX_AFFECT_TYPES+1}) {
+        spell_scene s(ITEM_POTION); s.source->value[1]=bad;
+        s.source->value[2]=2; s.source->value[3]=0;
+        s.quaff();
+        assert(extracts==1 && potion_timers==1 && calls.size()==1 && calls[0].id==2);
+    }
+    for(int bad:{INT_MAX,MAX_SKILLS,MAX_AFFECT_TYPES+1}) {
+        spell_scene s(ITEM_POTION); s.source->value[1]=bad;
+        s.source->value[2]=2; s.source->value[3]=0;
+        s.actor->player.level=50; skills[2].targets=TAR_CHAR_ROOM;
+        s.source->short_description=s.actor->player.name;
+        allow_throw=true;
+        throw_potion(s.actor,s.source,s.target,nullptr);
+        allow_throw=false;
+        assert(extracts==1 && calls.size()==1 && calls[0].id==2);
+    }
+    for(int bad:{INT_MAX,MAX_SKILLS,MAX_AFFECT_TYPES+1}) {
+        spell_scene s(ITEM_SCROLL,false);
+        s.source->value[1]=bad; s.source->value[2]=2; s.source->value[3]=0;
+        s.recite();
+        assert(extracts==1 && calls.size()==1 && calls[0].id==2 && parser_calls==1);
+    }
+    for(int item:{ITEM_WAND,ITEM_STAFF})
+        for(int bad:{INT_MAX,MAX_SKILLS,MAX_AFFECT_TYPES+1,0,-1}) {
+            spell_scene s(item,false); s.source->value[3]=bad;
+            const int charges=s.source->value[2], waits=unrelated_wait_changes;
+            s.use();
+            assert(s.source->value[2]==charges && calls.empty() && !parser_calls && !extracts);
+            assert(unrelated_wait_changes==waits);
+        }
+}
 int main() {
     nevent_bind_game_thread(); ne_dead_event_pool=&test_pool; fake_clock_ns=1000000000ULL; ne_events();
-    gate_devices(); lightning_devices(); potions();
+    gate_devices(); lightning_devices(); potions(); invalid_magic_items();
     puts("Gate/lightning: device routing, portal entry, delayed strikes, refusals and potion costs passed");
 }
 '''

@@ -4461,7 +4461,8 @@ bool throw_potion(P_char ch, P_obj potion, P_char victim, P_obj obj)
 	{
 		for (i = 1; i < 4; i++)
 		{
-			if ((potion->value[i] >= 1) && (victim || obj))
+			if (potion->value[i] >= 1 && potion->value[i] < MAX_SKILLS &&
+			    (victim || obj))
 			{
 				j = potion->value[i];
 				if ((j != -1) && (skills[j].spell_pointer != NULL))

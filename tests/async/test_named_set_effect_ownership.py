@@ -31,6 +31,7 @@ harness = r'''
 #include "combat/damage.h"
 #include <cassert>
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -55,6 +56,7 @@ static obj_data gear[12];
 static int grants;
 static int guardian_rejections;
 static int output_messages;
+static std::string said;
 static int alias_calls;
 static bool high_roll;
 static bool innate_eyes;
@@ -67,7 +69,11 @@ const Rolls live_rolls={dice,number};
 int GET_CLASS(P_char ch,uint cls) {return (ch->player.m_class&cls)!=0;}
 int GET_CHAR_SKILL_P(P_char,int) {return 0;}
 int NumAttackers(P_char) {return 0;}
-float get_property(const char *,double value) {return value;}
+// Empty models a properties file without the key.
+static std::optional<float> generous_refresh;
+float get_property(const char *key,double value) {
+    return generous_refresh && !strcmp(key,"spell.generousRefresh.enabled") ? *generous_refresh : value;
+}
 int get_property(const char *,int value) {return value;}
 bool grouped(P_char,P_char) {return true;}
 char *str_dup(const char *text) {return strdup(text);}
@@ -107,6 +113,7 @@ bool has_innate(P_char,int innate) {return innate_eyes && innate==INNATE_OPHIDIA
 void send_to_char(const char *text,P_char ch) {
     if(named_set_grant::hold_output(ch,text)) return;
     ++output_messages;
+    said+=text;
     if(strstr(text,"spirits of")) ++grants;
     if(strstr(text,"forefathers")) ++guardian_rejections;
 }
@@ -329,6 +336,7 @@ harness += extract_function("magic.c", "static int prot_from_undead_duration(") 
 harness += extract_function("magic.c", "void spell_prot_from_undead(") + "\n"
 harness += extract_function("magic.c", "static int vitality_hit_points(") + "\n"
 harness += extract_function("magic.c", "static int vitality_duration(") + "\n"
+harness += extract_function("magic.c", "spell_refresh spell_refresh_rule(") + "\n"
 harness += extract_function("fight.c", "unsigned int calculate_ch_state(") + "\n"
 harness += "void update_pos(P_char ch) { ch->specials.position=GET_POS(ch)|calculate_ch_state(ch); }\n"
 # Keep unrelated Miracle components stubbed, but execute the complete native
@@ -696,10 +704,31 @@ int main() {
         assert(GET_STAT(&wearer)==STAT_NORMAL && IS_ALIVE(&wearer));
         assert(count(&wearer,SPELL_VITALITY,false)==1 && count(&wearer,SPELL_VITALITY,true)==1);
         assert(granted->flags&AFFTYPE_SET_SUSPENDED);
-        // Under a stronger cast, a weak one refreshes that cast instead of the dormant grant.
+        // Under a stronger cast, a weak one leaves that cast in charge, not the dormant grant.
         cast_native_vitality(21,&companion,nullptr,0,&wearer,nullptr);
         assert(GET_HIT(&wearer)==74 && GET_MAX_HIT(&wearer)==1224);
     }
+    // A cast on an ordinary +224 Vitality: stronger replaces it in place, equal renews it,
+    // weaker does nothing unless the setting is exactly 1, when it renews the timer only.
+    for(std::optional<float> setting:{std::optional<float>{},std::optional<float>{0.0f},
+                                      std::optional<float>{2.0f},std::optional<float>{1.0f}})
+        for(int level:{22,56,60}) {
+            reset(); track_hit_points=true; generous_refresh=setting;
+            cast_native_vitality(56,&companion,nullptr,0,&wearer,nullptr);
+            auto *vitality=get_spell_from_char(&wearer,SPELL_VITALITY);
+            assert(vitality && vitality->modifier==224 && GET_MAX_HIT(&wearer)==1224);
+            vitality->duration=3; GET_HIT(&wearer)=10; said.clear();
+            cast_native_vitality(level,&companion,nullptr,0,&wearer,nullptr);
+            const bool renewed=level>=56 || setting==1.0f;
+            const int modifier=4*std::max(level,56);
+            assert(get_spell_from_char(&wearer,SPELL_VITALITY)==vitality && count(&wearer,SPELL_VITALITY,false)==1);
+            assert(vitality->modifier==modifier && GET_MAX_HIT(&wearer)==1000+modifier);
+            assert(GET_HIT(&wearer)==10+modifier-224 && GET_STAT(&wearer)==STAT_NORMAL && IS_ALIVE(&wearer));
+            assert(vitality->duration==(renewed ? vitality_duration(&companion,&wearer) : 3));
+            assert((said.find("magical surge")!=std::string::npos)==renewed);
+            assert((said.find("Nothing new seems to happen.")!=std::string::npos)==!renewed);
+        }
+    generous_refresh.reset();
     {
         // The ordinary cast lands on its target and leaves the target's set grant unchanged.
         reset();

@@ -1564,6 +1564,14 @@ void breath_weapon_basalt(int, P_char, char *, int, P_char, P_obj);
  * and move everything back to its proper place. 06 May 2003 dbb */
 
 void spell_mielikki_vitality(int, P_char, char *, int, P_char, P_obj);
+// What a cast does to the same buff already on its target.
+enum class spell_refresh
+{
+	replace,
+	renew,
+	nothing
+};
+spell_refresh spell_refresh_rule(int incoming, int existing);
 void do_nothing_spell(int, P_char, char *, int, P_char, P_obj);
 bool can_relocate_to(P_char, P_char);
 void cure_arrow_wound(P_char);
