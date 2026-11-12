@@ -238,6 +238,24 @@ def run(binary, chaos, class_name="Warrior"):
                 journey.require(saved_items(sql) == saved_snapshot,
                                 "saved item flags or spellbook contents changed across reload")
 
+                # Worn equipment with an empty carried list must also survive login without a regrant.
+                actor.send("wear 1.newbie")
+                actor.expect("Pos: standing >")
+                actor.send("drop all")
+                actor.expect("Pos: standing >", timeout=30)
+                worn_saved = save_and_wait(actor, sql, lambda items: len(items) == 1)
+                worn_snapshot = saved_items(sql)
+                actor.send("quit")
+                actor.expect("ACCOUNT MENU", timeout=40)
+                actor.send("0")
+                actor.close()
+                actor = journey.reconnect_character(plain, expected_room=None)
+                text = actor.expect("Pos: standing >", timeout=20)
+                journey.require("starter kit is being prepared" not in text,
+                                "worn-only equipment still regranted a newbie kit")
+                journey.require(held(sql) == worn_saved and saved_items(sql) == worn_snapshot,
+                                "worn equipment changed across reload")
+
                 # Opting out must survive a reconnect with no saved inventory.
                 actor.send("toggle newbie off")
                 actor.expect("will not load with newbie EQ")

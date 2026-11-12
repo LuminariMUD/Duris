@@ -1119,9 +1119,16 @@ static P_obj materialize_legacy_newbie_item(P_char ch, const prepared_newbie_ite
 /** Reserve a PC kit now and prepare it in bounded slices on later game pulses. */
 void load_obj_to_newbies(P_char ch)
 {
-	if (!ch || item_movement_transaction_player_busy(ch) ||
-	    (ch->carrying && IS_PC(ch) && !IS_SET(ch->specials.act3, PLR3_STARTER_KIT_PENDING)))
+	if (!ch || item_movement_transaction_player_busy(ch))
 		return;
+	if (IS_PC(ch) && !IS_SET(ch->specials.act3, PLR3_STARTER_KIT_PENDING))
+	{
+		if (ch->carrying || (ch->only.pc && ch->only.pc->retained_items))
+			return;
+		for (P_obj equipped : ch->equipment)
+			if (equipped)
+				return;
+	}
 	if (IS_NPC(ch))
 	{
 		for (const auto &prepared : prepare_legacy_newbie_plan(ch))
