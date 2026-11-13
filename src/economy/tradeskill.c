@@ -2136,7 +2136,8 @@ void do_refine(P_char ch, char *arg, int /*cmd*/)
 				ch);
 			i--;
 		}
-		else if (o && (t_vnum > 193) && (t_vnum < 234))
+		// Paying in platinum uses no ore.
+		else if (!plat && o && (t_vnum > 193) && (t_vnum < 234))
 		{
 			o--;
 			orechance = (t_vnum - 194);

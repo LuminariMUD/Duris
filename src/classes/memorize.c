@@ -2960,6 +2960,23 @@ void do_scribe(P_char ch, char *arg, int /*cmd*/)
 	add_scribing(ch, spl, o1, TRUE, o3, NULL);
 }
 
+// A teacher stays busy until the lesson ends; free one still in the game.
+static P_char release_teacher(const struct scribing_data_type *s_data)
+{
+	P_char teacher = s_data->flag ? NULL : find_character_by_runtime_id(s_data->source_id);
+	if (teacher)
+		REMOVE_BIT(teacher->specials.affected_by2, AFF2_SCRIBING);
+	return teacher;
+}
+
+// The scriber is leaving the game; their pending page never fires.
+void stop_scribing(P_char ch)
+{
+	P_nevent event = get_scheduled(ch, event_scribe);
+	if (event)
+		release_teacher((struct scribing_data_type *)event->data);
+}
+
 void event_scribe(P_char ch, P_char /*victim*/, [[maybe_unused]] P_obj obj, void *data)
 {
 	struct scribing_data_type *s_data = (struct scribing_data_type *)data;
@@ -2984,6 +3001,7 @@ void event_scribe(P_char ch, P_char /*victim*/, [[maybe_unused]] P_obj obj, void
 		disarm_char_nevents(ch, event_scribe);
 		send_to_char("So much for that scribing effort!\n", ch);
 		REMOVE_BIT(ch->specials.affected_by2, AFF2_SCRIBING);
+		release_teacher(s_data);
 		return;
 	}
 
@@ -2996,17 +3014,12 @@ void event_scribe(P_char ch, P_char /*victim*/, [[maybe_unused]] P_obj obj, void
 		snprintf(Gbuf1, MAX_STRING_LENGTH, "You finish scribing the spell '%s' into $p.",
 			 skills[s_data->spell].name);
 		act(Gbuf1, TRUE, ch, s_data->book, 0, TO_CHAR);
-		P_char teacher = NULL;
-		if (!s_data->flag)
-			teacher = find_character_by_runtime_id(s_data->source_id);
-		if (teacher)
+		if (P_char teacher = release_teacher(s_data))
 		{
 			snprintf(Gbuf1, MAX_STRING_LENGTH,
 				 "You finish teaching the spell '%s' to %s.\n",
 				 skills[s_data->spell].name, GET_NAME(ch));
 			send_to_char(Gbuf1, teacher);
-
-			REMOVE_BIT(teacher->specials.affected_by2, AFF2_SCRIBING);
 		}
 		if (scroll)
 		{

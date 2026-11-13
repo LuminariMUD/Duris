@@ -1927,6 +1927,7 @@ int max_spells_in_circle(P_char, int);
 int spells_memmed_in_circle(P_char, int);
 struct extra_descr_data *find_spell_description(P_obj);
 void AddScribingAffect(P_char);
+void stop_scribing(P_char);
 void SetBookNewbySpells(P_char);
 void SetSpellCircles(void);
 void add_scribe_data(int, P_char, P_obj, int, P_obj, P_char, void (*done_func)(P_char) = NULL);

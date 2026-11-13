@@ -8,7 +8,11 @@ the slot was reused:
 - event_obj_affect() read the affect type after obj_affect_remove() released it.
 - event_scribe() kept raw scroll and teacher pointers across the page delay;
   a scroll that left the game was read and extracted again, and a teacher who
-  left was written to.
+  left was written to. A teacher was also freed only when the lesson finished,
+  so a student who stood up or left the game mid-lesson left the teacher
+  "busy scribing" and refused most commands.
+- do_refine() charged platinum for a player carrying two or more ores, then used
+  up every ore anyway.
 
 Compiles the production functions under ASan/UBSan. Object and character
 storage is freed when the fixture extracts it, so a stale read fails at once.
@@ -106,7 +110,8 @@ int panic_corruption_int(const char *, const char *, ...) { __builtin_trap(); }
 
 // FUNCTIONS
 
-static void refine(const std::vector<int> &carried)
+// Returns how many items are left over.
+static int refine(const std::vector<int> &carried)
 {
 	char_data ch{};
 	for (auto rnum = carried.rbegin(); rnum != carried.rend(); ++rnum)
@@ -122,8 +127,14 @@ static void refine(const std::vector<int> &carried)
 	coins = 0;
 	char arg[] = "iron";
 	do_refine(&ch, arg, 0);
-	// Both materials and the one ore are used up.
-	assert(!ch.carrying);
+	int left = 0;
+	while (P_obj obj = ch.carrying)
+	{
+		ch.carrying = obj->next_content;
+		delete obj;
+		left++;
+	}
+	return left;
 }
 
 int main()
@@ -135,15 +146,19 @@ int main()
 	roll = 100;
 
 	// The best ore lifts the chance to 100, so the roll cannot fail.
-	refine({ 0, 0, 3 });
+	// Both materials and the one ore are used up.
+	assert(!refine({ 0, 0, 3 }));
 	assert(granted.size() == 1 && granted[0]->R_num == 1 && !coins);
-	refine({ 3, 0, 0 });
+	assert(!refine({ 3, 0, 0 }));
 	assert(granted.size() == 1 && granted[0]->R_num == 1 && !coins);
 	// The worst ore fails the same roll and shows the material that was used.
-	refine({ 0, 0, 2 });
+	assert(!refine({ 0, 0, 2 }));
 	assert(granted.empty() && !coins);
 	// So does paying in coins.
-	refine({ 0, 0 });
+	assert(!refine({ 0, 0 }));
+	assert(granted.empty() && coins == 50000);
+	// With two ores it pays in coins and keeps both ores.
+	assert(refine({ 0, 2, 0, 3 }) == 2);
 	assert(granted.empty() && coins == 50000);
 
 	for (P_obj obj : granted)
@@ -248,6 +263,13 @@ void extract_obj(P_obj obj, int)
 	delete obj;
 }
 int panic_corruption_int(const char *, const char *, ...) { __builtin_trap(); }
+// The scriber's pending page carries the payload.
+P_nevent get_scheduled(P_char, event_func_type)
+{
+	static nevent_data page;
+	page.data = &payload;
+	return &page;
+}
 
 // FUNCTIONS
 
@@ -332,7 +354,21 @@ int main()
 	delete gone;
 	last_page();
 	assert(!aborted);
-	std::puts("event_scribe re-finds its scroll and teacher");
+
+	// A student who stops mid-lesson frees the teacher too.
+	reset();
+	start(nullptr, &teacher);
+	scriber.specials.position = STAT_NORMAL + POS_STANDING;
+	last_page();
+	assert(aborted == 1 && !IS_SET(teacher.specials.affected_by2, AFF2_SCRIBING));
+	scriber.specials.position = STAT_RESTING + POS_SITTING;
+
+	// So does a student who leaves the game, whose last page never fires.
+	reset();
+	start(nullptr, &teacher);
+	stop_scribing(&scriber);
+	assert(!IS_SET(teacher.specials.affected_by2, AFF2_SCRIBING));
+	std::puts("event_scribe re-finds its scroll and teacher, and always frees the teacher");
 }
 '''
 
@@ -345,6 +381,8 @@ HARNESSES = {
     "scribe": (SCRIBE, "memorize.c", [
         ("memorize.c", "static P_obj scribing_implement("),
         ("memorize.c", "void add_scribe_data(int spl,"),
+        ("memorize.c", "static P_char release_teacher("),
+        ("memorize.c", "void stop_scribing(P_char ch)"),
         ("memorize.c", "void event_scribe(P_char ch, P_char /*victim*/")]),
 }
 

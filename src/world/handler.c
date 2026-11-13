@@ -4087,6 +4087,7 @@ void extract_char(P_char ch)
 		affect_remove(ch, af);
 	}
 
+	stop_scribing(ch);
 	disarm_char_nevents(ch, NULL);
 
 	extract_char_items(ch, terminal_items_saved);
