@@ -1683,7 +1683,9 @@ int telemetry_posthog_sender_scenario(std::string_view name, const char *directo
 	bool expired = false;
 	bool completed = false;
 	auto now = MONO;
-	auto deadline = (name == "deadline" || name == "dns") ? MONO + 250'000U : 0U;
+	// Under HTTP_TIMEOUT_USEC (2 s), so the deadline cancels the send; long enough that a
+	// pulse blocked until it stands well clear of scheduler noise on a busy runner.
+	auto deadline = (name == "deadline" || name == "dns") ? MONO + 1'500'000U : 0U;
 	if (name == "flush")
 	{
 		telemetry_posthog_sender_pulse(now, BASE, 0U, false);
