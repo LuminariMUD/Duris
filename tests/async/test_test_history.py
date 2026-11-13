@@ -8,9 +8,9 @@
   still untracked was then reported flaky. Any untracked file now makes the run dirty: the
   tests read migrations/ and docs/ as well as src/, tests/, areas/ and scripts/.
 - A test's time inside a full parallel run was set against its median from focused runs,
-  made alone and faster, which reported it slower. Each run records its --match and worker
-  count, and scripts/test_history.py compares the last run only with runs made like it, and
-  only a test the last run passed: one it failed or did not run is not "slower".
+  made alone and faster, which reported it slower. Each run records its --match, --shard and
+  worker count, and scripts/test_history.py compares the last run only with runs made like it,
+  and only a test the last run passed: one it failed or did not run is not "slower".
 """
 from pathlib import Path
 import json
@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory(prefix="test-history-") as temporary:
     git(repo, "add", "-A")
     git(repo, "-c", "user.email=t@example.invalid", "-c", "user.name=t", "commit", "-qm", "a")
 
-    def write(started: str) -> None:
+    def write(started: str, shard: tuple[int, int] | None = None) -> None:
         """One run's history, written by its own process as a runner's is."""
         subprocess.run([sys.executable, "-c", f"""
 import sys
@@ -43,7 +43,7 @@ sys.path.insert(0, {str(ROOT / "tests")!r})
 import run_regression_tests as runner
 runner.ROOT = Path({str(repo)!r})
 runner.write_history([runner.TestResult(runner.ROOT / "tests/async/test_a.py", 0, "", 2.0)],
-                     {started!r}, None, 8)
+                     {started!r}, None, {shard!r}, 8)
 """], check=True)
 
     def runs() -> list[dict]:
@@ -54,7 +54,7 @@ runner.write_history([runner.TestResult(runner.ROOT / "tests/async/test_a.py", 0
     write("20261010T000000Z")
     assert len(runs()) == 2, "a run in the same second overwrote another"
     assert [run["dirty"] for run in runs()] == [False, False]
-    assert runs()[0]["jobs"] == 8 and runs()[0]["match"] is None
+    assert runs()[0]["jobs"] == 8 and runs()[0]["match"] is None and runs()[0]["shard"] is None
 
     (repo / "tests/async/test_new.py").write_text("")
     write("20261010T000001Z")
@@ -63,14 +63,16 @@ runner.write_history([runner.TestResult(runner.ROOT / "tests/async/test_a.py", 0
     (repo / "docs/new.md").write_text("read by the documentation contract\n")
     write("20261010T000002Z")
     assert [run["dirty"] for run in runs()][2:] == [True, True]
+    write("20261010T000003Z", (1, 4))
+    assert runs()[-1]["shard"] == [1, 4]
 
 with tempfile.TemporaryDirectory(prefix="test-history-report-") as temporary:
     history = Path(temporary)
 
     def run(index: int, seconds: float, match: str | None, status: str = "PASS",
-            dirty: bool = False) -> None:
+            dirty: bool = False, shard: list[int] | None = None) -> None:
         record = {"commit": "c" * 40, "dirty": dirty, "started": f"20261010T{index:06d}Z",
-                  "match": match, "jobs": 8,
+                  "match": match, "shard": shard, "jobs": 8,
                   "tests": [{"path": "tests/async/test_b.py", "status": status,
                              "seconds": seconds}]}
         (history / f"20261010T{index:06d}Z-cccccccccccc-1.json").write_text(json.dumps(record))
@@ -103,4 +105,9 @@ with tempfile.TemporaryDirectory(prefix="test-history-report-") as temporary:
         (history / f"20261010T000015Z-{name}.json").write_text(json.dumps(record))
     slowest = report().split("Slowest twenty of the last run:")[1]
     assert "3.5s" in slowest and "7.5s" not in slowest, slowest
+    # A shard runs a quarter of the suite on the same workers, so its tests run faster.
+    for index in range(16, 22):
+        run(index, 4.0, None, shard=[1, 4])
+    run(22, 12.0, None)
+    assert "runs like the last before: 0" in report(), report()
 print("the run history keeps every run and compares runs made alike")

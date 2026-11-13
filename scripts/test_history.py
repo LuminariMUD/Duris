@@ -2,14 +2,14 @@
 """Report on the regression runs kept in bin/test-history/.
 
 tests/run_regression_tests.py writes one file per run, <UTC time>-<short sha>-<pid>.json, with
-the commit, whether the tree was dirty, its --match filter and worker count, and each test's
-path, status and seconds. This reads them and lists:
+the commit, whether the tree was dirty, its --match filter, --shard part and worker count, and
+each test's path, status and seconds. This reads them and lists:
 
 - tests that both passed and failed on the same clean commit (flaky);
 - tests whose last time rose more than half over their median of the ten runs before
   (those taking a second or more: below that the ratio is noise), among runs made like the
-  last one, with the same --match and workers: a test run alone is faster than in a full
-  parallel run;
+  last one, with the same --match, --shard and workers: a test run alone is faster than in a
+  full parallel run;
 - the twenty slowest tests of the last run.
 
     python3 scripts/test_history.py [--history DIR]
@@ -60,7 +60,7 @@ def main() -> int:
 
     # Each test the last run passed, against its passes in the earlier runs made like it.
     def shape(run: dict) -> tuple:
-        return run.get("match"), run.get("jobs")
+        return run.get("match"), run.get("shard"), run.get("jobs")
     earlier: dict[str, list[float]] = defaultdict(list)
     for run in runs[:-1]:
         if shape(run) == shape(runs[-1]):

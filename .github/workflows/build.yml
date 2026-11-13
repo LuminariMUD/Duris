@@ -52,5 +52,8 @@ jobs:
         CCACHE_DIR: ${{ github.workspace }}/bin/test-ccache
         CCACHE_MAXSIZE: 2G
       run: |
+        ccache --zero-stats
         make test-all -j"$(nproc)" TEST_JOBS="$(nproc)" TEST_SHARD="${{ matrix.shard }}/4" CC='ccache g++'
         ccache --show-stats
+        # Save only what this run used, so each saved cache stays one run's working set.
+        ccache --evict-older-than "$((SECONDS + 60))s"
