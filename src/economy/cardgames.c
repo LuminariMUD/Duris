@@ -510,6 +510,7 @@ int blackjack_table(P_obj obj, P_char ch, int cmd, char *argument)
 			if (betamt > GET_COPPER(ch))
 			{
 				act(STR_CARDS_CASH_FAIL, FALSE, ch, obj, obj, TO_CHAR);
+				return TRUE;
 			}
 			// 1000 Copper per Platinum.
 			else if (betamt > 1000 * get_property("blackjack.MaxBetInPlatinum", 100))
@@ -528,6 +529,7 @@ int blackjack_table(P_obj obj, P_char ch, int cmd, char *argument)
 			if (betamt > GET_SILVER(ch))
 			{
 				act(STR_CARDS_CASH_FAIL, FALSE, ch, obj, obj, TO_CHAR);
+				return TRUE;
 			}
 			// 100 Silver per Platinum.
 			else if (betamt > 100 * get_property("blackjack.MaxBetInPlatinum", 100))
@@ -546,6 +548,7 @@ int blackjack_table(P_obj obj, P_char ch, int cmd, char *argument)
 			if (betamt > GET_GOLD(ch))
 			{
 				act(STR_CARDS_CASH_FAIL, FALSE, ch, obj, obj, TO_CHAR);
+				return TRUE;
 			}
 			// 10 Gold per Platinum.
 			else if (betamt > 10 * get_property("blackjack.MaxBetInPlatinum", 100))
@@ -564,6 +567,7 @@ int blackjack_table(P_obj obj, P_char ch, int cmd, char *argument)
 			if (betamt > GET_PLATINUM(ch))
 			{
 				act(STR_CARDS_CASH_FAIL, FALSE, ch, obj, obj, TO_CHAR);
+				return TRUE;
 			}
 			else if (betamt > get_property("blackjack.MaxBetInPlatinum", 100))
 			{
