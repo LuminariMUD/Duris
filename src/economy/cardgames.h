@@ -71,18 +71,18 @@ class Hand
 {
     protected:
 	P_Card cards;
-	P_char owner;
+	uint64_t owner_runtime_id; // The owner can leave the game mid-hand; never keep the pointer.
 
     public:
 	Hand()
 	{
 		cards = NULL;
-		owner = NULL;
+		owner_runtime_id = 0;
 	};
 	Hand(P_char pl)
 	{
 		cards = NULL;
-		owner = pl;
+		owner_runtime_id = pl->runtime_id;
 	};
 	int BlackjackValue();
 	int numCards()
@@ -96,7 +96,8 @@ class Hand
 		};
 		return i;
 	};
-	P_char getOwner() { return owner; };
+	// NULL once the owner has left the game.
+	P_char getOwner() { return find_character_by_runtime_id(owner_runtime_id); };
 	void ReceiveCard(P_Card newCard)
 	{
 		newCard->nextCard = cards;
@@ -153,6 +154,7 @@ void event_object_proc(P_char, P_char, P_obj, void *);
 #define STR_CARDS_CHOOSE                                                                                                                                                                                   \
 	"&+yThe &+bm&+Ba&+Cg&+Wi&+Cc&+Ba&+bl &+bf&+Bl&+Cam&+Be&+bs&+y flicker over the &+wdeck&+y once more, and you realise that you can choose to either &+Whit&+y, &+Wstay&+y or &+Wfold&+y simply by " \
 	"telling the cards what you wish to do.&n\n"
+#define STR_CARDS_NOT_YOURS "&+yThose aren't your cards to play.&n"
 #define STR_CARDS_GAME_0 \
 	"&+yYou dont appear to be in a game yet, or there are no cards dealt. Please tell me when its time to &+Wdeal&+y cards and we can begin playing!"
 #define STR_CARDS_GAME_DEAL \

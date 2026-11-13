@@ -366,6 +366,9 @@ int blackjack_table(P_obj obj, P_char ch, int cmd, char *argument)
 	if (cmd == CMD_PERIODIC && obj->value[0] == BJ_DEALERSTURN)
 	{
 		ch = playerHand->getOwner();
+		// The player left the game mid-hand; the stake stays forfeit.
+		if (!ch)
+			goto reset_table;
 
 		if (dealerHand->BlackjackValue() < 17 && dealerHand->numCards() < 5)
 		{
@@ -510,6 +513,7 @@ int blackjack_table(P_obj obj, P_char ch, int cmd, char *argument)
 			if (betamt > GET_COPPER(ch))
 			{
 				act(STR_CARDS_CASH_FAIL, FALSE, ch, obj, obj, TO_CHAR);
+				return TRUE;
 			}
 			// 1000 Copper per Platinum.
 			else if (betamt > 1000 * get_property("blackjack.MaxBetInPlatinum", 100))
@@ -528,6 +532,7 @@ int blackjack_table(P_obj obj, P_char ch, int cmd, char *argument)
 			if (betamt > GET_SILVER(ch))
 			{
 				act(STR_CARDS_CASH_FAIL, FALSE, ch, obj, obj, TO_CHAR);
+				return TRUE;
 			}
 			// 100 Silver per Platinum.
 			else if (betamt > 100 * get_property("blackjack.MaxBetInPlatinum", 100))
@@ -546,6 +551,7 @@ int blackjack_table(P_obj obj, P_char ch, int cmd, char *argument)
 			if (betamt > GET_GOLD(ch))
 			{
 				act(STR_CARDS_CASH_FAIL, FALSE, ch, obj, obj, TO_CHAR);
+				return TRUE;
 			}
 			// 10 Gold per Platinum.
 			else if (betamt > 10 * get_property("blackjack.MaxBetInPlatinum", 100))
@@ -564,6 +570,7 @@ int blackjack_table(P_obj obj, P_char ch, int cmd, char *argument)
 			if (betamt > GET_PLATINUM(ch))
 			{
 				act(STR_CARDS_CASH_FAIL, FALSE, ch, obj, obj, TO_CHAR);
+				return TRUE;
 			}
 			else if (betamt > get_property("blackjack.MaxBetInPlatinum", 100))
 			{
@@ -688,6 +695,11 @@ int blackjack_table(P_obj obj, P_char ch, int cmd, char *argument)
 				act(STR_CARDS_GAME_0, FALSE, ch, obj, ch, TO_CHAR);
 				return TRUE;
 			}
+			if (playerHand->getOwner() != ch)
+			{
+				act(STR_CARDS_NOT_YOURS, FALSE, ch, obj, ch, TO_CHAR);
+				return TRUE;
+			}
 			if (!say(ch, arg))
 			{
 				act(STR_CARDS_FAILED, FALSE, ch, obj, obj, TO_CHAR);
@@ -728,6 +740,12 @@ int blackjack_table(P_obj obj, P_char ch, int cmd, char *argument)
 				    TO_CHAR); // Was game in progress.
 				return TRUE;
 			}
+			// Anyone may clear a hand its player abandoned by leaving the game.
+			else if (playerHand->getOwner() && playerHand->getOwner() != ch)
+			{
+				act(STR_CARDS_NOT_YOURS, FALSE, ch, obj, ch, TO_CHAR);
+				return TRUE;
+			}
 			else
 			{
 				act(STR_CARDS_FOLD, FALSE, ch, obj, ch, TO_CHAR);
@@ -746,6 +764,11 @@ int blackjack_table(P_obj obj, P_char ch, int cmd, char *argument)
 			if (obj->value[0] != BJ_POSTDEAL && obj->value[0] != BJ_POSTHIT)
 			{
 				act(STR_CARDS_GAME_0, FALSE, ch, obj, ch, TO_CHAR);
+				return TRUE;
+			}
+			if (playerHand->getOwner() != ch)
+			{
+				act(STR_CARDS_NOT_YOURS, FALSE, ch, obj, ch, TO_CHAR);
 				return TRUE;
 			}
 
