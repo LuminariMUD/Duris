@@ -14,6 +14,9 @@
 
 #include <unistd.h>
 #include <stdint.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
 #ifdef _WIN32
 #include <bcrypt.h>
 #include <process.h>
@@ -86,6 +89,24 @@ void randomize(uint64_t seed)
 	rng_state[1] = hash64(rng_state[0]);
 	rng_state[2] = hash64(rng_state[1]);
 	rng_state[3] = hash64(rng_state[2]);
+}
+
+/* Seed the game's rolls at boot. A local test may fix them with DURIS_TEST_RNG_SEED
+ * (a nonzero decimal number) to replay a run; any other environment, or no seed,
+ * keeps fresh entropy. Secrets never come from this generator (they use RAND_bytes). */
+void randomize_at_boot(void)
+{
+	const char *seed_text = getenv("DURIS_TEST_RNG_SEED");
+	const char *environment = getenv("ENVIRONMENT");
+	const uint64_t seed = seed_text ? strtoull(seed_text, NULL, 10) : 0;
+
+	if (seed && environment && !strcmp(environment, "local"))
+	{
+		randomize(seed);
+		fprintf(stderr, "RNG seed: %llu (DURIS_TEST_RNG_SEED)\n", (unsigned long long)seed);
+	}
+	else
+		randomize(0);
 }
 
 int number(int from, int to)

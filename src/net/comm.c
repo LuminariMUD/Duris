@@ -583,7 +583,7 @@ int main(int argc, char **argv)
 	dir = DFLT_DIR;
 	sslport = SSL_PORT;
 
-	randomize(0);
+	randomize_at_boot();
 
 	for (int i = 1; i < argc; i++)
 	{
