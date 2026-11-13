@@ -2845,9 +2845,12 @@ bool special(P_char ch, int cmd, char *arg)
 
 	/*
 	 * special in room?
+	 *
+	 * A proc may kill or extract ch and still return FALSE (Charon, exit traps).
+	 * Stop there: ch->in_room is NOWHERE and the command must not run.
 	 */
 	if (world[ch->in_room].funct)
-		if ((*world[ch->in_room].funct)(ch->in_room, ch, cmd, arg))
+		if ((*world[ch->in_room].funct)(ch->in_room, ch, cmd, arg) || !IS_ALIVE(ch))
 			return (1);
 
 	/*
@@ -2858,7 +2861,8 @@ bool special(P_char ch, int cmd, char *arg)
 		if (ch->equipment[j] && (ch->equipment[j]->R_num >= 0) &&
 		    obj_index[ch->equipment[j]->R_num].func.obj)
 			if ((*obj_index[ch->equipment[j]->R_num].func.obj)(ch->equipment[j], ch,
-									   cmd, arg))
+									   cmd, arg) ||
+			    !IS_ALIVE(ch))
 				return (1);
 	}
 	/*
@@ -2869,7 +2873,7 @@ bool special(P_char ch, int cmd, char *arg)
 	{
 		next_obj = i->next_content;
 		if ((i->R_num >= 0) && obj_index[i->R_num].func.obj)
-			if ((*obj_index[i->R_num].func.obj)(i, ch, cmd, arg))
+			if ((*obj_index[i->R_num].func.obj)(i, ch, cmd, arg) || !IS_ALIVE(ch))
 				return (1);
 	}
 	if (!ALONE(ch))
@@ -2889,7 +2893,8 @@ bool special(P_char ch, int cmd, char *arg)
 			    (!IS_IMMOBILE(k) ||
 			     (IS_NPC(k) && (GET_VNUM(k) == OUTPOST_BUILDING_MOB))))
 			{
-				if ((*mob_index[GET_RNUM(k)].func.mob)(k, ch, cmd, arg))
+				if ((*mob_index[GET_RNUM(k)].func.mob)(k, ch, cmd, arg) ||
+				    !IS_ALIVE(ch))
 				{
 					return (1);
 				}
@@ -2901,7 +2906,8 @@ bool special(P_char ch, int cmd, char *arg)
 		for (k = world[ch->in_room].people; k; k = k->next_in_room)
 			if ((k != ch) && IS_NPC(k) && !training_dummy_is(k) && IS_AWAKE(k) &&
 			    mob_index[GET_RNUM(k)].qst_func)
-				if ((*mob_index[GET_RNUM(k)].qst_func)(k, ch, cmd, arg))
+				if ((*mob_index[GET_RNUM(k)].qst_func)(k, ch, cmd, arg) ||
+				    !IS_ALIVE(ch))
 					return (1);
 	}
 	/*
@@ -2911,7 +2917,7 @@ bool special(P_char ch, int cmd, char *arg)
 	{
 		next_obj = i->next_content;
 		if ((i->R_num >= 0) && obj_index[i->R_num].func.obj)
-			if ((*obj_index[i->R_num].func.obj)(i, ch, cmd, arg))
+			if ((*obj_index[i->R_num].func.obj)(i, ch, cmd, arg) || !IS_ALIVE(ch))
 				return (1);
 	}
 
