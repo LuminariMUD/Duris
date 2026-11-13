@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""A refused blackjack bet takes no money and leaves the table open.
+"""A refused blackjack bet takes no money, and only the bettor plays the hand.
 
 Compiles the production src/economy/cardgames.c under ASan/UBSan and calls
 blackjack_table() with `offer`. A player told they cannot afford the bet used to
 lose it anyway: the refusal fell through to SUB_MONEY, past the table limit, and
-an oversized platinum bet overflowed the copper total.
+an oversized platinum bet overflowed the copper total. Any bystander could also
+hit, stay or fold someone else's hand, and a hand whose player had left the
+game paid out through the freed character.
 """
 
 import os
@@ -37,10 +39,19 @@ int get_property(const char *, int fallback) { return fallback; }
 int number(int low, int) { return low; }
 int say(P_char, const char *) { return 0; }
 void send_to_char_f(P_char, const char *, ...) {}
+static int dealer_events;
 nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, const void *, int)
 {
-	assert(false);
+	dealer_events++;
 	return {};
+}
+static P_char live[2];
+P_char find_character_by_runtime_id(uint64_t id)
+{
+	for (P_char ch : live)
+		if (ch && ch->runtime_id == id)
+			return ch;
+	return NULL;
 }
 // Argument splitting is not under test; the bet amount and coin parsing are.
 char *one_argument(const char *argument, char *first)
@@ -81,7 +92,43 @@ int main()
 	assert(taken == 0 && player.points.cash[0] == 100000);
 	assert(table.value[0] == BJ_PREBID);
 
-	std::puts("refused blackjack bets take nothing");
+	// Only the bettor plays the hand; a bystander can clear it once the bettor is gone.
+	char_data *bettor = new char_data{};
+	bettor->runtime_id = 1;
+	bettor->player.name = const_cast<char *>("Bettor");
+	bettor->points.cash[0] = 100;
+	char_data bystander{};
+	bystander.runtime_id = 2;
+	bystander.player.name = const_cast<char *>("Bystander");
+	live[0] = bettor;
+	live[1] = &bystander;
+	char hit[] = "hit", stay[] = "stay", fold[] = "fold", deal[] = "deal";
+	offer(&table, bettor, "10 copper");
+	blackjack_table(&table, bettor, CMD_SAY, deal);
+	assert(table.value[0] == BJ_POSTDEAL);
+	blackjack_table(&table, &bystander, CMD_SAY, hit);
+	blackjack_table(&table, &bystander, CMD_SAY, stay);
+	blackjack_table(&table, &bystander, CMD_SAY, fold);
+	assert(table.value[0] == BJ_POSTDEAL && table.value[1] == 10 && dealer_events == 0);
+
+	live[0] = NULL; // the bettor leaves the game mid-hand
+	blackjack_table(&table, &bystander, CMD_SAY, stay);
+	assert(table.value[0] == BJ_POSTDEAL && dealer_events == 0);
+	blackjack_table(&table, &bystander, CMD_SAY, fold);
+	assert(table.value[0] == BJ_PREBID);
+
+	// Leaving during the dealer's turn: the table resets without touching the freed bettor.
+	live[0] = bettor;
+	offer(&table, bettor, "10 copper");
+	blackjack_table(&table, bettor, CMD_SAY, deal);
+	blackjack_table(&table, bettor, CMD_SAY, stay);
+	assert(table.value[0] == BJ_DEALERSTURN && dealer_events == 1);
+	live[0] = NULL;
+	delete bettor;
+	blackjack_table(&table, NULL, CMD_PERIODIC, NULL);
+	assert(table.value[0] == BJ_PREBID);
+
+	std::puts("refused blackjack bets take nothing, and only the bettor plays the hand");
 }
 '''
 
