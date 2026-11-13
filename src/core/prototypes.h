@@ -2376,6 +2376,7 @@ void do_randobj(P_char, char *, int);
 
 uint64_t hash64(uint64_t x);
 void randomize(uint64_t seed);
+void apply_test_rng_seed(void);
 
 /*  arena.c */
 void initialize_arena(void);
