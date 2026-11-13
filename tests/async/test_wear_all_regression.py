@@ -161,6 +161,7 @@ production = '\n'.join([
     extract_function('memorize.c', 'P_obj FindSpellBookWithSpell('),
     extract_function('memorize.c', 'void do_scribe(P_char ch, char *arg, int /*cmd*/)'),
     extract_function('memorize.c', 'static int scribe_page_wait('),
+    extract_function('memorize.c', 'static P_char release_teacher('),
     extract_function('memorize.c', 'void event_scribe(P_char ch, P_char /*victim*/'),
 ])
 fixture = (ROOT / 'tests/async/wear_all_fixture.cpp').read_text()

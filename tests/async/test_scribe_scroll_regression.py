@@ -19,7 +19,7 @@ def test_source_contracts() -> None:
     classification = MEMORIZE.index("tmp.flag = (flag == 1 ?", assignment)
     assert assignment < classification
     event = extract_function("memorize.c", "void event_scribe(P_char ch, P_char /*victim*/")
-    assert "s_data && s_data->flag == 2 && !s_data->source.obj" in event
+    assert "s_data->flag == 2 && !OBJ_CARRIED_BY(scroll, ch)" in event
 
 
 def test_scroll_source_is_captured_as_scroll() -> None:

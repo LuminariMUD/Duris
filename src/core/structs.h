@@ -587,6 +587,7 @@ struct scribing_data_type
 		P_obj obj;
 		P_char teacher;
 	} source;
+	uint64_t source_id; /* obj_uid of source.obj or runtime_id of source.teacher */
 
 	int spell;
 	int pagetime; /* in 1/4 seconds, RL / 1 pulses - time to

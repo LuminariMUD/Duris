@@ -26,8 +26,8 @@ assert "tmp.source.obj->type == ITEM_SCROLL" in body, (
 # Verify event_scribe guards s_data->source.obj
 scribe_event_body = function_body(source, r"\bvoid\s+event_scribe\s*\(")
 assert scribe_event_body is not None, "event_scribe definition is missing"
-assert "if (s_data->flag == 2 && s_data->source.obj)" in scribe_event_body, (
-    "event_scribe must guard s_data->source.obj before dereferencing"
+assert "find_live_object(s_data->source.obj, s_data->source_id)" in scribe_event_body, (
+    "event_scribe must re-find the scroll before dereferencing it"
 )
 
 print("scribe scroll flag source contract passed")
