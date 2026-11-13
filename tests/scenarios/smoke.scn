@@ -8,15 +8,14 @@ actor  Smokecleric  class=CLERIC  level=20
 
 Smokewarrior> look
 Smokewarrior> score
-Smokewarrior? Score information for Smokewarrior
+Smokewarrior? ^\s*Score information for Smokewarrior\b
 Smokewarrior> who
 Smokewarrior? Smokecleric
 
 Smokecleric> say hello there
 Smokewarrior? hello there
 
-Smokestaff> load obj 18
-Smokestaff? created
+until Smokestaff /created/ max 3 load obj 18
 Smokestaff> give longsword Smokewarrior
 Smokewarrior? silverish longsword
 Smokewarrior> wield longsword

@@ -13,8 +13,10 @@ Scenario lines (see tests/scenarios/README.md):
     actor Name [class=MONK] [spec=WAYOFSNAKE] [level=40] [skill=SKILL_BASH:100]...
     staff Name                 a level-62 actor for load/restore/tranquilize
     Name> command              send a command and wait until it has finished
-    Name? text                 text has reached Name since Name's last check
-    Name! text                 text has NOT reached Name since Name's last check
+    Name? REGEX                REGEX matches what reached Name since Name's last check
+    Name! REGEX                REGEX does NOT match it
+    until Name /REGEX/ [max K] command
+                               send command again until its output matches (K tries, 20 by default)
     restart                    save everyone, stop, boot again and log everyone back in
 """
 
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import random
 import re
 import signal
 import subprocess
@@ -72,6 +75,13 @@ class Actor:
         return self.name.lower()
 
 
+def regex(where: str, text: str) -> re.Pattern:
+    try:
+        return re.compile(text, re.M)
+    except re.error as error:
+        raise ScenarioError(f"{where}: /{text}/ is not a valid regular expression: {error}") from None
+
+
 def parse(path: pathlib.Path) -> tuple[dict[str, Actor], list[tuple[int, str, str, str]]]:
     actors: dict[str, Actor] = {}
     steps = []
@@ -106,10 +116,17 @@ def parse(path: pathlib.Path) -> tuple[dict[str, Actor], list[tuple[int, str, st
         if line == "restart":
             steps.append((number, "restart", "", ""))
             continue
+        if words[0] == "until":
+            match = re.fullmatch(r"until ([A-Z][a-z]+) /((?:[^/\\]|\\.)+)/(?: max (\d+))? (.+)", line)
+            if not match or match[1] not in actors:
+                raise ScenarioError(f"{where}: expected 'until Name /REGEX/ [max K] command'")
+            steps.append((number, "until", match[1], (regex(where, match[2].replace("\\/", "/")),
+                                                       int(match[3] or 20), match[4])))
+            continue
         match = re.fullmatch(r"([A-Z][a-z]+)([>?!])\s?(.*)", line)
         if not match or match[1] not in actors:
             raise ScenarioError(f"{where}: expected 'Name> command', 'Name? text', 'Name! text' or 'restart'")
-        steps.append((number, match[2], match[1], match[3]))
+        steps.append((number, match[2], match[1], regex(where, match[3]) if match[2] != ">" else match[3]))
     if not actors:
         raise ScenarioError(f"{path.name}: no actors")
     return actors, steps
@@ -130,10 +147,11 @@ def seed(sql, actors: dict[str, Actor]) -> None:
 
 def unchecked(actor: Actor) -> str:
     """What reached the actor since its last check. Offsets count bytes, so slice before decoding."""
-    return bytes(actor.client.transcript[actor.checked:]).decode(errors="replace")
+    text = bytes(actor.client.transcript[actor.checked:]).decode(errors="replace")
+    return text.replace("\r\n", "\n")  # so `$` in a check matches at the end of a line
 
 
-def run_scenario(binary: pathlib.Path, path: pathlib.Path) -> None:
+def run_scenario(binary: pathlib.Path, path: pathlib.Path, rng_seed: int) -> None:
     actors, steps = parse(path)
     with tempfile.TemporaryDirectory(prefix="scenario-", dir=ROOT / "bin/tests") as temporary, \
             journey.mariadb_authority() as (authority, sql):
@@ -145,8 +163,10 @@ def run_scenario(binary: pathlib.Path, path: pathlib.Path) -> None:
         critical.mkdir(parents=True, mode=0o700)
         (runtime / "journals/players").mkdir(mode=0o700)
         plain, tls, websocket = journey.available_ports()
+        # A server that supports it fixes its rolls from this seed, so a failure replays.
         environment = dict(authority, CRITICAL_COMMAND_JOURNAL_DIR=str(critical),
-                           DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket))
+                           DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket),
+                           DURIS_TEST_RNG_SEED=str(rng_seed))
         output_path = runtime / "server.out"
         process = None
 
@@ -225,20 +245,30 @@ def run_scenario(binary: pathlib.Path, path: pathlib.Path) -> None:
                 if kind == ">":
                     command(actor.client, text)
                     continue
-                if kind == "?":
+                if kind == "until":
+                    pattern, tries, line = text
+                    for _ in range(tries):
+                        actor.checked = len(actor.client.transcript)
+                        command(actor.client, line)
+                        if pattern.search(unchecked(actor)):
+                            break
+                    else:
+                        raise ScenarioError(f"{where}: {line!r} never produced /{pattern.pattern}/ "
+                                            f"in {tries} tries. Last output:\n" + unchecked(actor)[-1500:])
+                    continue  # the matching attempt is what the next checks read
+                elif kind == "?":
                     deadline = time.monotonic() + 15
-                    while text not in unchecked(actor):
+                    while not text.search(unchecked(actor)):
                         if time.monotonic() > deadline:
-                            raise ScenarioError(f"{where}: {name} never saw {text!r}. Last output:\n"
+                            raise ScenarioError(f"{where}: {name} never saw /{text.pattern}/. Last output:\n"
                                                 + unchecked(actor)[-1500:])
                         actor.client._receive()
                 else:
                     command(actor.client, "score")  # drain anything still in flight
                     seen = unchecked(actor)
-                    if text in seen:
-                        at = seen.index(text)
-                        raise ScenarioError(f"{where}: {name} saw {text!r}, which must not appear:\n"
-                                            + seen[max(0, at - 700):at + 300])
+                    if found := text.search(seen):
+                        raise ScenarioError(f"{where}: {name} saw /{text.pattern}/, which must not appear:\n"
+                                            + seen[max(0, found.start() - 700):found.start() + 300])
                 actor.checked = len(actor.client.transcript)
             save_all()
         finally:
@@ -255,18 +285,21 @@ def run_scenario(binary: pathlib.Path, path: pathlib.Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--server", type=pathlib.Path, required=True)
+    parser.add_argument("--seed", type=int, help="replay a run: the seed a result line printed")
     parser.add_argument("scenarios", type=pathlib.Path, nargs="+")
     args = parser.parse_args()
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     failed = 0
     for path in args.scenarios:
         started = time.monotonic()
+        rng_seed = args.seed or random.randrange(1, 2**63)
         try:
-            run_scenario(args.server.resolve(), path)
-            print(f"PASS {path} ({time.monotonic() - started:.0f}s)", flush=True)
+            run_scenario(args.server.resolve(), path, rng_seed)
+            print(f"PASS {path} ({time.monotonic() - started:.0f}s, seed {rng_seed})", flush=True)
         except Exception as error:  # report every scenario, then fail the run
             failed += 1
-            print(f"FAIL {path} ({time.monotonic() - started:.0f}s)\n{error}", flush=True)
+            print(f"FAIL {path} ({time.monotonic() - started:.0f}s, seed {rng_seed})\n{error}\n"
+                  f"replay: scripts/mudtest scenario --seed {rng_seed} {path}", flush=True)
     print(f"{len(args.scenarios) - failed} passed, {failed} failed")
     return 1 if failed else 0
 
