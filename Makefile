@@ -156,7 +156,7 @@ world: build-area-tools
 	fi
 
 test-python: world
-	$(PYTHON) tests/run_regression_tests.py --jobs "$(TEST_JOBS)" $(if $(strip $(TEST_MATCH)),--match "$(TEST_MATCH)",)
+	$(PYTHON) tests/run_regression_tests.py --jobs "$(TEST_JOBS)" $(if $(strip $(TEST_MATCH)),--match "$(TEST_MATCH)",) $(if $(strip $(TEST_SHARD)),--shard "$(TEST_SHARD)",)
 
 test-native:
 	tests/async/run_signal_handlers.sh

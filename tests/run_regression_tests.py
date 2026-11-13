@@ -307,14 +307,24 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="list discovered tests without running them",
     )
+    parser.add_argument(
+        "--shard",
+        metavar="K/N",
+        help="run only part K of N; parts take every Nth test, so CI can split the suite across jobs",
+    )
     args = parser.parse_args()
     if args.jobs < 0:
         parser.error("--jobs must be zero or greater")
+    if args.shard:
+        part, _, parts = args.shard.partition("/")
+        if not (part.isdigit() and parts.isdigit() and 1 <= int(part) <= int(parts)):
+            parser.error("--shard must be K/N with 1 <= K <= N")
+        args.shard = (int(part), int(parts))
     return args
 
 
 def write_history(results: list[TestResult], started: str, match: str | None,
-                  jobs: int) -> None:
+                  shard: tuple[int, int] | None, jobs: int) -> None:
     """Keep this run's results in bin/test-history/ for scripts/test_history.py, which finds
     the flaky tests and the ones that grow slower. bin/ is ignored: the history is local.
     A run is dirty with any changed or untracked file: the runner finds untracked tests, the
@@ -331,7 +341,7 @@ def write_history(results: list[TestResult], started: str, match: str | None,
     directory.mkdir(parents=True, exist_ok=True)
     record = {
         "commit": commit, "dirty": dirty, "started": started, "finished": time.time(),
-        "match": match, "jobs": jobs,
+        "match": match, "shard": shard, "jobs": jobs,
         "tests": [{"path": relative(result.path), "status": result.status,
                    "seconds": round(result.elapsed, 3)} for result in results],
     }
@@ -343,6 +353,9 @@ def write_history(results: list[TestResult], started: str, match: str | None,
 def main() -> int:
     args = parse_args()
     tests = discover_tests(args.match)
+    if args.shard:
+        part, parts = args.shard
+        tests = tests[part - 1::parts]
 
     if args.list:
         for path in tests:
@@ -429,7 +442,7 @@ def main() -> int:
     run_all([path for path in ordered if path not in isolated], jobs)
     run_all(isolated, 1)
 
-    write_history(results, started_utc, args.match, jobs)
+    write_history(results, started_utc, args.match, args.shard, jobs)
     if failures:
         print("\nFailed:")
         for result in failures:

@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ "master" ]
 
+permissions:
+  contents: read
+
 # Replace obsolete PR runs while retaining every master/scheduled run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -13,8 +16,14 @@ concurrency:
 
 jobs:
   build:
-
+    name: build (${{ matrix.shard }}/4)
     runs-on: ubuntu-24.04
+    # The regression suite is CPU-bound, so four shards run it in parallel. Each shard
+    # builds the server; the compiler cache below keeps that and the harness compiles cheap.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,5 +41,22 @@ jobs:
                     mysql mysqldump mysql_config mariadb-install-db mariadbd; do
           command -v "$tool" || { echo "::error::$tool is not installed"; exit 1; }
         done
+    # tests/run_regression_tests.py already routes harness compiles through ccache
+    # (scripts/mutate/g++, cache in bin/test-ccache); keep that cache between runs.
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: bin/test-ccache
+        key: test-ccache-${{ matrix.shard }}-${{ github.run_id }}
+        restore-keys: |
+          test-ccache-${{ matrix.shard }}-
+          test-ccache-
     - name: build and test
-      run: make test-all -j"$(nproc)" TEST_JOBS="$(nproc)"
+      env:
+        CCACHE_DIR: ${{ github.workspace }}/bin/test-ccache
+        CCACHE_MAXSIZE: 2G
+      run: |
+        ccache --zero-stats
+        make test-all -j"$(nproc)" TEST_JOBS="$(nproc)" TEST_SHARD="${{ matrix.shard }}/4" CC='ccache g++'
+        ccache --show-stats
+        # Save only what this run used, so each saved cache stays one run's working set.
+        ccache --evict-older-than "$((SECONDS + 60))s"

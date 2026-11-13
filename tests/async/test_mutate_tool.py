@@ -9,6 +9,10 @@
   a line a `//` comment spliced on with a backslash was mutated.
 - Without ccache every compile through scripts/mutate/g++ failed, so every mutant counted
   as caught. The wrapper now runs the real g++ uncached.
+- With ccache, a several-source `-fsyntax-only` check failed: the wrapper split it into
+  compiles that write no object, then linked the missing objects. A several-source `-MMD`
+  build lost its dependency files to the split's scratch directory. Both now go to the
+  compiler whole.
 - A file's tests were those whose text held its name anywhere, so files.c took the tests of
   output_profiles.c; the name must stand alone now. A file whose every mutant timed out
   scored 100%; it has no score now.
@@ -82,6 +86,15 @@ with tempfile.TemporaryDirectory(prefix="mutate-tool-") as temporary:
         built = subprocess.run(command, cwd=root, env=dict(os.environ, PATH=path),
                                capture_output=True, text=True)
         assert built.returncode == 0, (command, built.stderr)
+    # With ccache, a several-source check or dependency-writing build goes to g++ whole.
+    if shutil.which("ccache"):
+        cached = dict(os.environ, CCACHE_DIR=str(root / "ccache"),
+                      PATH=f"{ROOT / 'scripts/mutate'}{os.pathsep}{os.environ['PATH']}")
+        for command in (["g++", "-fsyntax-only", "a.c", "b.c"],
+                        ["g++", "-MMD", "a.c", "b.c", "-o", "deps"]):
+            built = subprocess.run(command, cwd=root, env=cached, capture_output=True, text=True)
+            assert built.returncode == 0, (command, built.stderr)
+        assert list(root.glob("deps*.d")), sorted(path.name for path in root.iterdir())
 
     repo = root / "repo"
     for name in ("scripts/mutate.py", "scripts/mutate/g++", "tests/run_regression_tests.py"):

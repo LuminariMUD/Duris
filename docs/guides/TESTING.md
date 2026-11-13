@@ -72,6 +72,9 @@ make test TEST_JOBS=1
 make test-python TEST_MATCH=wear
 make test-list
 
+# Run part K of N (every Nth test), as CI's four `compile test` shards do:
+make test TEST_SHARD=1/4
+
 # Single test (preferred while iterating):
 python3 tests/async/test_wear_all_regression.py
 # or via its wrapper:
@@ -314,10 +317,10 @@ anything about behaviour.
 
 Each run of `tests/run_regression_tests.py` (so each `make test` and `make test-all`)
 writes `bin/test-history/<UTC time>-<short sha>-<pid>.json`: the commit, whether the tree
-was dirty (any changed or untracked file), when it finished, its `--match` filter and
-worker count, and each test's path, status and seconds. `python3 scripts/test_history.py` reads them and lists the tests that both passed
+was dirty (any changed or untracked file), when it finished, its `--match` filter, its
+`--shard` part and worker count, and each test's path, status and seconds. `python3 scripts/test_history.py` reads them and lists the tests that both passed
 and failed on one clean commit, those whose last time rose more than half over their median
-of the ten runs before that were made like the last (same `--match` and workers; among
+of the ten runs before that were made like the last (same `--match`, `--shard` and workers; among
 tests taking a second or more), and the twenty slowest of the last run. `bin/` is ignored, so the
 history is the checkout's own; a gate run in another worktree keeps its files there.
 
