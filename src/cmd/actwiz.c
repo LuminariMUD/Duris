@@ -7393,12 +7393,14 @@ void do_lookup(P_char ch, char *argument, int /*cmd*/)
 		char start_letter[MAX_STRING_LENGTH];
 
 		half_chop(pattern, start_letter, buf);
-		if (isname("*", start_letter))
+		// The letter goes into a shell command below, so accept nothing else.
+		if (!isalpha((unsigned char)start_letter[0]) || start_letter[1])
 		{
-			send_to_char("start letter must be a or b etc can't use * (Couse of lag)\n",
+			send_to_char("The start letter must be a single letter, such as a or b.\n",
 				     ch);
 			return;
 		}
+		start_letter[0] = LOWER(start_letter[0]);
 
 		half_chop(buf, level, pattern);
 		half_chop(pattern, m_class, buf);

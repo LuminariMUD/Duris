@@ -113,6 +113,10 @@ def run(server):
                 assert "Nothing found." in check("where tone sent", ())
                 assert "Nothing found." in check("where unspawned-ember", ())
                 assert b"\x1b[" in client.raw_transcript
+                # The pfile start letter reaches system(); a shell command must not run.
+                rejected = command(client, "lookup pfile a;touch${IFS}injected; 50 Human Warrior")
+                assert "must be a single letter" in rejected, rejected
+                assert not (runtime / "injected").exists(), "lookup pfile ran a shell command"
                 for topic in ("godlookup", "godwhere"):
                     assert "fire-giant" in command(client, "help " + topic)
                 (ROOT / "bin/tests/lookup-name-journey.txt").write_text("\n".join(evidence))
