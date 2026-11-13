@@ -1549,6 +1549,7 @@ struct game_loop_pulse_context
 	uint64_t loop_time_begin_us;
 	uint64_t loop_tick;
 	uint64_t loop_start_mono_us;
+	latency_trace_thread_usage thread_usage_begin; /* for the overrun record */
 	command_latency_tracker command_latency = {};
 	uint64_t connections_us = 0;
 	uint64_t command_sweep_us = 0;
@@ -2674,6 +2675,11 @@ static void run_pulse_reset_phase(game_loop_pulse_context &ctx)
 	{
 		char tick_buffer[LATENCY_TRACE_TICK_STRING_LENGTH];
 		char duration_buffers[10][LATENCY_TRACE_TICK_STRING_LENGTH];
+		// Thread CPU time well below the loop time means the game thread was waiting
+		// (faults, locks, scheduling), not computing; the counts say which.
+		char thread_usage[160];
+		latency_trace_format_thread_usage(&ctx.thread_usage_begin, thread_usage,
+						  sizeof thread_usage);
 		statuslog(
 			56,
 			"MUD TICK TOOK TOO LONG - loop time - %f: boot=%s tick=%s pulse_start_mono_us=%" PRIu64
@@ -2686,7 +2692,8 @@ static void run_pulse_reset_phase(game_loop_pulse_context &ctx)
 			" prompts_us=%s"
 			" affect_and_points_us=%s"
 			" affect_update_us=%s"
-			" point_update_us=%s",
+			" point_update_us=%s"
+			"%s",
 			(double)loop_us / 1000000.0, latency_trace_boot_id(),
 			latency_trace_format_tick(loop_tick, tick_buffer), loop_start_mono_us,
 			latency_trace_format_duration(connections_us, duration_buffers[0]),
@@ -2698,7 +2705,7 @@ static void run_pulse_reset_phase(game_loop_pulse_context &ctx)
 			latency_trace_format_duration(prompts_us, duration_buffers[6]),
 			latency_trace_format_duration(affect_and_points_us, duration_buffers[7]),
 			latency_trace_format_duration(affect_us, duration_buffers[8]),
-			latency_trace_format_duration(point_us, duration_buffers[9]));
+			latency_trace_format_duration(point_us, duration_buffers[9]), thread_usage);
 	}
 	latency_trace_record("total_tick", loop_us, loop_tick);
 	if (!(tics % 300))
@@ -2979,6 +2986,7 @@ resume_game_loop:
 		context.loop_time_begin_us = loop_time_begin_us;
 		context.loop_tick = loop_tick;
 		context.loop_start_mono_us = loop_start_mono_us;
+		latency_trace_thread_usage_now(&context.thread_usage_begin);
 
 		if (!run_connection_phase(context))
 			continue;
