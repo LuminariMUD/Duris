@@ -19,7 +19,8 @@ Write the simplest code that fully solves the task. Build only what is needed no
 - **Format:** `.clang-format` is authoritative for touched C/C++ code. `./scripts/format.sh` formats your changed lines; `--check` only verifies. `./scripts/install-hooks.sh` installs the hook that enforces it at commit time.
 - **Build:** Run `make -C src` after C/C++ changes. The executable is `bin/server/dms_new`. All compiled artifacts belong under `bin/` and must not be committed.
 - **Test:** Run the smallest relevant test directly, for example `python3 tests/async/test_<feature>.py` or its `run_<feature>.sh` wrapper. Add or update a focused regression test when behavior changes.
-- **Verify:** Use local builds, focused executable tests, and applicable gameplay/persistence journeys as verification. Do not require or wait for CI results to finish or merge work, and do not bypass other review requirements. Report any validation that could not be run.
+- **Verify:** Use local builds, focused executable tests, and applicable gameplay/persistence journeys as verification; CI runs the full suite. Do not bypass other review requirements. Report any validation that could not be run.
+- **Merge:** Merge into `master` only when the required checks (`compile test`, `quality`) are green on the PR's exact head commit: `gh pr checks <N> --required --watch`, then merge with `--match-head-commit <sha>`. An admin override without green checks is only for a CI outage or an emergency; say so in a PR comment.
 - **Attribution:** NEVER add co-authors, attributions, `Claude-Session`, or signed-off-by lines.
 
 ## Safety
