@@ -749,7 +749,8 @@ void spell_prismatic_spray(int level, P_char ch, char * /*arg*/, int /*type*/, P
 			{
 				ray_type = 1 << number(0, RAY_COUNT - 1);
 				spell_single_prismatic_ray(level, ch, (char *)&ray_type, 0, tch, 0);
-				if (!is_char_in_room(tch, room) || (GET_STAT(tch) == STAT_DEAD))
+				if (!is_char_in_room(ch, room) || !is_char_in_room(tch, room) ||
+				    (GET_STAT(tch) == STAT_DEAD))
 					break;
 			}
 		}

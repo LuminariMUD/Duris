@@ -5409,16 +5409,20 @@ static bool should_area_hit_with_position(P_char ch, P_char victim, bool caster_
 	if (!ch || !victim)
 		return FALSE;
 
+	// A caster killed and extracted mid-spell (a deflected ray, a riposte) is in no room.
+	if (ch->in_room == NOWHERE)
+		return FALSE;
+
 	if (caster_position && victim->specials.z_cord != ch->specials.z_cord)
 		return FALSE;
 
 	if (ch == victim)
 		return FALSE;
 
-	if (CHAR_IN_SAFE_ROOM(victim))
+	if (GET_STAT(victim) == STAT_DEAD)
 		return FALSE;
 
-	if (GET_STAT(victim) == STAT_DEAD)
+	if (CHAR_IN_SAFE_ROOM(victim))
 		return FALSE;
 
 	if ((GET_OPPONENT(ch) == victim) || (GET_OPPONENT(victim) == ch))
