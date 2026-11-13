@@ -2,6 +2,7 @@
 # Drive the real server from the shell. See tests/scenarios/README.md.
 #   scripts/mudtest smoke
 #   scripts/mudtest scenario FILE.scn [FILE.scn...]
+#   scripts/mudtest soak [--minutes N] [--bots N]   (full world; use a scripts/build-san.sh build)
 # Uses bin/server/dms_new (override with DURIS_SERVER_BINARY) and a disposable
 # MariaDB container per run.
 set -euo pipefail
@@ -11,13 +12,17 @@ server=${DURIS_SERVER_BINARY:-bin/server/dms_new}
 
 case "${1:-}" in
 smoke) files=(tests/scenarios/smoke.scn) ;;
+soak)
+	shift
+	exec tests/async/with_disposable_mariadb.sh python3 tests/scenarios/soak.py --server "$server" "$@"
+	;;
 scenario)
 	shift
 	(($#)) || { echo "usage: scripts/mudtest scenario FILE.scn..." >&2; exit 2; }
 	files=("$@")
 	;;
 *)
-	echo "usage: scripts/mudtest smoke | scenario FILE.scn..." >&2
+	echo "usage: scripts/mudtest smoke | scenario FILE.scn... | soak [--minutes N] [--bots N]" >&2
 	exit 2
 	;;
 esac

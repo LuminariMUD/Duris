@@ -13,6 +13,18 @@ scripts/mudtest scenario tests/scenarios/x.scn [more.scn...]
 
 `scripts/mudtest` needs Docker for the disposable database.
 
+## Soak
+
+```sh
+scripts/build-san.sh -j4                       # ASan/UBSan build at bin/server/dms_san
+DURIS_SERVER_BINARY=bin/server/dms_san scripts/mudtest soak --minutes 60 --bots 8
+```
+
+The soak boots the full world, creates one level-50, high-HP bot per class, and lets them
+wander, fight whatever they find, loot, wear gear, rest and reconnect. A staff character runs a
+copyover halfway through. The run fails if the server dies, does not shut down cleanly, or its
+output holds a sanitizer or crash report. `--keep DIR` saves the server output and logs.
+
 ## Writing one
 
 ```
