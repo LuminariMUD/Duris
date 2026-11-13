@@ -490,8 +490,14 @@ void event_bearhug(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 			{
 				affect_from_char(ch, TAG_GRAPPLE);
 			}
-
-			unlink_char(ch, victim, LNK_GRAPPLED);
+			if (IS_SBEARHUG(victim))
+			{
+				affect_from_char(victim, SKILL_BEARHUG);
+			}
+			if (IS_TBEARHUG(victim))
+			{
+				affect_from_char(victim, TAG_BEARHUG);
+			}
 
 			memset(&af, 0, sizeof(af));
 			af.type = SKILL_GRAPPLER_COMBAT;

@@ -9544,7 +9544,7 @@ void buck(P_char ch)
 
 	SET_POS(victim, POS_PRONE + GET_STAT(victim));
 
-	unlink_char(ch, victim, LNK_RIDING);
+	unlink_char(victim, ch, LNK_RIDING);
 	/*
 	  GET_HIT(victim) -= dice(3, 4);
 	  update_pos(victim);
