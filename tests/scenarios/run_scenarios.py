@@ -67,8 +67,9 @@ class Actor:
 
     @property
     def account(self) -> str:
-        # Account names follow character-name rules: letters only, at most 12.
-        return ("A" + self.name.lower())[:12]
+        # Account names follow character-name rules, which the actor name already meets.
+        # A prefix would have to drop a letter, and two actors could then share an account.
+        return self.name.lower()
 
 
 def parse(path: pathlib.Path) -> tuple[dict[str, Actor], list[tuple[int, str, str, str]]]:
@@ -168,7 +169,13 @@ def run_scenario(binary: pathlib.Path, path: pathlib.Path) -> None:
                     actor.client = None
             if process is not None and process.poll() is None:
                 process.send_signal(signal.SIGTERM)
-                process.wait(timeout=60)
+                try:
+                    process.wait(timeout=60)
+                except subprocess.TimeoutExpired:
+                    # Never release the schema or runtime directory under a live server.
+                    process.kill()
+                    process.wait()
+                    raise ScenarioError("server ignored SIGTERM for 60s and was killed")
                 if process.returncode != 0:
                     raise ScenarioError(f"server exited {process.returncode} on shutdown")
 

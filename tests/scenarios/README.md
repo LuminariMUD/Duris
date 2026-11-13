@@ -16,6 +16,7 @@ scripts/mudtest scenario tests/scenarios/x.scn [more.scn...]
 ## Soak
 
 ```sh
+make world                                     # the soak boots the full world
 scripts/build-san.sh -j4                       # ASan/UBSan build at bin/server/dms_san
 DURIS_SERVER_BINARY=bin/server/dms_san scripts/mudtest soak --minutes 60 --bots 8
 ```

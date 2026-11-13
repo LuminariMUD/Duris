@@ -172,7 +172,14 @@ def main() -> int:
         def stop():
             if process is not None and process.poll() is None:
                 process.send_signal(signal.SIGTERM)
-                process.wait(timeout=300)
+                try:
+                    process.wait(timeout=300)
+                except subprocess.TimeoutExpired:
+                    # Never release the schema or runtime directory under a live server.
+                    process.kill()
+                    process.wait()
+                    failures.append("server ignored SIGTERM for 300s and was killed")
+                    return
                 if process.returncode != 0:
                     failures.append(f"server exited {process.returncode} on shutdown")
 
@@ -181,8 +188,10 @@ def main() -> int:
             print("full world booted; creating characters", flush=True)
             for actor in actors.values():
                 client = journey.MudClient(plain)
+                # Tharnadia, not the sealed Beginner Introduction the helper prefers.
                 journey.create_character(client, expected_room=None, account=actor.account,
-                                         character=actor.name, email=actor.name.lower() + "@example.invalid")
+                                         character=actor.name, email=actor.name.lower() + "@example.invalid",
+                                         hometown="T", expected_hometown="Tharnadia")
                 client.send("save")
                 client.expect("Saving " + actor.name + ".", timeout=60)
                 client.close()
