@@ -64,7 +64,7 @@ functions = [
     ('gmcp.c', 'static void gmcp_flush_spell_preparation('),
     ('gmcp.c', 'void gmcp_flush_initial_states('),
     ('gmcp.c', 'void gmcp_send_initial_state('),
-    ('gmcp.c', 'static std::unordered_map<int, struct ShipData *> gmcp_ship_bridges('),
+    ('gmcp.c', 'std::unordered_map<int, struct ShipData *> gmcp_ship_bridges('),
     ('gmcp.c', 'static struct ShipData *gmcp_player_ship('),
     ('gmcp.c', 'static unsigned long hash_string('),
     ('gmcp.c', 'static cJSON *json_build_ship_contacts('),

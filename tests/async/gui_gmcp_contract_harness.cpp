@@ -533,8 +533,9 @@ static void emit(P_desc d, const char *package, const char *phase = "snapshot")
 }
 static void flush()
 {
-	gmcp_flush_dirty_ship_contacts();
-	gmcp_flush_dirty_ship_info();
+	const auto bridges = gmcp_ship_bridges();
+	gmcp_flush_dirty_ship_contacts(bridges);
+	gmcp_flush_dirty_ship_info(bridges);
 }
 
 static void links_contract(P_char actor)
@@ -2432,7 +2433,12 @@ int main()
 	ad.next = land_descriptors;
 	ship_visits = contact_scans = 0;
 	flush();
-	assert(ship_visits == 2 && contact_scans == 1 && wire.empty());
+	assert(ship_visits == 1 && contact_scans == 1 && wire.empty()); // one lookup per flush
+	ad.connected = CON_NAME;
+	ad.next = nullptr;
+	flush();
+	assert(ship_visits == 1 && wire.empty()); // no eligible client: no lookup
+	ad.connected = CON_PLAYING;
 	ad.next = &bd;
 	contact_scans = 0;
 	flush();
@@ -2456,7 +2462,7 @@ int main()
 	second_ship_enabled = true;
 	b.in_room = 0;
 	contact_scans = 0;
-	gmcp_flush_dirty_ship_contacts();
+	gmcp_flush_dirty_ship_contacts(gmcp_ship_bridges());
 	assert(contact_scans == 2); // independent contact set for each occupied ship
 	assert(payload(&bd, "Ship.Contacts").find("\"contacts\":[]") != std::string::npos);
 	second_ship_enabled = false;

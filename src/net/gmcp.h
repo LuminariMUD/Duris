@@ -12,6 +12,8 @@
 #ifndef GMCP_H
 #define GMCP_H
 
+#include <unordered_map>
+
 #include "core/structs.h"
 #include "magic/spells.h"
 #include "world/world_quest.h"
@@ -149,11 +151,15 @@ void gmcp_send_room_map(struct char_data *ch, const char *map_buf);
 void gmcp_mark_room_dirty(int room_number);
 void gmcp_flush_dirty_rooms(void);
 
+/* loaded-ship bridge lookup shared by both ship flushes; empty when no
+ * playing gmcp client could observe a ship */
+std::unordered_map<int, struct ShipData *> gmcp_ship_bridges(void);
+
 /* ship contacts - periodically flush to gmcp players on bridge */
-void gmcp_flush_dirty_ship_contacts(void);
+void gmcp_flush_dirty_ship_contacts(const std::unordered_map<int, struct ShipData *> &bridges);
 
 /* ship info - static/slow-changing ship data, also flushed periodically */
-void gmcp_flush_dirty_ship_info(void);
+void gmcp_flush_dirty_ship_info(const std::unordered_map<int, struct ShipData *> &bridges);
 
 /* char vitals - sends hp/mana/move when they change */
 void gmcp_char_vitals(struct char_data *ch);

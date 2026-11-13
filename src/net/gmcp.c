@@ -1077,9 +1077,14 @@ void gmcp_flush_dirty_rooms(void)
  */
 
 /* Build once per flush, so observers do not each scan every ship's rooms. */
-static std::unordered_map<int, struct ShipData *> gmcp_ship_bridges(void)
+std::unordered_map<int, struct ShipData *> gmcp_ship_bridges(void)
 {
 	std::unordered_map<int, struct ShipData *> bridges;
+	struct descriptor_data *d = descriptor_list;
+	while (d && (STATE(d) != CON_PLAYING || !GMCP_ENABLED(d->character)))
+		d = d->next;
+	if (!d)
+		return bridges; // no client can observe a ship
 	ShipVisitor svs;
 	for (bool found = shipObjHash.get_first(svs); found; found = shipObjHash.get_next(svs))
 	{
@@ -1275,7 +1280,7 @@ static cJSON *json_build_ship_contacts(struct ShipData *ship)
 	return root;
 }
 
-void gmcp_flush_dirty_ship_contacts(void)
+void gmcp_flush_dirty_ship_contacts(const std::unordered_map<int, struct ShipData *> &bridges)
 {
 	/* Contacts depend on the ship and verification status, not the observer.
 	 * Share both payload variants for this flush; keep delivery state per client. */
@@ -1285,7 +1290,6 @@ void gmcp_flush_dirty_ship_contacts(void)
 		unsigned long hash[2] = {};
 	};
 	std::unordered_map<struct ShipData *, snapshot> snapshots;
-	const auto bridges = gmcp_ship_bridges();
 	for (struct descriptor_data *d = descriptor_list; d; d = d->next)
 	{
 		struct ShipData *ship = gmcp_player_ship(d, bridges);
@@ -1324,9 +1328,8 @@ void gmcp_flush_dirty_ship_contacts(void)
 }
 
 /* Hash the personalized payload, including this observer's racial bonuses. */
-void gmcp_flush_dirty_ship_info(void)
+void gmcp_flush_dirty_ship_info(const std::unordered_map<int, struct ShipData *> &bridges)
 {
-	const auto bridges = gmcp_ship_bridges();
 	for (struct descriptor_data *d = descriptor_list; d; d = d->next)
 	{
 		struct ShipData *ship = gmcp_player_ship(d, bridges);
