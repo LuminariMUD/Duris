@@ -647,6 +647,26 @@ int main()
 	assert(divine_boon_reward_zone_eligible(exp_zone, 0) ==
 	       divine_boon_reward_zone_eligible(exp_zone, 1));
 	exits[0].exit_info = 0;
+	// Cached routes are reused; closing both cached routes rebuilds the search
+	// at once and finds the remaining detour through room 5.
+	assert(exp_zone == 18);
+	room_direction_data detour = {};
+	detour.to_room = 2;
+	rooms[5].dir_option[3] = &detour;
+	exits[0].exit_info = exits[1].exit_info = EX_BLOCKED;
+	divine_boon_selection_pulse(3610);
+	assert(divine_boon_reward_zone_eligible(exp_zone, 0));
+	// While the target stays unreachable, the full search is not repeated
+	// every second; a reopened route is found by the next allowed rebuild.
+	rooms[5].dir_option[3] = nullptr;
+	divine_boon_selection_pulse(3611);
+	assert(!divine_boon_reward_zone_eligible(exp_zone, 0));
+	exits[0].exit_info = exits[1].exit_info = 0;
+	divine_boon_selection_pulse(3612);
+	assert(!divine_boon_reward_zone_eligible(exp_zone, 0));
+	divine_boon_selection_pulse(3620);
+	assert(divine_boon_reward_zone_eligible(exp_zone, 0) &&
+	       divine_boon_reward_zone_eligible(exp_zone, 1));
 
 	// A refused hour is not replayed after the wall clock advances.
 	queue_accepts = false;
