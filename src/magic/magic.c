@@ -695,7 +695,7 @@ void spell_color_spray(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 	act("$n sends beams of &+Gcol&+Bor spr&+Ray&n from $s hands!", FALSE, ch, 0, 0,
 	    TO_VICTROOM);
 
-	for (tch = world[ch->in_room].people; tch && IS_ALIVE(ch); tch = next)
+	for (tch = world[ch->in_room].people; tch; tch = next)
 	{
 		next = tch->next_in_room;
 		if (should_area_hit(ch, tch))
@@ -740,7 +740,7 @@ void spell_prismatic_spray(int level, P_char ch, char * /*arg*/, int /*type*/, P
 
 	room = ch->in_room;
 
-	for (tch = world[room].people; tch && IS_ALIVE(ch); tch = next)
+	for (tch = world[room].people; tch; tch = next)
 	{
 		next = tch->next_in_room;
 		if (should_area_hit(ch, tch))
@@ -749,7 +749,7 @@ void spell_prismatic_spray(int level, P_char ch, char * /*arg*/, int /*type*/, P
 			{
 				ray_type = 1 << number(0, RAY_COUNT - 1);
 				spell_single_prismatic_ray(level, ch, (char *)&ray_type, 0, tch, 0);
-				if (!IS_ALIVE(ch) || !is_char_in_room(tch, room) ||
+				if (!is_char_in_room(ch, room) || !is_char_in_room(tch, room) ||
 				    (GET_STAT(tch) == STAT_DEAD))
 					break;
 			}

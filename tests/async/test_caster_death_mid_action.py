@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Prismatic and color spray stop once a ray kills their caster.
+"""Area spells stop once a ray kills their caster.
 
 A ray's spell_damage() can be deflected or arcane-riposted back onto the caster
 and kill them. Prismatic spray then fired its next ray, whose resists_spell()
 read GET_CHAR_SKILL(caster) through the only.pc that free_char() had already
 released, and color spray asked should_area_hit() about the next target with
-the dead caster's in_room at NOWHERE. should_area_hit() also read the victim's
+the dead caster's in_room at NOWHERE, which every area spell's loop does too:
+should_area_hit() read IS_ROOM(caster->in_room) once the dead caster's fights had
+ended, indexing world[-1]. should_area_hit() also read the victim's
 room before rejecting a dead victim, so an extracted victim indexed world[-1].
 
 Compiles the production spell_prismatic_spray(), spell_color_spray() and
@@ -44,7 +46,7 @@ struct affected_type *get_spell_from_char(P_char, int, void *, int) { std::abort
 void affect_remove(P_char, struct affected_type *) { std::abort(); }
 bool grouped(P_char, P_char) { std::abort(); }
 P_char get_linking_char(P_char, int) { std::abort(); }
-int IS_MORPH(P_char) { std::abort(); }
+int IS_MORPH(P_char) { return 0; }
 
 static int rays, skill_reads;
 // extract_char() -> free_char(): out of the room, only.pc released, marked dead.
@@ -102,6 +104,15 @@ int main()
 	corpse.in_room = NOWHERE;
 	corpse.specials.position = POS_STANDING + STAT_DEAD;
 	assert(!should_area_hit(&caster, &corpse));
+
+	// Any area spell: after the caster is extracted, its fights are over, so the check
+	// reaches the caster's room. It must reject every target instead of reading world[-1].
+	char_data gone{}, bystander{};
+	gone.in_room = NOWHERE;
+	gone.specials.position = POS_STANDING + STAT_DEAD;
+	bystander.in_room = 1;
+	bystander.specials.position = POS_STANDING + STAT_NORMAL;
+	assert(!should_area_hit(&gone, &bystander));
 
 	delete[] world;
 	std::puts("area sprays stop when their caster dies; dead victims are rejected first");
