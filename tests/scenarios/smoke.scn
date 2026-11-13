@@ -1,0 +1,29 @@
+# Smoke: two players and a staff member on the minimal world.
+# Boots the real server, creates characters, plays a little, saves, restarts,
+# and checks that an item survives the restart. Any crash or sanitizer report
+# in the logs fails the run.
+staff  Smokestaff
+actor  Smokewarrior class=WARRIOR level=20
+actor  Smokecleric  class=CLERIC  level=20
+
+Smokewarrior> look
+Smokewarrior> score
+Smokewarrior? Score information for Smokewarrior
+Smokewarrior> who
+Smokewarrior? Smokecleric
+
+Smokecleric> say hello there
+Smokewarrior? hello there
+
+Smokestaff> load obj 18
+Smokestaff? created
+Smokestaff> give longsword Smokewarrior
+Smokewarrior? silverish longsword
+Smokewarrior> wield longsword
+Smokewarrior? You wield
+
+restart
+
+Smokewarrior> equipment
+Smokewarrior? silverish longsword
+Smokewarrior! Smokecleric says
