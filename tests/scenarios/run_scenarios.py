@@ -75,6 +75,13 @@ class Actor:
         return self.name.lower()
 
 
+def regex(where: str, text: str) -> re.Pattern:
+    try:
+        return re.compile(text, re.M)
+    except re.error as error:
+        raise ScenarioError(f"{where}: /{text}/ is not a valid regular expression: {error}") from None
+
+
 def parse(path: pathlib.Path) -> tuple[dict[str, Actor], list[tuple[int, str, str, str]]]:
     actors: dict[str, Actor] = {}
     steps = []
@@ -113,13 +120,13 @@ def parse(path: pathlib.Path) -> tuple[dict[str, Actor], list[tuple[int, str, st
             match = re.fullmatch(r"until ([A-Z][a-z]+) /((?:[^/\\]|\\.)+)/(?: max (\d+))? (.+)", line)
             if not match or match[1] not in actors:
                 raise ScenarioError(f"{where}: expected 'until Name /REGEX/ [max K] command'")
-            steps.append((number, "until", match[1], (re.compile(match[2].replace("\\/", "/"), re.M),
+            steps.append((number, "until", match[1], (regex(where, match[2].replace("\\/", "/")),
                                                        int(match[3] or 20), match[4])))
             continue
         match = re.fullmatch(r"([A-Z][a-z]+)([>?!])\s?(.*)", line)
         if not match or match[1] not in actors:
             raise ScenarioError(f"{where}: expected 'Name> command', 'Name? text', 'Name! text' or 'restart'")
-        steps.append((number, match[2], match[1], re.compile(match[3], re.M) if match[2] != ">" else match[3]))
+        steps.append((number, match[2], match[1], regex(where, match[3]) if match[2] != ">" else match[3]))
     if not actors:
         raise ScenarioError(f"{path.name}: no actors")
     return actors, steps
@@ -140,7 +147,8 @@ def seed(sql, actors: dict[str, Actor]) -> None:
 
 def unchecked(actor: Actor) -> str:
     """What reached the actor since its last check. Offsets count bytes, so slice before decoding."""
-    return bytes(actor.client.transcript[actor.checked:]).decode(errors="replace")
+    text = bytes(actor.client.transcript[actor.checked:]).decode(errors="replace")
+    return text.replace("\r\n", "\n")  # so `$` in a check matches at the end of a line
 
 
 def run_scenario(binary: pathlib.Path, path: pathlib.Path, rng_seed: int) -> None:
