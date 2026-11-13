@@ -878,6 +878,24 @@ int main()
 	    memcmp(drained, close_frame, sizeof(close_frame)) != 0)
 		return fail("a data frame followed the close frame");
 
+	/* Backpressure clears before the close: the close's own flush must not drain the data
+	 * still queued behind it. */
+	while (write(pressure_pair[0], fill, sizeof(fill)) > 0)
+	{
+	}
+	pressure.ws_state = WS_STATE_OPEN;
+	if (websocket_send_text(&pressure, "one") < 0 ||
+	    websocket_send_text(&pressure, "two") < 0 || pressure.ws_output_len == 0)
+		return fail("data was not queued behind backpressure before writable close");
+	while (read(pressure_pair[1], drained, sizeof(drained)) > 0)
+	{
+	}
+	websocket_close(&pressure, 1000, "bye");
+	close_len = read(pressure_pair[1], drained, sizeof(drained));
+	if (close_len != (ssize_t)sizeof(close_frame) ||
+	    memcmp(drained, close_frame, sizeof(close_frame)) != 0 || pressure.ws_output_len != 0)
+		return fail("the close's own flush sent data queued behind it");
+
 	/* A data frame already partly on the wire finishes before the close; later ones drop.
 	 * Two bytes of "one" (0x81 0x03) are on the wire, as a partial write leaves them. */
 	while (write(pressure_pair[0], fill, sizeof(fill)) > 0)

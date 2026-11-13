@@ -1216,6 +1216,10 @@ static int websocket_send_frame(struct descriptor_data *d, int opcode, const voi
 	}
 
 	result = websocket_queue_output(d, frame, frame_len, opcode >= WS_OPCODE_CLOSE);
+	/* Drop queued data frames that have not started before the Close can flush; one
+	 * already partly sent finishes first, so the Close still lands on a frame boundary. */
+	if (result == 0 && opcode == WS_OPCODE_CLOSE)
+		d->ws_output_len = d->ws_output_offset + d->ws_output_frame_left;
 	if (result == 0)
 		result = websocket_flush_output(d);
 
@@ -1309,12 +1313,7 @@ int websocket_send_close(struct descriptor_data *d, int code, const char *reason
 
 	result = websocket_send_frame(d, WS_OPCODE_CLOSE, payload, len);
 	if (result == 0)
-	{
 		d->ws_state = WS_STATE_CLOSING;
-		/* Drop queued data frames that have not started; one already partly sent
-		 * finishes first, so the Close still lands on a frame boundary. */
-		d->ws_output_len = d->ws_output_offset + d->ws_output_frame_left;
-	}
 	return result;
 }
 
