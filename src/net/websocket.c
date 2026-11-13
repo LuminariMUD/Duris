@@ -1085,6 +1085,9 @@ static int websocket_send_frame(struct descriptor_data *d, int opcode, const voi
 
 	if (d->write_failed)
 		return -1;
+	/* RFC 6455 5.5.1: no data frame may follow our Close. */
+	if (opcode < WS_OPCODE_CLOSE && d->ws_state != WS_STATE_OPEN)
+		return 0;
 
 	/* only compress text/binary, not control frames like ping/pong */
 	if (d->ws_compress && d->ws_deflate_stream &&
@@ -1213,6 +1216,10 @@ static int websocket_send_frame(struct descriptor_data *d, int opcode, const voi
 	}
 
 	result = websocket_queue_output(d, frame, frame_len, opcode >= WS_OPCODE_CLOSE);
+	/* Drop queued data frames that have not started before the Close can flush; one
+	 * already partly sent finishes first, so the Close still lands on a frame boundary. */
+	if (result == 0 && opcode == WS_OPCODE_CLOSE)
+		d->ws_output_len = d->ws_output_offset + d->ws_output_frame_left;
 	if (result == 0)
 		result = websocket_flush_output(d);
 
