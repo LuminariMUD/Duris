@@ -85,6 +85,8 @@ void confirm_diagnostic(const divine_boon_state &state, bool pending)
 std::array<std::array<int32_t, DIVINE_BOON_SLOTS>, 2> reward_zones = {};
 uint64_t reward_revision = 0;
 int64_t reward_checked_at = -1;
+int64_t reward_paths_rebuilt_at = -1;
+constexpr int64_t reward_path_retry = 10;
 
 bool ordinary_room(int room, unsigned side)
 {
@@ -351,6 +353,7 @@ try
 	diagnostic_history.clear();
 	reward_revision = 0;
 	reward_checked_at = -1;
+	reward_paths_rebuilt_at = -1;
 	if (!world || !zone_table || top_of_world < 0 || top_of_zone_table < 0)
 		return false;
 	for (int index = 0; index <= top_of_zone_table; ++index)
@@ -799,31 +802,42 @@ try
 		reward_revision = 0;
 		return;
 	}
-	// Path validation allocates and walks world exits. Refresh at most once per
-	// second (and after publication), never from a per-hit reward calculation.
+	// Rewards are recomputed at most once per second (and after publication),
+	// never from a per-hit reward calculation. path_valid rechecks every cached
+	// hop against the live world, so a cached success is current. Only rebuild
+	// the world-wide search when an active Exp target fails that check: after
+	// publication at once, otherwise at most every reward_path_retry seconds
+	// while a target stays unreachable.
 	if (reward_revision != state->revision || reward_checked_at != now)
 	{
-		for (auto &side : reward_zones)
-			side.fill(-1);
-		bool paths_refreshed = false;
-		for (size_t index = 0; index < state->slots.size(); ++index)
+		const bool published = reward_revision != state->revision;
+		for (bool rebuilt = false;; rebuilt = true)
 		{
-			const auto &slot = state->slots[index];
-			if (slot.category != divine_boon_category::experience ||
-			    !divine_boon_active(slot, now))
-				continue;
-			// Rebuild once for active Exp slots: a cached route may have closed
-			// while another opened. Per-hit lookups still use only reward_zones.
-			if (!paths_refreshed)
+			bool unreachable = false;
+			for (auto &side : reward_zones)
+				side.fill(-1);
+			for (size_t index = 0; index < state->slots.size(); ++index)
 			{
-				refresh_paths();
-				paths_refreshed = true;
+				const auto &slot = state->slots[index];
+				if (slot.category != divine_boon_category::experience ||
+				    !divine_boon_active(slot, now))
+					continue;
+				const int zone = divine_boon_shared_target_zone(slot);
+				if (zone < 0)
+					continue;
+				if (divine_boon_zone_eligible(zone, 0) ||
+				    divine_boon_zone_eligible(zone, 1))
+					for (auto &side : reward_zones)
+						side[index] = zone;
+				else
+					unreachable = true;
 			}
-			const int zone = divine_boon_shared_target_zone(slot);
-			if (zone >= 0 && (divine_boon_zone_eligible(zone, 0) ||
-					  divine_boon_zone_eligible(zone, 1)))
-				for (auto &side : reward_zones)
-					side[index] = zone;
+			if (!unreachable || rebuilt ||
+			    (!published && now >= reward_paths_rebuilt_at &&
+			     now < reward_paths_rebuilt_at + reward_path_retry))
+				break;
+			refresh_paths();
+			reward_paths_rebuilt_at = now;
 		}
 		reward_revision = state->revision;
 		reward_checked_at = now;
