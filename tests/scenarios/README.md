@@ -48,6 +48,10 @@ restart              save everyone, stop, boot again, log everyone back in
 - `until` is for random outcomes: `until Rogue /You are now hidden/ max 10 hide` keeps hiding
   until it works instead of failing on an unlucky roll. The `?`/`!` lines after it read the
   attempt that matched. Inside the slashes, write `\/` for a literal slash.
+- Every run uses a fresh random seed, printed on each PASS/FAIL line. A server built with
+  seed support (`DURIS_TEST_RNG_SEED`) fixes its rolls from it, so
+  `scripts/mudtest scenario --seed N FILE` replays a failure's rolls. Timing between
+  players can still differ, so treat a replay as very likely the same, not guaranteed.
 - `?` waits up to 15 seconds. `!` first sends `score` so anything in flight has
   arrived, then checks. Both look only at output since that actor's previous check.
 - `!` fails on any earlier mention too, such as a cast message naming the actor. Consume

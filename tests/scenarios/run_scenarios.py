@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import random
 import re
 import signal
 import subprocess
@@ -142,7 +143,7 @@ def unchecked(actor: Actor) -> str:
     return bytes(actor.client.transcript[actor.checked:]).decode(errors="replace")
 
 
-def run_scenario(binary: pathlib.Path, path: pathlib.Path) -> None:
+def run_scenario(binary: pathlib.Path, path: pathlib.Path, rng_seed: int) -> None:
     actors, steps = parse(path)
     with tempfile.TemporaryDirectory(prefix="scenario-", dir=ROOT / "bin/tests") as temporary, \
             journey.mariadb_authority() as (authority, sql):
@@ -154,8 +155,10 @@ def run_scenario(binary: pathlib.Path, path: pathlib.Path) -> None:
         critical.mkdir(parents=True, mode=0o700)
         (runtime / "journals/players").mkdir(mode=0o700)
         plain, tls, websocket = journey.available_ports()
+        # A server that supports it fixes its rolls from this seed, so a failure replays.
         environment = dict(authority, CRITICAL_COMMAND_JOURNAL_DIR=str(critical),
-                           DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket))
+                           DURIS_TLS_PORT=str(tls), DURIS_WEBSOCKET_PORT=str(websocket),
+                           DURIS_TEST_RNG_SEED=str(rng_seed))
         output_path = runtime / "server.out"
         process = None
 
@@ -274,18 +277,21 @@ def run_scenario(binary: pathlib.Path, path: pathlib.Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--server", type=pathlib.Path, required=True)
+    parser.add_argument("--seed", type=int, help="replay a run: the seed a result line printed")
     parser.add_argument("scenarios", type=pathlib.Path, nargs="+")
     args = parser.parse_args()
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     failed = 0
     for path in args.scenarios:
         started = time.monotonic()
+        rng_seed = args.seed or random.randrange(1, 2**63)
         try:
-            run_scenario(args.server.resolve(), path)
-            print(f"PASS {path} ({time.monotonic() - started:.0f}s)", flush=True)
+            run_scenario(args.server.resolve(), path, rng_seed)
+            print(f"PASS {path} ({time.monotonic() - started:.0f}s, seed {rng_seed})", flush=True)
         except Exception as error:  # report every scenario, then fail the run
             failed += 1
-            print(f"FAIL {path} ({time.monotonic() - started:.0f}s)\n{error}", flush=True)
+            print(f"FAIL {path} ({time.monotonic() - started:.0f}s, seed {rng_seed})\n{error}\n"
+                  f"replay: scripts/mudtest scenario --seed {rng_seed} {path}", flush=True)
     print(f"{len(args.scenarios) - failed} passed, {failed} failed")
     return 1 if failed else 0
 
