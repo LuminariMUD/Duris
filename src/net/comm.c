@@ -583,7 +583,7 @@ int main(int argc, char **argv)
 	dir = DFLT_DIR;
 	sslport = SSL_PORT;
 
-	randomize_at_boot();
+	randomize(0);
 
 	for (int i = 1; i < argc; i++)
 	{
@@ -734,6 +734,7 @@ int main(int argc, char **argv)
 
 	if (load_env_file() < 0)
 		fatal_boot_error("comm", "Unsafe environment configuration file");
+	apply_test_rng_seed();
 
 	const char *configured_tls_port = getenv("DURIS_TLS_PORT");
 	if (configured_tls_port && *configured_tls_port)

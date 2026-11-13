@@ -91,10 +91,11 @@ void randomize(uint64_t seed)
 	rng_state[3] = hash64(rng_state[2]);
 }
 
-/* Seed the game's rolls at boot. A local test may fix them with DURIS_TEST_RNG_SEED
+/* Once .env is loaded, a local test may fix the game's rolls with DURIS_TEST_RNG_SEED
  * (a nonzero decimal number) to replay a run; any other environment, or no seed,
- * keeps fresh entropy. Secrets never come from this generator (they use RAND_bytes). */
-void randomize_at_boot(void)
+ * keeps the fresh entropy from boot. Secrets never come from this generator (they use
+ * RAND_bytes). */
+void apply_test_rng_seed(void)
 {
 	const char *seed_text = getenv("DURIS_TEST_RNG_SEED");
 	const char *environment = getenv("ENVIRONMENT");
@@ -105,8 +106,6 @@ void randomize_at_boot(void)
 		randomize(seed);
 		fprintf(stderr, "RNG seed: %llu (DURIS_TEST_RNG_SEED)\n", (unsigned long long)seed);
 	}
-	else
-		randomize(0);
 }
 
 int number(int from, int to)
