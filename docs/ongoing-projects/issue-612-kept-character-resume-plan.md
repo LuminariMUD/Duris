@@ -122,4 +122,4 @@ python3 tests/async/test_kept_character_lifecycle.py
 tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_character_journey.py --backend mariadb --server bin/server/dms_new
 ```
 
-Completion requires every acceptance scenario above, clean changed-line formatting and MariaDB builds, an inspected narrow diff, and recorded exact commands/results. Do not wait for CI. Report any missing runtime evidence explicitly and leave #612 open if a required gate is unverified.
+Completion requires every acceptance scenario above, clean changed-line formatting and MariaDB builds, an inspected narrow diff, and recorded exact commands/results. Merging follows the `AGENTS.md` merge gate: the required CI checks green on the exact head commit. Report any missing runtime evidence explicitly and leave #612 open if a required gate is unverified.

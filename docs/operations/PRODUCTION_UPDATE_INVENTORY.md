@@ -86,7 +86,8 @@ starting a second launcher.
    edits. Prepare the production binary/stamp, area tools, full world/lookups,
    callback map, help/news, configuration and required job updates. Reuse evidence
    for unchanged inputs. Broad tests, synthetic databases and restore drills are
-   outside the deployment workflow; do not wait for CI.
+   outside the deployment workflow; CI gates the merge to `master`, not the
+   deployment.
 3. Take a verified full backup under the actual live contract before schema or
    content mutation. Complete required migrations through a supported online path
    when its prerequisites hold. Verify ordered history/state and the new runtime
