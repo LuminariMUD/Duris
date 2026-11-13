@@ -2639,9 +2639,15 @@ void add_scribe_data(int spl, P_char ch, P_obj book, int flag, P_obj obj, P_char
 	tmp.ch = ch;
 	tmp.book = book;
 	if (flag)
+	{
 		tmp.source.obj = obj;
+		tmp.source_id = obj ? obj->obj_uid : 0;
+	}
 	else
+	{
 		tmp.source.teacher = teacher;
+		tmp.source_id = teacher ? teacher->runtime_id : 0;
+	}
 	/*
 	   added check -- DTS 7/11/95
 	 */
@@ -2958,6 +2964,10 @@ void event_scribe(P_char ch, P_char /*victim*/, [[maybe_unused]] P_obj obj, void
 {
 	struct scribing_data_type *s_data = (struct scribing_data_type *)data;
 	int i, j;
+	// The scroll and teacher may have left the game during the delay.
+	P_obj scroll = NULL;
+	if (s_data->flag == 2)
+		scroll = find_live_object(s_data->source.obj, s_data->source_id);
 
 	/*
 	   what this proc does? simple: - checks if in proper state (resting,
@@ -2967,10 +2977,9 @@ void event_scribe(P_char ch, P_char /*victim*/, [[maybe_unused]] P_obj obj, void
 	   just adds one more page.. and queries a new event.
 	 */
 	if ((GET_STAT(ch) != STAT_RESTING) ||
-	    ((GET_POS(ch) != POS_SITTING) && (GET_POS(ch) != POS_KNEELING)) ||
-	    (!s_data || !(s_data->book)) || !scribing_implement(ch, ITEM_SPELLBOOK, s_data->book) ||
-	    !scribing_implement(ch, ITEM_PEN) ||
-	    (s_data && s_data->flag == 2 && !s_data->source.obj))
+	    ((GET_POS(ch) != POS_SITTING) && (GET_POS(ch) != POS_KNEELING)) || !s_data->book ||
+	    !scribing_implement(ch, ITEM_SPELLBOOK, s_data->book) ||
+	    !scribing_implement(ch, ITEM_PEN) || (s_data->flag == 2 && !OBJ_CARRIED_BY(scroll, ch)))
 	{
 		disarm_char_nevents(ch, event_scribe);
 		send_to_char("So much for that scribing effort!\n", ch);
@@ -2987,26 +2996,29 @@ void event_scribe(P_char ch, P_char /*victim*/, [[maybe_unused]] P_obj obj, void
 		snprintf(Gbuf1, MAX_STRING_LENGTH, "You finish scribing the spell '%s' into $p.",
 			 skills[s_data->spell].name);
 		act(Gbuf1, TRUE, ch, s_data->book, 0, TO_CHAR);
-		if (!s_data->flag && s_data->source.teacher)
+		P_char teacher = NULL;
+		if (!s_data->flag)
+			teacher = find_character_by_runtime_id(s_data->source_id);
+		if (teacher)
 		{
 			snprintf(Gbuf1, MAX_STRING_LENGTH,
 				 "You finish teaching the spell '%s' to %s.\n",
 				 skills[s_data->spell].name, GET_NAME(ch));
-			send_to_char(Gbuf1, s_data->source.teacher);
+			send_to_char(Gbuf1, teacher);
 
-			REMOVE_BIT(s_data->source.teacher->specials.affected_by2, AFF2_SCRIBING);
+			REMOVE_BIT(teacher->specials.affected_by2, AFF2_SCRIBING);
 		}
-		if (s_data->flag == 2 && s_data->source.obj)
+		if (scroll)
 		{
 			j = 0;
 			for (i = 1; i < 4; i++)
-				if (s_data->source.obj->value[i] >= 1)
+				if (scroll->value[i] >= 1)
 					j++;
 			if (j == 1)
 			{
 				send_to_char("The ancient parchment comes apart in your hands..\n",
 					     ch);
-				extract_obj(s_data->source.obj, TRUE); // Artifact scroll??
+				extract_obj(scroll, TRUE); // Artifact scroll??
 			}
 			else if (j == 0)
 			{
@@ -3019,10 +3031,10 @@ void event_scribe(P_char ch, P_char /*victim*/, [[maybe_unused]] P_obj obj, void
 			{
 				j = 0;
 				for (i = 1; ((i < 4) && !j); i++)
-					if (s_data->source.obj->value[i] == s_data->spell)
+					if (scroll->value[i] == s_data->spell)
 					{
 						j = 1;
-						s_data->source.obj->value[i] = 0;
+						scroll->value[i] = 0;
 						send_to_char(
 							"You mess up the scroll so badly that part of it becomes unreadable!\n",
 							ch);

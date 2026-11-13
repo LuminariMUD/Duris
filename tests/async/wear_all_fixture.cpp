@@ -131,6 +131,16 @@ int AddSpellToSpellBook(P_char, P_obj, int)
 	return true;
 }
 void mark_player_dirty_components(int, player_component_mask_t) {}
+// Scribing here copies from a spellbook with no teacher.
+P_obj find_live_object(P_obj, uint64_t)
+{
+	assert(false);
+	return nullptr;
+}
+P_char find_character_by_runtime_id(uint64_t)
+{
+	return nullptr;
+}
 
 void prac_all_spells(P_char)
 {

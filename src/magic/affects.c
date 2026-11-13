@@ -2799,10 +2799,11 @@ void obj_affect_remove(P_obj obj, struct obj_affect *af)
 void event_obj_affect(P_char, P_char, P_obj obj, void *data)
 {
 	struct obj_affect *af = *((struct obj_affect **)data);
+	int type = af->type;
 
 	obj_affect_remove(obj, af);
 
-	if (af->type == TAG_OBJ_DECAY)
+	if (type == TAG_OBJ_DECAY)
 	{
 		const char *trace = getenv("DURIS_CORPSE_TRACE");
 		if (trace && *trace && strcmp(trace, "0") != 0 && obj && obj->type == ITEM_CORPSE)
