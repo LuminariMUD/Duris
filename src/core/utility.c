@@ -5415,10 +5415,10 @@ static bool should_area_hit_with_position(P_char ch, P_char victim, bool caster_
 	if (ch == victim)
 		return FALSE;
 
-	if (CHAR_IN_SAFE_ROOM(victim))
+	if (GET_STAT(victim) == STAT_DEAD)
 		return FALSE;
 
-	if (GET_STAT(victim) == STAT_DEAD)
+	if (CHAR_IN_SAFE_ROOM(victim))
 		return FALSE;
 
 	if ((GET_OPPONENT(ch) == victim) || (GET_OPPONENT(victim) == ch))
