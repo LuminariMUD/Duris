@@ -229,11 +229,10 @@ def main() -> int:
                 failures.append(f"server died during the soak (exit {process.returncode})")
             failures += errors
             print(f"bots sent {sum(bot.commands for bot in bots)} commands", flush=True)
-            stop()
         except Exception as error:
             failures.append(f"soak aborted: {error!r}")
-            stop()
         finally:
+            stop()  # here, so Ctrl-C also stops the server before the fixtures go
             output.close()
             logs = output_path.read_text(errors="replace") + journey.runtime_logs(runtime)
             found = [marker for marker in CRASH_MARKERS if marker in logs]

@@ -163,21 +163,26 @@ def run_scenario(binary: pathlib.Path, path: pathlib.Path) -> None:
                 time.sleep(.1)
 
         def stop() -> None:
+            nonlocal process
             for actor in actors.values():
                 if actor.client is not None:
                     actor.client.close()
                     actor.client = None
-            if process is not None and process.poll() is None:
-                process.send_signal(signal.SIGTERM)
+            if process is None:
+                return
+            server, process = process, None  # report each server's exit once
+            if server.poll() is None:
+                server.send_signal(signal.SIGTERM)
                 try:
-                    process.wait(timeout=60)
+                    server.wait(timeout=60)
                 except subprocess.TimeoutExpired:
                     # Never release the schema or runtime directory under a live server.
-                    process.kill()
-                    process.wait()
+                    server.kill()
+                    server.wait()
                     raise ScenarioError("server ignored SIGTERM for 60s and was killed")
-                if process.returncode != 0:
-                    raise ScenarioError(f"server exited {process.returncode} on shutdown")
+            # Also catches a server that died on its own before this point.
+            if server.returncode != 0:
+                raise ScenarioError(f"server exited {server.returncode}")
 
         def login(actor: Actor) -> None:
             actor.client = journey.reconnect_character(plain, expected_room=None,
