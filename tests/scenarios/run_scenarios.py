@@ -13,8 +13,10 @@ Scenario lines (see tests/scenarios/README.md):
     actor Name [class=MONK] [spec=WAYOFSNAKE] [level=40] [skill=SKILL_BASH:100]...
     staff Name                 a level-62 actor for load/restore/tranquilize
     Name> command              send a command and wait until it has finished
-    Name? text                 text has reached Name since Name's last check
-    Name! text                 text has NOT reached Name since Name's last check
+    Name? REGEX                REGEX matches what reached Name since Name's last check
+    Name! REGEX                REGEX does NOT match it
+    until Name /REGEX/ [max K] command
+                               send command again until its output matches (K tries, 20 by default)
     restart                    save everyone, stop, boot again and log everyone back in
 """
 
@@ -106,10 +108,17 @@ def parse(path: pathlib.Path) -> tuple[dict[str, Actor], list[tuple[int, str, st
         if line == "restart":
             steps.append((number, "restart", "", ""))
             continue
+        if words[0] == "until":
+            match = re.fullmatch(r"until ([A-Z][a-z]+) /((?:[^/\\]|\\.)+)/(?: max (\d+))? (.+)", line)
+            if not match or match[1] not in actors:
+                raise ScenarioError(f"{where}: expected 'until Name /REGEX/ [max K] command'")
+            steps.append((number, "until", match[1], (re.compile(match[2].replace("\\/", "/"), re.M),
+                                                       int(match[3] or 20), match[4])))
+            continue
         match = re.fullmatch(r"([A-Z][a-z]+)([>?!])\s?(.*)", line)
         if not match or match[1] not in actors:
             raise ScenarioError(f"{where}: expected 'Name> command', 'Name? text', 'Name! text' or 'restart'")
-        steps.append((number, match[2], match[1], match[3]))
+        steps.append((number, match[2], match[1], re.compile(match[3], re.M) if match[2] != ">" else match[3]))
     if not actors:
         raise ScenarioError(f"{path.name}: no actors")
     return actors, steps
@@ -225,20 +234,30 @@ def run_scenario(binary: pathlib.Path, path: pathlib.Path) -> None:
                 if kind == ">":
                     command(actor.client, text)
                     continue
-                if kind == "?":
+                if kind == "until":
+                    pattern, tries, line = text
+                    for _ in range(tries):
+                        actor.checked = len(actor.client.transcript)
+                        command(actor.client, line)
+                        if pattern.search(unchecked(actor)):
+                            break
+                    else:
+                        raise ScenarioError(f"{where}: {line!r} never produced /{pattern.pattern}/ "
+                                            f"in {tries} tries. Last output:\n" + unchecked(actor)[-1500:])
+                    continue  # the matching attempt is what the next checks read
+                elif kind == "?":
                     deadline = time.monotonic() + 15
-                    while text not in unchecked(actor):
+                    while not text.search(unchecked(actor)):
                         if time.monotonic() > deadline:
-                            raise ScenarioError(f"{where}: {name} never saw {text!r}. Last output:\n"
+                            raise ScenarioError(f"{where}: {name} never saw /{text.pattern}/. Last output:\n"
                                                 + unchecked(actor)[-1500:])
                         actor.client._receive()
                 else:
                     command(actor.client, "score")  # drain anything still in flight
                     seen = unchecked(actor)
-                    if text in seen:
-                        at = seen.index(text)
-                        raise ScenarioError(f"{where}: {name} saw {text!r}, which must not appear:\n"
-                                            + seen[max(0, at - 700):at + 300])
+                    if found := text.search(seen):
+                        raise ScenarioError(f"{where}: {name} saw /{text.pattern}/, which must not appear:\n"
+                                            + seen[max(0, found.start() - 700):found.start() + 300])
                 actor.checked = len(actor.client.transcript)
             save_all()
         finally:

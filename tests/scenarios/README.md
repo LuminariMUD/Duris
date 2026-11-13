@@ -33,14 +33,21 @@ output holds a sanitizer or crash report. `--keep DIR` saves the server output a
 staff  Gmname                                   level-62 actor
 actor  Name class=MONK spec=WAYOFSNAKE level=40 skill=SKILL_BASH:100
 Name> command        send a command and wait until it has finished
-Name? text           text has reached Name since Name's last check
-Name! text           text has NOT reached Name since Name's last check
+Name? REGEX          REGEX matches what reached Name since Name's last check
+Name! REGEX          REGEX does not match it
+until Name /REGEX/ [max K] command
+                     send command until its output matches, at most K times (20 by default)
 restart              save everyone, stop, boot again, log everyone back in
 ```
 
 - Declare every actor before the first step. Names are one capitalised word of
   3–12 letters. `class`, `spec` and `skill` take the names from `src/core/defines.h`,
   `src/core/structs.h` and `src/magic/spells.h` (without the `CLASS_`/`SPEC_` prefix).
+- REGEX is a Python regular expression searched in multiline mode (`^`/`$` match at line
+  starts and ends), so escape `.`, `(`, `?` and friends when you mean them literally.
+- `until` is for random outcomes: `until Rogue /You are now hidden/ max 10 hide` keeps hiding
+  until it works instead of failing on an unlucky roll. The `?`/`!` lines after it read the
+  attempt that matched. Inside the slashes, write `\/` for a literal slash.
 - `?` waits up to 15 seconds. `!` first sends `score` so anything in flight has
   arrived, then checks. Both look only at output since that actor's previous check.
 - `!` fails on any earlier mention too, such as a cast message naming the actor. Consume
