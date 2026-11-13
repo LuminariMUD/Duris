@@ -47,8 +47,9 @@ static void logit(int, const char *, ...) { assert(false); } // No job advances 
 #define SPY(name) static void name() { calls.emplace_back(#name); }
 SPY(gmcp_flush_initial_states)
 SPY(gmcp_flush_dirty_rooms)
-SPY(gmcp_flush_dirty_ship_contacts)
-SPY(gmcp_flush_dirty_ship_info)
+static int gmcp_ship_bridges() { return 0; }
+static void gmcp_flush_dirty_ship_contacts(int) { calls.emplace_back("gmcp_flush_dirty_ship_contacts"); }
+static void gmcp_flush_dirty_ship_info(int) { calls.emplace_back("gmcp_flush_dirty_ship_info"); }
 SPY(flush_pending_ship_saves)
 SPY(retry_unplaced_ships)
 SPY(locker_async_pulse)

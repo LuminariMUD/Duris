@@ -229,7 +229,8 @@ phase = extract_function("comm.c", "static void run_recurring_persistence_phase(
 (ROOT / "bin").mkdir(exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="persistence-job-latency-", dir=ROOT / "bin") as directory:
     temporary = Path(directory)
-    stubs = "\n".join(f'static void {name}() {{ work("{name}"); }}' for name in SIMPLE_JOBS)
+    stubs = "\n".join(f'static void {name}(...) {{ work("{name}"); }}' for name in SIMPLE_JOBS)
+    stubs += "\nstatic int gmcp_ship_bridges() { return 0; }"
     checks = CHECKS.replace("JOB_NAMES", ", ".join(f'"{name}"' for name in SIMPLE_JOBS + OTHER_JOBS))
     harness = temporary / "latency.cc"
     binary = temporary / "latency"
