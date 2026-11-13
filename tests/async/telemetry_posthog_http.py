@@ -35,7 +35,7 @@ def http_tests(binary: Path, root: Path, environment: dict[str, str]) -> None:
             "-keyout", str(root / (prefix + "key.pem")),
             "-out", str(root / (prefix + "cert.pem")),
         ], env=environment, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    # A synthetic one-second libc DNS stall proves cancellation does not join
+    # A synthetic four-second libc DNS stall proves cancellation does not join
     # libcurl's resolver thread. stall.invalid avoids libcurl's localhost
     # shortcut; the marker proves the shim ran. It performs no real DNS lookup.
     shim = root / "dns.c"
@@ -45,7 +45,7 @@ def http_tests(binary: Path, root: Path, environment: dict[str, str]) -> None:
                     'struct addrinfo **r){(void)n;(void)s;(void)h;(void)r;'
                     'FILE *f=fopen(getenv("DURIS_TEST_DNS_STARTED"),"w");'
                     'if(f){fputs("called\\n",f);fclose(f);}'
-                    'usleep(1000000);return EAI_AGAIN;}\n')
+                    'usleep(4000000);return EAI_AGAIN;}\n')
     subprocess.run(["cc", "-shared", "-fPIC", str(shim), "-o", str(root / "dns.so")],
                    env=environment, check=True, capture_output=True)
 
@@ -105,7 +105,7 @@ def http_tests(binary: Path, root: Path, environment: dict[str, str]) -> None:
                 if case == "headers":
                     headers["X-Large"] = "x" * 16384
                 if case == "deadline":
-                    time.sleep(0.6)
+                    time.sleep(2.5)
                 self.send_response(status)
                 for name, value in headers.items():
                     self.send_header(name, value)
@@ -174,8 +174,11 @@ def http_tests(binary: Path, root: Path, environment: dict[str, str]) -> None:
                 assert health_rows[0]["properties"]["health_trigger"] == "initial"
                 assert health_rows[0]["properties"]["coalesced_reason_mask"] == 0
             continue
-        assert health["cleanup_usec"] < 100_000, (case, health)
-        assert health["longest_pulse_usec"] < 250_000, (case, health)
+        # Wall-clock limits, so they sit far from both sides: a busy runner has delayed a
+        # pulse by ~0.5 s, while a pulse blocked on the network would last until the
+        # 1.5 s deadline, and a cleanup that joined the stalled resolver ~2.5 s more.
+        assert health["cleanup_usec"] < 750_000, (case, health)
+        assert health["longest_pulse_usec"] < 750_000, (case, health)
         assert health["attempted_batches"] == (1 if case in {"tls", "dns", "deadline", "mono"} else len(received)), (case, health, len(received))
         assert len(reserved) == len(received), (case, received, reserved)
         submitted = 0
