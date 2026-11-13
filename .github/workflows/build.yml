@@ -60,3 +60,13 @@ jobs:
         ccache --show-stats
         # Save only what this run used, so each saved cache stays one run's working set.
         ccache --evict-older-than "$((SECONDS + 60))s"
+
+  # One stable check for branch rules to require, whatever the shard count.
+  result:
+    name: compile test
+    if: always()
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+    - name: every shard passed
+      run: test "${{ needs.build.result }}" = success
