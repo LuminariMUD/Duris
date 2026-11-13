@@ -500,8 +500,8 @@ void add_track(P_char ch, int dir)
 	if (ch->in_room == NOWHERE)
 		return;
 
-	// If they hit a wall.. no tracks.
-	if (!EXIT(ch, dir))
+	// If they hit a wall.. no tracks. Death passes NUM_EXITS, which is no exit at all.
+	if (dir < 0 || dir >= NUM_EXITS || !EXIT(ch, dir))
 		return;
 
 	dura = MAX_TRACK_DURATION;
