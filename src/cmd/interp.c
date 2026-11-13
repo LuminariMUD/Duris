@@ -2276,7 +2276,7 @@ void command_interpreter(P_char ch, char *argument)
 				{
 					send_to_char("You reappear, visible to all.\r\n",
 						     exec_char);
-					affect_from_char(ch, SPELL_CONCEALMENT);
+					affect_from_char(exec_char, SPELL_CONCEALMENT);
 				}
 				// Kill hide if applicable
 				if (((cmd != CMD_LOOK) && (cmd != CMD_LISTEN) &&
