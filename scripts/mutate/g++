@@ -38,8 +38,9 @@ SOURCES = (".c", ".cc", ".cpp", ".cxx")
 TAKES_VALUE = {"-o", "-I", "-include", "-isystem", "-iquote", "-MF", "-MT", "-MQ", "-L",
                "-x", "-Xlinker", "--param"}
 
-# Compiles one source (-c), or only preprocesses or inspects: ccache or the real g++.
-if any(arg in ("-c", "-E", "-S", "-M", "-MM", "-") or arg.startswith(("-x", "-print-", "--version"))
+# Compiles one source (-c), only preprocesses or checks, or writes dependency files named
+# after its outputs, which the split would leave in a scratch directory: ccache or the real g++.
+if any(arg in ("-c", "-E", "-S", "-M", "-MM", "-MD", "-MMD", "-fsyntax-only", "-") or arg.startswith(("-x", "-print-", "--version"))
        for arg in args):
     command = [*cached, real, *args] if "-c" in args else [real, *args]
     os.execvp(command[0], command)
