@@ -856,6 +856,50 @@ int main()
 	    memcmp(drained, close_frame, sizeof(close_frame)) != 0)
 		return fail("queued close frame was corrupted or reordered");
 
+	/* RFC 6455 5.5.1: nothing follows our Close. Data queued behind it is dropped, and
+	 * data framed after it is never sent. */
+	while (write(pressure_pair[0], fill, sizeof(fill)) > 0)
+	{
+	}
+	pressure.ws_state = WS_STATE_OPEN;
+	if (websocket_send_text(&pressure, "one") < 0 ||
+	    websocket_send_text(&pressure, "two") < 0 || pressure.ws_output_len == 0)
+		return fail("data was not queued behind backpressure before close");
+	websocket_close(&pressure, 1000, "bye");
+	if (websocket_send_text(&pressure, "late") < 0 || pressure.ws_output_len != 0)
+		return fail("data queued before or after a close would follow the close frame");
+	while (read(pressure_pair[1], drained, sizeof(drained)) > 0)
+	{
+	}
+	if (websocket_flush_output(&pressure) < 0)
+		return fail("close after dropped data did not flush");
+	close_len = read(pressure_pair[1], drained, sizeof(drained));
+	if (close_len != (ssize_t)sizeof(close_frame) ||
+	    memcmp(drained, close_frame, sizeof(close_frame)) != 0)
+		return fail("a data frame followed the close frame");
+
+	/* A data frame already partly on the wire finishes before the close; later ones drop.
+	 * Two bytes of "one" (0x81 0x03) are on the wire, as a partial write leaves them. */
+	while (write(pressure_pair[0], fill, sizeof(fill)) > 0)
+	{
+	}
+	pressure.ws_state = WS_STATE_OPEN;
+	if (websocket_send_text(&pressure, "one") < 0 || websocket_send_text(&pressure, "two") < 0)
+		return fail("data was not queued for the partial-frame close");
+	pressure.ws_output_offset = 2;
+	pressure.ws_output_frame_left = 3;
+	websocket_close(&pressure, 1000, "bye");
+	while (read(pressure_pair[1], drained, sizeof(drained)) > 0)
+	{
+	}
+	if (websocket_flush_output(&pressure) < 0 || pressure.ws_output_len != 0)
+		return fail("partial frame and close did not flush");
+	unsigned char finish_then_close[] = { 'o', 'n', 'e', 0x88, 0x05, 0x03, 0xE8, 'b', 'y', 'e' };
+	close_len = read(pressure_pair[1], drained, sizeof(drained));
+	if (close_len != (ssize_t)sizeof(finish_then_close) ||
+	    memcmp(drained, finish_then_close, sizeof(finish_then_close)) != 0)
+		return fail("a partly sent frame was cut, or a later frame followed the close");
+
 	while (write(pressure_pair[0], fill, sizeof(fill)) > 0)
 	{
 	}

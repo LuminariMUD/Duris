@@ -1085,6 +1085,9 @@ static int websocket_send_frame(struct descriptor_data *d, int opcode, const voi
 
 	if (d->write_failed)
 		return -1;
+	/* RFC 6455 5.5.1: no data frame may follow our Close. */
+	if (opcode < WS_OPCODE_CLOSE && d->ws_state != WS_STATE_OPEN)
+		return 0;
 
 	/* only compress text/binary, not control frames like ping/pong */
 	if (d->ws_compress && d->ws_deflate_stream &&
@@ -1306,7 +1309,12 @@ int websocket_send_close(struct descriptor_data *d, int code, const char *reason
 
 	result = websocket_send_frame(d, WS_OPCODE_CLOSE, payload, len);
 	if (result == 0)
+	{
 		d->ws_state = WS_STATE_CLOSING;
+		/* Drop queued data frames that have not started; one already partly sent
+		 * finishes first, so the Close still lands on a frame boundary. */
+		d->ws_output_len = d->ws_output_offset + d->ws_output_frame_left;
+	}
 	return result;
 }
 
