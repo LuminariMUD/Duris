@@ -8,6 +8,7 @@
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <stdio.h>
 
 #ifndef LATENCY_TRACE_ENABLED
@@ -58,6 +59,25 @@ typedef struct
 	uint64_t window_end_mono_us;
 	char boot_id[LATENCY_TRACE_BOOT_ID_LENGTH];
 } latency_trace_snapshot;
+
+/* What the calling thread used and waited through over an interval, to explain a slow
+ * tick: CPU time far below wall time means it was off the CPU (page faults, locks,
+ * scheduling), and the fault and context-switch counts say which. Unreadable values are 0
+ * for cpu_us and -1 for the counts. */
+typedef struct
+{
+	uint64_t cpu_us;
+	long major_faults;
+	long minor_faults;
+	long voluntary_switches;
+	long involuntary_switches;
+} latency_trace_thread_usage;
+
+void latency_trace_thread_usage_now(latency_trace_thread_usage *usage);
+/* Writes " thread_cpu_us=N majflt=N minflt=N vcsw=N ivcsw=N" for the interval from begin to
+ * now; a value that could not be read either time is "-". */
+void latency_trace_format_thread_usage(const latency_trace_thread_usage *begin, char *buffer,
+				       size_t size);
 
 void latency_trace_init(void);
 void latency_trace_record(const char *name, uint64_t duration_us, uint64_t tick);

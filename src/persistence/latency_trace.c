@@ -18,6 +18,8 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <string.h>
+#include <sys/resource.h>
+#include <time.h>
 #include <unistd.h>
 
 static pthread_mutex_t latency_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -49,6 +51,53 @@ static uint64_t latency_clock_us(clockid_t clock_id)
 uint64_t latency_trace_monotonic_us(void)
 {
 	return latency_clock_us(CLOCK_MONOTONIC);
+}
+
+void latency_trace_thread_usage_now(latency_trace_thread_usage *usage)
+{
+	struct rusage self = {};
+
+	usage->cpu_us = latency_clock_us(CLOCK_THREAD_CPUTIME_ID);
+	if (getrusage(RUSAGE_THREAD, &self) == 0)
+	{
+		usage->major_faults = self.ru_majflt;
+		usage->minor_faults = self.ru_minflt;
+		usage->voluntary_switches = self.ru_nvcsw;
+		usage->involuntary_switches = self.ru_nivcsw;
+	}
+	else
+	{
+		usage->major_faults = usage->minor_faults = -1;
+		usage->voluntary_switches = usage->involuntary_switches = -1;
+	}
+}
+
+static const char *thread_usage_count(long begin, long end, char *buffer, size_t size)
+{
+	if (begin < 0 || end < begin)
+		return "-";
+	snprintf(buffer, size, "%ld", end - begin);
+	return buffer;
+}
+
+void latency_trace_format_thread_usage(const latency_trace_thread_usage *begin, char *buffer,
+				       size_t size)
+{
+	latency_trace_thread_usage end;
+	char cpu[LATENCY_TRACE_TICK_STRING_LENGTH], counts[4][LATENCY_TRACE_TICK_STRING_LENGTH];
+
+	latency_trace_thread_usage_now(&end);
+	snprintf(buffer, size, " thread_cpu_us=%s majflt=%s minflt=%s vcsw=%s ivcsw=%s",
+		 latency_trace_format_duration(latency_trace_elapsed_us(begin->cpu_us, end.cpu_us),
+					       cpu),
+		 thread_usage_count(begin->major_faults, end.major_faults, counts[0],
+				    sizeof counts[0]),
+		 thread_usage_count(begin->minor_faults, end.minor_faults, counts[1],
+				    sizeof counts[1]),
+		 thread_usage_count(begin->voluntary_switches, end.voluntary_switches, counts[2],
+				    sizeof counts[2]),
+		 thread_usage_count(begin->involuntary_switches, end.involuntary_switches,
+				    counts[3], sizeof counts[3]));
 }
 
 uint64_t latency_trace_elapsed_us(uint64_t started_us, uint64_t finished_us)
