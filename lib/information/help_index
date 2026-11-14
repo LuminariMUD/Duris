@@ -5453,6 +5453,8 @@ make sure both are in your inventory then type: encrust dagger stone
 Warning: Encrusting an item, overwrites all existing proc's for that item.
 ===========================================================================
 
+Encrusting guild-store equipment preserves its buyer restriction. An item
+whose buyer mark is missing cannot be encrusted.
 #
 ENDURANCE (Spell)
 ===========================================================================
@@ -13192,34 +13194,15 @@ For a missing or ambiguous name, use race list and enter the full race name.
 RACES (General Information)
 ===========================================================================
 Your race is defined by the path you choose to take in the Land of Duris.
-Each race has its own strengths and weaknesses and your race should be 
-chosen carefully. The following races are currently available on Duris 
-DikuMUD:
+Each race has its own strengths and weaknesses; choose carefully.
 
-Human, Barbarian, Drow Elf, Grey Elf, Half-Elf, Mountain Dwarf, Duergar
-Dwarf, Gnome, Halfling, Ogre, Minotaur, Goblin, Swamp Troll, Thri-Kreen,
-Centaur, Githyanki, Orc, Storm Giant, Vampire, Lich, Wight,
-Shadow Beast, Death Knight, Phantom, Shade, Revenant, Harpy
+The current race catalog and faction list follow below. Creation availability
+also depends on the server settings and your chosen class.
 
-Note: If you are new to Duris, it is recommended that you play a "goodie"
-race character, as the other sides are designed much more toward highly
-advanced players. The good side races are as follows: Human, Barbarian,
-Grey Elf, Half-Elf, Mountain Dwarf, Gnome, Halfling, Centaur and Storm
-Giant or Harpy.
-
-For more information on each race, type "help <racename>."  This will give
-you a brief description of each race, its strengths and weaknesses, the
-bonus system that applies to it, and its innate abilities, if any. It will
-also tell you which classes are available for that race.
-
-For information about the general theme of Duris, with particular attention
-to the division between good, evil and undead races, type "help racewars."
+For a race's description, strengths, weaknesses, innates and class choices,
+type help <race name>. Read help racewars for the division between factions.
 ===========================================================================
-See also: INNATE, RACEWARS, HUMAN, BARBARIAN, DROW, "GREY ELF", HALF-ELF,
-          MOUNTAIN DWARF, DUERGAR, GNOME, HALFLING, OGRE, ORC,
-          "SWAMP TROLL", THRI-KREEN, CENTAUR, GITHYANKI, GOBLIN, MINOTAUR,
-          "STORM GIANT", VAMPIRE, LICH, WIGHT, "SHADOW BEAST",
-          "DEATH KNIGHT", PHANTOM, HARPY, REVENANT, SHADE
+See also: INNATE, RACEWARS, RACE, CLASS
 
 #
 RACEWARS PKILL PLAYERKILL (General Information)
@@ -19710,14 +19693,15 @@ This spell expands the lifeforce capacity of the victim by a significant
 amount for a limited period of time, with the amount dependent on the
 proficiency of the caster.
 
-Vitality landing on someone who already has it follows one rule, whether
-it comes from a caster, a potion, a wand or an item. One at least as
-strong replaces the Vitality they have and restarts its duration. A
-weaker one does nothing, unless the realm runs generous refresh, when it
-restarts the duration and keeps the stronger amount.
 ===========================================================================
 See also: "ESHABALAS VITALITY", "UNHOLY STRENGTH"
 
+A stronger ordinary Vitality replaces a weaker bonus; an equal cast refreshes
+the timer. With the current generous-refresh setting, a weaker ordinary cast
+refreshes the timer while preserving the stronger bonus. Vitality potions may
+refresh an existing ordinary Vitality, including during combat; the normal
+potion recovery timer still applies. A weaker or equal cast does not replace
+an active named-set Vitality grant. Divine Vitality restrictions still apply.
 #
 "VITALIZE MANA" (Spell)
 ===========================================================================
@@ -29362,4 +29346,167 @@ If no words come out, check the message and your current condition.
 ==See also==
 
 [[COMMUNICATIONS UTILITIES CHANNELS]], [[Nchat]], [[Newbie]], [[Index]]
+#
+
+MONKEY GRIP (Guide)
+Monkey Grip is passive: a player whose base size is Huge or larger uses
+one hand for a two-handed weapon and keeps its normal two-handed damage.
+Enlarge, Reduce and Titan Form do not change eligibility. Strength, weapon
+training, dual-wield restrictions and available hands still apply. A
+two-handed nonweapon item still needs two hands.
+Type: innate info monkey grip
+See also: [[Innate]], [[Wield]], [[Equipment]].
+#
+
+WOODLAND RENEWAL (Guide)
+Woodland Renewal is a passive Huntsman innate gained at level 30. In a
+forest it provides regeneration and allows regeneration during combat at
+half rate, rather than stopping it. Outside forest terrain it does not
+supply that benefit. Other regeneration and healing modifiers still apply.
+Type: innate info woodland renewal
+See also: [[Huntsman]], [[Ranger]], [[Innate]].
+#
+
+MAGICAL ESSENCE (Guide)
+Magical crafting recipes require an essence in addition to their listed
+materials and discipline supplies. Carry those supplies directly in your
+inventory. Type craft info <number> or forge info <number> to see the
+requirements of a known recipe; these information commands do not craft it.
+An enhancement essence used with enhance is a different recipe input.
+See also: [[Craft]], [[Forge]], [[Salvage]], [[Enhance Material]].
+#
+
+MINSTREL SKILLS (Guide)
+Minstrel keeps the Bard's base progression, subject to its specialization
+changes. Read [[Bard Skills]] for the base skills, songs and instruments,
+and [[Minstrel]] for added abilities and eligibility. Type skills, spells
+or songs for your own learned abilities, and skills info <ability> for
+personal mechanics. A reference list does not grant or train an ability.
+#
+
+HEALER SKILLS (Guide)
+Healer is a Cleric specialization. Read [[Cleric Skills]] for the base
+progression and [[Healer]] for its additional spells and innate. Type
+skills or spells for your own learned abilities, and skills info <ability>
+for details. The specialization page's spell circles are access requirements,
+not a promise that a spell has been learned or prepared.
+#
+
+DEATHKNIGHT SKILLS (Guide)
+Death Knight is a race, rather than a separate class. Read [[Death Knight]]
+for its racial abilities and available classes, then the help for your
+actual class and specialization. Type race innates death knight for the
+racial catalog, innate for your own innates, and skills for learned skills.
+Class, race and specialization abilities have their own requirements.
+#
+
+NAMED REPORT NAMED_REPORT (Guide)
+Type namedreport for the full catalog of named equipment set effects,
+piece thresholds and restrictions. Type area for your current zone's set.
+The command is one word: namedreport.
+Read [[Named Equipment Sets]] before changing equipment: individual effects
+have different conditions, and matching-set hit points begin at three pieces.
+#
+
+BARD SPEC (Guide)
+Bard specializations are Scoundrel, Disharmonist and Minstrel. Type
+specialize to see your own choices. Read [[Bard]], [[Scoundrel]],
+[[Disharmonist]] and [[Minstrel]] for their requirements and changes;
+[[Bard Skills]] describes the base progression. Selection requires an
+eligible character and teacher, and is subject to level, race, existing
+specialization/multiclass and respecialization timer restrictions.
+#
+
+BOATS (Guide)
+For player-owned vessels, start with [[Ship basic]], [[Ship commands]]
+and [[Ship movement]]. Dock commands buy and equip a ship; order commands
+control it from the bridge. Disembark leaves a ship when its location
+allows it. Travel and combat have their own restrictions.
+See also: [[Ship Combat]], [[Ship crews]].
+#
+
+ORDER DISEMBARK (Guide)
+Use disembark to leave a ship; it is not an order subcommand. Large ships
+require you to reach the ship's edge. The ship's position must permit
+leaving it. Read [[Ship commands]] for bridge orders and dock commands,
+and [[Ship movement]] for maneuvering and docking.
+#
+
+SUPERIOR REPLACEMENT REPLACE (Guide)
+Both superior-stat improvement and item replacement use enhance.
+Type enhance <item> to improve eligible superior stats, or
+  enhance <item> <donor item or essence>
+for a replacement or essence. These commands can consume money, supplies
+and the donor; the one-item form is not a free preview when you already
+have the requirements. Read help enhance for eligibility, fees, limits
+and the requirement that a suitable higher-valued replacement exists.
+See also: [[Enhance Material]], [[Craft]], [[Salvage]].
+#
+
+MATERIAL_LIST (Guide)
+Materials come from salvage and are used by craft, forge and enhancement.
+Use craft info <number> or forge info <number> to inspect a known recipe's
+requirements. Examine a recipe to see its supplies. There is no player
+command named material_list; the old help reference names this topic.
+Read [[Salvage]], [[Craft]], [[Forge]] and [[Enhance Material]] for use,
+eligibility and costs.
+#
+
+PLAY SHADOW PIPER (Guide)
+Use play shadow piper for Song of the Shadow Piper, a level-56 Scoundrel
+song requiring a flute. It grants Sneak to grouped player followers in the
+same room, excluding the singer and pets. Combat, leaving, stopping
+following or ending the song removes it. It cannot renew Sneak in combat.
+Read [[Song of the Shadow Piper]], [[Scoundrel]] and [[Instrument]].
+#
+
+MINERS SIGHT (Guide)
+The mineral-detection spell is Lodestone Vision. Its effect improves your
+ability to detect minerals and does not stack with an existing mining-sight
+effect. Read [[Lodestone Vision]] and [[Mining]]. Use skills info lodestone
+vision for its duration and your own ability details. An old racial-help
+reference is not proof that your character has the Miner innate.
+#
+
+IMPROVED TWO-WEAPON FIGHTING (Guide)
+The registered epic skill is improved two weapon fighting, without a
+hyphen. Read [[Improved Two Weapon Fighting]] for the skill.
+Read [[Epic Skills]] for epic learning.
+Type: skills info improved two weapon fighting
+for your own mechanics. It requires mastery of Two Weapon Fighting;
+it is not the racial Monkey Grip benefit.
+See also: [[Two Weapon Fighting]], [[Monkey Grip]].
+#
+
+NECROMANCER SPECIALIZATION (Guide)
+Necromancer specializations are Diabolis, Necrolyte and Reaper. Type
+specialize for your own choices. Read [[Necromancer]] and
+[[Necromancer Skills]] for the base class, and each specialization's help
+for its changes. Race, level, teacher, existing specialization/multiclass state
+and the respecialization timer affect eligibility.
+#
+
+RAGE LORD (Guide)
+The Berserker specialization is named Ragelord. Read [[Ragelord]] for its
+requirements and changes, and [[Berserker Skills]] for the base progression.
+Type specialize to see your own options.
+#
+
+EPIC BONUS SHOP (Guide)
+Syntax: epic bonus shop
+
+Select the Shop Discount bonus to reduce eligible shop purchase prices as
+you earn qualifying epics. Type epic bonus to see your current bonus and
+maximums. Every selection resets its earning start time, even if you select
+the same bonus again; earlier earnings and bottle epics do not build it.
+Read [[Epic Bonus]] for the earning window and choices. This is a discount
+selection, not a shop where you buy epic skills.
+#
+
+CREATE LOCKER (Guide)
+Private locker chests use eq chest create <name> [password] while inside
+your personal locker. You may own up to five; each costs 500 platinum.
+Payment uses your purse if sufficient, otherwise your bank; balances are
+not combined. Wait for the result. Read help lockers and help equipment
+for entry, chest access, storage restrictions and other eq subcommands.
 #

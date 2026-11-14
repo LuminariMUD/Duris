@@ -4,10 +4,90 @@
 &+R                   PWIPE HAPPENED &+YOCT 28TH 1800 UTC!&n
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
 &+W======================================================================&n
-&+WUpdated: November 11, 2026&n
+&+WUpdated: November 14, 2026&n
 
-Welcome back! New Bard songs, revised named sets and clearer information.
+Welcome back! Easier help, refreshed Vitality and repaired quest rewards.
 Newest first; later updates replace older rules. Longer archive on web.
+
+&+R11/11/26 - 11/14/26&n &+L-&n &+YFind your way, keep your strength&n
+&+W----------------------------------------------------------------------&n
+
+&+CHelp that gets you there&n
+&+Y-&n Exact help titles open before partial matches, even in large result
+  lists. Misspelled searches can suggest up to five nearby titles. Newcomer
+  pages link practical commands; class and ability pages explain where to
+  find your own access, training and preparation details.
+&+Y-&n New guides cover &+C'help monkey grip'&n, &+C'help woodland renewal'&n,
+  &+C'help magical essence'&n and &+C'help material_list'&n. Easier lookups
+  include Minstrel/Healer skills, Death Knight abilities, Bard/Necromancer
+  specializations, Shadow Piper, namedreport, ships, enhancement, mining
+  sight, epic shop discounts and private locker chest creation.
+&+Y-&n &+C'help races'&n uses one current race list, removing the outdated
+  duplicate. &+C'help terse'&n explains which ordinary attacks it hides.
+
+&+CVitality keeps its strength&n
+&+Y-&n Stronger ordinary Vitality raises an existing bonus; equal casts renew
+  its timer. With generous refresh enabled, weaker casts renew the timer
+  while keeping the stronger bonus. Vitality potions can refresh it during
+  combat; normal potion recovery still applies. Weaker or equal casts leave
+  an active named-set Vitality grant alone.
+&+Y-&n Bahamut's mask keeps stronger ordinary Vitality and updates your hit
+  points when improving it. Its drain removes ordinary timed Vitality,
+  preserving gear grants. Removing the mask leaves timed Vitality intact.
+
+&+CYour group, guild and character&n
+&+Y-&n &+C'toggle groupsort on'&n puts players before pets and omits race/aura
+  labels in your group list. Use &+C'toggle groupsort off'&n for the classic
+  layout. Guild rosters align level, class/spec, race, Hardcore mark and
+  rank; offline members use saved details, with anonymous level/class hidden.
+&+Y-&n Hardcore score shows lives remaining while permanent death is enabled.
+  Necromancers and Theurgists can &+C'examine <corpse>'&n to see its original
+  level when known. Creatures without a race show their condition alone.
+&+Y-&n Newly created characters have newbie equipment enabled by default.
+  Worn or retained belongings prevent inappropriate duplicate starter kits.
+&+Y-&n Account deletion now ends with a separate warning requiring capital
+  &+R'YES'&n; any other response cancels before deletion begins.
+
+&+CQuests and belongings&n
+&+Y-&n Accepted bartender tasks keep their progress and maps through temporary
+  obstacles, missing live targets and changes to your condition. Sharing no
+  longer repeats those temporary access checks. Deleted target definitions
+  still allow a free replacement task.
+&+Y-&n Lancer's snake-necklace reward and Divine Home's bounty-hunter reward
+  are restored. Ashrumite quests/shops, Icecrag's cookbook ingredients and
+  the Underdark goblet hand-in use the correct items. Impossible placeholder
+  steps are removed; hand-ins with no valid completion leave your gifts
+  with you.
+&+Y-&n Picking up or receiving a second artifact of the same type is refused,
+  including bulk corpse looting. You may still hold one major, one unique
+  and one ioun. Other arrival paths warn of an excess; the existing rule
+  that drops your artifacts remains a backstop.
+&+Y-&n Encrusted guild-store gear keeps its buyer restriction. Gear missing its
+  buyer mark cannot be encrusted. Refining with platinum leaves ore alone;
+  refining failures and expiring item effects avoid several crash cases.
+
+&+CCombat and clear feedback&n
+&+Y-&n Elaphidist pressure-point combos reset on the victim after completion,
+  allowing another full combo. Faerie Fire strips the target's Concealment.
+  Riff refuses untrained attempts and still requires a Bard specialization.
+&+Y-&n Monks receive a message when Regenerate ends. The room sees sight return
+  when the last blindness effect wears off.
+&+Y-&n Bucking releases the rider correctly, and Bearhug releases the victim's
+  restraint when it ends. Losing a Dragoon mount keeps the Dragoon following
+  their own leader. Revealing actions clear the acting body's Concealment.
+&+Y-&n Area spells stop when a reflected hit kills the caster. Deadly room,
+  creature and item effects stop the interrupted command. Death tracks and
+  scribing after a scroll or teacher leaves avoid additional crash cases;
+  interrupted lessons release the teacher.
+&+Y-&n Magic items with invalid spells safely skip those effects instead of
+  attempting to cast them.
+&+Y-&n Refused blackjack bets do not take money. Only the bettor can play or
+  fold an active hand; abandoned hands can be cleared, with the stake lost.
+
+&+CClient connections&n
+&+Y-&n Browser connections keep messages intact on slow links and continue
+  processing buffered commands. Heartbeat timing starts when its ping is
+  sent; closing connections finish without sending further game messages.
 
 &+R11/10/26 - 11/11/26&n &+L-&n &+YSongs, shadows and new set choices&n
 &+W----------------------------------------------------------------------&n

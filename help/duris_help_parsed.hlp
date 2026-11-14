@@ -8781,6 +8781,9 @@ Divine Home.
 You cannot encrust an artifact.
 NOTE: To learn this epic skill, one must first master the epic skill of Craft
 
+Encrusting guild-store equipment preserves its buyer restriction. An item
+whose buyer mark is missing cannot be encrusted.
+
 #0
 
 Endurance
@@ -17026,21 +17029,19 @@ Craft
 #0
 
 Lodestone vision
-Lodestone vision - Last Edited: 2011-02-10 22:44:43 by Jexni
+Lodestone vision - Last Edited: 2026-11-14
 ============================================================
-Lodestone vision is an innate ability granted to Blacksmiths.  This passive innate allows the
-player to see mines on the map, unlike other players who must enter the room to see the mine.
-Lodestone vision will allow you to see a mine from up to 5 rooms away depending on the terrain
-you, and the mine, are in.
+Lodestone Vision supplies mining sight, allowing minerals to be detected
+on the map. Detection range depends on terrain and normal map visibility.
+It does not stack with an existing mining-sight effect. Spell duration is
+5-7 game hours. Use skills info lodestone vision for your own ability
+information; a help article does not grant the spell or the Miner innate.
 
 ==See also==
 
-Alchemist
-Blacksmith
-Mine
-Forge
-Smelt
-Foundry
+* Mining
+* Miners Sight
+* Innate
 
 #0
 
@@ -21108,41 +21109,9 @@ Commands
 Innate
 Newbie
 Racewars
-The following races are currently available on Duris DikuMUD:
 
-==Good Races==
-
-* Human
-* Barbarian
-* Grey Elf
-* Dwarf
-* Halfling
-* Gnome
-* Centaur
-* Githzerai
-* Firbolg
-* Agathinon
-* Eladrin
-
-==Evil Races==
-
-* Drow Elf
-* Duergar
-* Ogre
-* Troll
-* Orc
-* Githyanki
-* Goblin
-* Drider
-* Kobold
-
-==Neutral Races==
-
-* Thri-Kreen
-* Minotaur
-* Shade
-* Vampire
-* ShadowBeast
+The current race catalog and faction list follow below. Creation availability
+also depends on the server settings and your chosen class.
 
 #0
 
